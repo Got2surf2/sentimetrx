@@ -21,12 +21,15 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false })
 
   const studyIds = (studies || []).map(s => s.id)
-  const { data: stats } = studyIds.length > 0
+
+  const statsQuery = studyIds.length > 0
     ? await supabase
         .from('responses')
         .select('study_id, sentiment, nps_score, experience_score')
         .in('study_id', studyIds)
     : { data: [] }
+
+  const stats = statsQuery.data || []
 
   const statsMap: Record<string, {
     total: number
@@ -37,23 +40,32 @@ export default async function DashboardPage() {
   }> = {}
 
   for (const s of studies || []) {
-    const rows      = (stats || []).filter(r => r.study_id === s.id)
-    const total     = rows.length
-    const promoters  = rows.filter(r => r.sentiment === 'promoter').length
-    const passives   = rows.filter(r => r.sentiment === 'passive').length
+    const rows = stats.filter(r => r.study_id === s.id)
+    const total = rows.length
+    const promoters = rows.filter(r => r.sentiment === 'promoter').length
+    const passives = rows.filter(r => r.sentiment === 'passive').length
     const detractors = rows.filter(r => r.sentiment === 'detractor').length
-    const avgNps     = total > 0
+    const avgNps = total > 0
       ? Math.round(rows.reduce((sum, r) => sum + (r.nps_score || 0), 0) / total * 10) / 10
       : 0
     statsMap[s.id] = { total, promoters, passives, detractors, avgNps }
   }
 
-  // Supabase returns clients as an array from the join — normalise to single object
-  const clientsRaw = userData?.clients
-  const clientObj = Array.isArray(clientsRaw)
-    ? clientsRaw[0]
-    : clientsRaw
+  const rawClients = userData?.clients
+  const clientData = Array.isArray(rawClients) ? rawClients[0] : rawClients
 
   const userProp = {
-    email:     user.email!,
-    full_
+    email: user.email!,
+    fullName: userData?.full_name ?? '',
+    role: userData?.role ?? '',
+    clientName: clientData?.name ?? '',
+  }
+
+  return (
+    <DashboardClient
+      user={userProp}
+      studies={studies || []}
+      statsMap={statsMap}
+    />
+  )
+}
