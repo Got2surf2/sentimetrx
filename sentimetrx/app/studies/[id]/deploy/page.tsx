@@ -20,7 +20,7 @@ export default async function DeployPage({ params }: Props) {
   if (!study) notFound()
 
   const base = process.env.NEXT_PUBLIC_BASE_URL || 'https://sentimetrx.ai'
-  const surveyUrl = `${base}/s/${study.guid}`
+  const surveyUrl = base + '/s/' + study.guid
 
   return <DeployClient study={study} surveyUrl={surveyUrl} />
 }
