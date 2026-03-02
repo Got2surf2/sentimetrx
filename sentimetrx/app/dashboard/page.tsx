@@ -20,7 +20,6 @@ export default async function DashboardPage() {
     .select('id, guid, name, bot_name, bot_emoji, status, created_at, config')
     .order('created_at', { ascending: false })
 
-  // Get response counts and stats per study
   const studyIds = (studies || []).map(s => s.id)
   const { data: stats } = studyIds.length > 0
     ? await supabase
@@ -29,7 +28,6 @@ export default async function DashboardPage() {
         .in('study_id', studyIds)
     : { data: [] }
 
-  // Aggregate stats per study
   const statsMap: Record<string, {
     total: number
     promoters: number
@@ -39,8 +37,8 @@ export default async function DashboardPage() {
   }> = {}
 
   for (const s of studies || []) {
-    const rows = (stats || []).filter(r => r.study_id === s.id)
-    const total = rows.length
+    const rows      = (stats || []).filter(r => r.study_id === s.id)
+    const total     = rows.length
     const promoters  = rows.filter(r => r.sentiment === 'promoter').length
     const passives   = rows.filter(r => r.sentiment === 'passive').length
     const detractors = rows.filter(r => r.sentiment === 'detractor').length
@@ -50,11 +48,12 @@ export default async function DashboardPage() {
     statsMap[s.id] = { total, promoters, passives, detractors, avgNps }
   }
 
-  return (
-    <DashboardClient
-      user={{ email: user.email!, ...userData }}
-      studies={studies || []}
-      statsMap={statsMap}
-    />
-  )
-}
+  // Supabase returns clients as an array from the join — normalise to single object
+  const clientsRaw = userData?.clients
+  const clientObj = Array.isArray(clientsRaw)
+    ? clientsRaw[0]
+    : clientsRaw
+
+  const userProp = {
+    email:     user.email!,
+    full_
