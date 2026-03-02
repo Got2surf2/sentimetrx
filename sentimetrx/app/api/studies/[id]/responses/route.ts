@@ -3,15 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 
 interface Params { params: { id: string } }
 
-// GET /api/studies/[id]/responses
-// Query params: sentiment, min_nps, max_nps, from, to, limit, offset, export=csv
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const url    = new URL(req.url)
-  const isCSV  = url.searchParams.get('export') === 'csv'
+  const url       = new URL(req.url)
+  const isCSV     = url.searchParams.get('export') === 'csv'
   const sentiment = url.searchParams.get('sentiment')
   const minNps    = url.searchParams.get('min_nps')
   const maxNps    = url.searchParams.get('max_nps')
@@ -19,6 +17,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   const to        = url.searchParams.get('to')
   const limit     = parseInt(url.searchParams.get('limit')  || '50')
   const offset    = parseInt(url.searchParams.get('offset') || '0')
+
+  // Verify the study exists and the user can access it (RLS handles this)
+  const { data: study, error: studyError } = await supabase
+    .from('studies')
+    .select('id, name')
+    .eq('id', params.id)
+    .single()
+
+  if (studyError || !study) {
+    return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+  }
 
   let query = supabase
     .from('responses')
@@ -40,14 +49,12 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // CSV export
   if (isCSV) {
     const rows = data || []
     if (rows.length === 0) {
       return new NextResponse('No data to export', { status: 200 })
     }
 
-    // Build CSV headers dynamically from first row
     const firstPayload = rows[0].payload || {}
     const psychoKeys   = Object.keys(firstPayload.psychographics || {})
     const demoKeys     = Object.keys(firstPayload.demographics   || {})
@@ -63,7 +70,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const escape = (v: unknown) => {
       const s = v == null ? '' : String(v)
       return s.includes(',') || s.includes('"') || s.includes('\n')
-        ? `"${s.replace(/"/g, '""')}"`
+        ? '"' + s.replace(/"/g, '""') + '"'
         : s
     }
 
@@ -90,7 +97,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       status: 200,
       headers: {
         'Content-Type':        'text/csv',
-        'Content-Disposition': `attachment; filename="responses-${params.id}-${new Date().toISOString().slice(0,10)}.csv"`,
+        'Content-Disposition': 'attachment; filename="responses-' + params.id + '-' + new Date().toISOString().slice(0,10) + '.csv"',
       },
     })
   }
