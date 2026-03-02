@@ -25,7 +25,9 @@ interface StudyStats {
 
 interface Props {
   user: { email: string; fullName?: string; role?: string; clientName?: string }
-  
+  studies: Study[]
+  statsMap: Record<string, StudyStats>
+}  
 export default function DashboardClient({ user, studies: initial, statsMap }: Props) {
   const [studies,       setStudies]       = useState(initial)
   const [deleting,      setDeleting]      = useState<string | null>(null)
