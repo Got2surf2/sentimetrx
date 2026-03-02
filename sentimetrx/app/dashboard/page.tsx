@@ -11,13 +11,13 @@ export default async function DashboardPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, clients(name)')
+    .select('full_name, role, client_id, org_id, organizations(name, is_admin_org)')
     .eq('id', user.id)
     .single()
 
   const { data: studies } = await supabase
     .from('studies')
-    .select('id, guid, name, bot_name, bot_emoji, status, created_at, config')
+    .select('id, guid, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config')
     .order('created_at', { ascending: false })
 
   const studyIds = (studies || []).map(s => s.id)
@@ -40,25 +40,29 @@ export default async function DashboardPage() {
   }> = {}
 
   for (const s of studies || []) {
-    const rows = stats.filter(r => r.study_id === s.id)
-    const total = rows.length
-    const promoters = rows.filter(r => r.sentiment === 'promoter').length
-    const passives = rows.filter(r => r.sentiment === 'passive').length
+    const rows       = stats.filter(r => r.study_id === s.id)
+    const total      = rows.length
+    const promoters  = rows.filter(r => r.sentiment === 'promoter').length
+    const passives   = rows.filter(r => r.sentiment === 'passive').length
     const detractors = rows.filter(r => r.sentiment === 'detractor').length
-    const avgNps = total > 0
+    const avgNps     = total > 0
       ? Math.round(rows.reduce((sum, r) => sum + (r.nps_score || 0), 0) / total * 10) / 10
       : 0
     statsMap[s.id] = { total, promoters, passives, detractors, avgNps }
   }
 
-  const rawClients = userData?.clients
-  const clientData = Array.isArray(rawClients) ? rawClients[0] : rawClients
+  const rawOrg    = userData?.organizations
+  const orgData   = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const isAdmin   = !!orgData?.is_admin_org
+  const clientName = orgData?.name ?? ''
 
   const userProp = {
-    email: user.email!,
-    fullName: userData?.full_name ?? '',
-    role: userData?.role ?? '',
-    clientName: clientData?.name ?? '',
+    email:      user.email!,
+    fullName:   userData?.full_name ?? '',
+    role:       userData?.role ?? '',
+    clientName,
+    isAdmin,
+    userId:     user.id,
   }
 
   return (
