@@ -24,11 +24,8 @@ interface StudyStats {
 }
 
 interface Props {
-  user: { email: string; full_name?: string; role?: string; clients?: { name: string } }
-  studies: Study[]
-  statsMap: Record<string, StudyStats>
-}
-
+  user: { email: string; fullName?: string; role?: string; clientName?: string }
+  
 export default function DashboardClient({ user, studies: initial, statsMap }: Props) {
   const [studies,       setStudies]       = useState(initial)
   const [deleting,      setDeleting]      = useState<string | null>(null)
@@ -95,9 +92,8 @@ export default function DashboardClient({ user, studies: initial, statsMap }: Pr
           <span className="text-2xl">💓</span>
           <div>
             <div className="font-bold text-white leading-none">Sentimetrx</div>
-            {user.clients?.name && (
-              <div className="text-xs text-slate-500 mt-0.5">{user.clients.name}</div>
-            )}
+            {user.clientName && (
+            <div className="text-xs text-slate-500 mt-0.5">{user.clientName}</div>
           </div>
         </div>
         <div className="flex items-center gap-4">
