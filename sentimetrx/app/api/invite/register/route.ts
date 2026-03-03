@@ -1,73 +1,64 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
-// POST /api/invite/register
-// Called when someone completes the registration form via an invite link
 export async function POST(req: NextRequest) {
+  const service = createServiceRoleClient()
   const { token, email, password, full_name } = await req.json()
 
   if (!token || !email || !password) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  if (password.length < 8) {
-    return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
-  }
-
-  const supabase = createServiceRoleClient()
-
-  // Validate the invite
-  const { data: invite, error: inviteError } = await supabase
+  // Validate invite token
+  const { data: invite, error: inviteError } = await service
     .from('invites')
-    .select('id, client_id, role, used_at, expires_at')
+    .select('id, org_id, role, used_at, expires_at')
     .eq('token', token)
     .single()
 
   if (inviteError || !invite) {
-    return NextResponse.json({ error: 'Invalid invite link' }, { status: 404 })
+    return NextResponse.json({ error: 'Invalid invite token' }, { status: 404 })
   }
-
   if (invite.used_at) {
-    return NextResponse.json({ error: 'This invite has already been used' }, { status: 410 })
+    return NextResponse.json({ error: 'Invite already used' }, { status: 410 })
   }
-
   if (new Date(invite.expires_at) < new Date()) {
-    return NextResponse.json({ error: 'This invite has expired' }, { status: 410 })
+    return NextResponse.json({ error: 'Invite expired' }, { status: 410 })
   }
 
-  // Create the Supabase Auth user
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+  // Create auth user
+  const { data: authData, error: authError } = await service.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
   })
 
   if (authError || !authData.user) {
-    return NextResponse.json({ error: authError?.message || 'Failed to create account' }, { status: 500 })
+    return NextResponse.json({ error: authError?.message || 'Failed to create user' }, { status: 500 })
   }
 
-  // Create the user record in our users table
-  const { error: userError } = await supabase
+  // Create users table record
+  const { error: userError } = await service
     .from('users')
     .insert({
       id:        authData.user.id,
-      client_id: invite.client_id,
       email,
       full_name: full_name || null,
-      role:      invite.role,
+      org_id:    invite.org_id,
+      role:      invite.role || 'owner',
     })
 
   if (userError) {
-    // Clean up the auth user if our insert failed
-    await supabase.auth.admin.deleteUser(authData.user.id)
-    return NextResponse.json({ error: 'Failed to create user record' }, { status: 500 })
+    // Rollback auth user
+    await service.auth.admin.deleteUser(authData.user.id)
+    return NextResponse.json({ error: userError.message }, { status: 500 })
   }
 
-  // Mark the invite as used
-  await supabase
+  // Mark invite as used
+  await service
     .from('invites')
     .update({ used_at: new Date().toISOString() })
     .eq('id', invite.id)
 
-  return NextResponse.json({ success: true }, { status: 201 })
+  return NextResponse.json({ success: true })
 }
