@@ -1,2 +1,2 @@
 # sentimetrx
-Sentimetrix Survey Platform
+Sentimetrix Survey Platform - Phase 3
