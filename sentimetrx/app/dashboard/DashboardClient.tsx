@@ -17,6 +17,9 @@ interface Study {
   created_by: string
   created_at: string
   config: any
+  org_id?: string
+  organizations?: { name: string } | { name: string }[]
+  users?: { full_name: string | null; email: string } | { full_name: string | null; email: string }[]
 }
 
 interface StudyStats {
@@ -29,6 +32,7 @@ interface StudyStats {
 
 interface Props {
   logoUrl?: string
+  orgId?: string
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   studies: Study[]
   statsMap: Record<string, StudyStats>
@@ -36,7 +40,7 @@ interface Props {
 
 type Filter = 'all' | 'mine' | 'public'
 
-export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', statsMap }: Props) {
+export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap }: Props) {
   const [studies,       setStudies]       = useState(initialStudies)
   const [deleting,      setDeleting]      = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -155,7 +159,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} />
+      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} orgId={orgId} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
@@ -234,7 +238,13 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
                         )}
                       </div>
                       <div className="text-slate-500 text-xs mb-3">
-                        {study.bot_name} · Created {new Date(study.created_at).toLocaleDateString()}
+                        {(() => {
+                          const org = Array.isArray(study.organizations) ? study.organizations[0] : study.organizations
+                          const creator = Array.isArray(study.users) ? study.users[0] : study.users
+                          const creatorName = creator?.full_name || creator?.email || ''
+                          const orgName = org?.name || ''
+                          return [study.bot_name, orgName, creatorName, 'Created ' + new Date(study.created_at).toLocaleDateString()].filter(Boolean).join(' · ')
+                        })()}
                       </div>
                       <div className="flex gap-5 flex-wrap">
                         <div><div className="font-semibold text-sm text-white">{st.total}</div><div className="text-slate-500 text-xs">Responses</div></div>

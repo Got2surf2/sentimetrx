@@ -11,7 +11,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, org_id, organizations(name, is_admin_org, logo_url)')
+    .select('full_name, role, client_id, org_id, organizations(id, name, is_admin_org, logo_url)')
     .eq('id', user.id)
     .single()
 
@@ -20,22 +20,25 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const isAdmin    = !!orgData?.is_admin_org
   const clientName = orgData?.name ?? ''
 
-  // If admin selected an org filter, only load studies for that org's users
+  // Build studies query — join org and creator info
   let studiesQuery = supabase
     .from('studies')
-    .select('id, guid, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config')
+    .select('id, guid, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config, org_id, organizations(name), users(full_name, email)')
     .order('created_at', { ascending: false })
 
+  // Admin org filter — filter directly by org_id
   if (searchParams?.org && isAdmin) {
-    const { data: orgUsers } = await supabase.from('users').select('id').eq('org_id', searchParams.org)
-    const orgUserIds = (orgUsers || []).map(u => u.id)
-    if (orgUserIds.length > 0) studiesQuery = studiesQuery.in('created_by', orgUserIds)
-    else studiesQuery = studiesQuery.eq('id', 'no-match')
+    studiesQuery = studiesQuery.eq('org_id', searchParams.org)
+  }
+
+  // User filter
+  if (searchParams?.user) {
+    studiesQuery = studiesQuery.eq('created_by', searchParams.user)
   }
 
   const { data: studies } = await studiesQuery
 
-  const studyIds = (studies || []).map(s => s.id)
+  const studyIds = (studies || []).map((s: any) => s.id)
 
   const statsQuery = studyIds.length > 0
     ? await supabase
@@ -55,17 +58,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   }> = {}
 
   for (const s of studies || []) {
-    const rows       = stats.filter(r => r.study_id === s.id)
+    const rows       = stats.filter((r: any) => r.study_id === s.id)
     const total      = rows.length
-    const promoters  = rows.filter(r => r.sentiment === 'promoter').length
-    const passives   = rows.filter(r => r.sentiment === 'passive').length
-    const detractors = rows.filter(r => r.sentiment === 'detractor').length
+    const promoters  = rows.filter((r: any) => r.sentiment === 'promoter').length
+    const passives   = rows.filter((r: any) => r.sentiment === 'passive').length
+    const detractors = rows.filter((r: any) => r.sentiment === 'detractor').length
     const avgNps     = total > 0
-      ? Math.round(rows.reduce((sum, r) => sum + (r.nps_score || 0), 0) / total * 10) / 10
+      ? Math.round(rows.reduce((sum: number, r: any) => sum + (r.nps_score || 0), 0) / total * 10) / 10
       : 0
     statsMap[s.id] = { total, promoters, passives, detractors, avgNps }
   }
-
 
   const userProp = {
     email:      user.email!,
@@ -78,7 +80,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   return (
     <DashboardClient
-      logoUrl={orgData?.logo_url || ""}
+      logoUrl={orgData?.logo_url || ''}
+      orgId={orgData?.id || ''}
       user={userProp}
       studies={studies || []}
       statsMap={statsMap}
