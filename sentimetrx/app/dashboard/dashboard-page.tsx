@@ -58,6 +58,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const orgMap: Record<string, string> = {}
   for (const o of orgsData || []) orgMap[o.id] = o.name
 
+  // Debug: log what we resolved
+  console.log('[Dashboard] studies count:', studies.length)
+  console.log('[Dashboard] creatorMap:', JSON.stringify(creatorMap))
+  console.log('[Dashboard] orgMap:', JSON.stringify(orgMap))
+
   // Enrich studies with resolved org name and creator name
   const enrichedStudies = studies.map((s: any) => {
     const resolvedOrgId = s.org_id || creatorMap[s.created_by]?.orgId || ''
