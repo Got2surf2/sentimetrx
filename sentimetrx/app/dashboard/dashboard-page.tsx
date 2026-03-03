@@ -40,7 +40,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const studies = rawStudies || []
 
   // Fetch org names for all unique org_ids
-  const orgIds = [...new Set(studies.map((s: any) => s.org_id).filter(Boolean))]
+  const orgIds = Array.from(new Set(studies.map((s: any) => s.org_id).filter(Boolean)))
   const { data: orgsData } = orgIds.length > 0
     ? await supabase.from('organizations').select('id, name').in('id', orgIds)
     : { data: [] }
@@ -48,7 +48,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   for (const o of orgsData || []) orgMap[o.id] = o.name
 
   // Fetch creator names for all unique created_by ids
-  const creatorIds = [...new Set(studies.map((s: any) => s.created_by).filter(Boolean))]
+  const creatorIds = Array.from(new Set(studies.map((s: any) => s.created_by).filter(Boolean)))
   const { data: creatorsData } = creatorIds.length > 0
     ? await supabase.from('users').select('id, full_name, email').in('id', creatorIds)
     : { data: [] }
