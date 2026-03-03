@@ -35,8 +35,8 @@ interface Props {
 
 type Filter = 'all' | 'mine' | 'public'
 
-export default function DashboardClient({ user, studies, logoUrl = '': initial, statsMap }: Props) {
-  const [studies,       setStudies]       = useState(initial)
+export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', statsMap }: Props) {
+  const [studies,       setStudies]       = useState(initialStudies)
   const [deleting,      setDeleting]      = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [duplicating,   setDuplicating]   = useState<string | null>(null)
