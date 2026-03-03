@@ -28,9 +28,9 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
   const [error,         setError]         = useState<string | null>(null)
   const [orgPlan,       setOrgPlan]       = useState(org.plan)
   const [togglingPlan,  setTogglingPlan]  = useState(false)
-  const [logoUrl,       setLogoUrl]       = useState(org.logo_url || "")
+  const [logoUrl,       setLogoUrl]       = useState(org.logo_url || '')
   const [uploadingLogo, setUploadingLogo] = useState(false)
-  const [logoMsg,       setLogoMsg]       = useState("")
+  const [logoMsg,       setLogoMsg]       = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const statusColor = (s: string) => {
@@ -61,9 +61,9 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
   }
 
   const handleTogglePlan = async () => {
+    const newPlan = orgPlan === 'suspended' ? 'active' : 'suspended'
     setTogglingPlan(true)
     setError(null)
-    const newPlan = orgPlan === 'suspended' ? 'active' : 'suspended'
     try {
       const res = await fetch('/api/admin/clients/' + org.id, {
         method: 'PATCH',
@@ -79,24 +79,19 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
     }
   }
 
-  const handleGenerateInvite = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleGenerateInvite = async () => {
     setGeneratingInv(true)
     setError(null)
     try {
       const res = await fetch('/api/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: org.id,
-          org_id:    org.id,
-          email:     inviteEmail || null,
-          role:      'owner',
-        }),
+        body: JSON.stringify({ org_id: org.id, email: inviteEmail || undefined, role: 'owner' }),
       })
-      if (!res.ok) throw new Error('Failed to generate invite')
+      if (!res.ok) throw new Error('Failed')
       const data = await res.json()
-      setInvites(prev => [{ ...data, invite_url: baseUrl + '/invite/' + data.token }, ...prev])
+      const inviteUrl = baseUrl + '/invite/' + data.token
+      setInvites(prev => [{ ...data, invite_url: inviteUrl }, ...prev])
       setInviteEmail('')
       setShowInvForm(false)
     } catch {
@@ -118,48 +113,47 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
     return { label: 'Pending', cls: 'bg-yellow-500/15 text-yellow-400' }
   }
 
-
   const uploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadingLogo(true)
-    setLogoMsg("")
+    setLogoMsg('')
     const form = new FormData()
-    form.append("file", file)
-    form.append("org_id", org.id)
-    const res = await fetch("/api/org/logo", { method: "POST", body: form })
+    form.append('file', file)
+    form.append('org_id', org.id)
+    const res = await fetch('/api/org/logo', { method: 'POST', body: form })
     const data = await res.json()
     setUploadingLogo(false)
-    if (data.logo_url) { setLogoUrl(data.logo_url); setLogoMsg("Logo updated") }
-    else setLogoMsg("Error: " + (data.error || "Upload failed"))
-    setTimeout(() => setLogoMsg(""), 3000)
+    if (data.logo_url) { setLogoUrl(data.logo_url); setLogoMsg('Logo updated') }
+    else setLogoMsg('Error: ' + (data.error || 'Upload failed'))
+    setTimeout(() => setLogoMsg(''), 3000)
   }
 
   const removeLogo = async () => {
     setUploadingLogo(true)
-    const res = await fetch("/api/org/logo", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+    const res = await fetch('/api/org/logo', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ org_id: org.id }),
     })
     setUploadingLogo(false)
-    if (res.ok) { setLogoUrl(""); setLogoMsg("Logo removed") }
-    else setLogoMsg("Error removing logo")
-    setTimeout(() => setLogoMsg(""), 3000)
+    if (res.ok) { setLogoUrl(''); setLogoMsg('Logo removed') }
+    else setLogoMsg('Error removing logo')
+    setTimeout(() => setLogoMsg(''), 3000)
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
+          <span className="text-2xl">&#128147;</span>
           <div>
             <div className="font-bold text-white leading-none">Sentimetrx</div>
             <div className="text-xs text-slate-500 mt-0.5">Admin Panel</div>
           </div>
         </div>
         <Link href="/admin" className="text-sm text-slate-500 hover:text-white transition-colors">
-          All Organizations
+          Back to Admin
         </Link>
       </nav>
 
@@ -195,6 +189,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                 {togglingPlan ? '...' : orgPlan === 'suspended' ? 'Reactivate Org' : 'Suspend Org'}
               </button>
             )}
+          </div>
 
           {/* Logo upload */}
           <div className="mt-5 pt-5 border-t border-slate-700">
@@ -202,11 +197,14 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
             {logoMsg && <p className="text-xs text-green-400 mb-2">{logoMsg}</p>}
             <div className="flex items-center gap-3">
               <div className="w-20 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
-                {logoUrl ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" /> : <span className="text-xs text-slate-500">No logo</span>}
+                {logoUrl
+                  ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" />
+                  : <span className="text-xs text-slate-500">No logo</span>
+                }
               </div>
               <button onClick={() => fileRef.current?.click()} disabled={uploadingLogo}
                 className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors">
-                {uploadingLogo ? "Uploading..." : logoUrl ? "Change" : "Upload Logo"}
+                {uploadingLogo ? 'Uploading...' : logoUrl ? 'Change' : 'Upload Logo'}
               </button>
               {logoUrl && (
                 <button onClick={removeLogo} disabled={uploadingLogo}
@@ -227,11 +225,11 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
             <div className="flex flex-col divide-y divide-slate-800">
               {members.map(m => (
                 <div key={m.id} className="flex items-center justify-between py-3 gap-3">
-                  <div>
-                    <div className="text-sm text-white font-medium">{m.full_name || m.email}</div>
-                    {m.full_name && <div className="text-xs text-slate-500">{m.email}</div>}
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white truncate">{m.full_name || m.email}</div>
+                    {m.full_name && <div className="text-xs text-slate-500 truncate">{m.email}</div>}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-slate-500 capitalize">{m.role}</span>
                     <span className="text-xs text-slate-600">{new Date(m.created_at).toLocaleDateString()}</span>
                   </div>
@@ -244,24 +242,23 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
         {/* Studies */}
         <Section title={'Studies (' + studies.length + ')'}>
           {studies.length === 0 ? (
-            <Empty text="No studies in this organization" />
+            <Empty text="No studies yet" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-slate-800">
               {studies.map(study => (
-                <div key={study.id} className="flex items-center justify-between gap-3 bg-slate-800/40 rounded-xl px-4 py-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <span className="text-xl flex-shrink-0">{study.bot_emoji}</span>
-                    <div className="min-w-0">
-                      <div className="text-sm text-white font-medium truncate">{study.name}</div>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span className={'text-xs px-1.5 py-0.5 rounded-full ' + statusColor(study.status)}>{study.status}</span>
-                        <span className={'text-xs px-1.5 py-0.5 rounded-full ' + (study.visibility === 'public' ? 'bg-blue-500/15 text-blue-400' : 'bg-slate-700 text-slate-400')}>{study.visibility}</span>
-                        <span className="text-xs text-slate-500">{study.response_count} responses</span>
-                      </div>
+                <div key={study.id} className="flex items-center justify-between py-3 gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{study.bot_emoji}</span>
+                      <span className="text-sm font-medium text-white truncate">{study.name}</span>
+                      <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + statusColor(study.status)}>
+                        {study.status}
+                      </span>
                     </div>
+                    <div className="text-xs text-slate-500 mt-0.5">{study.bot_name} &middot; {study.response_count} responses</div>
                   </div>
-                  <div className="flex gap-1.5 flex-shrink-0">
-                    <Link href={'/studies/' + study.id + '/responses'} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Link href={'/studies/' + study.id + '/responses'} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
                       Responses
                     </Link>
                     <button
@@ -278,68 +275,67 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
           )}
         </Section>
 
-        {/* Invites */}
+        {/* Invite Links */}
         <Section title="Invite Links">
-          <div className="flex flex-col gap-4">
-            {!showInvForm ? (
-              <button
-                onClick={() => setShowInvForm(true)}
-                className="self-start px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition-all"
-              >
-                + Generate Invite Link
-              </button>
-            ) : (
-              <form onSubmit={handleGenerateInvite} className="flex gap-2 items-end flex-wrap">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-slate-400">Email (optional — pre-fills the form)</label>
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={e => setInviteEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm outline-none focus:border-cyan-500 transition-colors w-64"
-                  />
-                </div>
-                <button type="submit" disabled={generatingInv} className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all">
-                  {generatingInv ? 'Generating...' : 'Generate'}
-                </button>
-                <button type="button" onClick={() => setShowInvForm(false)} className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm transition-all">
-                  Cancel
-                </button>
-              </form>
-            )}
-
-            {invites.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {invites.map(inv => {
-                  const st = inviteStatus(inv)
-                  return (
-                    <div key={inv.id} className="flex items-center justify-between gap-3 bg-slate-800/40 rounded-xl px-4 py-3 flex-wrap">
-                      <div>
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + st.cls}>{st.label}</span>
-                          {inv.email && <span className="text-xs text-slate-400">{inv.email}</span>}
-                        </div>
-                        <div className="text-xs text-slate-600 font-mono truncate max-w-xs">{inv.invite_url}</div>
-                        <div className="text-xs text-slate-600 mt-0.5">
-                          Expires {new Date(inv.expires_at).toLocaleDateString()}
-                          {inv.used_at && ' · Used ' + new Date(inv.used_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                      {!inv.used_at && new Date(inv.expires_at) > new Date() && (
-                        <button
-                          onClick={() => handleCopyInvite(inv.invite_url, inv.id)}
-                          className={'text-xs px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 ' + (copiedInvite === inv.id ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 hover:bg-slate-600 text-slate-300')}
-                        >
-                          {copiedInvite === inv.id ? 'Copied!' : 'Copy link'}
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs text-slate-500">Generate links to invite new members to this organisation.</p>
+            <button
+              onClick={() => setShowInvForm(f => !f)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            >
+              {showInvForm ? 'Cancel' : '+ New Invite'}
+            </button>
           </div>
+
+          {showInvForm && (
+            <div className="flex gap-2 mb-4 flex-wrap">
+              <input
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder="Email (optional)"
+                className="flex-1 min-w-[200px] bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
+              />
+              <button
+                onClick={handleGenerateInvite}
+                disabled={generatingInv}
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all"
+              >
+                {generatingInv ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          )}
+
+          {invites.length === 0 ? (
+            <Empty text="No invite links yet" />
+          ) : (
+            <div className="flex flex-col divide-y divide-slate-800">
+              {invites.map(inv => {
+                const status = inviteStatus(inv)
+                return (
+                  <div key={inv.id} className="flex items-center justify-between py-3 gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + status.cls}>{status.label}</span>
+                        {inv.email && <span className="text-xs text-slate-400 truncate">{inv.email}</span>}
+                      </div>
+                      <div className="text-xs text-slate-600 mt-0.5">
+                        Expires {new Date(inv.expires_at).toLocaleDateString()}
+                        {inv.used_at && ' · Used ' + new Date(inv.used_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                    {!inv.used_at && new Date(inv.expires_at) > new Date() && (
+                      <button
+                        onClick={() => handleCopyInvite(inv.invite_url, inv.id)}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors flex-shrink-0"
+                      >
+                        {copiedInvite === inv.id ? 'Copied!' : 'Copy Link'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </Section>
       </main>
     </div>
