@@ -237,9 +237,25 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
                           <span className="text-xs text-slate-600">shared</span>
                         )}
                       </div>
-                      <div className="text-slate-500 text-xs mb-3">
-  {[study.bot_name, study.orgName, study.creatorName, 'Created ' + new Date(study.created_at).toLocaleDateString()].filter(Boolean).join(' · ')}
-                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 mb-3">
+                          <span>{study.bot_name}</span>
+                          {user.isAdmin && study.orgName && (
+                            <><span className="text-slate-700">·</span>
+                            <button onClick={() => { const p = new URLSearchParams(window.location.search); p.set('org', study.org_id || ''); p.delete('user'); window.location.href = window.location.pathname + '?' + p.toString() }}
+                              className="hover:text-white transition-colors underline underline-offset-2">
+                              {study.orgName}
+                            </button></>
+                          )}
+                          {study.creatorName && (
+                            <><span className="text-slate-700">·</span>
+                            <button onClick={() => { const p = new URLSearchParams(window.location.search); p.set('user', study.created_by); window.location.href = window.location.pathname + '?' + p.toString() }}
+                              className="hover:text-white transition-colors underline underline-offset-2">
+                              {study.creatorName}
+                            </button></>
+                          )}
+                          <span className="text-slate-700">·</span>
+                          <span>Created {new Date(study.created_at).toLocaleDateString()}</span>
+                        </div>
                       <div className="flex gap-5 flex-wrap">
                         <div><div className="font-semibold text-sm text-white">{st.total}</div><div className="text-slate-500 text-xs">Responses</div></div>
                         <div><div className="font-semibold text-sm text-white">{st.total > 0 ? st.avgNps : '---'}</div><div className="text-slate-500 text-xs">Avg NPS</div></div>
