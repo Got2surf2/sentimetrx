@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 
 interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string }
 interface Study   { id: string; guid: string; name: string; bot_name: string; bot_emoji: string; status: string; visibility: string; created_at: string; response_count: number }
 interface Invite  { id: string; token: string; email: string | null; role: string; used_at: string | null; expires_at: string; created_at: string; invite_url: string }
-interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean }
+interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean; logo_url?: string }
 
 interface Props {
   org:           Org
@@ -28,6 +28,10 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
   const [error,         setError]         = useState<string | null>(null)
   const [orgPlan,       setOrgPlan]       = useState(org.plan)
   const [togglingPlan,  setTogglingPlan]  = useState(false)
+  const [logoUrl,       setLogoUrl]       = useState(org.logo_url || '')
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoMsg,       setLogoMsg]       = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const statusColor = (s: string) => {
     if (s === 'active')  return 'bg-green-500/15 text-green-400'
@@ -114,6 +118,36 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
     return { label: 'Pending', cls: 'bg-yellow-500/15 text-yellow-400' }
   }
 
+
+  const uploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingLogo(true)
+    setLogoMsg('')
+    const form = new FormData()
+    form.append('file', file)
+    form.append('org_id', org.id)
+    const res = await fetch('/api/org/logo', { method: 'POST', body: form })
+    const data = await res.json()
+    setUploadingLogo(false)
+    if (data.logo_url) { setLogoUrl(data.logo_url); setLogoMsg('Logo updated') }
+    else setLogoMsg('Error: ' + (data.error || 'Upload failed'))
+    setTimeout(() => setLogoMsg(''), 3000)
+  }
+
+  const removeLogo = async () => {
+    setUploadingLogo(true)
+    const res = await fetch('/api/org/logo', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: org.id }),
+    })
+    setUploadingLogo(false)
+    if (res.ok) { setLogoUrl(''); setLogoMsg('Logo removed') }
+    else setLogoMsg('Error removing logo')
+    setTimeout(() => setLogoMsg(''), 3000)
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
@@ -161,6 +195,31 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                 {togglingPlan ? '...' : orgPlan === 'suspended' ? 'Reactivate Org' : 'Suspend Org'}
               </button>
             )}
+
+          {/* Logo */}
+          <div className="mt-5 pt-5 border-t border-slate-700">
+            <p className="text-xs text-slate-500 mb-3">Organisation Logo</p>
+            {logoMsg && <p className="text-xs text-green-400 mb-2">{logoMsg}</p>}
+            <div className="flex items-center gap-3">
+              <div className="w-20 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
+                {logoUrl
+                  ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" />
+                  : <span className="text-xs text-slate-500">No logo</span>
+                }
+              </div>
+              <button onClick={() => fileRef.current?.click()} disabled={uploadingLogo}
+                className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors">
+                {uploadingLogo ? 'Uploading...' : logoUrl ? 'Change' : 'Upload'}
+              </button>
+              {logoUrl && (
+                <button onClick={removeLogo} disabled={uploadingLogo}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900 border border-slate-700 text-red-400 transition-colors">
+                  Remove
+                </button>
+              )}
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
+            </div>
+          </div>
           </div>
         </div>
 
@@ -258,7 +317,37 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
               <div className="flex flex-col gap-2">
                 {invites.map(inv => {
                   const st = inviteStatus(inv)
-                  return (
+                
+  const uploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingLogo(true)
+    setLogoMsg('')
+    const form = new FormData()
+    form.append('file', file)
+    form.append('org_id', org.id)
+    const res = await fetch('/api/org/logo', { method: 'POST', body: form })
+    const data = await res.json()
+    setUploadingLogo(false)
+    if (data.logo_url) { setLogoUrl(data.logo_url); setLogoMsg('Logo updated') }
+    else setLogoMsg('Error: ' + (data.error || 'Upload failed'))
+    setTimeout(() => setLogoMsg(''), 3000)
+  }
+
+  const removeLogo = async () => {
+    setUploadingLogo(true)
+    const res = await fetch('/api/org/logo', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: org.id }),
+    })
+    setUploadingLogo(false)
+    if (res.ok) { setLogoUrl(''); setLogoMsg('Logo removed') }
+    else setLogoMsg('Error removing logo')
+    setTimeout(() => setLogoMsg(''), 3000)
+  }
+
+  return (
                     <div key={inv.id} className="flex items-center justify-between gap-3 bg-slate-800/40 rounded-xl px-4 py-3 flex-wrap">
                       <div>
                         <div className="flex items-center gap-2 mb-0.5">
@@ -292,6 +381,36 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+
+  const uploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingLogo(true)
+    setLogoMsg('')
+    const form = new FormData()
+    form.append('file', file)
+    form.append('org_id', org.id)
+    const res = await fetch('/api/org/logo', { method: 'POST', body: form })
+    const data = await res.json()
+    setUploadingLogo(false)
+    if (data.logo_url) { setLogoUrl(data.logo_url); setLogoMsg('Logo updated') }
+    else setLogoMsg('Error: ' + (data.error || 'Upload failed'))
+    setTimeout(() => setLogoMsg(''), 3000)
+  }
+
+  const removeLogo = async () => {
+    setUploadingLogo(true)
+    const res = await fetch('/api/org/logo', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: org.id }),
+    })
+    setUploadingLogo(false)
+    if (res.ok) { setLogoUrl(''); setLogoMsg('Logo removed') }
+    else setLogoMsg('Error removing logo')
+    setTimeout(() => setLogoMsg(''), 3000)
+  }
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
       <h2 className="font-semibold text-white mb-4">{title}</h2>
