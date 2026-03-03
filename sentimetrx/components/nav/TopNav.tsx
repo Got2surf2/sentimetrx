@@ -1,8 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 
 interface Crumb { label: string; href?: string }
 interface OrgOption  { id: string; name: string }
@@ -20,53 +19,58 @@ interface Props {
 const HERMES = '#E8632A'
 
 export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, crumbs, orgId }: Props) {
-  const router       = useRouter()
-  const pathname     = usePathname()
-  const searchParams = useSearchParams()
+  const [orgs,         setOrgs]         = useState<OrgOption[]>([])
+  const [users,        setUsers]         = useState<UserOption[]>([])
+  const [selectedOrg,  setSelectedOrg]  = useState('')
+  const [selectedUser, setSelectedUser] = useState('')
 
-  const [orgs,        setOrgs]        = useState<OrgOption[]>([])
-  const [users,       setUsers]       = useState<UserOption[]>([])
-  const [selectedOrg, setSelectedOrg] = useState(searchParams.get('org') || '')
-  const [selectedUser,setSelectedUser]= useState(searchParams.get('user') || '')
+  // Init from current URL
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    setSelectedOrg(p.get('org')  || '')
+    setSelectedUser(p.get('user') || '')
+  }, [])
 
-  // Fetch orgs for admin
+  // Fetch orgs list for admin
   useEffect(() => {
     if (!isAdmin) return
     fetch('/api/admin/orgs', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
-      .then(data => setOrgs(Array.isArray(data) ? data : []))
+      .then(d => setOrgs(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [isAdmin])
 
-  // Fetch users when org changes
+  // Fetch users whenever selected org changes
   useEffect(() => {
     const targetOrg = selectedOrg || orgId
     if (!targetOrg) { setUsers([]); return }
     fetch('/api/admin/orgs/' + targetOrg + '/users', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
-      .then(data => setUsers(Array.isArray(data) ? data : []))
+      .then(d => setUsers(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [selectedOrg, orgId])
 
-  const updateParams = useCallback((org: string, user: string) => {
-    const params = new URLSearchParams(searchParams.toString())
-    if (org)  params.set('org', org)  ; else params.delete('org')
-    if (user) params.set('user', user); else params.delete('user')
-    router.push(pathname + (params.toString() ? '?' + params.toString() : ''))
-  }, [router, pathname, searchParams])
+  // Navigate with full reload so server component picks up new params
+  const navigate = (org: string, user: string) => {
+    const p = new URLSearchParams(window.location.search)
+    if (org)  p.set('org', org)   ; else p.delete('org')
+    if (user) p.set('user', user) ; else p.delete('user')
+    const base = window.location.pathname
+    window.location.href = base + (p.toString() ? '?' + p.toString() : '')
+  }
 
-  const handleOrgChange = (orgId: string) => {
-    setSelectedOrg(orgId)
+  const handleOrgChange = (val: string) => {
+    setSelectedOrg(val)
     setSelectedUser('')
-    updateParams(orgId, '')
+    navigate(val, '')
   }
 
-  const handleUserChange = (userId: string) => {
-    setSelectedUser(userId)
-    updateParams(selectedOrg, userId)
+  const handleUserChange = (val: string) => {
+    setSelectedUser(val)
+    navigate(selectedOrg, val)
   }
 
-  const selectCls = 'text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-slate-500 max-w-[140px]'
+  const selectCls = 'text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-slate-500 max-w-[150px]'
 
   return (
     <nav className="border-b border-slate-800 px-4 py-3 flex items-center justify-between bg-slate-950 sticky top-0 z-50 gap-3">
@@ -101,24 +105,19 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, crumbs, o
 
       {/* Right: filters + nav */}
       <div className="flex items-center gap-2 flex-shrink-0">
-
         {/* Org filter — admin only */}
         {isAdmin && orgs.length > 0 && (
           <select value={selectedOrg} onChange={e => handleOrgChange(e.target.value)} className={selectCls}>
             <option value="">All orgs</option>
-            {orgs.map(o => (
-              <option key={o.id} value={o.id}>{o.name}</option>
-            ))}
+            {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         )}
 
-        {/* User filter — shown when org is selected or user is in a known org */}
+        {/* User filter */}
         {users.length > 0 && (
           <select value={selectedUser} onChange={e => handleUserChange(e.target.value)} className={selectCls}>
             <option value="">All users</option>
-            {users.map(u => (
-              <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
-            ))}
+            {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
           </select>
         )}
 
@@ -127,7 +126,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, crumbs, o
         <Link href="/dashboard" className="text-xs text-slate-500 hover:text-white transition-colors hidden sm:block whitespace-nowrap">Dashboard</Link>
         <Link href="/settings/team" className="text-xs text-slate-500 hover:text-white transition-colors hidden sm:block whitespace-nowrap">Team</Link>
         {isAdmin && (
-          <Link href="/admin" className="text-xs font-medium transition-colors whitespace-nowrap" style={{ color: HERMES }}>Admin</Link>
+          <Link href="/admin" className="text-xs font-medium whitespace-nowrap" style={{ color: HERMES }}>Admin</Link>
         )}
         {userEmail && (
           <span className="text-slate-600 text-xs hidden lg:block truncate max-w-[140px]">{userEmail}</span>
