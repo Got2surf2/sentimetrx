@@ -18,8 +18,8 @@ interface Study {
   created_at: string
   config: any
   org_id?: string
-  organizations?: { name: string } | { name: string }[]
-  users?: { full_name: string | null; email: string } | { full_name: string | null; email: string }[]
+  orgName?: string
+  creatorName?: string
 }
 
 interface StudyStats {
@@ -238,13 +238,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
                         )}
                       </div>
                       <div className="text-slate-500 text-xs mb-3">
-                        {(() => {
-                          const org = Array.isArray(study.organizations) ? study.organizations[0] : study.organizations
-                          const creator = Array.isArray(study.users) ? study.users[0] : study.users
-                          const creatorName = creator?.full_name || creator?.email || ''
-                          const orgName = org?.name || ''
-                          return [study.bot_name, orgName, creatorName, 'Created ' + new Date(study.created_at).toLocaleDateString()].filter(Boolean).join(' · ')
-                        })()}
+  {[study.bot_name, study.orgName, study.creatorName, 'Created ' + new Date(study.created_at).toLocaleDateString()].filter(Boolean).join(' · ')}
                       </div>
                       <div className="flex gap-5 flex-wrap">
                         <div><div className="font-semibold text-sm text-white">{st.total}</div><div className="text-slate-500 text-xs">Responses</div></div>
