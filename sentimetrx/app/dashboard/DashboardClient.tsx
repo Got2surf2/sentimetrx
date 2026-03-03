@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -26,6 +27,7 @@ interface StudyStats {
 }
 
 interface Props {
+  logoUrl?: string
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   studies: Study[]
   statsMap: Record<string, StudyStats>
@@ -33,7 +35,7 @@ interface Props {
 
 type Filter = 'all' | 'mine' | 'public'
 
-export default function DashboardClient({ user, studies: initial, statsMap }: Props) {
+export default function DashboardClient({ user, studies, logoUrl = '': initial, statsMap }: Props) {
   const [studies,       setStudies]       = useState(initial)
   const [deleting,      setDeleting]      = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -126,28 +128,7 @@ export default function DashboardClient({ user, studies: initial, statsMap }: Pr
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
-          <div>
-            <div className="font-bold text-white leading-none">Sentimetrx</div>
-            {user.clientName && <div className="text-xs text-slate-500 mt-0.5">{user.clientName}</div>}
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          {user.isAdmin && (
-            <Link href="/admin" className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium">
-              Admin
-            </Link>
-          )}
-          <span className="text-slate-500 text-sm hidden sm:block">{user.email}</span>
-          <form action="/api/auth/signout" method="POST">
-            <button className="text-xs text-slate-500 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-800">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </nav>
+      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
