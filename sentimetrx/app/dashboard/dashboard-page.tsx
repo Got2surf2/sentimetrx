@@ -26,12 +26,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     .select('id, guid, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config, org_id')
     .order('created_at', { ascending: false })
 
-  // Admin: filter by selected org
   if (isAdmin && searchParams?.org) {
     studiesQuery = studiesQuery.eq('org_id', searchParams.org)
   }
-
-  // Filter by selected user
   if (searchParams?.user) {
     studiesQuery = studiesQuery.eq('created_by', searchParams.user)
   }
@@ -39,29 +36,40 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const { data: rawStudies } = await studiesQuery
   const studies = rawStudies || []
 
-  // Fetch org names for all unique org_ids
-  const orgIds = Array.from(new Set(studies.map((s: any) => s.org_id).filter(Boolean)))
-  const { data: orgsData } = orgIds.length > 0
-    ? await supabase.from('organizations').select('id, name').in('id', orgIds)
+  // Fetch ALL users who created these studies (for names + org lookup)
+  const creatorIds = Array.from(new Set(studies.map((s: any) => s.created_by).filter(Boolean)))
+  const { data: creatorsData } = creatorIds.length > 0
+    ? await supabase.from('users').select('id, full_name, email, org_id').in('id', creatorIds)
     : { data: [] }
+
+  const creatorMap: Record<string, { name: string; orgId: string }> = {}
+  for (const c of creatorsData || []) {
+    creatorMap[c.id] = { name: c.full_name || c.email || '', orgId: c.org_id || '' }
+  }
+
+  // Collect all org_ids (from study directly OR from creator's org)
+  const allOrgIds = Array.from(new Set(
+    studies.map((s: any) => s.org_id || creatorMap[s.created_by]?.orgId).filter(Boolean)
+  ))
+  const { data: orgsData } = allOrgIds.length > 0
+    ? await supabase.from('organizations').select('id, name').in('id', allOrgIds)
+    : { data: [] }
+
   const orgMap: Record<string, string> = {}
   for (const o of orgsData || []) orgMap[o.id] = o.name
 
-  // Fetch creator names for all unique created_by ids
-  const creatorIds = Array.from(new Set(studies.map((s: any) => s.created_by).filter(Boolean)))
-  const { data: creatorsData } = creatorIds.length > 0
-    ? await supabase.from('users').select('id, full_name, email').in('id', creatorIds)
-    : { data: [] }
-  const creatorMap: Record<string, string> = {}
-  for (const c of creatorsData || []) creatorMap[c.id] = c.full_name || c.email || ''
+  // Enrich studies with resolved org name and creator name
+  const enrichedStudies = studies.map((s: any) => {
+    const resolvedOrgId = s.org_id || creatorMap[s.created_by]?.orgId || ''
+    return {
+      ...s,
+      org_id:      resolvedOrgId,
+      orgName:     orgMap[resolvedOrgId] || '',
+      creatorName: creatorMap[s.created_by]?.name || '',
+    }
+  })
 
-  // Attach org name and creator name to each study
-  const enrichedStudies = studies.map((s: any) => ({
-    ...s,
-    orgName:     orgMap[s.org_id]     || '',
-    creatorName: creatorMap[s.created_by] || '',
-  }))
-
+  // Stats
   const studyIds = studies.map((s: any) => s.id)
   const statsQuery = studyIds.length > 0
     ? await supabase.from('responses').select('study_id, sentiment, nps_score').in('study_id', studyIds)
