@@ -40,6 +40,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const [deleting,      setDeleting]      = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [duplicating,   setDuplicating]   = useState<string | null>(null)
+  const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
   const [togglingVis,   setTogglingVis]   = useState<string | null>(null)
   const [filter,        setFilter]        = useState<Filter>('all')
   const [error,         setError]         = useState<string | null>(null)
@@ -81,6 +82,27 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
       setError('Failed to update visibility.')
     } finally {
       setTogglingVis(null)
+    }
+  }
+
+
+  const handleToggleStatus = async (study: Study) => {
+    const newStatus = study.status === 'draft' ? 'active' : study.status === 'active' ? 'draft' : null
+    if (!newStatus) return
+    setTogglingStatus(study.id)
+    setError(null)
+    try {
+      const res = await fetch('/api/studies/' + study.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      setStudies(prev => prev.map(s => s.id === study.id ? { ...s, status: newStatus } : s))
+    } catch {
+      setError('Failed to update status.')
+    } finally {
+      setTogglingStatus(null)
     }
   }
 
@@ -233,6 +255,15 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
                         <Link href={'/studies/' + study.id + '/deploy'} className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
                           Deploy
                         </Link>
+                      )}
+                      {canEdit && study.status !== 'closed' && (
+                        <button
+                          onClick={() => handleToggleStatus(study)}
+                          disabled={togglingStatus === study.id}
+                          className={'text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 ' + (study.status === 'draft' ? 'bg-green-500/15 hover:bg-green-500/25 text-green-400' : 'bg-slate-800 hover:bg-slate-700 text-slate-300')}
+                        >
+                          {togglingStatus === study.id ? '...' : study.status === 'draft' ? 'Publish' : 'Unpublish'}
+                        </button>
                       )}
                       {canEdit && (
                         <button
