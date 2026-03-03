@@ -217,10 +217,9 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
             </div>
           </div>
-          </div>
         </div>
 
-        {/* Members */
+        {/* Members */}
         <Section title={'Members (' + members.length + ')'}>
           {members.length === 0 ? (
             <Empty text="No members yet" />
