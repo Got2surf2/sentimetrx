@@ -23,7 +23,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Get user's org info
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -37,12 +36,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const body = await req.json()
 
-  // Only admin can set status to 'closed' or reopen a closed study
   if (body.status === 'closed' && !isAdmin) {
     return NextResponse.json({ error: 'Only admins can close a study' }, { status: 403 })
   }
 
-  // Check if study is currently closed - only admin can update a closed study
   const { data: existing } = await supabase
     .from('studies')
     .select('status, created_by')
@@ -55,12 +52,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This study has been closed by an admin' }, { status: 403 })
   }
 
-  // Non-admins can only update their own studies
   if (!isAdmin && existing.created_by !== user.id) {
     return NextResponse.json({ error: 'You can only edit your own studies' }, { status: 403 })
   }
 
-  // Allow visibility changes only by creator or admin
   const allowed = ['name', 'bot_name', 'bot_emoji', 'status', 'config', 'visibility']
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
@@ -95,7 +90,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   if (!study) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Get user admin status
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -116,6 +110,4 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     .delete()
     .eq('id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true, deleted: study.name })
-}
+  if (error) return NextResponse.json({ error: error.message }, { statu
