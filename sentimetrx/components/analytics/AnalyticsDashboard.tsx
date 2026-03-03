@@ -1,13 +1,17 @@
 'use client'
+import TopNav from '@/components/nav/TopNav'
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
 interface Props {
-  studyId:   string
-  studyName: string
-  botEmoji:  string
-  botName:   string
+  studyId:    string
+  studyName:  string
+  botEmoji:   string
+  botName:    string
+  logoUrl?:   string
+  isAdmin?:   boolean
+  userEmail?: string
 }
 
 interface Summary {
@@ -34,7 +38,7 @@ const defaultFrom = () => {
 }
 const defaultTo = () => new Date().toISOString().slice(0, 10)
 
-export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botName }: Props) {
+export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botName, logoUrl='', isAdmin=false, userEmail='' }: Props) {
   const [from, setFrom] = useState(defaultFrom())
   const [to,   setTo]   = useState(defaultTo())
 
