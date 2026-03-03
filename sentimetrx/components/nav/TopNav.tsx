@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface Crumb { label: string; href?: string }
 interface OrgOption  { id: string; name: string }
@@ -19,44 +19,41 @@ interface Props {
 const HERMES = '#E8632A'
 
 export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, crumbs, orgId }: Props) {
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams()
+
   const [orgs,         setOrgs]         = useState<OrgOption[]>([])
-  const [users,        setUsers]         = useState<UserOption[]>([])
-  const [selectedOrg,  setSelectedOrg]  = useState('')
-  const [selectedUser, setSelectedUser] = useState('')
+  const [users,        setUsers]        = useState<UserOption[]>([])
+  const [selectedOrg,  setSelectedOrg]  = useState(() => params.get('org')  || '')
+  const [selectedUser, setSelectedUser] = useState(() => params.get('user') || '')
+  const [orgsLoaded,   setOrgsLoaded]   = useState(false)
+  const navigating = useRef(false)
 
-  // Init from current URL
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search)
-    setSelectedOrg(p.get('org')  || '')
-    setSelectedUser(p.get('user') || '')
-  }, [])
-
-  // Fetch orgs list for admin
+  // Fetch orgs once for admin
   useEffect(() => {
     if (!isAdmin) return
     fetch('/api/admin/orgs', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
-      .then(d => setOrgs(Array.isArray(d) ? d : []))
-      .catch(() => {})
+      .then(d => { setOrgs(Array.isArray(d) ? d : []); setOrgsLoaded(true) })
+      .catch(() => setOrgsLoaded(true))
   }, [isAdmin])
 
-  // Fetch users whenever selected org changes
+  // Fetch users when org changes — but only if not currently navigating
   useEffect(() => {
+    if (navigating.current) return
     const targetOrg = selectedOrg || orgId
     if (!targetOrg) { setUsers([]); return }
     fetch('/api/admin/orgs/' + targetOrg + '/users', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
-      .then(d => setUsers(Array.isArray(d) ? d : []))
+      .then(d => { if (!navigating.current) setUsers(Array.isArray(d) ? d : []) })
       .catch(() => {})
   }, [selectedOrg, orgId])
 
-  // Navigate with full reload so server component picks up new params
   const navigate = (org: string, user: string) => {
+    navigating.current = true
     const p = new URLSearchParams(window.location.search)
-    if (org)  p.set('org', org)   ; else p.delete('org')
-    if (user) p.set('user', user) ; else p.delete('user')
-    const base = window.location.pathname
-    window.location.href = base + (p.toString() ? '?' + p.toString() : '')
+    if (org)  p.set('org', org);   else p.delete('org')
+    if (user) p.set('user', user); else p.delete('user')
+    window.location.href = window.location.pathname + (p.toString() ? '?' + p.toString() : '')
   }
 
   const handleOrgChange = (val: string) => {
@@ -70,7 +67,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, crumbs, o
     navigate(selectedOrg, val)
   }
 
-  const selectCls = 'text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-slate-500 max-w-[150px]'
+  const selectCls = 'text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-slate-500 max-w-[150px] cursor-pointer'
 
   return (
     <nav className="border-b border-slate-800 px-4 py-3 flex items-center justify-between bg-slate-950 sticky top-0 z-50 gap-3">
@@ -105,18 +102,20 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, crumbs, o
 
       {/* Right: filters + nav */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Org filter — admin only */}
-        {isAdmin && orgs.length > 0 && (
+
+        {/* Org filter — admin only, always visible once loaded */}
+        {isAdmin && orgsLoaded && (
           <select value={selectedOrg} onChange={e => handleOrgChange(e.target.value)} className={selectCls}>
             <option value="">All orgs</option>
             {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         )}
 
-        {/* User filter */}
-        {users.length > 0 && (
-          <select value={selectedUser} onChange={e => handleUserChange(e.target.value)} className={selectCls}>
-            <option value="">All users</option>
+        {/* User filter — always visible when there are users to show */}
+        {(selectedOrg || orgId) && (
+          <select value={selectedUser} onChange={e => handleUserChange(e.target.value)} className={selectCls}
+            disabled={users.length === 0}>
+            <option value="">{users.length === 0 ? 'No users' : 'All users'}</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
           </select>
         )}
