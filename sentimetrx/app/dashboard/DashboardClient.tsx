@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -43,6 +44,9 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
   const [togglingVis,   setTogglingVis]   = useState<string | null>(null)
   const [filter,        setFilter]        = useState<Filter>('all')
+  const searchParams = useSearchParams()
+  const orgFilter    = searchParams.get('org')  || ''
+  const userFilter   = searchParams.get('user') || ''
   const [error,         setError]         = useState<string | null>(null)
   const router = useRouter()
 
@@ -60,8 +64,9 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
       : 'bg-slate-700/50 text-slate-400'
 
   const filtered = studies.filter(s => {
-    if (filter === 'mine')   return s.created_by === user.userId
-    if (filter === 'public') return s.visibility === 'public'
+    if (filter === 'mine')   { if (s.created_by !== user.userId) return false }
+    if (filter === 'public') { if (s.visibility !== 'public')    return false }
+    if (userFilter && s.created_by !== userFilter) return false
     return true
   })
 
