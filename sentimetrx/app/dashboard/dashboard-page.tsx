@@ -20,7 +20,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const isAdmin    = !!orgData?.is_admin_org
   const clientName = orgData?.name ?? ''
 
-  // Build studies query
+  // Build studies query — filter server-side by org or user if requested
   let studiesQuery = supabase
     .from('studies')
     .select('id, guid, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config, org_id')
@@ -36,18 +36,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const { data: rawStudies } = await studiesQuery
   const studies = rawStudies || []
 
-  // Fetch ALL users who created these studies (for names + org lookup)
+  // Resolve creator names
   const creatorIds = Array.from(new Set(studies.map((s: any) => s.created_by).filter(Boolean)))
   const { data: creatorsData } = creatorIds.length > 0
     ? await supabase.from('users').select('id, full_name, email, org_id').in('id', creatorIds)
     : { data: [] }
 
   const creatorMap: Record<string, { name: string; orgId: string }> = {}
-  for (const c of creatorsData || []) {
+  for (const c of (creatorsData || [])) {
     creatorMap[c.id] = { name: c.full_name || c.email || '', orgId: c.org_id || '' }
   }
 
-  // Collect all org_ids (from study directly OR from creator's org)
+  // Resolve org names — use org_id from study, fall back to creator's org
   const allOrgIds = Array.from(new Set(
     studies.map((s: any) => s.org_id || creatorMap[s.created_by]?.orgId).filter(Boolean)
   ))
@@ -56,33 +56,26 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     : { data: [] }
 
   const orgMap: Record<string, string> = {}
-  for (const o of orgsData || []) orgMap[o.id] = o.name
+  for (const o of (orgsData || [])) orgMap[o.id] = o.name
 
-  // Debug: log what we resolved
-  console.log('[Dashboard] studies count:', studies.length)
-  console.log('[Dashboard] creatorMap:', JSON.stringify(creatorMap))
-  console.log('[Dashboard] orgMap:', JSON.stringify(orgMap))
-
-  // Enrich studies with resolved org name and creator name
+  // Attach orgName and creatorName to each study
   const enrichedStudies = studies.map((s: any) => {
     const resolvedOrgId = s.org_id || creatorMap[s.created_by]?.orgId || ''
     return {
       ...s,
       org_id:      resolvedOrgId,
-      orgName:     orgMap[resolvedOrgId] || '',
+      orgName:     orgMap[resolvedOrgId]          || '',
       creatorName: creatorMap[s.created_by]?.name || '',
     }
   })
 
-  // Stats
+  // Response stats
   const studyIds = studies.map((s: any) => s.id)
   const statsQuery = studyIds.length > 0
     ? await supabase.from('responses').select('study_id, sentiment, nps_score').in('study_id', studyIds)
     : { data: [] }
-
   const stats = statsQuery.data || []
   const statsMap: Record<string, { total: number; promoters: number; passives: number; detractors: number; avgNps: number }> = {}
-
   for (const s of studies) {
     const rows       = stats.filter((r: any) => r.study_id === s.id)
     const total      = rows.length
@@ -95,20 +88,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     statsMap[s.id] = { total, promoters, passives, detractors, avgNps }
   }
 
-  const userProp = {
-    email:      user.email!,
-    fullName:   userData?.full_name ?? '',
-    role:       userData?.role ?? '',
-    clientName,
-    isAdmin,
-    userId:     user.id,
-  }
-
   return (
     <DashboardClient
       logoUrl={orgData?.logo_url || ''}
       orgId={orgData?.id || ''}
-      user={userProp}
+      user={{
+        email:      user.email!,
+        fullName:   userData?.full_name ?? '',
+        role:       userData?.role ?? '',
+        clientName,
+        isAdmin,
+        userId:     user.id,
+      }}
       studies={enrichedStudies}
       statsMap={statsMap}
     />
