@@ -11,7 +11,7 @@ export default async function DashboardPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, org_id, organizations(name, is_admin_org)')
+    .select('full_name, role, client_id, org_id, organizations(name, is_admin_org, logo_url)')
     .eq('id', user.id)
     .single()
 
@@ -67,7 +67,7 @@ export default async function DashboardPage() {
 
   return (
     <DashboardClient
-      logoUrl={org?.logo_url || ""}
+      logoUrl={orgData?.logo_url || ""}
       user={userProp}
       studies={studies || []}
       statsMap={statsMap}
