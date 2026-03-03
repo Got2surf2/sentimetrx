@@ -1,76 +1,72 @@
-import { createClient } from '@/lib/supabase/server'
-import { createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { randomBytes } from 'crypto'
 
-// POST /api/invite — create a new invite token (admin only)
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Verify the user is a platform admin
   const { data: userData } = await supabase
     .from('users')
-    .select('role')
+    .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
 
-  if (userData?.role !== 'platform_admin') {
-    return NextResponse.json({ error: 'Only platform admins can create invites' }, { status: 403 })
+  const orgData = userData?.organizations
+  const isAdmin = Array.isArray(orgData)
+    ? orgData[0]?.is_admin_org
+    : (orgData as any)?.is_admin_org
+
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
-  const { client_id, email, role } = await req.json()
+  const body = await req.json()
+  const { org_id, email, role } = body
 
-  if (!client_id) {
-    return NextResponse.json({ error: 'client_id is required' }, { status: 400 })
+  if (!org_id) {
+    return NextResponse.json({ error: 'org_id is required' }, { status: 400 })
   }
 
-  const serviceSupabase = createServiceRoleClient()
+  const token     = randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-  const { data, error } = await serviceSupabase
+  const service = createServiceRoleClient()
+
+  const { data, error } = await service
     .from('invites')
     .insert({
-      client_id,
+      token,
+      org_id,
       email:      email || null,
-      role:       role || 'owner',
+      role:       role  || 'owner',
       created_by: user.id,
+      expires_at: expiresAt,
     })
-    .select('id, token, email, expires_at')
+    .select('id, token, email, role, expires_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  const base = process.env.NEXT_PUBLIC_BASE_URL || 'https://sentimetrx.ai'
-  return NextResponse.json({
-    ...data,
-    invite_url: `${base}/invite/${data.token}`,
-  }, { status: 201 })
+  return NextResponse.json(data, { status: 201 })
 }
 
-// GET /api/invite?token=xxx — validate an invite token (public)
 export async function GET(req: NextRequest) {
-  const token = new URL(req.url).searchParams.get('token')
-  if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+  const url   = new URL(req.url)
+  const token = url.searchParams.get('token')
+  if (!token) return NextResponse.json({ error: 'Token required' }, { status: 400 })
 
-  const supabase = createServiceRoleClient()
+  const service = createServiceRoleClient()
 
-  const { data, error } = await supabase
+  const { data, error } = await service
     .from('invites')
-    .select('id, token, email, role, used_at, expires_at, clients(name, slug)')
+    .select('id, token, email, role, org_id, used_at, expires_at')
     .eq('token', token)
     .single()
 
-  if (error || !data) {
-    return NextResponse.json({ error: 'Invalid invite link' }, { status: 404 })
-  }
-
-  if (data.used_at) {
-    return NextResponse.json({ error: 'This invite has already been used' }, { status: 410 })
-  }
-
-  if (new Date(data.expires_at) < new Date()) {
-    return NextResponse.json({ error: 'This invite has expired' }, { status: 410 })
-  }
+  if (error || !data) return NextResponse.json({ error: 'Invalid token' }, { status: 404 })
+  if (data.used_at) return NextResponse.json({ error: 'Invite already used' }, { status: 410 })
+  if (new Date(data.expires_at) < new Date()) return NextResponse.json({ error: 'Invite expired' }, { status: 410 })
 
   return NextResponse.json(data)
 }
