@@ -46,7 +46,6 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
   const [to,   setTo]   = useState(defaultTo())
 
   const [summary,    setSummary]    = useState<Summary | null>(null)
-  const [exporting,  setExporting]  = useState(false)
   const [npsTrend,   setNpsTrend]   = useState<TrendPoint[]>([])
   const [volumeByDay, setVolumeByDay] = useState<VolumePoint[]>([])
   const [loading,    setLoading]    = useState(true)
@@ -72,20 +71,6 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const handleExport = async () => {
-    setExporting(true)
-    const params = new URLSearchParams({ from, to, export: 'csv' })
-    const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
-    const blob = await res.blob()
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `analytics-${studyId}-${new Date().toISOString().slice(0,10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    setExporting(false)
-  }
-
   const setLast30 = () => { setFrom(defaultFrom()); setTo(defaultTo()) }
   const setAllTime = () => { setFrom('2024-01-01'); setTo(defaultTo()) }
 
@@ -99,8 +84,6 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
         dateFrom={from} dateTo={to}
         onDateFrom={setFrom} onDateTo={setTo}
         onLast30={setLast30} onAllTime={setAllTime}
-        onExportCSV={handleExport}
-        exporting={exporting}
         total={summary?.total ?? 0}
       />
 
