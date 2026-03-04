@@ -72,6 +72,7 @@ export default async function AdminClientPage({ params }: Props) {
       }))}
       baseUrl={base}
       currentUserId={user.id}
+      userEmail={user.email || ''}
     />
   )
 }
