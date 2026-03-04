@@ -103,15 +103,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
   return (
     <div className="min-h-screen bg-slate-950 text-white">
 
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
-          <span className="font-bold text-white">Sentimetrx</span>
-        </div>
-        <Link href="/dashboard" className="text-sm text-slate-500 hover:text-white transition-colors">
-          Dashboard
-        </Link>
-      </nav>
+      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='responses' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: studyName}]} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
 
