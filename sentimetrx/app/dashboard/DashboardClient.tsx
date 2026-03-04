@@ -292,15 +292,21 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap }: Props) {
   const [studies,      setStudies]      = useState(initialStudies)
-  const [ownerFilter,  setOwnerFilter]  = useState<OwnerFilter>('all')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [ownerFilter,  setOwnerFilter]  = useState<OwnerFilter>('mine')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [error,        setError]        = useState<string | null>(null)
+  const defaultFrom = () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) }
+  const defaultTo   = () => new Date().toISOString().slice(0, 10)
+  const [dateFrom,  setDateFrom]  = useState('')
+  const [dateTo,    setDateTo]    = useState('')
   const router = useRouter()
 
   const filtered = studies.filter(s => {
     if (ownerFilter  === 'mine'   && s.created_by !== user.userId) return false
     if (ownerFilter  === 'public' && s.visibility  !== 'public')   return false
     if (statusFilter !== 'all'   && s.status       !== statusFilter) return false
+    if (dateFrom && s.created_at < dateFrom) return false
+    if (dateTo   && s.created_at > dateTo + 'T23:59:59') return false
     return true
   })
 
@@ -364,8 +370,22 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-400">{filtered.length} studies</span>
+          {/* Date range filter */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setDateFrom(defaultFrom()); setDateTo(defaultTo()) }}
+              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">Last 30 days</button>
+            <button onClick={() => { setDateFrom(''); setDateTo('') }}
+              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">All time</button>
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
+              <span className="text-gray-400 text-xs">to</span>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
+            </div>
+          </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{filtered.length} studies</span>
             <Link href="/studies/new"
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all"
               style={{ background: HERMES }}>
