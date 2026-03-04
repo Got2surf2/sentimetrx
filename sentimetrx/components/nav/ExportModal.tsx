@@ -144,9 +144,7 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
                   <p className="text-sm font-semibold text-gray-700">Datanautix Ready</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     One row per open-ended answer. Each row repeats the closed-ended metadata
-                    (sentiment, NPS, scores, demographics, psychographics) with a
-                    <span className="font-medium text-gray-500"> question_prompt</span> field
-                    identifying which question that row answers. Blank answers are excluded.
+                    (sentiment, NPS, scores, demographics, psychographics) with the Prompt label identifying which question that row answers. Blank answers are excluded.
                   </p>
                 </div>
               </label>
@@ -191,7 +189,7 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
             className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium transition-colors">
             Cancel
           </button>
-          <button onClick={handleExport} disabled={exporting || total === 0}
+          <button onClick={handleExport} disabled={exporting}
             className="px-5 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-all"
             style={{ background: HERMES }}>
             {exporting ? 'Exporting…' : '↓ Download CSV'}
