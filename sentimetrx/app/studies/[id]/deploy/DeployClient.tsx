@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 interface Study {
   id:        string
@@ -86,8 +87,9 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', is
   const isActive = study.status === 'active'
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='deploy' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: study.name, href: '/studies/' + study.id + '/edit'}, {label: 'Deploy'}]} />
+    <div className="min-h-screen bg-gray-50">
+      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='deploy' />
+      <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: study.name, href: '/studies/' + study.id + '/edit'}, {label: 'Deploy'}]} />
 
       <main className="max-w-2xl mx-auto px-6 py-10">
 
@@ -107,7 +109,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', is
               }`}>
                 {study.status}
               </span>
-              <span className="text-slate-500 text-xs">{study.bot_name}</span>
+              <span className="text-gray-500 text-xs">{study.bot_name}</span>
             </div>
           </div>
         </div>
@@ -121,13 +123,13 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', is
         <div className="flex flex-col gap-5">
 
           {/* Survey link */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6">
             <h2 className="font-semibold text-white mb-1">Survey link</h2>
-            <p className="text-slate-400 text-sm mb-4">
+            <p className="text-gray-400 text-sm mb-4">
               Share this link via email, SMS, or any messaging platform.
             </p>
             <div className="flex gap-2">
-              <div className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-300 font-mono truncate">
+              <div className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-gray-300 font-mono truncate">
                 {surveyUrl}
               </div>
               <button
@@ -152,9 +154,9 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', is
           </div>
 
           {/* QR code */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6">
             <h2 className="font-semibold text-white mb-1">QR code</h2>
-            <p className="text-slate-400 text-sm mb-5">
+            <p className="text-gray-400 text-sm mb-5">
               Print and display at a physical location — restaurant table, hotel desk, event venue.
             </p>
             <div className="flex flex-col items-center gap-4">
@@ -172,15 +174,15 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', is
                 </button>
               )}
               {!qrDataUrl && (
-                <p className="text-slate-500 text-xs">Generating QR code...</p>
+                <p className="text-gray-500 text-xs">Generating QR code...</p>
               )}
             </div>
           </div>
 
           {/* Status control */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6">
             <h2 className="font-semibold text-white mb-1">Study status</h2>
-            <p className="text-slate-400 text-sm mb-4">
+            <p className="text-gray-400 text-sm mb-4">
               {isActive
                 ? 'This study is live and accepting responses. Pause it to stop collecting.'
                 : 'This study is paused. Visitors who follow the link will see a "not active" message.'
