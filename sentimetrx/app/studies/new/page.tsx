@@ -1,5 +1,6 @@
 'use client'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -82,12 +83,13 @@ export default function NewStudyPage() {
   const stepProps = { draft, update, updateConfig }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-gray-50">
 
-      <TopNav currentPage='new' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: 'New Study'}]} />
+      <TopNav currentPage='new' />
+      <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: 'New Study'}]} />
 
       {/* Step progress */}
-      <div className="border-b border-slate-800 px-6 py-4">
+      <div className="border-b border-gray-200 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center gap-2">
           {STEPS.map((s, i) => (
             <div key={s} className="flex items-center gap-2 flex-1">
