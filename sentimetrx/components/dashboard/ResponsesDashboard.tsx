@@ -41,9 +41,12 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
   const [sentiment, setSentiment] = useState('')
   const [minNps,    setMinNps]    = useState('')
   const [maxNps,    setMaxNps]    = useState('')
-  const [from,      setFrom]      = useState('')
-  const [to,        setTo]        = useState('')
+
   const [offset,    setOffset]    = useState(0)
+  const defaultFrom = () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) }
+  const defaultTo   = () => new Date().toISOString().slice(0, 10)
+  const [dateFrom,  setDateFrom]  = useState(defaultFrom())
+  const [dateTo,    setDateTo]    = useState(defaultTo())
   const LIMIT = 25
 
   const fetchResponses = useCallback(async () => {
@@ -52,8 +55,8 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
     if (sentiment) params.set('sentiment', sentiment)
     if (minNps)    params.set('min_nps',   minNps)
     if (maxNps)    params.set('max_nps',   maxNps)
-    if (from)      params.set('from',      from)
-    if (to)        params.set('to',        to)
+    if (dateFrom)  params.set('from', dateFrom)
+    if (dateTo)    params.set('to',   dateTo)
     params.set('limit',  String(LIMIT))
     params.set('offset', String(offset))
     const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
@@ -61,7 +64,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
     setResponses(json.data || [])
     setTotal(json.count || 0)
     setLoading(false)
-  }, [studyId, sentiment, minNps, maxNps, from, to, offset])
+  }, [studyId, sentiment, minNps, maxNps, dateFrom, dateTo, offset])
 
   useEffect(() => { fetchResponses() }, [fetchResponses])
 
@@ -71,8 +74,8 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
     setOffset(0)
   }
 
-  const clearFilters = () => { setSentiment(''); setMinNps(''); setMaxNps(''); setFrom(''); setTo(''); setOffset(0) }
-  const hasFilter = sentiment || minNps || maxNps || from || to
+  const clearFilters = () => { setSentiment(''); setMinNps(''); setMaxNps(''); setDateFrom(defaultFrom()); setDateTo(defaultTo()); setOffset(0) }
+  const hasFilter = sentiment || minNps || maxNps
 
   const handleExport = async () => {
     setExporting(true)
@@ -80,8 +83,8 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
     if (sentiment) params.set('sentiment', sentiment)
     if (minNps)    params.set('min_nps',   minNps)
     if (maxNps)    params.set('max_nps',   maxNps)
-    if (from)      params.set('from',      from)
-    if (to)        params.set('to',        to)
+    if (dateFrom)  params.set('from', dateFrom)
+    if (dateTo)    params.set('to',   dateTo)
     params.set('export', 'csv')
     const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
     const blob = await res.blob()
@@ -122,7 +125,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
             <h1 className="text-xl font-bold text-gray-800">{botEmoji} {studyName}</h1>
             <p className="text-gray-500 text-sm mt-0.5">{total} total responses</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Responses / Analytics toggle */}
             <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
               <span className="text-sm font-medium px-3 py-1.5 rounded-lg text-white" style={{ background: HERMES }}>
@@ -133,13 +136,22 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
                 Analytics
               </Link>
             </div>
-            {/* Export CSV — high contrast */}
-            <button
-              onClick={handleExport}
-              disabled={exporting || total === 0}
+            {/* Date range — same as analytics */}
+            <button onClick={() => { setDateFrom(defaultFrom()); setDateTo(defaultTo()) }}
+              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">Last 30 days</button>
+            <button onClick={() => { setDateFrom('2024-01-01'); setDateTo(defaultTo()) }}
+              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">All time</button>
+            <div className="flex items-center gap-2">
+              <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setOffset(0) }}
+                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
+              <span className="text-gray-400 text-xs">to</span>
+              <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setOffset(0) }}
+                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
+            </div>
+            {/* Export CSV */}
+            <button onClick={handleExport} disabled={exporting || total === 0}
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm disabled:opacity-40 hover:opacity-90 transition-all"
-              style={{ background: HERMES }}
-            >
+              style={{ background: HERMES }}>
               {exporting ? 'Exporting…' : '↓ Export CSV'}
             </button>
           </div>
@@ -171,14 +183,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
                 {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 font-medium">From</label>
-              <input type="date" value={from} onChange={handleFilterChange(setFrom)} className={inputCls} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 font-medium">To</label>
-              <input type="date" value={to} onChange={handleFilterChange(setTo)} className={inputCls} />
-            </div>
+
             {hasFilter && (
               <button onClick={clearFilters}
                 className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm transition-colors self-end">
