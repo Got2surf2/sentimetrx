@@ -50,5 +50,5 @@ export default async function AdminPage() {
     const rawOrg = data?.organizations
   const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
 
-  return <AdminClient orgs={enriched} adminEmail={user.email!} logoUrl={orgData?.logo_url || ''} />
+  return <AdminClient orgs={enriched} adminEmail={user.email!} />
 }
