@@ -36,7 +36,7 @@ const SECTION_INFO: Record<Section, { label: string; desc: string }> = {
 export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', sentiment='' }: Props) {
   const [format,   setFormat]   = useState<Format>('flat')
   const [sections, setSections] = useState<Set<Section>>(
-    new Set(['core', 'openended', 'psychographics', 'demographics'])
+    new Set(['core', 'openended', 'psychographics', 'demographics'] as Section[])
   )
   const [exporting, setExporting] = useState(false)
   const [error,     setError]     = useState('')
