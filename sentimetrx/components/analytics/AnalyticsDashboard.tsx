@@ -1,5 +1,6 @@
 'use client'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
@@ -74,26 +75,37 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
   const setAllTime = () => { setFrom('2024-01-01'); setTo(defaultTo()) }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='analytics' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: studyName, href: '/studies/' + studyId + '/responses'}, {label: 'Analytics'}]} />
+    <div className="min-h-screen bg-gray-50">
+      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='analytics' />
+      <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: studyName}]} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div>
-            <h1 className="text-xl font-bold text-white">{botEmoji} {studyName}</h1>
-            <p className="text-slate-400 text-sm mt-0.5">Analytics</p>
+            <h1 className="text-xl font-bold text-gray-800">{botEmoji} {studyName}</h1>
+            <p className="text-gray-500 text-sm mt-0.5">Analytics</p>
           </div>
 
-          {/* Date range controls */}
           <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={setLast30}  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors">Last 30 days</button>
-            <button onClick={setAllTime} className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors">All time</button>
+            {/* Responses / Analytics toggle */}
+            <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+              <Link href={`/studies/${studyId}/responses`}
+                className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
+                Responses
+              </Link>
+              <span className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-800" style={{ background: '#E8632A' }}>
+                Analytics
+              </span>
+            </div>
+            {/* Date range */}
+            <button onClick={setLast30}  className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">Last 30 days</button>
+            <button onClick={setAllTime} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">All time</button>
             <div className="flex items-center gap-2">
               <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-cyan-500 transition-colors" />
-              <span className="text-slate-500 text-xs">to</span>
+                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
+              <span className="text-gray-400 text-xs">to</span>
               <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-cyan-500 transition-colors" />
+                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
             </div>
           </div>
         </div>
@@ -103,7 +115,7 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
         )}
 
         {loading && !summary && (
-          <div className="py-20 text-center text-slate-500 text-sm">Loading analytics...</div>
+          <div className="py-20 text-center text-gray-400 text-sm">Loading analytics...</div>
         )}
 
         {summary && (
@@ -119,37 +131,37 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
             </div>
 
             {summary.total === 0 ? (
-              <div className="py-20 text-center border border-dashed border-slate-700 rounded-2xl">
+              <div className="py-20 text-center border border-dashed border-gray-200 rounded-2xl">
                 <div className="text-3xl mb-3">📊</div>
-                <p className="text-slate-500 text-sm">No responses in this date range.</p>
+                <p className="text-gray-400 text-sm">No responses in this date range.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
                 {/* NPS Trend — takes 2 columns */}
-                <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5">
                   <h2 className="font-semibold text-white mb-1 text-sm">NPS Trend</h2>
-                  <p className="text-slate-500 text-xs mb-4">Average NPS score per day</p>
+                  <p className="text-gray-400 text-xs mb-4">Average NPS score per day</p>
                   {npsTrend.length < 2 ? (
-                    <div className="h-40 flex items-center justify-center text-slate-500 text-xs">Not enough data points for a trend</div>
+                    <div className="h-40 flex items-center justify-center text-gray-400 text-xs">Not enough data points for a trend</div>
                   ) : (
                     <LineChart data={npsTrend} />
                   )}
                 </div>
 
                 {/* Sentiment Donut */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div className="bg-white border border-gray-200 rounded-2xl p-5">
                   <h2 className="font-semibold text-white mb-1 text-sm">Sentiment Split</h2>
-                  <p className="text-slate-500 text-xs mb-4">Overall breakdown</p>
+                  <p className="text-gray-400 text-xs mb-4">Overall breakdown</p>
                   <SentimentDonut summary={summary} />
                 </div>
 
                 {/* Volume bar chart — full width */}
-                <div className="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div className="lg:col-span-3 bg-white border border-gray-200 rounded-2xl p-5">
                   <h2 className="font-semibold text-white mb-1 text-sm">Response Volume</h2>
-                  <p className="text-slate-500 text-xs mb-4">Responses per day</p>
+                  <p className="text-gray-400 text-xs mb-4">Responses per day</p>
                   {volumeByDay.length === 0 ? (
-                    <div className="h-28 flex items-center justify-center text-slate-500 text-xs">No data</div>
+                    <div className="h-28 flex items-center justify-center text-gray-400 text-xs">No data</div>
                   ) : (
                     <BarChart data={volumeByDay} />
                   )}
@@ -161,13 +173,13 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
             <div className="mt-6 flex gap-3">
               <Link
                 href={'/studies/' + studyId + '/responses?from=' + from + '&to=' + to}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition-all"
+                className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-slate-700 text-white text-sm font-medium transition-all"
               >
                 View responses for this period
               </Link>
               <Link
                 href={'/studies/' + studyId + '/responses?from=' + from + '&to=' + to + '&export=csv'}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition-all"
+                className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-slate-700 text-white text-sm font-medium transition-all"
               >
                 Export CSV
               </Link>
@@ -310,7 +322,7 @@ function SentimentDonut({ summary }: { summary: Summary }) {
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
             <div>
               <div className="text-xs text-white font-medium">{Math.round(s.value / total * 100)}%</div>
-              <div className="text-xs text-slate-500">{s.label}</div>
+              <div className="text-xs text-gray-400">{s.label}</div>
             </div>
           </div>
         ))}
@@ -321,9 +333,9 @@ function SentimentDonut({ summary }: { summary: Summary }) {
 
 function StatCard({ label, value, color = 'text-white' }: { label: string; value: string | number; color?: string }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className={'text-xl font-bold ' + color}>{value}</div>
-      <div className="text-slate-400 text-xs mt-0.5">{label}</div>
+      <div className="text-gray-500 text-xs mt-0.5">{label}</div>
     </div>
   )
 }
