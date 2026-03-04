@@ -57,7 +57,7 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
       const params = new URLSearchParams()
       params.set('export',   'csv')
       params.set('format',   format)
-      params.set('sections', [...sections].join(','))
+      params.set('sections', Array.from(sections).join(','))
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo)   params.set('to',   dateTo)
       if (sentiment) params.set('sentiment', sentiment)
