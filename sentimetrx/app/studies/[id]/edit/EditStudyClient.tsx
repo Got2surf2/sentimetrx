@@ -8,12 +8,13 @@ import StepConversation from '@/components/creator/StepConversation'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
+import TopNav from '@/components/nav/TopNav'
 
 const STEPS = ['Basics', 'Opening', 'Conversation', 'Psychographics', 'Review & Publish']
 
-interface Props { study: any }
+interface Props { study: any; logoUrl?: string; isAdmin?: boolean; userEmail?: string }
 
-export default function EditStudyClient({ study }: Props) {
+export default function EditStudyClient({ study, logoUrl='', isAdmin=false, userEmail='' }: Props) {
   const [step,   setStep]   = useState(0)
   const [draft,  setDraft]  = useState<StudyDraft>({
     name:      study.name,
@@ -57,16 +58,7 @@ export default function EditStudyClient({ study }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
-          <span className="font-bold text-white">Sentimetrx</span>
-          <span className="text-slate-600 text-sm">/ Edit Study</span>
-        </div>
-        <a href="/dashboard" className="text-sm text-slate-500 hover:text-white transition-colors">
-          Cancel
-        </a>
-      </nav>
+      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='edit' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: draft.name || 'Edit Study'}]} />
 
       {/* Step progress */}
       <div className="border-b border-slate-800 px-6 py-4">

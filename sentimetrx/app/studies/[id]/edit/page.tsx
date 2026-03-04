@@ -3,7 +3,6 @@ import { redirect, notFound } from 'next/navigation'
 import EditStudyClient from './EditStudyClient'
 
 interface Props { params: { id: string } }
-
 export const dynamic = 'force-dynamic'
 
 export default async function EditStudyPage({ params }: Props) {
@@ -11,13 +10,22 @@ export default async function EditStudyPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: study } = await supabase
-    .from('studies')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const [{ data: study }, { data: userData }] = await Promise.all([
+    supabase.from('studies').select('*').eq('id', params.id).single(),
+    supabase.from('users').select('organizations(is_admin_org, logo_url)').eq('id', user.id).single(),
+  ])
 
   if (!study) notFound()
 
-  return <EditStudyClient study={study} />
+  const rawOrg = userData?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+
+  return (
+    <EditStudyClient
+      study={study}
+      logoUrl={orgData?.logo_url || ''}
+      isAdmin={!!orgData?.is_admin_org}
+      userEmail={user.email || ''}
+    />
+  )
 }
