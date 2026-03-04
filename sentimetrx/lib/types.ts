@@ -31,9 +31,10 @@ export interface RatingOption {
 }
 
 export interface PsychoQuestion {
-  key:  string
-  q:    string
-  opts: string[]
+  key:         string
+  q:           string
+  opts:        string[]
+  exportLabel?: string
 }
 
 export interface StudyTheme {
@@ -52,12 +53,15 @@ export interface StudyClarifiers {
 export interface StudyConfig {
   greeting:          string
   ratingPrompt:      string
+  q1ExportLabel?:    string
   ratingScale:       RatingOption[]
   promoterQ1:        string
   passiveQ1:         string
   detractorQ1:       string
   q3:                string
+  q3ExportLabel?:    string
   q4:                string
+  q4ExportLabel?:    string
   clarifiers:        StudyClarifiers
   psychographicBank: PsychoQuestion[]
   theme:             StudyTheme
