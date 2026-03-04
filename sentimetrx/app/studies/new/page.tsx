@@ -1,4 +1,5 @@
 'use client'
+import TopNav from '@/components/nav/TopNav'
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -83,16 +84,7 @@ export default function NewStudyPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
 
-      {/* Nav */}
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
-          <span className="font-bold text-white">Sentimetrx</span>
-        </div>
-        <a href="/dashboard" className="text-sm text-slate-500 hover:text-white transition-colors">
-          Cancel
-        </a>
-      </nav>
+      <TopNav currentPage='new' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: 'New Study'}]} />
 
       {/* Step progress */}
       <div className="border-b border-slate-800 px-6 py-4">
