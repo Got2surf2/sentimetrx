@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
+import FilterBar from '@/components/nav/FilterBar'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -48,9 +48,6 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
   const [togglingVis,   setTogglingVis]   = useState<string | null>(null)
   const [filter,        setFilter]        = useState<Filter>('all')
-  const searchParams = useSearchParams()
-  const orgFilter    = searchParams.get('org')  || ''
-  const userFilter   = searchParams.get('user') || ''
   const [error,         setError]         = useState<string | null>(null)
   const router = useRouter()
 
@@ -70,7 +67,6 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const filtered = studies.filter(s => {
     if (filter === 'mine')   { if (s.created_by !== user.userId) return false }
     if (filter === 'public') { if (s.visibility !== 'public')    return false }
-    if (userFilter && s.created_by !== userFilter) return false
     return true
   })
 
@@ -159,7 +155,8 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} orgId={orgId} currentPage='dashboard' />
+      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} currentPage='dashboard' />
+      <FilterBar isAdmin={user.isAdmin} orgId={orgId} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
