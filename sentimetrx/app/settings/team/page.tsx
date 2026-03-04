@@ -11,7 +11,7 @@ export default async function TeamPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, role, organizations(id, name, slug, plan, logo_url, is_admin_org)')
+    .select('org_id, role, full_name, organizations(id, name, slug, plan, logo_url, is_admin_org)')
     .eq('id', user.id)
     .single()
 
