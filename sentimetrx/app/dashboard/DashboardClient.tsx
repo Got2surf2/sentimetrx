@@ -159,7 +159,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} orgId={orgId} />
+      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} orgId={orgId} currentPage='dashboard' />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
