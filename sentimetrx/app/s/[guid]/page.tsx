@@ -16,20 +16,15 @@ async function getStudyAny(guid: string) {
   return data
 }
 
-async function getCreatorEmail(userId: string): Promise<{ email: string; full_name: string | null } | null> {
-  const supabase = createServiceRoleClient()
-  const { data } = await supabase
-    .from('users')
-    .select('email, full_name')
-    .eq('id', userId)
-    .single()
-  return data
-}
-
 async function notifyCreator(study: any) {
   try {
     if (!study.created_by) return
-    const creator = await getCreatorEmail(study.created_by)
+    const supabase = createServiceRoleClient()
+    const { data: creator } = await supabase
+      .from('users')
+      .select('email, full_name')
+      .eq('id', study.created_by)
+      .single()
     if (!creator?.email) return
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
@@ -65,11 +60,9 @@ export default async function SurveyPage({ params }: Props) {
     )
   }
 
-  // Closed or draft — show closed page, notify creator if closed
+  // Not active — show closed/draft page
   if (study.status !== 'active') {
-    if (study.status === 'closed') {
-      notifyCreator(study) // fire-and-forget — don't await
-    }
+    if (study.status === 'closed') notifyCreator(study)
     return <ClosedStudyPage study={study} />
   }
 
