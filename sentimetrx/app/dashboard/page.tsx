@@ -20,7 +20,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const isAdmin    = !!orgData?.is_admin_org
   const clientName = orgData?.name ?? ''
 
-  // Build studies query — filter server-side by org or user if requested
   let studiesQuery = supabase
     .from('studies')
     .select('id, guid, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config, org_id')
@@ -36,7 +35,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const { data: rawStudies } = await studiesQuery
   const studies = rawStudies || []
 
-  // Resolve creator names
+  // Fetch creator info
   const creatorIds = Array.from(new Set(studies.map((s: any) => s.created_by).filter(Boolean)))
   const { data: creatorsData } = creatorIds.length > 0
     ? await supabase.from('users').select('id, full_name, email, org_id').in('id', creatorIds)
@@ -47,7 +46,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     creatorMap[c.id] = { name: c.full_name || c.email || '', orgId: c.org_id || '' }
   }
 
-  // Resolve org names — use org_id from study, fall back to creator's org
+  // Fetch org names
   const allOrgIds = Array.from(new Set(
     studies.map((s: any) => s.org_id || creatorMap[s.created_by]?.orgId).filter(Boolean)
   ))
@@ -58,24 +57,23 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const orgMap: Record<string, string> = {}
   for (const o of (orgsData || [])) orgMap[o.id] = o.name
 
-  // Attach orgName and creatorName to each study
   const enrichedStudies = studies.map((s: any) => {
     const resolvedOrgId = s.org_id || creatorMap[s.created_by]?.orgId || ''
     return {
       ...s,
       org_id:      resolvedOrgId,
-      orgName:     orgMap[resolvedOrgId]          || '',
-      creatorName: creatorMap[s.created_by]?.name || '',
+      orgName:     orgMap[resolvedOrgId]           || '',
+      creatorName: creatorMap[s.created_by]?.name  || '',
     }
   })
 
-  // Response stats
   const studyIds = studies.map((s: any) => s.id)
   const statsQuery = studyIds.length > 0
-    ? await supabase.from('responses').select('study_id, sentiment, nps_score').in('study_id', studyIds)
+    ? await supabase.from('responses').select('study_id, sentiment, nps_score, completed_at').in('study_id', studyIds)
     : { data: [] }
   const stats = statsQuery.data || []
-  const statsMap: Record<string, { total: number; promoters: number; passives: number; detractors: number; avgNps: number }> = {}
+
+  const statsMap: Record<string, { total: number; promoters: number; passives: number; detractors: number; avgNps: number; lastResponse: string | null }> = {}
   for (const s of studies) {
     const rows       = stats.filter((r: any) => r.study_id === s.id)
     const total      = rows.length
@@ -85,7 +83,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     const avgNps     = total > 0
       ? Math.round(rows.reduce((sum: number, r: any) => sum + (r.nps_score || 0), 0) / total * 10) / 10
       : 0
-    statsMap[s.id] = { total, promoters, passives, detractors, avgNps }
+    const dates = rows.map((r: any) => r.completed_at).filter(Boolean).sort()
+    const lastResponse = dates.length > 0 ? dates[dates.length - 1] : null
+    statsMap[s.id] = { total, promoters, passives, detractors, avgNps, lastResponse }
   }
 
   return (
