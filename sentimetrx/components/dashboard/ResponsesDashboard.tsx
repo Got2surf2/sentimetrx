@@ -34,7 +34,6 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
   const [responses,   setResponses]   = useState<Response[]>([])
   const [total,       setTotal]       = useState(0)
   const [loading,     setLoading]     = useState(true)
-  const [exporting,   setExporting]   = useState(false)
   const [selected,    setSelected]    = useState<Response | null>(null)
 
   // Filters — auto-apply on change, no Apply button
@@ -77,25 +76,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
   const clearFilters = () => { setSentiment(''); setMinNps(''); setMaxNps(''); setDateFrom(defaultFrom()); setDateTo(defaultTo()); setOffset(0) }
   const hasFilter = sentiment || minNps || maxNps
 
-  const handleExport = async () => {
-    setExporting(true)
-    const params = new URLSearchParams()
-    if (sentiment) params.set('sentiment', sentiment)
-    if (minNps)    params.set('min_nps',   minNps)
-    if (maxNps)    params.set('max_nps',   maxNps)
-    if (dateFrom)  params.set('from', dateFrom)
-    if (dateTo)    params.set('to',   dateTo)
-    params.set('export', 'csv')
-    const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
-    const blob = await res.blob()
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `responses-${studyId}-${new Date().toISOString().slice(0,10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    setExporting(false)
-  }
+
 
   const promoters  = responses.filter(r => r.sentiment === 'promoter').length
   const passives   = responses.filter(r => r.sentiment === 'passive').length
@@ -124,8 +105,6 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
         onDateTo={v => { setDateTo(v); setOffset(0) }}
         onLast30={() => { setDateFrom(defaultFrom()); setDateTo(defaultTo()); setOffset(0) }}
         onAllTime={() => { setDateFrom('2024-01-01'); setDateTo(defaultTo()); setOffset(0) }}
-        onExportCSV={handleExport}
-        exporting={exporting}
         total={total}
       />
 
