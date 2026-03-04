@@ -66,9 +66,9 @@ export async function GET(req: NextRequest, { params }: Params) {
     const configKeys = (cfg.psychographicBank || []).map((p: any) => p.key)
     allPsychoKeys = [
       ...configKeys.filter((k: string) => psychoSet.has(k)),
-      ...[...psychoSet].filter(k => !configKeys.includes(k)),
+      ...Array.from(psychoSet).filter(k => !configKeys.includes(k)),
     ]
-    allDemoKeys = [...demoSet]
+    allDemoKeys = Array.from(demoSet)
   }
 
   // Build main query
