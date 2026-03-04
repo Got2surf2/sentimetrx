@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 interface Org {
   id: string
@@ -19,9 +21,10 @@ interface Org {
 interface Props {
   orgs: Org[]
   adminEmail: string
+  logoUrl?: string
 }
 
-export default function AdminClient({ orgs: initial, adminEmail }: Props) {
+export default function AdminClient({ orgs: initial, adminEmail, logoUrl='' }: Props) {
   const [orgs, setOrgs]         = useState(initial)
   const [showNew, setShowNew]   = useState(false)
   const [toggling, setToggling] = useState<string | null>(null)
@@ -97,33 +100,14 @@ export default function AdminClient({ orgs: initial, adminEmail }: Props) {
     name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
-          <div>
-            <div className="font-bold text-white leading-none">Sentimetrx</div>
-            <div className="text-xs text-slate-500 mt-0.5">Admin Panel</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="text-sm text-slate-500 hover:text-white transition-colors">
-            Dashboard
-          </Link>
-          <span className="text-slate-600 text-sm hidden sm:block">{adminEmail}</span>
-          <form action="/api/auth/signout" method="POST">
-            <button className="text-xs text-slate-500 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-800">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-gray-50">
+      <TopNav logoUrl={logoUrl} isAdmin={true} userEmail={adminEmail} currentPage='admin' crumbs={[{label: 'Admin'}]} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white">Organizations</h1>
-            <p className="text-slate-400 text-sm mt-1">{orgs.length} organizations</p>
+            <h1 className="text-2xl font-bold text-gray-800">Organizations</h1>
+            <p className="text-gray-500 text-sm mt-1">{orgs.length} organizations</p>
           </div>
           <button
             onClick={() => setShowNew(true)}
