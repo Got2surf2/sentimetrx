@@ -29,6 +29,7 @@ export default function StudyPageHeader({
 }: Props) {
   const [exportOpen, setExportOpen] = useState(false)
   return (
+    <>
     <div className="bg-white border-b border-gray-200 sticky top-14 z-40 shadow-sm">
       <div className="max-w-5xl mx-auto px-6">
 
@@ -106,6 +107,6 @@ export default function StudyPageHeader({
           sentiment={sentiment}
         />
       )}
-    </div>
+    </>
   )
 }
