@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 interface Org {
   id: string
@@ -127,7 +128,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-gray-50">
       <TopNav
         logoUrl={logoUrl}
         orgName={org.name}
@@ -137,15 +138,15 @@ export default function TeamClient({ org, members: initialMembers, invites: init
 
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-10">
         {msg && (
-          <div className="bg-slate-800 border border-slate-700 text-sm text-white px-4 py-3 rounded-lg">{msg}</div>
+          <div className="bg-slate-800 border border-gray-200 text-sm text-white px-4 py-3 rounded-lg">{msg}</div>
         )}
 
         {/* Org Logo */}
         <section>
           <h2 className="text-lg font-semibold mb-1">Organisation Logo</h2>
-          <p className="text-slate-400 text-sm mb-4">Appears top-left on all pages and on the survey widget. PNG or JPG, max 2MB.</p>
+          <p className="text-gray-400 text-sm mb-4">Appears top-left on all pages and on the survey widget. PNG or JPG, max 2MB.</p>
           <div className="flex items-center gap-4">
-            <div className="w-24 h-12 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
+            <div className="w-24 h-12 rounded-lg bg-slate-800 border border-gray-200 flex items-center justify-center overflow-hidden">
               {logoUrl
                 ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" />
                 : <span className="text-xs font-bold" style={{ color: HERMES }}>sentimetrx.ai</span>
@@ -153,12 +154,12 @@ export default function TeamClient({ org, members: initialMembers, invites: init
             </div>
             <div className="flex gap-2">
               <button onClick={() => fileRef.current?.click()} disabled={busy}
-                className="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors">
+                className="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-gray-200 transition-colors">
                 {logoUrl ? 'Change Logo' : 'Upload Logo'}
               </button>
               {logoUrl && (
                 <button onClick={removeLogo} disabled={busy}
-                  className="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900 border border-slate-700 text-red-400 transition-colors">
+                  className="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900 border border-gray-200 text-red-400 transition-colors">
                   Remove
                 </button>
               )}
@@ -172,16 +173,16 @@ export default function TeamClient({ org, members: initialMembers, invites: init
           <h2 className="text-lg font-semibold mb-4">Team Members</h2>
           <div className="space-y-2">
             {members.map(m => (
-              <div key={m.id} className="flex items-center justify-between bg-slate-900 rounded-lg px-4 py-3 border border-slate-800">
+              <div key={m.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-3 border border-gray-200">
                 <div>
                   <p className="text-sm font-medium">{m.full_name || m.email}</p>
-                  {m.full_name && <p className="text-xs text-slate-500">{m.email}</p>}
+                  {m.full_name && <p className="text-xs text-gray-500">{m.email}</p>}
                 </div>
                 <div className="flex items-center gap-2">
                   {isOwner && m.id !== currentUserId ? (
                     <>
                       <select value={m.role} onChange={e => changeRole(m.id, e.target.value)}
-                        className="text-xs bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-300">
+                        className="text-xs bg-slate-800 border border-gray-200 rounded px-2 py-1 text-gray-300">
                         <option value="owner">Owner</option>
                         <option value="member">Member</option>
                       </select>
@@ -191,7 +192,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                       </button>
                     </>
                   ) : (
-                    <span className="text-xs text-slate-500 capitalize">{m.role}</span>
+                    <span className="text-xs text-gray-500 capitalize">{m.role}</span>
                   )}
                 </div>
               </div>
@@ -203,13 +204,13 @@ export default function TeamClient({ org, members: initialMembers, invites: init
         {isOwner && (
           <section>
             <h2 className="text-lg font-semibold mb-1">Invite Member</h2>
-            <p className="text-slate-400 text-sm mb-4">Generate an invite link to share with a new team member.</p>
+            <p className="text-gray-400 text-sm mb-4">Generate an invite link to share with a new team member.</p>
             <div className="flex gap-2 flex-wrap">
               <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
                 placeholder="Email (optional)"
-                className="flex-1 min-w-[180px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-slate-500" />
+                className="flex-1 min-w-[180px] bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-slate-500" />
               <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+                className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 <option value="owner">Owner</option>
                 <option value="member">Member</option>
               </select>
@@ -221,8 +222,8 @@ export default function TeamClient({ org, members: initialMembers, invites: init
             </div>
 
             {newLink && (
-              <div className="mt-3 flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
-                <span className="text-xs text-slate-400 flex-1 truncate">{newLink}</span>
+              <div className="mt-3 flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-xs text-gray-400 flex-1 truncate">{newLink}</span>
                 <button onClick={() => copyLink(newLink.split('/invite/')[1])}
                   className="text-xs text-white px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 flex-shrink-0">
                   Copy
@@ -232,16 +233,16 @@ export default function TeamClient({ org, members: initialMembers, invites: init
 
             {invites.length > 0 && (
               <div className="mt-4">
-                <p className="text-xs text-slate-500 mb-2">Pending invites</p>
+                <p className="text-xs text-gray-500 mb-2">Pending invites</p>
                 <div className="space-y-1.5">
                   {invites.map(inv => (
-                    <div key={inv.id} className="flex items-center justify-between bg-slate-900 rounded-lg px-3 py-2 border border-slate-800">
+                    <div key={inv.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-200">
                       <div>
-                        <span className="text-xs text-slate-400">{inv.email || 'Open invite'}</span>
-                        <span className="text-xs text-slate-600 ml-2">expires {new Date(inv.expires_at).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-400">{inv.email || 'Open invite'}</span>
+                        <span className="text-xs text-gray-600 ml-2">expires {new Date(inv.expires_at).toLocaleDateString()}</span>
                       </div>
                       <button onClick={() => copyLink(inv.token)}
-                        className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-slate-700 transition-colors">
+                        className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-slate-700 transition-colors">
                         Copy Link
                       </button>
                     </div>
