@@ -1,7 +1,7 @@
 'use client'
+
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
-
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
@@ -27,17 +27,17 @@ interface Props {
   fullName?:  string
 }
 
+const HERMES   = '#E8632A'
 const SENTIMENTS = ['', 'promoter', 'passive', 'detractor']
 
 export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoUrl='', orgName='', isAdmin=false, userEmail='', fullName='' }: Props) {
-  const [responses,  setResponses]  = useState<Response[]>([])
-  const [total,      setTotal]      = useState(0)
-  const [loading,    setLoading]    = useState(true)
-  const [exporting,  setExporting]  = useState(false)
-  const [exportModal, setExportModal] = useState(false)
-  const [selected,   setSelected]   = useState<Response | null>(null)
+  const [responses,   setResponses]   = useState<Response[]>([])
+  const [total,       setTotal]       = useState(0)
+  const [loading,     setLoading]     = useState(true)
+  const [exporting,   setExporting]   = useState(false)
+  const [selected,    setSelected]    = useState<Response | null>(null)
 
-  // Filters
+  // Filters — auto-apply on change, no Apply button
   const [sentiment, setSentiment] = useState('')
   const [minNps,    setMinNps]    = useState('')
   const [maxNps,    setMaxNps]    = useState('')
@@ -56,7 +56,6 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
     if (to)        params.set('to',        to)
     params.set('limit',  String(LIMIT))
     params.set('offset', String(offset))
-
     const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
     const json = await res.json()
     setResponses(json.data || [])
@@ -66,7 +65,14 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
 
   useEffect(() => { fetchResponses() }, [fetchResponses])
 
-  const applyFilters = () => { setOffset(0); fetchResponses() }
+  // Reset to page 1 when filters change
+  const handleFilterChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+    setter(e.target.value)
+    setOffset(0)
+  }
+
+  const clearFilters = () => { setSentiment(''); setMinNps(''); setMaxNps(''); setFrom(''); setTo(''); setOffset(0) }
+  const hasFilter = sentiment || minNps || maxNps || from || to
 
   const handleExport = async () => {
     setExporting(true)
@@ -77,7 +83,6 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
     if (from)      params.set('from',      from)
     if (to)        params.set('to',        to)
     params.set('export', 'csv')
-
     const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
     const blob = await res.blob()
     const url  = URL.createObjectURL(blob)
@@ -89,115 +94,95 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
     setExporting(false)
   }
 
-  // Stats from loaded responses
   const promoters  = responses.filter(r => r.sentiment === 'promoter').length
   const passives   = responses.filter(r => r.sentiment === 'passive').length
   const detractors = responses.filter(r => r.sentiment === 'detractor').length
   const avgNps     = responses.length > 0
-    ? (responses.reduce((s, r) => s + (r.nps_score || 0), 0) / responses.length).toFixed(1)
-    : '—'
+    ? (responses.reduce((s, r) => s + (r.nps_score || 0), 0) / responses.length).toFixed(1) : '—'
 
-  const sentimentColor = (s: string | null) => ({
-    promoter:  'bg-green-500/15 text-green-400',
-    passive:   'bg-yellow-500/15 text-yellow-400',
-    detractor: 'bg-red-500/15 text-red-400',
-  }[s || ''] || 'bg-slate-700 text-slate-400')
+  const sentimentBadge = (s: string | null) => ({
+    promoter:  'bg-green-100 text-green-700 border border-green-200',
+    passive:   'bg-amber-100 text-amber-700 border border-amber-200',
+    detractor: 'bg-red-100 text-red-600 border border-red-200',
+  }[s || ''] || 'bg-gray-100 text-gray-500 border border-gray-200')
+
+  const selCls = 'px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm outline-none focus:border-orange-400 transition-colors cursor-pointer'
+  const inputCls = 'px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm outline-none focus:border-orange-400 transition-colors'
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-gray-50">
+      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage="responses" />
+      <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: studyName }]} />
 
-      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='responses' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: studyName}]} />
+      <main className="max-w-5xl mx-auto px-6 py-8">
 
-      <main className="max-w-5xl mx-auto px-6 py-10">
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+        {/* Page header */}
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
           <div>
-            <h1 className="text-xl font-bold text-white">{botEmoji} {studyName}</h1>
-            <p className="text-slate-400 text-sm mt-0.5">Response dashboard — {total} total</p>
+            <h1 className="text-xl font-bold text-gray-800">{botEmoji} {studyName}</h1>
+            <p className="text-gray-500 text-sm mt-0.5">{total} total responses</p>
           </div>
-          <button
-            onClick={handleExport}
-            disabled={exporting || total === 0}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white text-sm font-medium transition-all"
-          >
-            {exporting ? 'Exporting...' : 'Export CSV'}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Responses / Analytics toggle */}
+            <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+              <span className="text-sm font-medium px-3 py-1.5 rounded-lg text-white" style={{ background: HERMES }}>
+                Responses
+              </span>
+              <Link href={`/studies/${studyId}/analytics`}
+                className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
+                Analytics
+              </Link>
+            </div>
+            {/* Export CSV — high contrast */}
+            <button
+              onClick={handleExport}
+              disabled={exporting || total === 0}
+              className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm disabled:opacity-40 hover:opacity-90 transition-all"
+              style={{ background: HERMES }}
+            >
+              {exporting ? 'Exporting…' : '↓ Export CSV'}
+            </button>
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6">
+        {/* Filters — auto-apply, no button needed */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6 shadow-sm">
           <div className="flex flex-wrap gap-3 items-end">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-slate-400 font-medium">Sentiment</label>
-              <select
-                value={sentiment}
-                onChange={e => setSentiment(e.target.value)}
-                className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-              >
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Sentiment</label>
+              <select value={sentiment} onChange={handleFilterChange(setSentiment)} className={selCls}>
                 <option value="">All</option>
                 <option value="promoter">Promoters</option>
                 <option value="passive">Passives</option>
                 <option value="detractor">Detractors</option>
               </select>
             </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-slate-400 font-medium">NPS score</label>
-              <div className="flex gap-2 items-center">
-                <select
-                  value={minNps}
-                  onChange={e => setMinNps(e.target.value)}
-                  className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                >
-                  <option value="">Min</option>
-                  {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-                <span className="text-slate-500 text-sm">to</span>
-                <select
-                  value={maxNps}
-                  onChange={e => setMaxNps(e.target.value)}
-                  className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                >
-                  <option value="">Max</option>
-                  {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">NPS min</label>
+              <select value={minNps} onChange={handleFilterChange(setMinNps)} className={selCls}>
+                <option value="">Any</option>
+                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
             </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-slate-400 font-medium">Date range</label>
-              <div className="flex gap-2 items-center">
-                <input
-                  type="date"
-                  value={from}
-                  onChange={e => setFrom(e.target.value)}
-                  className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm outline-none focus:border-cyan-500 transition-colors"
-                />
-                <span className="text-slate-500 text-sm">to</span>
-                <input
-                  type="date"
-                  value={to}
-                  onChange={e => setTo(e.target.value)}
-                  className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm outline-none focus:border-cyan-500 transition-colors"
-                />
-              </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">NPS max</label>
+              <select value={maxNps} onChange={handleFilterChange(setMaxNps)} className={selCls}>
+                <option value="">Any</option>
+                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
             </div>
-
-            <button
-              onClick={applyFilters}
-              className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold text-sm transition-all"
-            >
-              Apply filters
-            </button>
-            {(sentiment || minNps || maxNps || from || to) && (
-              <button
-                onClick={() => {
-                  setSentiment(''); setMinNps(''); setMaxNps(''); setFrom(''); setTo(''); setOffset(0)
-                }}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-sm transition-all"
-              >
-                Clear
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">From</label>
+              <input type="date" value={from} onChange={handleFilterChange(setFrom)} className={inputCls} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">To</label>
+              <input type="date" value={to} onChange={handleFilterChange(setTo)} className={inputCls} />
+            </div>
+            {hasFilter && (
+              <button onClick={clearFilters}
+                className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm transition-colors self-end">
+                Clear ×
               </button>
             )}
           </div>
@@ -208,56 +193,52 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <StatCard label="Showing"    value={responses.length} sub={`of ${total}`} />
             <StatCard label="Avg NPS"    value={avgNps} />
-            <StatCard label="Promoters"  value={`${Math.round(promoters / responses.length * 100)}%`} color="text-green-400" />
-            <StatCard label="Detractors" value={`${Math.round(detractors / responses.length * 100)}%`} color="text-red-400" />
+            <StatCard label="Promoters"  value={`${Math.round(promoters / responses.length * 100)}%`} color="text-green-600" />
+            <StatCard label="Detractors" value={`${Math.round(detractors / responses.length * 100)}%`} color="text-red-500" />
           </div>
         )}
 
         {/* Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
           {loading ? (
-            <div className="py-16 text-center text-slate-500 text-sm">Loading...</div>
+            <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>
           ) : responses.length === 0 ? (
             <div className="py-16 text-center">
               <div className="text-3xl mb-3">📭</div>
-              <p className="text-slate-500 text-sm">No responses match your filters.</p>
+              <p className="text-gray-400 text-sm">No responses match your filters.</p>
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-slate-800">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Date</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Sentiment</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Exp.</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">NPS</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">First response</th>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sentiment</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Exp.</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">NPS</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">First response</th>
                       <th className="px-5 py-3" />
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-gray-100">
                     {responses.map(r => (
-                      <tr
-                        key={r.id}
-                        className="hover:bg-slate-800/40 transition-colors cursor-pointer"
-                        onClick={() => setSelected(r)}
-                      >
-                        <td className="px-5 py-3.5 text-sm text-slate-300 whitespace-nowrap">
+                      <tr key={r.id} className="hover:bg-orange-50/40 transition-colors cursor-pointer" onClick={() => setSelected(r)}>
+                        <td className="px-5 py-3.5 text-sm text-gray-600 whitespace-nowrap">
                           {new Date(r.completed_at).toLocaleDateString()}
                         </td>
                         <td className="px-5 py-3.5">
-                          <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${sentimentColor(r.sentiment)}`}>
+                          <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${sentimentBadge(r.sentiment)}`}>
                             {r.sentiment || '—'}
                           </span>
                         </td>
-                        <td className="px-5 py-3.5 text-sm text-slate-300">{r.experience_score ?? '—'}</td>
-                        <td className="px-5 py-3.5 text-sm text-slate-300">{r.nps_score ?? '—'}</td>
-                        <td className="px-5 py-3.5 text-sm text-slate-400 max-w-xs truncate">
+                        <td className="px-5 py-3.5 text-sm text-gray-600">{r.experience_score ?? '—'}</td>
+                        <td className="px-5 py-3.5 text-sm text-gray-600">{r.nps_score ?? '—'}</td>
+                        <td className="px-5 py-3.5 text-sm text-gray-500 max-w-xs truncate">
                           {r.payload?.openEnded?.q1 || '—'}
                         </td>
                         <td className="px-5 py-3.5 text-right">
-                          <span className="text-xs text-cyan-400">View →</span>
+                          <span className="text-xs font-medium" style={{ color: HERMES }}>View →</span>
                         </td>
                       </tr>
                     ))}
@@ -267,25 +248,13 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
 
               {/* Pagination */}
               {total > LIMIT && (
-                <div className="px-5 py-4 border-t border-slate-800 flex items-center justify-between">
-                  <span className="text-slate-500 text-sm">
-                    {offset + 1}–{Math.min(offset + LIMIT, total)} of {total}
-                  </span>
+                <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between">
+                  <span className="text-gray-400 text-sm">{offset + 1}–{Math.min(offset + LIMIT, total)} of {total}</span>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setOffset(Math.max(0, offset - LIMIT))}
-                      disabled={offset === 0}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white text-sm transition-all"
-                    >
-                      Prev
-                    </button>
-                    <button
-                      onClick={() => setOffset(offset + LIMIT)}
-                      disabled={offset + LIMIT >= total}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white text-sm transition-all"
-                    >
-                      Next
-                    </button>
+                    <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0}
+                      className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 text-sm transition-all">Prev</button>
+                    <button onClick={() => setOffset(offset + LIMIT)} disabled={offset + LIMIT >= total}
+                      className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 text-sm transition-all">Next</button>
                   </div>
                 </div>
               )}
@@ -294,21 +263,16 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
         </div>
       </main>
 
-      {/* Transcript modal */}
+      {/* Response detail modal */}
       {selected && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
-          onClick={() => setSelected(null)}
-        >
-          <div
-            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="font-semibold text-white">Response detail</h2>
-              <button onClick={() => setSelected(null)} className="text-slate-500 hover:text-white text-xl transition-colors">x</button>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelected(null)}>
+          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl">
+              <h2 className="font-semibold text-gray-800">Response detail</h2>
+              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 text-xl transition-colors">×</button>
             </div>
-            <div className="px-6 py-5 flex flex-col gap-4">
+            <div className="px-6 py-5 flex flex-col gap-5">
               <div className="flex gap-4 flex-wrap">
                 <Badge label="Sentiment"  value={selected.sentiment || '—'} />
                 <Badge label="Experience" value={String(selected.experience_score ?? '—')} />
@@ -320,12 +284,12 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
               <AnswerBlock label="Q4"              value={selected.payload?.openEnded?.q4} />
               {Object.keys(selected.payload?.psychographics || {}).length > 0 && (
                 <div>
-                  <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Psychographics</div>
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Psychographics</div>
                   <div className="flex flex-col gap-1.5">
                     {Object.entries(selected.payload.psychographics).map(([k, v]) => (
-                      <div key={k} className="flex gap-3 text-sm">
-                        <span className="text-slate-500 capitalize flex-shrink-0">{k.replace(/_/g,' ')}</span>
-                        <span className="text-slate-200">{v as string}</span>
+                      <div key={k} className="flex gap-3 text-sm bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-gray-500 capitalize flex-shrink-0 w-32">{k.replace(/_/g,' ')}</span>
+                        <span className="text-gray-800 font-medium">{v as string}</span>
                       </div>
                     ))}
                   </div>
@@ -333,13 +297,11 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
               )}
               {Object.keys(selected.payload?.demographics || {}).filter(k => selected.payload.demographics[k]).length > 0 && (
                 <div>
-                  <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Demographics</div>
-                  <div className="flex gap-5 flex-wrap">
-                    {Object.entries(selected.payload.demographics)
-                      .filter(([, v]) => v)
-                      .map(([k, v]) => (
-                        <Badge key={k} label={k} value={v as string} />
-                      ))}
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Demographics</div>
+                  <div className="flex gap-3 flex-wrap">
+                    {Object.entries(selected.payload.demographics).filter(([, v]) => v).map(([k, v]) => (
+                      <Badge key={k} label={k} value={v as string} />
+                    ))}
                   </div>
                 </div>
               )}
@@ -351,12 +313,12 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
   )
 }
 
-function StatCard({ label, value, sub, color = 'text-white' }: { label: string; value: string | number; sub?: string; color?: string }) {
+function StatCard({ label, value, sub, color = 'text-gray-800' }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      {sub && <div className="text-slate-500 text-xs">{sub}</div>}
-      <div className="text-slate-400 text-xs mt-0.5">{label}</div>
+      {sub && <div className="text-gray-400 text-xs">{sub}</div>}
+      <div className="text-gray-500 text-xs mt-0.5">{label}</div>
     </div>
   )
 }
@@ -364,8 +326,8 @@ function StatCard({ label, value, sub, color = 'text-white' }: { label: string; 
 function Badge({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col">
-      <span className="text-slate-500 text-xs">{label}</span>
-      <span className="text-white text-sm font-medium capitalize">{value}</span>
+      <span className="text-gray-400 text-xs">{label}</span>
+      <span className="text-gray-800 text-sm font-medium capitalize">{value}</span>
     </div>
   )
 }
@@ -374,8 +336,8 @@ function AnswerBlock({ label, value }: { label: string; value?: string }) {
   if (!value) return null
   return (
     <div>
-      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">{label}</div>
-      <div className="text-slate-200 text-sm leading-relaxed bg-slate-800/50 rounded-xl px-4 py-3">{value}</div>
+      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{label}</div>
+      <div className="text-gray-800 text-sm leading-relaxed bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">{value}</div>
     </div>
   )
 }
