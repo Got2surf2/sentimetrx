@@ -45,6 +45,13 @@ function QuestionCard({
             placeholder="e.g. Which best describes your relationship with us?"
             className="w-full bg-transparent text-white text-sm outline-none border-b border-slate-600 focus:border-cyan-500 pb-1 transition-colors placeholder-slate-500"
           />
+          <input
+            type="text"
+            value={q.exportLabel || ''}
+            onChange={e => onChange({ ...q, exportLabel: e.target.value })}
+            placeholder="CSV column name (optional) — e.g. Customer Type"
+            className="w-full bg-transparent text-slate-400 text-xs outline-none border-b border-slate-700 focus:border-cyan-500 pb-0.5 mt-2 transition-colors placeholder-slate-600"
+          />
         </div>
         <div className="flex flex-col gap-1 flex-shrink-0">
           <button onClick={onMoveUp}   disabled={idx === 0}         className="text-slate-500 hover:text-white disabled:opacity-20 transition-colors text-xs px-2 py-1 rounded hover:bg-slate-700">Up</button>

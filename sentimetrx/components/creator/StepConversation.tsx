@@ -85,6 +85,13 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           multiline
           rows={2}
         />
+        <Field label="CSV export column name (optional)">
+          <Input
+            value={c.q3ExportLabel || ''}
+            onChange={v => updateConfig({ q3ExportLabel: v })}
+            placeholder="e.g. Improvement Suggestion — leave blank to use the question text"
+          />
+        </Field>
       </Section>
 
       <Section
@@ -98,6 +105,13 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           multiline
           rows={2}
         />
+        <Field label="CSV export column name (optional)">
+          <Input
+            value={c.q4ExportLabel || ''}
+            onChange={v => updateConfig({ q4ExportLabel: v })}
+            placeholder="e.g. Additional Comments — leave blank to use the question text"
+          />
+        </Field>
       </Section>
 
       <Divider />

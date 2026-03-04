@@ -47,6 +47,13 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
           onChange={v => updateConfig({ ratingPrompt: v })}
           placeholder="How would you rate your overall experience with us today?"
         />
+        <Field label="CSV export column name (optional)">
+          <Input
+            value={c.q1ExportLabel || ''}
+            onChange={v => updateConfig({ q1ExportLabel: v })}
+            placeholder="e.g. Opening Rating — leave blank to use the question text"
+          />
+        </Field>
       </Section>
 
       <Section
