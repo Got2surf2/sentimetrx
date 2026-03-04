@@ -9,6 +9,7 @@ import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 const STEPS = ['Basics', 'Opening', 'Conversation', 'Psychographics', 'Review & Publish']
 
@@ -57,11 +58,12 @@ export default function EditStudyClient({ study, logoUrl='', isAdmin=false, user
   const stepProps = { draft, update, updateConfig }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='edit' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: draft.name || 'Edit Study'}]} />
+    <div className="min-h-screen bg-gray-50">
+      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='edit' />
+      <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: draft.name || 'Edit Study'}]} />
 
       {/* Step progress */}
-      <div className="border-b border-slate-800 px-6 py-4">
+      <div className="border-b border-gray-200 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center gap-2">
           {STEPS.map((s, i) => (
             <div key={s} className="flex items-center gap-2 flex-1">
