@@ -21,10 +21,12 @@ interface Org {
 interface Props {
   orgs: Org[]
   adminEmail: string
-  logoUrl?: string
+  logoUrl?:   string
+  orgName?:   string
+  fullName?:  string
 }
 
-export default function AdminClient({ orgs: initial, adminEmail, logoUrl='' }: Props) {
+export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', orgName='', fullName='' }: Props) {
   const [orgs, setOrgs]         = useState(initial)
   const [showNew, setShowNew]   = useState(false)
   const [toggling, setToggling] = useState<string | null>(null)
@@ -101,7 +103,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='' }: P
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopNav logoUrl={logoUrl} isAdmin={true} userEmail={adminEmail} currentPage='admin' />
+      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={true} userEmail={adminEmail} fullName={fullName} currentPage='admin' />
       <SubHeader crumbs={[{label: 'Admin'}]} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">

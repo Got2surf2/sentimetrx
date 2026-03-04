@@ -11,7 +11,7 @@ export default async function AdminPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(is_admin_org, logo_url, name)')
+    .select('org_id, full_name, organizations(is_admin_org, logo_url, name)')
     .eq('id', user.id)
     .single()
 
@@ -43,6 +43,8 @@ export default async function AdminPage() {
       orgs={enriched}
       adminEmail={user.email!}
       logoUrl={orgData?.logo_url || ''}
+      orgName={orgData?.name || ''}
+      fullName={userData?.full_name || ''}
     />
   )
 }
