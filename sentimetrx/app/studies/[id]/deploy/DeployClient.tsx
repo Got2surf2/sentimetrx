@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import TopNav from '@/components/nav/TopNav'
 
 interface Study {
   id:        string
@@ -13,9 +14,9 @@ interface Study {
   config:    any
 }
 
-interface Props { study: Study; surveyUrl: string }
+interface Props { study: Study; surveyUrl: string; logoUrl?: string; isAdmin?: boolean; userEmail?: string }
 
-export default function DeployClient({ study: initial, surveyUrl }: Props) {
+export default function DeployClient({ study: initial, surveyUrl, logoUrl='', isAdmin=false, userEmail='' }: Props) {
   const [study,       setStudy]       = useState(initial)
   const [copied,      setCopied]      = useState(false)
   const [toggling,    setToggling]    = useState(false)
@@ -86,15 +87,7 @@ export default function DeployClient({ study: initial, surveyUrl }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
-          <span className="font-bold text-white">Sentimetrx</span>
-        </div>
-        <Link href="/dashboard" className="text-sm text-slate-500 hover:text-white transition-colors">
-          Dashboard
-        </Link>
-      </nav>
+      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='deploy' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: study.name, href: '/studies/' + study.id + '/edit'}, {label: 'Deploy'}]} />
 
       <main className="max-w-2xl mx-auto px-6 py-10">
 
