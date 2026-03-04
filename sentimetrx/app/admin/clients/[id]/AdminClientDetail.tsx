@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import Link from 'next/link'
 
 interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string }
@@ -37,10 +38,10 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
 
   const statusColor = (s: string) => {
     if (s === 'active')  return 'bg-green-500/15 text-green-400'
-    if (s === 'draft')   return 'bg-slate-700/50 text-slate-400'
+    if (s === 'draft')   return 'bg-slate-700/50 text-gray-500'
     if (s === 'paused')  return 'bg-yellow-500/15 text-yellow-400'
     if (s === 'closed')  return 'bg-red-500/15 text-red-400'
-    return 'bg-slate-700 text-slate-400'
+    return 'bg-slate-700 text-gray-500'
   }
 
   const handleToggleStudyStatus = async (study: Study) => {
@@ -145,8 +146,9 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav isAdmin={true} userEmail={userEmail} currentPage='admin' crumbs={[{label: 'Admin', href: '/admin'}, {label: org.name}]} />
+    <div className="min-h-screen bg-gray-50">
+      <TopNav isAdmin={true} userEmail={userEmail} currentPage='admin' />
+      <SubHeader crumbs={[{label: 'Admin', href: '/admin'}, {label: org.name}]} />
 
       <main className="max-w-4xl mx-auto px-6 py-10 flex flex-col gap-8">
 
@@ -157,11 +159,11 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
         )}
 
         {/* Org header */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2.5 mb-1 flex-wrap">
-                <h1 className="text-xl font-bold text-white">{org.name}</h1>
+                <h1 className="text-xl font-bold text-gray-800">{org.name}</h1>
                 <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (orgPlan === 'active' ? 'bg-green-500/15 text-green-400' : orgPlan === 'suspended' ? 'bg-red-500/15 text-red-400' : 'bg-blue-500/15 text-blue-400')}>
                   {orgPlan}
                 </span>
@@ -169,7 +171,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-500/15 text-purple-400">admin org</span>
                 )}
               </div>
-              <div className="text-slate-500 text-sm">slug: {org.slug}</div>
+              <div className="text-gray-400 text-sm">slug: {org.slug}</div>
             </div>
             {!org.is_admin_org && (
               <button
@@ -183,23 +185,23 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
           </div>
 
           {/* Logo upload */}
-          <div className="mt-5 pt-5 border-t border-slate-700">
-            <p className="text-xs text-slate-500 mb-3">Organisation Logo</p>
+          <div className="mt-5 pt-5 border-t border-gray-200">
+            <p className="text-xs text-gray-400 mb-3">Organisation Logo</p>
             {logoMsg && <p className="text-xs text-green-400 mb-2">{logoMsg}</p>}
             <div className="flex items-center gap-3">
-              <div className="w-20 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
+              <div className="w-20 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden">
                 {logoUrl
                   ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" />
-                  : <span className="text-xs text-slate-500">No logo</span>
+                  : <span className="text-xs text-gray-400">No logo</span>
                 }
               </div>
               <button onClick={() => fileRef.current?.click()} disabled={uploadingLogo}
-                className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors">
+                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 border border-gray-200 transition-colors">
                 {uploadingLogo ? 'Uploading...' : logoUrl ? 'Change' : 'Upload Logo'}
               </button>
               {logoUrl && (
                 <button onClick={removeLogo} disabled={uploadingLogo}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900 border border-slate-700 text-red-400 transition-colors">
+                  className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-red-900 border border-gray-200 text-red-400 transition-colors">
                   Remove
                 </button>
               )}
@@ -218,10 +220,10 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                 <div key={m.id} className="flex items-center justify-between py-3 gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-white truncate">{m.full_name || m.email}</div>
-                    {m.full_name && <div className="text-xs text-slate-500 truncate">{m.email}</div>}
+                    {m.full_name && <div className="text-xs text-gray-400 truncate">{m.email}</div>}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-slate-500 capitalize">{m.role}</span>
+                    <span className="text-xs text-gray-400 capitalize">{m.role}</span>
                     <span className="text-xs text-slate-600">{new Date(m.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
@@ -246,10 +248,10 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                         {study.status}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">{study.bot_name} &middot; {study.response_count} responses</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{study.bot_name} &middot; {study.response_count} responses</div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Link href={'/studies/' + study.id + '/responses'} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
+                    <Link href={'/studies/' + study.id + '/responses'} className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors">
                       Responses
                     </Link>
                     <button
@@ -269,10 +271,10 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
         {/* Invite Links */}
         <Section title="Invite Links">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-slate-500">Generate links to invite new members to this organisation.</p>
+            <p className="text-xs text-gray-400">Generate links to invite new members to this organisation.</p>
             <button
               onClick={() => setShowInvForm(f => !f)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors"
             >
               {showInvForm ? 'Cancel' : '+ New Invite'}
             </button>
@@ -284,7 +286,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                 value={inviteEmail}
                 onChange={e => setInviteEmail(e.target.value)}
                 placeholder="Email (optional)"
-                className="flex-1 min-w-[200px] bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
+                className="flex-1 min-w-[200px] bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
               />
               <button
                 onClick={handleGenerateInvite}
@@ -307,7 +309,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + status.cls}>{status.label}</span>
-                        {inv.email && <span className="text-xs text-slate-400 truncate">{inv.email}</span>}
+                        {inv.email && <span className="text-xs text-gray-500 truncate">{inv.email}</span>}
                       </div>
                       <div className="text-xs text-slate-600 mt-0.5">
                         Expires {new Date(inv.expires_at).toLocaleDateString()}
@@ -317,7 +319,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                     {!inv.used_at && new Date(inv.expires_at) > new Date() && (
                       <button
                         onClick={() => handleCopyInvite(inv.invite_url, inv.id)}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors flex-shrink-0"
+                        className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors flex-shrink-0"
                       >
                         {copiedInvite === inv.id ? 'Copied!' : 'Copy Link'}
                       </button>
@@ -335,7 +337,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+    <div className="bg-white border border-gray-200 rounded-2xl p-6">
       <h2 className="font-semibold text-white mb-4">{title}</h2>
       {children}
     </div>
@@ -343,5 +345,5 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="text-slate-500 text-sm py-4 text-center">{text}</p>
+  return <p className="text-gray-400 text-sm py-4 text-center">{text}</p>
 }
