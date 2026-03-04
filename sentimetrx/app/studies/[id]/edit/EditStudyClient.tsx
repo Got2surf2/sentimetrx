@@ -13,9 +13,9 @@ import SubHeader from '@/components/nav/SubHeader'
 
 const STEPS = ['Basics', 'Opening', 'Conversation', 'Psychographics', 'Review & Publish']
 
-interface Props { study: any; logoUrl?: string; isAdmin?: boolean; userEmail?: string }
+interface Props { study: any; logoUrl?: string; orgName?: string; isAdmin?: boolean; userEmail?: string; fullName?: string }
 
-export default function EditStudyClient({ study, logoUrl='', isAdmin=false, userEmail='' }: Props) {
+export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin=false, userEmail='', fullName='' }: Props) {
   const [step,   setStep]   = useState(0)
   const [draft,  setDraft]  = useState<StudyDraft>({
     name:      study.name,
@@ -59,7 +59,7 @@ export default function EditStudyClient({ study, logoUrl='', isAdmin=false, user
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='edit' />
+      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='edit' />
       <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: draft.name || 'Edit Study'}]} />
 
       {/* Step progress */}
