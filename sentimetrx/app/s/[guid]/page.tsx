@@ -10,21 +10,31 @@ async function getStudyAny(guid: string) {
   const supabase = createServiceRoleClient()
   const { data } = await supabase
     .from('studies')
-    .select('*, users!studies_created_by_fkey(email, full_name)')
+    .select('*')
     .eq('guid', guid)
     .single()
   return data
 }
 
-// Fire-and-forget email notification when a closed study is accessed
+async function getCreatorEmail(userId: string): Promise<{ email: string; full_name: string | null } | null> {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .from('users')
+    .select('email, full_name')
+    .eq('id', userId)
+    .single()
+  return data
+}
+
 async function notifyCreator(study: any) {
   try {
-    const creator = Array.isArray(study.users) ? study.users[0] : study.users
+    if (!study.created_by) return
+    const creator = await getCreatorEmail(study.created_by)
     if (!creator?.email) return
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
     await fetch(`${baseUrl}/api/notify/closed-study`, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         creatorEmail: creator.email,
@@ -34,7 +44,9 @@ async function notifyCreator(study: any) {
         accessedAt:   new Date().toISOString(),
       }),
     })
-  } catch { /* non-fatal */ }
+  } catch (e) {
+    console.error('[notify] failed:', e)
+  }
 }
 
 export default async function SurveyPage({ params }: Props) {
@@ -53,11 +65,10 @@ export default async function SurveyPage({ params }: Props) {
     )
   }
 
-  // Closed or draft study
+  // Closed or draft — show closed page, notify creator if closed
   if (study.status !== 'active') {
     if (study.status === 'closed') {
-      // Notify creator asynchronously — don't await so page loads fast
-      notifyCreator(study)
+      notifyCreator(study) // fire-and-forget — don't await
     }
     return <ClosedStudyPage study={study} />
   }
@@ -82,7 +93,7 @@ export async function generateMetadata({ params }: Props) {
 
   if (!data) return { title: 'Survey' }
   return {
-    title: `${data.bot_emoji} ${data.bot_name} — ${data.name}`,
+    title:       `${data.bot_emoji} ${data.bot_name} — ${data.name}`,
     description: `Share your feedback with ${data.bot_name}`,
   }
 }
