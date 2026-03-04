@@ -8,8 +8,9 @@ interface Params { params: { id: string } }
 // Query params:
 //   sentiment, min_nps, max_nps, from, to, limit, offset
 //   export=csv
-//   format=flat|nested|raw   (default: flat)
-//   sections=core,openended,psychographics,demographics,meta  (comma-separated, default all)
+//   labelMode=key|prompt      (default: key)
+//   format=standard|datanautix (default: standard)
+//   sections=core,openended,psychographics,demographics,meta
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -17,9 +18,10 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const url       = new URL(req.url)
   const isCSV     = url.searchParams.get('export') === 'csv'
-  const format    = url.searchParams.get('format')   || 'flat'  // flat | nested | raw
-  const sectionsP = url.searchParams.get('sections') || 'core,openended,psychographics,demographics,meta'
-  const sections  = new Set(sectionsP.split(',').map(s => s.trim()))
+  const labelMode = url.searchParams.get('labelMode') || 'key'   // key | prompt
+  const format    = url.searchParams.get('format')    || 'standard' // standard | datanautix
+  const sectionsP = url.searchParams.get('sections')  || 'core,openended,psychographics,demographics,meta'
+  const sections  = new Set(sectionsP.split(',').map((s: string) => s.trim()))
 
   const sentiment = url.searchParams.get('sentiment')
   const minNps    = url.searchParams.get('min_nps')
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const limit     = parseInt(url.searchParams.get('limit')  || '50')
   const offset    = parseInt(url.searchParams.get('offset') || '0')
 
-  // Fetch study config so we can use real question labels
+  // Fetch study config for question labels
   const { data: study } = await supabase
     .from('studies')
     .select('name, config')
@@ -38,17 +40,36 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const cfg = study?.config || {}
 
-  // Build question labels from study config
-  const q1Label = 'Follow-up (Q1)'
-  const q3Label = cfg.q3 ? cfg.q3.slice(0, 60).replace(/[,"\n]/g, ' ') : 'Q3'
-  const q4Label = cfg.q4 ? cfg.q4.slice(0, 60).replace(/[,"\n]/g, ' ') : 'Q4'
+  // ── Build question label maps ─────────────────────────────────────────────
+  // Open-ended: key → prompt text
+  // q1 prompt depends on sentiment; use a generic label for mixed exports
+  const oeLabels: Record<string, string> = {
+    q1: cfg.promoterQ1 || cfg.passiveQ1 || cfg.detractorQ1 || 'Follow-up (Q1)',
+    q3: cfg.q3 || 'Q3',
+    q4: cfg.q4 || 'Q4',
+  }
 
-  // Collect all psychographic keys across ALL responses (not just first row)
-  // We do a separate lightweight query for this
+  // Psychographic: key → question text
+  const psychoPromptMap: Record<string, string> = {}
+  for (const pq of cfg.psychographicBank || []) {
+    psychoPromptMap[pq.key] = pq.q || pq.key
+  }
+
+  // Helpers: get header for a field key
+  const oeHeader = (key: string) =>
+    labelMode === 'prompt' ? oeLabels[key] || key : key
+
+  const psychoHeader = (key: string) =>
+    labelMode === 'prompt' ? (psychoPromptMap[key] || key) : key
+
+  const demoHeader = (key: string) =>
+    labelMode === 'prompt' ? (key.charAt(0).toUpperCase() + key.slice(1)) : key
+
+  // ── Collect all psycho/demo keys across all responses ─────────────────────
   let allPsychoKeys: string[] = []
   let allDemoKeys:   string[] = []
 
-  if (isCSV && (sections.has('psychographics') || sections.has('demographics'))) {
+  if (isCSV) {
     const { data: allRows } = await supabase
       .from('responses')
       .select('payload')
@@ -56,22 +77,21 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     const psychoSet = new Set<string>()
     const demoSet   = new Set<string>()
-
     for (const r of allRows || []) {
-      Object.keys(r.payload?.psychographics || {}).forEach(k => psychoSet.add(k))
-      Object.keys(r.payload?.demographics   || {}).forEach(k => demoSet.add(k))
+      Object.keys(r.payload?.psychographics || {}).forEach((k: string) => psychoSet.add(k))
+      Object.keys(r.payload?.demographics   || {}).forEach((k: string) => demoSet.add(k))
     }
 
-    // Order psycho keys by study config order if available
+    // Order psycho keys by study config order
     const configKeys = (cfg.psychographicBank || []).map((p: any) => p.key)
     allPsychoKeys = [
       ...configKeys.filter((k: string) => psychoSet.has(k)),
-      ...Array.from(psychoSet).filter(k => !configKeys.includes(k)),
+      ...Array.from(psychoSet).filter((k: string) => !configKeys.includes(k)),
     ]
     allDemoKeys = Array.from(demoSet)
   }
 
-  // Build main query
+  // ── Build main query ──────────────────────────────────────────────────────
   let query = supabase
     .from('responses')
     .select('*', { count: 'exact' })
@@ -88,17 +108,13 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // ── JSON response ────────────────────────────────────────────────────────────
-  if (!isCSV) {
-    return NextResponse.json({ data, count, limit, offset })
-  }
+  // ── JSON response ─────────────────────────────────────────────────────────
+  if (!isCSV) return NextResponse.json({ data, count, limit, offset })
 
-  // ── CSV export ───────────────────────────────────────────────────────────────
   const rows = data || []
   if (rows.length === 0) {
     return new NextResponse('No data to export\n', {
-      status: 200,
-      headers: { 'Content-Type': 'text/csv' },
+      status: 200, headers: { 'Content-Type': 'text/csv' },
     })
   }
 
@@ -107,127 +123,129 @@ export async function GET(req: NextRequest, { params }: Params) {
     return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
 
-  // ── RAW format — one column per top-level payload key, payload as JSON ───────
-  if (format === 'raw') {
-    const headers = ['response_id', 'completed_at', 'duration_sec',
-      'sentiment', 'experience_score', 'nps_score', 'payload_json']
-    const csvRows = rows.map(r => [
-      r.id, r.completed_at, r.duration_sec ?? '',
-      r.sentiment ?? '', r.experience_score ?? '', r.nps_score ?? '',
-      esc(JSON.stringify(r.payload)),
-    ].join(','))
-    return csvResponse(params.id, study?.name, [headers.join(','), ...csvRows].join('\n'))
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York' })
+
+  // ── Closed-ended metadata columns (shared by both formats) ────────────────
+  // Returns [headers, rowFn] for the closed-ended portion
+  const closedHeaders = (): string[] => {
+    const h: string[] = []
+    if (sections.has('core') || format === 'datanautix') {
+      h.push(
+        labelMode === 'prompt' ? 'Response ID'        : 'response_id',
+        labelMode === 'prompt' ? 'Completed At (ET)'  : 'completed_at',
+        labelMode === 'prompt' ? 'Duration (sec)'     : 'duration_sec',
+        labelMode === 'prompt' ? 'Sentiment'          : 'sentiment',
+        labelMode === 'prompt' ? 'Experience Score'   : 'experience_score',
+        labelMode === 'prompt' ? 'NPS Score'          : 'nps_score',
+      )
+    }
+    if (sections.has('psychographics') || format === 'datanautix') {
+      allPsychoKeys.forEach(k => h.push(psychoHeader(k)))
+    }
+    if (sections.has('demographics') || format === 'datanautix') {
+      allDemoKeys.forEach(k => h.push(demoHeader(k)))
+    }
+    if (sections.has('meta') && format === 'standard') {
+      h.push(
+        labelMode === 'prompt' ? 'User Agent'            : 'agent',
+        labelMode === 'prompt' ? 'Submission Timestamp'  : 'payload_timestamp',
+      )
+    }
+    return h
   }
 
-  // ── NESTED format — grouped sections, payload keys one level deep ────────────
-  if (format === 'nested') {
-    const headers: string[] = []
-    if (sections.has('core')) {
-      headers.push('response_id', 'completed_at', 'duration_sec',
-        'sentiment', 'experience_score', 'nps_score')
+  const closedValues = (r: any): string[] => {
+    const p   = r.payload || {}
+    const row: string[] = []
+    if (sections.has('core') || format === 'datanautix') {
+      row.push(
+        r.id,
+        fmtDate(r.completed_at),
+        String(r.duration_sec ?? ''),
+        r.sentiment          ?? '',
+        String(r.experience_score ?? ''),
+        String(r.nps_score   ?? ''),
+      )
     }
+    if (sections.has('psychographics') || format === 'datanautix') {
+      allPsychoKeys.forEach(k => row.push(esc(p.psychographics?.[k] ?? '')))
+    }
+    if (sections.has('demographics') || format === 'datanautix') {
+      allDemoKeys.forEach(k => row.push(esc(p.demographics?.[k] ?? '')))
+    }
+    if (sections.has('meta') && format === 'standard') {
+      row.push(esc(p.agent ?? ''), esc(p.timestamp ?? ''))
+    }
+    return row
+  }
+
+  // ── STANDARD format ───────────────────────────────────────────────────────
+  if (format === 'standard') {
+    const headers: string[] = [...closedHeaders()]
     if (sections.has('openended')) {
-      headers.push('followup_q1', 'q3', 'q4')
-    }
-    if (sections.has('psychographics')) {
-      allPsychoKeys.forEach(k => headers.push(`psych_${k}`))
-    }
-    if (sections.has('demographics')) {
-      allDemoKeys.forEach(k => headers.push(`demo_${k}`))
-    }
-    if (sections.has('meta')) {
-      headers.push('agent', 'timestamp')
+      headers.push(oeHeader('q1'), oeHeader('q3'), oeHeader('q4'))
     }
 
     const csvRows = rows.map(r => {
       const p   = r.payload || {}
-      const row: string[] = []
-      if (sections.has('core')) {
-        row.push(r.id, r.completed_at, String(r.duration_sec ?? ''),
-          r.sentiment ?? '', String(r.experience_score ?? ''), String(r.nps_score ?? ''))
-      }
+      const row = [...closedValues(r)]
       if (sections.has('openended')) {
         row.push(esc(p.openEnded?.q1 ?? ''), esc(p.openEnded?.q3 ?? ''), esc(p.openEnded?.q4 ?? ''))
       }
-      if (sections.has('psychographics')) {
-        allPsychoKeys.forEach(k => row.push(esc(p.psychographics?.[k] ?? '')))
-      }
-      if (sections.has('demographics')) {
-        allDemoKeys.forEach(k => row.push(esc(p.demographics?.[k] ?? '')))
-      }
-      if (sections.has('meta')) {
-        row.push(esc(p.agent ?? ''), esc(p.timestamp ?? ''))
-      }
       return row.join(',')
     })
-    return csvResponse(params.id, study?.name, [headers.join(','), ...csvRows].join('\n'))
+
+    return csvResponse(params.id, study?.name, format,
+      [headers.join(','), ...csvRows].join('\n'))
   }
 
-  // ── FLAT format (default) — human-readable column names with question text ───
-  const headers: string[] = []
-  if (sections.has('core')) {
-    headers.push(
-      'Response ID', 'Completed At', 'Duration (sec)',
-      'Sentiment', 'Experience Score', 'NPS Score',
-    )
-  }
-  if (sections.has('openended')) {
-    headers.push(q1Label, q3Label, q4Label)
-  }
-  if (sections.has('psychographics')) {
-    // Use friendly label from study config if available
-    const psychoLabelMap: Record<string, string> = {}
-    for (const pq of cfg.psychographicBank || []) {
-      psychoLabelMap[pq.key] = pq.q ? pq.q.slice(0, 60).replace(/[,"\n]/g, ' ') : pq.key
+  // ── DATANAUTIX format — one row per open-ended answer ─────────────────────
+  // Columns: [closed-ended metadata] + question_prompt + response_text
+  const dnHeaders = [
+    ...closedHeaders(),
+    labelMode === 'prompt' ? 'Question Prompt' : 'question_prompt',
+    labelMode === 'prompt' ? 'Response Text'   : 'response_text',
+  ]
+
+  // The 3 open-ended fields with their prompt labels
+  const oeFields: Array<{ key: 'q1' | 'q3' | 'q4'; prompt: string }> = [
+    { key: 'q1', prompt: oeLabels.q1 },
+    { key: 'q3', prompt: oeLabels.q3 },
+    { key: 'q4', prompt: oeLabels.q4 },
+  ]
+
+  const dnRows: string[] = []
+  for (const r of rows) {
+    const p    = r.payload || {}
+    const base = closedValues(r)
+    for (const { key, prompt } of oeFields) {
+      const text = (p.openEnded?.[key] || '').trim()
+      if (!text) continue  // skip blank answers
+      const questionLabel = labelMode === 'prompt' ? prompt : key
+      dnRows.push([...base, esc(questionLabel), esc(text)].join(','))
     }
-    allPsychoKeys.forEach(k => headers.push(psychoLabelMap[k] || k))
-  }
-  if (sections.has('demographics')) {
-    allDemoKeys.forEach(k => headers.push(k.charAt(0).toUpperCase() + k.slice(1)))
-  }
-  if (sections.has('meta')) {
-    headers.push('User Agent', 'Submission Timestamp')
   }
 
-  const csvRows = rows.map(r => {
-    const p   = r.payload || {}
-    const row: string[] = []
-    if (sections.has('core')) {
-      row.push(
-        r.id,
-        new Date(r.completed_at).toLocaleString('en-US', { timeZone: 'America/New_York' }),
-        String(r.duration_sec ?? ''),
-        r.sentiment ?? '',
-        String(r.experience_score ?? ''),
-        String(r.nps_score ?? ''),
-      )
-    }
-    if (sections.has('openended')) {
-      row.push(esc(p.openEnded?.q1 ?? ''), esc(p.openEnded?.q3 ?? ''), esc(p.openEnded?.q4 ?? ''))
-    }
-    if (sections.has('psychographics')) {
-      allPsychoKeys.forEach(k => row.push(esc(p.psychographics?.[k] ?? '')))
-    }
-    if (sections.has('demographics')) {
-      allDemoKeys.forEach(k => row.push(esc(p.demographics?.[k] ?? '')))
-    }
-    if (sections.has('meta')) {
-      row.push(esc(p.agent ?? ''), esc(p.timestamp ?? ''))
-    }
-    return row.join(',')
-  })
+  if (dnRows.length === 0) {
+    return new NextResponse('No data to export\n', {
+      status: 200, headers: { 'Content-Type': 'text/csv' },
+    })
+  }
 
-  return csvResponse(params.id, study?.name, [headers.join(','), ...csvRows].join('\n'))
+  return csvResponse(params.id, study?.name, format,
+    [dnHeaders.join(','), ...dnRows].join('\n'))
 }
 
-function csvResponse(studyId: string, studyName: string | undefined, csv: string) {
+function csvResponse(studyId: string, studyName: string | undefined, format: string, csv: string) {
   const safeName = (studyName || studyId).replace(/[^a-z0-9]/gi, '-').toLowerCase()
   const date     = new Date().toISOString().slice(0, 10)
+  const suffix   = format === 'datanautix' ? '-datanautix' : ''
   return new NextResponse(csv, {
     status: 200,
     headers: {
       'Content-Type':        'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${safeName}-${date}.csv"`,
+      'Content-Disposition': `attachment; filename="${safeName}${suffix}-${date}.csv"`,
     },
   })
 }
