@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
+import ExportModal from '@/components/nav/ExportModal'
 
 interface Props {
   studyId:     string
@@ -13,8 +15,8 @@ interface Props {
   onDateTo:    (v: string) => void
   onLast30:    () => void
   onAllTime:   () => void
-  onExportCSV: () => void
-  exporting?:  boolean
+  // export modal — we own the modal state here
+  sentiment?:  string
   total?:      number
 }
 
@@ -23,8 +25,9 @@ const HERMES = '#E8632A'
 export default function StudyPageHeader({
   studyId, studyName, botEmoji, activePage,
   dateFrom, dateTo, onDateFrom, onDateTo, onLast30, onAllTime,
-  onExportCSV, exporting = false, total = 0,
+  sentiment = '', total = 0,
 }: Props) {
+  const [exportOpen, setExportOpen] = useState(false)
   return (
     <div className="bg-white border-b border-gray-200 sticky top-14 z-40 shadow-sm">
       <div className="max-w-5xl mx-auto px-6">
@@ -83,15 +86,26 @@ export default function StudyPageHeader({
                 className="px-2.5 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
             </div>
 
-            {/* Export CSV — always visible, greyed when nothing to export */}
-            <button onClick={onExportCSV} disabled={exporting || total === 0}
+            {/* Export CSV */}
+            <button onClick={() => setExportOpen(true)} disabled={total === 0}
               className="px-3 py-1.5 rounded-xl text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 transition-all whitespace-nowrap"
               style={{ background: HERMES }}>
-              {exporting ? 'Exporting…' : '↓ Export CSV'}
+              ↓ Export CSV
             </button>
           </div>
         </div>
       </div>
+    </div>
+
+      {exportOpen && (
+        <ExportModal
+          studyId={studyId}
+          onClose={() => setExportOpen(false)}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          sentiment={sentiment}
+        />
+      )}
     </div>
   )
 }
