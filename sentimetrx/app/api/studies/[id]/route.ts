@@ -37,12 +37,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const body = await req.json()
 
-  // Only admin can set status to 'closed' or reopen a closed study
-  if (body.status === 'closed' && !isAdmin) {
-    return NextResponse.json({ error: 'Only admins can close a study' }, { status: 403 })
-  }
-
-  // Check if study is currently closed - only admin can update a closed study
+  // Check ownership — creator or admin can update (including close/reopen)
   const { data: existing } = await supabase
     .from('studies')
     .select('status, created_by')
@@ -51,11 +46,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  if (existing.status === 'closed' && !isAdmin) {
-    return NextResponse.json({ error: 'This study has been closed by an admin' }, { status: 403 })
-  }
-
-  // Non-admins can only update their own studies
   if (!isAdmin && existing.created_by !== user.id) {
     return NextResponse.json({ error: 'You can only edit your own studies' }, { status: 403 })
   }
