@@ -12,7 +12,7 @@ export default async function EditStudyPage({ params }: Props) {
 
   const [{ data: study }, { data: userData }] = await Promise.all([
     supabase.from('studies').select('*').eq('id', params.id).single(),
-    supabase.from('users').select('organizations(is_admin_org, logo_url)').eq('id', user.id).single(),
+    supabase.from('users').select('full_name, organizations(is_admin_org, logo_url, name)').eq('id', user.id).single(),
   ])
 
   if (!study) notFound()
@@ -24,8 +24,10 @@ export default async function EditStudyPage({ params }: Props) {
     <EditStudyClient
       study={study}
       logoUrl={orgData?.logo_url || ''}
+      orgName={orgData?.name || ''}
       isAdmin={!!orgData?.is_admin_org}
       userEmail={user.email || ''}
+      fullName={userData?.full_name || ''}
     />
   )
 }
