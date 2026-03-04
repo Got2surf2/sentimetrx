@@ -2,321 +2,249 @@
 
 import { useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
-import FilterBar from '@/components/nav/FilterBar'
+import SubHeader from '@/components/nav/SubHeader'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 interface Study {
-  id: string
-  guid: string
-  name: string
-  bot_name: string
-  bot_emoji: string
-  status: string
-  visibility: string
-  created_by: string
-  created_at: string
-  config: any
-  org_id?: string
-  orgName?: string
-  creatorName?: string
+  id: string; guid: string; name: string; bot_name: string; bot_emoji: string
+  status: string; visibility: string; created_by: string; created_at: string
+  config: any; org_id?: string; orgName?: string; creatorName?: string
 }
-
-interface StudyStats {
-  total: number
-  promoters: number
-  passives: number
-  detractors: number
-  avgNps: number
-}
-
+interface StudyStats { total: number; promoters: number; passives: number; detractors: number; avgNps: number }
 interface Props {
-  logoUrl?: string
-  orgId?: string
+  logoUrl?: string; orgId?: string
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
-  studies: Study[]
-  statsMap: Record<string, StudyStats>
+  studies: Study[]; statsMap: Record<string, StudyStats>
 }
-
 type Filter = 'all' | 'mine' | 'public'
 
 export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap }: Props) {
-  const [studies,       setStudies]       = useState(initialStudies)
-  const [deleting,      setDeleting]      = useState<string | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [duplicating,   setDuplicating]   = useState<string | null>(null)
+  const [studies,        setStudies]        = useState(initialStudies)
+  const [deleting,       setDeleting]       = useState<string | null>(null)
+  const [deleteConfirm,  setDeleteConfirm]  = useState<string | null>(null)
+  const [duplicating,    setDuplicating]    = useState<string | null>(null)
   const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
-  const [togglingVis,   setTogglingVis]   = useState<string | null>(null)
-  const [filter,        setFilter]        = useState<Filter>('all')
-  const [error,         setError]         = useState<string | null>(null)
+  const [togglingVis,    setTogglingVis]    = useState<string | null>(null)
+  const [filter,         setFilter]         = useState<Filter>('all')
+  const [error,          setError]          = useState<string | null>(null)
   const router = useRouter()
 
-  const getStatusClass = (s: string) => {
-    if (s === 'active')  return 'bg-green-500/15 text-green-400 border border-green-500/20'
-    if (s === 'draft')   return 'bg-slate-700/50 text-slate-400 border border-slate-600/20'
-    if (s === 'paused')  return 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/20'
-    if (s === 'closed')  return 'bg-red-500/15 text-red-400 border border-red-500/20'
-    return 'bg-slate-700 text-slate-400'
+  const statusBadge = (s: string) => {
+    if (s === 'active') return 'bg-green-100 text-green-700 border border-green-200'
+    if (s === 'draft')  return 'bg-gray-100 text-gray-500 border border-gray-200'
+    if (s === 'closed') return 'bg-red-100 text-red-600 border border-red-200'
+    return 'bg-gray-100 text-gray-500'
   }
-
-  const visClass = (v: string) =>
-    v === 'public'
-      ? 'bg-blue-500/15 text-blue-400'
-      : 'bg-slate-700/50 text-slate-400'
+  const visBadge = (v: string) => v === 'public'
+    ? 'bg-blue-100 text-blue-600 border border-blue-200'
+    : 'bg-gray-100 text-gray-400 border border-gray-200'
 
   const filtered = studies.filter(s => {
-    if (filter === 'mine')   { if (s.created_by !== user.userId) return false }
-    if (filter === 'public') { if (s.visibility !== 'public')    return false }
+    if (filter === 'mine')   return s.created_by === user.userId
+    if (filter === 'public') return s.visibility === 'public'
     return true
   })
 
-  const handleToggleVisibility = async (study: Study) => {
-    if (study.created_by !== user.userId && !user.isAdmin) return
-    const newVis = study.visibility === 'public' ? 'private' : 'public'
-    setTogglingVis(study.id)
-    setError(null)
-    try {
-      const res = await fetch('/api/studies/' + study.id, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visibility: newVis }),
-      })
-      if (!res.ok) throw new Error('Failed')
-      setStudies(prev => prev.map(s => s.id === study.id ? { ...s, visibility: newVis } : s))
-    } catch {
-      setError('Failed to update visibility.')
-    } finally {
-      setTogglingVis(null)
-    }
+  const patch = async (studyId: string, body: object) => {
+    const res = await fetch('/api/studies/' + studyId, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error('Failed')
   }
 
-
   const handleToggleStatus = async (study: Study) => {
-    const newStatus = study.status === 'draft' ? 'active' : study.status === 'active' ? 'draft' : null
-    if (!newStatus) return
+    const next = study.status === 'draft' ? 'active' : study.status === 'active' ? 'draft' : null
+    if (!next) return
     setTogglingStatus(study.id)
-    setError(null)
-    try {
-      const res = await fetch('/api/studies/' + study.id, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      if (!res.ok) throw new Error('Failed')
-      setStudies(prev => prev.map(s => s.id === study.id ? { ...s, status: newStatus } : s))
-    } catch {
-      setError('Failed to update status.')
-    } finally {
-      setTogglingStatus(null)
-    }
+    try { await patch(study.id, { status: next }); setStudies(p => p.map(s => s.id === study.id ? { ...s, status: next } : s)) }
+    catch { setError('Failed to update status.') }
+    finally { setTogglingStatus(null) }
+  }
+
+  const handleClose = async (study: Study) => {
+    setTogglingStatus(study.id)
+    try { await patch(study.id, { status: 'closed' }); setStudies(p => p.map(s => s.id === study.id ? { ...s, status: 'closed' } : s)) }
+    catch { setError('Failed to close study.') }
+    finally { setTogglingStatus(null) }
+  }
+
+  const handleToggleVis = async (study: Study) => {
+    const newVis = study.visibility === 'public' ? 'private' : 'public'
+    setTogglingVis(study.id)
+    try { await patch(study.id, { visibility: newVis }); setStudies(p => p.map(s => s.id === study.id ? { ...s, visibility: newVis } : s)) }
+    catch { setError('Failed to update visibility.') }
+    finally { setTogglingVis(null) }
   }
 
   const handleDuplicate = async (study: Study) => {
     setDuplicating(study.id)
-    setError(null)
     try {
-      const res = await fetch('/api/studies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: study.name + ' (copy)',
-          bot_name: study.bot_name,
-          bot_emoji: study.bot_emoji,
-          config: study.config,
-          visibility: 'private',
-        }),
-      })
+      const res = await fetch('/api/studies', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: study.name + ' (copy)', bot_name: study.bot_name, bot_emoji: study.bot_emoji, config: study.config, visibility: 'private' }) })
       if (!res.ok) throw new Error('Failed')
       const data = await res.json()
       router.push('/studies/' + data.id + '/edit')
-    } catch {
-      setError('Failed to duplicate study.')
-      setDuplicating(null)
-    }
+    } catch { setError('Failed to duplicate.'); setDuplicating(null) }
   }
 
   const handleDelete = async (study: Study) => {
     if (deleteConfirm !== study.id) { setDeleteConfirm(study.id); return }
-    setDeleting(study.id)
-    setDeleteConfirm(null)
-    setError(null)
-    try {
-      const res = await fetch('/api/studies/' + study.id, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed')
-      setStudies(prev => prev.filter(s => s.id !== study.id))
-    } catch {
-      setError('Failed to delete study.')
-    } finally {
-      setDeleting(null)
-    }
+    setDeleting(study.id); setDeleteConfirm(null)
+    try { const res = await fetch('/api/studies/' + study.id, { method: 'DELETE' }); if (!res.ok) throw new Error('Failed'); setStudies(p => p.filter(s => s.id !== study.id)) }
+    catch { setError('Failed to delete.') }
+    finally { setDeleting(null) }
   }
 
-  const isOwner = (study: Study) => study.created_by === user.userId
+  const isOwner = (s: Study) => s.created_by === user.userId
+  const canEdit = (s: Study) => isOwner(s) || !!user.isAdmin
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} currentPage='dashboard' />
-      <FilterBar isAdmin={user.isAdmin} orgId={orgId} />
+    <div className="min-h-screen bg-gray-50">
+      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} currentPage="dashboard" />
+      <SubHeader
+        crumbs={[{ label: 'Dashboard' }]}
+        isAdmin={user.isAdmin}
+        orgId={orgId}
+        showFilters
+      />
 
-      <main className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Studies</h1>
-            <p className="text-slate-400 text-sm mt-1">{filtered.length} of {studies.length} shown</p>
+      <main className="max-w-5xl mx-auto px-6 py-8">
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+            {(['all', 'mine', 'public'] as Filter[]).map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={'px-4 py-1.5 rounded-lg text-sm font-medium transition-all ' +
+                  (filter === f ? 'text-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}
+                style={filter === f ? { background: '#E8632A' } : {}}>
+                {f === 'all' ? 'All' : f === 'mine' ? 'Mine' : 'Public'}
+              </button>
+            ))}
           </div>
-          <Link href="/studies/new" className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold text-sm transition-all">
-            + New Study
-          </Link>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-400">{filtered.length} studies</span>
+            <Link href="/studies/new"
+              className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm transition-all hover:opacity-90"
+              style={{ background: '#E8632A' }}>
+              + New Study
+            </Link>
+          </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex gap-1 mb-6 bg-slate-900 border border-slate-800 rounded-xl p-1 w-fit">
-          {(['all', 'mine', 'public'] as Filter[]).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={'px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ' + (filter === f ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-white')}
-            >
-              {f === 'all' ? 'All studies' : f === 'mine' ? 'My studies' : 'Public studies'}
-            </button>
-          ))}
-        </div>
+        {error && <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">{error}</div>}
 
-        {error && (
-          <div className="mb-6 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
-        )}
-
-        {filtered.length === 0 && (
-          <div className="text-center py-20 border border-dashed border-slate-700 rounded-2xl">
-            <div className="text-4xl mb-4">📋</div>
-            <h2 className="text-white font-medium mb-2">No studies found</h2>
-            <p className="text-slate-500 text-sm mb-6">
-              {filter === 'mine' ? 'You have not created any studies yet.' : 'No studies match this filter.'}
-            </p>
-            {filter === 'mine' && (
-              <Link href="/studies/new" className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold text-sm transition-all inline-block">
-                Create First Study
-              </Link>
-            )}
+        {filtered.length === 0 ? (
+          <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-2xl bg-white">
+            <div className="text-4xl mb-3">📋</div>
+            <p className="text-gray-500 text-sm">No studies match this filter.</p>
           </div>
-        )}
-
-        {filtered.length > 0 && (
-          <div className="flex flex-col gap-3">
+        ) : (
+          <div className="flex flex-col gap-2">
             {filtered.map(study => {
-              const st           = statsMap[study.id] || { total: 0, promoters: 0, passives: 0, detractors: 0, avgNps: 0 }
-              const isDeleting   = deleting    === study.id
-              const isDuplicating = duplicating === study.id
-              const confirmDelete = deleteConfirm === study.id
-              const canEdit      = isOwner(study) || !!user.isAdmin
-              const theme        = study.config && study.config.theme ? study.config.theme : {}
-              const headerBg     = theme.headerGradient || 'linear-gradient(135deg,#1e3a5f,#0d1f3c)'
-              const promoterPct  = st.total > 0 ? Math.round(st.promoters  / st.total * 100) + '%' : '---'
-              const detractorPct = st.total > 0 ? Math.round(st.detractors / st.total * 100) + '%' : '---'
+              const st = statsMap[study.id] || { total: 0, promoters: 0, passives: 0, detractors: 0, avgNps: 0 }
+              const theme = study.config?.theme || {}
+              const headerBg = theme.headerGradient || 'linear-gradient(135deg,#E8632A,#c44d1a)'
+              const promoterPct  = st.total > 0 ? Math.round(st.promoters  / st.total * 100) + '%' : '—'
+              const detractorPct = st.total > 0 ? Math.round(st.detractors / st.total * 100) + '%' : '—'
 
               return (
-                <div key={study.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ background: headerBg }}>
+                <div key={study.id}
+                  className="group relative bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-orange-300 hover:shadow-md transition-all">
+                  <div className="flex items-center gap-3">
+
+                    {/* Emoji */}
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xl flex-shrink-0"
+                      style={{ background: headerBg }}>
                       {study.bot_emoji}
                     </div>
 
+                    {/* Main info */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <h2 className="font-semibold text-white text-base truncate">{study.name}</h2>
-                        <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + getStatusClass(study.status)}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-800 text-sm truncate">{study.name}</span>
+                        <span className={'text-xs px-1.5 py-0.5 rounded-full font-medium ' + statusBadge(study.status)}>
                           {study.status}
                         </span>
-                        <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + visClass(study.visibility)}>
+                        <span className={'text-xs px-1.5 py-0.5 rounded-full ' + visBadge(study.visibility)}>
                           {study.visibility}
                         </span>
-                        {!isOwner(study) && (
-                          <span className="text-xs text-slate-600">shared</span>
-                        )}
                       </div>
-                      <div className="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 mb-3">
-                          <span>{study.bot_name}</span>
-                          {user.isAdmin && study.orgName && (
-                            <><span className="text-slate-700">·</span>
-                            <button onClick={() => { const p = new URLSearchParams(window.location.search); p.set('org', study.org_id || ''); p.delete('user'); window.location.href = window.location.pathname + '?' + p.toString() }}
-                              className="hover:text-white transition-colors underline underline-offset-2">
-                              {study.orgName}
-                            </button></>
-                          )}
-                          {study.creatorName && (
-                            <><span className="text-slate-700">·</span>
-                            <button onClick={() => { const p = new URLSearchParams(window.location.search); p.set('user', study.created_by); window.location.href = window.location.pathname + '?' + p.toString() }}
-                              className="hover:text-white transition-colors underline underline-offset-2">
-                              {study.creatorName}
-                            </button></>
-                          )}
-                          <span className="text-slate-700">·</span>
-                          <span>Created {new Date(study.created_at).toLocaleDateString()}</span>
-                        </div>
-                      <div className="flex gap-5 flex-wrap">
-                        <div><div className="font-semibold text-sm text-white">{st.total}</div><div className="text-slate-500 text-xs">Responses</div></div>
-                        <div><div className="font-semibold text-sm text-white">{st.total > 0 ? st.avgNps : '---'}</div><div className="text-slate-500 text-xs">Avg NPS</div></div>
-                        <div><div className="font-semibold text-sm text-green-400">{promoterPct}</div><div className="text-slate-500 text-xs">Promoters</div></div>
-                        <div><div className="font-semibold text-sm text-red-400">{detractorPct}</div><div className="text-slate-500 text-xs">Detractors</div></div>
+                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5 text-xs text-gray-400">
+                        <span>{study.bot_name}</span>
+                        {user.isAdmin && study.orgName && (
+                          <><span>·</span>
+                          <button onClick={() => { const p = new URLSearchParams(window.location.search); p.set('org', study.org_id || ''); p.delete('user'); window.location.href = window.location.pathname + '?' + p.toString() }}
+                            className="text-orange-500 hover:text-orange-600 hover:underline">{study.orgName}</button></>
+                        )}
+                        {study.creatorName && (
+                          <><span>·</span>
+                          <button onClick={() => { const p = new URLSearchParams(window.location.search); p.set('user', study.created_by); window.location.href = window.location.pathname + '?' + p.toString() }}
+                            className="hover:text-gray-600 hover:underline">{study.creatorName}</button></>
+                        )}
+                        <span>· {new Date(study.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
-                      <Link href={'/studies/' + study.id + '/analytics'} className="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-400 transition-colors whitespace-nowrap">
-                        Analytics
-                      </Link>
-                      <Link href={'/studies/' + study.id + '/responses'} className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors whitespace-nowrap">
-                        Responses
-                      </Link>
-                      {canEdit && (
-                        <Link href={'/studies/' + study.id + '/edit'} className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
-                          Edit
-                        </Link>
+                    {/* Stats */}
+                    <div className="hidden sm:flex items-center gap-5 flex-shrink-0 text-center">
+                      <div><div className="text-sm font-bold text-gray-700">{st.total}</div><div className="text-xs text-gray-400">Responses</div></div>
+                      <div><div className="text-sm font-bold text-gray-700">{st.total > 0 ? st.avgNps : '—'}</div><div className="text-xs text-gray-400">Avg NPS</div></div>
+                      <div><div className="text-sm font-bold text-green-600">{promoterPct}</div><div className="text-xs text-gray-400">Promoters</div></div>
+                      <div><div className="text-sm font-bold text-red-500">{detractorPct}</div><div className="text-xs text-gray-400">Detractors</div></div>
+                    </div>
+
+                    {/* Hover actions */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <Link href={'/studies/' + study.id + '/analytics'}
+                        className="text-xs px-2.5 py-1.5 rounded-lg text-white font-medium transition-all hover:opacity-90"
+                        style={{ background: '#E8632A' }}>Analytics</Link>
+                      <Link href={'/studies/' + study.id + '/responses'}
+                        className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">Responses</Link>
+                      {canEdit(study) && (
+                        <Link href={'/studies/' + study.id + '/edit'}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">Edit</Link>
                       )}
                       {study.status === 'active' && (
-                        <Link href={'/studies/' + study.id + '/deploy'} className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
-                          Deploy
-                        </Link>
+                        <Link href={'/studies/' + study.id + '/deploy'}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">Deploy</Link>
                       )}
-                      {canEdit && study.status !== 'closed' && (
-                        <button
-                          onClick={() => handleToggleStatus(study)}
-                          disabled={togglingStatus === study.id}
-                          className={'text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 ' + (study.status === 'draft' ? 'bg-green-500/15 hover:bg-green-500/25 text-green-400' : 'bg-slate-800 hover:bg-slate-700 text-slate-300')}
-                        >
-                          {togglingStatus === study.id ? '...' : study.status === 'draft' ? 'Publish' : 'Unpublish'}
+                      {canEdit(study) && study.status !== 'closed' && (
+                        <button onClick={() => handleToggleStatus(study)} disabled={togglingStatus === study.id}
+                          className={'text-xs px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 ' +
+                            (study.status === 'draft' ? 'bg-green-100 hover:bg-green-200 text-green-700' : 'bg-gray-100 hover:bg-gray-200 text-gray-600')}>
+                          {study.status === 'draft' ? 'Publish' : 'Unpublish'}
                         </button>
                       )}
-                      {canEdit && (
-                        <button
-                          onClick={() => handleToggleVisibility(study)}
-                          disabled={togglingVis === study.id || study.status === 'closed'}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-40"
-                        >
-                          {togglingVis === study.id ? '...' : study.visibility === 'public' ? 'Make private' : 'Make public'}
+                      {canEdit(study) && study.status !== 'closed' && (
+                        <button onClick={() => handleClose(study)} disabled={togglingStatus === study.id}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 transition-colors disabled:opacity-40">
+                          Close
                         </button>
                       )}
-                      <button
-                        onClick={() => handleDuplicate(study)}
-                        disabled={isDuplicating}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50"
-                      >
-                        {isDuplicating ? 'Copying...' : 'Duplicate'}
+                      {canEdit(study) && (
+                        <button onClick={() => handleToggleVis(study)} disabled={togglingVis === study.id}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors disabled:opacity-40">
+                          {study.visibility === 'public' ? 'Make private' : 'Make public'}
+                        </button>
+                      )}
+                      <button onClick={() => handleDuplicate(study)} disabled={duplicating === study.id}
+                        className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors disabled:opacity-40">
+                        {duplicating === study.id ? '...' : 'Duplicate'}
                       </button>
-                      {canEdit && confirmDelete && (
-                        <div className="flex gap-1.5">
-                          <button onClick={() => handleDelete(study)} disabled={isDeleting} className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors font-medium">
-                            {isDeleting ? 'Deleting...' : 'Confirm'}
-                          </button>
-                          <button onClick={() => setDeleteConfirm(null)} className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 transition-colors">
-                            Cancel
-                          </button>
-                        </div>
-                      )}
-                      {canEdit && !confirmDelete && (
-                        <button onClick={() => handleDelete(study)} className="text-xs px-3 py-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors">
-                          Delete
-                        </button>
+                      {canEdit(study) && (
+                        deleteConfirm === study.id
+                          ? <div className="flex gap-1">
+                              <button onClick={() => handleDelete(study)} disabled={deleting === study.id}
+                                className="text-xs px-2.5 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors">
+                                {deleting === study.id ? '...' : 'Confirm'}
+                              </button>
+                              <button onClick={() => setDeleteConfirm(null)}
+                                className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">Cancel</button>
+                            </div>
+                          : <button onClick={() => handleDelete(study)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">Delete</button>
                       )}
                     </div>
                   </div>
