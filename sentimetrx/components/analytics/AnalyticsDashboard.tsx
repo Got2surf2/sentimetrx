@@ -72,6 +72,20 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  const handleExport = async () => {
+    setExporting(true)
+    const params = new URLSearchParams({ from, to, export: 'csv' })
+    const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `analytics-${studyId}-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    setExporting(false)
+  }
+
   const setLast30 = () => { setFrom(defaultFrom()); setTo(defaultTo()) }
   const setAllTime = () => { setFrom('2024-01-01'); setTo(defaultTo()) }
 
