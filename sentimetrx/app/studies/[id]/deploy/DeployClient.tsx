@@ -15,9 +15,9 @@ interface Study {
   config:    any
 }
 
-interface Props { study: Study; surveyUrl: string; logoUrl?: string; isAdmin?: boolean; userEmail?: string }
+interface Props { study: Study; surveyUrl: string; logoUrl?: string; orgName?: string; isAdmin?: boolean; userEmail?: string; fullName?: string }
 
-export default function DeployClient({ study: initial, surveyUrl, logoUrl='', isAdmin=false, userEmail='' }: Props) {
+export default function DeployClient({ study: initial, surveyUrl, logoUrl='', orgName='', isAdmin=false, userEmail='', fullName='' }: Props) {
   const [study,       setStudy]       = useState(initial)
   const [copied,      setCopied]      = useState(false)
   const [toggling,    setToggling]    = useState(false)
@@ -88,7 +88,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', is
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='deploy' />
+      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='deploy' />
       <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: study.name, href: '/studies/' + study.id + '/edit'}, {label: 'Deploy'}]} />
 
       <main className="max-w-2xl mx-auto px-6 py-10">
