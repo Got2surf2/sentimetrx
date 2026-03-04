@@ -133,12 +133,13 @@ export default function TeamClient({ org, members: initialMembers, invites: init
         logoUrl={logoUrl}
         orgName={org.name}
         isAdmin={isAdmin}
-        crumbs={[{ label: org.name, href: '/dashboard' }, { label: 'Team Settings' }]}
+        currentPage='team'
       />
+      <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Team Settings' }]} />
 
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-10">
         {msg && (
-          <div className="bg-slate-800 border border-gray-200 text-sm text-white px-4 py-3 rounded-lg">{msg}</div>
+          <div className="bg-gray-100 border border-gray-200 text-sm text-gray-700 px-4 py-3 rounded-lg">{msg}</div>
         )}
 
         {/* Org Logo */}
