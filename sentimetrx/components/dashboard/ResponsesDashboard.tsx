@@ -2,7 +2,6 @@
 
 import TopNav from '@/components/nav/TopNav'
 import StudyPageHeader from '@/components/nav/StudyPageHeader'
-import SubHeader from '@/components/nav/SubHeader'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
@@ -115,8 +114,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage="responses" />
-      <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: studyName }]} />
+      <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} />
 
       <StudyPageHeader
         studyId={studyId} studyName={studyName} botEmoji={botEmoji}
