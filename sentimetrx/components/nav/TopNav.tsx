@@ -7,6 +7,7 @@ interface Props {
   orgName?:     string
   isAdmin?:     boolean
   userEmail?:   string
+  crumbs?:      any
   currentPage?: 'dashboard' | 'team' | 'admin' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new'
 }
 
