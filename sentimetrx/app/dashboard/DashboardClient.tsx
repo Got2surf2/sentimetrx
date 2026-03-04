@@ -257,28 +257,29 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
         {/* Footer — row 1: Analytics, Responses, Export */}
         <div className="border-t border-gray-100 px-3 py-2 flex items-center gap-1 bg-gray-50/50">
           <Link href={'/studies/' + study.id + '/analytics'}
-            className="text-xs px-2.5 py-1.5 rounded-lg text-white font-medium hover:opacity-90"
-            style={{ background: HERMES }}>Analytics</Link>
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 font-medium hover:bg-orange-500 hover:text-white transition-all">Analytics</Link>
           <Link href={'/studies/' + study.id + '/responses'}
-            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">Responses</Link>
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Responses</Link>
           <button onClick={handleExport}
-            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">
             Export
-          </button>
-          <button onClick={() => status === 'active' ? setDeployOpen(true) : undefined}
-            className={'text-xs px-2.5 py-1.5 rounded-lg transition-colors ' +
-              (status === 'active' ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-50 text-gray-300 cursor-not-allowed')}>
-            Deploy
           </button>
         </div>
 
-        {/* Footer — row 2: Edit, Duplicate */}
+        {/* Footer — row 2: Edit, Deploy, Duplicate */}
         {canEdit && (
           <div className="px-3 py-2 flex items-center gap-1 bg-gray-50/30 rounded-b-2xl border-t border-gray-100">
             <Link href={'/studies/' + study.id + '/edit'}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">Edit</Link>
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Edit</Link>
+            <button onClick={() => status === 'active' ? setDeployOpen(true) : undefined}
+              className={'text-xs px-2.5 py-1.5 rounded-lg transition-all ' +
+                (status === 'active'
+                  ? 'bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white'
+                  : 'bg-gray-50 text-gray-300 cursor-not-allowed')}>
+              Deploy
+            </button>
             <button onClick={() => onDuplicate(study)}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">
               Duplicate
             </button>
           </div>
