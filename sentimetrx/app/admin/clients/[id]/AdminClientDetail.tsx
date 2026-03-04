@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
 
 interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string }
@@ -15,9 +16,10 @@ interface Props {
   invites:       Invite[]
   baseUrl:       string
   currentUserId: string
+  userEmail?:    string
 }
 
-export default function AdminClientDetail({ org, members, studies: initialStudies, invites: initialInvites, baseUrl, currentUserId }: Props) {
+export default function AdminClientDetail({ org, members, studies: initialStudies, invites: initialInvites, baseUrl, currentUserId, userEmail='' }: Props) {
   const [studies,       setStudies]       = useState(initialStudies)
   const [invites,       setInvites]       = useState(initialInvites)
   const [togglingStudy, setTogglingStudy] = useState<string | null>(null)
@@ -144,18 +146,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">&#128147;</span>
-          <div>
-            <div className="font-bold text-white leading-none">Sentimetrx</div>
-            <div className="text-xs text-slate-500 mt-0.5">Admin Panel</div>
-          </div>
-        </div>
-        <Link href="/admin" className="text-sm text-slate-500 hover:text-white transition-colors">
-          Back to Admin
-        </Link>
-      </nav>
+      <TopNav isAdmin={true} userEmail={userEmail} currentPage='admin' crumbs={[{label: 'Admin', href: '/admin'}, {label: org.name}]} />
 
       <main className="max-w-4xl mx-auto px-6 py-10 flex flex-col gap-8">
 
