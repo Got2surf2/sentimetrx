@@ -1,6 +1,7 @@
 'use client'
 
 import TopNav from '@/components/nav/TopNav'
+import StudyPageHeader from '@/components/nav/StudyPageHeader'
 import SubHeader from '@/components/nav/SubHeader'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
@@ -117,44 +118,23 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage="responses" />
       <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: studyName }]} />
 
+      <StudyPageHeader
+        studyId={studyId} studyName={studyName} botEmoji={botEmoji}
+        activePage="responses"
+        dateFrom={dateFrom} dateTo={dateTo}
+        onDateFrom={v => { setDateFrom(v); setOffset(0) }}
+        onDateTo={v => { setDateTo(v); setOffset(0) }}
+        onLast30={() => { setDateFrom(defaultFrom()); setDateTo(defaultTo()); setOffset(0) }}
+        onAllTime={() => { setDateFrom('2024-01-01'); setDateTo(defaultTo()); setOffset(0) }}
+        onExportCSV={handleExport}
+        exporting={exporting}
+        total={total}
+      />
+
       <main className="max-w-5xl mx-auto px-6 py-8">
 
-        {/* Page header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">{botEmoji} {studyName}</h1>
-            <p className="text-gray-500 text-sm mt-0.5">{total} total responses</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Responses / Analytics toggle */}
-            <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-              <span className="text-sm font-medium px-3 py-1.5 rounded-lg text-white" style={{ background: HERMES }}>
-                Responses
-              </span>
-              <Link href={`/studies/${studyId}/analytics`}
-                className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
-                Analytics
-              </Link>
-            </div>
-            {/* Date range — same as analytics */}
-            <button onClick={() => { setDateFrom(defaultFrom()); setDateTo(defaultTo()) }}
-              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">Last 30 days</button>
-            <button onClick={() => { setDateFrom('2024-01-01'); setDateTo(defaultTo()) }}
-              className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">All time</button>
-            <div className="flex items-center gap-2">
-              <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setOffset(0) }}
-                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
-              <span className="text-gray-400 text-xs">to</span>
-              <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setOffset(0) }}
-                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
-            </div>
-            {/* Export CSV */}
-            <button onClick={handleExport} disabled={exporting || total === 0}
-              className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm disabled:opacity-40 hover:opacity-90 transition-all"
-              style={{ background: HERMES }}>
-              {exporting ? 'Exporting…' : '↓ Export CSV'}
-            </button>
-          </div>
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm text-gray-400">{total} total responses</p>
         </div>
 
         {/* Filters — auto-apply, no button needed */}
