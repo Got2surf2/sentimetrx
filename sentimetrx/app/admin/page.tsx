@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 async function checkAdmin(supabase: any, userId: string) {
   const { data } = await supabase
     .from('users')
-    .select('org_id, organizations(is_admin_org)')
+    .select('org_id, organizations(is_admin_org, logo_url)')
     .eq('id', userId)
     .single()
   const orgData = data?.organizations
@@ -19,7 +19,7 @@ export default async function AdminPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const isAdmin = await checkAdmin(supabase, user.id)
+  const { isAdmin, logoUrl, data } = await checkAdmin(supabase, user.id)
   if (!isAdmin) redirect('/dashboard')
 
   const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/admin/clients`, {
@@ -47,5 +47,8 @@ export default async function AdminPage() {
     response_count: (responseCounts || []).filter(r => r.org_id === org.id).length,
   }))
 
-  return <AdminClient orgs={enriched} adminEmail={user.email!} />
+    const rawOrg = data?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+
+  return <AdminClient orgs={enriched} adminEmail={user.email!} logoUrl={orgData?.logo_url || ''} />
 }
