@@ -43,16 +43,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   // ── Build question label maps ─────────────────────────────────────────────
   // Open-ended: key → prompt text
   // q1 prompt depends on sentiment; use a generic label for mixed exports
+  // Use user-defined export labels if set, fall back to prompt text, then key
   const oeLabels: Record<string, string> = {
-    q1: cfg.promoterQ1 || cfg.passiveQ1 || cfg.detractorQ1 || 'Follow-up (Q1)',
-    q3: cfg.q3 || 'Q3',
-    q4: cfg.q4 || 'Q4',
+    q1: cfg.q1ExportLabel || cfg.promoterQ1 || cfg.passiveQ1 || cfg.detractorQ1 || 'q1',
+    q3: cfg.q3ExportLabel || cfg.q3 || 'q3',
+    q4: cfg.q4ExportLabel || cfg.q4 || 'q4',
   }
 
-  // Psychographic: key → question text
+  // Psychographic: key → export label (or question text, or key)
   const psychoPromptMap: Record<string, string> = {}
   for (const pq of cfg.psychographicBank || []) {
-    psychoPromptMap[pq.key] = pq.q || pq.key
+    psychoPromptMap[pq.key] = (pq as any).exportLabel || pq.q || pq.key
   }
 
   // Helpers: get header for a field key
