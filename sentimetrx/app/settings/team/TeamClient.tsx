@@ -38,12 +38,14 @@ interface Props {
   currentUserId: string
   isOwner: boolean
   isAdmin: boolean
+  userEmail?: string
+  fullName?:  string
 }
 
 const HERMES = '#E8632A'
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
 
-export default function TeamClient({ org, members: initialMembers, invites: initialInvites, currentUserId, isOwner, isAdmin }: Props) {
+export default function TeamClient({ org, members: initialMembers, invites: initialInvites, currentUserId, isOwner, isAdmin, userEmail='', fullName='' }: Props) {
   const [members, setMembers]   = useState(initialMembers)
   const [invites, setInvites]   = useState(initialInvites)
   const [logoUrl, setLogoUrl]   = useState(org.logo_url || '')
@@ -133,13 +135,15 @@ export default function TeamClient({ org, members: initialMembers, invites: init
         logoUrl={logoUrl}
         orgName={org.name}
         isAdmin={isAdmin}
+        userEmail={userEmail}
+        fullName={fullName}
         currentPage='team'
       />
       <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Team Settings' }]} />
 
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-10">
         {msg && (
-          <div className="bg-gray-100 border border-gray-200 text-sm text-gray-700 px-4 py-3 rounded-lg">{msg}</div>
+          <div className="bg-amber-50 border border-amber-200 text-sm text-amber-800 px-4 py-3 rounded-lg">{msg}</div>
         )}
 
         {/* Org Logo */}
