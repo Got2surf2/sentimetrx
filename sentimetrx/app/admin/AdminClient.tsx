@@ -101,7 +101,8 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='' }: P
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopNav logoUrl={logoUrl} isAdmin={true} userEmail={adminEmail} currentPage='admin']} />
+      <TopNav logoUrl={logoUrl} isAdmin={true} userEmail={adminEmail} currentPage='admin' />
+      <SubHeader crumbs={[{label: 'Admin'}]} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-8">
