@@ -45,6 +45,8 @@ export default async function TeamPage() {
       currentUserId={user.id}
       isOwner={isOwner}
       isAdmin={isAdmin}
+      userEmail={user.email || ""}
+      fullName={userData?.full_name || ""}
     />
   )
 }
