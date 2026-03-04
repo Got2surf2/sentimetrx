@@ -1,5 +1,6 @@
 'use client'
 import TopNav from '@/components/nav/TopNav'
+import StudyPageHeader from '@/components/nav/StudyPageHeader'
 import SubHeader from '@/components/nav/SubHeader'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -46,6 +47,7 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
   const [to,   setTo]   = useState(defaultTo())
 
   const [summary,    setSummary]    = useState<Summary | null>(null)
+  const [exporting,  setExporting]  = useState(false)
   const [npsTrend,   setNpsTrend]   = useState<TrendPoint[]>([])
   const [volumeByDay, setVolumeByDay] = useState<VolumePoint[]>([])
   const [loading,    setLoading]    = useState(true)
@@ -79,36 +81,18 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='analytics' />
       <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: studyName}]} />
 
-      <main className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">{botEmoji} {studyName}</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Analytics</p>
-          </div>
+      <StudyPageHeader
+        studyId={studyId} studyName={studyName} botEmoji={botEmoji}
+        activePage="analytics"
+        dateFrom={from} dateTo={to}
+        onDateFrom={setFrom} onDateTo={setTo}
+        onLast30={setLast30} onAllTime={setAllTime}
+        onExportCSV={handleExport}
+        exporting={exporting}
+        total={summary?.total ?? 0}
+      />
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Responses / Analytics toggle */}
-            <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-              <Link href={`/studies/${studyId}/responses`}
-                className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
-                Responses
-              </Link>
-              <span className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-800" style={{ background: '#E8632A' }}>
-                Analytics
-              </span>
-            </div>
-            {/* Date range */}
-            <button onClick={setLast30}  className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">Last 30 days</button>
-            <button onClick={setAllTime} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs transition-colors">All time</button>
-            <div className="flex items-center gap-2">
-              <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
-              <span className="text-gray-400 text-xs">to</span>
-              <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
-            </div>
-          </div>
-        </div>
+      <main className="max-w-5xl mx-auto px-6 py-8">
 
         {error && (
           <div className="mb-6 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
@@ -170,18 +154,10 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
               </div>
             )}
 
-            <div className="mt-6 flex gap-3">
-              <Link
-                href={'/studies/' + studyId + '/responses?from=' + from + '&to=' + to}
-                className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-slate-700 text-white text-sm font-medium transition-all"
-              >
-                View responses for this period
-              </Link>
-              <Link
-                href={'/studies/' + studyId + '/responses?from=' + from + '&to=' + to + '&export=csv'}
-                className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-slate-700 text-white text-sm font-medium transition-all"
-              >
-                Export CSV
+            <div className="mt-6">
+              <Link href={'/studies/' + studyId + '/responses?from=' + from + '&to=' + to}
+                className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium transition-all inline-block">
+                View responses for this period →
               </Link>
             </div>
           </>
