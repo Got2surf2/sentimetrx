@@ -73,20 +73,7 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💓</span>
-          <span className="font-bold text-white">Sentimetrx</span>
-        </div>
-        <div className="flex gap-3">
-          <Link href={'/studies/' + studyId + '/responses'} className="text-sm text-slate-500 hover:text-white transition-colors">
-            Responses
-          </Link>
-          <Link href="/dashboard" className="text-sm text-slate-500 hover:text-white transition-colors">
-            Dashboard
-          </Link>
-        </div>
-      </nav>
+      <TopNav logoUrl={logoUrl} isAdmin={isAdmin} userEmail={userEmail} currentPage='analytics' crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: studyName, href: '/studies/' + studyId + '/responses'}, {label: 'Analytics'}]} />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
