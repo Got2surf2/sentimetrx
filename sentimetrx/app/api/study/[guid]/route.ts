@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+export const revalidate = 0
 
-const noCache = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+const noCache = {
+  'Cache-Control':     'no-store, no-cache, must-revalidate, max-age=0',
+  'CDN-Cache-Control': 'no-store',
+  'Vercel-CDN-Cache-Control': 'no-store',
+  'Surrogate-Control': 'no-store',
+  'Pragma':            'no-cache',
+}
 
 export async function GET(
   _req: NextRequest,
@@ -17,7 +25,6 @@ export async function GET(
 
   const supabase = createServiceRoleClient()
 
-  // Use array query instead of .single() to avoid PGRST116 errors
   const { data, error } = await supabase
     .from('studies')
     .select('id, guid, bot_name, bot_emoji, status, config, name')
