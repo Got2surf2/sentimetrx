@@ -33,17 +33,20 @@ function DonutChart({ promoters, passives, detractors, total, avgNps }: {
   const circ = 2 * Math.PI * r
   const pct = (n: number) => total > 0 ? n / total : 0
   const pp = pct(promoters); const pa = pct(passives); const pd = pct(detractors)
-  const arc = (offset: number, p: number, color: string) => {
-    const dash = p * circ
-    return <circle key={color} cx={cx} cy={cy} r={r} fill="none" stroke={color}
-      strokeWidth="14" strokeDasharray={`${dash} ${circ - dash}`}
-      strokeDashoffset={-offset * circ} transform={`rotate(-90 ${cx} ${cy})`} />
-  }
+  const seg = (offset: number, p: number) => ({ dash: p * circ, offset: -offset * circ })
+  const s1 = seg(0,       pp)
+  const s2 = seg(pp,      pa)
+  const s3 = seg(pp + pa, pd)
+  const rot = `rotate(-90 ${cx} ${cy})`
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f3f4f6" strokeWidth="14" />
-        {total > 0 && <>{arc(0, pp, '#22c55e')}{arc(pp, pa, '#f59e0b')}{arc(pp + pa, pd, '#ef4444')}</>}
+        {total > 0 && <>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#22c55e" strokeWidth="14" strokeDasharray={s1.dash + ' ' + (circ - s1.dash)} strokeDashoffset={s1.offset} transform={rot} />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f59e0b" strokeWidth="14" strokeDasharray={s2.dash + ' ' + (circ - s2.dash)} strokeDashoffset={s2.offset} transform={rot} />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#ef4444" strokeWidth="14" strokeDasharray={s3.dash + ' ' + (circ - s3.dash)} strokeDashoffset={s3.offset} transform={rot} />
+        </>}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-lg font-black leading-none" style={{ color: HERMES }}>
