@@ -25,7 +25,7 @@ type StatusFilter = 'all' | 'active' | 'closed' | 'draft'
 
 const HERMES = '#E8632A'
 
-// ── Donut chart ────────────────────────────────────────────────────────────────
+// -- Donut chart ----------------------------------------------------------------
 function DonutChart({ promoters, passives, detractors, total, avgNps }: {
   promoters: number; passives: number; detractors: number; total: number; avgNps: number
 }) {
@@ -47,7 +47,7 @@ function DonutChart({ promoters, passives, detractors, total, avgNps }: {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-lg font-black leading-none" style={{ color: HERMES }}>
-          {total > 0 ? avgNps : '—'}
+          {total > 0 ? avgNps : '--'}
         </span>
         <span className="text-[9px] text-gray-400 font-medium">NPS</span>
       </div>
@@ -56,7 +56,7 @@ function DonutChart({ promoters, passives, detractors, total, avgNps }: {
   )
 }
 
-// ── QR / Deploy modal ──────────────────────────────────────────────────────────
+// -- QR / Deploy modal ----------------------------------------------------------
 function QRCode({ url }: { url: string }) {
   const src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}&margin=8`
   return <img src={src} alt="QR code" className="w-40 h-40 rounded-lg border border-gray-200" />
@@ -70,7 +70,7 @@ function DeployModal({ study, onClose }: { study: Study; onClose: () => void }) 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-gray-800 text-base">Deploy — {study.name}</h3>
+          <h3 className="font-bold text-gray-800 text-base">Deploy -- {study.name}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
         <div className="flex gap-5 items-start">
@@ -88,7 +88,7 @@ function DeployModal({ study, onClose }: { study: Study; onClose: () => void }) 
   )
 }
 
-// ── Confirm modal ──────────────────────────────────────────────────────────────
+// -- Confirm modal --------------------------------------------------------------
 function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -103,7 +103,7 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
   )
 }
 
-// ── Study card ─────────────────────────────────────────────────────────────────
+// -- Study card -----------------------------------------------------------------
 function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplicate }: {
   study: Study; stats: StudyStats; isAdmin: boolean; userId: string
   onPatch: (id: string, body: object) => Promise<void>
@@ -255,7 +255,7 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
           </div>
         </div>
 
-        {/* Footer — row 1: Analytics, Responses, Export */}
+        {/* Footer -- row 1: Analytics, Responses, Export */}
         <div className="border-t border-gray-100 px-3 py-2 flex items-center gap-1 bg-gray-50/50">
           <Link href={'/studies/' + study.id + '/analytics'}
             className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 font-medium hover:bg-orange-500 hover:text-white transition-all">Analytics</Link>
@@ -267,7 +267,7 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
           </button>
         </div>
 
-        {/* Footer — row 2: Edit, Deploy, Duplicate */}
+        {/* Footer -- row 2: Edit, Deploy, Duplicate */}
         {canEdit && (
           <div className="px-3 py-2 flex items-center gap-1 bg-gray-50/30 rounded-b-2xl border-t border-gray-100">
             <Link href={'/studies/' + study.id + '/edit'}
@@ -290,7 +290,7 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
   )
 }
 
-// ── Main dashboard ─────────────────────────────────────────────────────────────
+// -- Main dashboard -------------------------------------------------------------
 export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap }: Props) {
   const [studies,      setStudies]      = useState(initialStudies)
   const [ownerFilter,  setOwnerFilter]  = useState<OwnerFilter>('mine')

@@ -5,7 +5,7 @@ import type { Study, StudyConfig, Sentiment, SurveyPayload } from '@/lib/types'
 
 // ============================================================
 // useSurveyEngine
-// Contains ALL conversation logic — nothing in this hook ever
+// Contains ALL conversation logic -- nothing in this hook ever
 // appears in page source. It runs in the browser but the
 // config that drives it comes from the server-rendered page.
 // ============================================================
@@ -46,7 +46,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     startTime: Date.now(),
   })
 
-  // ── Helpers ───────────────────────────────────────────────
+  // -- Helpers -----------------------------------------------
 
   const clearInput = useCallback(() => {
     if (inputRef.current) inputRef.current.innerHTML = ''
@@ -105,7 +105,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     })
   }, [chatRef, config, study.bot_emoji, scrollBottom])
 
-  // ── Utility ───────────────────────────────────────────────
+  // -- Utility -----------------------------------------------
 
   const isDecline = (text: string) => {
     const t = text.toLowerCase().trim()
@@ -156,7 +156,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       const data = await res.json()
       if (data.question) return data.question
     } catch {
-      // AI failed — fall through to keyword matching
+      // AI failed -- fall through to keyword matching
     }
 
     return keywordFallback()
@@ -172,7 +172,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     state.current.psychoQuestions = picked
   }
 
-  // ── Submit ────────────────────────────────────────────────
+  // -- Submit ------------------------------------------------
 
   const submitResponse = async () => {
     const s = state.current
@@ -200,15 +200,15 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       })
     } catch (err) {
       console.error('Failed to submit response:', err)
-      // Fail silently — the user has already seen the thank-you screen
+      // Fail silently -- the user has already seen the thank-you screen
     }
   }
 
-  // ── Flow Steps ────────────────────────────────────────────
+  // -- Flow Steps --------------------------------------------
 
   const stepDone = useCallback(async () => {
     await showTyping(1000)
-    addMsg('bot', `Thank you so much — ${study.bot_name} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`)
+    addMsg('bot', `Thank you so much -- ${study.bot_name} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`)
     await showTyping(600)
 
     if (!chatRef.current) return
@@ -229,7 +229,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const stepDemographics = useCallback(async () => {
     clearInput()
     await showTyping(800)
-    addMsg('bot', 'Almost done — a couple of optional questions about you. Completely up to you.')
+    addMsg('bot', 'Almost done -- a couple of optional questions about you. Completely up to you.')
     await showTyping(350)
 
     if (!inputRef.current) return
@@ -258,8 +258,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     }
 
     const ageS = makeSelect('Age range...', [
-      ['18-24','18–24'],['25-34','25–34'],['35-44','35–44'],
-      ['45-54','45–54'],['55-64','55–64'],['65+','65 or over'],
+      ['18-24','18-24'],['25-34','25-34'],['35-44','35-44'],
+      ['45-54','45-54'],['55-64','55-64'],['65+','65 or over'],
     ])
     const genderS = makeSelect('Gender...', [
       ['male','Male'],['female','Female'],['nonbinary','Non-binary'],
@@ -324,14 +324,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     pickPsychoQuestions(3)
     state.current.psychoIdx = 0
     await showTyping(900)
-    addMsg('bot', 'Just a few quick questions to round things out — helps us understand the range of people sharing feedback.')
+    addMsg('bot', 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
     await stepPsychoQ()
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
   const progressFlow = useCallback(async (qKey: 'q1' | 'q3' | 'q4') => {
     if (qKey === 'q1') {
       await showTyping(700)
-      addMsg('bot', 'Thanks — really appreciate you sharing that.')
+      addMsg('bot', 'Thanks -- really appreciate you sharing that.')
       state.current.clarifyCount = 0
       await showTyping(800)
       addMsg('bot', config.q3)
@@ -344,7 +344,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       }
     } else if (qKey === 'q3') {
       await showTyping(700)
-      addMsg('bot', 'Got it — that\'s genuinely helpful.')
+      addMsg('bot', 'Got it -- that\'s genuinely helpful.')
       state.current.clarifyCount = 0
       await showTyping(800)
       addMsg('bot', config.q4)
@@ -358,7 +358,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     } else {
       if (!isDecline(state.current.answers.q4)) {
         await showTyping(700)
-        addMsg('bot', 'Thank you — we\'ll make sure that gets to the right people.')
+        addMsg('bot', 'Thank you -- we\'ll make sure that gets to the right people.')
       }
       await stepPsychoIntro()
     }
@@ -380,7 +380,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     await progressFlow(qKey)
   }, [addMsg, clearInput, config, progressFlow, showTyping, state])
 
-  // ── Input Renderers ───────────────────────────────────────
+  // -- Input Renderers ---------------------------------------
 
   const showTextInput = useCallback((qKey: 'q1' | 'q3' | 'q4') => {
     if (!inputRef.current) return
@@ -483,7 +483,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  // ── Optional text input (with Skip button) ──────────────────
+  }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, state])
+
+  // -- Optional text input (with Skip button) ------------------
   const showTextInputOptional = useCallback((qKey: 'q3' | 'q4') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
@@ -553,12 +555,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     scrollBottom()
   }, [addMsg, clearInput, config, handleOpenEnded, inputRef, progressFlow, scrollBottom, state])
 
-  // ── Main renderInput dispatcher ───────────────────────────
+  // -- Main renderInput dispatcher ---------------------------
 
   const renderInput = useCallback(async (phase: string) => {
     if (phase !== 'start') return
 
-    // Greeting — single message on mobile to keep buttons visible above fold
+    // Greeting -- single message on mobile to keep buttons visible above fold
     await showTyping(900)
     addMsg('bot', config.greeting)
 
@@ -579,7 +581,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         if (val === 'no') {
           clearInput()
           await showTyping(800)
-          addMsg('bot', 'No problem at all — thanks for your time! 😊')
+          addMsg('bot', 'No problem at all -- thanks for your time! 😊')
           return
         }
         // Rating
@@ -609,7 +611,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             rb.style.background  = `${config.theme.primaryColor}20`
             state.current.rating      = r.score
             state.current.ratingLabel = r.label
-            // sentiment is derived from NPS score — set after NPS selection below
+            // sentiment is derived from NPS score -- set after NPS selection below
             addMsg('user', `${r.emoji} ${r.label}`)
 
             // NPS
@@ -620,11 +622,11 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
             if (!inputRef.current) return
             const stars = [
-              { stars: '⭐',          label: '1 — No',         score: 1 },
-              { stars: '⭐⭐',        label: '2 — Unlikely',   score: 2 },
-              { stars: '⭐⭐⭐',      label: '3 — Maybe',      score: 3 },
-              { stars: '⭐⭐⭐⭐',    label: '4 — Likely',     score: 4 },
-              { stars: '⭐⭐⭐⭐⭐',  label: '5 — Definitely!',score: 5 },
+              { stars: '⭐',          label: '1 -- No',         score: 1 },
+              { stars: '⭐⭐',        label: '2 -- Unlikely',   score: 2 },
+              { stars: '⭐⭐⭐',      label: '3 -- Maybe',      score: 3 },
+              { stars: '⭐⭐⭐⭐',    label: '4 -- Likely',     score: 4 },
+              { stars: '⭐⭐⭐⭐⭐',  label: '5 -- Definitely!',score: 5 },
             ]
             const npsRow = document.createElement('div')
             npsRow.className = 'flex gap-1 mt-1.5'
