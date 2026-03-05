@@ -87,6 +87,18 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           onChange={v => updateConfig({ q3ExportLabel: v })}
           placeholder="Label for this column in exports — e.g. Improvement Suggestion"
         />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateConfig({ q3Required: c.q3Required === false ? undefined : false })}
+            className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${c.q3Required !== false ? 'bg-orange-500' : 'bg-gray-300'}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${c.q3Required !== false ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </button>
+          <span className="text-sm text-gray-600">
+            {c.q3Required !== false ? <><strong className="text-gray-800">Required</strong> — respondents must answer</> : <><strong className="text-gray-800">Optional</strong> — respondents can skip</>}
+          </span>
+        </div>
       </Section>
 
       <Section title="Third question (Q4)" description="The final open-ended question before psychographic questions.">
@@ -98,15 +110,47 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           onChange={v => updateConfig({ q4ExportLabel: v })}
           placeholder="Label for this column in exports — e.g. Additional Comments"
         />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateConfig({ q4Required: c.q4Required === true ? undefined : true })}
+            className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${c.q4Required === true ? 'bg-orange-500' : 'bg-gray-300'}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${c.q4Required === true ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </button>
+          <span className="text-sm text-gray-600">
+            {c.q4Required === true ? <><strong className="text-gray-800">Required</strong> — respondents must answer</> : <><strong className="text-gray-800">Optional</strong> — respondents can skip</>}
+          </span>
+        </div>
       </Section>
 
       <Divider />
 
       <Section
         title="Clarifying questions"
-        description="When a respondent gives a short answer, the bot asks a follow-up to get more detail. Add trigger keywords and the question to ask when that word appears."
+        description="When a respondent gives a short answer, the bot asks a follow-up to get more detail."
       >
-        <Field label="Default clarifier (used when no keyword matches)">
+        {/* AI clarify toggle */}
+        <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">AI-powered follow-ups</div>
+            <div className="text-xs text-gray-500 mt-0.5">Use Claude to generate intelligent, contextual clarifying questions instead of keyword matching</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => updateConfig({ useAIClarify: !c.useAIClarify })}
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 ${c.useAIClarify ? 'bg-orange-500' : 'bg-gray-300'}`}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${c.useAIClarify ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+        {!c.useAIClarify && (
+          <p className="text-xs text-gray-400 px-1">Keyword matching active — add triggers below or enable AI for smarter follow-ups.</p>
+        )}
+        {c.useAIClarify && (
+          <p className="text-xs text-orange-600 px-1">✦ AI will generate follow-ups using study context, sentiment, and prior answers. Keyword rules below are used as fallback.</p>
+        )}
+        <Field label="Default clarifier (used as fallback when no keyword matches)">
           <Input
             value={c.clarifiers.default}
             onChange={v => updateConfig({ clarifiers: { ...c.clarifiers, default: v } })}
