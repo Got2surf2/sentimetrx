@@ -609,7 +609,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             rb.style.background  = `${config.theme.primaryColor}20`
             state.current.rating      = r.score
             state.current.ratingLabel = r.label
-            state.current.sentiment   = r.score >= 5 ? 'promoter' : r.score >= 4 ? 'passive' : 'detractor'
+            // sentiment is derived from NPS score — set after NPS selection below
             addMsg('user', `${r.emoji} ${r.label}`)
 
             // NPS
@@ -646,6 +646,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
                 sb.style.background  = `${config.theme.primaryColor}20`
                 state.current.npsScore = s.score
                 state.current.npsLabel = s.label
+                // NPS 5 = promoter, 4 = passive, 1-3 = detractor
+                state.current.sentiment = s.score >= 5 ? 'promoter' : s.score >= 4 ? 'passive' : 'detractor'
                 addMsg('user', `${s.stars} ${s.label}`)
 
                 // Q1 (sentiment-adapted)

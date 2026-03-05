@@ -59,7 +59,7 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters }: Props
   const selCls = 'text-xs bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 focus:outline-none focus:border-orange-400 cursor-pointer shadow-sm'
 
   return (
-    <div className="bg-white border-b border-gray-200 px-5 py-2.5 flex items-center justify-between gap-4 shadow-sm">
+    <div className="bg-white border-b border-gray-200 px-5 py-2.5 flex items-center justify-between gap-4 shadow-sm fixed top-14 left-0 right-0 z-40">
 
       {/* Left: breadcrumbs */}
       <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
@@ -80,7 +80,7 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters }: Props
           {isAdmin && (
             <select value={ready ? selectedOrg : ''} onChange={e => { setSelectedOrg(e.target.value); setSelectedUser(''); nav(e.target.value, '') }}
               className={selCls} disabled={!ready}>
-              <option value="">All organizations</option>
+              <option value="">All organisations</option>
               {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           )}

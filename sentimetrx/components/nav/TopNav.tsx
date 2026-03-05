@@ -32,7 +32,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     : userEmail || ''
 
   return (
-    <nav className="px-5 flex items-center justify-between h-14 sticky top-0 z-50 shadow-md"
+    <nav className="px-5 flex items-center justify-between h-14 fixed top-0 left-0 right-0 z-50 shadow-md"
       style={{ background: HERMES }}>
 
       {/* Left: logo + org name + user */}

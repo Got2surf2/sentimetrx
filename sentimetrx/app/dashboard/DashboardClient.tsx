@@ -51,6 +51,7 @@ function DonutChart({ promoters, passives, detractors, total, avgNps }: {
         </span>
         <span className="text-[9px] text-gray-400 font-medium">NPS</span>
       </div>
+      </div>
     </div>
   )
 }
@@ -338,11 +339,11 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
   const statusTabs: { key: StatusFilter; label: string }[] = [{ key: 'all', label: 'All' }, { key: 'active', label: 'Active' }, { key: 'draft', label: 'Draft' }, { key: 'closed', label: 'Closed' }]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} fullName={user.fullName} currentPage="dashboard" />
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="fixed top-0 left-0 right-0 z-50"><TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} fullName={user.fullName} currentPage="dashboard" /></div>
       <SubHeader crumbs={[{ label: 'Dashboard' }]} isAdmin={user.isAdmin} orgId={orgId} showFilters />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-8 pt-28">
 
         {/* Toolbar */}
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
