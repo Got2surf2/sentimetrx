@@ -114,8 +114,8 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
             </div>
             <p className="text-xs text-gray-400 mt-1.5">
               {labelMode === 'key'
-                ? 'Uses field keys as headers — e.g. q1, q3, nps_score, personality_type'
-                : 'Uses the actual question text as headers — e.g. "What prompted that rating?"'}
+                ? 'Uses your defined export name for each field — falls back to field key only if no name is set'
+                : 'Uses the full question text as headers — e.g. "What stood out most about your experience?"'}
             </p>
           </div>
 
