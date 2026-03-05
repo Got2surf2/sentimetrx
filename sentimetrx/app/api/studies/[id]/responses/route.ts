@@ -82,8 +82,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     const s = v == null ? '' : String(v).trim()
     return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
-  const fmtDate = (d: string) =>
-    new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York' })
+  const fmtDate = (d: string) => {
+    const s = new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York' })
+    return `"${s}"`  // always quote — locale date strings contain commas
+  }
 
   // ── Label helpers ─────────────────────────────────────────────────────────
   // For open-ended columns: user label > prompt text > key
