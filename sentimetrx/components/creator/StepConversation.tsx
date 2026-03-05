@@ -2,9 +2,19 @@
 
 import { useState } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
-import { Field, Input, Section, NavButtons, Divider, ExportLabelField } from './CreatorUI'
+import { Field, Input, Section, NavButtons, Divider } from './CreatorUI'
 
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
+
+function ExportLabelField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Field label="CSV export column name (optional)">
+      <Input value={value} onChange={onChange}
+        placeholder="Short label for this column in exports — e.g. Follow-up Answer" />
+    </Field>
+  )
+}
+
 
 export default function StepConversation({ draft, updateConfig, onNext, onBack }: Props) {
   const c = draft.config
