@@ -34,7 +34,7 @@ export default async function SurveyPage({ params }: Props) {
   if (study.status !== 'active') {
     const isClosed = study.status === 'closed'
     return (
-      <main className="min-h-screen flex items-center justify-center p-4" style={{ background: bg }}>
+      <main className="min-h-screen sm:flex sm:items-center sm:justify-center sm:p-4" style={{ background: bg }}>
         <div className="max-w-md w-full text-center">
           <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-lg"
             style={{ background: gradient }}>
@@ -63,7 +63,7 @@ export default async function SurveyPage({ params }: Props) {
 
   // Active — render the widget
   return (
-    <main className="min-h-screen flex items-center justify-center p-4" style={{ background: bg }}>
+    <main className="min-h-screen sm:flex sm:items-center sm:justify-center sm:p-4" style={{ background: bg }}>
       <SurveyWidget study={study as Study} />
     </main>
   )
