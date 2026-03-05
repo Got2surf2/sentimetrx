@@ -14,10 +14,9 @@ export default async function SurveyPage({ params }: Props) {
     .limit(1)
     .single()
 
-  // Unknown GUID
   if (!study) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4 bg-[#0a1628]">
+      <main className="min-h-[100dvh] flex items-center justify-center p-6 bg-[#0a1628]">
         <div className="text-center text-white">
           <div className="text-5xl mb-4">🔍</div>
           <h1 className="text-xl font-bold mb-2">Survey not found</h1>
@@ -30,12 +29,11 @@ export default async function SurveyPage({ params }: Props) {
   const bg = study.config?.theme?.backgroundColor || '#0a1628'
   const gradient = study.config?.theme?.headerGradient || 'linear-gradient(135deg,#1a7a4a,#0d4a2a)'
 
-  // Closed or draft — render locked UI server-side, no widget
   if (study.status !== 'active') {
     const isClosed = study.status === 'closed'
     return (
-      <main className="min-h-screen sm:flex sm:items-center sm:justify-center sm:p-4" style={{ background: bg }}>
-        <div className="max-w-md w-full text-center">
+      <main className="min-h-[100dvh] flex items-center justify-center p-6" style={{ background: bg }}>
+        <div className="w-full max-w-sm text-center">
           <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-lg"
             style={{ background: gradient }}>
             {study.bot_emoji}
@@ -61,9 +59,11 @@ export default async function SurveyPage({ params }: Props) {
     )
   }
 
-  // Active — render the widget
   return (
-    <main className="min-h-screen sm:flex sm:items-center sm:justify-center sm:p-4" style={{ background: bg }}>
+    <main
+      className="w-full overflow-hidden"
+      style={{ background: bg, height: '100dvh' }}
+    >
       <SurveyWidget study={study as Study} />
     </main>
   )

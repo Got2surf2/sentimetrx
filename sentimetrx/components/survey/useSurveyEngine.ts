@@ -53,7 +53,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const addMsg = useCallback((who: 'bot' | 'user', text: string) => {
     if (!chatRef.current) return
     const wrap = document.createElement('div')
-    wrap.className = `msg-animate flex items-end gap-2 ${who === 'user' ? 'flex-row-reverse self-end max-w-[85%]' : 'self-start max-w-[85%]'}`
+    wrap.className = `msg-animate flex items-end gap-2 ${who === 'user' ? 'flex-row-reverse self-end max-w-[80%]' : 'self-start max-w-[80%]'}`
 
     if (who === 'bot') {
       const av = document.createElement('div')
