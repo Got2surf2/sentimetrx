@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-export const dynamic = 'force-dynamic'  // never cache — status can change at any time
+export const dynamic = 'force-dynamic'
 
 export async function GET(
   _req: NextRequest,
@@ -21,12 +21,19 @@ export async function GET(
     .eq('guid', guid)
     .single()
 
+  // TEMP DEBUG — remove after diagnosis
   if (error || !study) {
-    return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    return NextResponse.json({ debug: 'not found', error: error?.message }, { status: 404 })
   }
 
+  // TEMP DEBUG — return status so we can see what Supabase is actually sending
   if (study.status !== 'active') {
-    return NextResponse.json({ error: 'Study is not active' }, { status: 403 })
+    return NextResponse.json({ 
+      debug: 'not active', 
+      status: study.status,
+      id: study.id,
+      guid: study.guid,
+    }, { status: 403 })
   }
 
   return NextResponse.json({
