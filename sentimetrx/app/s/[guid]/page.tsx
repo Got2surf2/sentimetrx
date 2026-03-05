@@ -11,6 +11,7 @@ export default async function SurveyPage({ params }: Props) {
     .from('studies')
     .select('*')
     .eq('guid', params.guid)
+    .limit(1)
     .single()
 
   // Unknown GUID
@@ -26,26 +27,12 @@ export default async function SurveyPage({ params }: Props) {
     )
   }
 
-  // Closed or draft — show inline closed page, no extra component needed
+  const bg = study.config?.theme?.backgroundColor || '#0a1628'
+  const gradient = study.config?.theme?.headerGradient || 'linear-gradient(135deg,#1a7a4a,#0d4a2a)'
+
+  // Closed or draft — render locked UI server-side, no widget
   if (study.status !== 'active') {
-    const bg = study.config?.theme?.backgroundColor || '#0a1628'
-    const gradient = study.config?.theme?.headerGradient || 'linear-gradient(135deg,#E8632A,#c44d1a)'
     const isClosed = study.status === 'closed'
-
-    // Fire-and-forget email notification for closed studies
-    if (isClosed && study.created_by) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
-      fetch(`${baseUrl}/api/notify/closed-study`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studyName: study.name,
-          studyId:   study.id,
-          accessedAt: new Date().toISOString(),
-        }),
-      }).catch(() => {})
-    }
-
     return (
       <main className="min-h-screen flex items-center justify-center p-4" style={{ background: bg }}>
         <div className="max-w-md w-full text-center">
@@ -53,8 +40,8 @@ export default async function SurveyPage({ params }: Props) {
             style={{ background: gradient }}>
             {study.bot_emoji}
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">{study.bot_name}</h1>
-          <p className="text-white/60 text-sm mb-8">{study.name}</p>
+          <h1 className="text-2xl font-bold text-white mb-1">{study.bot_name}</h1>
+          <p className="text-white/50 text-sm mb-8">{study.name}</p>
           <div className="bg-white/10 border border-white/20 rounded-2xl p-8">
             <div className="text-4xl mb-4">{isClosed ? '🔒' : '🚧'}</div>
             <h2 className="text-white font-bold text-lg mb-2">
@@ -66,17 +53,17 @@ export default async function SurveyPage({ params }: Props) {
                 : "This survey isn't published yet. Check back soon."}
             </p>
           </div>
-          <p className="text-white/30 text-xs mt-8">Powered by <span className="text-white/50 font-medium">sentimetrx.ai</span></p>
+          <p className="text-white/20 text-xs mt-8">
+            Powered by <span className="text-white/40 font-medium">sentimetrx.ai</span>
+          </p>
         </div>
       </main>
     )
   }
 
+  // Active — render the widget
   return (
-    <main
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ background: study.config?.theme?.backgroundColor || '#0a1628' }}
-    >
+    <main className="min-h-screen flex items-center justify-center p-4" style={{ background: bg }}>
       <SurveyWidget study={study as Study} />
     </main>
   )
@@ -89,10 +76,9 @@ export async function generateMetadata({ params }: Props) {
     .select('name, bot_name, bot_emoji')
     .eq('guid', params.guid)
     .single()
-
   if (!data) return { title: 'Survey' }
   return {
-    title:       `${data.bot_emoji} ${data.bot_name} — ${data.name}`,
+    title: `${data.bot_emoji} ${data.bot_name} — ${data.name}`,
     description: `Share your feedback with ${data.bot_name}`,
   }
 }
