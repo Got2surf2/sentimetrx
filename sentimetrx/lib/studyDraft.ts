@@ -1,12 +1,13 @@
 import type { StudyConfig } from './types'
+import type { Industry } from './industryDefaults'
 
-// The shape of a study being created or edited in the UI
-// before it is saved to the database
 export interface StudyDraft {
-  name:      string
-  bot_name:  string
-  bot_emoji: string
-  config:    StudyConfig
+  name:           string
+  bot_name:       string
+  bot_emoji:      string
+  config:         StudyConfig
+  industry?:      Industry
+  otherIndustry?: string
 }
 
 export interface StepProps {
