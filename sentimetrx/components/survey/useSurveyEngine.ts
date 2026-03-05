@@ -25,6 +25,7 @@ interface State {
   npsLabel:        string | null
   answers:         { q1: string; q3: string; q4: string }
   clarifyCount:    number
+  currentQuestion: string   // the exact question text currently being answered
   psychoQuestions: Array<{ key: string; q: string; opts: string[] }>
   psychoIdx:       number
   psychoAnswers:   Record<string, string>
@@ -39,6 +40,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     npsScore: null, npsLabel: null,
     answers: { q1: '', q3: '', q4: '' },
     clarifyCount: 0,
+    currentQuestion: '',
     psychoQuestions: [], psychoIdx: 0, psychoAnswers: {},
     demographics: { age: '', gender: '', zip: '' },
     startTime: Date.now(),
@@ -111,16 +113,53 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   }
 
   const shouldClarify = (text: string) =>
-    !isDecline(text) && text.trim().split(/\s+/).length < 10
+    !isDecline(text) && text.trim().split(/\s+/).length < 12
 
-  const buildClarify = (text: string): string | null => {
-    const t = text.toLowerCase()
-    const pool = config.clarifiers
-    for (const [kw, q] of Object.entries(pool)) {
-      if (kw === 'default') continue
-      if (t.includes(kw)) return q as string
+  const buildClarify = async (text: string, qKey: 'q1' | 'q3' | 'q4'): Promise<string | null> => {
+    const s = state.current
+
+    // Keyword fallback (always available, used if AI disabled or fails)
+    const keywordFallback = (): string | null => {
+      const t = text.toLowerCase()
+      const pool = config.clarifiers
+      for (const [kw, q] of Object.entries(pool)) {
+        if (kw === 'default') continue
+        if (t.includes(kw)) return q as string
+      }
+      return pool.default || null
     }
-    return pool.default || null
+
+    // Only use AI if enabled in study config
+    if (!config.useAIClarify) return keywordFallback()
+
+    try {
+      const priorAnswers: Record<string, string> = {}
+      if (qKey === 'q3' || qKey === 'q4') priorAnswers.q1 = s.answers.q1
+      if (qKey === 'q4') priorAnswers.q3 = s.answers.q3
+
+      const res = await fetch('/api/clarify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studyName:       study.bot_name,
+          studyPurpose:    config.greeting,
+          questionAsked:   s.currentQuestion,
+          questionKey:     qKey,
+          answer:          text,
+          sentiment:       s.sentiment || 'passive',
+          experienceScore: s.rating || 3,
+          npsScore:        s.npsScore || 3,
+          priorAnswers,
+        }),
+      })
+      if (!res.ok) throw new Error('API error')
+      const data = await res.json()
+      if (data.question) return data.question
+    } catch {
+      // AI failed — fall through to keyword matching
+    }
+
+    return keywordFallback()
   }
 
   const pickPsychoQuestions = (n = 3) => {
@@ -296,14 +335,26 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       state.current.clarifyCount = 0
       await showTyping(800)
       addMsg('bot', config.q3)
-      showTextInput('q3')
+      state.current.currentQuestion = config.q3
+      // q3: required by default, optional if q3Required === false
+      if (config.q3Required === false) {
+        showTextInputOptional('q3')
+      } else {
+        showTextInput('q3')
+      }
     } else if (qKey === 'q3') {
       await showTyping(700)
       addMsg('bot', 'Got it — that\'s genuinely helpful.')
       state.current.clarifyCount = 0
       await showTyping(800)
       addMsg('bot', config.q4)
-      showTextInput('q4')
+      state.current.currentQuestion = config.q4
+      // q4: optional by default, required if q4Required === true
+      if (config.q4Required === true) {
+        showTextInput('q4')
+      } else {
+        showTextInputOptional('q4')
+      }
     } else {
       if (!isDecline(state.current.answers.q4)) {
         await showTyping(700)
@@ -317,7 +368,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     state.current.answers[qKey] = val
     clearInput()
     if (state.current.clarifyCount < 1 && shouldClarify(val)) {
-      const cq = buildClarify(val)
+      const cq = await buildClarify(val, qKey)
       if (cq) {
         state.current.clarifyCount++
         await showTyping(1100)
@@ -432,7 +483,75 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, state])
+  // ── Optional text input (with Skip button) ──────────────────
+  const showTextInputOptional = useCallback((qKey: 'q3' | 'q4') => {
+    if (!inputRef.current) return
+    const wrap = document.createElement('div')
+    wrap.className = 'flex flex-col gap-2 mt-1.5'
+
+    const row = document.createElement('div')
+    row.className = 'flex gap-2 items-end'
+
+    const ta = document.createElement('textarea')
+    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.rows = 1
+    ta.placeholder = 'Share your thoughts, or skip...'
+    ta.style.cssText = `
+      background:rgba(255,255,255,0.06);
+      border:1.5px solid ${config.theme.primaryColor}28;
+      color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
+      max-height:110px;transition:border-color 0.2s;
+    `
+    ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
+    ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
+    ta.oninput  = () => {
+      ta.style.height = 'auto'
+      ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
+      sendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+      sendBtn.style.color      = ta.value.trim() ? '#fff' : 'rgba(255,255,255,0.4)'
+    }
+    ta.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() }
+    }
+
+    const sendBtn = document.createElement('button')
+    sendBtn.textContent = '→'
+    sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+    sendBtn.style.cssText = `background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;`
+    sendBtn.onclick = () => {
+      const val = ta.value.trim()
+      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      if (val) {
+        addMsg('user', val)
+        handleOpenEnded(qKey, val)
+      } else {
+        addMsg('user', 'Skip')
+        state.current.answers[qKey] = ''
+        clearInput()
+        progressFlow(qKey)
+      }
+    }
+
+    const skipBtn = document.createElement('button')
+    skipBtn.textContent = 'Skip this question'
+    skipBtn.className = 'text-xs self-start transition-all px-2 py-1'
+    skipBtn.style.cssText = `color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-family:inherit;`
+    skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
+    skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
+    skipBtn.onclick = () => {
+      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      addMsg('user', 'Skip')
+      state.current.answers[qKey] = ''
+      clearInput()
+      progressFlow(qKey)
+    }
+
+    row.append(ta, sendBtn)
+    wrap.append(row, skipBtn)
+    inputRef.current.appendChild(wrap)
+    setTimeout(() => ta.focus(), 100)
+    scrollBottom()
+  }, [addMsg, clearInput, config, handleOpenEnded, inputRef, progressFlow, scrollBottom, state])
 
   // ── Main renderInput dispatcher ───────────────────────────
 
@@ -536,6 +655,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
                          : state.current.sentiment === 'passive'   ? config.passiveQ1
                          : config.detractorQ1
                 addMsg('bot', q1)
+                state.current.currentQuestion = q1
                 showTextInput('q1')
               }
               npsRow.appendChild(sb)
