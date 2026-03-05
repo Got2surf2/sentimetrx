@@ -20,24 +20,13 @@ export default function SurveyWidget({ study }: Props) {
 
   const { renderInput } = useSurveyEngine({ study, chatRef, inputRef, scrollBottom })
 
-  // ── Heartbeat: verify study is still active before starting ──
+  // ── Heartbeat ─────────────────────────────────────────────────
   useEffect(() => {
-    console.log('study object:', study.id, study.guid, study.name)
     fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
-      .then(res => {
-        if (res.ok) {
-          setStatus('active')
-        } else if (res.status === 403) {
-          // Study exists but not active — check what status it is
-          setStatus('closed')
-        } else {
-          setStatus('closed')
-        }
-      })
+      .then(res => setStatus(res.ok ? 'active' : 'closed'))
       .catch(() => setStatus('closed'))
   }, [study.guid])
 
-  // ── Start survey only once status confirmed active ────────────
   useEffect(() => {
     if (status === 'active' && !startedRef.current) {
       startedRef.current = true
@@ -47,17 +36,56 @@ export default function SurveyWidget({ study }: Props) {
 
   const theme = study.config.theme
 
-  // ── Closed / draft state ──────────────────────────────────────
+  // ── Shared widget shell ───────────────────────────────────────
+  // On mobile: full-screen, no rounding, no padding
+  // On desktop: centered card with rounded corners and max-width
+  const shellCls = [
+    'flex flex-col overflow-hidden',
+    // Mobile: fill entire viewport
+    'w-screen h-[100dvh]',
+    // Desktop: card style
+    'sm:w-full sm:max-w-sm sm:rounded-2xl sm:shadow-2xl',
+    'sm:h-auto',
+  ].join(' ')
+
+  const shellStyle: React.CSSProperties = {
+    background: theme.backgroundColor,
+    // Desktop only: fixed height and border
+    ...(typeof window !== 'undefined' && window.innerWidth >= 640 ? {
+      height: 'min(700px, calc(100vh - 32px))',
+      border: `1px solid ${theme.primaryColor}28`,
+      boxShadow: `0 50px 100px rgba(0,0,0,0.7), 0 0 0 1px ${theme.primaryColor}20`,
+    } : {}),
+  }
+
+  const Header = ({ showDot = false }: { showDot?: boolean }) => (
+    <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 sm:px-5 sm:py-4"
+      style={{ background: theme.headerGradient }}>
+      <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-xl flex-shrink-0"
+        style={{ background: 'rgba(255,255,255,0.15)' }}>
+        {study.bot_emoji}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-white text-base sm:text-lg leading-tight truncate">
+          {study.bot_name}
+        </div>
+        <div className="text-white/60 text-xs mt-0.5 uppercase tracking-wide truncate">
+          {study.name}
+        </div>
+        {showDot && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="live-dot" />
+            <span className="text-white/50 text-xs">Ready for your feedback</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // ── Checking ──────────────────────────────────────────────────
   if (status === 'checking') {
     return (
-      <div
-        className="w-full max-w-sm rounded-2xl overflow-hidden flex flex-col items-center justify-center shadow-2xl"
-        style={{
-          height: 'min(700px, calc(100vh - 32px))',
-          background: theme.backgroundColor,
-          border: `1px solid ${theme.primaryColor}28`,
-        }}
-      >
+      <div className={shellCls} style={{ ...shellStyle, alignItems: 'center', justifyContent: 'center' }}>
         <div className="flex gap-1.5">
           {[0, 150, 300].map(d => (
             <span key={d} className="typing-dot" style={{ animationDelay: `${d}ms` }} />
@@ -67,30 +95,11 @@ export default function SurveyWidget({ study }: Props) {
     )
   }
 
+  // ── Closed / draft ────────────────────────────────────────────
   if (status === 'closed' || status === 'draft') {
     return (
-      <div
-        className="w-full max-w-sm rounded-2xl overflow-hidden flex flex-col shadow-2xl"
-        style={{
-          height: 'min(700px, calc(100vh - 32px))',
-          background: theme.backgroundColor,
-          border: `1px solid ${theme.primaryColor}28`,
-          boxShadow: `0 50px 100px rgba(0,0,0,0.7), 0 0 0 1px ${theme.primaryColor}20`,
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 flex-shrink-0" style={{ background: theme.headerGradient }}>
-          <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl flex-shrink-0"
-            style={{ background: 'rgba(255,255,255,0.15)' }}>
-            {study.bot_emoji}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-white text-lg leading-tight">{study.bot_name}</div>
-            <div className="text-white/60 text-xs mt-0.5 uppercase tracking-wide">{study.name}</div>
-          </div>
-        </div>
-
-        {/* Closed message */}
+      <div className={shellCls} style={shellStyle}>
+        <Header />
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-4">
           <div className="text-5xl">{status === 'closed' ? '🔒' : '🚧'}</div>
           <div>
@@ -104,8 +113,7 @@ export default function SurveyWidget({ study }: Props) {
             </p>
           </div>
         </div>
-
-        <div className="pb-4 text-center">
+        <div className="pb-6 text-center" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
           <p className="text-white/20 text-xs">Powered by <span className="text-white/40 font-medium">sentimetrx.ai</span></p>
         </div>
       </div>
@@ -114,37 +122,23 @@ export default function SurveyWidget({ study }: Props) {
 
   // ── Active survey ─────────────────────────────────────────────
   return (
-    <div
-      className="w-full max-w-sm rounded-2xl overflow-hidden flex flex-col shadow-2xl"
-      style={{
-        height: 'min(700px, calc(100vh - 32px))',
-        background: theme.backgroundColor,
-        border: `1px solid ${theme.primaryColor}28`,
-        boxShadow: `0 50px 100px rgba(0,0,0,0.7), 0 0 0 1px ${theme.primaryColor}20`,
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 flex-shrink-0" style={{ background: theme.headerGradient }}>
-        <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl flex-shrink-0"
-          style={{ background: 'rgba(255,255,255,0.15)' }}>
-          {study.bot_emoji}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white text-lg leading-tight">{study.bot_name}</div>
-          <div className="text-white/60 text-xs mt-0.5 uppercase tracking-wide">{study.name}</div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="live-dot" />
-            <span className="text-white/50 text-xs">Ready for your feedback</span>
-          </div>
-        </div>
-      </div>
+    <div className={shellCls} style={shellStyle}>
+      <Header showDot />
 
-      {/* Chat area */}
-      <div ref={chatRef} className="survey-chat flex-1 overflow-y-auto px-3.5 py-4 flex flex-col gap-2.5" />
+      {/* Chat area — flex-1 lets it fill remaining space */}
+      <div ref={chatRef}
+        className="survey-chat flex-1 overflow-y-auto px-3.5 py-4 flex flex-col gap-2.5"
+      />
 
-      {/* Input area */}
-      <div ref={inputRef} className="px-3 pb-3.5 pt-2.5 flex-shrink-0"
-        style={{ background: `${theme.backgroundColor}ee`, borderTop: `1px solid ${theme.primaryColor}14` }} />
+      {/* Input area — safe area padding for iPhone home indicator */}
+      <div ref={inputRef}
+        className="px-3 pt-2.5 flex-shrink-0"
+        style={{
+          background: `${theme.backgroundColor}ee`,
+          borderTop: `1px solid ${theme.primaryColor}14`,
+          paddingBottom: 'max(0.875rem, env(safe-area-inset-bottom))',
+        }}
+      />
     </div>
   )
 }
