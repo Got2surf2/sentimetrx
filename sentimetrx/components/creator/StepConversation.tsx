@@ -6,11 +6,10 @@ import { Field, Input, Section, NavButtons, Divider } from './CreatorUI'
 
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
 
-function ExportLabelField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ExportLabelField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
     <Field label="CSV export column name (optional)">
-      <Input value={value} onChange={onChange}
-        placeholder="Short label for this column in exports — e.g. Follow-up Answer" />
+      <Input value={value} onChange={onChange} placeholder={placeholder} />
     </Field>
   )
 }
@@ -73,6 +72,7 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
         <ExportLabelField
           value={c.q1ExportLabel || ''}
           onChange={v => updateConfig({ q1ExportLabel: v })}
+          placeholder="Label for the verbal follow-up column in exports — e.g. Follow-up Response"
         />
       </Section>
 
@@ -85,6 +85,7 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
         <ExportLabelField
           value={c.q3ExportLabel || ''}
           onChange={v => updateConfig({ q3ExportLabel: v })}
+          placeholder="Label for this column in exports — e.g. Improvement Suggestion"
         />
       </Section>
 
@@ -95,6 +96,7 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
         <ExportLabelField
           value={c.q4ExportLabel || ''}
           onChange={v => updateConfig({ q4ExportLabel: v })}
+          placeholder="Label for this column in exports — e.g. Additional Comments"
         />
       </Section>
 
