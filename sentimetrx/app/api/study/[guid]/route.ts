@@ -11,22 +11,33 @@ export async function GET(
 ) {
   const { guid } = params
 
+  if (!guid || typeof guid !== 'string') {
+    return NextResponse.json({ error: 'Missing study guid' }, { status: 400, headers: noCache })
+  }
+
   const supabase = createServiceRoleClient()
 
-  // Query with full debug — see exactly what comes back
-  const { data, error, status, statusText } = await supabase
+  // Use array query instead of .single() to avoid PGRST116 errors
+  const { data, error } = await supabase
     .from('studies')
-    .select('id, guid, status')
+    .select('id, guid, bot_name, bot_emoji, status, config, name')
     .eq('guid', guid)
+    .limit(1)
 
-  // Return everything raw so we can see what's happening
+  if (error || !data || data.length === 0) {
+    return NextResponse.json({ error: 'Study not found' }, { status: 404, headers: noCache })
+  }
+
+  const study = data[0]
+
+  if (study.status !== 'active') {
+    return NextResponse.json({ error: 'Study is not active' }, { status: 403, headers: noCache })
+  }
+
   return NextResponse.json({
-    guid_received: guid,
-    supabase_status: status,
-    supabase_statusText: statusText,
-    error: error?.message || null,
-    rows_returned: data?.length ?? 0,
-    data: data,
-    env_url: process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 30),
+    guid:      study.guid,
+    bot_name:  study.bot_name,
+    bot_emoji: study.bot_emoji,
+    config:    study.config,
   }, { headers: noCache })
 }
