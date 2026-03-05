@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server"
-import { createServiceRoleClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from 'next/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 
-const noCache = { "Cache-Control": "no-store, no-cache, must-revalidate" }
+const noCache = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
 export async function GET(
   _req: NextRequest,
@@ -11,30 +11,22 @@ export async function GET(
 ) {
   const { guid } = params
 
-  if (!guid || typeof guid !== "string") {
-    return NextResponse.json({ error: "Missing study guid" }, { status: 400, headers: noCache })
-  }
-
   const supabase = createServiceRoleClient()
 
-  const { data: study, error } = await supabase
-    .from("studies")
-    .select("id, guid, bot_name, bot_emoji, status, config, name")
-    .eq("guid", guid)
-    .single()
+  // Query with full debug — see exactly what comes back
+  const { data, error, status, statusText } = await supabase
+    .from('studies')
+    .select('id, guid, status')
+    .eq('guid', guid)
 
-  if (error || !study) {
-    return NextResponse.json({ error: "Study not found" }, { status: 404, headers: noCache })
-  }
-
-  if (study.status !== "active") {
-    return NextResponse.json({ error: "Study is not active" }, { status: 403, headers: noCache })
-  }
-
+  // Return everything raw so we can see what's happening
   return NextResponse.json({
-    guid:      study.guid,
-    bot_name:  study.bot_name,
-    bot_emoji: study.bot_emoji,
-    config:    study.config,
+    guid_received: guid,
+    supabase_status: status,
+    supabase_statusText: statusText,
+    error: error?.message || null,
+    rows_returned: data?.length ?? 0,
+    data: data,
+    env_url: process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 30),
   }, { headers: noCache })
 }
