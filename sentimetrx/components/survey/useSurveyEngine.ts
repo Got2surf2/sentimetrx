@@ -439,11 +439,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const renderInput = useCallback(async (phase: string) => {
     if (phase !== 'start') return
 
-    // Greeting
-    await showTyping(1300)
-    addMsg('bot', config.greeting)
+    // Greeting — single message on mobile to keep buttons visible above fold
     await showTyping(900)
-    addMsg('bot', 'Ready to share your feedback?')
+    addMsg('bot', config.greeting)
 
     if (!inputRef.current) return
     const row = document.createElement('div')
@@ -473,10 +471,10 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
         if (!inputRef.current) return
         const ratingRow = document.createElement('div')
-        ratingRow.className = 'flex gap-1.5 flex-wrap mt-1.5'
+        ratingRow.className = 'flex gap-1 mt-1.5'
         config.ratingScale.forEach(r => {
           const rb = document.createElement('button')
-          rb.className = 'flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 flex-1 min-w-[48px] transition-all'
+          rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
           rb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
           rb.innerHTML = `<span style="font-size:20px">${r.emoji}</span><span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap">${r.label}</span>`
           rb.onmouseenter = () => { rb.style.borderColor = config.theme.primaryColor; rb.style.background = `${config.theme.primaryColor}18` }
@@ -510,10 +508,10 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
               { stars: '⭐⭐⭐⭐⭐',  label: '5 — Definitely!',score: 5 },
             ]
             const npsRow = document.createElement('div')
-            npsRow.className = 'flex gap-1.5 flex-wrap mt-1.5'
+            npsRow.className = 'flex gap-1 mt-1.5'
             stars.forEach(s => {
               const sb = document.createElement('button')
-              sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1.5 py-2.5 flex-1 min-w-[44px] transition-all'
+              sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
               sb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
               sb.innerHTML = `<span style="font-size:13px">${s.stars}</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">${s.label}</span>`
               sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = `${config.theme.primaryColor}18` }
