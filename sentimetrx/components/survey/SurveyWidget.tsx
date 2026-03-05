@@ -22,7 +22,7 @@ export default function SurveyWidget({ study }: Props) {
 
   // ── Heartbeat: verify study is still active before starting ──
   useEffect(() => {
-    fetch(`/api/study/${study.guid}`)
+    fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
       .then(res => {
         if (res.ok) {
           setStatus('active')
