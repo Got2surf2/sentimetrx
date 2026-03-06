@@ -1,7 +1,6 @@
 'use client'
 
-import { useCallback, useRef } from 'react
-'
+import { useCallback, useRef } from 'react'
 import type { Study, StudyConfig, Sentiment, SurveyPayload } from '@/lib/types'
 
 // ============================================================
