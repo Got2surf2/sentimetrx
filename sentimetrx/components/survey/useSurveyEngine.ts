@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef } from 'react
+'
 import type { Study, StudyConfig, Sentiment, SurveyPayload } from '@/lib/types'
 
 // ============================================================
@@ -326,7 +327,57 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
   
 
-const stepCustomQuestions = useCallback(async () => {
+
+  
+
+
+  const showLikertFollowUpInput = useCallback((next: () => Promise<void>) => {
+    if (!inputRef.current) return
+    const wrap = document.createElement('div')
+    wrap.className = 'flex flex-col gap-2 mt-1.5'
+    const row = document.createElement('div')
+    row.className = 'flex gap-2 items-end'
+    const ta = document.createElement('textarea')
+    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.rows = 1
+    ta.placeholder = 'Share your thoughts...'
+    ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
+    ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
+    ta.onblur   = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
+    ta.oninput  = () => {
+      ta.style.height = 'auto'
+      ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
+      sendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+      sendBtn.style.color      = ta.value.trim() ? '#fff' : 'rgba(255,255,255,0.4)'
+    }
+    ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
+    const sendBtn = document.createElement('button')
+    sendBtn.textContent = '->'
+    sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+    sendBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;'
+    const skipBtn = document.createElement('button')
+    skipBtn.textContent = 'Skip'
+    skipBtn.className = 'text-xs self-start px-2 py-1'
+    skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-family:inherit;'
+    skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
+    skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
+    const submit = async () => {
+      const v = ta.value.trim()
+      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      if (v) addMsg('user', v)
+      clearInput()
+      await next()
+    }
+    sendBtn.onclick = submit
+    skipBtn.onclick = submit
+    row.append(ta, sendBtn)
+    wrap.append(row, skipBtn)
+    inputRef.current.appendChild(wrap)
+    setTimeout(() => ta.focus(), 100)
+    scrollBottom()
+  }, [addMsg, clearInput, config, inputRef, scrollBottom])
+
+  const stepCustomQuestions = useCallback(async () => {
     const questions = config.questions ?? []
     if (questions.length === 0) { await stepPsychoIntro(); return }
 
@@ -572,6 +623,7 @@ const stepCustomQuestions = useCallback(async () => {
     await stepPsychoIntro()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, stepPsychoIntro])
 
+
     const stepPsychoIntro = useCallback(async () => {
     clearInput()
     pickPsychoQuestions(3)
@@ -581,6 +633,7 @@ const stepCustomQuestions = useCallback(async () => {
     await showTyping(200)
     await stepPsychoQ()
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
+
 
   const progressFlow = useCallback(async (qKey: 'q3' | 'q4') => {
     if (qKey === 'q3') {
@@ -727,51 +780,7 @@ const stepCustomQuestions = useCallback(async () => {
 
 
   // -- Likert adaptive follow-up input (text, then calls next()) --
-  const showLikertFollowUpInput = useCallback((next: () => Promise<void>) => {
-    if (!inputRef.current) return
-    const wrap = document.createElement('div')
-    wrap.className = 'flex flex-col gap-2 mt-1.5'
-    const row = document.createElement('div')
-    row.className = 'flex gap-2 items-end'
-    const ta = document.createElement('textarea')
-    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
-    ta.rows = 1
-    ta.placeholder = 'Share your thoughts...'
-    ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
-    ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
-    ta.onblur   = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
-    ta.oninput  = () => {
-      ta.style.height = 'auto'
-      ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
-      sendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
-      sendBtn.style.color      = ta.value.trim() ? '#fff' : 'rgba(255,255,255,0.4)'
-    }
-    ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
-    const sendBtn = document.createElement('button')
-    sendBtn.textContent = '->'
-    sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
-    sendBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;'
-    const skipBtn = document.createElement('button')
-    skipBtn.textContent = 'Skip'
-    skipBtn.className = 'text-xs self-start px-2 py-1'
-    skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-family:inherit;'
-    skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
-    skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
-    const submit = async () => {
-      const v = ta.value.trim()
-      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
-      if (v) addMsg('user', v)
-      clearInput()
-      await next()
-    }
-    sendBtn.onclick = submit
-    skipBtn.onclick = submit
-    row.append(ta, sendBtn)
-    wrap.append(row, skipBtn)
-    inputRef.current.appendChild(wrap)
-    setTimeout(() => ta.focus(), 100)
-    scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom])
+
 
 
     // -- Optional text input (with Skip button) ------------------
@@ -994,4 +1003,3 @@ const stepCustomQuestions = useCallback(async () => {
 
   return { renderInput }
 }
-
