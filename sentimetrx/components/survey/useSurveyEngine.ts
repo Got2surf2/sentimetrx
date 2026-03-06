@@ -380,7 +380,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     const stepPsychoIntro = useCallback(async () => {
     clearInput()
-    pickPsychoQuestions(3)
+    pickPsychoQuestions(config.psychoCount ?? 3)
     state.current.psychoIdx = 0
     await showTyping(900)
     addMsg('bot', 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
