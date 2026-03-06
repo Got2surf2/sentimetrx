@@ -127,7 +127,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         { header: labelMode === 'prompt' ? 'Duration (sec)'    : 'duration_sec',      value: r => String(r.duration_sec ?? '') },
         { header: labelMode === 'prompt' ? 'Sentiment'         : 'sentiment',         value: r => r.sentiment ?? '' },
         { header: labelMode === 'prompt' ? 'Experience Score'  : 'experience_score',  value: r => String(r.experience_score ?? '') },
-        { header: labelMode === 'prompt' ? (study.config?.npsLabel || 'NPS Score') : (study.config?.npsLabel || 'nps_score'), value: r => String(r.nps_score ?? '') },
+        { header: labelMode === 'prompt' ? (study?.config?.npsLabel || 'NPS Score') : (study?.config?.npsLabel || 'nps_score'), value: r => String(r.nps_score ?? '') },
       )
     }
 
