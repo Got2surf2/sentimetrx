@@ -30,11 +30,12 @@ function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: bool
 
 // ── Adaptive follow-up panel ─────────────────────────────────
 function FollowUpPanel({
-  followUp, onChange, scaleOptions
+  followUp, onChange, scaleOptions, defaultPrompts
 }: {
-  followUp:     LikertFollowUp | undefined
-  onChange:     (fu: LikertFollowUp) => void
-  scaleOptions: { score: number; label: string }[]
+  followUp:        LikertFollowUp | undefined
+  onChange:        (fu: LikertFollowUp) => void
+  scaleOptions:    { score: number; label: string }[]
+  defaultPrompts?: Record<number, string>
 }) {
   const fu = followUp ?? {
     enabled: false, mode: 'shared',
@@ -86,7 +87,7 @@ function FollowUpPanel({
                 <textarea
                   value={fu.sharedPrompt}
                   onChange={e => set({ sharedPrompt: e.target.value })}
-                  placeholder="Could you tell us a bit more about that?"
+                  placeholder={defaultPrompts?.[3] || "Could you tell us a bit more about that?"}
                   rows={2}
                   className={inputCls + ' resize-none'}
                 />
@@ -106,7 +107,7 @@ function FollowUpPanel({
                     <textarea
                       value={pr.prompt}
                       onChange={e => setPerResponse(opt.score, { prompt: e.target.value })}
-                      placeholder={`Follow-up for "${opt.label}" response...`}
+                      placeholder={defaultPrompts?.[opt.score] || `Follow-up for "${opt.label}" response...`}
                       rows={2}
                       className={inputCls + ' resize-none text-xs'}
                     />
@@ -145,6 +146,22 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
     score: s,
     label: s === 1 ? 'No' : s === 2 ? 'Unlikely' : s === 3 ? 'Maybe' : s === 4 ? 'Likely' : 'Definitely'
   }))
+
+  // Default follow-up prompts keyed by score — used as placeholders so creators know what good looks like
+  const npsDefaultPrompts: Record<number, string> = {
+    1: "That's really helpful to know. What's the main reason you wouldn't recommend us?",
+    2: "We appreciate your honesty. What would need to change for you to feel more confident recommending us?",
+    3: "Thanks for that. What's holding you back from recommending us more enthusiastically?",
+    4: "Great to hear! What one thing would tip you to a definite yes?",
+    5: "That means a lot! What would you say to someone who asked why they should try us?",
+  }
+  const experienceDefaultPrompts: Record<number, string> = {
+    1: "We're sorry to hear that. Can you tell us what went wrong so we can fix it?",
+    2: "Thanks for the feedback. What disappointed you most about your experience?",
+    3: "Appreciate your honesty. What would have made this a better experience for you?",
+    4: "Glad it was a good experience. What's one thing we could do even better?",
+    5: "Wonderful! What stood out most that made it such a great experience?",
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -203,6 +220,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
               followUp={c.npsFollowUp}
               onChange={fu => updateConfig({ npsFollowUp: fu })}
               scaleOptions={npsScaleOptions}
+              defaultPrompts={npsDefaultPrompts}
             />
           </div>
         )}
@@ -260,6 +278,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
               followUp={c.experienceFollowUp}
               onChange={fu => updateConfig({ experienceFollowUp: fu })}
               scaleOptions={c.ratingScale.map(r => ({ score: r.score, label: r.label }))}
+              defaultPrompts={experienceDefaultPrompts}
             />
           </div>
         )}

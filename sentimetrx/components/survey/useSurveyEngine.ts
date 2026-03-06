@@ -115,7 +115,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const shouldClarify = (text: string) =>
     !isDecline(text) && text.trim().split(/\s+/).length < 12
 
-  const buildClarify = async (text: string, qKey: 'q1' | 'q3' | 'q4'): Promise<string | null> => {
+  const buildClarify = async (text: string, qKey: 'q3' | 'q4'): Promise<string | null> => {
     const s = state.current
 
     // Keyword fallback (always available, used if AI disabled or fails)
@@ -329,20 +329,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     await stepPsychoQ()
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
-  const progressFlow = useCallback(async (qKey: 'q1' | 'q3' | 'q4') => {
-    if (qKey === 'q1') {
-      await showTyping(700)
-      addMsg('bot', 'Thanks -- really appreciate you sharing that.')
-      await showTyping(800)
-      addMsg('bot', config.q3)
-      state.current.currentQuestion = config.q3
-      // q3: required by default, optional if q3Required === false
-      if (config.q3Required === false) {
-        showTextInputOptional('q3')
-      } else {
-        showTextInput('q3')
-      }
-    } else if (qKey === 'q3') {
+  const progressFlow = useCallback(async (qKey: 'q3' | 'q4') => {
+    if (qKey === 'q3') {
       await showTyping(700)
       addMsg('bot', 'Got it -- that\'s genuinely helpful.')
       await showTyping(800)
@@ -363,7 +351,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     }
   }, [addMsg, config, showTyping, stepPsychoIntro])
 
-  const handleOpenEnded = useCallback(async (qKey: 'q1' | 'q3' | 'q4', val: string) => {
+  const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
     clearInput()
     if (state.current.clarifyCount < 2 && shouldClarify(val)) {
@@ -381,7 +369,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
   // -- Input Renderers ---------------------------------------
 
-  const showTextInput = useCallback((qKey: 'q1' | 'q3' | 'q4') => {
+  const showTextInput = useCallback((qKey: 'q3' | 'q4') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
     wrap.className = 'flex gap-2 items-end mt-1.5'
@@ -431,7 +419,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     scrollBottom()
   }, [addMsg, config, handleOpenEnded, inputRef, scrollBottom])
 
-  const showClarifyInput = useCallback((qKey: 'q1' | 'q3' | 'q4', originalVal: string) => {
+  const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string) => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
     wrap.className = 'flex gap-2 items-end mt-1.5'
@@ -652,21 +640,22 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         const npsEnabled        = config.npsEnabled !== false
         const experienceEnabled = config.experienceEnabled !== false
 
-        // Final open-end Q1 (sentiment-adapted)
-        const doSentimentQ1 = async () => {
+        // Jump straight to Q3 after scores are captured
+        const stepQ3 = async () => {
           clearInput()
-          await showTyping(1000)
-          const q1 = state.current.sentiment === 'promoter' ? config.promoterQ1
-                   : state.current.sentiment === 'passive'   ? config.passiveQ1
-                   : config.detractorQ1
-          addMsg('bot', q1)
-          state.current.currentQuestion = q1
-          showTextInput('q1')
+          await showTyping(800)
+          addMsg('bot', config.q3)
+          state.current.currentQuestion = config.q3
+          if (config.q3Required === false) {
+            showTextInputOptional('q3')
+          } else {
+            showTextInput('q3')
+          }
         }
 
         // Experience rating step
         const doExperienceRating = async () => {
-          if (!experienceEnabled) { await doSentimentQ1(); return }
+          if (!experienceEnabled) { await stepQ3(); return }
           clearInput()
           await showTyping(900)
           addMsg('bot', config.ratingPrompt)
@@ -688,7 +677,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
               state.current.rating      = r.score
               state.current.ratingLabel = r.label
               addMsg('user', r.emoji + ' ' + r.label)
-              await showLikertFollowUp(config.experienceFollowUp, r.score, doSentimentQ1)
+              await showLikertFollowUp(config.experienceFollowUp, r.score, stepQ3)
             }
             ratingRow.appendChild(rb)
           })
@@ -698,7 +687,6 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
         // NPS step (or skip)
         if (!npsEnabled) {
-          state.current.sentiment = 'passive'
           await doExperienceRating()
           return
         }

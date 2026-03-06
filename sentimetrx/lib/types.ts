@@ -96,10 +96,10 @@ export interface StudyConfig {
   experienceFollowUp?: LikertFollowUp  // adaptive open-end after experience rating
 
   // Sentiment-adapted open-ended Q1 (after NPS, before experience rating)
-  promoterQ1:         string
-  passiveQ1:          string
-  detractorQ1:        string
-  q1ExportLabel?:     string
+  promoterQ1?:        string  // legacy — kept for existing studies
+  passiveQ1?:         string
+  detractorQ1?:       string
+  q1ExportLabel?:     string  // legacy
 
   // Legacy open-ended Q3/Q4 (still supported, shown before custom questions)
   q3:                 string

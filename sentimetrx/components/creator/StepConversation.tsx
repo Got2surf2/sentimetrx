@@ -21,7 +21,6 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
   const [newQ,  setNewQ]  = useState('')
 
   const canNext =
-    c.promoterQ1.trim() && c.passiveQ1.trim() && c.detractorQ1.trim() &&
     c.q3.trim() && c.q4.trim() && c.clarifiers.default.trim()
 
   const addClarifier = () => {
@@ -49,34 +48,6 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
         <h2 className="text-xl font-bold text-gray-800 mb-1">Conversation</h2>
         <p className="text-gray-500 text-sm">The questions the bot asks after the initial rating.</p>
       </div>
-
-      <Section
-        title="First follow-up question"
-        description="The bot adapts this question based on how the respondent rated their experience. You can also set a custom label for this column in CSV exports."
-      >
-        <Field label="For promoters (score 5 — best experience)">
-          <Input value={c.promoterQ1} onChange={v => updateConfig({ promoterQ1: v })}
-            placeholder="That's wonderful to hear! What stood out most about your experience?"
-            multiline rows={2} />
-        </Field>
-        <Field label="For passives (score 4 — good experience)">
-          <Input value={c.passiveQ1} onChange={v => updateConfig({ passiveQ1: v })}
-            placeholder="Thanks for sharing that. What would have made it even better?"
-            multiline rows={2} />
-        </Field>
-        <Field label="For detractors (scores 1–3 — poor experience)">
-          <Input value={c.detractorQ1} onChange={v => updateConfig({ detractorQ1: v })}
-            placeholder="I'm sorry to hear that. What went wrong, and what would have improved things?"
-            multiline rows={2} />
-        </Field>
-        <ExportLabelField
-          value={c.q1ExportLabel || ''}
-          onChange={v => updateConfig({ q1ExportLabel: v })}
-          placeholder="Label for the verbal follow-up column in exports — e.g. Follow-up Response"
-        />
-      </Section>
-
-      <Divider />
 
       <Section title="Second question (Q3)" description="Asked after the first follow-up. Usually a broader or deeper question.">
         <Input value={c.q3} onChange={v => updateConfig({ q3: v })}
