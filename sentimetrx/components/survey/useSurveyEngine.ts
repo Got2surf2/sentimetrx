@@ -25,6 +25,7 @@ interface State {
   npsLabel:        string | null
   answers:         { q1: string; q3: string; q4: string }
   clarifyCount:    number
+  customAnswers:   Record<string, string | string[]>
   currentQuestion: string   // the exact question text currently being answered
   psychoQuestions: Array<{ key: string; q: string; opts: string[] }>
   psychoIdx:       number
@@ -40,6 +41,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     npsScore: null, npsLabel: null,
     answers: { q1: '', q3: '', q4: '' },
     clarifyCount: 0,
+    customAnswers: {},
     currentQuestion: '',
     psychoQuestions: [], psychoIdx: 0, psychoAnswers: {},
     demographics: { age: '', gender: '', zip: '' },
@@ -184,8 +186,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         label:     s.ratingLabel!,
         sentiment: s.sentiment!,
       },
-      npsRecommend: { score: s.npsScore!, label: s.npsLabel! },
-      openEnded:    s.answers,
+      npsRecommend:  { score: s.npsScore!, label: s.npsLabel! },
+      openEnded:     s.answers,
+      customAnswers: s.customAnswers,
       psychographics: s.psychoAnswers,
       demographics:   s.demographics,
     }
@@ -319,6 +322,252 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDemographics])
 
+  const stepCustomQuestions = useCallback(async () => {
+    const questions = config.questions ?? []
+    if (questions.length === 0) { await stepPsychoIntro(); return }
+
+    const customAnswers: Record<string, string | string[]> = {}
+
+    for (const q of questions) {
+      clearInput()
+      await showTyping(800)
+      addMsg('bot', q.prompt)
+      state.current.currentQuestion = q.prompt
+
+      await new Promise<void>(resolve => {
+        if (!inputRef.current) { resolve(); return }
+
+        // ── open-ended ──────────────────────────────────────────
+        if (q.type === 'open') {
+          const submit = async (val: string) => {
+            customAnswers[q.id] = val
+            clearInput()
+            resolve()
+          }
+          if (q.required) {
+            showTextInput('q4') // reuse showTextInput UI, answer stored separately
+            // intercept: override the send handler below via resolve pattern
+          }
+          // Build inline to capture resolve
+          const wrap = document.createElement('div')
+          wrap.className = 'flex flex-col gap-2 mt-1.5'
+          const row = document.createElement('div')
+          row.className = 'flex gap-2 items-end'
+          const ta = document.createElement('textarea')
+          ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+          ta.rows = 1
+          ta.placeholder = 'Share your thoughts...'
+          ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
+          ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
+          ta.onblur  = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
+          ta.oninput = () => {
+            ta.style.height = 'auto'
+            ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
+            sendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+            sendBtn.style.color      = ta.value.trim() ? '#fff' : 'rgba(255,255,255,0.4)'
+          }
+          const sendBtn = document.createElement('button')
+          sendBtn.textContent = '->'
+          sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+          sendBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;'
+          ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
+          sendBtn.onclick = async () => {
+            const v = ta.value.trim()
+            if (!v && q.required) return
+            wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            if (v) addMsg('user', v)
+            await submit(v)
+          }
+          row.append(ta, sendBtn)
+          wrap.appendChild(row)
+          if (!q.required) {
+            const skipBtn = document.createElement('button')
+            skipBtn.textContent = 'Skip'
+            skipBtn.className = 'text-xs self-start px-2 py-1'
+            skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-family:inherit;'
+            skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
+            skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
+            skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); submit('') }
+            wrap.appendChild(skipBtn)
+          }
+          clearInput()
+          inputRef.current.appendChild(wrap)
+          setTimeout(() => ta.focus(), 100)
+          scrollBottom()
+
+        // ── radio ───────────────────────────────────────────────
+        } else if (q.type === 'radio') {
+          const opts = q.options ?? []
+          const col = document.createElement('div')
+          col.className = 'flex flex-col gap-1.5 mt-1.5'
+          opts.forEach(opt => {
+            const btn = document.createElement('button')
+            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
+            btn.style.cssText = 'background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.82);cursor:pointer;font-family:inherit;'
+            btn.textContent = opt
+            btn.onmouseenter = () => { btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '18' }
+            btn.onmouseleave = () => { btn.style.borderColor = 'rgba(255,255,255,0.12)'; btn.style.background = 'rgba(255,255,255,0.05)' }
+            btn.onclick = () => {
+              col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              btn.style.borderColor = config.theme.primaryColor
+              btn.style.background  = config.theme.primaryColor + '20'
+              addMsg('user', opt)
+              customAnswers[q.id] = opt
+              clearInput()
+              resolve()
+            }
+            col.appendChild(btn)
+          })
+          clearInput()
+          inputRef.current.appendChild(col)
+          scrollBottom()
+
+        // ── checkbox ────────────────────────────────────────────
+        } else if (q.type === 'checkbox') {
+          const opts = q.options ?? []
+          const selected = new Set<string>()
+          const wrap = document.createElement('div')
+          wrap.className = 'flex flex-col gap-1.5 mt-1.5'
+          const btns: HTMLButtonElement[] = []
+          opts.forEach(opt => {
+            const btn = document.createElement('button')
+            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
+            btn.style.cssText = 'background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.82);cursor:pointer;font-family:inherit;'
+            btn.textContent = opt
+            btn.onclick = () => {
+              if (selected.has(opt)) {
+                selected.delete(opt)
+                btn.style.borderColor = 'rgba(255,255,255,0.12)'
+                btn.style.background  = 'rgba(255,255,255,0.05)'
+              } else {
+                selected.add(opt)
+                btn.style.borderColor = config.theme.primaryColor
+                btn.style.background  = config.theme.primaryColor + '20'
+              }
+              doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+              doneBtn.style.color      = selected.size > 0 ? '#fff' : 'rgba(255,255,255,0.4)'
+            }
+            btns.push(btn)
+            wrap.appendChild(btn)
+          })
+          const doneBtn = document.createElement('button')
+          doneBtn.textContent = selected.size > 0 ? 'Done' : q.required ? 'Select at least one' : 'Skip'
+          doneBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
+          doneBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;'
+          doneBtn.onclick = () => {
+            if (selected.size === 0 && q.required) return
+            wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            const arr = Array.from(selected)
+            if (arr.length > 0) addMsg('user', arr.join(', '))
+            customAnswers[q.id] = arr
+            clearInput()
+            resolve()
+          }
+          wrap.appendChild(doneBtn)
+          clearInput()
+          inputRef.current.appendChild(wrap)
+          scrollBottom()
+
+        // ── dropdown ────────────────────────────────────────────
+        } else if (q.type === 'dropdown') {
+          const opts = q.options ?? []
+          const wrap = document.createElement('div')
+          wrap.className = 'flex gap-2 mt-1.5 items-center'
+          const sel = document.createElement('select')
+          sel.className = 'flex-1 rounded-xl text-sm px-3 py-2.5 outline-none cursor-pointer'
+          sel.style.cssText = 'background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.85);font-family:inherit;'
+          const placeholder = document.createElement('option')
+          placeholder.value = ''
+          placeholder.textContent = 'Select an option...'
+          placeholder.disabled = true
+          placeholder.selected = true
+          sel.appendChild(placeholder)
+          opts.forEach(opt => {
+            const o = document.createElement('option')
+            o.value = opt; o.textContent = opt
+            o.style.cssText = 'background:#1e293b;color:white;'
+            sel.appendChild(o)
+          })
+          const goBtn = document.createElement('button')
+          goBtn.textContent = '->'
+          goBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base'
+          goBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;'
+          sel.onchange = () => {
+            goBtn.style.background = config.theme.primaryColor
+            goBtn.style.color = '#fff'
+          }
+          goBtn.onclick = () => {
+            if (!sel.value && q.required) return
+            wrap.querySelectorAll('select,button').forEach((el: any) => el.disabled = true)
+            if (sel.value) addMsg('user', sel.value)
+            customAnswers[q.id] = sel.value
+            clearInput()
+            resolve()
+          }
+          if (!q.required) {
+            const skipBtn = document.createElement('button')
+            skipBtn.textContent = 'Skip'
+            skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-size:12px;font-family:inherit;margin-left:4px;'
+            skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
+            skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
+            skipBtn.onclick = () => { wrap.querySelectorAll('select,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
+            wrap.append(sel, goBtn, skipBtn)
+          } else {
+            wrap.append(sel, goBtn)
+          }
+          clearInput()
+          inputRef.current.appendChild(wrap)
+          scrollBottom()
+
+        // ── likert ──────────────────────────────────────────────
+        } else if (q.type === 'likert') {
+          const scale = q.likertScale ?? []
+          const row = document.createElement('div')
+          row.className = 'flex gap-1 mt-1.5'
+          scale.forEach(s => {
+            const sb = document.createElement('button')
+            sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
+            sb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
+            sb.innerHTML = '<span style="font-size:18px">' + (s.emoji || '⭐') + '</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
+            sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '18' }
+            sb.onmouseleave = () => { sb.style.borderColor = 'rgba(255,255,255,0.1)'; sb.style.background = 'rgba(255,255,255,0.05)' }
+            sb.onclick = async () => {
+              row.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              sb.style.borderColor = config.theme.primaryColor
+              sb.style.background  = config.theme.primaryColor + '20'
+              addMsg('user', (s.emoji || '') + ' ' + s.label)
+              customAnswers[q.id] = String(s.score)
+              // Likert follow-up
+              if (q.followUp?.enabled) {
+                const fu = q.followUp
+                const pr = fu.mode === 'per-response' ? fu.perResponse?.[s.score] : null
+                const prompt = pr ? pr.prompt : (fu.sharedPrompt || '')
+                if (prompt.trim()) {
+                  clearInput()
+                  await showTyping(800)
+                  addMsg('bot', prompt)
+                  state.current.currentQuestion = prompt
+                  showLikertFollowUpInput(resolve)
+                  return
+                }
+              }
+              clearInput()
+              resolve()
+            }
+            row.appendChild(sb)
+          })
+          clearInput()
+          inputRef.current.appendChild(row)
+          scrollBottom()
+        }
+      })
+    }
+
+    // Store all custom answers in state
+    state.current.customAnswers = customAnswers
+    await stepPsychoIntro()
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, stepPsychoIntro])
+
   const stepPsychoIntro = useCallback(async () => {
     clearInput()
     pickPsychoQuestions(3)
@@ -347,9 +596,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         await showTyping(700)
         addMsg('bot', 'Thank you -- we\'ll make sure that gets to the right people.')
       }
-      await stepPsychoIntro()
+      await stepCustomQuestions()
     }
-  }, [addMsg, config, showTyping, stepPsychoIntro])
+  }, [addMsg, config, showTyping, stepCustomQuestions])
 
   const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val

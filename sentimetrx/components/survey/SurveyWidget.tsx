@@ -10,7 +10,13 @@ export default function SurveyWidget({ study }: Props) {
   const chatRef    = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
-  const [status, setStatus] = useState<'checking' | 'active' | 'closed' | 'draft'>('checking')
+  const [status,       setStatus]      = useState<'checking' | 'active' | 'closed' | 'draft'>('checking')
+  const [liveBotName,  setLiveBotName]  = useState(study.bot_name)
+  const [liveBotEmoji, setLiveBotEmoji] = useState(study.bot_emoji)
+  const [liveConfig,   setLiveConfig]   = useState(study.config)
+
+  // Merge live values into study object for the engine and header
+  const liveStudy = { ...study, bot_name: liveBotName, bot_emoji: liveBotEmoji, config: liveConfig }
 
   const scrollBottom = useCallback(() => {
     const el = chatRef.current
@@ -21,11 +27,21 @@ export default function SurveyWidget({ study }: Props) {
     setTimeout(() => { if (isNearBottom()) el.scrollTop = el.scrollHeight }, 350)
   }, [chatRef])
 
-  const { renderInput } = useSurveyEngine({ study, chatRef, inputRef, scrollBottom })
+  const { renderInput } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
 
+  // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
+  // are always the latest from the DB, not potentially stale server-rendered props
   useEffect(() => {
     fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
-      .then(res => setStatus(res.ok ? 'active' : 'closed'))
+      .then(async res => {
+        if (!res.ok) { setStatus('closed'); return }
+        const data = await res.json()
+        // Update live fields from fresh API response
+        if (data.bot_name)  setLiveBotName(data.bot_name)
+        if (data.bot_emoji) setLiveBotEmoji(data.bot_emoji)
+        if (data.config)    setLiveConfig(data.config)
+        setStatus('active')
+      })
       .catch(() => setStatus('closed'))
   }, [study.guid])
 
@@ -36,7 +52,7 @@ export default function SurveyWidget({ study }: Props) {
     }
   }, [status, renderInput])
 
-  const theme = study.config.theme
+  const theme = liveConfig.theme
 
   if (status === 'checking') {
     return (
@@ -56,11 +72,11 @@ export default function SurveyWidget({ study }: Props) {
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: theme.backgroundColor, overflow: 'hidden' }}>
         <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-            {study.bot_emoji}
+            {liveBotEmoji}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.bot_name}</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.name}</div>
+            <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveBotName}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveStudy.name}</div>
           </div>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center', gap: 16 }}>
@@ -101,11 +117,11 @@ export default function SurveyWidget({ study }: Props) {
         zIndex: 10,
       }}>
         <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-          {study.bot_emoji}
+          {liveBotEmoji}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.bot_name}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.name}</div>
+          <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveBotName}</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveStudy.name}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <span className="live-dot" />
             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Ready for your feedback</span>

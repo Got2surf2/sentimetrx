@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import StepBasics from '@/components/creator/StepBasics'
 import StepOpening from '@/components/creator/StepOpening'
 import StepConversation from '@/components/creator/StepConversation'
+import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
@@ -31,6 +32,8 @@ const EMPTY_DRAFT: StudyDraft = {
     q3:          '',
     q4:          '',
     clarifiers:  { default: '' },
+    questions:         [],
+    psychoCount:       3,
     psychographicBank: [],
     theme: {
       primaryColor:      '#00b4d8',
@@ -42,7 +45,7 @@ const EMPTY_DRAFT: StudyDraft = {
   },
 }
 
-const STEPS = ['Basics', 'Opening', 'Conversation', 'Psychographics', 'Review & Publish']
+const STEPS = ['Basics', 'Opening', 'Conversation', 'Questions', 'Psychographics', 'Review & Publish']
 
 export default function NewStudyPage() {
   const [step,    setStep]    = useState(0)
@@ -129,11 +132,12 @@ export default function NewStudyPage() {
         {step === 0 && <StepBasics       {...stepProps} onNext={() => setStep(1)} />}
         {step === 1 && <StepOpening      {...stepProps} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
         {step === 2 && <StepConversation {...stepProps} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-        {step === 3 && <StepPsychographics {...stepProps} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
-        {step === 4 && (
+        {step === 3 && <StepQuestions {...stepProps} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
+        {step === 4 && <StepPsychographics {...stepProps} onNext={() => setStep(5)} onBack={() => setStep(3)} />}
+        {step === 5 && (
           <StepReview
             {...stepProps}
-            onBack={() => setStep(3)}
+            onBack={() => setStep(4)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}
