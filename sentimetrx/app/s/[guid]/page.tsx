@@ -16,54 +16,28 @@ export default async function SurveyPage({ params }: Props) {
 
   if (!study) {
     return (
-      <main className="min-h-[100dvh] flex items-center justify-center p-6 bg-[#0a1628]">
-        <div className="text-center text-white">
-          <div className="text-5xl mb-4">🔍</div>
-          <h1 className="text-xl font-bold mb-2">Survey not found</h1>
-          <p className="text-white/50 text-sm">This link doesn&apos;t match any survey.</p>
+      <main style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#0a1628' }}>
+        <div style={{ textAlign: 'center', color: 'white' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Survey not found</h1>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>This link doesn&apos;t match any survey.</p>
         </div>
       </main>
     )
   }
 
   const bg = study.config?.theme?.backgroundColor || '#0a1628'
-  const gradient = study.config?.theme?.headerGradient || 'linear-gradient(135deg,#1a7a4a,#0d4a2a)'
 
   if (study.status !== 'active') {
-    const isClosed = study.status === 'closed'
     return (
-      <main className="min-h-[100dvh] flex items-center justify-center p-6" style={{ background: bg }}>
-        <div className="w-full max-w-sm text-center">
-          <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-lg"
-            style={{ background: gradient }}>
-            {study.bot_emoji}
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-1">{study.bot_name}</h1>
-          <p className="text-white/50 text-sm mb-8">{study.name}</p>
-          <div className="bg-white/10 border border-white/20 rounded-2xl p-8">
-            <div className="text-4xl mb-4">{isClosed ? '🔒' : '🚧'}</div>
-            <h2 className="text-white font-bold text-lg mb-2">
-              {isClosed ? 'This survey is now closed' : 'Not yet available'}
-            </h2>
-            <p className="text-white/60 text-sm leading-relaxed">
-              {isClosed
-                ? 'Thank you for your interest. This survey is no longer accepting responses.'
-                : "This survey isn't published yet. Check back soon."}
-            </p>
-          </div>
-          <p className="text-white/20 text-xs mt-8">
-            Powered by <span className="text-white/40 font-medium">sentimetrx.ai</span>
-          </p>
-        </div>
+      <main style={{ height: '100dvh', background: bg, overflow: 'hidden' }}>
+        <SurveyWidget study={study as Study} />
       </main>
     )
   }
 
   return (
-    <main
-      className="w-full overflow-hidden"
-      style={{ background: bg, height: '100dvh' }}
-    >
+    <main style={{ height: '100dvh', background: bg, overflow: 'hidden' }}>
       <SurveyWidget study={study as Study} />
     </main>
   )
