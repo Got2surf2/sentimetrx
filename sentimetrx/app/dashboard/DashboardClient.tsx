@@ -29,37 +29,24 @@ const HERMES = '#E8632A'
 function DonutChart({ promoters, passives, detractors, total, avgNps }: {
   promoters: number; passives: number; detractors: number; total: number; avgNps: number
 }) {
-  const size = 96; const r = 36; const cx = 48; const cy = 48
-  const circ = 2 * Math.PI * r
-  const pct = (n: number) => total > 0 ? n / total : 0
-  const pp = pct(promoters); const pa = pct(passives); const pd = pct(detractors)
-  const seg = (offset: number, p: number) => ({ dash: p * circ, offset: -offset * circ })
-  const s1 = seg(0,       pp)
-  const s2 = seg(pp,      pa)
-  const s3 = seg(pp + pa, pd)
-  const rot = 'rotate(-90 ' + cx + ' ' + cy + ')'
+  const p = total > 0 ? Math.round(promoters / total * 100) : 0
+  const a = total > 0 ? Math.round(passives  / total * 100) : 0
+  const d = total > 0 ? Math.round(detractors / total * 100) : 0
+  const bg = total > 0
+    ? 'conic-gradient(#22c55e ' + p + '%, #f59e0b ' + p + '% ' + (p + a) + '%, #ef4444 ' + (p + a) + '% ' + (p + a + d) + '%, #f3f4f6 ' + (p + a + d) + '%)'
+    : 'conic-gradient(#f3f4f6 100%)'
   return (
-    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f3f4f6" strokeWidth="14" />
-        {total > 0 && <>
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#22c55e" strokeWidth="14" strokeDasharray={s1.dash + ' ' + (circ - s1.dash)} strokeDashoffset={s1.offset} transform={rot} />
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f59e0b" strokeWidth="14" strokeDasharray={s2.dash + ' ' + (circ - s2.dash)} strokeDashoffset={s2.offset} transform={rot} />
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#ef4444" strokeWidth="14" strokeDasharray={s3.dash + ' ' + (circ - s3.dash)} strokeDashoffset={s3.offset} transform={rot} />
-        </>}
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-lg font-black leading-none" style={{ color: HERMES }}>
-          {total > 0 ? avgNps : '--'}
-        </span>
-        <span className="text-[9px] text-gray-400 font-medium">NPS</span>
-      </div>
+    <div style={{ position: 'relative', width: 96, height: 96, flexShrink: 0 }}>
+      <div style={{ width: 96, height: 96, borderRadius: '50%', background: bg }} />
+      <div style={{ position: 'absolute', top: 14, left: 14, width: 68, height: 68, borderRadius: '50%', background: 'white' }} />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: HERMES }}>{total > 0 ? avgNps : '--'}</span>
+        <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>NPS</span>
       </div>
     </div>
   )
 }
 
-// -- QR / Deploy modal ----------------------------------------------------------
 function QRCode({ url }: { url: string }) {
   const src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}&margin=8`
   return <img src={src} alt="QR code" className="w-40 h-40 rounded-lg border border-gray-200" />
