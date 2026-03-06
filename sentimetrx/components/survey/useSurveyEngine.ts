@@ -317,7 +317,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     })
     inputRef.current.appendChild(col)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDemographics])
+    setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, 200)
+  }, [addMsg, chatRef, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDemographics])
 
   const stepPsychoIntro = useCallback(async () => {
     clearInput()
@@ -325,14 +326,15 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     state.current.psychoIdx = 0
     await showTyping(900)
     addMsg('bot', 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
+    await showTyping(200)
     await stepPsychoQ()
-  }, [addMsg, clearInput, showTyping, stepPsychoQ])
+    setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, 300)
+  }, [addMsg, chatRef, clearInput, showTyping, stepPsychoQ])
 
   const progressFlow = useCallback(async (qKey: 'q1' | 'q3' | 'q4') => {
     if (qKey === 'q1') {
       await showTyping(700)
       addMsg('bot', 'Thanks -- really appreciate you sharing that.')
-      state.current.clarifyCount = 0
       await showTyping(800)
       addMsg('bot', config.q3)
       state.current.currentQuestion = config.q3
@@ -345,7 +347,6 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     } else if (qKey === 'q3') {
       await showTyping(700)
       addMsg('bot', 'Got it -- that\'s genuinely helpful.')
-      state.current.clarifyCount = 0
       await showTyping(800)
       addMsg('bot', config.q4)
       state.current.currentQuestion = config.q4
@@ -367,7 +368,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const handleOpenEnded = useCallback(async (qKey: 'q1' | 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
     clearInput()
-    if (state.current.clarifyCount < 1 && shouldClarify(val)) {
+    if (state.current.clarifyCount < 2 && shouldClarify(val)) {
       const cq = await buildClarify(val, qKey)
       if (cq) {
         state.current.clarifyCount++
