@@ -547,7 +547,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
                   await showTyping(800)
                   addMsg('bot', prompt)
                   state.current.currentQuestion = prompt
-                  showLikertFollowUpInput(resolve)
+                  showLikertFollowUpInput(async () => { resolve() })
                   return
                 }
               }
