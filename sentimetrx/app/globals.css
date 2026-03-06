@@ -53,15 +53,18 @@
 
 /* ── Mobile: prevent horizontal overflow ── */
 html {
-  overflow-x: hidden;
 }
 
 body {
-  overflow-x: hidden;
-  max-width: 100%;
 }
 
 /* Survey page fills full viewport on mobile */
 main {
+}
+
+/* Hard stop horizontal overflow everywhere */
+html, body {
   overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
 }
