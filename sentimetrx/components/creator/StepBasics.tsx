@@ -5,7 +5,22 @@ import type { StepProps } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, type Industry } from '@/lib/industryDefaults'
 
-const EMOJIS = ['💬','🤝','🍽️','🏨','🎭','⭐','💡','🌟','🎯','📊','🔬','💰','🏥','🌱','🎓','🏆']
+const EMOJIS = [
+  // People & connection
+  '🤝','👋','😊','🙏','💬','🗣️','👥','🫂',
+  // Business & professional
+  '💼','📊','🎯','🏆','⭐','🌟','💡','🔬','📈','🏅',
+  // Healthcare & wellness
+  '🏥','💊','🩺','❤️','🌱','🧬',
+  // Food & hospitality
+  '🍽️','🥂','🏨','☕','🍷','🛎️',
+  // Entertainment & travel
+  '🎭','✈️','🗺️','🎬','🎵','🎨',
+  // Finance & charity
+  '💰','💳','🏦','🤲','🌍','♻️',
+  // Education & politics
+  '🎓','📚','🏛️','🗳️','⚖️','🔍',
+]
 
 const PRESETS = [
   { name: 'Ocean',  primary: '#00b4d8', gradient: 'linear-gradient(135deg,#00b4d8,#0077a8)', accent: '#00d4ff' },
@@ -27,6 +42,8 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
   const [industry, setIndustry] = useState<Industry>((draft as any).industry || '' as Industry)
   const [otherIndustry, setOtherIndustry] = useState((draft as any).otherIndustry || '')
   const [applied, setApplied] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [customEmoji, setCustomEmoji] = useState('')
 
   const applyPreset = (p: typeof PRESETS[0]) => {
     updateConfig({
@@ -127,14 +144,49 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
             placeholder="e.g. Aria"
             className="flex-1"
           />
-          <select
-            value={draft.bot_emoji}
-            onChange={e => update({ bot_emoji: e.target.value })}
-            className="h-11 px-3 rounded-xl bg-white border border-gray-300 text-xl outline-none focus:border-orange-400 transition-colors cursor-pointer flex-shrink-0"
+          <button
+            type="button"
+            onClick={() => setShowEmojiPicker(v => !v)}
+            className="h-11 w-14 rounded-xl bg-white border border-gray-300 text-2xl flex items-center justify-center hover:border-orange-400 transition-colors flex-shrink-0"
+            title="Pick an emoji"
           >
-            {EMOJIS.map(e => <option key={e} value={e}>{e}</option>)}
-          </select>
+            {draft.bot_emoji || '💬'}
+          </button>
         </div>
+        {showEmojiPicker && (
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-lg">
+            <div className="grid grid-cols-8 gap-1 mb-3">
+              {EMOJIS.flat().map(e => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => { update({ bot_emoji: e }); setShowEmojiPicker(false) }}
+                  className={`text-2xl p-1.5 rounded-lg hover:bg-orange-50 transition-colors ${draft.bot_emoji === e ? 'bg-orange-100 ring-2 ring-orange-400' : ''}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <input
+                type="text"
+                value={customEmoji}
+                onChange={e => setCustomEmoji(e.target.value)}
+                placeholder="Or type any emoji..."
+                className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-orange-400"
+                maxLength={4}
+              />
+              <button
+                type="button"
+                onClick={() => { if (customEmoji.trim()) { update({ bot_emoji: customEmoji.trim() }); setShowEmojiPicker(false); setCustomEmoji('') } }}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-colors"
+                style={{ background: HERMES }}
+              >
+                Use
+              </button>
+            </div>
+          </div>
+        )}
         <p className="text-gray-400 text-xs">The name and emoji respondents see in the chat.</p>
       </Section>
 

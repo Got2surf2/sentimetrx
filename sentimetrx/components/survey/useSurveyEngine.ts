@@ -317,8 +317,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     })
     inputRef.current.appendChild(col)
     scrollBottom()
-    setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, 200)
-  }, [addMsg, chatRef, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDemographics])
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDemographics])
 
   const stepPsychoIntro = useCallback(async () => {
     clearInput()
@@ -328,8 +327,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     addMsg('bot', 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
     await showTyping(200)
     await stepPsychoQ()
-    setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, 300)
-  }, [addMsg, chatRef, clearInput, showTyping, stepPsychoQ])
+  }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
   const progressFlow = useCallback(async (qKey: 'q1' | 'q3' | 'q4') => {
     if (qKey === 'q1') {
@@ -476,7 +474,6 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       addMsg('user', val)
       if (!isDecline(val)) state.current.answers[qKey] = originalVal + ' [+ ' + val + ']'
       clearInput()
-      state.current.clarifyCount = 0
       await progressFlow(qKey)
     }
 
@@ -585,75 +582,75 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           addMsg('bot', 'No problem at all -- thanks for your time! 😊')
           return
         }
-        // Rating
+        // NPS first
         clearInput()
         await showTyping(1000)
-        addMsg('bot', config.ratingPrompt)
-        await showTyping(350)
+        const npsPrompt = config.npsPrompt || 'How likely are you to recommend us to a friend or someone you know?'
+        addMsg('bot', npsPrompt)
+        await showTyping(300)
 
         if (!inputRef.current) return
-        const ratingRow = document.createElement('div')
-        ratingRow.className = 'flex gap-1 mt-1.5'
-        config.ratingScale.forEach(r => {
-          const rb = document.createElement('button')
-          rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
-          rb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
-          rb.innerHTML = `<span style="font-size:20px">${r.emoji}</span><span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap">${r.label}</span>`
-          rb.onmouseenter = () => { rb.style.borderColor = config.theme.primaryColor; rb.style.background = `${config.theme.primaryColor}18` }
-          rb.onmouseleave = () => {
-            if (!rb.classList.contains('selected')) {
-              rb.style.borderColor = 'rgba(255,255,255,0.1)'
-              rb.style.background = 'rgba(255,255,255,0.05)'
+        const stars = [
+          { stars: '⭐',         label: '1 -- No',         score: 1 },
+          { stars: '⭐⭐',       label: '2 -- Unlikely',   score: 2 },
+          { stars: '⭐⭐⭐',     label: '3 -- Maybe',      score: 3 },
+          { stars: '⭐⭐⭐⭐',   label: '4 -- Likely',     score: 4 },
+          { stars: '⭐⭐⭐⭐⭐', label: '5 -- Definitely!', score: 5 },
+        ]
+        const npsRow = document.createElement('div')
+        npsRow.className = 'flex gap-1 mt-1.5'
+        stars.forEach(s => {
+          const sb = document.createElement('button')
+          sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
+          sb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
+          sb.innerHTML = `<span style="font-size:13px">${s.stars}</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">${s.label}</span>`
+          sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '18' }
+          sb.onmouseleave = () => {
+            if (!sb.classList.contains('selected')) {
+              sb.style.borderColor = 'rgba(255,255,255,0.1)'
+              sb.style.background = 'rgba(255,255,255,0.05)'
             }
           }
-          rb.onclick = async () => {
-            ratingRow.querySelectorAll('button').forEach((b: any) => { b.disabled = true; b.style.borderColor = 'rgba(255,255,255,0.1)'; b.style.background = 'rgba(255,255,255,0.05)' })
-            rb.style.borderColor = config.theme.primaryColor
-            rb.style.background  = `${config.theme.primaryColor}20`
-            state.current.rating      = r.score
-            state.current.ratingLabel = r.label
-            // sentiment is derived from NPS score -- set after NPS selection below
-            addMsg('user', `${r.emoji} ${r.label}`)
+          sb.onclick = async () => {
+            npsRow.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            sb.style.borderColor = config.theme.primaryColor
+            sb.style.background  = config.theme.primaryColor + '20'
+            state.current.npsScore = s.score
+            state.current.npsLabel = s.label
+            // sentiment derived from NPS: 5=promoter, 4=passive, 1-3=detractor
+            state.current.sentiment = s.score >= 5 ? 'promoter' : s.score >= 4 ? 'passive' : 'detractor'
+            addMsg('user', s.stars + ' ' + s.label)
 
-            // NPS
+            // Experience rating second
             clearInput()
             await showTyping(900)
-            addMsg('bot', 'And how likely are you to recommend us to a friend or someone you know?')
-            await showTyping(300)
+            addMsg('bot', config.ratingPrompt)
+            await showTyping(350)
 
             if (!inputRef.current) return
-            const stars = [
-              { stars: '⭐',          label: '1 -- No',         score: 1 },
-              { stars: '⭐⭐',        label: '2 -- Unlikely',   score: 2 },
-              { stars: '⭐⭐⭐',      label: '3 -- Maybe',      score: 3 },
-              { stars: '⭐⭐⭐⭐',    label: '4 -- Likely',     score: 4 },
-              { stars: '⭐⭐⭐⭐⭐',  label: '5 -- Definitely!',score: 5 },
-            ]
-            const npsRow = document.createElement('div')
-            npsRow.className = 'flex gap-1 mt-1.5'
-            stars.forEach(s => {
-              const sb = document.createElement('button')
-              sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
-              sb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
-              sb.innerHTML = `<span style="font-size:13px">${s.stars}</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">${s.label}</span>`
-              sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = `${config.theme.primaryColor}18` }
-              sb.onmouseleave = () => {
-                if (!sb.classList.contains('selected')) {
-                  sb.style.borderColor = 'rgba(255,255,255,0.1)'
-                  sb.style.background = 'rgba(255,255,255,0.05)'
+            const ratingRow = document.createElement('div')
+            ratingRow.className = 'flex gap-1 mt-1.5'
+            config.ratingScale.forEach(r => {
+              const rb = document.createElement('button')
+              rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
+              rb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
+              rb.innerHTML = `<span style="font-size:20px">${r.emoji}</span><span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap">${r.label}</span>`
+              rb.onmouseenter = () => { rb.style.borderColor = config.theme.primaryColor; rb.style.background = config.theme.primaryColor + '18' }
+              rb.onmouseleave = () => {
+                if (!rb.classList.contains('selected')) {
+                  rb.style.borderColor = 'rgba(255,255,255,0.1)'
+                  rb.style.background = 'rgba(255,255,255,0.05)'
                 }
               }
-              sb.onclick = async () => {
-                npsRow.querySelectorAll('button').forEach((b: any) => b.disabled = true)
-                sb.style.borderColor = config.theme.primaryColor
-                sb.style.background  = `${config.theme.primaryColor}20`
-                state.current.npsScore = s.score
-                state.current.npsLabel = s.label
-                // NPS 5 = promoter, 4 = passive, 1-3 = detractor
-                state.current.sentiment = s.score >= 5 ? 'promoter' : s.score >= 4 ? 'passive' : 'detractor'
-                addMsg('user', `${s.stars} ${s.label}`)
+              rb.onclick = async () => {
+                ratingRow.querySelectorAll('button').forEach((b: any) => { b.disabled = true; b.style.borderColor = 'rgba(255,255,255,0.1)'; b.style.background = 'rgba(255,255,255,0.05)' })
+                rb.style.borderColor = config.theme.primaryColor
+                rb.style.background  = config.theme.primaryColor + '20'
+                state.current.rating      = r.score
+                state.current.ratingLabel = r.label
+                addMsg('user', r.emoji + ' ' + r.label)
 
-                // Q1 (sentiment-adapted)
+                // Q1 (sentiment-adapted from NPS)
                 clearInput()
                 await showTyping(1100)
                 const q1 = state.current.sentiment === 'promoter' ? config.promoterQ1
@@ -663,14 +660,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
                 state.current.currentQuestion = q1
                 showTextInput('q1')
               }
-              npsRow.appendChild(sb)
+              ratingRow.appendChild(rb)
             })
-            inputRef.current.appendChild(npsRow)
+            inputRef.current.appendChild(ratingRow)
             scrollBottom()
           }
-          ratingRow.appendChild(rb)
+          npsRow.appendChild(sb)
         })
-        inputRef.current.appendChild(ratingRow)
+        inputRef.current.appendChild(npsRow)
         scrollBottom()
       }
       row.appendChild(btn)

@@ -33,6 +33,8 @@ export interface StudyClarifiers {
 
 export interface StudyConfig {
   greeting:          string
+  npsPrompt?:        string    // defaults to 'How likely are you to recommend us?'
+  npsLabel?:         string    // defaults to 'NPS' — shown on dashboard card and CSV header
   ratingPrompt:      string
   q1ExportLabel?:    string
   ratingScale:       RatingOption[]

@@ -35,7 +35,33 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
         />
       </Section>
 
-      <Section title="Opening rating question" description="Asks respondents to rate their experience before the conversation begins.">
+      <Section title="NPS question" description="Shown first -- asks how likely respondents are to recommend you. The label appears on dashboard cards and in CSV exports.">
+        <div className="flex gap-3 items-start">
+          <div className="flex-1">
+            <Input
+              value={c.npsPrompt || ''}
+              onChange={v => updateConfig({ npsPrompt: v })}
+              placeholder="How likely are you to recommend us to a friend or someone you know?"
+              multiline
+              rows={2}
+            />
+          </div>
+          <div className="flex-shrink-0 w-28">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Dashboard label</label>
+            <input
+              type="text"
+              value={c.npsLabel || ''}
+              onChange={e => updateConfig({ npsLabel: e.target.value })}
+              placeholder="NPS"
+              maxLength={20}
+              className="w-full px-3 py-2 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors"
+            />
+          </div>
+        </div>
+        <p className="text-gray-400 text-xs px-1">Default label is "NPS". Change it to match your context e.g. "Likelihood" or "Would Refer".</p>
+      </Section>
+
+      <Section title="Experience rating question" description="Shown after NPS -- asks respondents to rate their experience.">
         <Input
           value={c.ratingPrompt}
           onChange={v => updateConfig({ ratingPrompt: v })}

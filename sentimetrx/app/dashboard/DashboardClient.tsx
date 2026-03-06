@@ -26,8 +26,8 @@ type StatusFilter = 'all' | 'active' | 'closed' | 'draft'
 const HERMES = '#E8632A'
 
 // -- Donut chart ----------------------------------------------------------------
-function DonutChart({ promoters, passives, detractors, total, avgNps }: {
-  promoters: number; passives: number; detractors: number; total: number; avgNps: number
+function DonutChart({ promoters, passives, detractors, total, avgNps, npsLabel }: {
+  promoters: number; passives: number; detractors: number; total: number; avgNps: number; npsLabel?: string
 }) {
   const p = total > 0 ? Math.round(promoters / total * 100) : 0
   const a = total > 0 ? Math.round(passives  / total * 100) : 0
@@ -41,7 +41,7 @@ function DonutChart({ promoters, passives, detractors, total, avgNps }: {
       <div style={{ position: 'absolute', top: 14, left: 14, width: 68, height: 68, borderRadius: '50%', background: 'white' }} />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: HERMES }}>{total > 0 ? avgNps : '--'}</span>
-        <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>NPS</span>
+        <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>{npsLabel || 'NPS'}</span>
       </div>
     </div>
   )
@@ -182,7 +182,7 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
 
           {/* Donut + stats */}
           <div className="flex items-center gap-3">
-            <DonutChart promoters={stats.promoters} passives={stats.passives} detractors={stats.detractors} total={stats.total} avgNps={stats.avgNps} />
+            <DonutChart promoters={stats.promoters} passives={stats.passives} detractors={stats.detractors} total={stats.total} avgNps={stats.avgNps} npsLabel={study.config?.npsLabel} />
             <div className="flex flex-col gap-1 flex-1 text-xs">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Promoters</span>
