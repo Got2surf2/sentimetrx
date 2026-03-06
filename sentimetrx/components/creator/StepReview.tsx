@@ -40,9 +40,6 @@ export default function StepReview({ draft, update, updateConfig, onBack, onSave
           </SummarySection>
 
           <SummarySection title="Conversation">
-            <Row label="Promoter Q1"   value={c.promoterQ1}  truncate />
-            <Row label="Passive Q1"    value={c.passiveQ1}   truncate />
-            <Row label="Detractor Q1"  value={c.detractorQ1} truncate />
             <Row label="Q3"            value={c.q3}          truncate />
             <Row label="Q4"            value={c.q4}          truncate />
             <Row label="Clarifiers"    value={`${clarifierCount} keyword${clarifierCount !== 1 ? 's' : ''} + default`} />
