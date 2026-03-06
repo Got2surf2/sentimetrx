@@ -91,9 +91,9 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           <button
             type="button"
             onClick={() => updateConfig({ q3Required: c.q3Required === false ? undefined : false })}
-            className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${c.q3Required !== false ? 'bg-orange-500' : 'bg-gray-300'}`}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q3Required !== false ? 'bg-orange-500' : 'bg-gray-200'}`}
           >
-            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${c.q3Required !== false ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q3Required !== false ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
           <span className="text-sm text-gray-600">
             {c.q3Required !== false ? <><strong className="text-gray-800">Required</strong> — respondents must answer</> : <><strong className="text-gray-800">Optional</strong> — respondents can skip</>}
@@ -114,9 +114,9 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           <button
             type="button"
             onClick={() => updateConfig({ q4Required: c.q4Required === true ? undefined : true })}
-            className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${c.q4Required === true ? 'bg-orange-500' : 'bg-gray-300'}`}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q4Required === true ? 'bg-orange-500' : 'bg-gray-200'}`}
           >
-            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${c.q4Required === true ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q4Required === true ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
           <span className="text-sm text-gray-600">
             {c.q4Required === true ? <><strong className="text-gray-800">Required</strong> — respondents must answer</> : <><strong className="text-gray-800">Optional</strong> — respondents can skip</>}
@@ -139,9 +139,9 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           <button
             type="button"
             onClick={() => updateConfig({ useAIClarify: !c.useAIClarify })}
-            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 ${c.useAIClarify ? 'bg-orange-500' : 'bg-gray-300'}`}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ${c.useAIClarify ? 'bg-orange-500' : 'bg-gray-200'}`}
           >
-            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${c.useAIClarify ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.useAIClarify ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
         </div>
         {!c.useAIClarify && (
