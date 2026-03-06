@@ -376,6 +376,18 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom])
 
+
+
+    const stepPsychoIntro = useCallback(async () => {
+    clearInput()
+    pickPsychoQuestions(3)
+    state.current.psychoIdx = 0
+    await showTyping(900)
+    addMsg('bot', 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
+    await showTyping(200)
+    await stepPsychoQ()
+  }, [addMsg, clearInput, showTyping, stepPsychoQ])
+
   const stepCustomQuestions = useCallback(async () => {
     const questions = config.questions ?? []
     if (questions.length === 0) { await stepPsychoIntro(); return }
@@ -621,17 +633,6 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     state.current.customAnswers = customAnswers
     await stepPsychoIntro()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, stepPsychoIntro])
-
-
-    const stepPsychoIntro = useCallback(async () => {
-    clearInput()
-    pickPsychoQuestions(3)
-    state.current.psychoIdx = 0
-    await showTyping(900)
-    addMsg('bot', 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
-    await showTyping(200)
-    await stepPsychoQ()
-  }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
 
   const progressFlow = useCallback(async (qKey: 'q3' | 'q4') => {
