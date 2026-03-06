@@ -37,7 +37,7 @@ function DonutChart({ promoters, passives, detractors, total, avgNps }: {
   const s1 = seg(0,       pp)
   const s2 = seg(pp,      pa)
   const s3 = seg(pp + pa, pd)
-  const rot = `rotate(-90 ${cx} ${cy})`
+  const rot = 'rotate(-90 ' + cx + ' ' + cy + ')'
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size}>
