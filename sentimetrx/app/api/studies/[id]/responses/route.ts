@@ -219,3 +219,43 @@ function csvResponse(studyId: string, studyName: string | undefined, format: str
     },
   })
 }
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Verify ownership
+  const { data: study } = await supabase
+    .from('studies')
+    .select('id, created_by, org_id')
+    .eq('id', params.id)
+    .single()
+
+  if (!study) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, org_id')
+    .eq('id', user.id)
+    .single()
+
+  const isOwner = study.created_by === user.id
+  const isAdmin = profile?.role === 'admin' && profile?.org_id === study.org_id
+  if (!isOwner && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const body = await req.json()
+  const ids: string[] = body?.ids
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return NextResponse.json({ error: 'No response IDs provided' }, { status: 400 })
+  }
+
+  const { error, count } = await supabase
+    .from('responses')
+    .delete({ count: 'exact' })
+    .eq('study_id', params.id)
+    .in('id', ids)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ deleted: count ?? ids.length })
+}

@@ -35,6 +35,9 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
   const [total,       setTotal]       = useState(0)
   const [loading,     setLoading]     = useState(true)
   const [selected,    setSelected]    = useState<Response | null>(null)
+  const [checkedIds,  setCheckedIds]  = useState<Set<string>>(new Set())
+  const [deleting,    setDeleting]    = useState(false)
+  const [deleteToast, setDeleteToast] = useState<string | null>(null)
 
   // Filters — auto-apply on change, no Apply button
   const [sentiment, setSentiment] = useState('')
@@ -47,6 +50,42 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
   const [dateFrom,  setDateFrom]  = useState(defaultFrom())
   const [dateTo,    setDateTo]    = useState(defaultTo())
   const LIMIT = 25
+
+  const allChecked  = responses.length > 0 && responses.every(r => checkedIds.has(r.id))
+  const someChecked = responses.some(r => checkedIds.has(r.id))
+
+  const toggleCheck = (id: string) => setCheckedIds(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const toggleAll = () => setCheckedIds(
+    allChecked ? new Set() : new Set(responses.map(r => r.id))
+  )
+
+  const deleteSelected = async () => {
+    if (!someChecked || deleting) return
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/studies/' + studyId + '/responses', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(checkedIds) }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Delete failed')
+      setCheckedIds(new Set())
+      setDeleteToast('Deleted ' + (json.deleted ?? checkedIds.size) + ' response' + (json.deleted !== 1 ? 's' : ''))
+      setTimeout(() => setDeleteToast(null), 3000)
+      fetchResponses()
+    } catch (e: any) {
+      setDeleteToast('Error: ' + e.message)
+      setTimeout(() => setDeleteToast(null), 4000)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const fetchResponses = useCallback(async () => {
     setLoading(true)
@@ -95,6 +134,12 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Delete toast */}
+      {deleteToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-gray-900 text-white text-sm font-medium shadow-xl">
+          {deleteToast}
+        </div>
+      )}
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} />
 
       <StudyPageHeader
@@ -171,10 +216,32 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
             </div>
           ) : (
             <>
+              {someChecked && (
+                <div className="flex items-center justify-between px-5 py-3 bg-orange-50 border-b border-orange-200">
+                  <span className="text-sm text-orange-700 font-medium">{checkedIds.size} response{checkedIds.size !== 1 ? "s" : ""} selected</span>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setCheckedIds(new Set())}
+                      className="text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                      Clear selection
+                    </button>
+                    <button type="button" onClick={deleteSelected} disabled={deleting}
+                      className="px-4 py-1.5 rounded-xl text-xs font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 transition-all">
+                      {deleting ? "Deleting..." : "Delete selected"}
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-4 py-3 w-10">
+                        <button type="button" onClick={toggleAll}
+                          className={"w-5 h-5 rounded border-2 flex items-center justify-center transition-all " + (allChecked ? "bg-orange-500 border-orange-500" : "bg-white border-gray-300 hover:border-orange-400")}>
+                          {allChecked && <span className="text-white text-xs font-bold leading-none">✓</span>}
+                          {!allChecked && someChecked && <span className="text-orange-400 text-xs font-bold leading-none">−</span>}
+                        </button>
+                      </th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sentiment</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Exp.</th>
@@ -185,7 +252,13 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {responses.map(r => (
-                      <tr key={r.id} className="hover:bg-orange-50/40 transition-colors cursor-pointer" onClick={() => setSelected(r)}>
+                      <tr key={r.id} className={"hover:bg-orange-50/40 transition-colors cursor-pointer " + (checkedIds.has(r.id) ? "bg-orange-50/60" : "")} onClick={() => setSelected(r)}>
+                        <td className="px-4 py-3.5" onClick={e => { e.stopPropagation(); toggleCheck(r.id) }}>
+                          <button type="button"
+                            className={"w-5 h-5 rounded border-2 flex items-center justify-center transition-all " + (checkedIds.has(r.id) ? "bg-orange-500 border-orange-500" : "bg-white border-gray-300 hover:border-orange-400")}>
+                            {checkedIds.has(r.id) && <span className="text-white text-xs font-bold leading-none">✓</span>}
+                          </button>
+                        </td>
                         <td className="px-5 py-3.5 text-sm text-gray-600 whitespace-nowrap">
                           {new Date(r.completed_at).toLocaleDateString()}
                         </td>
