@@ -13,10 +13,13 @@ export default function SurveyWidget({ study }: Props) {
   const [status, setStatus] = useState<'checking' | 'active' | 'closed' | 'draft'>('checking')
 
   const scrollBottom = useCallback(() => {
-    setTimeout(() => {
-      if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
-    }, 60)
-  }, [])
+    const el = chatRef.current
+    if (!el) return
+    // Only scroll if user is already near the bottom — never interrupt manual scrolling
+    const isNearBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight < 150
+    setTimeout(() => { if (isNearBottom()) el.scrollTop = el.scrollHeight }, 60)
+    setTimeout(() => { if (isNearBottom()) el.scrollTop = el.scrollHeight }, 350)
+  }, [chatRef])
 
   const { renderInput } = useSurveyEngine({ study, chatRef, inputRef, scrollBottom })
 
@@ -37,8 +40,8 @@ export default function SurveyWidget({ study }: Props) {
 
   if (status === 'checking') {
     return (
-      <div className="w-full h-full flex items-center justify-center">
-        <div className="flex gap-1.5">
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.backgroundColor }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           {[0, 150, 300].map(d => (
             <span key={d} className="typing-dot" style={{ animationDelay: `${d}ms` }} />
           ))}
@@ -48,78 +51,97 @@ export default function SurveyWidget({ study }: Props) {
   }
 
   if (status === 'closed' || status === 'draft') {
+    const isClosed = status === 'closed'
     return (
-      <div className="w-full h-full flex flex-col" style={{ background: theme.backgroundColor }}>
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
-          style={{ background: theme.headerGradient }}>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0"
-            style={{ background: 'rgba(255,255,255,0.15)' }}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: theme.backgroundColor, overflow: 'hidden' }}>
+        <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
             {study.bot_emoji}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-white text-base leading-tight truncate">{study.bot_name}</div>
-            <div className="text-white/60 text-xs mt-0.5 uppercase tracking-wide truncate">{study.name}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.bot_name}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.name}</div>
           </div>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-4">
-          <div className="text-5xl">{status === 'closed' ? '🔒' : '🚧'}</div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center', gap: 16 }}>
+          <div style={{ fontSize: 48 }}>{isClosed ? '🔒' : '🚧'}</div>
           <div>
-            <h2 className="text-white font-bold text-lg mb-2">
-              {status === 'closed' ? 'This survey is now closed' : 'Not yet available'}
-            </h2>
-            <p className="text-white/50 text-sm leading-relaxed">
-              {status === 'closed'
-                ? 'Thank you for your interest. This survey is no longer accepting responses.'
-                : "This survey isn't published yet. Please check back soon."}
-            </p>
+            <div style={{ color: 'white', fontWeight: 700, fontSize: 18, marginBottom: 8 }}>{isClosed ? 'This survey is now closed' : 'Not yet available'}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.6 }}>
+              {isClosed ? 'Thank you for your interest. This survey is no longer accepting responses.' : "This survey isn't published yet. Please check back soon."}
+            </div>
           </div>
         </div>
-        <div className="text-center pb-6" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
-          <p className="text-white/20 text-xs">Powered by <span className="text-white/40 font-medium">sentimetrx.ai</span></p>
+        <div style={{ textAlign: 'center', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
         </div>
       </div>
     )
   }
 
-  // Active — full screen on mobile, card on desktop
+  // Active survey
   return (
-    <div
-      className="w-full h-full flex flex-col sm:h-auto sm:max-w-sm sm:mx-auto sm:rounded-2xl sm:shadow-2xl sm:my-4"
-      style={{
-        background: theme.backgroundColor,
-        border: `1px solid ${theme.primaryColor}28`,
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 sm:px-5 sm:py-4"
-        style={{ background: theme.headerGradient }}>
-        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-xl flex-shrink-0"
-          style={{ background: 'rgba(255,255,255,0.15)' }}>
+    <div style={{
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: theme.backgroundColor,
+      overflow: 'hidden',
+      // Desktop card style via inline media won't work — handled by page wrapper
+    }}>
+      {/* Fixed header — never scrolls */}
+      <div style={{
+        background: theme.headerGradient,
+        padding: '12px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        flexShrink: 0,
+        zIndex: 10,
+      }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
           {study.bot_emoji}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white text-base leading-tight truncate">{study.bot_name}</div>
-          <div className="text-white/60 text-xs mt-0.5 uppercase tracking-wide truncate">{study.name}</div>
-          <div className="flex items-center gap-1.5 mt-1">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.bot_name}</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{study.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <span className="live-dot" />
-            <span className="text-white/50 text-xs">Ready for your feedback</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Ready for your feedback</span>
           </div>
         </div>
       </div>
 
-      {/* Chat — fills remaining vertical space */}
-      <div ref={chatRef}
-        className="survey-chat flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2"
+      {/* Chat area — scrollable, fills all available space between header and input */}
+      <div
+        ref={chatRef}
+        className="survey-chat"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: '12px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          // Ensure it can shrink
+          minHeight: 0,
+        }}
       />
 
-      {/* Input — pinned to bottom, respects iPhone home bar */}
-      <div ref={inputRef}
-        className="px-3 pt-2 flex-shrink-0"
+      {/* Input area — fixed height, max-height to prevent psycho buttons overflowing */}
+      <div
+        ref={inputRef}
         style={{
-          background: `${theme.backgroundColor}f0`,
-          borderTop: `1px solid ${theme.primaryColor}18`,
-          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+          flexShrink: 0,
+          padding: '10px 12px',
+          paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
+          background: theme.backgroundColor + 'f0',
+          borderTop: '1px solid rgba(255,255,255,0.07)',
+          maxHeight: '45vh',
+          overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       />
     </div>
