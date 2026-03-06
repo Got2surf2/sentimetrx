@@ -483,7 +483,54 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, state])
 
-  // -- Optional text input (with Skip button) ------------------
+  // -- Likert adaptive follow-up input (text, then calls next()) --
+  const showLikertFollowUpInput = useCallback((next: () => Promise<void>) => {
+    if (!inputRef.current) return
+    const wrap = document.createElement('div')
+    wrap.className = 'flex flex-col gap-2 mt-1.5'
+    const row = document.createElement('div')
+    row.className = 'flex gap-2 items-end'
+    const ta = document.createElement('textarea')
+    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.rows = 1
+    ta.placeholder = 'Share your thoughts...'
+    ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
+    ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
+    ta.onblur   = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
+    ta.oninput  = () => {
+      ta.style.height = 'auto'
+      ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
+      sendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+      sendBtn.style.color      = ta.value.trim() ? '#fff' : 'rgba(255,255,255,0.4)'
+    }
+    ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
+    const sendBtn = document.createElement('button')
+    sendBtn.textContent = '->'
+    sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+    sendBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;'
+    const skipBtn = document.createElement('button')
+    skipBtn.textContent = 'Skip'
+    skipBtn.className = 'text-xs self-start px-2 py-1'
+    skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-family:inherit;'
+    skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
+    skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
+    const submit = async () => {
+      const v = ta.value.trim()
+      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      if (v) addMsg('user', v)
+      clearInput()
+      await next()
+    }
+    sendBtn.onclick = submit
+    skipBtn.onclick = submit
+    row.append(ta, sendBtn)
+    wrap.append(row, skipBtn)
+    inputRef.current.appendChild(wrap)
+    setTimeout(() => ta.focus(), 100)
+    scrollBottom()
+  }, [addMsg, clearInput, config, inputRef, scrollBottom])
+
+    // -- Optional text input (with Skip button) ------------------
   const showTextInputOptional = useCallback((qKey: 'q3' | 'q4') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
@@ -582,7 +629,80 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           addMsg('bot', 'No problem at all -- thanks for your time! 😊')
           return
         }
-        // NPS first
+
+        // Helper: show adaptive Likert follow-up then call next()
+        const showLikertFollowUp = async (
+          followUp: any,
+          score: number,
+          next: () => Promise<void>
+        ) => {
+          if (!followUp?.enabled) { await next(); return }
+          const pr = followUp.mode === 'per-response'
+            ? followUp.perResponse?.[score]
+            : null
+          const prompt = pr ? pr.prompt : (followUp.sharedPrompt || '')
+          if (!prompt.trim()) { await next(); return }
+          clearInput()
+          await showTyping(900)
+          addMsg('bot', prompt)
+          state.current.currentQuestion = prompt
+          showLikertFollowUpInput(next)
+        }
+
+        const npsEnabled        = config.npsEnabled !== false
+        const experienceEnabled = config.experienceEnabled !== false
+
+        // Final open-end Q1 (sentiment-adapted)
+        const doSentimentQ1 = async () => {
+          clearInput()
+          await showTyping(1000)
+          const q1 = state.current.sentiment === 'promoter' ? config.promoterQ1
+                   : state.current.sentiment === 'passive'   ? config.passiveQ1
+                   : config.detractorQ1
+          addMsg('bot', q1)
+          state.current.currentQuestion = q1
+          showTextInput('q1')
+        }
+
+        // Experience rating step
+        const doExperienceRating = async () => {
+          if (!experienceEnabled) { await doSentimentQ1(); return }
+          clearInput()
+          await showTyping(900)
+          addMsg('bot', config.ratingPrompt)
+          await showTyping(300)
+          if (!inputRef.current) return
+          const ratingRow = document.createElement('div')
+          ratingRow.className = 'flex gap-1 mt-1.5'
+          config.ratingScale.forEach((r: any) => {
+            const rb = document.createElement('button')
+            rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
+            rb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
+            rb.innerHTML = '<span style="font-size:20px">' + r.emoji + '</span><span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap">' + r.label + '</span>'
+            rb.onmouseenter = () => { rb.style.borderColor = config.theme.primaryColor; rb.style.background = config.theme.primaryColor + '18' }
+            rb.onmouseleave = () => { rb.style.borderColor = 'rgba(255,255,255,0.1)'; rb.style.background = 'rgba(255,255,255,0.05)' }
+            rb.onclick = async () => {
+              ratingRow.querySelectorAll('button').forEach((b: any) => { b.disabled = true; b.style.borderColor = 'rgba(255,255,255,0.1)'; b.style.background = 'rgba(255,255,255,0.05)' })
+              rb.style.borderColor = config.theme.primaryColor
+              rb.style.background  = config.theme.primaryColor + '20'
+              state.current.rating      = r.score
+              state.current.ratingLabel = r.label
+              addMsg('user', r.emoji + ' ' + r.label)
+              await showLikertFollowUp(config.experienceFollowUp, r.score, doSentimentQ1)
+            }
+            ratingRow.appendChild(rb)
+          })
+          inputRef.current.appendChild(ratingRow)
+          scrollBottom()
+        }
+
+        // NPS step (or skip)
+        if (!npsEnabled) {
+          state.current.sentiment = 'passive'
+          await doExperienceRating()
+          return
+        }
+
         clearInput()
         await showTyping(1000)
         const npsPrompt = config.npsPrompt || 'How likely are you to recommend us to a friend or someone you know?'
@@ -591,79 +711,30 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
         if (!inputRef.current) return
         const stars = [
-          { stars: '⭐',         label: '1 -- No',         score: 1 },
-          { stars: '⭐⭐',       label: '2 -- Unlikely',   score: 2 },
-          { stars: '⭐⭐⭐',     label: '3 -- Maybe',      score: 3 },
-          { stars: '⭐⭐⭐⭐',   label: '4 -- Likely',     score: 4 },
-          { stars: '⭐⭐⭐⭐⭐', label: '5 -- Definitely!', score: 5 },
+          { stars: '⭐',         label: '1 - No',         score: 1 },
+          { stars: '⭐⭐',       label: '2 - Unlikely',   score: 2 },
+          { stars: '⭐⭐⭐',     label: '3 - Maybe',      score: 3 },
+          { stars: '⭐⭐⭐⭐',   label: '4 - Likely',     score: 4 },
+          { stars: '⭐⭐⭐⭐⭐', label: '5 - Definitely!', score: 5 },
         ]
         const npsRow = document.createElement('div')
         npsRow.className = 'flex gap-1 mt-1.5'
         stars.forEach(s => {
           const sb = document.createElement('button')
           sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
-          sb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
-          sb.innerHTML = `<span style="font-size:13px">${s.stars}</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">${s.label}</span>`
+          sb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
+          sb.innerHTML = '<span style="font-size:13px">' + s.stars + '</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
           sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '18' }
-          sb.onmouseleave = () => {
-            if (!sb.classList.contains('selected')) {
-              sb.style.borderColor = 'rgba(255,255,255,0.1)'
-              sb.style.background = 'rgba(255,255,255,0.05)'
-            }
-          }
+          sb.onmouseleave = () => { sb.style.borderColor = 'rgba(255,255,255,0.1)'; sb.style.background = 'rgba(255,255,255,0.05)' }
           sb.onclick = async () => {
             npsRow.querySelectorAll('button').forEach((b: any) => b.disabled = true)
             sb.style.borderColor = config.theme.primaryColor
             sb.style.background  = config.theme.primaryColor + '20'
             state.current.npsScore = s.score
             state.current.npsLabel = s.label
-            // sentiment derived from NPS: 5=promoter, 4=passive, 1-3=detractor
             state.current.sentiment = s.score >= 5 ? 'promoter' : s.score >= 4 ? 'passive' : 'detractor'
             addMsg('user', s.stars + ' ' + s.label)
-
-            // Experience rating second
-            clearInput()
-            await showTyping(900)
-            addMsg('bot', config.ratingPrompt)
-            await showTyping(350)
-
-            if (!inputRef.current) return
-            const ratingRow = document.createElement('div')
-            ratingRow.className = 'flex gap-1 mt-1.5'
-            config.ratingScale.forEach(r => {
-              const rb = document.createElement('button')
-              rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
-              rb.style.cssText = `background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;`
-              rb.innerHTML = `<span style="font-size:20px">${r.emoji}</span><span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap">${r.label}</span>`
-              rb.onmouseenter = () => { rb.style.borderColor = config.theme.primaryColor; rb.style.background = config.theme.primaryColor + '18' }
-              rb.onmouseleave = () => {
-                if (!rb.classList.contains('selected')) {
-                  rb.style.borderColor = 'rgba(255,255,255,0.1)'
-                  rb.style.background = 'rgba(255,255,255,0.05)'
-                }
-              }
-              rb.onclick = async () => {
-                ratingRow.querySelectorAll('button').forEach((b: any) => { b.disabled = true; b.style.borderColor = 'rgba(255,255,255,0.1)'; b.style.background = 'rgba(255,255,255,0.05)' })
-                rb.style.borderColor = config.theme.primaryColor
-                rb.style.background  = config.theme.primaryColor + '20'
-                state.current.rating      = r.score
-                state.current.ratingLabel = r.label
-                addMsg('user', r.emoji + ' ' + r.label)
-
-                // Q1 (sentiment-adapted from NPS)
-                clearInput()
-                await showTyping(1100)
-                const q1 = state.current.sentiment === 'promoter' ? config.promoterQ1
-                         : state.current.sentiment === 'passive'   ? config.passiveQ1
-                         : config.detractorQ1
-                addMsg('bot', q1)
-                state.current.currentQuestion = q1
-                showTextInput('q1')
-              }
-              ratingRow.appendChild(rb)
-            })
-            inputRef.current.appendChild(ratingRow)
-            scrollBottom()
+            await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating)
           }
           npsRow.appendChild(sb)
         })
@@ -675,7 +746,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     inputRef.current.appendChild(row)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, showTextInput, showTyping, state])
+  }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, showLikertFollowUpInput, showTextInput, showTyping, state])
 
   return { renderInput }
 }

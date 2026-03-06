@@ -1,11 +1,11 @@
 'use client'
+// components/creator/CreatorUI.tsx — light theme
 
-// Shared UI components used across all creator steps
-// Keeps each step file clean and consistent
+const HERMES = '#E8632A'
 
 interface InputProps {
-  value:       string
-  onChange:    (v: string) => void
+  value:        string
+  onChange:     (v: string) => void
   placeholder?: string
   hint?:        string
   className?:   string
@@ -13,9 +13,9 @@ interface InputProps {
   rows?:        number
 }
 
-export function Input({ value, onChange, placeholder, hint, className = '', multiline, rows = 3 }: InputProps) {
-  const base = `w-full px-4 py-3 rounded-xl text-sm text-white placeholder-slate-500 bg-slate-800 border border-slate-700 outline-none focus:border-cyan-500 transition-colors resize-none ${className}`
+const inputBase = 'w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors resize-none'
 
+export function Input({ value, onChange, placeholder, hint, className = '', multiline, rows = 3 }: InputProps) {
   return (
     <div className="flex flex-col gap-1">
       {multiline ? (
@@ -24,7 +24,7 @@ export function Input({ value, onChange, placeholder, hint, className = '', mult
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           rows={rows}
-          className={base}
+          className={`${inputBase} ${className}`}
         />
       ) : (
         <input
@@ -32,16 +32,16 @@ export function Input({ value, onChange, placeholder, hint, className = '', mult
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className={base}
+          className={`${inputBase} ${className}`}
         />
       )}
-      {hint && <p className="text-slate-500 text-xs px-1">{hint}</p>}
+      {hint && <p className="text-gray-400 text-xs px-1">{hint}</p>}
     </div>
   )
 }
 
 export function Label({ children }: { children: React.ReactNode }) {
-  return <label className="text-slate-300 text-sm font-medium">{children}</label>
+  return <label className="text-gray-700 text-sm font-semibold">{children}</label>
 }
 
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
@@ -49,20 +49,35 @@ export function Field({ label, children, hint }: { label: string; children: Reac
     <div className="flex flex-col gap-1.5">
       <Label>{label}</Label>
       {children}
-      {hint && <p className="text-slate-500 text-xs px-1">{hint}</p>}
+      {hint && <p className="text-gray-400 text-xs px-1">{hint}</p>}
     </div>
   )
 }
 
-export function Section({ title, children, description }: { title: string; children: React.ReactNode; description?: string }) {
+export function Section({ title, children, description, action }: { title: string; children?: React.ReactNode; description?: string; action?: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-3">
-      <div>
-        <h3 className="text-white font-semibold text-base">{title}</h3>
-        {description && <p className="text-slate-400 text-sm mt-0.5">{description}</p>}
+    <div className="flex flex-col gap-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+      <div className="border-b border-gray-100 pb-3 flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <h3 className="text-gray-800 font-bold text-base">{title}</h3>
+          {description && <p className="text-gray-500 text-sm mt-1 leading-relaxed">{description}</p>}
+        </div>
+        {action && <div className="flex-shrink-0 mt-0.5">{action}</div>}
       </div>
       {children}
     </div>
+  )
+}
+
+export function ExportLabelField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Field label="CSV export column name (optional)">
+      <Input
+        value={value}
+        onChange={onChange}
+        placeholder="Short label for this column in CSV exports — e.g. Follow-up Answer"
+      />
+    </Field>
   )
 }
 
@@ -77,26 +92,23 @@ interface NavButtonsProps {
 
 export function NavButtons({ onBack, onNext, nextLabel = 'Next', nextDisabled, saving, extraButtons }: NavButtonsProps) {
   return (
-    <div className="flex items-center justify-between pt-4 border-t border-slate-800 mt-4">
+    <div className="flex items-center justify-between pt-4 border-t border-gray-200 mt-2">
       <div>
         {onBack && (
-          <button
-            onClick={onBack}
-            className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 text-sm font-medium transition-all"
-          >
-            Back
+          <button onClick={onBack}
+            className="px-4 py-2.5 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-100 text-sm font-medium transition-all">
+            ← Back
           </button>
         )}
       </div>
       <div className="flex gap-2">
         {extraButtons}
         {onNext && (
-          <button
-            onClick={onNext}
-            disabled={nextDisabled || saving}
-            className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-semibold text-sm transition-all"
+          <button onClick={onNext} disabled={nextDisabled || saving}
+            className="px-5 py-2.5 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-40"
+            style={{ background: nextDisabled || saving ? undefined : HERMES }}
           >
-            {saving ? 'Saving...' : nextLabel}
+            {saving ? 'Saving…' : nextLabel}
           </button>
         )}
       </div>
@@ -105,5 +117,5 @@ export function NavButtons({ onBack, onNext, nextLabel = 'Next', nextDisabled, s
 }
 
 export function Divider() {
-  return <div className="border-t border-slate-800" />
+  return <div className="border-t border-gray-200" />
 }
