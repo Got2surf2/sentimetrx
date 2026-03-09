@@ -21,11 +21,30 @@ export default function SurveyWidget({ study }: Props) {
   const scrollBottom = useCallback(() => {
     const el = chatRef.current
     if (!el) return
-    // Only scroll if user is already near the bottom — never interrupt manual scrolling
-    const isNearBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight < 150
-    setTimeout(() => { if (isNearBottom()) el.scrollTop = el.scrollHeight }, 60)
-    setTimeout(() => { if (isNearBottom()) el.scrollTop = el.scrollHeight }, 350)
+    // Always scroll to bottom -- on mobile the near-bottom guard misfires when keyboard
+    // shrinks the viewport, so we scroll unconditionally and use two retries for
+    // late-rendering DOM elements (buttons, option lists)
+    const doScroll = () => { el.scrollTop = el.scrollHeight }
+    setTimeout(doScroll, 60)
+    setTimeout(doScroll, 350)
   }, [chatRef])
+
+  // Fix mobile keyboard: on iOS, 100dvh doesn't shrink when keyboard opens.
+  // Listen to visualViewport resize and update the wrapper height.
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const onResize = () => {
+      if (wrapperRef.current) {
+        wrapperRef.current.style.height = vv.height + 'px'
+      }
+      // After viewport shrinks (keyboard open), scroll chat to bottom
+      scrollBottom()
+    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [scrollBottom])
 
   const { renderInput } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
 

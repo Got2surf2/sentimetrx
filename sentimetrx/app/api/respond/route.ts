@@ -4,10 +4,8 @@ import { createHash } from 'crypto'
 import type { SubmitResponseBody, Sentiment } from '@/lib/types'
 
 // POST /api/respond
-// Called by the survey widget when a respondent completes a survey.
-// This is a public endpoint — no auth required.
-// We use the service role client to insert the response, but we
-// validate the study_guid before inserting anything.
+// Public endpoint -- no auth required.
+// Uses service role client to insert.
 
 export async function POST(req: NextRequest) {
   let body: SubmitResponseBody
@@ -20,18 +18,20 @@ export async function POST(req: NextRequest) {
 
   const { study_guid, payload, duration_sec } = body
 
-  // Basic validation
   if (!study_guid || !payload) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  if (!payload.experienceRating?.score || !payload.npsRecommend?.score) {
+  // Stage 2a: NPS and experience rating are individually optional.
+  // Only reject if BOTH are missing (truly empty payload).
+  const hasNps        = payload.npsRecommend?.score != null
+  const hasExperience = payload.experienceRating?.score != null
+  if (!hasNps && !hasExperience) {
     return NextResponse.json({ error: 'Incomplete survey payload' }, { status: 400 })
   }
 
   const supabase = createServiceRoleClient()
 
-  // Verify the study exists and is active
   const { data: study, error: studyError } = await supabase
     .from('studies')
     .select('id, client_id, status')
@@ -46,16 +46,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Study is not accepting responses' }, { status: 403 })
   }
 
-  // Hash the IP address for abuse detection (never store raw IP)
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
              || req.headers.get('x-real-ip')
              || 'unknown'
   const ip_hash = createHash('sha256').update(ip).digest('hex')
 
-  // Extract the scalar fields for fast indexed queries
-  const sentiment        = payload.experienceRating.sentiment as Sentiment
-  const experience_score = payload.experienceRating.score
-  const nps_score        = payload.npsRecommend.score
+  // Sentiment: from NPS if available, else from experienceRating, else null
+  const sentiment: Sentiment | null =
+    (payload.npsRecommend?.score != null
+      ? (payload.npsRecommend.score >= 5 ? 'promoter' : payload.npsRecommend.score >= 4 ? 'passive' : 'detractor')
+      : payload.experienceRating?.sentiment as Sentiment ?? null)
+
+  const experience_score = payload.experienceRating?.score ?? null
+  const nps_score        = payload.npsRecommend?.score ?? null
 
   const { data: response, error: insertError } = await supabase
     .from('responses')

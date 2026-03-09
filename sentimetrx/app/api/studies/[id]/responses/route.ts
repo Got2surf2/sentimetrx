@@ -221,12 +221,13 @@ function csvResponse(studyId: string, studyName: string | undefined, format: str
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // Auth check: use user client to verify identity, then use service role to delete
+  const userClient = createClient()
+  const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Verify ownership
-  const { data: study } = await supabase
+  // Verify ownership using user client (respects RLS on studies table)
+  const { data: study } = await userClient
     .from('studies')
     .select('id, created_by, org_id')
     .eq('id', params.id)
@@ -234,7 +235,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   if (!study) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
 
-  const { data: profile } = await supabase
+  const { data: profile } = await userClient
     .from('profiles')
     .select('role, org_id')
     .eq('id', user.id)
@@ -250,7 +251,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No response IDs provided' }, { status: 400 })
   }
 
-  const { error, count } = await supabase
+  // Use service role client to bypass RLS for the actual delete
+  const { createServiceRoleClient } = await import('@/lib/supabase/server')
+  const serviceSupabase = createServiceRoleClient()
+  const { error, count } = await serviceSupabase
     .from('responses')
     .delete({ count: 'exact' })
     .eq('study_id', params.id)
