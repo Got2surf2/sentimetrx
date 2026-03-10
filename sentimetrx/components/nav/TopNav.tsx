@@ -3,18 +3,19 @@
 import Link from 'next/link'
 
 interface Props {
-  logoUrl?:     string
-  orgName?:     string
-  isAdmin?:     boolean
-  userEmail?:   string
-  fullName?:    string
-  crumbs?:      any   // accepted but ignored — breadcrumbs live in SubHeader
-  currentPage?: 'dashboard' | 'team' | 'admin' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new'
+  logoUrl?:        string
+  orgName?:        string
+  isAdmin?:        boolean
+  userEmail?:      string
+  fullName?:       string
+  crumbs?:         any
+  analyzeEnabled?: boolean   // NEW -- true if org has features.analyze
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze'
 }
 
 const HERMES = '#E8632A'
 
-export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, currentPage }: Props) {
+export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled, currentPage }: Props) {
 
   const navLink = (page: string, href: string, label: string) => {
     const active = currentPage === page
@@ -28,7 +29,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
   }
 
   const displayName = fullName
-    ? `${fullName}${userEmail ? ` (${userEmail})` : ''}`
+    ? (fullName + (userEmail ? ' (' + userEmail + ')' : ''))
     : userEmail || ''
 
   return (
@@ -65,7 +66,8 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
 
       {/* Right: nav links */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
-        {navLink('dashboard', '/dashboard', 'Dashboard')}
+        {navLink('dashboard', '/dashboard', 'Studies')}
+        {analyzeEnabled && navLink('analyze', '/analyze', 'Analyze')}
         {navLink('team', '/settings/team', 'Team')}
         {isAdmin && (
           <Link href="/admin"
