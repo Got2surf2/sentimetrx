@@ -49,7 +49,8 @@ export const INDUSTRY_LABELS: Record<Industry, string> = {
 type Defaults = Pick<StudyConfig,
   'greeting' | 'ratingPrompt' |
   'promoterQ1' | 'passiveQ1' | 'detractorQ1' |
-  'q3' | 'q4' | 'clarifiers' | 'psychographicBank'
+  'q3' | 'q4' | 'clarifiers' | 'psychographicBank' |
+  'npsPrompt' | 'npsFollowUp' | 'experienceFollowUp'
 >
 
 export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
@@ -79,6 +80,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Google search", "Recommendation from friend or family", "Online review site", "Returning customer", "Drove past or saw signage"] },
       { key: 'ar_service_frequency', q: "How often do you have your vehicle serviced?", exportLabel: "Service Frequency",
         opts: ["More than once a year", "Once a year", "Every 2-3 years", "Only when something goes wrong"] },
+    npsPrompt: "How likely are you to recommend our garage to a friend or colleague?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "That's disappointing to hear. What would need to change before you'd feel comfortable recommending us?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for being honest. Was there a specific part of the service that let you down?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate that. What's the main thing that's stopping you from recommending us right now?", clarify: false, useAI: false },
+          "4": { prompt: "Good to hear! What one improvement would make you a definite recommender?", clarify: false, useAI: false },
+          "5": { prompt: "That means a lot — thank you! What would you tell a friend about us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're really sorry about that. Was it the quality of the work, the communication, or something else that fell short?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for letting us know. What was the biggest frustration during your visit?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one thing would have made your service experience stand out?", clarify: false, useAI: false },
+          "4": { prompt: "Glad it was a good visit! Is there anything we could polish to make it even better?", clarify: false, useAI: false },
+          "5": { prompt: "Wonderful to hear! What made this visit particularly positive for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -107,6 +137,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Breakfast", "Brunch", "Lunch", "Dinner", "Late night"] },
       { key: 'cd_discovery', q: "How did you hear about us?", exportLabel: "Discovery Channel",
         opts: ["Word of mouth", "Social media", "Google search", "Walked past", "Returning regular"] },
+    npsPrompt: "How likely are you to recommend us to a friend or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry to hear that. What went wrong that would make you hesitate to recommend us?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for your honesty. Was it the food, the service, or the atmosphere that let you down?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate that. What would need to be different for you to feel excited about recommending us?", clarify: false, useAI: false },
+          "4": { prompt: "Great to hear! What one thing would make you a wholehearted recommender?", clarify: false, useAI: false },
+          "5": { prompt: "That's so lovely to hear! What would you tell a friend who asked about us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're really sorry your experience didn't meet expectations. Was it the food, the wait, or the service that was the main issue?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for sharing that. What disappointed you most during your visit?", clarify: false, useAI: false },
+          "3": { prompt: "Thanks for the feedback. What would have made your meal feel like a truly great experience?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad you enjoyed it! Is there one small thing we could improve?", clarify: false, useAI: false },
+          "5": { prompt: "Wonderful! What made your visit stand out today?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -135,6 +194,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Academic performance", "Student wellbeing", "Safety and security", "Communication", "Extracurricular programs"] },
       { key: 'ed_comms_pref', q: "How do you prefer to receive school updates?", exportLabel: "Comms Preference",
         opts: ["Email", "School app or portal", "Text message", "Social media", "In-person meetings"] },
+    npsPrompt: "How likely are you to recommend this programme or institution to someone in a similar situation?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "That's important feedback — thank you. What's the main reason you'd hesitate to recommend us?", clarify: false, useAI: false },
+          "2": { prompt: "We appreciate your honesty. What has fallen short of your expectations?", clarify: false, useAI: false },
+          "3": { prompt: "Thanks for that. What would need to improve for you to feel more confident recommending us?", clarify: false, useAI: false },
+          "4": { prompt: "Good to hear! What one thing would tip you to a definite yes?", clarify: false, useAI: false },
+          "5": { prompt: "That means a lot! What would you highlight to someone considering joining us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry your experience hasn't been positive. Was it the teaching, the support, the resources, or something else?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for being candid. What aspect of your learning experience has disappointed you most?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate your feedback. What change would make the biggest positive difference for you?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad to hear that. What one improvement would make the experience exceptional?", clarify: false, useAI: false },
+          "5": { prompt: "Brilliant! What has stood out most about your experience with us?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -163,6 +251,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Convenience or location", "Speed", "Price", "Favourite menu item", "Habit"] },
       { key: 'ff_party_size', q: "How many people did you order for?", exportLabel: "Party Size",
         opts: ["Just me", "2 people", "3-4 people", "5 or more"] },
+    npsPrompt: "How likely are you to recommend us to a friend or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "Sorry to hear that. What went wrong that you'd want us to fix?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for telling us. Was it the speed, the food, or the service that let you down?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate that. What would make you more likely to recommend us next time?", clarify: false, useAI: false },
+          "4": { prompt: "Good to hear! What would make you an enthusiastic recommender?", clarify: false, useAI: false },
+          "5": { prompt: "Awesome — thank you! What would you tell a friend about us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "Sorry your experience wasn't great. Was it the food quality, wait time, or something else?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for letting us know. What was the biggest issue with your order today?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one thing would have made this visit better?", clarify: false, useAI: false },
+          "4": { prompt: "Glad you had a decent experience! Anything we could do even better next time?", clarify: false, useAI: false },
+          "5": { prompt: "Love to hear it! What made your visit a great one today?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -191,6 +308,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Building savings", "Managing debt", "Retirement planning", "Buying a home", "Growing investments", "Business finances"] },
       { key: 'fs_trust_driver', q: "What matters most when choosing a financial institution?", exportLabel: "Trust Driver",
         opts: ["Security and safety", "Low fees", "Interest rates", "Customer service", "Convenience", "Digital tools"] },
+    npsPrompt: "How likely are you to recommend our services to a colleague, friend, or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We take that seriously — thank you. What's the primary reason you wouldn't recommend us?", clarify: false, useAI: false },
+          "2": { prompt: "We appreciate you sharing that. What has fallen short of your expectations?", clarify: false, useAI: false },
+          "3": { prompt: "Thank you for the feedback. What would need to change for you to feel confident recommending us?", clarify: false, useAI: false },
+          "4": { prompt: "Great to hear. What single improvement would make you a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's wonderful — thank you! What would you say to someone asking about our services?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry your experience didn't meet your expectations. Was it clarity, responsiveness, or outcome that fell short?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for that candid feedback. What was the most significant frustration?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate your honesty. What change would have made the biggest positive difference?", clarify: false, useAI: false },
+          "4": { prompt: "Glad your experience was positive. What one thing could we do better?", clarify: false, useAI: false },
+          "5": { prompt: "Excellent to hear! What made this experience stand out for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -219,6 +365,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Rarely (special occasions only)", "A few times a year", "Monthly", "Regularly"] },
       { key: 'fd_importance', q: "What matters most in a fine dining experience?", exportLabel: "Key Priority",
         opts: ["Quality and creativity of the food", "Service and attentiveness", "Wine and beverage program", "Atmosphere and ambiance", "Exclusivity and prestige"] },
+    npsPrompt: "How likely are you to recommend us to friends, family, or colleagues for a special occasion?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're truly sorry to hear that. What fell short of the standard you expected?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for your honesty. Was it the cuisine, the service, or the ambience that disappointed?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate your feedback. What would have elevated your experience to something you'd enthusiastically recommend?", clarify: false, useAI: false },
+          "4": { prompt: "Delightful to hear. What one refinement would make you a firm advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That means the world to us. What stood out that you'd share with others?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We sincerely apologise. Was it the food, the service, or the atmosphere that fell below expectations?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for telling us. What was the most significant disappointment this evening?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate your candour. What would have made this a truly memorable dining experience?", clarify: false, useAI: false },
+          "4": { prompt: "We're so pleased you enjoyed your visit. What one detail could we refine further?", clarify: false, useAI: false },
+          "5": { prompt: "What a joy to hear. What made this evening particularly special for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -247,6 +422,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Fully remote", "Hybrid (some in-office)", "Fully in-office"] },
       { key: 'hr_feedback_area', q: "Which area would you most like to see improved?", exportLabel: "Improvement Area",
         opts: ["Compensation and benefits", "Work-life balance", "Career development", "Management and leadership", "Culture and belonging", "Tools and processes"] },
+    npsPrompt: "How likely are you to recommend this organisation as a great place to work to someone you know?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "That's important to understand — thank you. What is the primary reason you feel that way?", clarify: false, useAI: false },
+          "2": { prompt: "We appreciate you sharing that. What aspect of working here has been most challenging?", clarify: false, useAI: false },
+          "3": { prompt: "Thank you for your honest feedback. What one change would make you more likely to recommend us as an employer?", clarify: false, useAI: false },
+          "4": { prompt: "Really good to hear. What would make you an enthusiastic advocate for working here?", clarify: false, useAI: false },
+          "5": { prompt: "That means a lot. What would you tell someone considering joining the team?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry to hear your experience has been difficult. Is it related to culture, management, workload, or something else?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for being open with us. What has had the biggest negative impact on your experience?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate your honesty. What one improvement would make the biggest difference to you?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad to hear things are going well. What one thing could we do better?", clarify: false, useAI: false },
+          "5": { prompt: "Brilliant — thank you! What makes your experience here stand out for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -275,6 +479,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Private insurance", "Medicare or Medicaid", "Self-pay", "Workers compensation", "Prefer not to say"] },
       { key: 'hc_age_range', q: "Which age group do you fall into?", exportLabel: "Age Range",
         opts: ["18-34", "35-49", "50-64", "65 or over", "Prefer not to say"] },
+    npsPrompt: "How likely are you to recommend our practice or facility to a friend or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're truly sorry to hear that. Can you share what led to that feeling so we can address it?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for being candid. What was it about your experience that fell short?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate that feedback. What would need to improve for you to feel confident recommending us?", clarify: false, useAI: false },
+          "4": { prompt: "Good to hear. What one change would make you a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's wonderful — thank you. What would you tell someone who was considering coming to us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're very sorry. Was it related to your care, the communication, or the waiting experience?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for sharing that. What was the most significant concern about your visit?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate your honesty. What improvement would have made the most meaningful difference today?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad your experience was positive. What could we do even better?", clarify: false, useAI: false },
+          "5": { prompt: "That's so good to hear. What stood out most about the care you received today?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -303,6 +536,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Less than a year", "1-2 years", "3-4 years", "5 or more years", "Alumni (graduated)"] },
       { key: 'he_primary_concern', q: "What matters most to you right now?", exportLabel: "Primary Concern",
         opts: ["Academic quality and rigor", "Career preparation and placement", "Campus life and community", "Cost and financial aid", "Research opportunities", "Administrative services"] },
+    npsPrompt: "How likely are you to recommend this institution to a prospective student?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "That's really valuable to know — thank you. What's the primary thing holding you back from recommending us?", clarify: false, useAI: false },
+          "2": { prompt: "We appreciate your honesty. What aspect of your experience has been most disappointing?", clarify: false, useAI: false },
+          "3": { prompt: "Thanks for that. What would need to change for you to feel enthusiastic about recommending us?", clarify: false, useAI: false },
+          "4": { prompt: "Good to hear! What one thing would turn you into a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's wonderful — thank you! What would you highlight to a prospective student?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry your experience hasn't been what you hoped. Is it academic, support services, facilities, or something else?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for telling us. What's caused the most frustration during your time here?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate your candour. What change would have the biggest positive impact for you?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad to hear that. What one improvement would make your experience outstanding?", clarify: false, useAI: false },
+          "5": { prompt: "Brilliant! What has made your time here particularly rewarding?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -331,6 +593,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Direct hotel website", "Booking.com or Expedia", "Travel agent", "Corporate booking", "Loyalty programme"] },
       { key: 'ho_room_type', q: "What type of room did you stay in?", exportLabel: "Room Type",
         opts: ["Standard or queen", "King", "Suite", "Accessible room", "Other"] },
+    npsPrompt: "How likely are you to recommend us to a friend or colleague for their next stay?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're very sorry to hear that. What happened that would stop you from recommending us?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for your honesty. Was it the room, the service, or the facilities that let you down?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate that feedback. What would have made your stay more recommendable?", clarify: false, useAI: false },
+          "4": { prompt: "Glad you had a good stay! What one thing would make you a wholehearted advocate?", clarify: false, useAI: false },
+          "5": { prompt: "Wonderful to hear — thank you! What would you tell a friend about staying with us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're really sorry. Was it your room, check-in, dining, or another part of the experience?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for sharing that. What was the biggest disappointment during your stay?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one thing would have made this a truly memorable stay?", clarify: false, useAI: false },
+          "4": { prompt: "So glad your stay was enjoyable! Is there one thing we could do better next time?", clarify: false, useAI: false },
+          "5": { prompt: "Delighted to hear it! What made your stay stand out?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -359,6 +650,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Paid subscriber", "Free tier user", "Trial user", "Lapsed subscriber considering return"] },
       { key: 'me_discovery', q: "How do you typically discover new content?", exportLabel: "Discovery Method",
         opts: ["Algorithm recommendations", "Social media", "Word of mouth", "Editorial picks", "Browsing myself"] },
+    npsPrompt: "How likely are you to recommend us to a friend or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "Sorry to hear that. What's the main thing that would make you hesitate to recommend us?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for being honest. Was it the content, the experience, or value for money that disappointed?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate that. What would have made this something you'd recommend without hesitation?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad you enjoyed it! What one thing would make you a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's great to hear — thank you! What would you tell a friend about us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry the experience didn't land well. Was it the content, the quality, or something else?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for telling us. What was the biggest let-down for you?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one change would have made this a great experience?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad you enjoyed it! What could we do to make it even better?", clarify: false, useAI: false },
+          "5": { prompt: "Brilliant! What stood out most for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -387,6 +707,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Belief in the mission", "Personal connection to the cause", "Community impact", "Skills-based contribution", "Recognition", "Other"] },
       { key: 'np_engagement_pref', q: "How do you prefer to stay engaged?", exportLabel: "Engagement Preference",
         opts: ["Email updates", "Social media", "In-person events", "Volunteer opportunities", "Annual impact report"] },
+    npsPrompt: "How likely are you to recommend our organisation or this programme to someone you know?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "That's important to hear — thank you. What is the main reason you'd be reluctant to recommend us?", clarify: false, useAI: false },
+          "2": { prompt: "We appreciate your honesty. What hasn't met your expectations?", clarify: false, useAI: false },
+          "3": { prompt: "Thank you for sharing that. What would need to change for you to feel confident recommending us?", clarify: false, useAI: false },
+          "4": { prompt: "Really good to hear. What one thing would make you a definite advocate for our work?", clarify: false, useAI: false },
+          "5": { prompt: "That means so much — thank you. What would you tell someone considering getting involved?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry your experience didn't reflect our values. Was it communication, impact, or support that fell short?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for that candid feedback. What was the most significant issue?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate you sharing that. What change would have made the biggest positive difference?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad your experience was a positive one. What could we do even better?", clarify: false, useAI: false },
+          "5": { prompt: "Wonderful to hear — thank you! What has made this experience meaningful for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -415,6 +764,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Under 15 minutes", "15-30 minutes", "30-60 minutes", "Over an hour", "Travelled from out of town"] },
       { key: 'pa_group', q: "Who did you come with today?", exportLabel: "Group Composition",
         opts: ["Alone", "Partner or spouse", "Friends", "Family with children", "Adult family members"] },
+    npsPrompt: "How likely are you to recommend this event or venue to a friend or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry to hear that. What would need to change for you to feel differently about recommending us?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for your honesty. Was it the performance, the venue, or the overall experience?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate that. What would have made this something you'd enthusiastically recommend?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad you enjoyed it! What one thing would make you a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's wonderful — thank you! What would you tell a friend about coming here?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry the experience fell short. Was it the performance, seating, acoustics, or something else?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for sharing that. What disappointed you most this evening?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one improvement would have made this a standout experience?", clarify: false, useAI: false },
+          "4": { prompt: "So glad you had a good time! Is there anything we could do even better?", clarify: false, useAI: false },
+          "5": { prompt: "Wonderful! What made the evening particularly special for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -443,6 +821,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Progressive or left", "Centre-left", "Centrist", "Centre-right", "Conservative or right", "Prefer not to say"] },
       { key: 'po_local_area', q: "Which area do you primarily identify with?", exportLabel: "Geographic Area",
         opts: ["Urban", "Suburban", "Rural", "Small town", "Prefer not to say"] },
+    npsPrompt: "How likely are you to recommend engaging with our campaign or organisation to someone you know?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "That's very helpful to know — thank you. What is the main concern that would hold you back?", clarify: false, useAI: false },
+          "2": { prompt: "We appreciate your candour. What has fallen short of your expectations?", clarify: false, useAI: false },
+          "3": { prompt: "Thank you for that. What would need to change for you to feel more supportive?", clarify: false, useAI: false },
+          "4": { prompt: "Good to hear. What one thing would turn you into a strong advocate?", clarify: false, useAI: false },
+          "5": { prompt: "Thank you — that means a lot. What would you say to someone considering getting involved?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry your experience hasn't been positive. What has been the biggest concern for you?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for your honesty. What aspect of your experience has disappointed you most?", clarify: false, useAI: false },
+          "3": { prompt: "We appreciate that feedback. What one change would have made the biggest difference?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad your experience has been positive. What could we do better?", clarify: false, useAI: false },
+          "5": { prompt: "That's wonderful to hear. What has made your experience stand out?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -471,6 +878,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Search engine", "Social media", "Friend recommendation", "Email promotion", "Already a regular customer"] },
       { key: 're_loyalty', q: "Are you a member of our rewards or loyalty program?", exportLabel: "Loyalty Status",
         opts: ["Yes, active member", "Yes but I rarely use it", "No but I am interested", "No, not interested"] },
+    npsPrompt: "How likely are you to recommend us to a friend or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry to hear that. What would we need to fix before you'd feel comfortable recommending us?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for being honest. Was it the product, delivery, or customer service that let you down?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate that. What's the main thing stopping you from recommending us right now?", clarify: false, useAI: false },
+          "4": { prompt: "Great to hear! What one improvement would make you a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's brilliant — thank you! What would you tell a friend about shopping with us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're really sorry. Was it the product itself, the delivery, or your interaction with us that went wrong?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for letting us know. What was the biggest frustration with your order or experience?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one thing would have made this a great experience?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad you had a positive experience! What could we do even better next time?", clarify: false, useAI: false },
+          "5": { prompt: "Wonderful to hear — thank you! What made this purchase stand out for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -499,6 +935,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Project management", "Communication or collaboration", "Analytics or reporting", "Customer management", "Development or DevOps", "Finance or operations"] },
       { key: 'ss_technical_comfort', q: "How would you rate your technical proficiency?", exportLabel: "Technical Proficiency",
         opts: ["Non-technical -- I need things simple", "Moderately technical", "Technical -- comfortable with advanced features"] },
+    npsPrompt: "How likely are you to recommend us to a colleague or peer in your industry?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "That's really important feedback — thank you. What's the primary reason you wouldn't recommend us right now?", clarify: false, useAI: false },
+          "2": { prompt: "We appreciate your honesty. Is it the product, the support, or the value for money that's falling short?", clarify: false, useAI: false },
+          "3": { prompt: "Thanks for that. What would need to improve for you to feel confident recommending us?", clarify: false, useAI: false },
+          "4": { prompt: "Good to hear! What single improvement would make you a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's great to hear — thank you! What would you say to a peer considering us?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry to hear that. Was it reliability, usability, performance, or support that let you down?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for the candid feedback. What has been the biggest blocker or frustration?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate you sharing that. What one improvement would make the biggest positive difference to your workflow?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad the experience has been positive! What one thing could we improve?", clarify: false, useAI: false },
+          "5": { prompt: "Brilliant — thank you! What's made the biggest positive impact on your work?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -527,6 +992,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Less than a year", "1-3 years", "3-10 years", "More than 10 years", "My whole life"] },
       { key: 'sp_game_attendance', q: "How often do you attend games or events in person?", exportLabel: "Game Attendance",
         opts: ["Every game or most games", "Several times a season", "Once or twice a season", "Rarely or never"] },
+    npsPrompt: "How likely are you to recommend this club, event, or facility to a friend or family member?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry to hear that. What would need to change for you to feel differently?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for being honest. Was it the event itself, the facilities, or the overall experience?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate that. What would have made this something you'd enthusiastically recommend?", clarify: false, useAI: false },
+          "4": { prompt: "Great to hear! What one improvement would make you a firm advocate?", clarify: false, useAI: false },
+          "5": { prompt: "That's fantastic — thank you! What would you tell a mate about coming here?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry the experience fell short. Was it the facilities, the atmosphere, the staff, or something else?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for sharing that. What was the biggest disappointment today?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one thing would have made this a great day out?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad you had a good time! Is there anything we could do even better?", clarify: false, useAI: false },
+          "5": { prompt: "Brilliant! What made today's experience stand out for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 
@@ -555,6 +1049,35 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Solo", "Couple", "Family with children", "Group of friends", "Business colleagues"] },
       { key: 'tt_destination_type', q: "Which best describes your destination?", exportLabel: "Destination Type",
         opts: ["Domestic city break", "Domestic longer trip", "International short-haul", "International long-haul", "Cruise or expedition"] },
+    npsPrompt: "How likely are you to recommend us to a friend or family member planning a trip?",
+    npsFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're sorry to hear that. What went wrong that would stop you from recommending us?", clarify: false, useAI: false },
+          "2": { prompt: "Thanks for your honesty. Was it the booking process, the experience itself, or value for money?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate that feedback. What would have made this something you'd recommend without hesitation?", clarify: false, useAI: false },
+          "4": { prompt: "Really glad it was a good experience! What one thing would make you a definite advocate?", clarify: false, useAI: false },
+          "5": { prompt: "Wonderful to hear — thank you! What would you tell a friend who was planning a similar trip?", clarify: false, useAI: false }
+        }
+      },
+    experienceFollowUp: {
+        enabled: true,
+        mode: 'per-response',
+        sharedPrompt: '',
+        shareClarify: false,
+        shareAI: false,
+        perResponse: {
+          "1": { prompt: "We're really sorry your trip didn't go as hoped. Was it the accommodation, transport, activities, or service?", clarify: false, useAI: false },
+          "2": { prompt: "Thank you for sharing that. What was the biggest disappointment on your trip?", clarify: false, useAI: false },
+          "3": { prompt: "Appreciate the feedback. What one thing would have made this a memorable experience in a positive way?", clarify: false, useAI: false },
+          "4": { prompt: "So glad you had a good trip! Is there one thing we could do better next time?", clarify: false, useAI: false },
+          "5": { prompt: "Fantastic! What made this trip particularly special for you?", clarify: false, useAI: false }
+        }
+      },
     ],
   },
 }
