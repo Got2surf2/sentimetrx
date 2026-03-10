@@ -126,6 +126,41 @@ function FollowUpPanel({
   )
 }
 
+// ── Rating variable option ────────────────────────────────────
+function RatingVariableOption({
+  selected, onSelect, label, sublabel, primaryColor
+}: {
+  selected:     boolean
+  onSelect:     () => void
+  label:        string
+  sublabel:     string
+  primaryColor: string
+}) {
+  const borderColor = selected ? primaryColor : '#e5e7eb'
+  const bg          = selected ? '#fff7ed'    : '#fff'
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex items-center gap-3 w-full rounded-xl px-4 py-3 text-left transition-all border-2"
+      style={{ borderColor, background: bg }}
+    >
+      <span
+        className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
+        style={{ borderColor: selected ? primaryColor : '#d1d5db' }}
+      >
+        {selected && (
+          <span className="w-2 h-2 rounded-full block" style={{ background: primaryColor }} />
+        )}
+      </span>
+      <span className="flex flex-col">
+        <span className="text-sm font-semibold text-gray-800">{label}</span>
+        <span className="text-xs text-gray-400">{sublabel}</span>
+      </span>
+    </button>
+  )
+}
+
 // ── Main component ───────────────────────────────────────────
 export default function StepOpening({ draft, updateConfig, onNext, onBack }: Props) {
   const c = draft.config
