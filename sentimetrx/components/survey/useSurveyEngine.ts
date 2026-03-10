@@ -148,7 +148,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           questionAsked:   s.currentQuestion,
           questionKey:     qKey,
           answer:          text,
-          sentiment:       s.sentiment || 'neutral',
+          sentiment:       s.sentiment || 'passive',
           experienceScore: s.rating || 3,
           npsScore:        s.npsScore || 3,
           priorAnswers,
@@ -389,8 +389,19 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
   const stepCustomQuestions = useCallback(async () => {
-    const questions = config.questions ?? []
-    if (questions.length === 0) { await stepPsychoIntro(); return }
+    const allQuestions = config.questions ?? []
+    if (allQuestions.length === 0) { await stepPsychoIntro(); return }
+
+    // Randomly sample customQCount questions if set, otherwise show all
+    const n = config.customQCount && config.customQCount > 0 && config.customQCount < allQuestions.length
+      ? config.customQCount
+      : allQuestions.length
+    const pool = [...allQuestions]
+    const questions: typeof pool = []
+    while (questions.length < n && pool.length > 0) {
+      const i = Math.floor(Math.random() * pool.length)
+      questions.push(...pool.splice(i, 1))
+    }
 
     const customAnswers: Record<string, string | string[]> = {}
 
@@ -985,7 +996,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             sb.style.background  = config.theme.primaryColor + '20'
             state.current.npsScore = s.score
             state.current.npsLabel = s.label
-            state.current.sentiment = s.score >= 5 ? 'positive' : s.score >= 4 ? 'neutral' : 'negative'
+            state.current.sentiment = s.score >= 5 ? 'promoter' : s.score >= 4 ? 'passive' : 'detractor'
             addMsg('user', s.stars + ' ' + s.label)
             await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating)
           }

@@ -67,6 +67,7 @@ export default function NewStudyPage() {
   // Advance to next step and widen the highestVisited window
   function goTo(i: number) {
     setStep(i)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     setHighestVisited(prev => Math.max(prev, i))
   }
 

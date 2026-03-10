@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import StepBasics from '@/components/creator/StepBasics'
 import StepOpening from '@/components/creator/StepOpening'
 import StepConversation from '@/components/creator/StepConversation'
+import StepClarifiers from '@/components/creator/StepClarifiers'
 import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepReview from '@/components/creator/StepReview'
@@ -18,6 +19,11 @@ interface Props { study: any; logoUrl?: string; orgName?: string; isAdmin?: bool
 
 export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin=false, userEmail='', fullName='' }: Props) {
   const [step,   setStep]   = useState(0)
+
+  function goTo(i: number) {
+    setStep(i)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   const [draft,  setDraft]  = useState<StudyDraft>({
     name:      study.name,
     bot_name:  study.bot_name,
@@ -70,8 +76,8 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
           <CreatorNav
             draft={draft}
             currentStep={step}
-            highestVisited={5}
-            onStepClick={setStep}
+            highestVisited={6}
+            onStepClick={goTo}
             onPublish={() => handleSave('active')}
             saving={saving}
             freeNav={true}
@@ -86,24 +92,23 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
             {error}
           </div>
         )}
-        {step === 0 && <StepBasics       {...stepProps} onNext={() => setStep(1)} />}
-        {step === 1 && <StepOpening      {...stepProps} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
-        {step === 2 && <StepConversation {...stepProps} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-        {step === 3 && <StepQuestions {...stepProps} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
-        {step === 4 && <StepPsychographics {...stepProps} onNext={() => setStep(5)} onBack={() => setStep(3)} />}
-        {step === 5 && (
+        {step === 0 && <StepBasics       {...stepProps} onNext={() => goTo(1)} />}
+        {step === 1 && <StepOpening      {...stepProps} onNext={() => goTo(2)} onBack={() => goTo(0)} />}
+        {step === 2 && <StepConversation {...stepProps} onNext={() => goTo(3)} onBack={() => goTo(1)} />}
+        {step === 3 && <StepClarifiers {...stepProps} onNext={() => goTo(4)} onBack={() => goTo(2)} />}
+        {step === 4 && <StepQuestions {...stepProps} onNext={() => goTo(5)} onBack={() => goTo(3)} />}
+        {step === 5 && <StepPsychographics {...stepProps} onNext={() => goTo(6)} onBack={() => goTo(4)} />}
+        {step === 6 && (
           <StepReview
             {...stepProps}
-            onBack={() => setStep(4)}
+            onBack={() => goTo(5)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}
-            studyId={study.id}
+            studyId={study.guid}
           />
         )}
       </div>
     </div>
   )
 }
-
-
