@@ -25,10 +25,9 @@ export default async function AnalyzePage() {
   const isAdmin = !!orgData?.is_admin_org
 
   // Fetch all datasets visible to this user's org
-  const { data: datasets } = await supabase
+ const { data: datasets } = await supabase
     .from('datasets')
-    .select('id, name, description, source, study_id, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by')
-    .order('created_at', { ascending: false })
+    .select('id, name, description, source, study_id, org_id, client_id, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by')   .order('created_at', { ascending: false })
 
   // Fetch study names for study-linked datasets
   const studyIds = (datasets || [])
