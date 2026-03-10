@@ -160,7 +160,7 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
         </div>
       </Section>
 
-      <NavButtons onBack={onBack} onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Psychographics" />
+      <NavButtons onBack={onBack} onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Custom Questions" />
     </div>
   )
 }

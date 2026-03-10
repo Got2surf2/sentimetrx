@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Section, NavButtons } from './CreatorUI'
 import type { PsychoQuestion } from '@/lib/types'
+import { INDUSTRY_DEFAULTS, INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
 
@@ -164,7 +165,147 @@ function CustomQuestionCard({ q, idx, total, onChange, onRemove, onMoveUp, onMov
   )
 }
 
-// ── Bank question row ──────────────────────────────────────────
+//// ── Industry question picker ───────────────────────────────────
+
+type IndustryPickerKey = Exclude<Industry, 'other'>
+
+const SORTED_INDUSTRIES: { key: IndustryPickerKey; label: string }[] = (
+  Object.entries(INDUSTRY_LABELS) as [Industry, string][]
+).filter(([k]) => k !== 'other')
+ .map(([k, v]) => ({ key: k as IndustryPickerKey, label: v }))
+ .sort((a, b) => a.label.localeCompare(b.label))
+
+interface PickerQuestion { key: string; q: string; opts: string[]; exportLabel: string }
+
+function IndustryPickerRow({
+  pq, selected, onToggle
+}: { pq: PickerQuestion; selected: boolean; onToggle: () => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={'rounded-xl border transition-all ' + (selected ? 'border-orange-300 bg-orange-50' : 'border-gray-200 bg-white')}>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button type="button" onClick={onToggle}
+          className={'w-5 h-5 rounded flex-shrink-0 border-2 transition-all flex items-center justify-center ' +
+            (selected ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-300 hover:border-orange-400')}>
+          {selected && <span className="text-white text-xs font-bold leading-none">✓</span>}
+        </button>
+        <span className="flex-1 text-sm text-gray-800">{pq.q}</span>
+        <button type="button" onClick={() => setOpen(v => !v)}
+          className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 px-2">
+          {open ? 'Hide' : 'Preview'}
+        </button>
+      </div>
+      {open && (
+        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+          {pq.opts.map(opt => (
+            <span key={opt} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg">{opt}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function IndustryQuestionPicker({
+  bank, onUpdateBank
+}: {
+  bank: PsychoQuestion[]
+  onUpdateBank: (b: PsychoQuestion[]) => void
+}) {
+  const [pickedIndustry, setPickedIndustry] = useState<IndustryPickerKey | ''>('')
+  const selectedKeys = new Set(bank.map(q => q.key))
+
+  const industryQs: PickerQuestion[] = pickedIndustry
+    ? ((INDUSTRY_DEFAULTS[pickedIndustry]?.psychographicBank ?? []) as PickerQuestion[])
+    : []
+
+  const allAdded  = industryQs.length > 0 && industryQs.every(q => selectedKeys.has(q.key))
+  const someAdded = industryQs.some(q => selectedKeys.has(q.key))
+
+  function toggleQ(pq: PickerQuestion) {
+    if (selectedKeys.has(pq.key)) {
+      onUpdateBank(bank.filter(q => q.key !== pq.key))
+    } else {
+      onUpdateBank([...bank, { key: pq.key, q: pq.q, opts: pq.opts, exportLabel: pq.exportLabel }])
+    }
+  }
+
+  function addAll() {
+    const toAdd = industryQs.filter(q => !selectedKeys.has(q.key))
+    if (toAdd.length > 0) {
+      onUpdateBank([...bank, ...toAdd.map(q => ({ key: q.key, q: q.q, opts: q.opts, exportLabel: q.exportLabel }))])
+    }
+  }
+
+  function removeAll() {
+    const keys = new Set(industryQs.map(q => q.key))
+    onUpdateBank(bank.filter(q => !keys.has(q.key)))
+  }
+
+  const selectCls = 'w-full px-3 py-2.5 rounded-xl bg-white border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors cursor-pointer'
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <div className="text-base font-bold text-gray-800 mb-0.5">Industry question sets</div>
+        <div className="text-xs text-gray-400">
+          Pick any industry to see its curated questions, then add the ones you want.
+        </div>
+      </div>
+      <div className="p-4 flex flex-col gap-3">
+        <select
+          value={pickedIndustry}
+          onChange={e => setPickedIndustry(e.target.value as IndustryPickerKey | '')}
+          className={selectCls}
+        >
+          <option value="">-- Select an industry to preview its questions --</option>
+          {SORTED_INDUSTRIES.map(opt => (
+            <option key={opt.key} value={opt.key}>{opt.label}</option>
+          ))}
+        </select>
+
+        {pickedIndustry && industryQs.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                {INDUSTRY_LABELS[pickedIndustry]}
+                {someAdded && (
+                  <span className="ml-2 text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full normal-case font-semibold">
+                    {industryQs.filter(q => selectedKeys.has(q.key)).length} added
+                  </span>
+                )}
+              </span>
+              <div className="flex items-center gap-2">
+                {someAdded && (
+                  <button type="button" onClick={removeAll}
+                    className="text-xs text-gray-400 hover:text-red-500 transition-colors px-2 py-1">
+                    Remove all
+                  </button>
+                )}
+                {!allAdded && (
+                  <button type="button" onClick={addAll}
+                    className="text-xs font-semibold text-white bg-orange-500 hover:bg-orange-600 transition-colors px-3 py-1.5 rounded-lg">
+                    Add all
+                  </button>
+                )}
+              </div>
+            </div>
+            {industryQs.map(pq => (
+              <IndustryPickerRow
+                key={pq.key}
+                pq={pq}
+                selected={selectedKeys.has(pq.key)}
+                onToggle={() => toggleQ(pq)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+ ── Bank question row ──────────────────────────────────────────
 
 function BankRow({ bq, selected, onToggle }: { bq: BankQuestion; selected: boolean; onToggle: () => void }) {
   const [open, setOpen] = useState(false)
@@ -257,6 +398,12 @@ export default function StepPsychographics({ draft, updateConfig, onNext, onBack
           Select questions from the bank or write your own. The bot randomly shows a subset to each respondent.
         </p>
       </div>
+
+      {/* Industry question sets */}
+      <IndustryQuestionPicker
+        bank={bank}
+        onUpdateBank={b => updateConfig({ psychographicBank: b })}
+      />
 
       {/* How many to show per session */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex items-center gap-5">

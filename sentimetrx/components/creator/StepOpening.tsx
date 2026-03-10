@@ -275,14 +275,28 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
       >
         {experienceEnabled && (
           <div className="flex flex-col gap-4">
-            <div>
-              <label className={labelCls}>Question prompt</label>
-              <Input
-                value={c.ratingPrompt}
-                onChange={v => updateConfig({ ratingPrompt: v })}
-                placeholder="How would you rate your overall experience with us today?"
-                multiline rows={2}
-              />
+            <div className="flex gap-3 items-start">
+              <div className="flex-1">
+                <label className={labelCls}>Question prompt</label>
+                <Input
+                  value={c.ratingPrompt}
+                  onChange={v => updateConfig({ ratingPrompt: v })}
+                  placeholder="How would you rate your overall experience with us today?"
+                  multiline rows={2}
+                />
+              </div>
+              <div className="flex-shrink-0 w-36">
+                <label className={labelCls}>Dashboard label</label>
+                <input
+                  type="text"
+                  value={c.experienceRatingLabel || ''}
+                  onChange={e => updateConfig({ experienceRatingLabel: e.target.value })}
+                  placeholder="Experience Rating"
+                  maxLength={24}
+                  className={inputCls}
+                />
+                <p className="text-gray-400 text-xs mt-1 px-0.5">Shown in analytics &amp; CSV exports.</p>
+              </div>
             </div>
             <div>
               <label className={labelCls}>Rating scale</label>
@@ -338,8 +352,11 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
             {experienceEnabled && (
               <RatingVariableOption
                 selected={c.ratingVariableId === 'experience'}
-                onSelect={() => updateConfig({ ratingVariableId: 'experience', ratingVariableLabel: 'Experience Rating' })}
-                label="Experience Rating"
+                onSelect={() => updateConfig({
+                  ratingVariableId: 'experience',
+                  ratingVariableLabel: c.experienceRatingLabel || 'Experience Rating'
+                })}
+                label={c.experienceRatingLabel || 'Experience Rating'}
                 sublabel="1-5 experience scale"
                 primaryColor={c.theme.primaryColor}
               />
