@@ -28,11 +28,8 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     name:         study.name,
     bot_name:     study.bot_name,
     bot_emoji:    study.bot_emoji,
-    config:       study.config,
-    // industry is stored as a top-level field on the study record
-    ...(study.industry      ? { industry:      study.industry }      : {}),
-    ...(study.otherIndustry ? { otherIndustry: study.otherIndustry } : {}),
-  } as any)
+    config:       study.config,  // industry & otherIndustry live inside config JSONB
+  })
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const router = useRouter()

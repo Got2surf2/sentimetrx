@@ -127,6 +127,8 @@ export interface StudyConfig {
   psychographicBank:  PsychoQuestion[]
   psychoCount?:       number           // how many to randomly show per session (default 3)
   customQCount?:      number           // how many custom questions to show per session (default: all)
+  industry?:          string           // industry key — stored in config so it persists via JSONB
+  otherIndustry?:     string           // free-text when industry === 'other'
 
   theme:              StudyTheme
 }

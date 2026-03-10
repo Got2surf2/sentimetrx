@@ -171,10 +171,11 @@ interface Props extends StepProps { onNext: () => void }
 export default function StepBasics({ draft, update, updateConfig, onNext }: Props) {
   const theme   = draft.config.theme
   const canNext = draft.name.trim() && draft.bot_name.trim()
-  const presetIndustry = (draft as any).industry as Industry | ''
+  const presetIndustry = (draft.config.industry || (draft as any).industry || '') as Industry | ''
   const [industry,      setIndustry]      = useState<Industry>(presetIndustry || '' as Industry)
-  const [otherIndustry, setOtherIndustry] = useState((draft as any).otherIndustry || '')
-  const [applied,       setApplied]       = useState(!!presetIndustry)  // already applied if editing existing study
+  const [otherIndustry, setOtherIndustry] = useState(draft.config.otherIndustry || (draft as any).otherIndustry || '')
+  const [applied,       setApplied]       = useState(!!presetIndustry)
+  const isEditing = !!presetIndustry   // true when editing an existing study
   const [showPicker,    setShowPicker]    = useState(false)
 
   const inputCls = 'w-full px-4 py-2.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
@@ -188,9 +189,15 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
   function applyIndustryDefaults() {
     if (!industry || industry === 'other') return
     const defaults = INDUSTRY_DEFAULTS[industry as Exclude<Industry, 'other'>]
-    updateConfig(defaults)
-    ;(update as any)({ industry, otherIndustry })
+    updateConfig({ ...defaults, industry, otherIndustry })
     setApplied(true)
+  }
+
+  function handleIndustrySelect(val: Industry) {
+    setIndustry(val)
+    setApplied(false)
+    // Save selection immediately into config so it persists even without applying defaults
+    updateConfig({ industry: val })
   }
 
   function handleBotNameChange(v: string) {
@@ -237,9 +244,15 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         )}
 
         {/* Industry selector — shown when not yet set or changing */}
+        {!applied && isEditing && (
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+            <span className="text-amber-500 text-sm">⚠</span>
+            <span className="text-xs text-amber-700 font-medium">Changing industry and re-applying defaults will overwrite your current prompts and questions.</span>
+          </div>
+        )}
         {!applied && (
           <>
-            <select value={industry} onChange={e => { setIndustry(e.target.value as Industry); setApplied(false) }} className={inputCls}>
+            <select value={industry} onChange={e => handleIndustrySelect(e.target.value as Industry)} className={inputCls}>
               <option value="">— Select an industry —</option>
               {(Object.keys(INDUSTRY_LABELS) as Industry[]).map(k => (
                 <option key={k} value={k}>{INDUSTRY_LABELS[k]}</option>
