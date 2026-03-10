@@ -10,20 +10,23 @@ interface Props extends StepProps {
   onSaveDraft:  () => void
   onPublish:    () => void
   saving:       boolean
+  studyId?:     string    // only present when editing an existing study
 }
 
-export default function StepReview({ draft, update, updateConfig, onBack, onSaveDraft, onPublish, saving }: Props) {
+export default function StepReview({ draft, update, updateConfig, onBack, onSaveDraft, onPublish, saving, studyId }: Props) {
   const c = draft.config
   const clarifierCount = Object.keys(c.clarifiers).filter(k => k !== 'default').length
   const [copied, setCopied]         = useState(false)
   const [justPublished, setJustPublished] = useState(false)
 
-  const surveyUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/survey/' + (draft.slug || draft.id || '')
+  const surveyUrl = studyId
+    ? (typeof window !== 'undefined' ? window.location.origin : '') + '/survey/' + studyId
+    : null
 
   function handlePublish() {
     onPublish()
     setJustPublished(true)
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+    if (surveyUrl && typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(surveyUrl).catch(() => undefined)
       setCopied(true)
       setTimeout(() => setCopied(false), 3000)
@@ -31,6 +34,7 @@ export default function StepReview({ draft, update, updateConfig, onBack, onSave
   }
 
   function handleCopyLink() {
+    if (!surveyUrl) return
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(surveyUrl).catch(() => undefined)
       setCopied(true)
@@ -89,18 +93,25 @@ export default function StepReview({ draft, update, updateConfig, onBack, onSave
 
             {/* Test + Share row — always visible once a slug exists */}
             <div className="flex gap-2">
-              <a
-                href={surveyUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium text-sm text-center transition-all"
-              >
-                Test Survey
-              </a>
+              {surveyUrl ? (
+                <a
+                  href={surveyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium text-sm text-center transition-all"
+                >
+                  Test Survey
+                </a>
+              ) : (
+                <span className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-400 font-medium text-sm text-center">
+                  Test Survey
+                </span>
+              )}
               <button
                 type="button"
                 onClick={handleCopyLink}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm transition-all"
+                disabled={!surveyUrl}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:bg-gray-100 disabled:text-gray-400 text-white font-medium text-sm transition-all"
               >
                 {copied ? 'Copied!' : 'Copy Link'}
               </button>
@@ -117,8 +128,8 @@ export default function StepReview({ draft, update, updateConfig, onBack, onSave
             {justPublished && !saving && (
               <div className="bg-cyan-900/40 border border-cyan-700 rounded-xl px-4 py-3 flex flex-col gap-1">
                 <p className="text-cyan-300 text-xs font-semibold">Study published!</p>
-                <p className="text-slate-400 text-xs break-all">{surveyUrl}</p>
-                <p className="text-slate-500 text-xs">Link copied to clipboard. Use Test Survey to try it live.</p>
+                {surveyUrl && <p className="text-slate-500 text-xs break-all">{surveyUrl}</p>}
+                <p className="text-slate-500 text-xs">{surveyUrl ? 'Link copied to clipboard. Use Test Survey to try it live.' : 'Your study is now live.'}</p>
               </div>
             )}
 
