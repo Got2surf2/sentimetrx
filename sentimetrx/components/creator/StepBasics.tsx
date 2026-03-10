@@ -171,9 +171,10 @@ interface Props extends StepProps { onNext: () => void }
 export default function StepBasics({ draft, update, updateConfig, onNext }: Props) {
   const theme   = draft.config.theme
   const canNext = draft.name.trim() && draft.bot_name.trim()
-  const [industry,      setIndustry]      = useState<Industry>((draft as any).industry || '' as Industry)
+  const presetIndustry = (draft as any).industry as Industry | ''
+  const [industry,      setIndustry]      = useState<Industry>(presetIndustry || '' as Industry)
   const [otherIndustry, setOtherIndustry] = useState((draft as any).otherIndustry || '')
-  const [applied,       setApplied]       = useState(false)
+  const [applied,       setApplied]       = useState(!!presetIndustry)  // already applied if editing existing study
   const [showPicker,    setShowPicker]    = useState(false)
 
   const inputCls = 'w-full px-4 py-2.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
@@ -217,26 +218,48 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
 
       {/* Industry */}
       <Section title="Industry" description="Select your industry and we'll pre-fill sensible defaults for all prompts, adaptive follow-ups, and psychographic questions. You can edit everything afterwards.">
-        <select value={industry} onChange={e => { setIndustry(e.target.value as Industry); setApplied(false) }} className={inputCls}>
-          <option value="">— Select an industry —</option>
-          {(Object.keys(INDUSTRY_LABELS) as Industry[]).map(k => (
-            <option key={k} value={k}>{INDUSTRY_LABELS[k]}</option>
-          ))}
-        </select>
-        {industry === 'other' && (
-          <input type="text" value={otherIndustry} onChange={e => setOtherIndustry(e.target.value)}
-            placeholder="Describe your industry or context…" className={inputCls} />
-        )}
-        {industry && industry !== 'other' && (
+        {/* Show badge when industry is already set (editing existing study) */}
+        {applied && industry && industry !== 'other' && (
           <div className="flex items-center gap-3 flex-wrap">
-            <button onClick={applyIndustryDefaults} disabled={applied}
-              className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all"
-              style={{ background: applied ? '#9ca3af' : HERMES }}>
-              {applied ? '✓ Defaults applied' : '✦ Apply industry defaults'}
+            <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5">
+              <span className="text-orange-500 font-bold text-sm">✦</span>
+              <span className="text-sm font-semibold text-gray-800">{INDUSTRY_LABELS[industry as Industry]}</span>
+              <span className="text-xs text-orange-500 bg-orange-100 px-2 py-0.5 rounded-full">Industry set</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setApplied(false)}
+              className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+            >
+              Change industry
             </button>
-            {!applied && <p className="text-xs text-gray-400">Pre-fills all prompts, follow-ups &amp; psychographic questions for {INDUSTRY_LABELS[industry as Industry]}</p>}
-            {applied  && <p className="text-xs text-green-600">Defaults applied — customise on the next steps</p>}
           </div>
+        )}
+
+        {/* Industry selector — shown when not yet set or changing */}
+        {!applied && (
+          <>
+            <select value={industry} onChange={e => { setIndustry(e.target.value as Industry); setApplied(false) }} className={inputCls}>
+              <option value="">— Select an industry —</option>
+              {(Object.keys(INDUSTRY_LABELS) as Industry[]).map(k => (
+                <option key={k} value={k}>{INDUSTRY_LABELS[k]}</option>
+              ))}
+            </select>
+            {industry === 'other' && (
+              <input type="text" value={otherIndustry} onChange={e => setOtherIndustry(e.target.value)}
+                placeholder="Describe your industry or context…" className={inputCls} />
+            )}
+            {industry && industry !== 'other' && (
+              <div className="flex items-center gap-3 flex-wrap">
+                <button onClick={applyIndustryDefaults}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all"
+                  style={{ background: HERMES }}>
+                  ✦ Apply industry defaults
+                </button>
+                <p className="text-xs text-gray-400">Pre-fills all prompts, follow-ups &amp; psychographic questions for {INDUSTRY_LABELS[industry as Industry]}</p>
+              </div>
+            )}
+          </>
         )}
       </Section>
 
