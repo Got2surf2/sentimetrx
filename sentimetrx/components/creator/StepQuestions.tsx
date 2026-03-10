@@ -354,7 +354,7 @@ function SuggestedQuestionsPanel({
   existingIds: Set<string>
 }) {
   const [open, setOpen] = useState(true)
-  const suggestions = INDUSTRY_SUGGESTED_QUESTIONS[industry as Industry] ?? []
+  const suggestions = INDUSTRY_SUGGESTED_QUESTIONS[industry as Exclude<Industry, 'other'>] ?? []
   if (!suggestions.length) return null
 
   const industryLabel = INDUSTRY_LABELS[industry as Industry] ?? industry
