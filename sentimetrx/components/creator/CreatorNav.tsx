@@ -9,8 +9,8 @@ export function getStepCompletion(draft: StudyDraft): boolean[] {
     !!(draft.name?.trim() && draft.bot_name?.trim()),   // 0 Basics
     !!(c.greeting?.trim()),                              // 1 Opening
     !!(c.q3?.trim() && c.q4?.trim() && c.clarifiers?.default?.trim()), // 2 Conversation
-    true,                                                // 3 Custom Questions (optional)
-    true,                                                // 4 Psychographics (optional)
+    true,                                                // 3 Custom Questions (optional — always complete once visited)
+    true,                                                // 4 Psychographics (optional — always complete once visited)
   ]
 }
 
@@ -71,9 +71,12 @@ export default function CreatorNav({
           pillCls = 'bg-gray-50 text-gray-300 border border-gray-100 cursor-default opacity-60'
         }
 
+        const hasBeenVisited = freeNav || i <= highestVisited
         let dotCls: string
         if (isActive) {
           dotCls = 'bg-white/30 text-white'
+        } else if (!hasBeenVisited) {
+          dotCls = 'bg-gray-200 text-gray-400'
         } else if (isDone) {
           dotCls = 'bg-green-500 text-white'
         } else {
@@ -96,7 +99,7 @@ export default function CreatorNav({
               'w-3.5 h-3.5 rounded-full flex items-center justify-center ' +
               'text-xs font-bold flex-shrink-0 leading-none ' + dotCls
             }>
-              {isActive ? String(i + 1) : isDone ? '✓' : '✗'}
+              {isActive ? String(i + 1) : !hasBeenVisited ? String(i + 1) : isDone ? '✓' : '✗'}
             </span>
             <span className="hidden md:inline">{label}</span>
           </button>
