@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import StepBasics from '@/components/creator/StepBasics'
 import StepOpening from '@/components/creator/StepOpening'
 import StepConversation from '@/components/creator/StepConversation'
+import StepClarifiers from '@/components/creator/StepClarifiers'
 import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepReview from '@/components/creator/StepReview'
@@ -92,7 +93,7 @@ export default function NewStudyPage() {
   // Nav publish button: jump to Review step so user sees the summary first.
   // The actual API call happens when they click Publish inside StepReview.
   function handleNavPublish() {
-    goTo(5)
+    goTo(6)
   }
 
   const stepProps = { draft, update, updateConfig }
@@ -148,23 +149,30 @@ export default function NewStudyPage() {
           />
         )}
         {step === 3 && (
-          <StepQuestions
+          <StepClarifiers
             {...stepProps}
             onNext={() => goTo(4)}
             onBack={() => goTo(2)}
           />
         )}
         {step === 4 && (
-          <StepPsychographics
+          <StepQuestions
             {...stepProps}
             onNext={() => goTo(5)}
             onBack={() => goTo(3)}
           />
         )}
         {step === 5 && (
+          <StepPsychographics
+            {...stepProps}
+            onNext={() => goTo(6)}
+            onBack={() => goTo(4)}
+          />
+        )}
+        {step === 6 && (
           <StepReview
             {...stepProps}
-            onBack={() => goTo(4)}
+            onBack={() => goTo(5)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}
@@ -174,6 +182,3 @@ export default function NewStudyPage() {
     </div>
   )
 }
-
-
-

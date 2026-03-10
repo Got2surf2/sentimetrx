@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import StepBasics from '@/components/creator/StepBasics'
 import StepOpening from '@/components/creator/StepOpening'
 import StepConversation from '@/components/creator/StepConversation'
+import StepClarifiers from '@/components/creator/StepClarifiers'
 import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepReview from '@/components/creator/StepReview'
@@ -70,7 +71,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
           <CreatorNav
             draft={draft}
             currentStep={step}
-            highestVisited={5}
+            highestVisited={6}
             onStepClick={setStep}
             onPublish={() => handleSave('active')}
             saving={saving}
@@ -89,12 +90,13 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
         {step === 0 && <StepBasics       {...stepProps} onNext={() => setStep(1)} />}
         {step === 1 && <StepOpening      {...stepProps} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
         {step === 2 && <StepConversation {...stepProps} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-        {step === 3 && <StepQuestions {...stepProps} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
-        {step === 4 && <StepPsychographics {...stepProps} onNext={() => setStep(5)} onBack={() => setStep(3)} />}
-        {step === 5 && (
+        {step === 3 && <StepClarifiers {...stepProps} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
+        {step === 4 && <StepQuestions {...stepProps} onNext={() => setStep(5)} onBack={() => setStep(3)} />}
+        {step === 5 && <StepPsychographics {...stepProps} onNext={() => setStep(6)} onBack={() => setStep(4)} />}
+        {step === 6 && (
           <StepReview
             {...stepProps}
-            onBack={() => setStep(4)}
+            onBack={() => setStep(5)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}

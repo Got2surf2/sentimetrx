@@ -6,11 +6,12 @@ import type { StudyDraft } from '@/lib/studyDraft'
 export function getStepCompletion(draft: StudyDraft): boolean[] {
   const c = draft.config
   return [
-    !!(draft.name?.trim() && draft.bot_name?.trim()),   // 0 Basics
+    !!(draft.name?.trim() && draft.bot_name?.trim()),    // 0 Basics
     !!(c.greeting?.trim()),                              // 1 Opening
-    !!(c.q3?.trim() && c.q4?.trim() && c.clarifiers?.default?.trim()), // 2 Conversation
-    true,                                                // 3 Custom Questions (optional — always complete once visited)
-    true,                                                // 4 Psychographics (optional — always complete once visited)
+    !!(c.q3?.trim() && c.q4?.trim()),                   // 2 Conversation
+    !!(c.clarifiers?.default?.trim()),                   // 3 Clarifiers
+    true,                                                // 4 Custom Questions (optional — always complete once visited)
+    true,                                                // 5 Psychographics (optional — always complete once visited)
   ]
 }
 
@@ -22,6 +23,7 @@ export const CREATOR_STEP_LABELS = [
   'Basics',
   'Opening',
   'Conversation',
+  'Clarifiers',
   'Questions',
   'Psychographics',
   'Review',
