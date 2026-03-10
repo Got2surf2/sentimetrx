@@ -63,7 +63,7 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters, actions
     <div className="bg-white border-b border-gray-200 px-5 py-2.5 flex items-center justify-between gap-4 shadow-sm fixed top-14 left-0 right-0 z-40">
 
       {/* Left: breadcrumbs */}
-      <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+      <div className="flex items-center gap-1.5 min-w-0 overflow-hidden shrink">
         {crumbs && crumbs.map((c, i) => (
           <div key={i} className="flex items-center gap-1.5 min-w-0">
             {i > 0 && <span className="text-gray-300 text-sm flex-shrink-0">/</span>}
@@ -77,7 +77,7 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters, actions
 
       {/* Right: step pills (creator) OR admin filters */}
       {actions && (
-        <div className="flex items-center gap-2 flex-shrink-0 min-w-0 flex-1 justify-end">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {actions}
         </div>
       )}
