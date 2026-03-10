@@ -110,7 +110,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Wonderful to hear! What made this visit particularly positive for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   casual_dining: {
@@ -168,7 +167,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Wonderful! What made your visit stand out today?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   education: {
@@ -226,7 +224,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Brilliant! What has stood out most about your experience with us?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   fast_food: {
@@ -284,7 +281,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Love to hear it! What made your visit a great one today?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   financial_services: {
@@ -342,7 +338,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Excellent to hear! What made this experience stand out for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   fine_dining: {
@@ -400,7 +395,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "What a joy to hear. What made this evening particularly special for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   hr_employee: {
@@ -458,7 +452,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Brilliant — thank you! What makes your experience here stand out for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   healthcare: {
@@ -516,7 +509,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "That's so good to hear. What stood out most about the care you received today?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   higher_education: {
@@ -574,7 +566,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Brilliant! What has made your time here particularly rewarding?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   hospitality: {
@@ -632,7 +623,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Delighted to hear it! What made your stay stand out?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   media_entertainment: {
@@ -690,7 +680,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Brilliant! What stood out most for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   nonprofits: {
@@ -748,7 +737,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Wonderful to hear — thank you! What has made this experience meaningful for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   performing_arts: {
@@ -806,7 +794,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Wonderful! What made the evening particularly special for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   political: {
@@ -864,7 +851,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "That's wonderful to hear. What has made your experience stand out?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   retail_ecommerce: {
@@ -922,7 +908,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Wonderful to hear — thank you! What made this purchase stand out for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   saas_software: {
@@ -980,7 +965,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Brilliant — thank you! What's made the biggest positive impact on your work?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   sports: {
@@ -1038,7 +1022,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Brilliant! What made today's experience stand out for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 
   travel_tourism: {
@@ -1096,9 +1079,5 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
           "5": { prompt: "Fantastic! What made this trip particularly special for you?", clarify: false, useAI: false }
         }
       },
-    ],
   },
 }
-
-
-
