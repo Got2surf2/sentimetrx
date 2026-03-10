@@ -8,13 +8,14 @@ interface OrgOption  { id: string; name: string }
 interface UserOption { id: string; email: string; full_name: string | null }
 
 interface Props {
-  crumbs?:  Crumb[]
-  isAdmin?: boolean
-  orgId?:   string
+  crumbs?:      Crumb[]
+  isAdmin?:     boolean
+  orgId?:       string
   showFilters?: boolean
+  actions?:     React.ReactNode  // e.g. creator step pills
 }
 
-export default function SubHeader({ crumbs, isAdmin, orgId, showFilters }: Props) {
+export default function SubHeader({ crumbs, isAdmin, orgId, showFilters, actions }: Props) {
   const [orgs,         setOrgs]         = useState<OrgOption[]>([])
   const [users,        setUsers]        = useState<UserOption[]>([])
   const [selectedOrg,  setSelectedOrg]  = useState('')
@@ -74,8 +75,13 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters }: Props
         ))}
       </div>
 
-      {/* Right: filters */}
-      {showFilters && (
+      {/* Right: step pills (creator) OR admin filters */}
+      {actions && (
+        <div className="flex items-center gap-2 flex-shrink-0 min-w-0 flex-1 justify-end">
+          {actions}
+        </div>
+      )}
+      {showFilters && !actions && (
         <div className="flex items-center gap-2 flex-shrink-0">
           {isAdmin && (
             <select value={ready ? selectedOrg : ''} onChange={e => { setSelectedOrg(e.target.value); setSelectedUser(''); nav(e.target.value, '') }}

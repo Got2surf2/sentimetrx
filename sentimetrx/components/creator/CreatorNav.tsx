@@ -2,24 +2,15 @@
 
 import type { StudyDraft } from '@/lib/studyDraft'
 
-// ── Step completion logic ────────────────────────────────────────
-// Each entry corresponds to the same index as STEP_LABELS below.
-// "Review & Publish" (index 5) derives from the others, so we only
-// compute 5 values and treat it separately.
-
+// ── Step completion logic ─────────────────────────────────────────────────────
 export function getStepCompletion(draft: StudyDraft): boolean[] {
   const c = draft.config
   return [
-    // 0 Basics
-    !!(draft.name?.trim() && draft.bot_name?.trim()),
-    // 1 Opening
-    !!(c.greeting?.trim()),
-    // 2 Conversation
-    !!(c.q3?.trim() && c.q4?.trim() && c.clarifiers?.default?.trim()),
-    // 3 Custom Questions (optional — always complete)
-    true,
-    // 4 Psychographics (optional — always complete)
-    true,
+    !!(draft.name?.trim() && draft.bot_name?.trim()),   // 0 Basics
+    !!(c.greeting?.trim()),                              // 1 Opening
+    !!(c.q3?.trim() && c.q4?.trim() && c.clarifiers?.default?.trim()), // 2 Conversation
+    true,                                                // 3 Custom Questions (optional)
+    true,                                                // 4 Psychographics (optional)
   ]
 }
 
@@ -27,28 +18,25 @@ export function isPublishReady(draft: StudyDraft): boolean {
   return getStepCompletion(draft).every(Boolean)
 }
 
-// ── Labels must match step indices in page components ─────────────
 export const CREATOR_STEP_LABELS = [
   'Basics',
   'Opening',
   'Conversation',
-  'Custom Questions',
+  'Questions',
   'Psychographics',
-  'Review & Publish',
+  'Review',
 ] as const
 
-// ── Props ─────────────────────────────────────────────────────────
 interface CreatorNavProps {
-  draft:           StudyDraft
-  currentStep:     number
-  highestVisited:  number       // highest step index the user has reached
-  onStepClick:     (step: number) => void
-  onPublish:       () => void
-  saving:          boolean
-  freeNav?:        boolean      // true in edit mode — every pill is clickable
+  draft:          StudyDraft
+  currentStep:    number
+  highestVisited: number
+  onStepClick:    (step: number) => void
+  onPublish:      () => void
+  saving:         boolean
+  freeNav?:       boolean
 }
 
-// ── Component ─────────────────────────────────────────────────────
 export default function CreatorNav({
   draft,
   currentStep,
@@ -63,93 +51,82 @@ export default function CreatorNav({
   const canPublish = allDone && !saving
 
   return (
-    <div className="bg-white border-t border-gray-100">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 h-12 flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
 
-        {/* ── Step pills ── */}
-        <div className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar">
-          {CREATOR_STEP_LABELS.map((label, i) => {
-            const isActive    = i === currentStep
-            const isReview    = i === CREATOR_STEP_LABELS.length - 1
-            const isDone      = isReview ? allDone : completion[i]
-            const isClickable = freeNav
-              ? true
-              : i <= highestVisited
+      {/* Step pills */}
+      {CREATOR_STEP_LABELS.map((label, i) => {
+        const isActive    = i === currentStep
+        const isReview    = i === CREATOR_STEP_LABELS.length - 1
+        const isDone      = isReview ? allDone : completion[i]
+        const isClickable = freeNav ? true : i <= highestVisited
 
-            let pillCls: string
-            if (isActive) {
-              pillCls = 'bg-orange-500 text-white shadow-sm'
-            } else if (isDone && isClickable) {
-              pillCls = 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 cursor-pointer'
-            } else if (isClickable) {
-              pillCls = 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 cursor-pointer'
-            } else {
-              pillCls = 'bg-gray-50 text-gray-300 border border-gray-100 cursor-default opacity-60'
+        let pillCls: string
+        if (isActive) {
+          pillCls = 'bg-orange-500 text-white shadow-sm'
+        } else if (isDone && isClickable) {
+          pillCls = 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 cursor-pointer'
+        } else if (isClickable) {
+          pillCls = 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 cursor-pointer'
+        } else {
+          pillCls = 'bg-gray-50 text-gray-300 border border-gray-100 cursor-default opacity-60'
+        }
+
+        let dotCls: string
+        if (isActive) {
+          dotCls = 'bg-white/30 text-white'
+        } else if (isDone) {
+          dotCls = 'bg-orange-500 text-white'
+        } else {
+          dotCls = 'bg-gray-200 text-gray-400'
+        }
+
+        return (
+          <button
+            key={label}
+            type="button"
+            disabled={!isClickable}
+            onClick={() => { if (isClickable) onStepClick(i) }}
+            className={
+              'flex items-center gap-1 px-2 py-1 rounded-full ' +
+              'text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ' +
+              pillCls
             }
+          >
+            <span className={
+              'w-3.5 h-3.5 rounded-full flex items-center justify-center ' +
+              'text-xs font-bold flex-shrink-0 leading-none ' + dotCls
+            }>
+              {isDone && !isActive ? '✓' : String(i + 1)}
+            </span>
+            <span className="hidden md:inline">{label}</span>
+          </button>
+        )
+      })}
 
-            let dotCls: string
-            if (isActive) {
-              dotCls = 'bg-white/30 text-white'
-            } else if (isDone) {
-              dotCls = 'bg-orange-500 text-white'
-            } else {
-              dotCls = 'bg-gray-200 text-gray-400'
-            }
+      {/* Divider */}
+      <div className="w-px h-4 bg-gray-200 mx-1 flex-shrink-0" />
 
-            return (
-              <button
-                key={label}
-                type="button"
-                disabled={!isClickable}
-                onClick={() => { if (isClickable) onStepClick(i) }}
-                className={
-                  'flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-full ' +
-                  'text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ' +
-                  pillCls
-                }
-              >
-                <span className={
-                  'w-4 h-4 rounded-full flex items-center justify-center ' +
-                  'text-xs font-bold flex-shrink-0 leading-none ' + dotCls
-                }>
-                  {isDone && !isActive ? '✓' : String(i + 1)}
-                </span>
-                {/* Hide label text on very small screens, show on sm+ */}
-                <span className="hidden xs:inline sm:inline">{label}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* ── Publish button ── */}
-        <button
-          type="button"
-          disabled={!canPublish}
-          onClick={() => { if (canPublish) onPublish() }}
-          title={canPublish ? 'Publish this study' : 'Complete all required steps to publish'}
-          className={
-            'flex-shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-2 ' +
-            'rounded-full text-xs sm:text-sm font-bold transition-all ' +
-            (canPublish
-              ? 'bg-cyan-500 text-slate-900 hover:bg-cyan-400 shadow-sm hover:shadow-md cursor-pointer'
-              : 'bg-gray-100 text-gray-300 cursor-not-allowed')
-          }
-        >
-          {saving ? (
-            <>
-              <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0" />
-              <span className="hidden sm:inline">Publishing…</span>
-            </>
-          ) : (
-            <>
-              <span>▶</span>
-              <span className="hidden sm:inline">Publish</span>
-            </>
-          )}
-        </button>
-
-      </div>
-
+      {/* Publish button */}
+      <button
+        type="button"
+        disabled={!canPublish}
+        onClick={() => { if (canPublish) onPublish() }}
+        title={canPublish ? 'Publish this study' : 'Complete all required steps to publish'}
+        className={
+          'flex-shrink-0 flex items-center gap-1 px-3 py-1 ' +
+          'rounded-full text-xs font-bold transition-all ' +
+          (canPublish
+            ? 'bg-cyan-500 text-slate-900 hover:bg-cyan-400 shadow-sm cursor-pointer'
+            : 'bg-gray-100 text-gray-300 cursor-not-allowed')
+        }
+      >
+        {saving ? (
+          <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <span>▶</span>
+        )}
+        <span>{saving ? 'Publishing…' : 'Publish'}</span>
+      </button>
 
     </div>
   )

@@ -100,23 +100,24 @@ export default function NewStudyPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* ── Unified fixed header: TopNav + breadcrumb row + pill nav ── */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm flex flex-col">
-        <TopNav currentPage="new" />
-        <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'New Study' }]} />
-        <CreatorNav
-          draft={draft}
-          currentStep={step}
-          highestVisited={highestVisited}
-          onStepClick={goTo}
-          onPublish={handleNavPublish}
-          saving={saving}
-          freeNav={false}
-        />
-      </div>
+      <TopNav currentPage="new" />
+      <SubHeader
+        crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'New Study' }]}
+        actions={
+          <CreatorNav
+            draft={draft}
+            currentStep={step}
+            highestVisited={highestVisited}
+            onStepClick={goTo}
+            onPublish={handleNavPublish}
+            saving={saving}
+            freeNav={false}
+          />
+        }
+      />
 
-      {/* Step content — pt accounts for fixed header height (TopNav ~56px + SubHeader ~40px + CreatorNav ~48px) */}
-      <div className="max-w-4xl mx-auto px-6 py-10" style={{ paddingTop: '10rem' }}>
+      {/* Step content — pt clears TopNav (56px) + SubHeader (44px) */}
+      <div className="max-w-4xl mx-auto px-6 py-10" style={{ paddingTop: '7rem' }}>
         {error && (
           <div className="mb-6 px-4 py-3 rounded-xl bg-red-100 border border-red-200 text-red-600 text-sm">
             {error}
