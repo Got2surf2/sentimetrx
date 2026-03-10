@@ -305,7 +305,7 @@ function IndustryQuestionPicker({
   )
 }
 
- ── Bank question row ──────────────────────────────────────────
+// ── Bank question row ──────────────────────────────────────────
 
 function BankRow({ bq, selected, onToggle }: { bq: BankQuestion; selected: boolean; onToggle: () => void }) {
   const [open, setOpen] = useState(false)

@@ -10,9 +10,9 @@ import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
 import TopNav from '@/components/nav/TopNav'
+import CreatorNav from '@/components/creator/CreatorNav'
 import SubHeader from '@/components/nav/SubHeader'
 
-const STEPS = ['Basics', 'Opening', 'Conversation', 'Questions', 'Psychographics', 'Review & Publish']
 
 interface Props { study: any; logoUrl?: string; orgName?: string; isAdmin?: boolean; userEmail?: string; fullName?: string }
 
@@ -63,33 +63,20 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='edit' />
       <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: draft.name || 'Edit Study'}]} />
 
-      {/* Step progress */}
-      <div className="border-b border-gray-200 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center gap-2">
-          {STEPS.map((s, i) => (
-            <div key={s} className="flex items-center gap-2 flex-1">
-              <button
-                onClick={() => setStep(i)}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-                  i === step   ? 'text-cyan-400' : 'text-slate-400 hover:text-white cursor-pointer'
-                }`}
-              >
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  i === step ? 'bg-cyan-500 text-slate-900' : 'bg-slate-700 text-white'
-                }`}>
-                  {i + 1}
-                </span>
-                <span className="hidden sm:block whitespace-nowrap">{s}</span>
-              </button>
-              {i < STEPS.length - 1 && <div className="flex-1 h-px bg-slate-700" />}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Sticky pill nav — free navigation in edit mode */}
+      <CreatorNav
+        draft={draft}
+        currentStep={step}
+        highestVisited={5}
+        onStepClick={setStep}
+        onPublish={() => handleSave('active')}
+        saving={saving}
+        freeNav={true}
+      />
 
       <div className="max-w-4xl mx-auto px-6 py-10">
         {error && (
-          <div className="mb-6 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+          <div className="mb-6 px-4 py-3 rounded-xl bg-red-100 border border-red-200 text-red-600 text-sm">
             {error}
           </div>
         )}
