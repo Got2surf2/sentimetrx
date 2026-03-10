@@ -72,11 +72,24 @@ export default function StepReview({ draft, update, updateConfig, onBack, onSave
             <Row label="Clarifiers"    value={`${clarifierCount} keyword${clarifierCount !== 1 ? 's' : ''} + default`} />
           </SummarySection>
 
+          <SummarySection title="Custom Questions">
+            <Row
+              label="Questions"
+              value={
+                (c.questions ?? []).length === 0
+                  ? 'None added'
+                  : (c.customQCount && c.customQCount < (c.questions ?? []).length)
+                    ? `${(c.questions ?? []).length} questions (${c.customQCount} shown per respondent)`
+                    : `${(c.questions ?? []).length} questions (all shown)`
+              }
+            />
+          </SummarySection>
+
           <SummarySection title="Psychographics">
             <Row
               label="Questions"
               value={c.psychographicBank.length > 0
-                ? `${c.psychographicBank.length} questions (3 shown per respondent)`
+                ? `${c.psychographicBank.length} questions (${c.psychoCount ?? 3} shown per respondent)`
                 : 'None added'}
             />
           </SummarySection>
@@ -100,12 +113,15 @@ export default function StepReview({ draft, update, updateConfig, onBack, onSave
                   rel="noreferrer"
                   className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium text-sm text-center transition-all"
                 >
-                  Test Survey
+                  🔗 Test Survey
                 </a>
               ) : (
-                <span className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-400 font-medium text-sm text-center">
-                  Test Survey
-                </span>
+                <div className="flex-1 flex flex-col items-center gap-0.5">
+                  <span className="w-full py-2.5 rounded-xl bg-slate-800 text-slate-600 font-medium text-sm text-center cursor-not-allowed block">
+                    Test Survey
+                  </span>
+                  <span className="text-slate-600 text-xs">Save as Draft first</span>
+                </div>
               )}
               <button
                 type="button"

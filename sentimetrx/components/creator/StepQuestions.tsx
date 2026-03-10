@@ -430,6 +430,9 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
   const [addingType, setAddingType] = useState<QuestionType | null>(null)
   const industry = (draft as any).industry as string | undefined
 
+  const customQCount = draft.config.customQCount ?? 0   // 0 = show all
+  const totalQ       = questions.length
+
   const setQuestions = (qs: SurveyQuestion[]) => updateConfig({ questions: qs })
 
   const addQuestion = (type: QuestionType) => {
@@ -496,6 +499,47 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
               onMoveDown={() => moveDown(i)}
             />
           ))}
+        </div>
+      )}
+
+      {/* Sampling control — shown when 2+ questions exist */}
+      {totalQ >= 2 && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex items-center gap-5">
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-gray-800 mb-0.5">Questions per respondent</div>
+            <div className="text-xs text-gray-400">
+              {customQCount === 0 || customQCount >= totalQ
+                ? 'All ' + totalQ + ' questions shown to every respondent'
+                : 'Randomly showing ' + customQCount + ' of your ' + totalQ + ' questions per respondent'}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const next = customQCount <= 1 ? 0 : customQCount - 1
+                updateConfig({ customQCount: next })
+              }}
+              disabled={customQCount === 0}
+              className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center"
+            >
+              −
+            </button>
+            <span className="w-10 text-center text-lg font-bold text-gray-800">
+              {customQCount === 0 || customQCount >= totalQ ? 'All' : customQCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const next = customQCount === 0 ? 2 : Math.min(totalQ - 1, customQCount + 1)
+                updateConfig({ customQCount: next })
+              }}
+              disabled={customQCount !== 0 && customQCount >= totalQ - 1}
+              className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center"
+            >
+              +
+            </button>
+          </div>
         </div>
       )}
 

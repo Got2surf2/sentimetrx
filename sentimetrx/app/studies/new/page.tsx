@@ -53,6 +53,7 @@ export default function NewStudyPage() {
   const [draft,          setDraft]          = useState<StudyDraft>(EMPTY_DRAFT)
   const [saving,         setSaving]         = useState(false)
   const [error,          setError]          = useState<string | null>(null)
+  const [savedGuid,      setSavedGuid]      = useState<string | null>(null)
   const router = useRouter()
 
   const update = useCallback((partial: Partial<StudyDraft>) => {
@@ -82,7 +83,8 @@ export default function NewStudyPage() {
         const j = await res.json()
         throw new Error(j.error || 'Failed to save')
       }
-      const { id } = await res.json()
+      const { id, guid } = await res.json()
+      if (guid) setSavedGuid(guid)
       router.push(status === 'active' ? `/studies/${id}/deploy` : `/studies/${id}/edit`)
     } catch (e: any) {
       setError(e.message)
@@ -176,6 +178,7 @@ export default function NewStudyPage() {
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}
+            studyId={savedGuid ?? undefined}
           />
         )}
       </div>
