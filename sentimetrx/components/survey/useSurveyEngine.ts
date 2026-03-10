@@ -148,7 +148,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           questionAsked:   s.currentQuestion,
           questionKey:     qKey,
           answer:          text,
-          sentiment:       s.sentiment || 'passive',
+          sentiment:       s.sentiment || 'neutral',
           experienceScore: s.rating || 3,
           npsScore:        s.npsScore || 3,
           priorAnswers,
@@ -996,7 +996,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             sb.style.background  = config.theme.primaryColor + '20'
             state.current.npsScore = s.score
             state.current.npsLabel = s.label
-            state.current.sentiment = s.score >= 5 ? 'promoter' : s.score >= 4 ? 'passive' : 'detractor'
+            state.current.sentiment = s.score >= 5 ? 'positive' : s.score >= 4 ? 'neutral' : 'negative'
             addMsg('user', s.stars + ' ' + s.label)
             await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating)
           }
