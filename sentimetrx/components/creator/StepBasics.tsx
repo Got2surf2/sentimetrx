@@ -18,7 +18,7 @@ const SKIN_TONE_CAPABLE = new Set([
   '🕵️','🥷','👼','🎅','🤶','🦸','🦹','🧙','🧝','🧛','🧜','🧚','🤗','🫂',
 ])
 
-function applyTone(emoji, tone) {
+function applyTone(emoji: string, tone: string): string {
   if (!tone || !SKIN_TONE_CAPABLE.has(emoji)) return emoji
   return emoji + tone
 }
@@ -66,7 +66,7 @@ const PRESETS = [
 const HERMES = '#E8632A'
 
 // ── Emoji picker ──────────────────────────────────────────────
-function EmojiPicker({ currentEmoji, onSelect, onClose, industry }) {
+function EmojiPicker({ currentEmoji, onSelect, onClose, industry }: { currentEmoji: string; onSelect: (e: string) => void; onClose: () => void; industry: string }) {
   const [tone,      setTone]      = useState('')
   const [filter,    setFilter]    = useState('all')
   const [customVal, setCustomVal] = useState('')
