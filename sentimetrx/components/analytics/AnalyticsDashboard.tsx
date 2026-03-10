@@ -87,7 +87,7 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
         total={summary?.total ?? 0}
       />
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-6 pb-8" style={{ paddingTop: 120 }}>
 
         {error && (
           <div className="mb-6 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
@@ -104,9 +104,9 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
               <StatCard label="Responses"    value={summary.total} />
               <StatCard label="Avg NPS"      value={summary.total > 0 ? summary.avgNps : '—'} />
               <StatCard label="Avg Exp."     value={summary.total > 0 ? summary.avgExp : '—'} />
-              <StatCard label="Promoters"    value={summary.total > 0 ? Math.round(summary.promoters  / summary.total * 100) + '%' : '—'} color="text-green-400" />
-              <StatCard label="Passives"     value={summary.total > 0 ? Math.round(summary.passives   / summary.total * 100) + '%' : '—'} color="text-yellow-400" />
-              <StatCard label="Detractors"   value={summary.total > 0 ? Math.round(summary.detractors / summary.total * 100) + '%' : '—'} color="text-red-400" />
+              <StatCard label="Positive"    value={summary.total > 0 ? Math.round(summary.promoters  / summary.total * 100) + '%' : '—'} color="text-green-400" />
+              <StatCard label="Neutral"     value={summary.total > 0 ? Math.round(summary.passives   / summary.total * 100) + '%' : '—'} color="text-yellow-400" />
+              <StatCard label="Negative"   value={summary.total > 0 ? Math.round(summary.detractors / summary.total * 100) + '%' : '—'} color="text-red-400" />
             </div>
 
             {summary.total === 0 ? (
@@ -258,9 +258,9 @@ function BarChart({ data }: { data: VolumePoint[] }) {
 function SentimentDonut({ summary }: { summary: Summary }) {
   const total = summary.total || 1
   const segments = [
-    { value: summary.promoters,  color: '#22c55e', label: 'Promoters'  },
-    { value: summary.passives,   color: '#eab308', label: 'Passives'   },
-    { value: summary.detractors, color: '#ef4444', label: 'Detractors' },
+    { value: summary.promoters,  color: '#22c55e', label: 'Positive'  },
+    { value: summary.passives,   color: '#eab308', label: 'Neutral'   },
+    { value: summary.detractors, color: '#ef4444', label: 'Negative' },
   ]
 
   const R = 60; const CX = 80; const CY = 70; const STROKE = 22

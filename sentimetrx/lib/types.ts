@@ -95,6 +95,10 @@ export interface StudyConfig {
   ratingScale:        RatingOption[]
   experienceFollowUp?: LikertFollowUp  // adaptive open-end after experience rating
 
+  // Primary rating variable -- the one score shown on study cards and in analytics header
+  ratingVariableId?:    string  // 'nps' | 'experience'
+  ratingVariableLabel?: string  // display label, e.g. 'NPS' or 'Experience Rating'
+
   // Sentiment-adapted open-ended Q1 (after NPS, before experience rating)
   promoterQ1?:        string  // legacy — kept for existing studies
   passiveQ1?:         string
@@ -142,7 +146,7 @@ export interface Study {
 
 // ── Survey payload (saved to DB) ─────────────────────────────
 
-export type Sentiment = 'promoter' | 'passive' | 'detractor'
+export type Sentiment = 'positive' | 'neutral' | 'negative'
 
 export interface SurveyPayload {
   agent:            string

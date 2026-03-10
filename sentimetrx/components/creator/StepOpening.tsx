@@ -284,6 +284,38 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
         )}
       </Section>
 
+      {/* Primary Rating Variable */}
+      {(npsEnabled || experienceEnabled) && (
+        <Section
+          title="Primary rating variable"
+          description="The score shown on study cards and at the top of analytics. Pick one."
+        >
+          <div className="flex flex-col gap-2">
+            {npsEnabled && (
+              <RatingVariableOption
+                selected={c.ratingVariableId === 'nps'}
+                onSelect={() => updateConfig({ ratingVariableId: 'nps', ratingVariableLabel: c.npsLabel || 'NPS' })}
+                label={(c.npsLabel || 'NPS') + ' Score'}
+                sublabel="1-5 recommendation scale"
+                primaryColor={c.theme.primaryColor}
+              />
+            )}
+            {experienceEnabled && (
+              <RatingVariableOption
+                selected={c.ratingVariableId === 'experience'}
+                onSelect={() => updateConfig({ ratingVariableId: 'experience', ratingVariableLabel: 'Experience Rating' })}
+                label="Experience Rating"
+                sublabel="1-5 experience scale"
+                primaryColor={c.theme.primaryColor}
+              />
+            )}
+          </div>
+          {!c.ratingVariableId && (
+            <p className="text-xs text-red-400 mt-2 px-1">Select a primary rating variable to enable study card scoring.</p>
+          )}
+        </Section>
+      )}
+
       <NavButtons onBack={onBack} onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Conversation" />
     </div>
   )

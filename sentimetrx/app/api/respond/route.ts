@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   // Sentiment: from NPS if available, else from experienceRating, else null
   const sentiment: Sentiment | null =
     (payload.npsRecommend?.score != null
-      ? (payload.npsRecommend.score >= 5 ? 'promoter' : payload.npsRecommend.score >= 4 ? 'passive' : 'detractor')
+      ? (payload.npsRecommend.score >= 5 ? 'positive' : payload.npsRecommend.score >= 4 ? 'neutral' : 'negative')
       : payload.experienceRating?.sentiment as Sentiment ?? null)
 
   const experience_score = payload.experienceRating?.score ?? null
