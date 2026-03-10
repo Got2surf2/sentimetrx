@@ -28,7 +28,13 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     name:         study.name,
     bot_name:     study.bot_name,
     bot_emoji:    study.bot_emoji,
-    config:       study.config,  // industry & otherIndustry live inside config JSONB
+    config: {
+      // For legacy studies created before industry moved into config,
+      // seed it from the top-level study.industry column if config doesn't have it
+      industry:      study.config?.industry      || study.industry      || undefined,
+      otherIndustry: study.config?.otherIndustry || study.otherIndustry || undefined,
+      ...study.config,
+    },
   })
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState<string | null>(null)

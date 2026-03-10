@@ -1,5 +1,7 @@
 'use client'
 
+import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
+
 import { useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
@@ -41,7 +43,7 @@ function DonutChart({ promoters, passives, detractors, total, avgNps, npsLabel }
       <div style={{ position: 'absolute', top: 14, left: 14, width: 68, height: 68, borderRadius: '50%', background: 'white' }} />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: HERMES }}>{total > 0 ? avgNps : '--'}</span>
-        <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>{npsLabel || 'rating'}</span>
+        <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>{npsLabel || 'NPS'}</span>
       </div>
     </div>
   )
@@ -157,16 +159,17 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
                 {study.bot_emoji}
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="font-bold text-gray-800 text-sm leading-tight truncate max-w-[160px]">{study.name}</h3>
-                  {study.config?.ratingVariableLabel && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#f97316', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 4, padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
-                      {study.config.ratingVariableLabel}
-                    </span>
-                  )}
-                </div>
+                <h3 className="font-bold text-gray-800 text-sm leading-tight truncate max-w-[160px]">{study.name}</h3>
                 <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                   <p className="text-xs text-gray-400 truncate max-w-[100px]">{study.bot_name}</p>
+                  {study.config?.industry && study.config.industry !== 'other' && (
+                    <>
+                      <span className="text-gray-300 text-xs">·</span>
+                      <span className="text-xs text-orange-500 font-medium">
+                        {INDUSTRY_LABELS[study.config.industry as Industry] ?? study.config.industry}
+                      </span>
+                    </>
+                  )}
                   {lastResp && (
                     <>
                       <span className="text-gray-300 text-xs">·</span>
@@ -189,18 +192,18 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
 
           {/* Donut + stats */}
           <div className="flex items-center gap-3">
-            <DonutChart promoters={stats.promoters} passives={stats.passives} detractors={stats.detractors} total={stats.total} avgNps={stats.avgNps} npsLabel={study.config?.ratingVariableLabel || study.config?.npsLabel} />
+            <DonutChart promoters={stats.promoters} passives={stats.passives} detractors={stats.detractors} total={stats.total} avgNps={stats.avgNps} npsLabel={study.config?.npsLabel} />
             <div className="flex flex-col gap-1 flex-1 text-xs">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Positive</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Promoters</span>
                 <span className="font-semibold text-gray-700">{pp}%</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Neutral</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Passives</span>
                 <span className="font-semibold text-gray-700">{ap}%</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Negative</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Detractors</span>
                 <span className="font-semibold text-gray-700">{dp}%</span>
               </div>
               <div className="mt-1 pt-1 border-t border-gray-100 flex items-center justify-between">
