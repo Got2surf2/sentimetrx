@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import type { SurveyQuestion, LikertFollowUp, QuestionType } from '@/lib/types'
 import { Section, NavButtons } from './CreatorUI'
+import { INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -206,76 +207,6 @@ function LikertEditor({ scale, onChange }: {
   )
 }
 
-// ── Date question editor ──────────────────────────────────────
-function DateEditor({ q, onChange }: {
-  q: SurveyQuestion
-  onChange: (patch: Partial<SurveyQuestion>) => void
-}) {
-  const fmt    = q.dateFormat ?? 'date'
-  const minVal = q.dateMin ?? ''
-  const maxVal = q.dateMax ?? ''
-
-  return (
-    <div className="flex flex-col gap-4 pt-2 border-t border-gray-100">
-
-      {/* Format toggle */}
-      <div>
-        <label className={labelCls}>Date format</label>
-        <div className="flex gap-2 mt-1">
-          {(['date', 'datetime'] as const).map(f => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => onChange({ dateFormat: f })}
-              className={'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ' +
-                (fmt === f
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-gray-500 border-gray-300 hover:border-orange-300')}
-            >
-              {f === 'date' ? '📅 Date only' : '🕐 Date & time'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Min / max constraints */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>Earliest allowed date <span className="text-gray-400 font-normal">(optional)</span></label>
-          <input
-            type={fmt === 'datetime' ? 'datetime-local' : 'date'}
-            value={minVal}
-            onChange={e => onChange({ dateMin: e.target.value })}
-            className={inputCls}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Latest allowed date <span className="text-gray-400 font-normal">(optional)</span></label>
-          <input
-            type={fmt === 'datetime' ? 'datetime-local' : 'date'}
-            value={maxVal}
-            onChange={e => onChange({ dateMax: e.target.value })}
-            className={inputCls}
-          />
-        </div>
-      </div>
-
-      {/* Preview */}
-      <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-        <div className="text-xs font-semibold text-gray-400 mb-2">Respondent will see</div>
-        <input
-          type={fmt === 'datetime' ? 'datetime-local' : 'date'}
-          disabled
-          placeholder="Pick a date…"
-          min={minVal || undefined}
-          max={maxVal || undefined}
-          className={inputCls + ' opacity-60 cursor-not-allowed'}
-        />
-      </div>
-    </div>
-  )
-}
-
 // ── Question card ─────────────────────────────────────────────
 function QuestionCard({
   q, idx, total, onChange, onDelete, onMoveUp, onMoveDown
@@ -406,10 +337,85 @@ function QuestionCard({
               />
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
 
-          {q.type === 'date' && (
-            <DateEditor q={q} onChange={set} />
-          )}
+// ── Industry suggested questions panel ───────────────────────
+function SuggestedQuestionsPanel({
+  industry,
+  onAdd,
+  existingIds,
+}: {
+  industry: string
+  onAdd: (q: SurveyQuestion) => void
+  existingIds: Set<string>
+}) {
+  const [open, setOpen] = useState(true)
+  const suggestions = INDUSTRY_SUGGESTED_QUESTIONS[industry as Industry] ?? []
+  if (!suggestions.length) return null
+
+  const industryLabel = INDUSTRY_LABELS[industry as Industry] ?? industry
+
+  return (
+    <div className="bg-orange-50 border border-orange-200 rounded-2xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-orange-500 text-sm font-bold">✦</span>
+          <span className="text-sm font-semibold text-gray-800">
+            Suggested for {industryLabel}
+          </span>
+          <span className="text-xs text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full font-medium">
+            {suggestions.length} questions
+          </span>
+        </div>
+        <span className="text-gray-400 text-xs">{open ? '▲ hide' : '▼ show'}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-2">
+          <p className="text-xs text-orange-700 mb-1">
+            These contextual questions help segment responses by how respondents actually use or engage with you. Click any to add it to your survey.
+          </p>
+          {suggestions.map(function(sq) {
+            const alreadyAdded = existingIds.has(sq.key)
+            return (
+              <div
+                key={sq.key}
+                className={'flex items-start gap-3 bg-white border rounded-xl px-4 py-3 transition-all ' + (alreadyAdded ? 'border-green-200 opacity-60' : 'border-orange-200 hover:border-orange-400 cursor-pointer')}
+                onClick={() => {
+                  if (alreadyAdded) return
+                  onAdd({
+                    id:       sq.key + '_' + Date.now().toString(36),
+                    type:     'radio',
+                    prompt:   sq.q,
+                    options:  sq.opts,
+                    required: false,
+                    exportLabel: sq.exportLabel,
+                  } as SurveyQuestion)
+                }}
+              >
+                <span className="text-base flex-shrink-0 mt-0.5">🔘</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-800">{sq.q}</div>
+                  <div className="text-xs text-gray-400 mt-0.5 truncate">
+                    {sq.opts.slice(0, 3).join(' · ')}{sq.opts.length > 3 ? ' …' : ''}
+                  </div>
+                </div>
+                <div className="flex-shrink-0 text-xs font-semibold mt-0.5">
+                  {alreadyAdded
+                    ? <span className="text-green-500">✓ Added</span>
+                    : <span className="text-orange-500">+ Add</span>}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -422,6 +428,7 @@ interface Props extends StepProps { onNext: () => void; onBack: () => void }
 export default function StepQuestions({ draft, updateConfig, onNext, onBack }: Props) {
   const questions: SurveyQuestion[] = draft.config.questions ?? []
   const [addingType, setAddingType] = useState<QuestionType | null>(null)
+  const industry = (draft as any).industry as string | undefined
 
   const setQuestions = (qs: SurveyQuestion[]) => updateConfig({ questions: qs })
 
@@ -441,25 +448,38 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
           { score: 5, emoji: '😍', label: 'Strongly agree' },
         ]
       } : {}),
-      ...(type === 'date' ? { dateFormat: 'date' as const } : {}),
     }
     setQuestions([...questions, q])
     setAddingType(null)
   }
+
+  const addSuggestedQuestion = (q: SurveyQuestion) => setQuestions([...questions, q])
 
   const updateQ  = (i: number, q: SurveyQuestion) => setQuestions(questions.map((old, j) => j === i ? q : old))
   const deleteQ  = (i: number) => setQuestions(questions.filter((_, j) => j !== i))
   const moveUp   = (i: number) => { if (i === 0) return; const qs = [...questions]; [qs[i-1], qs[i]] = [qs[i], qs[i-1]]; setQuestions(qs) }
   const moveDown = (i: number) => { if (i === questions.length - 1) return; const qs = [...questions]; [qs[i], qs[i+1]] = [qs[i+1], qs[i]]; setQuestions(qs) }
 
+  // Track which suggested question keys are already added (by checking exportLabel prefix match)
+  const existingIds = new Set(questions.map(q => q.id?.split('_')[0] ?? ''))
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-xl font-bold text-gray-800 mb-1">Custom questions</h2>
         <p className="text-gray-500 text-sm">
-          Add open-ended or close-ended questions to your survey. They appear after the core questions and before psychographics. Drag to reorder.
+          Add open-ended or close-ended questions to your survey. They appear after the core questions and before psychographics.
         </p>
       </div>
+
+      {/* Industry suggestions */}
+      {industry && industry !== 'other' && (
+        <SuggestedQuestionsPanel
+          industry={industry}
+          onAdd={addSuggestedQuestion}
+          existingIds={existingIds}
+        />
+      )}
 
       {/* Questions list */}
       {questions.length > 0 && (
