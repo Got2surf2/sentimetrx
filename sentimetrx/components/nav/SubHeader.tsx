@@ -1,6 +1,5 @@
 'use client'
 
-import React from 'react'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
@@ -9,14 +8,13 @@ interface OrgOption  { id: string; name: string }
 interface UserOption { id: string; email: string; full_name: string | null }
 
 interface Props {
-  crumbs?:      Crumb[]
-  isAdmin?:     boolean
-  orgId?:       string
+  crumbs?:  Crumb[]
+  isAdmin?: boolean
+  orgId?:   string
   showFilters?: boolean
-  actions?:     React.ReactNode  // e.g. creator step pills
 }
 
-export default function SubHeader({ crumbs, isAdmin, orgId, showFilters, actions }: Props) {
+export default function SubHeader({ crumbs, isAdmin, orgId, showFilters }: Props) {
   const [orgs,         setOrgs]         = useState<OrgOption[]>([])
   const [users,        setUsers]        = useState<UserOption[]>([])
   const [selectedOrg,  setSelectedOrg]  = useState('')
@@ -64,7 +62,7 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters, actions
     <div className="bg-white border-b border-gray-200 px-5 py-2.5 flex items-center justify-between gap-4 shadow-sm fixed top-14 left-0 right-0 z-40">
 
       {/* Left: breadcrumbs */}
-      <div className="flex items-center gap-1.5 min-w-0 overflow-hidden shrink">
+      <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
         {crumbs && crumbs.map((c, i) => (
           <div key={i} className="flex items-center gap-1.5 min-w-0">
             {i > 0 && <span className="text-gray-300 text-sm flex-shrink-0">/</span>}
@@ -76,13 +74,8 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters, actions
         ))}
       </div>
 
-      {/* Right: step pills (creator) OR admin filters */}
-      {actions && (
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {actions}
-        </div>
-      )}
-      {showFilters && !actions && (
+      {/* Right: filters */}
+      {showFilters && (
         <div className="flex items-center gap-2 flex-shrink-0">
           {isAdmin && (
             <select value={ready ? selectedOrg : ''} onChange={e => { setSelectedOrg(e.target.value); setSelectedUser(''); nav(e.target.value, '') }}

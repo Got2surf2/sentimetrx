@@ -101,9 +101,12 @@ export default function NewStudyPage() {
     <div className="min-h-screen bg-gray-50">
 
       <TopNav currentPage="new" />
-      <SubHeader
-        crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'New Study' }]}
-        actions={
+      <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'New Study' }]} />
+
+      {/* Pill nav bar — fixed directly below SubHeader (TopNav 56px + SubHeader ~40px = 96px) */}
+      <div className="bg-white border-b border-gray-200 shadow-sm px-5 py-2"
+        style={{ position: 'fixed', top: '96px', left: 0, right: 0, zIndex: 39 }}>
+        <div className="max-w-4xl mx-auto">
           <CreatorNav
             draft={draft}
             currentStep={step}
@@ -113,11 +116,11 @@ export default function NewStudyPage() {
             saving={saving}
             freeNav={false}
           />
-        }
-      />
+        </div>
+      </div>
 
-      {/* Step content — pt clears TopNav (56px) + SubHeader (44px) */}
-      <div className="max-w-4xl mx-auto px-6 py-10" style={{ paddingTop: '7rem' }}>
+      {/* Step content — clears TopNav(56) + SubHeader(40) + PillBar(40) = 136px */}
+      <div className="max-w-4xl mx-auto px-6 py-10" style={{ paddingTop: '9rem' }}>
         {error && (
           <div className="mb-6 px-4 py-3 rounded-xl bg-red-100 border border-red-200 text-red-600 text-sm">
             {error}
