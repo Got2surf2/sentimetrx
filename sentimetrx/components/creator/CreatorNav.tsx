@@ -50,7 +50,7 @@ export default function CreatorNav({
 }: CreatorNavProps) {
   const completion = getStepCompletion(draft)
   const allDone    = completion.every(Boolean)
-  const canPublish = allDone && !saving
+  const canPublish = !saving   // nav publish just goes to Review — always available
 
   return (
     <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
@@ -116,13 +116,15 @@ export default function CreatorNav({
         type="button"
         disabled={!canPublish}
         onClick={() => { if (canPublish) onPublish() }}
-        title={canPublish ? 'Publish this study' : 'Complete all required steps to publish'}
+        title={allDone ? 'Publish this study' : 'Go to Review — complete required steps to publish'}
         className={
           'flex-shrink-0 flex items-center gap-1 px-3 py-1 ' +
           'rounded-full text-xs font-bold transition-all ' +
-          (canPublish
-            ? 'bg-cyan-500 text-slate-900 hover:bg-cyan-400 shadow-sm cursor-pointer'
-            : 'bg-gray-100 text-gray-300 cursor-not-allowed')
+          (saving
+            ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+            : allDone
+              ? 'bg-cyan-500 text-slate-900 hover:bg-cyan-400 shadow-sm cursor-pointer'
+              : 'bg-amber-500 text-slate-900 hover:bg-amber-400 shadow-sm cursor-pointer')
         }
       >
         {saving ? (
