@@ -145,7 +145,7 @@ export interface Study {
 
 // ── Survey payload (saved to DB) ─────────────────────────────
 
-export type Sentiment = 'promoter' | 'passive' | 'detractor'
+export type Sentiment = 'positive' | 'neutral' | 'negative'
 
 export interface SurveyPayload {
   agent:            string
