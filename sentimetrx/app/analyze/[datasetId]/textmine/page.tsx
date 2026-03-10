@@ -1,0 +1,49 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import ModulePlaceholder from '@/components/analyze/ModulePlaceholder'
+import { mergeRowBatches } from '@/lib/datasetUtils'
+
+export const dynamic = 'force-dynamic'
+
+interface Props { params: { datasetId: string } }
+
+export default async function TextMinePage({ params }: Props) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  // Load raw row batches
+  const { data: batches } = await supabase
+    .from('dataset_rows')
+    .select('id, dataset_id, rows, row_count, batch_index, source_ref, created_at')
+    .eq('dataset_id', params.datasetId)
+    .order('batch_index', { ascending: true })
+
+  // Load schema state
+  const { data: state } = await supabase
+    .from('dataset_state')
+    .select('schema_config, theme_model')
+    .eq('dataset_id', params.datasetId)
+    .single()
+
+  const rows        = mergeRowBatches(batches || [])
+  const schema      = state?.schema_config as any
+  const fieldCount  = schema?.fields?.length ?? 0
+  const schemaReady = schema && !schema.autoDetected && fieldCount > 0
+
+  // PHASE 2 DROP-IN POINT:
+  // Replace <ModulePlaceholder ... /> with:
+  // <TextMineModule rows={rows} schema={schema} themes={state?.theme_model} datasetId={params.datasetId} />
+  // The rows, schema, and themes variables are already populated above.
+
+  return (
+    <ModulePlaceholder
+      datasetId={params.datasetId}
+      moduleName="TextMine"
+      message="Thematic analysis, AI theme discovery, and comment explorer — coming soon. Your data is loaded and ready."
+      rowCount={rows.length}
+      fieldCount={fieldCount}
+      schemaReady={!!schemaReady}
+    />
+  )
+}
