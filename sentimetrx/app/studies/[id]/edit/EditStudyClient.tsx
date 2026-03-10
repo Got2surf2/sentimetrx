@@ -98,7 +98,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}
-            studyId={study.id}
+            studyId={study.guid}
           />
         )}
       </div>

@@ -75,9 +75,9 @@ export default function CreatorNav({
         if (isActive) {
           dotCls = 'bg-white/30 text-white'
         } else if (isDone) {
-          dotCls = 'bg-orange-500 text-white'
+          dotCls = 'bg-green-500 text-white'
         } else {
-          dotCls = 'bg-gray-200 text-gray-400'
+          dotCls = 'bg-red-400 text-white'
         }
 
         return (
@@ -96,7 +96,7 @@ export default function CreatorNav({
               'w-3.5 h-3.5 rounded-full flex items-center justify-center ' +
               'text-xs font-bold flex-shrink-0 leading-none ' + dotCls
             }>
-              {isDone && !isActive ? '✓' : String(i + 1)}
+              {isActive ? String(i + 1) : isDone ? '✓' : '✗'}
             </span>
             <span className="hidden md:inline">{label}</span>
           </button>
