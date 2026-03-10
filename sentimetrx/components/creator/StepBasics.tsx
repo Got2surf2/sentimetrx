@@ -140,7 +140,13 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         <div className="flex gap-3">
           <Input
             value={draft.bot_name}
-            onChange={v => update({ bot_name: v })}
+            onChange={v => {
+              const oldName = draft.bot_name
+              update({ bot_name: v })
+              if (oldName && draft.config.greeting.includes(oldName)) {
+                updateConfig({ greeting: draft.config.greeting.replaceAll(oldName, v) })
+              }
+            }}
             placeholder="e.g. Aria"
             className="flex-1"
           />
@@ -160,7 +166,14 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
                 <button
                   key={e}
                   type="button"
-                  onClick={() => { update({ bot_emoji: e }); setShowEmojiPicker(false) }}
+                  onClick={() => {
+                    const oldEmoji = draft.bot_emoji
+                    update({ bot_emoji: e })
+                    if (oldEmoji && draft.config.greeting.includes(oldEmoji)) {
+                      updateConfig({ greeting: draft.config.greeting.replaceAll(oldEmoji, e) })
+                    }
+                    setShowEmojiPicker(false)
+                  }}
                   className={`text-2xl p-1.5 rounded-lg hover:bg-orange-50 transition-colors ${draft.bot_emoji === e ? 'bg-orange-100 ring-2 ring-orange-400' : ''}`}
                 >
                   {e}
@@ -178,7 +191,17 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
               />
               <button
                 type="button"
-                onClick={() => { if (customEmoji.trim()) { update({ bot_emoji: customEmoji.trim() }); setShowEmojiPicker(false); setCustomEmoji('') } }}
+                onClick={() => {
+                if (customEmoji.trim()) {
+                  const oldEmoji = draft.bot_emoji
+                  update({ bot_emoji: customEmoji.trim() })
+                  if (oldEmoji && draft.config.greeting.includes(oldEmoji)) {
+                    updateConfig({ greeting: draft.config.greeting.replaceAll(oldEmoji, customEmoji.trim()) })
+                  }
+                  setShowEmojiPicker(false)
+                  setCustomEmoji('')
+                }
+              }}
                 className="px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-colors"
                 style={{ background: HERMES }}
               >

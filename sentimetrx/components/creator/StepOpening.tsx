@@ -206,13 +206,40 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
       </div>
 
       {/* Greeting */}
-      <Section title="Greeting message" description="The very first thing the bot says.">
-        <Input
-          value={c.greeting}
-          onChange={v => updateConfig({ greeting: v })}
-          placeholder={`Hi there — I'm ${draft.bot_name || 'your bot'} 👋 I'm here to collect your feedback. It'll only take a few minutes!`}
-          multiline rows={3}
-        />
+      <Section title="Greeting message" description="The very first thing the bot says. This field must be filled — the greyed-out text is a suggestion only and won't appear automatically.">
+        <div className="flex flex-col gap-2">
+          <div className="relative">
+            <Input
+              value={c.greeting}
+              onChange={v => updateConfig({ greeting: v })}
+              placeholder={`Hi there — I'm ${draft.bot_name || 'your bot'} ${draft.bot_emoji || '👋'} I'm here to collect your feedback. It'll only take a few minutes!`}
+              multiline rows={3}
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => updateConfig({ greeting: `Hi there — I'm ${draft.bot_name || 'your bot'} ${draft.bot_emoji || '👋'} I'm here to collect your feedback. It'll only take a few minutes!` })}
+              className="text-xs font-semibold text-orange-500 hover:text-orange-600 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              ↺ Use suggested greeting
+            </button>
+            {c.greeting && (
+              <button
+                type="button"
+                onClick={() => updateConfig({ greeting: '' })}
+                className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+            {!c.greeting && (
+              <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+                ⚠ Required — greyed text is a suggestion only, not saved
+              </span>
+            )}
+          </div>
+        </div>
       </Section>
 
       {/* NPS */}
