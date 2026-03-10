@@ -114,7 +114,7 @@ function EmojiPicker({ currentEmoji, onSelect, onClose, industry }: { currentEmo
                 onClick={() => setFilter(f)}
                 className={'px-3 py-1 rounded-full text-xs font-semibold transition-all ' + (filter === f ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
               >
-                {f === 'industry' ? (INDUSTRY_LABELS[industry] + ' picks') : 'All emojis'}
+                {f === 'industry' ? (INDUSTRY_LABELS[industry as Industry] + ' picks') : 'All emojis'}
               </button>
             )
           })}
@@ -186,7 +186,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
 
   function applyIndustryDefaults() {
     if (!industry || industry === 'other') return
-    const defaults = INDUSTRY_DEFAULTS[industry]
+    const defaults = INDUSTRY_DEFAULTS[industry as Exclude<Industry, 'other'>]
     updateConfig(defaults)
     ;(update as any)({ industry, otherIndustry })
     setApplied(true)
@@ -234,7 +234,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
               style={{ background: applied ? '#9ca3af' : HERMES }}>
               {applied ? '✓ Defaults applied' : '✦ Apply industry defaults'}
             </button>
-            {!applied && <p className="text-xs text-gray-400">Pre-fills all prompts, follow-ups &amp; psychographic questions for {INDUSTRY_LABELS[industry]}</p>}
+            {!applied && <p className="text-xs text-gray-400">Pre-fills all prompts, follow-ups &amp; psychographic questions for {INDUSTRY_LABELS[industry as Industry]}</p>}
             {applied  && <p className="text-xs text-green-600">Defaults applied — customise on the next steps</p>}
           </div>
         )}
@@ -302,6 +302,3 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
     </div>
   )
 }
-
-
-
