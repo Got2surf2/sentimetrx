@@ -80,6 +80,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Google search", "Recommendation from friend or family", "Online review site", "Returning customer", "Drove past or saw signage"] },
       { key: 'ar_service_frequency', q: "How often do you have your vehicle serviced?", exportLabel: "Service Frequency",
         opts: ["More than once a year", "Once a year", "Every 2-3 years", "Only when something goes wrong"] },
+    ],
     npsPrompt: "How likely are you to recommend our garage to a friend or colleague?",
     npsFollowUp: {
         enabled: true,
@@ -137,6 +138,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Breakfast", "Brunch", "Lunch", "Dinner", "Late night"] },
       { key: 'cd_discovery', q: "How did you hear about us?", exportLabel: "Discovery Channel",
         opts: ["Word of mouth", "Social media", "Google search", "Walked past", "Returning regular"] },
+    ],
     npsPrompt: "How likely are you to recommend us to a friend or family member?",
     npsFollowUp: {
         enabled: true,
@@ -194,6 +196,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Academic performance", "Student wellbeing", "Safety and security", "Communication", "Extracurricular programs"] },
       { key: 'ed_comms_pref', q: "How do you prefer to receive school updates?", exportLabel: "Comms Preference",
         opts: ["Email", "School app or portal", "Text message", "Social media", "In-person meetings"] },
+    ],
     npsPrompt: "How likely are you to recommend this programme or institution to someone in a similar situation?",
     npsFollowUp: {
         enabled: true,
@@ -251,6 +254,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Convenience or location", "Speed", "Price", "Favourite menu item", "Habit"] },
       { key: 'ff_party_size', q: "How many people did you order for?", exportLabel: "Party Size",
         opts: ["Just me", "2 people", "3-4 people", "5 or more"] },
+    ],
     npsPrompt: "How likely are you to recommend us to a friend or family member?",
     npsFollowUp: {
         enabled: true,
@@ -308,6 +312,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Building savings", "Managing debt", "Retirement planning", "Buying a home", "Growing investments", "Business finances"] },
       { key: 'fs_trust_driver', q: "What matters most when choosing a financial institution?", exportLabel: "Trust Driver",
         opts: ["Security and safety", "Low fees", "Interest rates", "Customer service", "Convenience", "Digital tools"] },
+    ],
     npsPrompt: "How likely are you to recommend our services to a colleague, friend, or family member?",
     npsFollowUp: {
         enabled: true,
@@ -365,6 +370,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Rarely (special occasions only)", "A few times a year", "Monthly", "Regularly"] },
       { key: 'fd_importance', q: "What matters most in a fine dining experience?", exportLabel: "Key Priority",
         opts: ["Quality and creativity of the food", "Service and attentiveness", "Wine and beverage program", "Atmosphere and ambiance", "Exclusivity and prestige"] },
+    ],
     npsPrompt: "How likely are you to recommend us to friends, family, or colleagues for a special occasion?",
     npsFollowUp: {
         enabled: true,
@@ -422,6 +428,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Fully remote", "Hybrid (some in-office)", "Fully in-office"] },
       { key: 'hr_feedback_area', q: "Which area would you most like to see improved?", exportLabel: "Improvement Area",
         opts: ["Compensation and benefits", "Work-life balance", "Career development", "Management and leadership", "Culture and belonging", "Tools and processes"] },
+    ],
     npsPrompt: "How likely are you to recommend this organisation as a great place to work to someone you know?",
     npsFollowUp: {
         enabled: true,
@@ -479,6 +486,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Private insurance", "Medicare or Medicaid", "Self-pay", "Workers compensation", "Prefer not to say"] },
       { key: 'hc_age_range', q: "Which age group do you fall into?", exportLabel: "Age Range",
         opts: ["18-34", "35-49", "50-64", "65 or over", "Prefer not to say"] },
+    ],
     npsPrompt: "How likely are you to recommend our practice or facility to a friend or family member?",
     npsFollowUp: {
         enabled: true,
@@ -536,6 +544,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Less than a year", "1-2 years", "3-4 years", "5 or more years", "Alumni (graduated)"] },
       { key: 'he_primary_concern', q: "What matters most to you right now?", exportLabel: "Primary Concern",
         opts: ["Academic quality and rigor", "Career preparation and placement", "Campus life and community", "Cost and financial aid", "Research opportunities", "Administrative services"] },
+    ],
     npsPrompt: "How likely are you to recommend this institution to a prospective student?",
     npsFollowUp: {
         enabled: true,
@@ -593,6 +602,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Direct hotel website", "Booking.com or Expedia", "Travel agent", "Corporate booking", "Loyalty programme"] },
       { key: 'ho_room_type', q: "What type of room did you stay in?", exportLabel: "Room Type",
         opts: ["Standard or queen", "King", "Suite", "Accessible room", "Other"] },
+    ],
     npsPrompt: "How likely are you to recommend us to a friend or colleague for their next stay?",
     npsFollowUp: {
         enabled: true,
@@ -650,6 +660,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Paid subscriber", "Free tier user", "Trial user", "Lapsed subscriber considering return"] },
       { key: 'me_discovery', q: "How do you typically discover new content?", exportLabel: "Discovery Method",
         opts: ["Algorithm recommendations", "Social media", "Word of mouth", "Editorial picks", "Browsing myself"] },
+    ],
     npsPrompt: "How likely are you to recommend us to a friend or family member?",
     npsFollowUp: {
         enabled: true,
@@ -707,6 +718,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Belief in the mission", "Personal connection to the cause", "Community impact", "Skills-based contribution", "Recognition", "Other"] },
       { key: 'np_engagement_pref', q: "How do you prefer to stay engaged?", exportLabel: "Engagement Preference",
         opts: ["Email updates", "Social media", "In-person events", "Volunteer opportunities", "Annual impact report"] },
+    ],
     npsPrompt: "How likely are you to recommend our organisation or this programme to someone you know?",
     npsFollowUp: {
         enabled: true,
@@ -764,6 +776,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Under 15 minutes", "15-30 minutes", "30-60 minutes", "Over an hour", "Travelled from out of town"] },
       { key: 'pa_group', q: "Who did you come with today?", exportLabel: "Group Composition",
         opts: ["Alone", "Partner or spouse", "Friends", "Family with children", "Adult family members"] },
+    ],
     npsPrompt: "How likely are you to recommend this event or venue to a friend or family member?",
     npsFollowUp: {
         enabled: true,
@@ -821,6 +834,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Progressive or left", "Centre-left", "Centrist", "Centre-right", "Conservative or right", "Prefer not to say"] },
       { key: 'po_local_area', q: "Which area do you primarily identify with?", exportLabel: "Geographic Area",
         opts: ["Urban", "Suburban", "Rural", "Small town", "Prefer not to say"] },
+    ],
     npsPrompt: "How likely are you to recommend engaging with our campaign or organisation to someone you know?",
     npsFollowUp: {
         enabled: true,
@@ -878,6 +892,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Search engine", "Social media", "Friend recommendation", "Email promotion", "Already a regular customer"] },
       { key: 're_loyalty', q: "Are you a member of our rewards or loyalty program?", exportLabel: "Loyalty Status",
         opts: ["Yes, active member", "Yes but I rarely use it", "No but I am interested", "No, not interested"] },
+    ],
     npsPrompt: "How likely are you to recommend us to a friend or family member?",
     npsFollowUp: {
         enabled: true,
@@ -935,6 +950,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Project management", "Communication or collaboration", "Analytics or reporting", "Customer management", "Development or DevOps", "Finance or operations"] },
       { key: 'ss_technical_comfort', q: "How would you rate your technical proficiency?", exportLabel: "Technical Proficiency",
         opts: ["Non-technical -- I need things simple", "Moderately technical", "Technical -- comfortable with advanced features"] },
+    ],
     npsPrompt: "How likely are you to recommend us to a colleague or peer in your industry?",
     npsFollowUp: {
         enabled: true,
@@ -992,6 +1008,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Less than a year", "1-3 years", "3-10 years", "More than 10 years", "My whole life"] },
       { key: 'sp_game_attendance', q: "How often do you attend games or events in person?", exportLabel: "Game Attendance",
         opts: ["Every game or most games", "Several times a season", "Once or twice a season", "Rarely or never"] },
+    ],
     npsPrompt: "How likely are you to recommend this club, event, or facility to a friend or family member?",
     npsFollowUp: {
         enabled: true,
@@ -1049,6 +1066,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Solo", "Couple", "Family with children", "Group of friends", "Business colleagues"] },
       { key: 'tt_destination_type', q: "Which best describes your destination?", exportLabel: "Destination Type",
         opts: ["Domestic city break", "Domestic longer trip", "International short-haul", "International long-haul", "Cruise or expedition"] },
+    ],
     npsPrompt: "How likely are you to recommend us to a friend or family member planning a trip?",
     npsFollowUp: {
         enabled: true,
