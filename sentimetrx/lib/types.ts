@@ -30,7 +30,7 @@ export interface LikertFollowUp {
 
 // ── Custom survey questions ───────────────────────────────────
 
-export type QuestionType = 'open' | 'radio' | 'checkbox' | 'dropdown' | 'likert'
+export type QuestionType = 'open' | 'radio' | 'checkbox' | 'dropdown' | 'likert' | 'date'
 
 export interface LikertScaleOption {
   score:  number
@@ -52,6 +52,10 @@ export interface SurveyQuestion {
   // likert specific
   likertScale?: LikertScaleOption[]
   followUp?:    LikertFollowUp
+  // date specific
+  dateFormat?:  'date' | 'datetime'   // default 'date'
+  dateMin?:     string                // ISO date string e.g. '2020-01-01'
+  dateMax?:     string                // ISO date string e.g. '2030-12-31'
 }
 
 // ── Psychographics ───────────────────────────────────────────

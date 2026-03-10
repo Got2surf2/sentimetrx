@@ -17,6 +17,7 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   checkbox: 'Checkboxes (pick many)',
   dropdown: 'Dropdown',
   likert:   'Likert scale',
+  date:     'Date picker',
 }
 
 const TYPE_ICONS: Record<QuestionType, string> = {
@@ -25,6 +26,7 @@ const TYPE_ICONS: Record<QuestionType, string> = {
   checkbox: '☑️',
   dropdown: '▾',
   likert:   '⭐',
+  date:     '📅',
 }
 
 const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
@@ -204,6 +206,76 @@ function LikertEditor({ scale, onChange }: {
   )
 }
 
+// ── Date question editor ──────────────────────────────────────
+function DateEditor({ q, onChange }: {
+  q: SurveyQuestion
+  onChange: (patch: Partial<SurveyQuestion>) => void
+}) {
+  const fmt    = q.dateFormat ?? 'date'
+  const minVal = q.dateMin ?? ''
+  const maxVal = q.dateMax ?? ''
+
+  return (
+    <div className="flex flex-col gap-4 pt-2 border-t border-gray-100">
+
+      {/* Format toggle */}
+      <div>
+        <label className={labelCls}>Date format</label>
+        <div className="flex gap-2 mt-1">
+          {(['date', 'datetime'] as const).map(f => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => onChange({ dateFormat: f })}
+              className={'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ' +
+                (fmt === f
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-gray-500 border-gray-300 hover:border-orange-300')}
+            >
+              {f === 'date' ? '📅 Date only' : '🕐 Date & time'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Min / max constraints */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Earliest allowed date <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input
+            type={fmt === 'datetime' ? 'datetime-local' : 'date'}
+            value={minVal}
+            onChange={e => onChange({ dateMin: e.target.value })}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Latest allowed date <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input
+            type={fmt === 'datetime' ? 'datetime-local' : 'date'}
+            value={maxVal}
+            onChange={e => onChange({ dateMax: e.target.value })}
+            className={inputCls}
+          />
+        </div>
+      </div>
+
+      {/* Preview */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+        <div className="text-xs font-semibold text-gray-400 mb-2">Respondent will see</div>
+        <input
+          type={fmt === 'datetime' ? 'datetime-local' : 'date'}
+          disabled
+          placeholder="Pick a date…"
+          min={minVal || undefined}
+          max={maxVal || undefined}
+          className={inputCls + ' opacity-60 cursor-not-allowed'}
+        />
+      </div>
+    </div>
+  )
+}
+
 // ── Question card ─────────────────────────────────────────────
 function QuestionCard({
   q, idx, total, onChange, onDelete, onMoveUp, onMoveDown
@@ -334,6 +406,10 @@ function QuestionCard({
               />
             </div>
           )}
+
+          {q.type === 'date' && (
+            <DateEditor q={q} onChange={set} />
+          )}
         </div>
       )}
     </div>
@@ -365,6 +441,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
           { score: 5, emoji: '😍', label: 'Strongly agree' },
         ]
       } : {}),
+      ...(type === 'date' ? { dateFormat: 'date' as const } : {}),
     }
     setQuestions([...questions, q])
     setAddingType(null)

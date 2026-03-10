@@ -63,8 +63,8 @@ export default function CreatorNav({
   const canPublish = allDone && !saving
 
   return (
-    <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-2 sm:gap-3">
+    <div className="bg-white border-t border-gray-100">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 h-12 flex items-center gap-2 sm:gap-3">
 
         {/* ── Step pills ── */}
         <div className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar">
@@ -150,23 +150,7 @@ export default function CreatorNav({
 
       </div>
 
-      {/* Incomplete steps hint — only shown when user tries to publish */}
-      {!allDone && (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-2">
-          <div className="flex flex-wrap gap-1.5">
-            {completion.map((done, i) =>
-              !done ? (
-                <span
-                  key={i}
-                  className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"
-                >
-                  {CREATOR_STEP_LABELS[i]} incomplete
-                </span>
-              ) : null
-            )}
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }
