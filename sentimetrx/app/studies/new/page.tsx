@@ -174,3 +174,6 @@ export default function NewStudyPage() {
     </div>
   )
 }
+
+
+
