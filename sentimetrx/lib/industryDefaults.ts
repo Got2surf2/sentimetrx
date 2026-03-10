@@ -1099,3 +1099,6 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 }
+
+
+
