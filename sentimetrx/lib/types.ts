@@ -1,10 +1,10 @@
 // ============================================================
-// SENTIMETRX — Shared Types
+// SENTIMETRX -- Shared Types
 // ============================================================
 
 export type ClientPlan = 'trial' | 'active' | 'suspended'
 
-// ── Likert / rating scale ────────────────────────────────────
+// -- Likert / rating scale ------------------------------------
 
 export interface RatingOption {
   score:  number
@@ -20,7 +20,7 @@ export interface LikertFollowUp {
   sharedPrompt: string
   shareClarify: boolean
   shareAI:      boolean
-  // per-response mode — keyed by score value (1-5 etc.)
+  // per-response mode -- keyed by score value (1-5 etc.)
   perResponse:  Record<string, {
     prompt:    string
     clarify:   boolean
@@ -28,9 +28,17 @@ export interface LikertFollowUp {
   }>
 }
 
-// ── Custom survey questions ───────────────────────────────────
+// -- Custom survey questions -----------------------------------
 
-export type QuestionType = 'open' | 'radio' | 'checkbox' | 'dropdown' | 'likert' | 'date'
+export type QuestionType =
+  | 'open'
+  | 'radio'
+  | 'checkbox'
+  | 'dropdown'
+  | 'likert'
+  | 'date'
+  | 'rating'   // numeric scale with fixed min/max (e.g. 1-5, 1-7, 0-10)
+  | 'numeric'  // free numeric entry (age, spend, count)
 
 export interface LikertScaleOption {
   score:  number
@@ -56,9 +64,13 @@ export interface SurveyQuestion {
   dateFormat?:  'date' | 'datetime'   // default 'date'
   dateMin?:     string                // ISO date string e.g. '2020-01-01'
   dateMax?:     string                // ISO date string e.g. '2030-12-31'
+  // rating scale specific (numeric scale with fixed min/max)
+  ratingMin?:   number                // default 1
+  ratingMax?:   number                // default 5
+  // numeric input -- no extra fields needed; stores raw number as string
 }
 
-// ── Psychographics ───────────────────────────────────────────
+// -- Psychographics -------------------------------------------
 
 export interface PsychoQuestion {
   key:          string
@@ -67,7 +79,7 @@ export interface PsychoQuestion {
   exportLabel?: string
 }
 
-// ── Theme ────────────────────────────────────────────────────
+// -- Theme ----------------------------------------------------
 
 export interface StudyTheme {
   primaryColor:      string
@@ -82,7 +94,7 @@ export interface StudyClarifiers {
   default: string
 }
 
-// ── Study config ─────────────────────────────────────────────
+// -- Study config ---------------------------------------------
 
 export interface StudyConfig {
   greeting:           string
@@ -90,7 +102,7 @@ export interface StudyConfig {
   // NPS (shown first)
   npsEnabled?:        boolean          // default true
   npsPrompt?:         string           // default 'How likely are you to recommend us...'
-  npsLabel?:          string           // default 'NPS' — dashboard card + CSV header
+  npsLabel?:          string           // default 'NPS' -- dashboard card + CSV header
   npsFollowUp?:       LikertFollowUp   // adaptive open-end after NPS
 
   // Experience rating (shown after NPS Q1)
@@ -103,7 +115,7 @@ export interface StudyConfig {
   ratingVariableLabel?: string           // display label for the primary variable
 
   // Sentiment-adapted open-ended Q1 (after NPS, before experience rating)
-  promoterQ1?:        string  // legacy — kept for existing studies
+  promoterQ1?:        string  // legacy -- kept for existing studies
   passiveQ1?:         string
   detractorQ1?:       string
   q1ExportLabel?:     string  // legacy
@@ -127,13 +139,13 @@ export interface StudyConfig {
   psychographicBank:  PsychoQuestion[]
   psychoCount?:       number           // how many to randomly show per session (default 3)
   customQCount?:      number           // how many custom questions to show per session (default: all)
-  industry?:          string           // industry key — stored in config so it persists via JSONB
+  industry?:          string           // industry key -- stored in config so it persists via JSONB
   otherIndustry?:     string           // free-text when industry === 'other'
 
   theme:              StudyTheme
 }
 
-// ── Study row ────────────────────────────────────────────────
+// -- Study row ------------------------------------------------
 
 export interface Study {
   id:          string
@@ -150,7 +162,7 @@ export interface Study {
   created_at:  string
 }
 
-// ── Survey payload (saved to DB) ─────────────────────────────
+// -- Survey payload (saved to DB) -----------------------------
 
 export type Sentiment = 'positive' | 'neutral' | 'negative'
 

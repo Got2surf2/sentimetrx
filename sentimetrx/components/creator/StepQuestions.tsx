@@ -6,7 +6,7 @@ import type { SurveyQuestion, LikertFollowUp, QuestionType } from '@/lib/types'
 import { Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
-// ── Helpers ──────────────────────────────────────────────────
+// -- Helpers --------------------------------------------------
 
 const HERMES = '#E8632A'
 
@@ -19,21 +19,25 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   dropdown: 'Dropdown',
   likert:   'Likert scale',
   date:     'Date picker',
+  rating:   'Rating scale',
+  numeric:  'Numeric input',
 }
 
 const TYPE_ICONS: Record<QuestionType, string> = {
-  open:     '✏️',
-  radio:    '🔘',
-  checkbox: '☑️',
-  dropdown: '▾',
-  likert:   '⭐',
-  date:     '📅',
+  open:     '\u270F\uFE0F',
+  radio:    '\uD83D\uDD18',
+  checkbox: '\u2611\uFE0F',
+  dropdown: '\u25BE',
+  likert:   '\u2B50',
+  date:     '\uD83D\uDCC5',
+  rating:   '\uD83D\uDD22',
+  numeric:  '\uD83D\uDCAC',
 }
 
 const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
 const labelCls = 'block text-xs font-semibold text-gray-500 mb-1'
 
-// ── Toggle ────────────────────────────────────────────────────
+// -- Toggle ---------------------------------------------------
 function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -49,7 +53,7 @@ function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: bool
   )
 }
 
-// ── Adaptive follow-up panel (reused from StepOpening) ────────
+// -- Adaptive follow-up panel ---------------------------------
 function FollowUpPanel({
   followUp, onChange, scaleOptions, defaultPrompts
 }: {
@@ -101,9 +105,9 @@ function FollowUpPanel({
                 const pr = fu.perResponse?.[opt.score] ?? { prompt: '', clarify: false, useAI: false }
                 return (
                   <div key={opt.score} className="bg-gray-50 rounded-lg p-2.5 flex flex-col gap-1.5">
-                    <div className="text-xs font-semibold text-gray-400">{opt.score} — {opt.label}</div>
+                    <div className="text-xs font-semibold text-gray-400">{opt.score + ' -- ' + opt.label}</div>
                     <textarea value={pr.prompt} onChange={e => setPR(opt.score, { prompt: e.target.value })}
-                      placeholder={defaultPrompts?.[opt.score] || `Follow-up for "${opt.label}"...`}
+                      placeholder={defaultPrompts?.[opt.score] || 'Follow-up for "' + opt.label + '"...'}
                       rows={2} className={inputCls + ' resize-none text-xs'} />
                     <div className="flex gap-4">
                       <Toggle value={pr.clarify} onChange={v => setPR(opt.score, { clarify: v })} label="Keyword clarifier" />
@@ -120,7 +124,7 @@ function FollowUpPanel({
   )
 }
 
-// ── Options editor (radio, checkbox, dropdown) ─────────────────
+// -- Options editor (radio, checkbox, dropdown) ---------------
 function OptionsEditor({ options, onChange }: { options: string[]; onChange: (opts: string[]) => void }) {
   const dragIdx = useRef<number | null>(null)
 
@@ -148,10 +152,10 @@ function OptionsEditor({ options, onChange }: { options: string[]; onChange: (op
           className="flex items-center gap-2 group">
           <span className="text-gray-300 cursor-grab text-sm select-none">⠿</span>
           <input type="text" value={opt} onChange={e => update(i, e.target.value)}
-            placeholder={`Option ${i + 1}`} className={inputCls + ' flex-1'} />
+            placeholder={'Option ' + (i + 1)} className={inputCls + ' flex-1'} />
           <button type="button" onClick={() => remove(i)}
             className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none flex-shrink-0">
-            ×
+            x
           </button>
         </div>
       ))}
@@ -163,8 +167,8 @@ function OptionsEditor({ options, onChange }: { options: string[]; onChange: (op
   )
 }
 
-// ── Likert scale editor ────────────────────────────────────────
-const LIKERT_EMOJIS = ['😞','😕','😐','😊','😍','⭐','👎','👍','🔴','🟡','🟢','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣']
+// -- Likert scale editor --------------------------------------
+const LIKERT_EMOJIS = ['\uD83D\uDE1E','\uD83D\uDE15','\uD83D\uDE10','\uD83D\uDE0A','\uD83D\uDE0D','\u2B50','\uD83D\uDC4E','\uD83D\uDC4D','\uD83D\uDD34','\uD83D\uDFE1','\uD83D\uDFE2','1\uFE0F\u20E3','2\uFE0F\u20E3','3\uFE0F\u20E3','4\uFE0F\u20E3','5\uFE0F\u20E3']
 
 function LikertEditor({ scale, onChange }: {
   scale: { score: number; emoji?: string; label: string }[]
@@ -175,7 +179,7 @@ function LikertEditor({ scale, onChange }: {
   }
   const addPoint = () => {
     const nextScore = scale.length + 1
-    onChange([...scale, { score: nextScore, emoji: '⭐', label: `Score ${nextScore}` }])
+    onChange([...scale, { score: nextScore, emoji: '\u2B50', label: 'Score ' + nextScore }])
   }
   const remove = (i: number) => onChange(scale.filter((_, j) => j !== i).map((r, j) => ({ ...r, score: j + 1 })))
 
@@ -184,15 +188,15 @@ function LikertEditor({ scale, onChange }: {
       {scale.map((r, i) => (
         <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
           <span className="text-gray-400 text-xs font-bold w-4 flex-shrink-0">{r.score}</span>
-          <select value={r.emoji || '⭐'} onChange={e => update(i, { emoji: e.target.value })}
+          <select value={r.emoji || '\u2B50'} onChange={e => update(i, { emoji: e.target.value })}
             className="bg-white border border-gray-300 rounded-lg px-1.5 py-1 text-base outline-none focus:border-orange-400 cursor-pointer flex-shrink-0">
             {LIKERT_EMOJIS.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
           <input type="text" value={r.label} onChange={e => update(i, { label: e.target.value })}
-            placeholder={`Score ${r.score} label`}
+            placeholder={'Score ' + r.score + ' label'}
             className="flex-1 bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none border-b border-gray-200 focus:border-orange-400 pb-0.5 transition-colors" />
           {scale.length > 2 && (
-            <button type="button" onClick={() => remove(i)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
+            <button type="button" onClick={() => remove(i)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">x</button>
           )}
         </div>
       ))}
@@ -207,7 +211,54 @@ function LikertEditor({ scale, onChange }: {
   )
 }
 
-// ── Question card ─────────────────────────────────────────────
+// -- Rating scale editor (min/max) ----------------------------
+function RatingEditor({ min, max, onChange }: {
+  min: number
+  max: number
+  onChange: (min: number, max: number) => void
+}) {
+  const PRESETS: [string, number, number][] = [
+    ['1 - 5', 1, 5],
+    ['1 - 7', 1, 7],
+    ['0 - 10', 0, 10],
+  ]
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-2 flex-wrap">
+        {PRESETS.map(function(preset) {
+          const [label, pMin, pMax] = preset
+          const active = min === pMin && max === pMax
+          return (
+            <button key={label} type="button" onClick={() => onChange(pMin, pMax)}
+              className={'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ' +
+                (active ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-500 border-gray-300 hover:border-orange-300')}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-1 flex-1">
+          <label className={labelCls}>Min</label>
+          <input type="number" value={min} min={0} max={max - 1}
+            onChange={e => onChange(Math.min(Number(e.target.value), max - 1), max)}
+            className={inputCls} />
+        </div>
+        <div className="flex flex-col gap-1 flex-1">
+          <label className={labelCls}>Max</label>
+          <input type="number" value={max} min={min + 1} max={100}
+            onChange={e => onChange(min, Math.max(Number(e.target.value), min + 1))}
+            className={inputCls} />
+        </div>
+      </div>
+      <p className="text-gray-400 text-xs">
+        {'Respondents will see buttons from ' + min + ' to ' + max + ' (' + (max - min + 1) + ' options).'}
+      </p>
+    </div>
+  )
+}
+
+// -- Question card --------------------------------------------
 function QuestionCard({
   q, idx, total, onChange, onDelete, onMoveUp, onMoveDown
 }: {
@@ -225,11 +276,11 @@ function QuestionCard({
   const set = (patch: Partial<SurveyQuestion>) => onChange({ ...q, ...patch })
 
   const defaultLikertScale = q.likertScale ?? [
-    { score: 1, emoji: '😞', label: 'Strongly disagree' },
-    { score: 2, emoji: '😕', label: 'Disagree' },
-    { score: 3, emoji: '😐', label: 'Neutral' },
-    { score: 4, emoji: '😊', label: 'Agree' },
-    { score: 5, emoji: '😍', label: 'Strongly agree' },
+    { score: 1, emoji: '\uD83D\uDE1E', label: 'Strongly disagree' },
+    { score: 2, emoji: '\uD83D\uDE15', label: 'Disagree' },
+    { score: 3, emoji: '\uD83D\uDE10', label: 'Neutral' },
+    { score: 4, emoji: '\uD83D\uDE0A', label: 'Agree' },
+    { score: 5, emoji: '\uD83D\uDE0D', label: 'Strongly agree' },
   ]
 
   const likertScaleOptions = (q.likertScale ?? defaultLikertScale).map(r => ({ score: r.score, label: r.label }))
@@ -242,11 +293,11 @@ function QuestionCard({
         <div className="flex flex-col gap-0.5 flex-shrink-0">
           <button type="button" onClick={onMoveUp} disabled={idx === 0}
             className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 disabled:opacity-20 disabled:cursor-default transition-colors text-xs">
-            ▲
+            up
           </button>
           <button type="button" onClick={onMoveDown} disabled={idx === total - 1}
             className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 disabled:opacity-20 disabled:cursor-default transition-colors text-xs">
-            ▼
+            dn
           </button>
         </div>
 
@@ -274,7 +325,7 @@ function QuestionCard({
           ) : (
             <button type="button" onClick={() => setConfirmDelete(true)}
               className="text-gray-300 hover:text-red-400 transition-colors text-lg leading-none">
-              ×
+              x
             </button>
           )}
         </div>
@@ -301,7 +352,7 @@ function QuestionCard({
 
           {/* Required toggle */}
           <Toggle value={!!q.required} onChange={v => set({ required: v })}
-            label={q.required ? 'Required — respondent must answer' : 'Optional — respondent can skip'} />
+            label={q.required ? 'Required -- respondent must answer' : 'Optional -- respondent can skip'} />
 
           {/* Type-specific config */}
           {q.type === 'open' && (
@@ -337,13 +388,32 @@ function QuestionCard({
               />
             </div>
           )}
+
+          {q.type === 'rating' && (
+            <div className="pt-2 border-t border-gray-100">
+              <label className={labelCls}>Scale range</label>
+              <RatingEditor
+                min={q.ratingMin ?? 1}
+                max={q.ratingMax ?? 5}
+                onChange={(min, max) => set({ ratingMin: min, ratingMax: max })}
+              />
+            </div>
+          )}
+
+          {q.type === 'numeric' && (
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-xs text-gray-400">
+                Respondents type a number. Accepts any integer or decimal. Ana will treat responses as a numeric variable for statistical analysis.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ── Industry suggested questions panel ───────────────────────
+// -- Industry suggested questions panel -----------------------
 function SuggestedQuestionsPanel({
   industry,
   onAdd,
@@ -367,15 +437,15 @@ function SuggestedQuestionsPanel({
         className="w-full flex items-center justify-between px-4 py-3 text-left"
       >
         <div className="flex items-center gap-2">
-          <span className="text-orange-500 text-sm font-bold">✦</span>
+          <span className="text-orange-500 text-sm font-bold">+</span>
           <span className="text-sm font-semibold text-gray-800">
-            Suggested for {industryLabel}
+            {'Suggested for ' + industryLabel}
           </span>
           <span className="text-xs text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full font-medium">
-            {suggestions.length} questions
+            {suggestions.length + ' questions'}
           </span>
         </div>
-        <span className="text-gray-400 text-xs">{open ? '▲ hide' : '▼ show'}</span>
+        <span className="text-gray-400 text-xs">{open ? 'hide' : 'show'}</span>
       </button>
 
       {open && (
@@ -392,25 +462,25 @@ function SuggestedQuestionsPanel({
                 onClick={() => {
                   if (alreadyAdded) return
                   onAdd({
-                    id:       sq.key + '_' + Date.now().toString(36),
-                    type:     'radio',
-                    prompt:   sq.q,
-                    options:  sq.opts,
-                    required: false,
+                    id:          sq.key + '_' + Date.now().toString(36),
+                    type:        'radio',
+                    prompt:      sq.q,
+                    options:     sq.opts,
+                    required:    false,
                     exportLabel: sq.exportLabel,
                   } as SurveyQuestion)
                 }}
               >
-                <span className="text-base flex-shrink-0 mt-0.5">🔘</span>
+                <span className="text-base flex-shrink-0 mt-0.5">\uD83D\uDD18</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800">{sq.q}</div>
                   <div className="text-xs text-gray-400 mt-0.5 truncate">
-                    {sq.opts.slice(0, 3).join(' · ')}{sq.opts.length > 3 ? ' …' : ''}
+                    {sq.opts.slice(0, 3).join(' · ')}{sq.opts.length > 3 ? ' ...' : ''}
                   </div>
                 </div>
                 <div className="flex-shrink-0 text-xs font-semibold mt-0.5">
                   {alreadyAdded
-                    ? <span className="text-green-500">✓ Added</span>
+                    ? <span className="text-green-500">Added</span>
                     : <span className="text-orange-500">+ Add</span>}
                 </div>
               </div>
@@ -422,7 +492,7 @@ function SuggestedQuestionsPanel({
   )
 }
 
-// ── Main component ────────────────────────────────────────────
+// -- Main component -------------------------------------------
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
 
 export default function StepQuestions({ draft, updateConfig, onNext, onBack }: Props) {
@@ -430,27 +500,28 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
   const [addingType, setAddingType] = useState<QuestionType | null>(null)
   const industry = (draft as any).industry as string | undefined
 
-  const customQCount = draft.config.customQCount ?? 0   // 0 = show all
+  const customQCount = draft.config.customQCount ?? 0
   const totalQ       = questions.length
 
   const setQuestions = (qs: SurveyQuestion[]) => updateConfig({ questions: qs })
 
   const addQuestion = (type: QuestionType) => {
     const q: SurveyQuestion = {
-      id:      genId(),
+      id:       genId(),
       type,
-      prompt:  '',
+      prompt:   '',
       required: false,
       ...(type === 'radio' || type === 'checkbox' || type === 'dropdown' ? { options: ['', ''] } : {}),
       ...(type === 'likert' ? {
         likertScale: [
-          { score: 1, emoji: '😞', label: 'Strongly disagree' },
-          { score: 2, emoji: '😕', label: 'Disagree' },
-          { score: 3, emoji: '😐', label: 'Neutral' },
-          { score: 4, emoji: '😊', label: 'Agree' },
-          { score: 5, emoji: '😍', label: 'Strongly agree' },
+          { score: 1, emoji: '\uD83D\uDE1E', label: 'Strongly disagree' },
+          { score: 2, emoji: '\uD83D\uDE15', label: 'Disagree' },
+          { score: 3, emoji: '\uD83D\uDE10', label: 'Neutral' },
+          { score: 4, emoji: '\uD83D\uDE0A', label: 'Agree' },
+          { score: 5, emoji: '\uD83D\uDE0D', label: 'Strongly agree' },
         ]
       } : {}),
+      ...(type === 'rating' ? { ratingMin: 1, ratingMax: 5 } : {}),
     }
     setQuestions([...questions, q])
     setAddingType(null)
@@ -463,7 +534,6 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
   const moveUp   = (i: number) => { if (i === 0) return; const qs = [...questions]; [qs[i-1], qs[i]] = [qs[i], qs[i-1]]; setQuestions(qs) }
   const moveDown = (i: number) => { if (i === questions.length - 1) return; const qs = [...questions]; [qs[i], qs[i+1]] = [qs[i+1], qs[i]]; setQuestions(qs) }
 
-  // Track which suggested question keys are already added (by checking exportLabel prefix match)
   const existingIds = new Set(questions.map(q => q.id?.split('_')[0] ?? ''))
 
   return (
@@ -502,7 +572,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
         </div>
       )}
 
-      {/* Sampling control — shown when 2+ questions exist */}
+      {/* Sampling control */}
       {totalQ >= 2 && (
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex items-center gap-5">
           <div className="flex-1">
@@ -523,7 +593,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
               disabled={customQCount === 0}
               className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center"
             >
-              −
+              -
             </button>
             <span className="w-10 text-center text-lg font-bold text-gray-800">
               {customQCount === 0 || customQCount >= totalQ ? 'All' : customQCount}
