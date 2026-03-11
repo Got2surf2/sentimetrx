@@ -3,12 +3,13 @@
 import { useState, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
+import OrgFeatureToggles from '@/components/analyze/OrgFeatureToggles'
 import Link from 'next/link'
 
 interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string }
 interface Study   { id: string; guid: string; name: string; bot_name: string; bot_emoji: string; status: string; visibility: string; created_at: string; response_count: number }
 interface Invite  { id: string; token: string; email: string | null; role: string; used_at: string | null; expires_at: string; created_at: string; invite_url: string }
-interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean; logo_url?: string }
+interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean; logo_url?: string; features?: { analyze?: boolean } }
 
 interface Props {
   org:           Org
@@ -209,6 +210,14 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
             </div>
           </div>
         </div>
+
+        {/* Features */}
+        <Section title="Features">
+          <OrgFeatureToggles
+            orgId={org.id}
+            initialFeatures={org.features || {}}
+          />
+        </Section>
 
         {/* Members */}
         <Section title={'Members (' + members.length + ')'}>

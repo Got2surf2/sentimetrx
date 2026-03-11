@@ -25,7 +25,7 @@ export default async function AdminClientPage({ params }: Props) {
 
   const { data: org } = await service
     .from('organizations')
-    .select('id, name, slug, plan, is_admin_org, created_at')
+    .select('id, name, slug, plan, is_admin_org, features, created_at')
     .eq('id', params.id)
     .single()
 
