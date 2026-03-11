@@ -19,6 +19,7 @@ interface StudyStats {
 }
 interface Props {
   logoUrl?: string; orgId?: string
+  analyzeEnabled?: boolean
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   studies: Study[]; statsMap: Record<string, StudyStats>
 }
@@ -50,19 +51,19 @@ function DonutChart({ promoters, passives, detractors, total, avgNps, npsLabel }
 }
 
 function QRCode({ url }: { url: string }) {
-  const src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}&margin=8`
+  const src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(url) + '&margin=8'
   return <img src={src} alt="QR code" className="w-40 h-40 rounded-lg border border-gray-200" />
 }
 
 function DeployModal({ study, onClose }: { study: Study; onClose: () => void }) {
-  const url = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'}/s/${study.guid}`
+  const url = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai') + '/s/' + study.guid
   const [copied, setCopied] = useState(false)
   const copy = () => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-gray-800 text-base">Deploy -- {study.name}</h3>
+          <h3 className="font-bold text-gray-800 text-base">{'Deploy -- ' + study.name}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
         <div className="flex gap-5 items-start">
@@ -111,7 +112,7 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
 
   const canEdit  = study.created_by === userId || isAdmin
   const theme    = study.config?.theme || {}
-  const headerBg = theme.headerGradient || `linear-gradient(135deg,${HERMES},#c44d1a)`
+  const headerBg = theme.headerGradient || ('linear-gradient(135deg,' + HERMES + ',#c44d1a)')
 
   const do_patch = async (body: object) => {
     setBusy(true)
@@ -137,8 +138,12 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
     : null
 
   const handleExport = () => {
-    window.location.href = `/studies/${study.id}/responses?export=csv`
+    window.location.href = '/studies/' + study.id + '/responses?export=csv'
   }
+
+  const industryLabel = study.config?.industry
+    ? (INDUSTRY_LABELS as any)[study.config.industry] || study.config.industry
+    : null
 
   return (
     <>
@@ -154,144 +159,115 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
 
           {/* Title row */}
           <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-lg flex-shrink-0" style={{ background: headerBg }}>
-                {study.bot_emoji}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-lg leading-none">{study.bot_emoji}</span>
+                <h3 className="font-bold text-gray-800 text-sm truncate">{study.name}</h3>
               </div>
-              <div className="min-w-0">
-                <h3 className="font-bold text-gray-800 text-sm leading-tight truncate max-w-[160px]">{study.name}</h3>
-                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                  <p className="text-xs text-gray-400 truncate max-w-[100px]">{study.bot_name}</p>
-                  {study.config?.industry && study.config.industry !== 'other' && (
-                    <>
-                      <span className="text-gray-300 text-xs">·</span>
-                      <span className="text-xs text-orange-500 font-medium">
-                        {INDUSTRY_LABELS[study.config.industry as Industry] ?? study.config.industry}
-                      </span>
-                    </>
-                  )}
-                  {lastResp && (
-                    <>
-                      <span className="text-gray-300 text-xs">·</span>
-                      <span className="text-xs text-gray-400" title="Last response received">
-                        Last: {lastResp}
-                      </span>
-                    </>
-                  )}
-                </div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' + statusColor(status)}>
+                  {status}
+                </span>
+                <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' +
+                  (vis === 'public' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-gray-100 text-gray-500 border-gray-200')}>
+                  {vis}
+                </span>
+                {industryLabel && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                    {industryLabel}
+                  </span>
+                )}
               </div>
             </div>
-            {canEdit && (
-              <button
-                onClick={() => { if (deleteConf) { onDelete(study.id); setDeleteConf(false) } else setDeleteConf(true) }}
-                className={'text-xs transition-colors flex-shrink-0 ' + (deleteConf ? 'text-red-500 font-bold' : 'text-gray-300 hover:text-red-400')}>
-                {deleteConf ? 'Sure?' : '🗑'}
-              </button>
+            <DonutChart
+              promoters={stats.promoters}
+              passives={stats.passives}
+              detractors={stats.detractors}
+              total={stats.total}
+              avgNps={stats.avgNps}
+              npsLabel={study.config?.npsLabel}
+            />
+          </div>
+
+          {/* Stats row */}
+          <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
+            <span className="font-medium text-gray-700">{stats.total} responses</span>
+            {stats.total > 0 && (
+              <>
+                <span className="text-green-600">{pp}% positive</span>
+                <span className="text-yellow-500">{ap}% neutral</span>
+                <span className="text-red-500">{dp}% negative</span>
+              </>
             )}
           </div>
 
-          {/* Donut + stats */}
-          <div className="flex items-center gap-3">
-            <DonutChart promoters={stats.promoters} passives={stats.passives} detractors={stats.detractors} total={stats.total} avgNps={stats.avgNps} npsLabel={study.config?.npsLabel} />
-            <div className="flex flex-col gap-1 flex-1 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Promoters</span>
-                <span className="font-semibold text-gray-700">{pp}%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Passives</span>
-                <span className="font-semibold text-gray-700">{ap}%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Detractors</span>
-                <span className="font-semibold text-gray-700">{dp}%</span>
-              </div>
-              <div className="mt-1 pt-1 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-gray-400">Responses</span>
-                <span className="font-bold text-gray-700">{stats.total}</span>
-              </div>
-            </div>
-          </div>
+          {lastResp && (
+            <div className="text-xs text-gray-400">Last response: {lastResp}</div>
+          )}
 
-          {/* Status controls */}
-          {canEdit && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' + statusColor(status)}>{status}</span>
-              <button
-                onClick={() => { const nv = vis === 'public' ? 'private' : 'public'; do_patch({ visibility: nv }) }}
-                className={'text-xs px-2 py-0.5 rounded-full border transition-colors ' +
-                  (vis === 'public' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-gray-100 text-gray-400 border-gray-200')}>
-                {vis}
-              </button>
-              {status === 'draft' && (
-                <button disabled={busy}
-                  onClick={() => setConfirm({ msg: `Publish "${study.name}"? This will make it live.`, action: () => do_patch({ status: 'active' }) })}
-                  className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 disabled:opacity-40">
-                  Publish
-                </button>
-              )}
-              {status === 'active' && (
-                <button disabled={busy}
-                  onClick={() => setConfirm({ msg: `Close "${study.name}"? Responses will stop being collected.`, action: () => do_patch({ status: 'closed' }) })}
-                  className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-40">
-                  Close
-                </button>
-              )}
-              {status === 'closed' && (
-                <button disabled={busy}
-                  onClick={() => setConfirm({ msg: `Reopen "${study.name}"? This will make it active again.`, action: () => do_patch({ status: 'active' }) })}
-                  className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-40">
-                  Reopen
-                </button>
-              )}
+          {/* Creator / org info for admins */}
+          {isAdmin && (study.creatorName || study.orgName) && (
+            <div className="text-xs text-gray-400 truncate">
+              {[study.creatorName, study.orgName].filter(Boolean).join(' · ')}
             </div>
           )}
 
-          {/* Creator / org / date */}
-          <div className="text-xs text-gray-400 flex items-center gap-1 flex-wrap">
-            {isAdmin && study.orgName && <span className="text-orange-500 font-medium">{study.orgName}</span>}
-            {study.creatorName && <><span>·</span><span>{study.creatorName}</span></>}
-            <span>· {new Date(study.created_at).toLocaleDateString()}</span>
-          </div>
-        </div>
-
-        {/* Footer -- row 1: Analytics, Responses, Export */}
-        <div className="border-t border-gray-100 px-3 py-2 flex items-center gap-1 bg-gray-50/50">
-          <Link href={'/studies/' + study.id + '/analytics'}
-            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 font-medium hover:bg-orange-500 hover:text-white transition-all">Analytics</Link>
-          <Link href={'/studies/' + study.id + '/responses'}
-            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Responses</Link>
-          <button onClick={handleExport}
-            className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">
-            Export
-          </button>
-        </div>
-
-        {/* Footer -- row 2: Edit, Deploy, Duplicate */}
-        {canEdit && (
-          <div className="px-3 py-2 flex items-center gap-1 bg-gray-50/30 rounded-b-2xl border-t border-gray-100">
-            <Link href={'/studies/' + study.id + '/edit'}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Edit</Link>
-            <button onClick={() => status === 'active' ? setDeployOpen(true) : undefined}
-              className={'text-xs px-2.5 py-1.5 rounded-lg transition-all ' +
-                (status === 'active'
-                  ? 'bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white'
-                  : 'bg-gray-50 text-gray-300 cursor-not-allowed')}>
-              Deploy
-            </button>
-            <button onClick={() => onDuplicate(study)}
+          {/* Action buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap mt-auto pt-2 border-t border-gray-100">
+            <Link href={'/studies/' + study.id + '/analytics'}
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Analytics</Link>
+            <Link href={'/studies/' + study.id + '/responses'}
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Responses</Link>
+            <button onClick={handleExport}
               className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">
-              Duplicate
+              Export
             </button>
+            {canEdit && (
+              <>
+                <button onClick={() => do_patch({ visibility: vis === 'public' ? 'private' : 'public' })} disabled={busy}
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all disabled:opacity-50">
+                  {vis === 'public' ? 'Make private' : 'Make public'}
+                </button>
+                <button
+                  onClick={() => setConfirm({
+                    msg: 'Are you sure you want to ' + (status === 'active' ? 'close' : status === 'closed' ? 'reopen' : 'activate') + ' this study?',
+                    action: () => do_patch({ status: status === 'active' ? 'closed' : 'active' })
+                  })}
+                  disabled={busy}
+                  className={'text-xs px-2.5 py-1.5 rounded-lg transition-all disabled:opacity-50 ' +
+                    (status === 'active' ? 'bg-red-50 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-green-50 text-green-600 hover:bg-green-500 hover:text-white')}>
+                  {status === 'active' ? 'Close' : 'Reopen'}
+                </button>
+                <button onClick={() => setConfirm({ msg: 'Delete "' + study.name + '"? This cannot be undone.', action: () => onDelete(study.id) })}
+                  disabled={busy}
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-red-400 hover:bg-red-500 hover:text-white transition-all disabled:opacity-50">
+                  Delete
+                </button>
+                <Link href={'/studies/' + study.id + '/edit'}
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Edit</Link>
+                <button onClick={() => status === 'active' ? setDeployOpen(true) : undefined}
+                  className={'text-xs px-2.5 py-1.5 rounded-lg transition-all ' +
+                    (status === 'active'
+                      ? 'bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white'
+                      : 'bg-gray-50 text-gray-300 cursor-not-allowed')}>
+                  Deploy
+                </button>
+                <button onClick={() => onDuplicate(study)}
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">
+                  Duplicate
+                </button>
+              </>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </>
   )
 }
 
 // -- Main dashboard -------------------------------------------------------------
-export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap }: Props) {
+export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap, analyzeEnabled }: Props) {
   const [studies,      setStudies]      = useState(initialStudies)
   const [ownerFilter,  setOwnerFilter]  = useState<OwnerFilter>('mine')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
@@ -340,7 +316,17 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="fixed top-0 left-0 right-0 z-50"><TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} fullName={user.fullName} currentPage="dashboard" /></div>
+      <div className="fixed top-0 left-0 right-0 z-50">
+        <TopNav
+          logoUrl={logoUrl}
+          orgName={user.clientName}
+          isAdmin={user.isAdmin}
+          userEmail={user.email}
+          fullName={user.fullName}
+          currentPage="dashboard"
+          analyzeEnabled={analyzeEnabled}
+        />
+      </div>
       <SubHeader crumbs={[{ label: 'Dashboard' }]} isAdmin={user.isAdmin} orgId={orgId} showFilters />
 
       <main className="max-w-7xl mx-auto px-6 py-8 pt-28">
@@ -385,8 +371,8 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
                 className="px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
             </div>
           </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-400">{filtered.length} studies</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-400">{filtered.length} studies</span>
             <Link href="/studies/new"
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all"
               style={{ background: HERMES }}>

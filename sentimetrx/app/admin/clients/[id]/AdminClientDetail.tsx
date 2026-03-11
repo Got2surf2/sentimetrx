@@ -151,8 +151,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
       <TopNav isAdmin={true} userEmail={userEmail} currentPage='admin' />
       <SubHeader crumbs={[{label: 'Admin', href: '/admin'}, {label: org.name}]} />
 
-      <main className="max-w-4xl mx-auto px-6 py-10 flex flex-col gap-8">
-
+<main className="max-w-4xl mx-auto px-6 pt-28 pb-10 flex flex-col gap-8">
         {error && (
           <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
             {error}

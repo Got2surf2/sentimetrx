@@ -11,7 +11,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, org_id, organizations(id, name, is_admin_org, logo_url)')
+    .select('full_name, role, client_id, org_id, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
@@ -92,6 +92,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     <DashboardClient
       logoUrl={orgData?.logo_url || ''}
       orgId={orgData?.id || ''}
+      analyzeEnabled={!!orgData?.features?.analyze}
       user={{
         email:      user.email!,
         fullName:   userData?.full_name ?? '',
