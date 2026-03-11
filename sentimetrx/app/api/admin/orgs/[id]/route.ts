@@ -9,16 +9,13 @@ function serviceRole() {
   )
 }
 
-type Params = { params: { ids: string } }
+type Params = { params: { id: string } }
 
-// PATCH /api/admin/orgs/[ids]
-// Updates org features flags. Super-admin only.
 export async function PATCH(req: NextRequest, { params }: Params) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Verify super-admin
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -42,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { data, error } = await sr
     .from('organizations')
     .update({ features })
-    .eq('id', params.ids)
+    .eq('id', params.id)
     .select('id, name, features')
     .single()
 
