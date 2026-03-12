@@ -2,6 +2,7 @@
 // Default study config values per industry
 //
 // INDUSTRY ↔ ANA LIBRARY MAPPING
+import type { PsychoQuestion } from './types'
 // Every key here has an exact 1:1 match to an Ana theme library name.
 // This is the contract used by the survey-to-dataset bridge to auto-select
 // the correct Ana theme library when creating a linked dataset.
@@ -306,5 +307,141 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Very important — supporting the arts sector is a value I hold", "Important — I like knowing my attendance helps", "Moderate — it's a factor but not my main reason for coming", "Not my main lens — I come purely for my own enjoyment"] },
     ],
   },
+
+}
+// Partial — not every industry has suggestions yet.
+
+import type { PsychoQuestion } from './types'
+
+export const INDUSTRY_SUGGESTED_QUESTIONS: Partial<Record<Exclude<Industry, 'other'>, PsychoQuestion[]>> = {
+
+  healthcare: [
+    { key: 'i_hc_type',      q: 'What type of healthcare visit was this?',
+      exportLabel: 'Visit Type',
+      opts: ['Routine check-up', 'Follow-up appointment', 'Urgent care', 'Specialist consultation', 'Procedure or treatment'] },
+    { key: 'i_hc_insurance', q: 'How do you typically pay for healthcare?',
+      exportLabel: 'Payment Method',
+      opts: ['Private insurance', 'Medicare / Medicaid', 'Self-pay', 'Employer-provided insurance', 'Prefer not to say'] },
+    { key: 'i_hc_access',    q: 'How easy is it for you to access healthcare when you need it?',
+      exportLabel: 'Healthcare Access',
+      opts: ['Very easy', 'Fairly easy', 'Neutral', 'Somewhat difficult', 'Very difficult'] },
+    { key: 'i_hc_comms',     q: 'How well does our team keep you informed about your care?',
+      exportLabel: 'Care Communication',
+      opts: ['Extremely well', 'Very well', 'Adequately', 'Not well enough', 'Poorly'] },
+  ],
+
+  hospitality: [
+    { key: 'i_ho_purpose',   q: 'What is the primary purpose of your stay?',
+      exportLabel: 'Stay Purpose',
+      opts: ['Leisure / vacation', 'Business', 'Event or celebration', 'Family visit', 'Other'] },
+    { key: 'i_ho_booking',   q: 'How did you book your stay?',
+      exportLabel: 'Booking Channel',
+      opts: ['Direct — hotel website', 'Booking.com', 'Expedia', 'Hotels.com', 'Travel agent', 'Phone or walk-in'] },
+    { key: 'i_ho_amenities', q: 'Which amenities are most important to you when choosing a hotel?',
+      exportLabel: 'Key Amenity',
+      opts: ['Location', 'Price', 'Room quality', 'Breakfast included', 'Pool or gym', 'Free parking', 'Pet-friendly'] },
+    { key: 'i_ho_loyalty',   q: 'Are you a member of a hotel loyalty programme?',
+      exportLabel: 'Loyalty Programme',
+      opts: ['Yes — this hotel chain', 'Yes — a competitor', 'No but I am interested', 'No and not interested'] },
+  ],
+
+  casual_dining: [
+    { key: 'i_rs_occasion', q: 'What best describes the occasion for your visit today?',
+      exportLabel: 'Dining Occasion',
+      opts: ['Casual meal', 'Business lunch or dinner', 'Special occasion / celebration', 'Quick bite', 'Family meal'] },
+    { key: 'i_rs_group',    q: 'How large was your dining party today?',
+      exportLabel: 'Party Size',
+      opts: ['Just me', '2 people', '3–4 people', '5 or more people'] },
+    { key: 'i_rs_order',    q: 'How did you place your order today?',
+      exportLabel: 'Order Method',
+      opts: ['Dine-in with server', 'Counter order', 'Mobile app', 'Third-party delivery', 'Drive-through'] },
+    { key: 'i_rs_diet',     q: 'Do you have any dietary preferences we should know about?',
+      exportLabel: 'Dietary Preference',
+      opts: ['No restrictions', 'Vegetarian', 'Vegan', 'Gluten-free', 'Halal', 'Other dietary needs'] },
+  ],
+
+  fine_dining: [
+    { key: 'i_rs_occasion', q: 'What best describes the occasion for your visit this evening?',
+      exportLabel: 'Dining Occasion',
+      opts: ['Romantic dinner', 'Business dinner', 'Special celebration', 'Anniversary or birthday', 'Personal treat'] },
+    { key: 'i_rs_group',    q: 'How large was your dining party this evening?',
+      exportLabel: 'Party Size',
+      opts: ['Just me', '2 people', '3–4 people', '5 or more people'] },
+    { key: 'i_fd_wine',     q: 'Did you take advantage of our wine or beverage programme?',
+      exportLabel: 'Beverage Engagement',
+      opts: ['Yes — wine pairing', 'Yes — selected from the list', 'Yes — cocktails', 'No — water or soft drinks only'] },
+    { key: 'i_rs_diet',     q: 'Do you have any dietary requirements we should know about for future visits?',
+      exportLabel: 'Dietary Requirement',
+      opts: ['None', 'Vegetarian', 'Vegan', 'Gluten-free', 'Allergen-related', 'Other'] },
+  ],
+
+  fast_food: [
+    { key: 'i_ff_channel',  q: 'How did you order today?',
+      exportLabel: 'Order Channel',
+      opts: ['In-store at the counter', 'Self-service kiosk', 'Drive-through', 'Mobile app', 'Third-party delivery'] },
+    { key: 'i_ff_time',     q: 'What time of day was your visit?',
+      exportLabel: 'Visit Time',
+      opts: ['Breakfast', 'Lunch', 'Afternoon snack', 'Dinner', 'Late night'] },
+    { key: 'i_rs_group',    q: 'Who did you order for today?',
+      exportLabel: 'Order For',
+      opts: ['Just myself', '2 people', '3–4 people', '5 or more people'] },
+    { key: 'i_rs_diet',     q: 'Do you have any dietary preferences?',
+      exportLabel: 'Dietary Preference',
+      opts: ['No restrictions', 'Vegetarian', 'Vegan', 'Gluten-free', 'Halal', 'Other dietary needs'] },
+  ],
+
+  travel_tourism: [
+    { key: 'i_tr_type',     q: 'What type of trip is this?',
+      exportLabel: 'Trip Type',
+      opts: ['Solo travel', 'Couple', 'Family with children', 'Group of friends', 'Business travel'] },
+    { key: 'i_tr_duration', q: 'How long is your trip?',
+      exportLabel: 'Trip Duration',
+      opts: ['Day trip', '2–3 nights', '4–7 nights', '1–2 weeks', 'More than 2 weeks'] },
+    { key: 'i_tr_plan',     q: 'How far in advance did you plan this trip?',
+      exportLabel: 'Planning Lead Time',
+      opts: ['Last minute (under a week)', '1–4 weeks', '1–3 months', 'More than 3 months'] },
+    { key: 'i_tr_budget',   q: 'How would you describe your travel budget for this trip?',
+      exportLabel: 'Travel Budget',
+      opts: ['Budget / backpacker', 'Mid-range', 'Comfortable', 'Luxury'] },
+  ],
+
+  political: [
+    { key: 'i_po_engage',   q: 'How do you most often engage with political issues?',
+      exportLabel: 'Political Engagement',
+      opts: ['Voting', 'Donating', 'Volunteering', 'Attending events', 'Sharing on social media', 'Following the news'] },
+    { key: 'i_po_issues',   q: 'Which issues matter most to you right now?',
+      exportLabel: 'Key Issues',
+      opts: ['Economy and jobs', 'Healthcare', 'Education', 'Public safety', 'Environment', 'Immigration', 'Other'] },
+    { key: 'i_po_trust',    q: 'How much do you trust elected officials to act in your interest?',
+      exportLabel: 'Institutional Trust',
+      opts: ['A great deal', 'A fair amount', 'Not very much', 'Not at all'] },
+  ],
+
+  media_entertainment: [
+    { key: 'i_me_type',     q: 'What type of content or entertainment brought you here today?',
+      exportLabel: 'Content Type',
+      opts: ['Film or cinema', 'Streaming / on-demand', 'Live broadcast', 'Podcast or audio', 'Online video', 'Other'] },
+    { key: 'i_en_ticket',   q: 'How did you access or purchase this today?',
+      exportLabel: 'Access Method',
+      opts: ['Online in advance', 'At the door / box office', 'Via a third-party app', 'Subscription included', 'Complimentary'] },
+    { key: 'i_en_group',    q: 'Who did you come with today?',
+      exportLabel: 'Attendance Group',
+      opts: ['Alone', 'Partner or date', 'Friends', 'Family', 'Work colleagues'] },
+  ],
+
+  performing_arts: [
+    { key: 'i_en_type',     q: 'What type of performance brought you here today?',
+      exportLabel: 'Performance Type',
+      opts: ['Theatre or drama', 'Musical theatre', 'Opera or classical music', 'Dance', 'Comedy', 'Other'] },
+    { key: 'i_en_ticket',   q: 'How did you purchase your ticket?',
+      exportLabel: 'Ticket Channel',
+      opts: ['Online in advance', 'At the box office', 'Via a third-party app', 'Complimentary / guest list', 'Subscription or membership'] },
+    { key: 'i_en_group',    q: 'Who did you come with today?',
+      exportLabel: 'Attendance Group',
+      opts: ['Alone', 'Partner or date', 'Friends', 'Family', 'Work colleagues'] },
+    { key: 'i_pa_seat',     q: 'How would you rate the sightlines and comfort of your seating?',
+      exportLabel: 'Seating Experience',
+      opts: ['Excellent', 'Good', 'Adequate', 'Poor', 'Very poor'] },
+  ],
 
 }
