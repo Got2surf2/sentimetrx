@@ -39,7 +39,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const { data: existing } = await service
     .from('organizations')
     .select('features')
-    .eq('id', params.Id)
+    .eq('id', params.id)
     .single()
 
   const currentFeatures = existing?.features || {}
@@ -48,7 +48,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const { error } = await service
     .from('organizations')
     .update({ features: merged })
-    .eq('id', params.Id)
+    .eq('id', params.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, features: merged })
