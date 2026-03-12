@@ -65,7 +65,6 @@ export function applySchema(
 }
 
 // -- Auto-detect field types from raw rows -------------------------
-// Heuristics: numeric threshold 80%, date threshold 70%, id detection by name
 
 export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig {
   if (rows.length === 0) {
@@ -79,12 +78,10 @@ export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig 
   const fields: SchemaFieldConfig[] = columns.map(function(col) {
     const colLower = col.toLowerCase()
 
-    // ID fields by name pattern
     if (colLower === 'id' || colLower.endsWith('_id') || colLower === 'response_id') {
       return { field: col, type: 'id' as AnaFieldType }
     }
 
-    // Date fields by name pattern
     if (
       colLower.includes('date') ||
       colLower.includes('_at') ||
@@ -94,28 +91,35 @@ export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig 
       return { field: col, type: 'date' as AnaFieldType }
     }
 
-    const values = sample.map(function(r) { return r[col] }).filter(function(v) { return v != null && v !== '' })
+    const values: unknown[] = sample
+      .map(function(r) { return r[col] })
+      .filter(function(v) { return v != null && v !== '' })
+
     if (values.length === 0) return { field: col, type: 'ignore' as AnaFieldType }
 
-    // Numeric detection
     const numericCount = values.filter(function(v) {
-      return !isNaN(parseFloat(String(v))) && isFinite(Number(v))
+      const s = String(v)
+      return !isNaN(parseFloat(s)) && isFinite(Number(s))
     }).length
+
     if (numericCount / values.length >= 0.8) {
       return { field: col, type: 'numeric' as AnaFieldType }
     }
 
-    // Open-ended detection: long text values
-const avgLen = values.reduce(function(sum: number, v) { return sum + String(v).length }, 0) / values.length    const uniqueRatio = new Set(values.map(String)).size / values.length
+    const avgLen = values.reduce(function(sum: number, v) {
+      return sum + String(v).length
+    }, 0) / values.length
+
+    const uniqueCount = new Set(values.map(function(v) { return String(v) })).size
+    const uniqueRatio = uniqueCount / values.length
+
     if (avgLen > 40 || (uniqueRatio > 0.7 && avgLen > 15)) {
       return { field: col, type: 'open-ended' as AnaFieldType }
     }
 
-    // Categorical: short values, limited unique set
     return { field: col, type: 'categorical' as AnaFieldType }
   })
 
-  // Pick primary text field (first open-ended)
   const firstOpenEnded = fields.find(function(f) { return f.type === 'open-ended' })
 
   return {
@@ -138,7 +142,9 @@ export function flattenCustomQuestions(
   for (const question of config.questions) {
     const raw = payload.customAnswers[question.id]
     if (raw == null) continue
-    const colName = sanitizeColumnName(question.exportLabel || question.prompt || question.id)
+    const colName = sanitizeColumnName(
+      question.exportLabel || question.prompt || question.id
+    )
     out[colName] = Array.isArray(raw) ? raw.join(', ') : raw
   }
   return out
@@ -158,13 +164,13 @@ export function flattenPsychographics(payload: SurveyPayload): Record<string, un
 // -- Format study responses as flat rows for dataset storage -------
 
 interface ResponseRow {
-  id:             string
-  created_at:     string
-  nps_score:      number | null
+  id:               string
+  created_at:       string
+  nps_score:        number | null
   experience_score: number | null
-  sentiment:      string | null
-  duration_sec:   number | null
-  payload:        SurveyPayload
+  sentiment:        string | null
+  duration_sec:     number | null
+  payload:          SurveyPayload
 }
 
 interface StudyForFormat {
@@ -180,10 +186,10 @@ export function formatResponsesAsRows(
     return {
       response_id:      r.id,
       submitted_at:     r.created_at,
-      nps_score:        r.nps_score ?? null,
+      nps_score:        r.nps_score        ?? null,
       experience_score: r.experience_score ?? null,
-      sentiment:        r.sentiment ?? null,
-      duration_sec:     r.duration_sec ?? null,
+      sentiment:        r.sentiment        ?? null,
+      duration_sec:     r.duration_sec     ?? null,
       q3_response:      r.payload?.openEnded?.q3 ?? null,
       q4_response:      r.payload?.openEnded?.q4 ?? null,
       ...flattenCustomQuestions(r.payload, study.config),
@@ -193,21 +199,19 @@ export function formatResponsesAsRows(
 }
 
 // -- Build auto-schema for a study-linked dataset ------------------
-// We KNOW the types -- no guessing needed
 
 export function buildStudySchema(config: StudyConfig): SchemaConfig {
   const fields: SchemaFieldConfig[] = [
-    { field: 'response_id',       type: 'id' },
-    { field: 'submitted_at',      type: 'date' },
-    { field: 'nps_score',         type: 'numeric' },
-    { field: 'experience_score',  type: 'numeric' },
-    { field: 'sentiment',         type: 'categorical' },
-    { field: 'duration_sec',      type: 'numeric' },
-    { field: 'q3_response',       type: 'open-ended' },
-    { field: 'q4_response',       type: 'open-ended' },
+    { field: 'response_id',      type: 'id' },
+    { field: 'submitted_at',     type: 'date' },
+    { field: 'nps_score',        type: 'numeric' },
+    { field: 'experience_score', type: 'numeric' },
+    { field: 'sentiment',        type: 'categorical' },
+    { field: 'duration_sec',     type: 'numeric' },
+    { field: 'q3_response',      type: 'open-ended' },
+    { field: 'q4_response',      type: 'open-ended' },
   ]
 
-  // Custom questions
   if (config.questions) {
     for (const q of config.questions) {
       const col = sanitizeColumnName(q.exportLabel || q.prompt || q.id)
@@ -216,7 +220,6 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
     }
   }
 
-  // Psychographic questions
   if (config.psychographicBank) {
     for (const pq of config.psychographicBank) {
       fields.push({ field: 'psycho_' + sanitizeColumnName(pq.key), type: 'categorical' })
@@ -234,7 +237,7 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
 // -- Empty defaults for new dataset_state -------------------------
 
 export function emptyThemeModel() {
-  return { themes: [], aiGenerated: false, version: 1 }
+  return { themes: [] as unknown[], aiGenerated: false, version: 1 }
 }
 
 export function emptySchemaConfig(): SchemaConfig {
