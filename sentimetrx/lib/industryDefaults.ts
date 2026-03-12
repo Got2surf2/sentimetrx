@@ -2,14 +2,13 @@
 // Default study config values per industry
 //
 // INDUSTRY ↔ ANA LIBRARY MAPPING
-import type { PsychoQuestion } from './types'
 // Every key here has an exact 1:1 match to an Ana theme library name.
 // This is the contract used by the survey-to-dataset bridge to auto-select
 // the correct Ana theme library when creating a linked dataset.
 // Kept in sync with Ana's INDUSTRY_THEMES keys — do not rename without
 // updating both sides.
 
-import type { StudyConfig } from './types'
+import type { StudyConfig, PsychoQuestion } from './types'
 
 export type Industry =
   | 'healthcare'
@@ -25,16 +24,16 @@ export type Industry =
 
 // Human-readable labels shown in the study creator dropdown
 export const INDUSTRY_LABELS: Record<Industry, string> = {
-  healthcare:         'Healthcare',
-  hospitality:        'Hospitality (Hotel / Lodging)',
-  casual_dining:      'Restaurants — Casual Dining',
-  fine_dining:        'Restaurants — Fine Dining',
-  fast_food:          'Restaurants — Fast Food / Quick Service',
-  travel_tourism:     'Travel & Tourism',
-  political:          'Politics & Advocacy',
-  media_entertainment:'Entertainment — Media & Film',
-  performing_arts:    'Entertainment — Performing Arts & Venues',
-  other:              'Other / Custom',
+  healthcare:          'Healthcare',
+  hospitality:         'Hospitality (Hotel / Lodging)',
+  casual_dining:       'Restaurants — Casual Dining',
+  fine_dining:         'Restaurants — Fine Dining',
+  fast_food:           'Restaurants — Fast Food / Quick Service',
+  travel_tourism:      'Travel & Tourism',
+  political:           'Politics & Advocacy',
+  media_entertainment: 'Entertainment — Media & Film',
+  performing_arts:     'Entertainment — Performing Arts & Venues',
+  other:               'Other / Custom',
 }
 
 // Maps every Sentimetrx industry key to the exact Ana theme library name.
@@ -65,7 +64,7 @@ type Defaults = Pick<StudyConfig,
 
 export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
 
-  // ── HEALTHCARE ────────────────────────────────────────────────────────────
+  // ── HEALTHCARE ──────────────────────────────────────────────────────────────
   healthcare: {
     greeting: "Hi — I'm here to gather your feedback about your recent care experience. It'll only take a few minutes, and your input genuinely helps us improve.",
     ratingPrompt: "How would you rate your overall care experience today?",
@@ -92,7 +91,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── HOSPITALITY ───────────────────────────────────────────────────────────
+  // ── HOSPITALITY ─────────────────────────────────────────────────────────────
   hospitality: {
     greeting: "Welcome! I'd love to hear about your stay with us. Your feedback helps us make every guest experience exceptional.",
     ratingPrompt: "How would you rate your overall stay with us?",
@@ -119,7 +118,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── CASUAL DINING ─────────────────────────────────────────────────────────
+  // ── CASUAL DINING ───────────────────────────────────────────────────────────
   casual_dining: {
     greeting: "Hi! I'm here to get your thoughts on your dining experience today. It only takes a few minutes and really helps us do better.",
     ratingPrompt: "How would you rate your overall dining experience today?",
@@ -146,7 +145,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── FINE DINING ───────────────────────────────────────────────────────────
+  // ── FINE DINING ─────────────────────────────────────────────────────────────
   fine_dining: {
     greeting: "Good evening. On behalf of the team, thank you for joining us tonight. I'd love to hear about your experience — your feedback means a great deal to us.",
     ratingPrompt: "How would you rate your overall dining experience with us this evening?",
@@ -173,7 +172,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── FAST FOOD ─────────────────────────────────────────────────────────────
+  // ── FAST FOOD ───────────────────────────────────────────────────────────────
   fast_food: {
     greeting: "Hi! We'd love a moment of your feedback about your visit today. It's quick, we promise!",
     ratingPrompt: "How would you rate your overall experience with us today?",
@@ -200,7 +199,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── TRAVEL & TOURISM ─────────────────────────────────────────────────────
+  // ── TRAVEL & TOURISM ────────────────────────────────────────────────────────
   travel_tourism: {
     greeting: "Hi! I'd love to hear about your travel experience with us. A few minutes of your feedback goes a long way.",
     ratingPrompt: "How would you rate your overall travel experience with us?",
@@ -227,7 +226,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── POLITICS & ADVOCACY ───────────────────────────────────────────────────
+  // ── POLITICS & ADVOCACY ─────────────────────────────────────────────────────
   political: {
     greeting: "Hi — thank you for taking part. I'm here to hear your views and experiences. Your voice matters and this will only take a few minutes.",
     ratingPrompt: "How would you rate your overall experience with our campaign or event today?",
@@ -254,7 +253,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── MEDIA & ENTERTAINMENT ─────────────────────────────────────────────────
+  // ── MEDIA & ENTERTAINMENT ───────────────────────────────────────────────────
   media_entertainment: {
     greeting: "Hi! We'd love to hear your thoughts on your experience with us today. It only takes a moment and genuinely helps us improve.",
     ratingPrompt: "How would you rate your overall experience today?",
@@ -281,7 +280,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
-  // ── PERFORMING ARTS & VENUES ──────────────────────────────────────────────
+  // ── PERFORMING ARTS & VENUES ────────────────────────────────────────────────
   performing_arts: {
     greeting: "Hi — thank you for joining us! I'd love to hear about your experience today. Your feedback helps us make every visit special.",
     ratingPrompt: "How would you rate your overall experience at today's event?",
@@ -309,9 +308,10 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
   },
 
 }
-// Partial — not every industry has suggestions yet.
 
-import type { PsychoQuestion } from './types'
+// ── Suggested questions for the Custom Questions step (Step 4) ───────────────
+// Contextual / segmentation questions surfaced as one-click additions in the
+// study creator. Keyed by industry.
 
 export const INDUSTRY_SUGGESTED_QUESTIONS: Partial<Record<Exclude<Industry, 'other'>, PsychoQuestion[]>> = {
 
