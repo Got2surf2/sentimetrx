@@ -106,8 +106,7 @@ export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig 
     }
 
     // Open-ended detection: long text values
-    const avgLen = values.reduce(function(sum, v) { return sum + String(v).length }, 0) / values.length
-    const uniqueRatio = new Set(values.map(String)).size / values.length
+const avgLen = values.reduce(function(sum: number, v) { return sum + String(v).length }, 0) / values.length    const uniqueRatio = new Set(values.map(String)).size / values.length
     if (avgLen > 40 || (uniqueRatio > 0.7 && avgLen > 15)) {
       return { field: col, type: 'open-ended' as AnaFieldType }
     }
