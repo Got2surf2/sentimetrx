@@ -1,6 +1,7 @@
 // app/analyze/[datasetId]/layout.tsx
 // Shared layout for all dataset module pages -- header + tab bar
 
+import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
@@ -9,7 +10,7 @@ import DatasetHeader from './DatasetHeader'
 export const dynamic = 'force-dynamic'
 
 interface Props {
-  children:  React.ReactNode
+  children:  ReactNode
   params:    { datasetId: string }
 }
 
