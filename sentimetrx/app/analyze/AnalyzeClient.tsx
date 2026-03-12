@@ -1,40 +1,32 @@
 'use client'
 
+// app/analyze/AnalyzeClient.tsx
+// Dataset card grid with filter bar and create button
+
 import { useState } from 'react'
-import Link from 'next/link'
-import TopNav from '@/components/nav/TopNav'
+import { useRouter } from 'next/navigation'
 import DatasetCard from '@/components/analyze/DatasetCard'
 import DatasetFilterBar from '@/components/analyze/DatasetFilterBar'
-import type { Dataset, DatasetListFilters } from '@/lib/analyzeTypes'
+import type { DatasetWithState } from '@/lib/analyzeTypes'
 
 interface Props {
-  user: {
-    email:    string
-    fullName: string
-    role:     string
-    isAdmin:  boolean
-    userId:   string
-  }
-  orgName:      string
-  orgId:        string
-  logoUrl:      string
-  datasets:     Dataset[]
-  studyNameMap: Record<string, string>
+  initialDatasets: DatasetWithState[]
+}
+
+interface Filters {
+  source:     'all' | 'study' | 'upload'
+  visibility: 'all' | 'private' | 'public'
+  status:     'all' | 'active' | 'archived'
 }
 
 const HERMES = '#E8632A'
 
-const DEFAULT_FILTERS: DatasetListFilters = {
-  source:     'all',
-  visibility: 'all',
-  status:     'active',
-}
+export default function AnalyzeClient({ initialDatasets }: Props) {
+  const router = useRouter()
+  const [datasets, setDatasets] = useState<DatasetWithState[]>(initialDatasets)
+  const [filters,  setFilters]  = useState<Filters>({ source: 'all', visibility: 'all', status: 'all' })
 
-export default function AnalyzeClient({ user, orgName, logoUrl, datasets: initial, studyNameMap }: Props) {
-  const [datasets, setDatasets]   = useState<Dataset[]>(initial)
-  const [filters, setFilters]     = useState<DatasetListFilters>(DEFAULT_FILTERS)
-
-  const filtered = datasets.filter(d => {
+  const filtered = datasets.filter(function(d) {
     if (filters.source !== 'all' && d.source !== filters.source) return false
     if (filters.visibility !== 'all' && d.visibility !== filters.visibility) return false
     if (filters.status !== 'all' && d.status !== filters.status) return false
@@ -43,109 +35,98 @@ export default function AnalyzeClient({ user, orgName, logoUrl, datasets: initia
 
   async function handleDelete(id: string) {
     const res = await fetch('/api/datasets/' + id, { method: 'DELETE' })
-    if (res.ok) setDatasets(prev => prev.filter(d => d.id !== id))
+    if (res.ok) setDatasets(function(prev) { return prev.filter(function(d) { return d.id !== id }) })
   }
 
-  async function handleToggleVisibility(id: string, current: 'private' | 'public') {
-    const next = current === 'private' ? 'public' : 'private'
+  async function handleRename(id: string, name: string) {
     const res = await fetch('/api/datasets/' + id, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ visibility: next }),
+      body:    JSON.stringify({ name }),
     })
     if (res.ok) {
-      setDatasets(prev => prev.map(d => d.id === id ? { ...d, visibility: next } : d))
+      setDatasets(function(prev) {
+        return prev.map(function(d) { return d.id === id ? { ...d, name } : d })
+      })
     }
   }
 
-  async function handleArchive(id: string) {
+  async function handleToggleVisibility(id: string, visibility: 'private' | 'public') {
     const res = await fetch('/api/datasets/' + id, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ status: 'archived' }),
+      body:    JSON.stringify({ visibility }),
     })
     if (res.ok) {
-      setDatasets(prev => prev.map(d => d.id === id ? { ...d, status: 'archived' } : d))
+      setDatasets(function(prev) {
+        return prev.map(function(d) { return d.id === id ? { ...d, visibility } : d })
+      })
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <TopNav
-        logoUrl={logoUrl}
-        orgName={orgName}
-        isAdmin={user.isAdmin}
-        userEmail={user.email}
-        fullName={user.fullName}
-        analyzeEnabled={true}
-        currentPage="analyze"
-      />
+    <div className="flex flex-col gap-6">
 
-      <main className="pt-14">
-        <div className="max-w-7xl mx-auto px-5 py-8">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-black text-gray-800">Analyze</h1>
+          <p className="text-gray-500 text-sm mt-0.5">
+            {datasets.length === 0 ? 'No datasets yet' : datasets.length + ' dataset' + (datasets.length === 1 ? '' : 's')}
+          </p>
+        </div>
+        <button
+          onClick={function() { router.push('/analyze/new') }}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 flex items-center gap-2"
+          style={{ background: HERMES }}
+        >
+          + Upload Dataset
+        </button>
+      </div>
 
-          {/* Page header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Analyze</h1>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {datasets.length + ' dataset' + (datasets.length === 1 ? '' : 's')}
-              </p>
-            </div>
-            <Link href="/analyze/new"
-              className="text-sm font-medium px-4 py-2 rounded-lg text-white shadow-sm transition-opacity hover:opacity-90"
-              style={{ background: HERMES }}>
-              + Upload Dataset
-            </Link>
+      {/* Filter bar */}
+      {datasets.length > 0 && (
+        <DatasetFilterBar filters={filters} onChange={setFilters} />
+      )}
+
+      {/* Cards grid or empty state */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'linear-gradient(135deg,#fff3ee,#ffe4d6)' }}>
+            <span className="text-3xl">+</span>
           </div>
-
-          {/* Filter bar */}
-          <DatasetFilterBar filters={filters} onChange={setFilters} />
-
-          {/* Dataset grid */}
-          {filtered.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-              {filtered.map(d => (
-                <DatasetCard
-                  key={d.id}
-                  dataset={d}
-                  studyName={d.study_id ? studyNameMap[d.study_id] : undefined}
-                  onDelete={handleDelete}
-                  onToggleVisibility={handleToggleVisibility}
-                  onArchive={handleArchive}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState hasAny={datasets.length > 0} />
+          <h3 className="text-lg font-bold text-gray-700 mb-2">
+            {datasets.length === 0 ? 'No datasets yet' : 'No datasets match your filters'}
+          </h3>
+          <p className="text-gray-400 text-sm max-w-xs">
+            {datasets.length === 0
+              ? 'Upload a dataset or sync a study to get started.'
+              : 'Try adjusting your filters above.'}
+          </p>
+          {datasets.length === 0 && (
+            <button
+              onClick={function() { router.push('/analyze/new') }}
+              className="mt-6 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
+              style={{ background: HERMES }}
+            >
+              Upload your first dataset
+            </button>
           )}
         </div>
-      </main>
-    </div>
-  )
-}
-
-function EmptyState({ hasAny }: { hasAny: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-        style={{ background: '#fff4ef' }}>
-        <span className="text-2xl">📊</span>
-      </div>
-      <h3 className="font-semibold text-gray-700 text-lg">
-        {hasAny ? 'No datasets match your filters' : 'No datasets yet'}
-      </h3>
-      <p className="text-sm text-gray-400 mt-1 max-w-xs">
-        {hasAny
-          ? 'Try adjusting your filters above.'
-          : 'Upload a dataset or sync a study to get started.'}
-      </p>
-      {!hasAny && (
-        <Link href="/analyze/new"
-          className="mt-4 text-sm font-medium px-4 py-2 rounded-lg text-white"
-          style={{ background: '#E8632A' }}>
-          Upload Dataset
-        </Link>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(function(dataset) {
+            return (
+              <DatasetCard
+                key={dataset.id}
+                dataset={dataset}
+                onDelete={handleDelete}
+                onRename={handleRename}
+                onToggleVisibility={handleToggleVisibility}
+              />
+            )
+          })}
+        </div>
       )}
     </div>
   )

@@ -1,44 +1,31 @@
-// ============================================================
-// SENTIMETRX -- Analyze Module Types
 // lib/analyzeTypes.ts
-// ============================================================
+// All TypeScript interfaces for the Analyze module (Phase 1+)
 
-// Ana's 6 field types (from ana_spec Part 16)
-export type AnaFieldType =
-  | 'open-ended'
-  | 'categorical'
-  | 'numeric'
-  | 'date'
-  | 'id'
-  | 'ignore'
+export type AnaFieldType = 'open-ended' | 'categorical' | 'numeric' | 'date' | 'id' | 'ignore'
 
-// Single field configuration stored in schema_config
 export interface SchemaFieldConfig {
-  field:      string
-  type:       AnaFieldType
-  label?:     string                        // display label override
-  remapping?: Record<string, number>        // e.g. { "Low": 1, "Med": 2, "High": 3 }
-  hidden?:    boolean
+  field:       string
+  type:        AnaFieldType
+  label?:      string
+  remapping?:  Record<string, number>
+  hidden?:     boolean
 }
 
-// Full schema_config JSONB shape
 export interface SchemaConfig {
   fields:           SchemaFieldConfig[]
-  primaryTextField?: string                 // open-ended field targeted for TextMine
-  autoDetected:     boolean                 // false once user confirms schema
+  primaryTextField?: string
+  autoDetected:     boolean
   version:          number
 }
 
-// Single theme in the theme model
 export interface AnaTheme {
-  id:          string
-  label:       string
-  keywords:    string[]
-  color:       string                       // hex from THEME_PALETTE
+  id:           string
+  label:        string
+  keywords:     string[]
+  color:        string
   description?: string
 }
 
-// Full theme_model JSONB shape
 export interface ThemeModel {
   themes:      AnaTheme[]
   industry?:   string
@@ -46,7 +33,6 @@ export interface ThemeModel {
   version:     number
 }
 
-// Saved chart config (opaque to Phase 1 -- Phase 2 fills this out)
 export interface SavedChart {
   id:        string
   title:     string
@@ -55,30 +41,27 @@ export interface SavedChart {
   createdAt: string
 }
 
-// Saved stat result (opaque to Phase 1 -- Phase 2 fills this out)
 export interface SavedStat {
-  id:       string
-  title:    string
-  testType: string
-  inputs:   Record<string, unknown>
-  results:  Record<string, unknown>
+  id:        string
+  title:     string
+  testType:  string
+  inputs:    Record<string, unknown>
+  results:   Record<string, unknown>
   createdAt: string
 }
 
-// Full dataset_state record
 export interface DatasetState {
-  id:            string
-  dataset_id:    string
+  id:           string
+  dataset_id:   string
   schema_config: SchemaConfig
-  theme_model:   ThemeModel
-  saved_charts:  SavedChart[]
-  saved_stats:   SavedStat[]
-  filter_state:  Record<string, unknown>
-  updated_at:    string
-  updated_by:    string | null
+  theme_model:  ThemeModel
+  saved_charts: SavedChart[]
+  saved_stats:  SavedStat[]
+  filter_state: Record<string, unknown>
+  updated_at:   string
+  updated_by:   string | null
 }
 
-// Dataset metadata record
 export interface Dataset {
   id:             string
   name:           string
@@ -88,6 +71,7 @@ export interface Dataset {
   org_id:         string
   client_id:      string | null
   created_by:     string
+  ana_library:    string | null
   visibility:     'private' | 'public'
   status:         'active' | 'archived'
   row_count:      number
@@ -96,12 +80,6 @@ export interface Dataset {
   updated_at:     string
 }
 
-// Dataset with joined state (returned by GET /api/datasets/[id])
-export interface DatasetWithState extends Dataset {
-  state: DatasetState | null
-}
-
-// Raw batch record from dataset_rows table
 export interface DatasetRowBatch {
   id:          string
   dataset_id:  string
@@ -112,37 +90,12 @@ export interface DatasetRowBatch {
   created_at:  string
 }
 
-// Org features flag (added to organizations table)
-export interface OrgFeatures {
-  analyze?: boolean
-  // future paid features added here
+export interface ProcessedRow {
+  [key: string]: unknown
 }
 
-// Filter state for the dataset list page
-export interface DatasetListFilters {
-  source:     'all' | 'upload' | 'study'
-  visibility: 'all' | 'private' | 'public'
-  status:     'all' | 'active' | 'archived'
-}
-
-// Default empty schema config
-export function emptySchemaConfig(): SchemaConfig {
-  return { fields: [], autoDetected: true, version: 1 }
-}
-
-// Default empty theme model
-export function emptyThemeModel(): ThemeModel {
-  return { themes: [], aiGenerated: false, version: 1 }
-}
-
-// Default empty dataset state (for POST /api/datasets)
-export function emptyDatasetState(datasetId: string): Omit<DatasetState, 'id' | 'updated_at' | 'updated_by'> {
-  return {
-    dataset_id:    datasetId,
-    schema_config: emptySchemaConfig(),
-    theme_model:   emptyThemeModel(),
-    saved_charts:  [],
-    saved_stats:   [],
-    filter_state:  {},
-  }
+// Dataset with optional joined state (returned by GET /api/datasets/[id])
+export interface DatasetWithState extends Dataset {
+  state?: DatasetState
+  study_name?: string | null
 }

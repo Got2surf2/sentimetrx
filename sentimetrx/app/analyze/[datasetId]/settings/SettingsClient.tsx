@@ -1,218 +1,195 @@
 'use client'
 
+// app/analyze/[datasetId]/settings/SettingsClient.tsx
+// Rename, visibility, schema editor, archive, delete
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
-import type { SchemaConfig, DatasetState } from '@/lib/analyzeTypes'
-
-interface DatasetMeta {
-  id:          string
-  name:        string
-  description: string | null
-  visibility:  'private' | 'public'
-  status:      string
-  row_count:   number
-  created_by:  string
-}
+import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
 interface Props {
-  dataset:       DatasetMeta
-  state:         DatasetState | null
-  datasetId:     string
-  isOwner:       boolean
-  isNewDataset:  boolean
+  dataset:  Pick<Dataset, 'id' | 'name' | 'description' | 'visibility' | 'status' | 'row_count'>
+  schema:   SchemaConfig
+  isOwner:  boolean
 }
 
 const HERMES = '#E8632A'
 
-export default function SettingsClient({ dataset, state, datasetId, isOwner, isNewDataset }: Props) {
+export default function SettingsClient({ dataset, schema: initialSchema, isOwner }: Props) {
   const router = useRouter()
 
-  const [name, setName]               = useState(dataset.name)
+  const [name,        setName]        = useState(dataset.name)
   const [description, setDescription] = useState(dataset.description || '')
-  const [visibility, setVisibility]   = useState<'private' | 'public'>(dataset.visibility)
-  const [savingMeta, setSavingMeta]   = useState(false)
-  const [metaSaved, setMetaSaved]     = useState(false)
+  const [visibility,  setVisibility]  = useState<'private' | 'public'>(dataset.visibility)
+  const [schema,      setSchema]      = useState<SchemaConfig>(initialSchema)
+  const [saving,      setSaving]      = useState(false)
+  const [saved,       setSaved]       = useState(false)
+  const [delConfirm,  setDelConfirm]  = useState(false)
+  const [deleting,    setDeleting]    = useState(false)
+  const [error,       setError]       = useState('')
 
-  const [savingSchema, setSavingSchema] = useState(false)
-
-  const [deleting, setDeleting]   = useState(false)
-  const [showDelete, setShowDelete] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState('')
-
-  const schema = (state?.schema_config as SchemaConfig | null) || null
-
-  async function handleSaveMeta() {
-    setSavingMeta(true)
-    await fetch('/api/datasets/' + datasetId, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ name: name.trim(), description: description.trim() || null, visibility }),
-    })
-    setSavingMeta(false)
-    setMetaSaved(true)
-    setTimeout(() => setMetaSaved(false), 2000)
-    router.refresh()
+  async function handleSaveDetails() {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/datasets/' + dataset.id, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ name: name.trim(), description: description || null, visibility }),
+      })
+      if (!res.ok) { setError('Failed to save'); return }
+      setSaved(true)
+      setTimeout(function() { setSaved(false) }, 2000)
+      router.refresh()
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleSaveSchema(updated: SchemaConfig) {
-    setSavingSchema(true)
-    await fetch('/api/datasets/' + datasetId + '/state', {
+    setSchema(updated)
+    await fetch('/api/datasets/' + dataset.id + '/state', {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ ...state, schema_config: updated }),
+      body:    JSON.stringify({ schema_config: updated, theme_model: { themes: [], aiGenerated: false, version: 1 }, saved_charts: [], saved_stats: [], filter_state: {} }),
     })
-    setSavingSchema(false)
+  }
+
+  async function handleArchive() {
+    const newStatus = dataset.status === 'active' ? 'archived' : 'active'
+    await fetch('/api/datasets/' + dataset.id, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ status: newStatus }),
+    })
     router.refresh()
   }
 
   async function handleDelete() {
-    if (deleteConfirm !== dataset.name) return
+    if (!delConfirm) { setDelConfirm(true); return }
     setDeleting(true)
-    await fetch('/api/datasets/' + datasetId, { method: 'DELETE' })
-    router.push('/analyze')
+    try {
+      const res = await fetch('/api/datasets/' + dataset.id, { method: 'DELETE' })
+      if (res.ok) {
+        router.push('/analyze')
+      } else {
+        setError('Failed to delete dataset')
+        setDeleting(false)
+      }
+    } catch {
+      setError('Unexpected error')
+      setDeleting(false)
+    }
   }
 
-  return (
-    <div className="max-w-2xl flex flex-col gap-8">
+  const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors'
 
-      {/* New dataset banner */}
-      {isNewDataset && schema && schema.autoDetected && (
-        <div className="rounded-xl border border-orange-200 p-4 text-sm"
-          style={{ background: '#fff4ef' }}>
-          <p className="font-medium text-orange-800">Dataset created. Field types were auto-detected.</p>
-          <p className="text-orange-700 mt-0.5">Review the schema below and confirm field types before analyzing.</p>
-        </div>
-      )}
+  return (
+    <div className="flex flex-col gap-6 py-6 max-w-2xl">
 
       {/* Details */}
-      <section>
-        <h2 className="text-base font-semibold text-gray-900 mb-4">Details</h2>
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"
-              disabled={!isOwner} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <input type="text" value={description} onChange={e => setDescription(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"
-              placeholder="Optional" disabled={!isOwner} />
-          </div>
-          {isOwner && (
-            <div className="flex items-center gap-3">
-              <button onClick={handleSaveMeta} disabled={savingMeta}
-                className="text-sm font-medium px-4 py-2 rounded-lg text-white"
-                style={{ background: HERMES }}>
-                {savingMeta ? 'Saving...' : 'Save changes'}
-              </button>
-              {metaSaved && <span className="text-sm text-green-600">Saved</span>}
-            </div>
-          )}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+        <h2 className="font-bold text-gray-800">Details</h2>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">Name</label>
+          <input value={name} onChange={function(e) { setName(e.target.value) }} className={inputCls} />
         </div>
-      </section>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">Description <span className="text-gray-400 font-normal">(optional)</span></label>
+          <textarea
+            value={description}
+            onChange={function(e) { setDescription(e.target.value) }}
+            rows={2}
+            className={inputCls + ' resize-none'}
+          />
+        </div>
+        <button
+          onClick={handleSaveDetails}
+          disabled={saving || !name.trim()}
+          className="self-start px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
+          style={{ background: HERMES }}
+        >
+          {saved ? 'Saved!' : saving ? 'Saving...' : 'Update details'}
+        </button>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+      </div>
 
       {/* Visibility */}
-      {isOwner && (
-        <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-1">Visibility</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Private datasets are only visible to you and org members with Analyze access.
-            Public datasets can be viewed (read-only) by anyone in your org.
-          </p>
-          <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-3">
-            <VisibilityToggle value={visibility} onChange={v => { setVisibility(v); setSavingMeta(false) }} />
-            <button onClick={handleSaveMeta} disabled={savingMeta}
-              className="self-start text-sm font-medium px-4 py-2 rounded-lg text-white"
-              style={{ background: HERMES }}>
-              {savingMeta ? 'Saving...' : 'Save visibility'}
-            </button>
-          </div>
-        </section>
-      )}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+        <h2 className="font-bold text-gray-800">Visibility</h2>
+        <div className="flex gap-3">
+          {(['private', 'public'] as const).map(function(v) {
+            return (
+              <label key={v} className={'flex items-center gap-2.5 px-4 py-2.5 rounded-xl border cursor-pointer transition-all ' +
+                (visibility === v ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-gray-300')}>
+                <input type="radio" name="visibility" value={v} checked={visibility === v}
+                  onChange={function() { setVisibility(v) }} className="accent-orange-500" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">{v.charAt(0).toUpperCase() + v.slice(1)}</p>
+                  <p className="text-xs text-gray-400">{v === 'private' ? 'Only your org can access this dataset' : 'Visible to anyone with the link'}</p>
+                </div>
+              </label>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Schema editor */}
-      <section>
-        <h2 className="text-base font-semibold text-gray-900 mb-4">Field Schema</h2>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          {schema && schema.fields.length > 0 ? (
-            <SchemaEditor schema={schema} onSave={handleSaveSchema} isSaving={savingSchema} />
-          ) : (
-            <p className="text-sm text-gray-400">
-              No schema yet. Upload data or sync a study to get started.
-            </p>
-          )}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+        <div>
+          <h2 className="font-bold text-gray-800">Schema</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Assign field types to control how each column is used in analysis.
+            {dataset.row_count > 0 && (' ' + dataset.row_count.toLocaleString() + ' rows loaded.')}
+          </p>
         </div>
-      </section>
+        <SchemaEditor schema={schema} onChange={handleSaveSchema} />
+      </div>
 
       {/* Danger zone */}
       {isOwner && (
-        <section>
-          <h2 className="text-base font-semibold text-red-600 mb-4">Danger Zone</h2>
-          <div className="bg-white rounded-xl border border-red-200 p-5 flex flex-col gap-4">
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-800">Delete dataset</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Permanently deletes all rows and analysis state. Cannot be undone.
-                </p>
-              </div>
-              <button onClick={() => setShowDelete(true)}
-                className="text-sm font-medium px-3 py-1.5 rounded-lg text-red-600 border border-red-200 hover:bg-red-50 transition-colors">
-                Delete
-              </button>
+        <div className="bg-white border border-red-200 rounded-2xl p-6 flex flex-col gap-4">
+          <h2 className="font-bold text-red-600">Danger zone</h2>
+          <div className="flex items-center justify-between gap-4 py-3 border-t border-gray-100">
+            <div>
+              <p className="text-sm font-semibold text-gray-700">
+                {dataset.status === 'active' ? 'Archive dataset' : 'Restore dataset'}
+              </p>
+              <p className="text-xs text-gray-400">
+                {dataset.status === 'active'
+                  ? 'Hides the dataset from the main list. Reversible.'
+                  : 'Restore this dataset to active status.'}
+              </p>
             </div>
-
-            {showDelete && (
-              <div className="border-t border-red-100 pt-4 flex flex-col gap-3">
-                <p className="text-sm text-gray-700">
-                  Type <strong>{dataset.name}</strong> to confirm deletion:
-                </p>
-                <input type="text" value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
-                  className="border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-400"
-                  placeholder="Type dataset name to confirm" />
-                <div className="flex gap-2">
-                  <button onClick={handleDelete}
-                    disabled={deleteConfirm !== dataset.name || deleting}
-                    className="text-sm font-medium px-4 py-2 rounded-lg text-white bg-red-600 disabled:opacity-40">
-                    {deleting ? 'Deleting...' : 'Confirm delete'}
-                  </button>
-                  <button onClick={() => { setShowDelete(false); setDeleteConfirm('') }}
-                    className="text-sm px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+            <button
+              onClick={handleArchive}
+              className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors flex-shrink-0"
+            >
+              {dataset.status === 'active' ? 'Archive' : 'Restore'}
+            </button>
           </div>
-        </section>
+          <div className="flex items-center justify-between gap-4 py-3 border-t border-gray-100">
+            <div>
+              <p className="text-sm font-semibold text-gray-700">Delete dataset</p>
+              <p className="text-xs text-gray-400">Permanently deletes all rows and analysis state. This cannot be undone.</p>
+            </div>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className={'px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex-shrink-0 ' +
+                (delConfirm ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100')}
+            >
+              {deleting ? 'Deleting...' : delConfirm ? 'Confirm delete' : 'Delete'}
+            </button>
+          </div>
+          {delConfirm && (
+            <button onClick={function() { setDelConfirm(false) }} className="text-xs text-gray-400 self-start">
+              Cancel
+            </button>
+          )}
+        </div>
       )}
-    </div>
-  )
-}
-
-function VisibilityToggle({ value, onChange }: {
-  value:    'private' | 'public'
-  onChange: (v: 'private' | 'public') => void
-}) {
-  return (
-    <div className="flex gap-3">
-      <button onClick={() => onChange('private')}
-        className={"flex-1 text-left border rounded-lg px-4 py-3 transition-colors " +
-          (value === 'private' ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200')}>
-        <p className={"text-sm font-medium " + (value === 'private' ? 'text-orange-700' : 'text-gray-700')}>Private</p>
-        <p className="text-xs text-gray-500 mt-0.5">Only you and org members</p>
-      </button>
-      <button onClick={() => onChange('public')}
-        className={"flex-1 text-left border rounded-lg px-4 py-3 transition-colors " +
-          (value === 'public' ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200')}>
-        <p className={"text-sm font-medium " + (value === 'public' ? 'text-orange-700' : 'text-gray-700')}>Public</p>
-        <p className="text-xs text-gray-500 mt-0.5">Anyone in your org can view</p>
-      </button>
     </div>
   )
 }

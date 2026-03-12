@@ -1,165 +1,148 @@
 'use client'
 
+// components/analyze/SchemaEditor.tsx
+// Phase 1: read-only display of field types with editable dropdowns
+// Phase 2: full Ana schema editor with remapping + derived fields
+
 import { useState } from 'react'
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType } from '@/lib/analyzeTypes'
 
 interface Props {
-  schema:      SchemaConfig
-  onSave:      (schema: SchemaConfig) => Promise<void>
-  isSaving?:   boolean
+  schema:    SchemaConfig
+  onChange?: (s: SchemaConfig) => void
+  readOnly?: boolean
 }
+
+const HERMES = '#E8632A'
 
 const FIELD_TYPES: AnaFieldType[] = ['open-ended', 'categorical', 'numeric', 'date', 'id', 'ignore']
 
 const TYPE_COLORS: Record<AnaFieldType, string> = {
-  'open-ended':   'bg-purple-100 text-purple-700',
-  'categorical':  'bg-blue-100 text-blue-700',
-  'numeric':      'bg-green-100 text-green-700',
-  'date':         'bg-amber-100 text-amber-700',
-  'id':           'bg-gray-100 text-gray-500',
-  'ignore':       'bg-red-50 text-red-400',
+  'open-ended':  'bg-purple-50 text-purple-700 border-purple-200',
+  'categorical': 'bg-blue-50 text-blue-700 border-blue-200',
+  'numeric':     'bg-green-50 text-green-700 border-green-200',
+  'date':        'bg-amber-50 text-amber-700 border-amber-200',
+  'id':          'bg-gray-50 text-gray-500 border-gray-200',
+  'ignore':      'bg-red-50 text-red-500 border-red-200',
 }
 
-export default function SchemaEditor({ schema, onSave, isSaving }: Props) {
-  const [fields, setFields] = useState<SchemaFieldConfig[]>(schema.fields)
-  const [dirty, setDirty]   = useState(false)
-
-  function updateFieldType(index: number, type: AnaFieldType) {
-    const next = fields.map((f, i) => i === index ? { ...f, type } : f)
-    setFields(next)
-    setDirty(true)
-  }
-
-  function updateFieldLabel(index: number, label: string) {
-    const next = fields.map((f, i) => i === index ? { ...f, label } : f)
-    setFields(next)
-    setDirty(true)
-  }
-
-  function toggleHidden(index: number) {
-    const next = fields.map((f, i) => i === index ? { ...f, hidden: !f.hidden } : f)
-    setFields(next)
-    setDirty(true)
-  }
-
-  async function handleSave() {
-    const updated: SchemaConfig = {
-      ...schema,
-      fields,
-      autoDetected: false,
-      version: schema.version + 1,
-    }
-    await onSave(updated)
-    setDirty(false)
-  }
-
+function FieldRow({ field, onTypeChange, readOnly }: {
+  field: SchemaFieldConfig
+  onTypeChange: (type: AnaFieldType) => void
+  readOnly?: boolean
+}) {
   return (
-    <div className="flex flex-col gap-4">
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-gray-900">Field Schema</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {schema.autoDetected
-              ? 'Types were auto-detected. Review and confirm before analyzing.'
-              : 'Schema confirmed — version ' + schema.version + '.'}
-          </p>
-        </div>
-        {dirty && (
-          <button onClick={handleSave} disabled={isSaving}
-            className="text-sm font-medium px-4 py-1.5 rounded-lg text-white transition-opacity"
-            style={{ background: '#E8632A', opacity: isSaving ? 0.6 : 1 }}>
-            {isSaving ? 'Saving...' : 'Save schema'}
-          </button>
-        )}
-      </div>
-
-      {/* Fields table */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-600 w-1/3">Field</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-600 w-1/4">Type</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-600">Display label</th>
-              <th className="text-center px-4 py-2.5 font-medium text-gray-600 w-20">Hide</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fields.map((f, i) => (
-              <FieldRow
-                key={f.field}
-                field={f}
-                index={i}
-                onTypeChange={updateFieldType}
-                onLabelChange={updateFieldLabel}
-                onToggleHidden={toggleHidden}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {fields.length === 0 && (
-        <p className="text-sm text-gray-400 text-center py-6">
-          No fields detected. Upload a dataset to get started.
-        </p>
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-b-0 hover:bg-gray-50/50 transition-colors">
+      <span className="flex-1 text-sm font-mono text-gray-700 truncate">{field.field}</span>
+      {field.label && (
+        <span className="text-xs text-gray-400 truncate max-w-32">{field.label}</span>
+      )}
+      {readOnly ? (
+        <span className={'text-xs font-semibold px-2.5 py-1 rounded-full border ' + TYPE_COLORS[field.type]}>
+          {field.type}
+        </span>
+      ) : (
+        <select
+          value={field.type}
+          onChange={function(e) { onTypeChange(e.target.value as AnaFieldType) }}
+          className={'text-xs font-semibold px-2 py-1 rounded-lg border outline-none cursor-pointer ' + TYPE_COLORS[field.type]}
+        >
+          {FIELD_TYPES.map(function(t) {
+            return <option key={t} value={t}>{t}</option>
+          })}
+        </select>
       )}
     </div>
   )
 }
 
-// Extracted as named function per SWC rules
-function FieldRow({ field, index, onTypeChange, onLabelChange, onToggleHidden }: {
-  field:           SchemaFieldConfig
-  index:           number
-  onTypeChange:    (i: number, t: AnaFieldType) => void
-  onLabelChange:   (i: number, l: string) => void
-  onToggleHidden:  (i: number) => void
-}) {
-  const TYPE_COLORS: Record<AnaFieldType, string> = {
-    'open-ended':  'bg-purple-100 text-purple-700',
-    'categorical': 'bg-blue-100 text-blue-700',
-    'numeric':     'bg-green-100 text-green-700',
-    'date':        'bg-amber-100 text-amber-700',
-    'id':          'bg-gray-100 text-gray-500',
-    'ignore':      'bg-red-50 text-red-400',
+export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
+  const [saving, setSaving] = useState(false)
+
+  function handleTypeChange(fieldName: string, newType: AnaFieldType) {
+    if (!onChange) return
+    const updated: SchemaConfig = {
+      ...schema,
+      fields: schema.fields.map(function(f) {
+        return f.field === fieldName ? { ...f, type: newType } : f
+      }),
+      version: schema.version + 1,
+      autoDetected: false,
+    }
+    onChange(updated)
   }
-  const FIELD_TYPES: AnaFieldType[] = ['open-ended', 'categorical', 'numeric', 'date', 'id', 'ignore']
+
+  async function handleSave() {
+    if (!onChange) return
+    setSaving(true)
+    try {
+      await fetch(window.location.pathname.replace('/settings', '') + '/state', {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ schema_config: schema }),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!schema.fields || schema.fields.length === 0) {
+    return (
+      <div className="text-center py-10 text-gray-400 text-sm">
+        No schema configured yet. Upload a dataset or sync a study to populate the schema.
+      </div>
+    )
+  }
+
+  const primaryField = schema.primaryTextField
 
   return (
-    <tr className={"border-b border-gray-100 last:border-0 " + (field.hidden ? 'opacity-40' : '')}>
-      <td className="px-4 py-2.5">
-        <span className="font-mono text-xs text-gray-700">{field.field}</span>
-      </td>
-      <td className="px-4 py-2.5">
-        <select
-          value={field.type}
-          onChange={e => onTypeChange(index, e.target.value as AnaFieldType)}
-          className={"text-xs px-2 py-1 rounded-full border-0 font-medium cursor-pointer " + TYPE_COLORS[field.type]}>
-          {FIELD_TYPES.map(t => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
-      </td>
-      <td className="px-4 py-2.5">
-        <input
-          type="text"
-          value={field.label || ''}
-          placeholder={field.field}
-          onChange={e => onLabelChange(index, e.target.value)}
-          className="text-sm text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-orange-400 outline-none w-full transition-colors py-0.5"
-        />
-      </td>
-      <td className="px-4 py-2.5 text-center">
-        <input
-          type="checkbox"
-          checked={!!field.hidden}
-          onChange={() => onToggleHidden(index)}
-          className="w-4 h-4 accent-orange-500 cursor-pointer"
-        />
-      </td>
-    </tr>
+    <div className="flex flex-col gap-4">
+      {schema.autoDetected && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+          <span className="text-amber-500 text-sm">i</span>
+          <span className="text-xs text-amber-700 font-medium">
+            Field types were auto-detected. Review and confirm before analysis.
+          </span>
+        </div>
+      )}
+
+      {primaryField && (
+        <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-xl px-4 py-2.5">
+          <span className="text-purple-500 text-sm">T</span>
+          <span className="text-xs text-purple-700 font-medium">
+            TextMine primary field: <span className="font-mono">{primaryField}</span>
+          </span>
+        </div>
+      )}
+
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <span className="text-sm font-bold text-gray-700">{schema.fields.length} fields</span>
+          <span className="text-xs text-gray-400">v{schema.version}</span>
+        </div>
+        {schema.fields.map(function(f) {
+          return (
+            <FieldRow
+              key={f.field}
+              field={f}
+              onTypeChange={function(t) { handleTypeChange(f.field, t) }}
+              readOnly={readOnly}
+            />
+          )
+        })}
+      </div>
+
+      {!readOnly && onChange && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="self-start px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
+          style={{ background: HERMES }}
+        >
+          {saving ? 'Saving...' : 'Save schema'}
+        </button>
+      )}
+    </div>
   )
 }

@@ -1,123 +1,134 @@
-// ============================================================
-// SENTIMETRX -- Analyze Module Utilities
 // lib/datasetUtils.ts
-// ============================================================
+// Data pipeline helpers for the Analyze module
 
-import type { DatasetRowBatch, SchemaConfig, SchemaFieldConfig, AnaFieldType } from './analyzeTypes'
-import type { Study, StudyConfig, SurveyPayload } from './types'
+import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, DatasetRowBatch, ProcessedRow } from './analyzeTypes'
+import type { SurveyPayload, StudyConfig } from './types'
 
-// ── Row merging ──────────────────────────────────────────────
+// -- Column name sanitizer -----------------------------------------
 
-/**
- * Merge multiple dataset_rows batches into a single flat array,
- * ordered by batch_index ascending.
- */
+export function sanitizeColumnName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64)
+}
+
+// -- Merge row batches into flat array ----------------------------
+
 export function mergeRowBatches(batches: DatasetRowBatch[]): Record<string, unknown>[] {
-  return batches
-    .slice()
-    .sort((a, b) => a.batch_index - b.batch_index)
-    .flatMap(b => b.rows)
+  const sorted = [...batches].sort(function(a, b) { return a.batch_index - b.batch_index })
+  const merged: Record<string, unknown>[] = []
+  for (const batch of sorted) {
+    for (const row of batch.rows) {
+      merged.push(row)
+    }
+  }
+  return merged
 }
 
-// ── Schema auto-detection (Ana heuristics from ana_spec Part 16) ──
+// -- Apply schema to raw rows -------------------------------------
 
-function isDateLike(val: string): boolean {
-  if (!val || typeof val !== 'string') return false
-  const d = new Date(val)
-  return !isNaN(d.getTime()) && val.length > 4
-}
-
-/**
- * Auto-detect field types from raw rows.
- * Returns a SchemaConfig with autoDetected = true.
- * Users should confirm/adjust in the schema editor.
- */
-export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig {
-  if (!rows.length) return { fields: [], autoDetected: true, version: 1 }
-
-  const keys = Object.keys(rows[0])
-  const fields: SchemaFieldConfig[] = keys.map(field => {
-    const values = rows.map(r => r[field]).filter(v => v !== null && v !== undefined && v !== '')
-    const total = values.length
-    if (total === 0) return { field, type: 'ignore' as AnaFieldType }
-
-    const stringVals = values.map(v => String(v))
-    const numericCount = stringVals.filter(v => !isNaN(Number(v)) && v.trim() !== '').length
-    const dateCount = stringVals.filter(v => isDateLike(v)).length
-    const uniqueRatio = new Set(stringVals).size / total
-    const avgLen = stringVals.reduce((s, v) => s + v.length, 0) / total
-
-    // id: very high uniqueness, short values
-    if (uniqueRatio > 0.95 && avgLen < 40) return { field, type: 'id' as AnaFieldType }
-    // numeric: >=80% parse as numbers
-    if (numericCount / total >= 0.8) return { field, type: 'numeric' as AnaFieldType }
-    // date: >=80% look like dates
-    if (dateCount / total >= 0.8) return { field, type: 'date' as AnaFieldType }
-    // open-ended: avg length > 30 chars with high uniqueness
-    if (avgLen > 30 && uniqueRatio > 0.5) return { field, type: 'open-ended' as AnaFieldType }
-    // categorical: few distinct values
-    return { field, type: 'categorical' as AnaFieldType }
-  })
-
-  // Pick the first open-ended field as primaryTextField
-  const primaryTextField = fields.find(f => f.type === 'open-ended')?.field
-
-  return { fields, primaryTextField, autoDetected: true, version: 1 }
-}
-
-/**
- * Apply schema config to raw rows:
- * - Remove hidden fields
- * - Apply numeric type coercions
- * - Apply value remappings
- */
 export function applySchema(
   rows: Record<string, unknown>[],
   schema: SchemaConfig
-): Record<string, unknown>[] {
-  if (!schema.fields.length) return rows
+): ProcessedRow[] {
+  const fieldMap: Record<string, SchemaFieldConfig> = {}
+  for (const f of schema.fields) {
+    fieldMap[f.field] = f
+  }
 
-  const visible = schema.fields.filter(f => !f.hidden)
-  const visibleKeys = new Set(visible.map(f => f.field))
+  return rows.map(function(row) {
+    const out: ProcessedRow = {}
+    for (const [key, val] of Object.entries(row)) {
+      const cfg = fieldMap[key]
+      if (cfg?.hidden) continue
+      if (cfg?.type === 'ignore') continue
 
-  return rows.map(row => {
-    const out: Record<string, unknown> = {}
-    for (const f of visible) {
-      if (!(f.field in row)) continue
-      let val = row[f.field]
-      // apply remapping
-      if (f.remapping && typeof val === 'string' && val in f.remapping) {
-        val = f.remapping[val]
+      let processed: unknown = val
+
+      if (cfg?.remapping && typeof val === 'string' && val in cfg.remapping) {
+        processed = cfg.remapping[val]
+      } else if (cfg?.type === 'numeric' && typeof val === 'string') {
+        const n = parseFloat(val)
+        processed = isNaN(n) ? null : n
+      } else if (cfg?.type === 'date' && typeof val === 'string') {
+        processed = val || null
       }
-      // coerce numeric
-      if (f.type === 'numeric' && typeof val === 'string') {
-        const n = Number(val)
-        if (!isNaN(n)) val = n
-      }
-      out[f.field] = val
+
+      const outputKey = cfg?.label ? sanitizeColumnName(cfg.label) : key
+      out[outputKey] = processed
     }
     return out
   })
 }
 
-// ── Survey response formatter ────────────────────────────────
+// -- Auto-detect field types from raw rows -------------------------
+// Heuristics: numeric threshold 80%, date threshold 70%, id detection by name
 
-/**
- * Sanitize a string for use as a JSON object key / column name.
- * Replaces non-alphanumeric chars with underscores, lowercases.
- */
-export function sanitizeColumnName(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 60)
+export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig {
+  if (rows.length === 0) {
+    return { fields: [], autoDetected: true, version: 1 }
+  }
+
+  const columns = Object.keys(rows[0])
+  const sampleSize = Math.min(rows.length, 100)
+  const sample = rows.slice(0, sampleSize)
+
+  const fields: SchemaFieldConfig[] = columns.map(function(col) {
+    const colLower = col.toLowerCase()
+
+    // ID fields by name pattern
+    if (colLower === 'id' || colLower.endsWith('_id') || colLower === 'response_id') {
+      return { field: col, type: 'id' as AnaFieldType }
+    }
+
+    // Date fields by name pattern
+    if (
+      colLower.includes('date') ||
+      colLower.includes('_at') ||
+      colLower.includes('timestamp') ||
+      colLower.includes('time')
+    ) {
+      return { field: col, type: 'date' as AnaFieldType }
+    }
+
+    const values = sample.map(function(r) { return r[col] }).filter(function(v) { return v != null && v !== '' })
+    if (values.length === 0) return { field: col, type: 'ignore' as AnaFieldType }
+
+    // Numeric detection
+    const numericCount = values.filter(function(v) {
+      return !isNaN(parseFloat(String(v))) && isFinite(Number(v))
+    }).length
+    if (numericCount / values.length >= 0.8) {
+      return { field: col, type: 'numeric' as AnaFieldType }
+    }
+
+    // Open-ended detection: long text values
+    const avgLen = values.reduce(function(sum, v) { return sum + String(v).length }, 0) / values.length
+    const uniqueRatio = new Set(values.map(String)).size / values.length
+    if (avgLen > 40 || (uniqueRatio > 0.7 && avgLen > 15)) {
+      return { field: col, type: 'open-ended' as AnaFieldType }
+    }
+
+    // Categorical: short values, limited unique set
+    return { field: col, type: 'categorical' as AnaFieldType }
+  })
+
+  // Pick primary text field (first open-ended)
+  const firstOpenEnded = fields.find(function(f) { return f.type === 'open-ended' })
+
+  return {
+    fields,
+    primaryTextField: firstOpenEnded?.field,
+    autoDetected: true,
+    version: 1,
+  }
 }
 
-/**
- * Flatten custom question answers from payload.
- * Keys are sanitized from question prompt, prefixed with 'cq_'.
- */
+// -- Flatten custom question answers from payload JSONB -----------
+
 export function flattenCustomQuestions(
   payload: SurveyPayload,
   config: StudyConfig
@@ -125,99 +136,108 @@ export function flattenCustomQuestions(
   const out: Record<string, unknown> = {}
   if (!payload.customAnswers || !config.questions) return out
 
-  for (const q of config.questions) {
-    const key = 'cq_' + sanitizeColumnName(q.exportLabel || q.prompt)
-    const val = payload.customAnswers[q.id]
-    if (val !== undefined) {
-      out[key] = Array.isArray(val) ? val.join(', ') : val
-    }
+  for (const question of config.questions) {
+    const raw = payload.customAnswers[question.id]
+    if (raw == null) continue
+    const colName = sanitizeColumnName(question.exportLabel || question.prompt || question.id)
+    out[colName] = Array.isArray(raw) ? raw.join(', ') : raw
   }
   return out
 }
 
-/**
- * Flatten psychographic answers from payload.
- * Keys are prefixed with 'psych_'.
- */
+// -- Flatten psychographic answers --------------------------------
+
 export function flattenPsychographics(payload: SurveyPayload): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   if (!payload.psychographics) return out
   for (const [key, val] of Object.entries(payload.psychographics)) {
-    out['psych_' + sanitizeColumnName(key)] = val
+    out['psycho_' + sanitizeColumnName(key)] = val
   }
   return out
 }
 
-// Response row shape (DB row from responses table)
+// -- Format study responses as flat rows for dataset storage -------
+
 interface ResponseRow {
-  id:               string
-  nps_score:        number | null
+  id:             string
+  created_at:     string
+  nps_score:      number | null
   experience_score: number | null
-  sentiment:        string | null
-  duration_sec:     number | null
-  created_at:       string
-  payload:          SurveyPayload
+  sentiment:      string | null
+  duration_sec:   number | null
+  payload:        SurveyPayload
 }
 
-/**
- * Format Sentimetrx response records as flat rows for dataset storage.
- * Produces the companion schema alongside so the dataset is pre-typed.
- */
+interface StudyForFormat {
+  id:     string
+  config: StudyConfig
+}
+
 export function formatResponsesAsRows(
   responses: ResponseRow[],
-  study: Study
-): { rows: Record<string, unknown>[]; schema: SchemaConfig } {
-  const rows = responses.map(r => {
-    const base: Record<string, unknown> = {
+  study: StudyForFormat
+): Record<string, unknown>[] {
+  return responses.map(function(r) {
+    return {
       response_id:      r.id,
       submitted_at:     r.created_at,
-      nps_score:        r.nps_score,
-      experience_score: r.experience_score,
-      sentiment:        r.sentiment,
-      duration_sec:     r.duration_sec,
+      nps_score:        r.nps_score ?? null,
+      experience_score: r.experience_score ?? null,
+      sentiment:        r.sentiment ?? null,
+      duration_sec:     r.duration_sec ?? null,
       q3_response:      r.payload?.openEnded?.q3 ?? null,
       q4_response:      r.payload?.openEnded?.q4 ?? null,
+      ...flattenCustomQuestions(r.payload, study.config),
+      ...flattenPsychographics(r.payload),
     }
-    const custom = flattenCustomQuestions(r.payload, study.config)
-    const psycho = flattenPsychographics(r.payload)
-    return { ...base, ...custom, ...psycho }
   })
+}
 
-  // Build a known-type schema (no guessing needed for survey data)
-  const baseFields: SchemaFieldConfig[] = [
-    { field: 'response_id',      type: 'id' },
-    { field: 'submitted_at',     type: 'date' },
-    { field: 'nps_score',        type: 'numeric' },
-    { field: 'experience_score', type: 'numeric' },
-    { field: 'sentiment',        type: 'categorical' },
-    { field: 'duration_sec',     type: 'numeric' },
-    { field: 'q3_response',      type: 'open-ended', label: study.config.q3ExportLabel || 'Q3 Response' },
-    { field: 'q4_response',      type: 'open-ended', label: study.config.q4ExportLabel || 'Q4 Response' },
+// -- Build auto-schema for a study-linked dataset ------------------
+// We KNOW the types -- no guessing needed
+
+export function buildStudySchema(config: StudyConfig): SchemaConfig {
+  const fields: SchemaFieldConfig[] = [
+    { field: 'response_id',       type: 'id' },
+    { field: 'submitted_at',      type: 'date' },
+    { field: 'nps_score',         type: 'numeric' },
+    { field: 'experience_score',  type: 'numeric' },
+    { field: 'sentiment',         type: 'categorical' },
+    { field: 'duration_sec',      type: 'numeric' },
+    { field: 'q3_response',       type: 'open-ended' },
+    { field: 'q4_response',       type: 'open-ended' },
   ]
 
-  // Custom question fields
-  const customFields: SchemaFieldConfig[] = (study.config.questions || []).map(q => {
-    const field = 'cq_' + sanitizeColumnName(q.exportLabel || q.prompt)
-    const type: AnaFieldType = (q.type === 'open') ? 'open-ended' : 'categorical'
-    return { field, type, label: q.exportLabel || q.prompt }
-  })
-
-  // Psychographic fields
-  const psychoFields: SchemaFieldConfig[] = (study.config.psychographicBank || []).map(q => ({
-    field: 'psych_' + sanitizeColumnName(q.key),
-    type: 'categorical' as AnaFieldType,
-    label: q.exportLabel || q.q,
-  }))
-
-  const allFields = [...baseFields, ...customFields, ...psychoFields]
-  const primaryTextField = 'q3_response'
-
-  const schema: SchemaConfig = {
-    fields: allFields,
-    primaryTextField,
-    autoDetected: false,  // we know the types
-    version: 1,
+  // Custom questions
+  if (config.questions) {
+    for (const q of config.questions) {
+      const col = sanitizeColumnName(q.exportLabel || q.prompt || q.id)
+      const type: AnaFieldType = (q.type === 'open' || q.type === 'numeric') ? 'open-ended' : 'categorical'
+      fields.push({ field: col, type })
+    }
   }
 
-  return { rows, schema }
+  // Psychographic questions
+  if (config.psychographicBank) {
+    for (const pq of config.psychographicBank) {
+      fields.push({ field: 'psycho_' + sanitizeColumnName(pq.key), type: 'categorical' })
+    }
+  }
+
+  return {
+    fields,
+    primaryTextField: 'q3_response',
+    autoDetected: false,
+    version: 1,
+  }
+}
+
+// -- Empty defaults for new dataset_state -------------------------
+
+export function emptyThemeModel() {
+  return { themes: [], aiGenerated: false, version: 1 }
+}
+
+export function emptySchemaConfig(): SchemaConfig {
+  return { fields: [], autoDetected: true, version: 1 }
 }

@@ -3,7 +3,7 @@
 // ============================================================
 
 export type ClientPlan = 'trial' | 'active' | 'suspended'
-
+export interface OrgFeatures { analyze?: boolean }
 // -- Likert / rating scale ------------------------------------
 
 export interface RatingOption {

@@ -1,351 +1,348 @@
 'use client'
 
-import { useState, useRef } from 'react'
+// app/analyze/new/UploadClient.tsx
+// Three-step upload flow: (1) Upload file (2) Name & describe (3) Confirm
+
+import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import TopNav from '@/components/nav/TopNav'
-
-interface Props {
-  userEmail: string
-  fullName:  string
-}
-
-type Step = 'upload' | 'name' | 'confirm'
-
-interface ParsedFile {
-  name:     string
-  rows:     Record<string, unknown>[]
-  columns:  string[]
-  rawText:  string
-}
+import { autoDetectSchema } from '@/lib/datasetUtils'
 
 const HERMES = '#E8632A'
 
-// Simple CSV parser -- handles quoted fields and common delimiters
-function parseCSV(text: string, delimiter: string): Record<string, unknown>[] {
-  const lines = text.trim().split(/\r?\n/)
+type Step = 1 | 2 | 3
+
+interface ParsedFile {
+  rows:     Record<string, unknown>[]
+  columns:  string[]
+  filename: string
+}
+
+function parseCSV(text: string): Record<string, unknown>[] {
+  const lines = text.trim().split('\n').filter(function(l) { return l.trim() })
   if (lines.length < 2) return []
-  const headers = lines[0].split(delimiter).map(h => h.replace(/^"|"$/g, '').trim())
-  return lines.slice(1).map(line => {
-    const vals = line.split(delimiter).map(v => v.replace(/^"|"$/g, '').trim())
+  const headers = lines[0].split(',').map(function(h) { return h.trim().replace(/^"|"$/g, '') })
+  return lines.slice(1).map(function(line) {
+    const vals = line.split(',').map(function(v) { return v.trim().replace(/^"|"$/g, '') })
     const row: Record<string, unknown> = {}
-    headers.forEach((h, i) => { row[h] = vals[i] ?? '' })
+    headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
     return row
   })
 }
 
-function detectDelimiter(text: string): string {
-  const sample = text.slice(0, 500)
-  const tabs   = (sample.match(/\t/g) || []).length
-  const commas = (sample.match(/,/g)  || []).length
-  return tabs > commas ? '\t' : ','
+function parseTSV(text: string): Record<string, unknown>[] {
+  const lines = text.trim().split('\n').filter(function(l) { return l.trim() })
+  if (lines.length < 2) return []
+  const headers = lines[0].split('\t').map(function(h) { return h.trim() })
+  return lines.slice(1).map(function(line) {
+    const vals = line.split('\t')
+    const row: Record<string, unknown> = {}
+    headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
+    return row
+  })
 }
 
-function parseJSON(text: string): Record<string, unknown>[] {
-  const parsed = JSON.parse(text)
-  return Array.isArray(parsed) ? parsed : [parsed]
-}
-
-export default function UploadClient({ userEmail, fullName }: Props) {
+export default function UploadClient() {
   const router = useRouter()
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  const [step, setStep]           = useState<Step>('upload')
-  const [parsed, setParsed]       = useState<ParsedFile | null>(null)
+  const [step,       setStep]       = useState<Step>(1)
+  const [parsed,     setParsed]     = useState<ParsedFile | null>(null)
   const [parseError, setParseError] = useState('')
-  const [isDragging, setIsDragging] = useState(false)
-  const [datasetName, setDatasetName] = useState('')
+  const [dragging,   setDragging]   = useState(false)
+  const [name,       setName]       = useState('')
   const [description, setDescription] = useState('')
-  const [visibility, setVisibility]   = useState<'private' | 'public'>('private')
-  const [creating, setCreating]       = useState(false)
-  const [createError, setCreateError] = useState('')
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private')
+  const [creating,   setCreating]   = useState(false)
+  const [error,      setError]      = useState('')
 
   function handleFile(file: File) {
     setParseError('')
     const reader = new FileReader()
-    reader.onload = e => {
+    reader.onload = function(e) {
       const text = e.target?.result as string
       try {
-        let rows: Record<string, unknown>[]
+        let rows: Record<string, unknown>[] = []
         if (file.name.endsWith('.json')) {
-          rows = parseJSON(text)
+          rows = JSON.parse(text)
+          if (!Array.isArray(rows)) rows = [rows]
+        } else if (file.name.endsWith('.tsv')) {
+          rows = parseTSV(text)
         } else {
-          const delim = detectDelimiter(text)
-          rows = parseCSV(text, delim)
+          rows = parseCSV(text)
         }
-        if (rows.length === 0) throw new Error('No data rows found in file')
-        const columns = Object.keys(rows[0])
-        const baseName = file.name.replace(/\.(csv|tsv|json)$/, '')
-        setParsed({ name: file.name, rows, columns, rawText: text })
-        setDatasetName(baseName)
-        setStep('name')
-      } catch (err: any) {
-        setParseError(err.message || 'Could not parse file')
+        if (rows.length === 0) { setParseError('No data rows found in this file.'); return }
+        setParsed({ rows, columns: Object.keys(rows[0] || {}), filename: file.name })
+        setName(file.name.replace(/\.[^/.]+$/, ''))
+        setStep(2)
+      } catch {
+        setParseError('Could not parse this file. Please check the format and try again.')
       }
     }
     reader.readAsText(file)
   }
 
-  function handleDrop(e: React.DragEvent) {
+  const handleDrop = useCallback(function(e: React.DragEvent) {
     e.preventDefault()
-    setIsDragging(false)
+    setDragging(false)
     const file = e.dataTransfer.files[0]
     if (file) handleFile(file)
-  }
-
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) handleFile(file)
-  }
+  }, [])
 
   async function handleCreate() {
-    if (!parsed || !datasetName.trim()) return
+    if (!parsed || !name.trim()) return
     setCreating(true)
-    setCreateError('')
+    setError('')
     try {
-      // Create dataset record
-      const createRes = await fetch('/api/datasets', {
+      const schema = autoDetectSchema(parsed.rows)
+
+      // Create the dataset record
+      const dsRes  = await fetch('/api/datasets', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          name:        datasetName.trim(),
-          description: description.trim() || null,
-          source:      'upload',
-          visibility,
-        }),
+        body:    JSON.stringify({ name: name.trim(), description: description || null, source: 'upload', visibility }),
       })
-      if (!createRes.ok) {
-        const err = await createRes.json()
-        throw new Error(err.error || 'Failed to create dataset')
-      }
-      const { id } = await createRes.json()
+      const dsData = await dsRes.json()
+      if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
 
-      // Upload rows
-      const rowsRes = await fetch('/api/datasets/' + id + '/rows', {
+      // Upload the rows
+      const rowsRes = await fetch('/api/datasets/' + dsData.id + '/rows', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ rows: parsed.rows, source_ref: parsed.name }),
+        body:    JSON.stringify({ rows: parsed.rows, source_ref: parsed.filename }),
       })
-      if (!rowsRes.ok) {
-        const err = await rowsRes.json()
-        throw new Error(err.error || 'Failed to upload rows')
-      }
+      if (!rowsRes.ok) { setError('Failed to upload rows'); return }
 
-      // Navigate to schema editor (settings page)
-      router.push('/analyze/' + id + '/settings?new=1')
-    } catch (err: any) {
-      setCreateError(err.message || 'Something went wrong')
+      // Save the auto-detected schema to state
+      await fetch('/api/datasets/' + dsData.id + '/state', {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ schema_config: schema, theme_model: { themes: [], aiGenerated: false, version: 1 }, saved_charts: [], saved_stats: [], filter_state: {} }),
+      })
+
+      router.push('/analyze/' + dsData.id + '/settings')
+    } catch {
+      setError('Unexpected error. Please try again.')
+    } finally {
       setCreating(false)
     }
   }
 
+  const preview = parsed ? parsed.rows.slice(0, 10) : []
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <TopNav userEmail={userEmail} fullName={fullName} analyzeEnabled={true} currentPage="analyze" />
+    <div className="flex flex-col gap-6">
 
-      <main className="pt-14">
-        <div className="max-w-2xl mx-auto px-5 py-10">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
+          <button onClick={function() { router.push('/analyze') }} className="hover:text-gray-600 transition-colors">Analyze</button>
+          <span>/</span>
+          <span className="text-gray-700 font-medium">Upload Dataset</span>
+        </div>
+        <h1 className="text-2xl font-black text-gray-800">Upload a Dataset</h1>
+      </div>
 
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-            <Link href="/analyze" className="hover:text-orange-600 transition-colors">Analyze</Link>
-            <span>/</span>
-            <span className="text-gray-700">Upload Dataset</span>
+      {/* Step indicator */}
+      <div className="flex items-center gap-3">
+        {([1, 2, 3] as Step[]).map(function(s) {
+          const labels: Record<Step, string> = { 1: 'Upload', 2: 'Details', 3: 'Confirm' }
+          const done    = step > s
+          const current = step === s
+          return (
+            <div key={s} className="flex items-center gap-2">
+              <div className={'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ' +
+                (done ? 'bg-green-500 text-white' : current ? 'text-white' : 'bg-gray-100 text-gray-400')}
+                style={current ? { background: HERMES } : {}}>
+                {done ? '+' : s}
+              </div>
+              <span className={'text-sm font-medium ' + (current ? 'text-gray-800' : 'text-gray-400')}>
+                {labels[s]}
+              </span>
+              {s < 3 && <div className="w-8 h-px bg-gray-200" />}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Step 1: Upload */}
+      {step === 1 && (
+        <div className="flex flex-col gap-4">
+          <div
+            onDragOver={function(e) { e.preventDefault(); setDragging(true) }}
+            onDragLeave={function() { setDragging(false) }}
+            onDrop={handleDrop}
+            className={'border-2 border-dashed rounded-2xl p-12 text-center transition-all ' +
+              (dragging ? 'border-orange-400 bg-orange-50' : 'border-gray-300 hover:border-gray-400 bg-white')}
+          >
+            <div className="text-4xl mb-3">+</div>
+            <p className="text-gray-600 font-semibold mb-1">Drag and drop your file here</p>
+            <p className="text-gray-400 text-sm mb-4">CSV, TSV, or JSON files</p>
+            <label className="cursor-pointer">
+              <span className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 inline-block" style={{ background: HERMES }}>
+                Browse files
+              </span>
+              <input
+                type="file"
+                accept=".csv,.tsv,.json"
+                className="hidden"
+                onChange={function(e) { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+              />
+            </label>
+          </div>
+          {parseError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{parseError}</div>
+          )}
+        </div>
+      )}
+
+      {/* Step 2: Name & Describe */}
+      {step === 2 && parsed && (
+        <div className="flex flex-col gap-4">
+          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
+            <span className="text-green-500">+</span>
+            <div>
+              <p className="text-sm font-semibold text-green-700">{parsed.filename}</p>
+              <p className="text-xs text-green-600">{parsed.rows.length.toLocaleString()} rows, {parsed.columns.length} columns</p>
+            </div>
           </div>
 
-          {/* Step indicator */}
-          <StepIndicator step={step} />
-
-          {/* Step: Upload */}
-          {step === 'upload' && (
-            <div className="mt-8">
-              <div
-                onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileRef.current?.click()}
-                className={"border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors " +
-                  (isDragging ? 'border-orange-400 bg-orange-50' : 'border-gray-300 hover:border-orange-300 bg-white')}>
-                <div className="text-4xl mb-3">📁</div>
-                <p className="font-medium text-gray-700">Drop your file here, or click to browse</p>
-                <p className="text-sm text-gray-400 mt-1">Accepts .csv, .tsv, .json</p>
-                <input ref={fileRef} type="file" accept=".csv,.tsv,.json" className="hidden" onChange={handleFileInput} />
-              </div>
-              {parseError && (
-                <p className="text-sm text-red-600 mt-3 text-center">{parseError}</p>
-              )}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-700">Dataset name</label>
+              <input
+                value={name}
+                onChange={function(e) { setName(e.target.value) }}
+                placeholder="e.g. Q1 2026 Customer Feedback"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors"
+              />
             </div>
-          )}
-
-          {/* Step: Name */}
-          {step === 'name' && parsed && (
-            <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-5">
-              <PreviewTable columns={parsed.columns} rows={parsed.rows.slice(0, 5)} rowCount={parsed.rows.length} />
-
-              <div className="flex flex-col gap-4 pt-2 border-t border-gray-100">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Dataset name *</label>
-                  <input
-                    type="text"
-                    value={datasetName}
-                    onChange={e => setDatasetName(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"
-                    placeholder="e.g. Q1 Customer Feedback"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                  <input
-                    type="text"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"
-                    placeholder="Optional"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Visibility</label>
-                  <div className="flex gap-3">
-                    <VisibilityOption
-                      value="private" current={visibility}
-                      label="Private" desc="Only you and org members"
-                      onSelect={() => setVisibility('private')}
-                    />
-                    <VisibilityOption
-                      value="public" current={visibility}
-                      label="Public" desc="Anyone in your org can view"
-                      onSelect={() => setVisibility('public')}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setStep('upload')}
-                  className="text-sm text-gray-500 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
-                  Back
-                </button>
-                <button
-                  onClick={() => setStep('confirm')}
-                  disabled={!datasetName.trim()}
-                  className="text-sm font-medium px-4 py-2 rounded-lg text-white disabled:opacity-50"
-                  style={{ background: HERMES }}>
-                  Continue
-                </button>
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-700">Description <span className="text-gray-400 font-normal">(optional)</span></label>
+              <textarea
+                value={description}
+                onChange={function(e) { setDescription(e.target.value) }}
+                placeholder="Brief description of this dataset..."
+                rows={2}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors resize-none"
+              />
             </div>
-          )}
-
-          {/* Step: Confirm */}
-          {step === 'confirm' && parsed && (
-            <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6 flex flex-col gap-5">
-              <h2 className="font-semibold text-gray-900">Confirm dataset</h2>
-              <div className="flex flex-col gap-2 text-sm">
-                <Row label="Name"        value={datasetName} />
-                <Row label="Rows"        value={parsed.rows.length.toLocaleString()} />
-                <Row label="Columns"     value={parsed.columns.length.toString()} />
-                <Row label="Visibility"  value={visibility} />
-              </div>
-              {createError && (
-                <p className="text-sm text-red-600">{createError}</p>
-              )}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-gray-700">Visibility</label>
               <div className="flex gap-3">
-                <button onClick={() => setStep('name')}
-                  className="text-sm text-gray-500 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
-                  Back
-                </button>
-                <button onClick={handleCreate} disabled={creating}
-                  className="text-sm font-medium px-5 py-2 rounded-lg text-white disabled:opacity-60"
-                  style={{ background: HERMES }}>
-                  {creating ? 'Creating...' : 'Create Dataset'}
-                </button>
+                {(['private', 'public'] as const).map(function(v) {
+                  return (
+                    <label key={v} className={'flex items-center gap-2.5 px-4 py-2.5 rounded-xl border cursor-pointer transition-all ' +
+                      (visibility === v ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-gray-300')}>
+                      <input type="radio" name="visibility" value={v} checked={visibility === v}
+                        onChange={function() { setVisibility(v) }} className="accent-orange-500" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">{v.charAt(0).toUpperCase() + v.slice(1)}</p>
+                        <p className="text-xs text-gray-400">{v === 'private' ? 'Only your org can see this' : 'Visible to all with the link'}</p>
+                      </div>
+                    </label>
+                  )
+                })}
               </div>
             </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={function() { setStep(1) }} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+              Back
+            </button>
+            <button
+              onClick={function() { setStep(3) }}
+              disabled={!name.trim()}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
+              style={{ background: HERMES }}
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Confirm */}
+      {step === 3 && parsed && (
+        <div className="flex flex-col gap-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-4">
+            <h3 className="font-bold text-gray-800">Summary</h3>
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Name</span>
+                <span className="text-gray-800 font-semibold">{name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Rows</span>
+                <span className="text-gray-800 font-semibold">{parsed.rows.length.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Columns</span>
+                <span className="text-gray-800 font-semibold">{parsed.columns.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Visibility</span>
+                <span className="text-gray-800 font-semibold">{visibility}</span>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Columns</p>
+              <div className="flex flex-wrap gap-1.5">
+                {parsed.columns.map(function(c) {
+                  return (
+                    <span key={c} className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-1 rounded-lg">{c}</span>
+                  )
+                })}
+              </div>
+            </div>
+
+            {preview.length > 0 && (
+              <div className="overflow-x-auto">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">First {preview.length} rows</p>
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      {parsed.columns.slice(0, 6).map(function(c) {
+                        return <th key={c} className="text-left px-2 py-1.5 text-gray-500 font-semibold border border-gray-100 truncate max-w-24">{c}</th>
+                      })}
+                      {parsed.columns.length > 6 && <th className="px-2 py-1.5 text-gray-400 border border-gray-100">+{parsed.columns.length - 6}</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.slice(0, 5).map(function(row, i) {
+                      return (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                          {parsed.columns.slice(0, 6).map(function(c) {
+                            return <td key={c} className="px-2 py-1.5 text-gray-600 border border-gray-100 truncate max-w-24">{String(row[c] ?? '')}</td>
+                          })}
+                          {parsed.columns.length > 6 && <td className="px-2 py-1.5 border border-gray-100" />}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
           )}
+
+          <div className="flex gap-3">
+            <button onClick={function() { setStep(2) }} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+              Back
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
+              style={{ background: HERMES }}
+            >
+              {creating ? 'Creating...' : 'Create Dataset'}
+            </button>
+          </div>
         </div>
-      </main>
-    </div>
-  )
-}
-
-// Sub-components -- extracted as named functions per SWC rules
-
-function StepIndicator({ step }: { step: Step }) {
-  const steps: { key: Step; label: string }[] = [
-    { key: 'upload',  label: '1. Upload' },
-    { key: 'name',    label: '2. Configure' },
-    { key: 'confirm', label: '3. Confirm' },
-  ]
-  return (
-    <div className="flex items-center gap-2">
-      {steps.map((s, i) => (
-        <div key={s.key} className="flex items-center gap-2">
-          <span className={"text-sm font-medium px-3 py-1 rounded-full " +
-            (s.key === step ? 'text-white' : 'text-gray-400 bg-gray-100')}
-            style={s.key === step ? { background: '#E8632A' } : {}}>
-            {s.label}
-          </span>
-          {i < steps.length - 1 && <span className="text-gray-300">›</span>}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function PreviewTable({ columns, rows, rowCount }: { columns: string[]; rows: Record<string, unknown>[]; rowCount: number }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-gray-700 mb-2">
-        {'Preview — ' + rowCount.toLocaleString() + ' rows, ' + columns.length + ' columns'}
-      </p>
-      <div className="overflow-x-auto rounded-lg border border-gray-200 text-xs">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              {columns.slice(0, 6).map(col => (
-                <th key={col} className="px-3 py-2 text-left font-medium text-gray-600 truncate max-w-[120px]">
-                  {col}
-                </th>
-              ))}
-              {columns.length > 6 && <th className="px-3 py-2 text-gray-400">+{columns.length - 6} more</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className="border-t border-gray-100">
-                {columns.slice(0, 6).map(col => (
-                  <td key={col} className="px-3 py-2 text-gray-600 truncate max-w-[120px]">
-                    {String(row[col] ?? '')}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function VisibilityOption({ value, current, label, desc, onSelect }: {
-  value: string; current: string; label: string; desc: string; onSelect: () => void
-}) {
-  const active = value === current
-  return (
-    <button onClick={onSelect}
-      className={"flex-1 text-left border rounded-lg px-4 py-3 transition-colors " +
-        (active ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200')}>
-      <p className={"text-sm font-medium " + (active ? 'text-orange-700' : 'text-gray-700')}>{label}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
-    </button>
-  )
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between py-1.5 border-b border-gray-50">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium text-gray-800">{value}</span>
+      )}
     </div>
   )
 }

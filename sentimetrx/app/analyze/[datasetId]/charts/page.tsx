@@ -1,7 +1,10 @@
+// app/analyze/[datasetId]/charts/page.tsx
+// Charts module hook -- Phase 1: data pipeline wired, placeholder UI
+
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { redirect, notFound } from 'next/navigation'
+import { mergeRowBatches, applySchema } from '@/lib/datasetUtils'
 import ModulePlaceholder from '@/components/analyze/ModulePlaceholder'
-import { mergeRowBatches } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,35 +15,46 @@ export default async function ChartsPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: batches } = await supabase
-    .from('dataset_rows')
-    .select('id, dataset_id, rows, row_count, batch_index, source_ref, created_at')
-    .eq('dataset_id', params.datasetId)
-    .order('batch_index', { ascending: true })
-
-  const { data: state } = await supabase
-    .from('dataset_state')
-    .select('schema_config, saved_charts')
-    .eq('dataset_id', params.datasetId)
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(features)')
+    .eq('id', user.id)
     .single()
 
-  const rows       = mergeRowBatches(batches || [])
-  const schema     = state?.schema_config as any
-  const fieldCount = schema?.fields?.length ?? 0
-  const schemaReady = schema && !schema.autoDetected && fieldCount > 0
+  const rawOrg  = userData?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  if (!orgData?.features?.analyze) redirect('/dashboard')
 
-  // PHASE 2 DROP-IN POINT:
-  // Replace <ModulePlaceholder ... /> with:
-  // <ChartsModule rows={rows} schema={schema} savedCharts={state?.saved_charts} datasetId={params.datasetId} />
+  const [{ data: batches }, { data: stateRow }] = await Promise.all([
+    supabase
+      .from('dataset_rows')
+      .select('*')
+      .eq('dataset_id', params.datasetId)
+      .order('batch_index', { ascending: true }),
+    supabase
+      .from('dataset_state')
+      .select('schema_config')
+      .eq('dataset_id', params.datasetId)
+      .single(),
+  ])
+
+  if (!stateRow) notFound()
+
+  const schema    = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
+  const rawRows   = mergeRowBatches(batches || [])
+  const rows      = applySchema(rawRows, schema)
+  const rowCount  = rows.length
+  const fieldCount = (schema.fields || []).filter(function(f: any) { return f.type !== 'ignore' }).length
+
+  // Phase 2 drop-in point: replace ModulePlaceholder with <ChartsModule rows={rows} schema={schema} datasetId={params.datasetId} />
 
   return (
     <ModulePlaceholder
-      datasetId={params.datasetId}
-      moduleName="Charts"
-      message="12 chart types powered by Plotly — bar, scatter, histogram, box plot, and more. In development."
-      rowCount={rows.length}
+      module="Charts"
+      message="Charts is in development. Your data is loaded and ready -- no re-upload needed when it launches."
+      rowCount={rowCount}
       fieldCount={fieldCount}
-      schemaReady={!!schemaReady}
+      datasetId={params.datasetId}
     />
   )
 }

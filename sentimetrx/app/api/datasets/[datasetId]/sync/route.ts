@@ -1,134 +1,115 @@
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+// app/api/datasets/[datasetId]/sync/route.ts
+// POST -- sync new study responses into an existing study-linked dataset
+
+import { NextResponse } from 'next/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
-import type { Study } from '@/lib/types'
 
-function serviceRole() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+export const dynamic = 'force-dynamic'
 
-type Params = { params: { datasetId: string } }
+interface Params { params: { datasetId: string } }
 
-// POST /api/datasets/[datasetId]/sync
-// Appends new study responses since last_synced_at.
-// Returns { synced, total, dataset_id }
-export async function POST(_req: NextRequest, { params }: Params) {
+export async function POST(_req: Request, { params }: Params) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const service = createServiceRoleClient()
+
   // Load the dataset
-  const { data: dataset } = await supabase
+  const { data: dataset, error: dsErr } = await service
     .from('datasets')
-    .select('id, study_id, row_count, last_synced_at, source')
+    .select('*')
     .eq('id', params.datasetId)
     .single()
 
-  if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  if (dsErr || !dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   if (dataset.source !== 'study' || !dataset.study_id) {
-    return NextResponse.json({ error: 'This dataset is not linked to a study' }, { status: 400 })
+    return NextResponse.json({ error: 'Dataset is not linked to a study' }, { status: 400 })
   }
 
-  // Load the study config
-  const { data: study } = await supabase
+  // Load the study (for config + schema generation)
+  const { data: study, error: studyErr } = await service
     .from('studies')
-    .select('id, guid, name, bot_name, bot_emoji, status, visibility, config, created_by, org_id, client_id, created_at')
+    .select('id, name, config')
     .eq('id', dataset.study_id)
     .single()
 
-  if (!study) return NextResponse.json({ error: 'Linked study not found' }, { status: 404 })
+  if (studyErr || !study) return NextResponse.json({ error: 'Linked study not found' }, { status: 404 })
 
-  // Fetch responses created after last_synced_at
-  let responsesQuery = supabase
+  // Query only new responses since last sync
+  let responsesQuery = service
     .from('responses')
-    .select('id, nps_score, experience_score, sentiment, duration_sec, created_at, payload')
+    .select('id, created_at, nps_score, experience_score, sentiment, duration_sec, payload')
     .eq('study_id', dataset.study_id)
+    .order('created_at', { ascending: true })
 
   if (dataset.last_synced_at) {
     responsesQuery = responsesQuery.gt('created_at', dataset.last_synced_at)
   }
 
-  const { data: responses, error: respError } = await responsesQuery
-  if (respError) return NextResponse.json({ error: respError.message }, { status: 500 })
+  const { data: responses, error: respErr } = await responsesQuery
+  if (respErr) return NextResponse.json({ error: respErr.message }, { status: 500 })
 
   const newResponses = responses || []
-  const syncedAt = new Date().toISOString()
+
+  // Get total response count for this study
+  const { count: totalCount } = await service
+    .from('responses')
+    .select('id', { count: 'exact', head: true })
+    .eq('study_id', dataset.study_id)
 
   if (newResponses.length === 0) {
-    // Nothing new -- still update last_synced_at
-    const sr = serviceRole()
-    await sr
-      .from('datasets')
-      .update({ last_synced_at: syncedAt, updated_at: syncedAt })
-      .eq('id', params.datasetId)
-
     return NextResponse.json({
       synced:     0,
-      total:      dataset.row_count,
-      dataset_id: params.datasetId,
+      total:      totalCount || dataset.row_count,
+      dataset_id: dataset.id,
     })
   }
 
   // Format responses as flat rows
-  const { rows, schema } = formatResponsesAsRows(newResponses as any, study as Study)
+  const rows = formatResponsesAsRows(newResponses as any, study as any)
 
-  // Get next batch index
-  const { data: lastBatch } = await supabase
+  // Get next batch_index
+  const { data: existingBatches } = await service
     .from('dataset_rows')
     .select('batch_index')
-    .eq('dataset_id', params.datasetId)
+    .eq('dataset_id', dataset.id)
     .order('batch_index', { ascending: false })
     .limit(1)
-    .single()
 
-  const nextBatchIndex = lastBatch ? lastBatch.batch_index + 1 : 0
-  const sr = serviceRole()
+  const nextIndex = existingBatches && existingBatches.length > 0
+    ? existingBatches[0].batch_index + 1
+    : 0
 
-  // Insert new batch
-  const { error: batchError } = await sr
+  const syncTimestamp = new Date().toISOString()
+
+  const { error: batchErr } = await service
     .from('dataset_rows')
     .insert({
-      dataset_id:  params.datasetId,
-      rows,
+      dataset_id:  dataset.id,
+      rows:        rows,
       row_count:   rows.length,
-      batch_index: nextBatchIndex,
-      source_ref:  'study_sync_' + syncedAt,
+      batch_index: nextIndex,
+      source_ref:  'sync:' + syncTimestamp,
     })
 
-  if (batchError) return NextResponse.json({ error: batchError.message }, { status: 500 })
+  if (batchErr) return NextResponse.json({ error: batchErr.message }, { status: 500 })
 
-  const newTotal = (dataset.row_count || 0) + rows.length
+  const newTotal = dataset.row_count + rows.length
 
-  // Update dataset metadata
-  await sr
+  await service
     .from('datasets')
     .update({
       row_count:      newTotal,
-      last_synced_at: syncedAt,
-      updated_at:     syncedAt,
+      last_synced_at: syncTimestamp,
+      updated_at:     syncTimestamp,
     })
-    .eq('id', params.datasetId)
-
-  // If this is the first sync (batch_index === 0), also seed the schema_config
-  // so the schema editor has the right field types pre-populated.
-  if (nextBatchIndex === 0) {
-    await sr
-      .from('dataset_state')
-      .update({
-        schema_config: schema,
-        updated_at:    syncedAt,
-        updated_by:    user.id,
-      })
-      .eq('dataset_id', params.datasetId)
-  }
+    .eq('id', dataset.id)
 
   return NextResponse.json({
     synced:     rows.length,
     total:      newTotal,
-    dataset_id: params.datasetId,
+    dataset_id: dataset.id,
   })
 }

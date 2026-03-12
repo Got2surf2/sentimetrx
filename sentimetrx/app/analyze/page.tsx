@@ -1,5 +1,9 @@
+// app/analyze/page.tsx
+// Server component -- analyze gate + datasets list
+
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import TopNav from '@/components/nav/TopNav'
 import AnalyzeClient from './AnalyzeClient'
 
 export const dynamic = 'force-dynamic'
@@ -9,52 +13,45 @@ export default async function AnalyzePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Get user + org features
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
-  const orgRaw  = userData?.organizations as any
-  const orgData = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
+  const rawOrg  = userData?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
 
-  // Gate: redirect if Analyze not enabled
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
-  const isAdmin = !!orgData?.is_admin_org
+  const orgId = userData?.org_id
 
-  // Fetch all datasets visible to this user's org
- const { data: datasets } = await supabase
+  const { data: rawDatasets } = await supabase
     .from('datasets')
-    .select('id, name, description, source, study_id, org_id, client_id, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by')   .order('created_at', { ascending: false })
+    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, studies(name)')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
 
-  // Fetch study names for study-linked datasets
-  const studyIds = (datasets || [])
-    .filter(d => d.source === 'study' && d.study_id)
-    .map(d => d.study_id as string)
-
-  const { data: studies } = studyIds.length > 0
-    ? await supabase.from('studies').select('id, name').in('id', studyIds)
-    : { data: [] }
-
-  const studyNameMap: Record<string, string> = {}
-  for (const s of (studies || [])) studyNameMap[s.id] = s.name
+  const datasets = (rawDatasets || []).map(function(d: any) {
+    const studyName = d.studies?.name ?? null
+    const { studies: _s, ...rest } = d
+    return { ...rest, study_name: studyName }
+  })
 
   return (
-    <AnalyzeClient
-      user={{
-        email:    user.email!,
-        fullName: userData?.full_name ?? '',
-        role:     userData?.role ?? '',
-        isAdmin,
-        userId:   user.id,
-      }}
-      orgName={orgData?.name ?? ''}
-      orgId={orgData?.id ?? ''}
-      logoUrl={orgData?.logo_url ?? ''}
-      datasets={datasets || []}
-      studyNameMap={studyNameMap}
-    />
+    <div className="min-h-screen bg-gray-50">
+      <TopNav
+        logoUrl={orgData?.logo_url    || ''}
+        orgName={orgData?.name        || ''}
+        isAdmin={!!orgData?.is_admin_org}
+        userEmail={user.email         || ''}
+        fullName={userData?.full_name  || ''}
+        analyzeEnabled={true}
+        currentPage="analyze"
+      />
+      <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">
+        <AnalyzeClient initialDatasets={datasets} />
+      </main>
+    </div>
   )
 }

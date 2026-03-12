@@ -1,6 +1,10 @@
+// app/analyze/[datasetId]/layout.tsx
+// Shared layout for all dataset module pages -- header + tab bar
+
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import DatasetLayoutClient from './DatasetLayoutClient'
+import { redirect, notFound } from 'next/navigation'
+import TopNav from '@/components/nav/TopNav'
+import DatasetHeader from './DatasetHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,50 +20,54 @@ export default async function DatasetLayout({ children, params }: Props) {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
-  const orgRaw  = userData?.organizations as any
-  const orgData = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
+  const rawOrg  = userData?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
-  // Fetch dataset metadata
   const { data: dataset } = await supabase
     .from('datasets')
-    .select('id, name, source, study_id, visibility, status, row_count, last_synced_at, created_by')
+    .select('id, name, source, study_id, visibility, status, row_count, last_synced_at, updated_at, studies(name)')
     .eq('id', params.datasetId)
+    .eq('org_id', userData?.org_id)
     .single()
 
-  if (!dataset) redirect('/analyze')
+  if (!dataset) notFound()
 
-  // Fetch linked study name if applicable
-  let studyName = ''
-  if (dataset.source === 'study' && dataset.study_id) {
-    const { data: study } = await supabase
-      .from('studies')
-      .select('name')
-      .eq('id', dataset.study_id)
-      .single()
-    studyName = study?.name ?? ''
-  }
+  const studyName = (dataset as any).studies?.name ?? null
 
   return (
-    <DatasetLayoutClient
-      dataset={dataset}
-      studyName={studyName}
-      datasetId={params.datasetId}
-      user={{
-        email:    user.email!,
-        fullName: userData?.full_name ?? '',
-        isAdmin:  !!orgData?.is_admin_org,
-        userId:   user.id,
-      }}
-      orgName={orgData?.name ?? ''}
-      logoUrl={orgData?.logo_url ?? ''}
-      isOwner={dataset.created_by === user.id}
-    >
-      {children}
-    </DatasetLayoutClient>
+    <div className="min-h-screen bg-gray-50">
+      <TopNav
+        logoUrl={orgData?.logo_url    || ''}
+        orgName={orgData?.name        || ''}
+        isAdmin={!!orgData?.is_admin_org}
+        userEmail={user.email         || ''}
+        fullName={userData?.full_name  || ''}
+        analyzeEnabled={true}
+        currentPage="analyze"
+      />
+      <div className="pt-14">
+        <DatasetHeader
+          dataset={{
+            id:             dataset.id,
+            name:           dataset.name,
+            source:         dataset.source as 'upload' | 'study',
+            visibility:     dataset.visibility as 'private' | 'public',
+            status:         dataset.status as 'active' | 'archived',
+            row_count:      dataset.row_count,
+            last_synced_at: dataset.last_synced_at,
+            study_name:     studyName,
+          }}
+        />
+        <main className="px-4 pb-12 max-w-6xl mx-auto">
+          {children}
+        </main>
+      </div>
+    </div>
   )
 }

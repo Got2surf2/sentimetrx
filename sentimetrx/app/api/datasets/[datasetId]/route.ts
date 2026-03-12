@@ -1,93 +1,111 @@
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+// app/api/datasets/[datasetId]/route.ts
+// GET    -- dataset metadata + state
+// PATCH  -- update name / description / visibility / status
+// DELETE -- delete dataset (cascades rows + state)
 
-function serviceRole() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+import { NextResponse } from 'next/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
-type Params = { params: { datasetId: string } }
+export const dynamic = 'force-dynamic'
 
-// GET /api/datasets/[datasetId] -- metadata + state in one call
-export async function GET(_req: NextRequest, { params }: Params) {
-  const supabase = createClient()
+interface Params { params: { datasetId: string } }
+
+async function getOrgAndCheck(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return { user: null, orgId: null, error: 'Unauthorized' }
 
-  const { data: dataset, error } = await supabase
-    .from('datasets')
-    .select(`
-      id, name, description, source, study_id, org_id, client_id,
-      created_by, visibility, status, row_count, last_synced_at,
-      created_at, updated_at
-    `)
-    .eq('id', params.datasetId)
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(features)')
+    .eq('id', user.id)
     .single()
 
-  if (error || !dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const rawOrg  = userData?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  if (!orgData?.features?.analyze) return { user: null, orgId: null, error: 'Analyze module not enabled' }
 
-  const { data: state } = await supabase
-    .from('dataset_state')
-    .select('*')
-    .eq('dataset_id', params.datasetId)
-    .single()
-
-  return NextResponse.json({ ...dataset, state: state || null })
+  return { user, orgId: userData?.org_id as string, error: null }
 }
 
-// PATCH /api/datasets/[datasetId] -- update metadata only
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function GET(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const body = await req.json()
-  // Only allow safe metadata fields -- never rows or state
-  const allowed = ['name', 'description', 'visibility', 'status']
-  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  for (const key of allowed) {
-    if (key in body) update[key] = body[key]
+  const { user, orgId, error } = await getOrgAndCheck(supabase)
+  if (error || !user || !orgId) {
+    return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
   }
 
-  const { data, error } = await supabase
+  const { data, error: dbErr } = await supabase
     .from('datasets')
-    .update(update)
+    .select('*, studies(name), dataset_state(*)')
     .eq('id', params.datasetId)
-    .eq('created_by', user.id)   // only creator can update
-    .select('id, name, visibility, status, updated_at')
+    .eq('org_id', orgId)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data) return NextResponse.json({ error: 'Not found or not authorized' }, { status: 404 })
-  return NextResponse.json(data)
+  if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 404 })
+
+  const studyName = (data as any).studies?.name ?? null
+  const state     = (data as any).dataset_state ?? null
+  const { studies: _s, dataset_state: _ds, ...rest } = data as any
+
+  return NextResponse.json({ dataset: { ...rest, study_name: studyName, state } })
 }
 
-// DELETE /api/datasets/[datasetId] -- auth check via user client, delete via service role
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function PATCH(req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user, orgId, error } = await getOrgAndCheck(supabase)
+  if (error || !user || !orgId) {
+    return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
+  }
 
-  // Verify ownership with user client
-  const { data: dataset } = await supabase
+  const body = await req.json()
+  const allowed = ['name', 'description', 'visibility', 'status']
+  const updates: Record<string, unknown> = {}
+  for (const key of allowed) {
+    if (key in body) updates[key] = body[key]
+  }
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+  }
+
+  updates.updated_at = new Date().toISOString()
+
+  const service = createServiceRoleClient()
+  const { error: updErr } = await service
     .from('datasets')
-    .select('id, created_by')
+    .update(updates)
     .eq('id', params.datasetId)
-    .eq('created_by', user.id)
+    .eq('org_id', orgId)
+
+  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
+export async function DELETE(_req: Request, { params }: Params) {
+  const supabase = createClient()
+  const { user, orgId, error } = await getOrgAndCheck(supabase)
+  if (error || !user || !orgId) {
+    return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
+  }
+
+  // Verify user owns the dataset before deleting
+  const { data: ds } = await supabase
+    .from('datasets')
+    .select('created_by')
+    .eq('id', params.datasetId)
+    .eq('org_id', orgId)
     .single()
 
-  if (!dataset) return NextResponse.json({ error: 'Not found or not authorized' }, { status: 404 })
+  if (!ds) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (ds.created_by !== user.id) {
+    return NextResponse.json({ error: 'Only the creator can delete a dataset' }, { status: 403 })
+  }
 
-  // Delete via service role (cascade handles dataset_rows + dataset_state)
-  const sr = serviceRole()
-  const { error } = await sr
+  const service = createServiceRoleClient()
+  const { error: delErr } = await service
     .from('datasets')
     .delete()
     .eq('id', params.datasetId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ deleted: true })
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }
