@@ -1,8 +1,13 @@
 'use client'
 
 // components/analyze/DatasetCard.tsx
-// Compact dataset card matching StudyCard look and feel.
-// Shows owner, org, row count, source. Supports rename, archive, visibility toggle, delete.
+// Fixed-structure card — same height, same info hierarchy, Hermes palette.
+// Sections (top → bottom):
+//   1. Name + three-dot menu
+//   2. Source + visibility badges
+//   3. Stats row: row count · field count · time
+//   4. Owner row
+//   5. Analyze button (always at bottom via mt-auto)
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -17,6 +22,8 @@ interface Props {
 }
 
 const HERMES = '#e8622a'
+const HERMES_BG = '#fff4ef'
+const HERMES_MID = '#fcd5c0'
 
 function timeAgo(iso: string): string {
   const diff  = Date.now() - new Date(iso).getTime()
@@ -30,6 +37,15 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
+// Pill badge
+function Badge({ label, color, bg, border }: { label: string, color: string, bg: string, border: string }) {
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, color, background: bg, border: '1px solid ' + border, whiteSpace: 'nowrap' as const }}>
+      {label}
+    </span>
+  )
+}
+
 export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive }: Props) {
   const router = useRouter()
   const [menuOpen,   setMenuOpen]   = useState(false)
@@ -40,6 +56,9 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
 
   const isStudy    = dataset.source === 'study'
   const isArchived = dataset.status === 'archived'
+  const fieldCount = dataset.state?.schema_config?.fields?.filter(function(f: { type: string }) {
+    return f.type !== 'ignore'
+  }).length ?? null
 
   async function handleSync() {
     setSyncing(true); setMenuOpen(false)
@@ -61,110 +80,168 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     else setConfirmDel(true)
   }
 
-  // Source badge
-  const sourceBg    = isStudy ? HERMES : '#6b7280'
-  const sourceLabel = isStudy ? ('Survey: ' + (dataset.study_name || 'Linked')) : 'Upload'
-
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-3 relative"
-      style={{ opacity: isArchived ? 0.7 : 1 }}>
+    <div style={{
+      background:    'white',
+      border:        '1px solid #e8e8ec',
+      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : HERMES),
+      borderRadius:  12,
+      padding:       '16px',
+      boxShadow:     '0 1px 4px rgba(0,0,0,.05)',
+      display:       'flex',
+      flexDirection: 'column' as const,
+      gap:           12,
+      opacity:       isArchived ? 0.65 : 1,
+      transition:    'box-shadow .15s, opacity .15s',
+      position:      'relative' as const,
+      minHeight:     220,
+    }}
+    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(232,98,42,.12)' }}
+    onMouseLeave={function(e) { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.05)' }}>
 
-      {/* Top: name + menu */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
+      {/* 1. Name + menu */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           {renaming ? (
-            <div className="flex gap-2">
+            <div style={{ display: 'flex', gap: 6 }}>
               <input value={renameVal} onChange={function(e) { setRenameVal(e.target.value) }} autoFocus
-                onKeyDown={function(e) { if (e.key === 'Enter') handleRenameSubmit(); if (e.key === 'Escape') { setRenaming(false); setRenameVal(dataset.name) } }}
-                className="flex-1 px-3 py-1 rounded-lg border border-orange-400 text-sm text-gray-800 outline-none min-w-0" />
-              <button onClick={handleRenameSubmit} className="text-xs font-bold text-white px-2.5 py-1 rounded-lg flex-shrink-0" style={{ background: HERMES }}>Save</button>
-              <button onClick={function() { setRenaming(false); setRenameVal(dataset.name) }} className="text-xs text-gray-400 px-1">✕</button>
+                onKeyDown={function(e) {
+                  if (e.key === 'Enter') handleRenameSubmit()
+                  if (e.key === 'Escape') { setRenaming(false); setRenameVal(dataset.name) }
+                }}
+                style={{ flex: 1, padding: '4px 8px', fontSize: 13, border: '1.5px solid ' + HERMES, borderRadius: 7, outline: 'none', fontFamily: 'inherit', minWidth: 0 }}
+              />
+              <button onClick={handleRenameSubmit}
+                style={{ fontSize: 11, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 7, padding: '4px 10px', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}>
+                Save
+              </button>
+              <button onClick={function() { setRenaming(false); setRenameVal(dataset.name) }}
+                style={{ fontSize: 11, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                ✕
+              </button>
             </div>
           ) : (
-            <h3 className="font-bold text-gray-800 text-sm leading-snug line-clamp-2">{dataset.name}</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: 0, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>
+              {dataset.name}
+            </h3>
           )}
         </div>
 
         {/* Three-dot menu */}
-        <div className="relative flex-shrink-0">
-          <button onClick={function() { setMenuOpen(function(v) { return !v }) }}
-            className="text-gray-400 hover:text-gray-600 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-base leading-none font-bold">
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            onClick={function() { setMenuOpen(function(v) { return !v }) }}
+            style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 14, color: '#9ca3af', fontWeight: 900, lineHeight: 1, fontFamily: 'inherit' }}>
             ···
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-lg z-20 w-48 py-1">
-              <button onClick={function() { setRenaming(true); setMenuOpen(false) }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Rename</button>
-              <button onClick={function() { onToggleVisibility(dataset.id, dataset.visibility === 'private' ? 'public' : 'private'); setMenuOpen(false) }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                {dataset.visibility === 'private' ? 'Make public' : 'Make private'}
-              </button>
-              <button onClick={function() { onToggleArchive(dataset.id, isArchived ? 'active' : 'archived'); setMenuOpen(false) }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                {isArchived ? 'Unarchive' : 'Archive'}
-              </button>
+            <div style={{ position: 'absolute', right: 0, top: 32, background: 'white', border: '1px solid #e8e8ec', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.10)', zIndex: 20, minWidth: 168, padding: '4px 0', overflow: 'hidden' }}>
+              {[
+                { label: 'Rename', action: function() { setRenaming(true); setMenuOpen(false) } },
+                { label: dataset.visibility === 'private' ? 'Make public' : 'Make private', action: function() { onToggleVisibility(dataset.id, dataset.visibility === 'private' ? 'public' : 'private'); setMenuOpen(false) } },
+                { label: isArchived ? 'Unarchive' : 'Archive', action: function() { onToggleArchive(dataset.id, isArchived ? 'active' : 'archived'); setMenuOpen(false) } },
+              ].map(function(item) {
+                return (
+                  <button key={item.label} onClick={item.action}
+                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', display: 'block' }}>
+                    {item.label}
+                  </button>
+                )
+              })}
               {isStudy && (
-                <button onClick={handleSync} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                <button onClick={handleSync}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   {syncing ? 'Syncing...' : 'Sync responses'}
                 </button>
               )}
-              <div className="h-px bg-gray-100 my-1" />
+              <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
               <button onClick={handleDelete}
-                className={'w-full text-left px-4 py-2 text-sm ' + (confirmDel ? 'text-red-600 font-semibold' : 'text-red-500 hover:bg-red-50')}>
+                style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, fontWeight: confirmDel ? 700 : 400, color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                 {confirmDel ? 'Confirm delete?' : 'Delete'}
               </button>
               {confirmDel && (
                 <button onClick={function() { setConfirmDel(false) }}
-                  className="w-full text-left px-4 py-2 text-xs text-gray-400 hover:bg-gray-50">Cancel</button>
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '6px 14px', fontSize: 11, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancel
+                </button>
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Badges */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: sourceBg }}>
-          {sourceLabel}
-        </span>
-        <span className={'text-xs font-medium px-2 py-0.5 rounded-full border ' +
-          (dataset.visibility === 'public' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200')}>
-          {dataset.visibility}
-        </span>
+      {/* 2. Source + visibility badges */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
+        {isStudy ? (
+          <Badge label={'Survey: ' + (dataset.study_name || 'Linked')} color={HERMES} bg={HERMES_BG} border={HERMES_MID} />
+        ) : (
+          <Badge label="Upload" color="#6b7280" bg="#f9fafb" border="#e5e7eb" />
+        )}
+        <Badge
+          label={dataset.visibility}
+          color={dataset.visibility === 'public' ? '#059669' : '#6b7280'}
+          bg={dataset.visibility === 'public' ? '#ecfdf5' : '#f9fafb'}
+          border={dataset.visibility === 'public' ? '#a7f3d0' : '#e5e7eb'}
+        />
         {isArchived && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Archived</span>
+          <Badge label="Archived" color="#b45309" bg="#fffbeb" border="#fde68a" />
         )}
       </div>
 
-      {/* Stats row */}
-      <div className="flex items-center justify-between text-xs text-gray-400">
-        <span className="font-semibold text-gray-600">{dataset.row_count.toLocaleString()} rows</span>
-        <span>{timeAgo(dataset.updated_at)}</span>
+      {/* 3. Stats row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ fontSize: 15, lineHeight: 1 }}>&#8803;</span>
+          <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.row_count.toLocaleString()}</span>
+          <span style={{ color: '#9ca3af' }}>rows</span>
+        </div>
+        {fieldCount !== null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 13, lineHeight: 1, color: '#9ca3af' }}>&#9783;</span>
+            <span style={{ fontWeight: 700, color: '#111827' }}>{fieldCount}</span>
+            <span style={{ color: '#9ca3af' }}>fields</span>
+          </div>
+        )}
+        <div style={{ marginLeft: 'auto', color: '#9ca3af', fontSize: 11 }}>
+          {timeAgo(dataset.updated_at)}
+        </div>
       </div>
 
-      {/* Owner / org */}
-      {(dataset.client_id || dataset.created_by) && (
-        <div className="text-xs text-gray-400 flex items-center gap-1.5 border-t border-gray-100 pt-2">
-          <span className="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-bold flex-shrink-0">
-            {'\u25a0'}
-          </span>
-          <span className="truncate">
-            {dataset.client_id ? ('Client: ' + dataset.client_id) : 'Personal dataset'}
+      {/* 4. Owner row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingTop: 8, borderTop: '1px solid #f3f4f6', marginTop: 'auto' }}>
+        <div style={{ width: 22, height: 22, borderRadius: '50%', background: HERMES_BG, border: '1.5px solid ' + HERMES_MID, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 9, fontWeight: 800, color: HERMES }}>
+            {dataset.client_id ? 'C' : 'ME'}
           </span>
         </div>
-      )}
+        <span style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+          {dataset.client_id ? 'Client dataset' : 'Personal dataset'}
+        </span>
+        {isStudy && dataset.last_synced_at && (
+          <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>
+            Synced {timeAgo(dataset.last_synced_at)}
+          </span>
+        )}
+      </div>
 
-      {/* Analyze button */}
+      {/* 5. Analyze button */}
       <button
         onClick={function() { router.push('/analyze/' + dataset.id + '/textmine') }}
         disabled={isArchived}
-        className="w-full py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed mt-auto"
-        style={{ background: HERMES }}
-      >
+        style={{
+          width: '100%', padding: '9px 0', borderRadius: 9, fontSize: 13, fontWeight: 700,
+          color: isArchived ? '#9ca3af' : 'white',
+          background: isArchived ? '#f3f4f6' : HERMES,
+          border: 'none', cursor: isArchived ? 'not-allowed' : 'pointer',
+          transition: 'opacity .15s', fontFamily: 'inherit',
+        }}
+        onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLButtonElement).style.opacity = '0.88' }}
+        onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}>
         {isArchived ? 'Archived' : 'Analyze in Ana \u2192'}
       </button>
 
-      {menuOpen && <div className="fixed inset-0 z-10" onClick={function() { setMenuOpen(false); setConfirmDel(false) }} />}
+      {/* Click-away for menu */}
+      {menuOpen && <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={function() { setMenuOpen(false); setConfirmDel(false) }} />}
     </div>
   )
 }
