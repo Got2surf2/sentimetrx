@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     .single()
 
   const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as { is_admin_org?: boolean }
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as unknown as { is_admin_org?: boolean }
   if (!orgData?.is_admin_org) {
     return NextResponse.json({ error: 'Super-admin only' }, { status: 403 })
   }
