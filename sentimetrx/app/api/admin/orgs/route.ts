@@ -7,53 +7,32 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(req: Request) {
+export async function GET(_req: Request) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Super-admin check
+  // Super-admin check — uses role column on users table
   const { data: userData } = await supabase
     .from('users')
-    .select('organizations(is_admin_org)')
+    .select('role')
     .eq('id', user.id)
     .single()
 
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as unknown as { is_admin_org?: boolean }
-  if (!orgData?.is_admin_org) {
+  if (userData?.role !== 'platform_admin') {
     return NextResponse.json({ error: 'Super-admin only' }, { status: 403 })
   }
 
   const service = createServiceRoleClient()
-  const url     = new URL(req.url)
-  const active  = url.searchParams.get('active')
 
-  let query = service
+  const { data: orgs, error } = await service
     .from('organizations')
-    .select('id, name, client_id, features, created_at, is_admin_org')
+    .select('id, name, slug, plan, is_admin_org, logo_url, features, created_at')
     .order('name', { ascending: true })
 
-  // ?active=true filters out archived/inactive orgs if that column exists
-  // Safe to ignore if column doesn't exist — Supabase will just return all rows
-  if (active === 'true') {
-    query = query.eq('active', true)
-  }
-
-  const { data: orgs, error } = await query
-
-  if (error) {
-    // If the 'active' column doesn't exist, retry without the filter
-    if (error.message.includes('column') && error.message.includes('active')) {
-      const { data: allOrgs, error: err2 } = await service
-        .from('organizations')
-        .select('id, name, client_id, features, created_at, is_admin_org')
-        .order('name', { ascending: true })
-      if (err2) return NextResponse.json({ error: err2.message }, { status: 500 })
-      return NextResponse.json({ orgs: allOrgs || [] })
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ orgs: orgs || [] })
 }
+
+
