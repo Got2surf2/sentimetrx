@@ -88,7 +88,7 @@ export async function POST(_req: Request, { params }: Params) {
     .eq('dataset_id', dataset.id)
     .single()
 
-  if (stateRow?.schema_config?.fields?.length > 0) {
+  if (stateRow && stateRow.schema_config?.fields?.length > 0) {
     try {
       const analytics = await computeAnalytics(service, dataset.id, stateRow.schema_config)
       await service
