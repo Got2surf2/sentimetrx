@@ -1,51 +1,59 @@
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+// app/api/admin/orgs/route.ts
+// GET -- list all orgs (super-admin only)
+// Called by admin panel as GET /api/admin/orgs?active=true
 
-function serviceRole() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+import { NextResponse } from 'next/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
-type Params = { params: { orgId: string } }
+export const dynamic = 'force-dynamic'
 
-// PATCH /api/admin/orgs/[orgId]
-// Updates org features flags. Super-admin only.
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function GET(req: Request) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Verify super-admin (is_admin_org on the caller's org)
+  // Super-admin check
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(is_admin_org)')
+    .select('organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
 
-  const orgRaw = userData?.organizations as any
-  const callerOrg = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
-  if (!callerOrg?.is_admin_org) {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+  const rawOrg  = userData?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as { is_admin_org?: boolean }
+  if (!orgData?.is_admin_org) {
+    return NextResponse.json({ error: 'Super-admin only' }, { status: 403 })
   }
 
-  const body = await req.json()
-  const { features } = body
+  const service = createServiceRoleClient()
+  const url     = new URL(req.url)
+  const active  = url.searchParams.get('active')
 
-  if (!features || typeof features !== 'object') {
-    return NextResponse.json({ error: 'features object is required' }, { status: 400 })
-  }
-
-  const sr = serviceRole()
-  const { data, error } = await sr
+  let query = service
     .from('organizations')
-    .update({ features })
-    .eq('id', params.orgId)
-    .select('id, name, features')
-    .single()
+    .select('id, name, client_id, features, created_at, is_admin_org')
+    .order('name', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  // ?active=true filters out archived/inactive orgs if that column exists
+  // Safe to ignore if column doesn't exist — Supabase will just return all rows
+  if (active === 'true') {
+    query = query.eq('active', true)
+  }
+
+  const { data: orgs, error } = await query
+
+  if (error) {
+    // If the 'active' column doesn't exist, retry without the filter
+    if (error.message.includes('column') && error.message.includes('active')) {
+      const { data: allOrgs, error: err2 } = await service
+        .from('organizations')
+        .select('id, name, client_id, features, created_at, is_admin_org')
+        .order('name', { ascending: true })
+      if (err2) return NextResponse.json({ error: err2.message }, { status: 500 })
+      return NextResponse.json({ orgs: allOrgs || [] })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ orgs: orgs || [] })
 }
