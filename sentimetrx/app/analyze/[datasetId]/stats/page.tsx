@@ -30,7 +30,7 @@ export default async function StatsPage({ params }: Props) {
   const [{ data: batches, error: batchErr }, { data: stateRow }] = await Promise.all([
     service
       .from('dataset_rows')
-      .select('id, batch_index, rows, row_count')
+      .select('*')
       .eq('dataset_id', params.datasetId)
       .order('batch_index', { ascending: true }),
     service
