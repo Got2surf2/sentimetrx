@@ -1,13 +1,14 @@
 'use client'
 
 // app/analyze/new/UploadClient.tsx
-// Three-step upload flow: (1) Upload file (2) Name & describe (3) Confirm
+// Three-step upload flow with chunked row batching to avoid 413
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
 
 const HERMES = '#E8632A'
+const CHUNK_SIZE = 500  // rows per batch
 
 type Step = 1 | 2 | 3
 
@@ -43,15 +44,16 @@ function parseTSV(text: string): Record<string, unknown>[] {
 
 export default function UploadClient() {
   const router = useRouter()
-  const [step,       setStep]       = useState<Step>(1)
-  const [parsed,     setParsed]     = useState<ParsedFile | null>(null)
-  const [parseError, setParseError] = useState('')
-  const [dragging,   setDragging]   = useState(false)
-  const [name,       setName]       = useState('')
+  const [step,        setStep]        = useState<Step>(1)
+  const [parsed,      setParsed]      = useState<ParsedFile | null>(null)
+  const [parseError,  setParseError]  = useState('')
+  const [dragging,    setDragging]    = useState(false)
+  const [name,        setName]        = useState('')
   const [description, setDescription] = useState('')
-  const [visibility, setVisibility] = useState<'private' | 'public'>('private')
-  const [creating,   setCreating]   = useState(false)
-  const [error,      setError]      = useState('')
+  const [visibility,  setVisibility]  = useState<'private' | 'public'>('private')
+  const [creating,    setCreating]    = useState(false)
+  const [uploadPct,   setUploadPct]   = useState(0)
+  const [error,       setError]       = useState('')
 
   function handleFile(file: File) {
     setParseError('')
@@ -90,10 +92,11 @@ export default function UploadClient() {
     if (!parsed || !name.trim()) return
     setCreating(true)
     setError('')
+    setUploadPct(0)
     try {
       const schema = autoDetectSchema(parsed.rows)
 
-      // Create the dataset record
+      // 1. Create the dataset record
       const dsRes  = await fetch('/api/datasets', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,19 +105,31 @@ export default function UploadClient() {
       const dsData = await dsRes.json()
       if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
 
-      // Upload the rows
-      const rowsRes = await fetch('/api/datasets/' + dsData.id + '/rows', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ rows: parsed.rows, source_ref: parsed.filename }),
-      })
-      if (!rowsRes.ok) { setError('Failed to upload rows'); return }
+      // 2. Upload rows in chunks to avoid 413
+      const rows   = parsed.rows
+      const chunks = Math.ceil(rows.length / CHUNK_SIZE)
+      for (let i = 0; i < chunks; i++) {
+        const chunk   = rows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+        const rowsRes = await fetch('/api/datasets/' + dsData.id + '/rows', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ rows: chunk, source_ref: parsed.filename }),
+        })
+        if (!rowsRes.ok) { setError('Failed to upload rows (chunk ' + (i + 1) + ')'); return }
+        setUploadPct(Math.round(((i + 1) / chunks) * 100))
+      }
 
-      // Save the auto-detected schema to state
+      // 3. Save the auto-detected schema to state
       await fetch('/api/datasets/' + dsData.id + '/state', {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ schema_config: schema, theme_model: { themes: [], aiGenerated: false, version: 1 }, saved_charts: [], saved_stats: [], filter_state: {} }),
+        body:    JSON.stringify({
+          schema_config: schema,
+          theme_model:   { themes: [], aiGenerated: false, version: 1 },
+          saved_charts:  [],
+          saved_stats:   [],
+          filter_state:  {},
+        }),
       })
 
       router.push('/analyze/' + dsData.id + '/settings')
@@ -148,9 +163,11 @@ export default function UploadClient() {
           const current = step === s
           return (
             <div key={s} className="flex items-center gap-2">
-              <div className={'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ' +
-                (done ? 'bg-green-500 text-white' : current ? 'text-white' : 'bg-gray-100 text-gray-400')}
-                style={current ? { background: HERMES } : {}}>
+              <div
+                className={'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ' +
+                  (done ? 'bg-green-500 text-white' : current ? 'text-white' : 'bg-gray-100 text-gray-400')}
+                style={current ? { background: HERMES } : {}}
+              >
                 {done ? '+' : s}
               </div>
               <span className={'text-sm font-medium ' + (current ? 'text-gray-800' : 'text-gray-400')}>
@@ -197,7 +214,7 @@ export default function UploadClient() {
       {step === 2 && parsed && (
         <div className="flex flex-col gap-4">
           <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
-            <span className="text-green-500">+</span>
+            <span className="text-green-500 text-lg">+</span>
             <div>
               <p className="text-sm font-semibold text-green-700">{parsed.filename}</p>
               <p className="text-xs text-green-600">{parsed.rows.length.toLocaleString()} rows, {parsed.columns.length} columns</p>
@@ -279,6 +296,10 @@ export default function UploadClient() {
                 <span className="text-gray-800 font-semibold">{parsed.columns.length}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-gray-500">Upload size</span>
+                <span className="text-gray-800 font-semibold">{Math.ceil(parsed.rows.length / CHUNK_SIZE)} batch{Math.ceil(parsed.rows.length / CHUNK_SIZE) !== 1 ? 'es' : ''} of {CHUNK_SIZE}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-gray-500">Visibility</span>
                 <span className="text-gray-800 font-semibold">{visibility}</span>
               </div>
@@ -297,7 +318,7 @@ export default function UploadClient() {
 
             {preview.length > 0 && (
               <div className="overflow-x-auto">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">First {preview.length} rows</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">First {Math.min(preview.length, 5)} rows</p>
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-gray-50">
@@ -324,12 +345,28 @@ export default function UploadClient() {
             )}
           </div>
 
+          {/* Upload progress bar */}
+          {creating && (
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Uploading...</span>
+                <span>{uploadPct}%</span>
+              </div>
+              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: uploadPct + '%', background: HERMES }}
+                />
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
           )}
 
           <div className="flex gap-3">
-            <button onClick={function() { setStep(2) }} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+            <button onClick={function() { setStep(2) }} disabled={creating} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors disabled:opacity-50">
               Back
             </button>
             <button
@@ -338,7 +375,7 @@ export default function UploadClient() {
               className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
               style={{ background: HERMES }}
             >
-              {creating ? 'Creating...' : 'Create Dataset'}
+              {creating ? 'Uploading...' : 'Create Dataset'}
             </button>
           </div>
         </div>
