@@ -1,10 +1,13 @@
+// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Ensures the survey page renders server-side
-  // so study config is never exposed to the browser
+  // Raise the body size limit for API routes from the default 4 MB.
+  // Dataset row batches can be large; this allows up to 10 MB per request.
   experimental: {
-    serverComponentsExternalPackages: []
-  }
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
+  },
 }
 
 module.exports = nextConfig
