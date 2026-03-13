@@ -3,19 +3,41 @@
 
 export type AnaFieldType = 'open-ended' | 'categorical' | 'numeric' | 'date' | 'id' | 'ignore'
 
+// Sub-type matching Ana's UNIFIED_TYPES sqt values
+export type AnaFieldSqt =
+  | 'open-text'
+  | 'single-select'
+  | 'multi-select'
+  | 'likert'
+  | 'rating'
+  | 'nps'
+  | 'numeric-input'
+  | null
+
 export interface SchemaFieldConfig {
-  field:       string
-  type:        AnaFieldType
-  label?:      string
-  remapping?:  Record<string, number>
-  hidden?:     boolean
+  field:        string
+  type:         AnaFieldType
+  sqt?:         AnaFieldSqt
+  label?:       string
+  remapping?:   Record<string, number>
+  hidden?:      boolean
+  // Stats computed at schema-build time from raw rows
+  nonNullCount?: number
+  avgLen?:       string
+  avgWords?:     string
+  uniqueRatio?:  string
+  sample?:       string[]
+  values?:       string[]
+  min?:          number
+  max?:          number
+  avg?:          string
 }
 
 export interface SchemaConfig {
-  fields:           SchemaFieldConfig[]
+  fields:            SchemaFieldConfig[]
   primaryTextField?: string
-  autoDetected:     boolean
-  version:          number
+  autoDetected:      boolean
+  version:           number
 }
 
 export interface AnaTheme {
@@ -51,15 +73,15 @@ export interface SavedStat {
 }
 
 export interface DatasetState {
-  id:           string
-  dataset_id:   string
+  id:            string
+  dataset_id:    string
   schema_config: SchemaConfig
-  theme_model:  ThemeModel
-  saved_charts: SavedChart[]
-  saved_stats:  SavedStat[]
-  filter_state: Record<string, unknown>
-  updated_at:   string
-  updated_by:   string | null
+  theme_model:   ThemeModel
+  saved_charts:  SavedChart[]
+  saved_stats:   SavedStat[]
+  filter_state:  Record<string, unknown>
+  updated_at:    string
+  updated_by:    string | null
 }
 
 export interface Dataset {
@@ -94,8 +116,7 @@ export interface ProcessedRow {
   [key: string]: unknown
 }
 
-// Dataset with optional joined state (returned by GET /api/datasets/[id])
 export interface DatasetWithState extends Dataset {
-  state?: DatasetState
+  state?:      DatasetState
   study_name?: string | null
 }
