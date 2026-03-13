@@ -1,9 +1,12 @@
 // app/analyze/[datasetId]/textmine/page.tsx
-// TextMine module hook -- Phase 1: wired data pipeline, placeholder UI
+// TextMine module hook.
+// Loads ONLY dataset_state — never touches dataset_rows.
+// Raw text rows are fetched client-side via paginated
+// GET /api/datasets/[id]/rows?page=N&field=<openTextField>
+// when Phase 2 TextMineModule mounts.
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
-import { mergeRowBatches, applySchema } from '@/lib/datasetUtils'
 import ModulePlaceholder from '@/components/analyze/ModulePlaceholder'
 
 export const dynamic = 'force-dynamic'
@@ -25,36 +28,30 @@ export default async function TextMinePage({ params }: Props) {
   const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as unknown as { features?: { analyze?: boolean } }
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
-  // Use service role client for dataset_rows -- bypasses RLS row/size limits
-  // that silently return 0 results for large datasets with many batch records.
   const service = createServiceRoleClient()
 
-  const [{ data: batches, error: batchErr }, { data: stateRow }] = await Promise.all([
-    service
-      .from('dataset_rows')
-      .select('*')
-      .eq('dataset_id', params.datasetId)
-      .order('batch_index', { ascending: true }),
-    service
-      .from('dataset_state')
-      .select('schema_config, theme_model')
-      .eq('dataset_id', params.datasetId)
-      .single(),
-  ])
+  const { data: stateRow } = await service
+    .from('dataset_state')
+    .select('schema_config, theme_model, analytics')
+    .eq('dataset_id', params.datasetId)
+    .single()
 
-  if (batchErr) console.error('[textmine] batch fetch error:', batchErr.message)
   if (!stateRow) notFound()
 
   const schema     = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
-  const themeModel = stateRow.theme_model   || { themes: [], aiGenerated: false, version: 1 }
-
-  const rawRows  = mergeRowBatches(batches || [])
-  const rows     = applySchema(rawRows, schema)
-  const rowCount = rows.length
+  const analytics  = stateRow.analytics     || null
+  const rowCount   = analytics?.totalRows   ?? 0
   const fieldCount = (schema.fields || []).filter(function(f: { type: string }) { return f.type !== 'ignore' }).length
 
-  // Phase 2 drop-in: replace ModulePlaceholder with
-  // <TextMineModule rows={rows} schema={schema} themes={themeModel} datasetId={params.datasetId} />
+  // Phase 2 drop-in:
+  // Replace ModulePlaceholder with:
+  // <TextMineModule
+  //   schema={schema}
+  //   themes={stateRow.theme_model}
+  //   analytics={analytics}
+  //   datasetId={params.datasetId}
+  // />
+  // TextMineModule fetches its own paginated rows via the rows API.
 
   return (
     <ModulePlaceholder

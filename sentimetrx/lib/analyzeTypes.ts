@@ -1,9 +1,8 @@
 // lib/analyzeTypes.ts
-// All TypeScript interfaces for the Analyze module (Phase 1+)
+// All TypeScript interfaces for the Analyze module
 
 export type AnaFieldType = 'open-ended' | 'categorical' | 'numeric' | 'date' | 'id' | 'ignore'
 
-// Sub-type matching Ana's UNIFIED_TYPES sqt values
 export type AnaFieldSqt =
   | 'open-text'
   | 'single-select'
@@ -15,13 +14,12 @@ export type AnaFieldSqt =
   | null
 
 export interface SchemaFieldConfig {
-  field:        string
-  type:         AnaFieldType
-  sqt?:         AnaFieldSqt
-  label?:       string
-  remapping?:   Record<string, number>
-  hidden?:      boolean
-  // Stats computed at schema-build time from raw rows
+  field:         string
+  type:          AnaFieldType
+  sqt?:          AnaFieldSqt
+  label?:        string
+  remapping?:    Record<string, number>
+  hidden?:       boolean
   nonNullCount?: number
   avgLen?:       string
   avgWords?:     string
@@ -39,6 +37,69 @@ export interface SchemaConfig {
   autoDetected:      boolean
   version:           number
 }
+
+// -- Analytics types (pre-computed by /api/datasets/[id]/compute) -------
+// Modules read these instead of loading raw rows.
+
+export interface CategoricalSummary {
+  type:       'categorical'
+  nonNull:    number
+  counts:     Record<string, number>   // value -> count, sorted desc
+  topN:       string[]                 // top 20 values by count
+  uniqueCount: number
+}
+
+export interface NumericSummary {
+  type:      'numeric'
+  nonNull:   number
+  min:       number
+  max:       number
+  avg:       number
+  median:    number
+  stddev:    number
+  histogram: HistogramBucket[]         // 10 equal-width buckets
+}
+
+export interface HistogramBucket {
+  min:   number
+  max:   number
+  count: number
+}
+
+export interface OpenEndedSummary {
+  type:         'open-ended'
+  nonNull:      number
+  avgWordCount: number
+  sample:       string[]               // first 5 non-empty values
+}
+
+export interface DateSummary {
+  type:    'date'
+  nonNull: number
+  min:     string
+  max:     string
+  counts:  Record<string, number>      // ISO date string -> count (daily/monthly)
+}
+
+export interface IgnoredSummary {
+  type:    'id' | 'ignore'
+  nonNull: number
+}
+
+export type FieldSummary =
+  | CategoricalSummary
+  | NumericSummary
+  | OpenEndedSummary
+  | DateSummary
+  | IgnoredSummary
+
+export interface DatasetAnalytics {
+  totalRows:      number
+  computedAt:     string
+  fieldSummaries: Record<string, FieldSummary>
+}
+
+// -- Dataset state -------------------------------------------------------
 
 export interface AnaTheme {
   id:           string
@@ -80,9 +141,12 @@ export interface DatasetState {
   saved_charts:  SavedChart[]
   saved_stats:   SavedStat[]
   filter_state:  Record<string, unknown>
+  analytics:     DatasetAnalytics | null    // null = not yet computed
   updated_at:    string
   updated_by:    string | null
 }
+
+// -- Dataset metadata ----------------------------------------------------
 
 export interface Dataset {
   id:             string
@@ -119,4 +183,15 @@ export interface ProcessedRow {
 export interface DatasetWithState extends Dataset {
   state?:      DatasetState
   study_name?: string | null
+}
+
+// -- Paginated rows response (for TextMine) ------------------------------
+
+export interface PagedRowsResponse {
+  rows:       Record<string, unknown>[]
+  page:       number
+  pageSize:   number
+  totalRows:  number
+  totalPages: number
+  field?:     string    // if filtered to single field
 }

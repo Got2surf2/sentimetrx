@@ -1,17 +1,15 @@
 'use client'
 
 // app/analyze/new/UploadClient.tsx
-// Three-step upload flow with small-chunk row batching to stay under Vercel 4.5MB body limit
+// Three-step upload: parse → name → confirm + chunked upload + compute
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
 
-const HERMES = '#E8632A'
-
-// Keep each POST well under Vercel's 4.5 MB serverless body limit.
-// 50 rows is safe even for wide datasets with long open-ended text columns.
-const CHUNK_SIZE = 50
+const HERMES     = '#E8632A'
+const CHUNK_SIZE = 50                   // rows per POST
+const MAX_BYTES  = 3 * 1024 * 1024     // 3 MB safety ceiling per POST
 
 type Step = 1 | 2 | 3
 
@@ -26,7 +24,6 @@ function parseCSV(text: string): Record<string, unknown>[] {
   if (lines.length < 2) return []
   const headers = lines[0].split(',').map(function(h) { return h.trim().replace(/^"|"$/g, '') })
   return lines.slice(1).map(function(line) {
-    // Handle quoted fields containing commas
     const vals: string[] = []
     let cur = '', inQ = false
     for (let i = 0; i < line.length; i++) {
@@ -54,25 +51,18 @@ function parseTSV(text: string): Record<string, unknown>[] {
   })
 }
 
-// Estimate JSON byte size of a chunk to ensure it stays safe
-function chunkSizeBytes(rows: Record<string, unknown>[]): number {
+function bytesOf(rows: Record<string, unknown>[]): number {
   return new Blob([JSON.stringify(rows)]).size
 }
 
-// Split rows into chunks that are each under maxBytes
-function splitIntoChunks(
-  rows: Record<string, unknown>[],
-  targetRows: number,
-  maxBytes: number
-): Record<string, unknown>[][] {
+function splitChunks(rows: Record<string, unknown>[]): Record<string, unknown>[][] {
   const chunks: Record<string, unknown>[][] = []
   let i = 0
   while (i < rows.length) {
-    let size = targetRows
+    let size  = CHUNK_SIZE
     let chunk = rows.slice(i, i + size)
-    // If chunk is too large, halve until it fits
-    while (chunkSizeBytes(chunk) > maxBytes && size > 1) {
-      size = Math.floor(size / 2)
+    while (bytesOf(chunk) > MAX_BYTES && size > 1) {
+      size  = Math.floor(size / 2)
       chunk = rows.slice(i, i + size)
     }
     chunks.push(chunk)
@@ -110,12 +100,12 @@ export default function UploadClient() {
         } else {
           rows = parseCSV(text)
         }
-        if (rows.length === 0) { setParseError('No data rows found in this file.'); return }
+        if (rows.length === 0) { setParseError('No data rows found.'); return }
         setParsed({ rows, columns: Object.keys(rows[0] || {}), filename: file.name })
         setName(file.name.replace(/\.[^/.]+$/, ''))
         setStep(2)
       } catch {
-        setParseError('Could not parse this file. Please check the format and try again.')
+        setParseError('Could not parse this file. Please check the format.')
       }
     }
     reader.readAsText(file)
@@ -129,7 +119,7 @@ export default function UploadClient() {
 
   async function handleCreate() {
     if (!parsed || !name.trim()) return
-    setCreating(true); setError(''); setUploadPct(0); setUploadMsg('')
+    setCreating(true); setError(''); setUploadPct(0); setUploadMsg('Creating dataset...')
     try {
       const schema = autoDetectSchema(parsed.rows)
 
@@ -141,26 +131,23 @@ export default function UploadClient() {
       const dsData = await dsRes.json()
       if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
 
-      // 2. Split into safe-sized chunks (each under 3 MB to be well within Vercel 4.5 MB limit)
-      const MAX_BODY_BYTES = 3 * 1024 * 1024 // 3 MB
-      const chunks = splitIntoChunks(parsed.rows, CHUNK_SIZE, MAX_BODY_BYTES)
-
+      // 2. Upload rows in safe-sized chunks
+      const chunks = splitChunks(parsed.rows)
       for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i]
-        setUploadMsg('Uploading batch ' + (i + 1) + ' of ' + chunks.length + ' (' + chunk.length + ' rows)')
+        setUploadMsg('Uploading rows — batch ' + (i + 1) + ' of ' + chunks.length)
         const res = await fetch('/api/datasets/' + dsData.id + '/rows', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: chunk, source_ref: parsed.filename }),
+          body: JSON.stringify({ rows: chunks[i], source_ref: parsed.filename }),
         })
         if (!res.ok) {
-          const errData = await res.json().catch(function() { return {} })
-          setError('Failed on batch ' + (i + 1) + ' of ' + chunks.length + '. ' + (errData.error || 'Server error ' + res.status))
+          const e = await res.json().catch(function() { return {} })
+          setError('Upload failed on batch ' + (i + 1) + ': ' + (e.error || 'server error'))
           return
         }
-        setUploadPct(Math.round(((i + 1) / chunks.length) * 100))
+        setUploadPct(Math.round(((i + 1) / (chunks.length + 2)) * 100))
       }
 
-      // 3. Save auto-detected schema
+      // 3. Save schema to state
       setUploadMsg('Saving schema...')
       await fetch('/api/datasets/' + dsData.id + '/state', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -172,6 +159,15 @@ export default function UploadClient() {
           filter_state:  {},
         }),
       })
+      setUploadPct(Math.round(((chunks.length + 1) / (chunks.length + 2)) * 100))
+
+      // 4. Trigger analytics compute (non-blocking on failure — user can re-trigger from settings)
+      setUploadMsg('Computing analytics...')
+      const computeRes = await fetch('/api/datasets/' + dsData.id + '/compute', { method: 'POST' })
+      if (!computeRes.ok) {
+        console.warn('[upload] analytics compute failed — will show stale until re-triggered')
+      }
+      setUploadPct(100)
 
       router.push('/analyze/' + dsData.id + '/settings')
     } catch (err) {
@@ -181,16 +177,12 @@ export default function UploadClient() {
     }
   }
 
-  const preview = parsed ? parsed.rows.slice(0, 5) : []
-  // Estimate chunks for display
-  const estimatedChunks = parsed
-    ? splitIntoChunks(parsed.rows, CHUNK_SIZE, 3 * 1024 * 1024).length
-    : 0
+  const chunks         = parsed ? splitChunks(parsed.rows) : []
+  const estimatedChunks = chunks.length
 
   return (
     <div className="flex flex-col gap-6">
 
-      {/* Breadcrumb + title */}
       <div>
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
           <button onClick={function() { router.push('/analyze') }} className="hover:text-gray-600 transition-colors">Analyze</button>
@@ -218,22 +210,16 @@ export default function UploadClient() {
         })}
       </div>
 
-      {/* Step 1 */}
+      {/* Step 1: Upload */}
       {step === 1 && (
         <div className="flex flex-col gap-4">
-          <div
-            onDragOver={function(e) { e.preventDefault(); setDragging(true) }}
-            onDragLeave={function() { setDragging(false) }}
-            onDrop={handleDrop}
-            className={'border-2 border-dashed rounded-2xl p-12 text-center transition-all ' + (dragging ? 'border-orange-400 bg-orange-50' : 'border-gray-300 hover:border-gray-400 bg-white')}
-          >
+          <div onDragOver={function(e) { e.preventDefault(); setDragging(true) }} onDragLeave={function() { setDragging(false) }} onDrop={handleDrop}
+            className={'border-2 border-dashed rounded-2xl p-12 text-center transition-all ' + (dragging ? 'border-orange-400 bg-orange-50' : 'border-gray-300 hover:border-gray-400 bg-white')}>
             <div className="text-4xl mb-3">📂</div>
             <p className="text-gray-600 font-semibold mb-1">Drag and drop your file here</p>
             <p className="text-gray-400 text-sm mb-4">CSV, TSV, or JSON · any size</p>
             <label className="cursor-pointer">
-              <span className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white inline-block hover:opacity-90 transition-all" style={{ background: HERMES }}>
-                Browse files
-              </span>
+              <span className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white inline-block hover:opacity-90 transition-all" style={{ background: HERMES }}>Browse files</span>
               <input type="file" accept=".csv,.tsv,.json" className="hidden"
                 onChange={function(e) { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
             </label>
@@ -242,7 +228,7 @@ export default function UploadClient() {
         </div>
       )}
 
-      {/* Step 2 */}
+      {/* Step 2: Name */}
       {step === 2 && parsed && (
         <div className="flex flex-col gap-4">
           <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -255,14 +241,12 @@ export default function UploadClient() {
           <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-semibold text-gray-700">Dataset name</label>
-              <input value={name} onChange={function(e) { setName(e.target.value) }}
-                placeholder="e.g. Q1 2026 Customer Feedback"
+              <input value={name} onChange={function(e) { setName(e.target.value) }} placeholder="e.g. Q1 2026 Customer Feedback"
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors" />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-semibold text-gray-700">Description <span className="text-gray-400 font-normal">(optional)</span></label>
-              <textarea value={description} onChange={function(e) { setDescription(e.target.value) }}
-                placeholder="Brief description..." rows={2}
+              <textarea value={description} onChange={function(e) { setDescription(e.target.value) }} rows={2}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors resize-none" />
             </div>
             <div className="flex flex-col gap-2">
@@ -270,9 +254,8 @@ export default function UploadClient() {
               <div className="flex gap-3">
                 {(['private', 'public'] as const).map(function(v) {
                   return (
-                    <label key={v} className={'flex items-center gap-2.5 px-4 py-2.5 rounded-xl border cursor-pointer transition-all ' + (visibility === v ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-gray-300')}>
-                      <input type="radio" name="visibility" value={v} checked={visibility === v}
-                        onChange={function() { setVisibility(v) }} className="accent-orange-500" />
+                    <label key={v} className={'flex items-center gap-2.5 px-4 py-2.5 rounded-xl border cursor-pointer transition-all ' + (visibility === v ? 'border-orange-400 bg-orange-50' : 'border-gray-200')}>
+                      <input type="radio" name="visibility" value={v} checked={visibility === v} onChange={function() { setVisibility(v) }} className="accent-orange-500" />
                       <div>
                         <p className="text-sm font-semibold text-gray-700 capitalize">{v}</p>
                         <p className="text-xs text-gray-400">{v === 'private' ? 'Only your org' : 'Anyone with link'}</p>
@@ -284,27 +267,25 @@ export default function UploadClient() {
             </div>
           </div>
           <div className="flex gap-3">
-            <button onClick={function() { setStep(1) }} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">Back</button>
+            <button onClick={function() { setStep(1) }} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 transition-colors">Back</button>
             <button onClick={function() { setStep(3) }} disabled={!name.trim()}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all" style={{ background: HERMES }}>
-              Continue
-            </button>
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all" style={{ background: HERMES }}>Continue</button>
           </div>
         </div>
       )}
 
-      {/* Step 3 */}
+      {/* Step 3: Confirm */}
       {step === 3 && parsed && (
         <div className="flex flex-col gap-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-3">
             <h3 className="font-bold text-gray-800">Summary</h3>
-            {[
+            {([
               ['Name',       name],
               ['Rows',       parsed.rows.length.toLocaleString()],
               ['Columns',    String(parsed.columns.length)],
-              ['Upload',     estimatedChunks + ' batch' + (estimatedChunks !== 1 ? 'es' : '') + ' · ' + CHUNK_SIZE + ' rows max each'],
+              ['Batches',    estimatedChunks + ' × ' + CHUNK_SIZE + ' rows'],
               ['Visibility', visibility],
-            ].map(function([label, val]) {
+            ] as [string, string][]).map(function([label, val]) {
               return (
                 <div key={label} className="flex justify-between text-sm">
                   <span className="text-gray-500">{label}</span>
@@ -320,41 +301,12 @@ export default function UploadClient() {
                 })}
               </div>
             </div>
-            {preview.length > 0 && (
-              <div className="overflow-x-auto">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preview</p>
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      {parsed.columns.slice(0, 5).map(function(c) {
-                        return <th key={c} className="text-left px-2 py-1.5 text-gray-500 font-semibold border border-gray-100 max-w-32 truncate">{c}</th>
-                      })}
-                      {parsed.columns.length > 5 && <th className="px-2 py-1.5 text-gray-400 border border-gray-100">+{parsed.columns.length - 5}</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.map(function(row, i) {
-                      return (
-                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                          {parsed.columns.slice(0, 5).map(function(c) {
-                            return <td key={c} className="px-2 py-1.5 text-gray-600 border border-gray-100 max-w-32 truncate">{String(row[c] ?? '')}</td>
-                          })}
-                          {parsed.columns.length > 5 && <td className="px-2 py-1.5 border border-gray-100" />}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
 
-          {/* Progress */}
           {creating && (
             <div className="flex flex-col gap-2">
               <div className="flex justify-between text-xs text-gray-500">
-                <span>{uploadMsg || 'Uploading...'}</span>
-                <span>{uploadPct}%</span>
+                <span>{uploadMsg}</span><span>{uploadPct}%</span>
               </div>
               <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-300" style={{ width: uploadPct + '%', background: HERMES }} />
@@ -366,9 +318,7 @@ export default function UploadClient() {
 
           <div className="flex gap-3">
             <button onClick={function() { setStep(2) }} disabled={creating}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors disabled:opacity-50">
-              Back
-            </button>
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 disabled:opacity-50">Back</button>
             <button onClick={handleCreate} disabled={creating}
               className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all" style={{ background: HERMES }}>
               {creating ? 'Uploading...' : 'Create Dataset'}
