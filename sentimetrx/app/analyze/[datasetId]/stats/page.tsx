@@ -22,7 +22,7 @@ export default async function StatsPage({ params }: Props) {
     .single()
 
   const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as { features?: { analyze?: boolean } }
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as unknown as { features?: { analyze?: boolean } }
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   const service = createServiceRoleClient()
