@@ -1,7 +1,7 @@
 // app/analyze/[datasetId]/stats/page.tsx
 // Statistics module hook -- Phase 1: data pipeline wired, placeholder UI
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { mergeRowBatches, applySchema } from '@/lib/datasetUtils'
 import ModulePlaceholder from '@/components/analyze/ModulePlaceholder'
@@ -22,31 +22,35 @@ export default async function StatsPage({ params }: Props) {
     .single()
 
   const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as { features?: { analyze?: boolean } }
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
-  const [{ data: batches }, { data: stateRow }] = await Promise.all([
-    supabase
+  const service = createServiceRoleClient()
+
+  const [{ data: batches, error: batchErr }, { data: stateRow }] = await Promise.all([
+    service
       .from('dataset_rows')
-      .select('*')
+      .select('id, batch_index, rows, row_count')
       .eq('dataset_id', params.datasetId)
       .order('batch_index', { ascending: true }),
-    supabase
+    service
       .from('dataset_state')
       .select('schema_config')
       .eq('dataset_id', params.datasetId)
       .single(),
   ])
 
+  if (batchErr) console.error('[stats] batch fetch error:', batchErr.message)
   if (!stateRow) notFound()
 
-  const schema    = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
-  const rawRows   = mergeRowBatches(batches || [])
-  const rows      = applySchema(rawRows, schema)
-  const rowCount  = rows.length
-  const fieldCount = (schema.fields || []).filter(function(f: any) { return f.type !== 'ignore' }).length
+  const schema     = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
+  const rawRows    = mergeRowBatches(batches || [])
+  const rows       = applySchema(rawRows, schema)
+  const rowCount   = rows.length
+  const fieldCount = (schema.fields || []).filter(function(f: { type: string }) { return f.type !== 'ignore' }).length
 
-  // Phase 2 drop-in point: replace ModulePlaceholder with <StatisticsModule rows={rows} schema={schema} datasetId={params.datasetId} />
+  // Phase 4 drop-in: replace ModulePlaceholder with
+  // <StatisticsModule rows={rows} schema={schema} datasetId={params.datasetId} />
 
   return (
     <ModulePlaceholder
