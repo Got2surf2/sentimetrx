@@ -1,0 +1,154 @@
+// lib/themeUtils.ts
+// Client-safe pure utilities for theme matching, counting, and text utilities.
+// No server-only imports. Safe to use in browser components.
+
+export interface Theme {
+  id: string
+  name: string
+  description: string
+  keywords: string[]
+  sentiment: string
+  count: number
+  percentage: number
+  relatedThemes: string[]
+}
+
+export interface ThemeModel {
+  themes: Theme[]
+  summary: string
+  fieldName: string
+  fieldNames?: string[]
+  themeSource?: string | null
+  themeLibName?: string | null
+  samplingInfo?: { sampled: number; total: number } | null
+}
+
+export interface TextSegment {
+  text: string
+  matched: boolean
+}
+
+// Stem-aware keyword regex (no global flag -- avoids lastIndex bug on repeated test())
+function buildKwRegex(kw: string): RegExp {
+  const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp('(?<![a-z])' + esc + '\\w*', 'i')
+}
+
+export function commentMatchesTheme(text: string, theme: Theme): boolean {
+  if (!theme || !theme.keywords || !theme.keywords.length) return false
+  const t = text.toLowerCase()
+  return theme.keywords.some(function(kw) {
+    return buildKwRegex(kw).test(t)
+  })
+}
+
+export function recountThemes(
+  themes: Theme[],
+  rows: Record<string, unknown>[],
+  field: string | string[]
+): Theme[] {
+  const fields = Array.isArray(field) ? field : [field]
+  const nonEmpty = rows.filter(function(r) {
+    return fields.some(function(f) {
+      return String(r[f] || '').trim().length > 0
+    })
+  })
+  return themes.map(function(t) {
+    const count = nonEmpty.filter(function(r) {
+      const text = fields.map(function(f) { return String(r[f] || '') }).join(' ')
+      return commentMatchesTheme(text, t)
+    }).length
+    const pct = nonEmpty.length > 0 ? Math.round(count / nonEmpty.length * 100) : 0
+    return { ...t, count, percentage: pct }
+  })
+}
+
+export function sampleSize95(n: number): number {
+  const Z = 1.96, p = 0.5, e = 0.05
+  const n0 = (Z * Z * p * (1 - p)) / (e * e)
+  return n <= n0 ? n : Math.ceil(n0 * n / (n0 + n - 1))
+}
+
+export function evenSample<T>(arr: T[], n: number): T[] {
+  if (arr.length <= n) return arr
+  const step = arr.length / n
+  return Array.from({ length: n }, function(_, i) {
+    return arr[Math.floor(i * step)]
+  })
+}
+
+// Returns text split into matched/unmatched keyword segments for highlighting
+export function highlightKeywords(text: string, keywords: string[]): TextSegment[] {
+  if (!keywords || !keywords.length) return [{ text, matched: false }]
+  const parts: TextSegment[] = []
+  let remaining = text
+  let guard = 0
+  while (remaining.length > 0 && guard < 2000) {
+    guard++
+    let earliest = -1
+    let earliestEnd = -1
+    for (let ki = 0; ki < keywords.length; ki++) {
+      const kw = keywords[ki]
+      if (!kw) continue
+      const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const re = new RegExp('(?<![a-z])' + esc + '\\w*', 'i')
+      const m = remaining.match(re)
+      if (m && m.index !== undefined) {
+        if (earliest === -1 || m.index < earliest) {
+          earliest = m.index
+          earliestEnd = m.index + m[0].length
+        }
+      }
+    }
+    if (earliest === -1) {
+      parts.push({ text: remaining, matched: false })
+      break
+    }
+    if (earliest > 0) parts.push({ text: remaining.slice(0, earliest), matched: false })
+    parts.push({ text: remaining.slice(earliest, earliestEnd), matched: true })
+    remaining = remaining.slice(earliestEnd)
+  }
+  return parts
+}
+
+// Sentiment display helpers
+export function sentColor(s: string): string {
+  const map: Record<string, string> = {
+    positive: '#16a34a',
+    negative: '#dc2626',
+    mixed: '#d97706',
+    neutral: '#6b7280',
+  }
+  return map[s] || '#6b7280'
+}
+
+export function sentBg(s: string): string {
+  const map: Record<string, string> = {
+    positive: '#f0fdf4',
+    negative: '#fef2f2',
+    mixed: '#fffbeb',
+    neutral: '#f9fafb',
+  }
+  return map[s] || '#f9fafb'
+}
+
+// Ana THEME_PALETTE -- 8 colours cycling for theme cards
+export const THEME_PALETTE = [
+  { bg: '#fff0e6', border: '#e8622a', text: '#b84a18', light: '#ffe4d0' },
+  { bg: '#eff6ff', border: '#2563eb', text: '#1d4ed8', light: '#dbeafe' },
+  { bg: '#f0fdf4', border: '#16a34a', text: '#15803d', light: '#bbf7d0' },
+  { bg: '#f5f3ff', border: '#7c3aed', text: '#6d28d9', light: '#ddd6fe' },
+  { bg: '#fff7ed', border: '#ea580c', text: '#c2410c', light: '#fed7aa' },
+  { bg: '#fdf4ff', border: '#a21caf', text: '#86198f', light: '#f5d0fe' },
+  { bg: '#f0fdfa', border: '#0d9488', text: '#0f766e', light: '#99f6e4' },
+  { bg: '#fefce8', border: '#ca8a04', text: '#a16207', light: '#fef08a' },
+]
+
+export function getThemeColor(idx: number) {
+  return THEME_PALETTE[idx % THEME_PALETTE.length]
+}
+
+// Row text helpers
+export function getRowText(row: Record<string, unknown>, fields: string[]): string {
+  return fields.map(function(f) { return String(row[f] || '') }).join(' ').trim()
+}

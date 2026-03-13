@@ -1,6 +1,8 @@
 // app/api/datasets/[datasetId]/state/route.ts
-// GET -- full dataset_state record
-// PUT -- replace entire state (the "Save" action)
+// GET  -- full dataset_state record
+// PUT  -- replace entire state (the "Save" action)
+// PATCH -- partial update: update only the fields provided in the body
+//          Used by TextMineModule to save theme_model without clobbering schema_config etc.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -50,6 +52,46 @@ export async function PUT(req: Request, { params }: Params) {
       updated_at:    new Date().toISOString(),
       updated_by:    user.id,
     })
+    .eq('dataset_id', params.datasetId)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
+export async function PATCH(req: Request, { params }: Params) {
+  const supabase = createClient()
+  const { user } = await authCheck(supabase)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Only update the fields explicitly provided -- leaves everything else untouched
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+
+  const ALLOWED_FIELDS = ['schema_config', 'theme_model', 'saved_charts', 'saved_stats', 'filter_state']
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    updated_by: user.id,
+  }
+
+  for (const key of ALLOWED_FIELDS) {
+    if (body[key] !== undefined) {
+      patch[key] = body[key]
+    }
+  }
+
+  if (Object.keys(patch).length === 2) {
+    // Only timestamps -- nothing to update
+    return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })
+  }
+
+  const service = createServiceRoleClient()
+  const { error } = await service
+    .from('dataset_state')
+    .update(patch)
     .eq('dataset_id', params.datasetId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
