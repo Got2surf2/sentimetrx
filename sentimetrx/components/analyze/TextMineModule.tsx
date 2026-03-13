@@ -215,7 +215,7 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
       const v = r[field]
       if (v != null && String(v).trim() !== '') vals.add(String(v))
     })
-    return [...vals].sort()
+    return Array.from(vals).sort()
   }
 
   function handleFieldClick(f: string) {
@@ -387,7 +387,7 @@ function CompareGroupView({ themes, parsedData, field, breakdownField, themeColo
   breakdownField: string
   themeColors: Record<number, typeof THEME_PALETTE[0]>
 }) {
-  const groupVals = [...new Set(parsedData.map(function(r) { return String(r[breakdownField] ?? '') }).filter(Boolean))].sort()
+  const groupVals = Array.from(new Set(parsedData.map(function(r) { return String(r[breakdownField] ?? '') }).filter(Boolean))).sort()
   const sortedThemes = [...themes.themes].sort(function(a, b) { return b.count - a.count })
 
   return (

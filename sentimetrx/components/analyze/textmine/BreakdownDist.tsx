@@ -30,7 +30,7 @@ export default function BreakdownDist({
   const field = activeField || themeModel.fieldName
 
   const selVals = useMemo(function() {
-    return [...selectedValues].sort()
+    return Array.from(selectedValues).sort()
   }, [selectedValues])
 
   const sortedThemes = useMemo(function() {
