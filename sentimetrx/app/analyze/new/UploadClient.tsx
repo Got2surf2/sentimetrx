@@ -246,7 +246,7 @@ export default function UploadClient() {
     var merged: Theme[] = []
     var seen = new Set<string>()
     Array.from(checkedInds).forEach(function(l) {
-      ;(industryThemes[l] || []).forEach(function(t) {
+      ;(industryThemes![l] || []).forEach(function(t) {
         if (!seen.has(t.id)) { seen.add(t.id); merged.push({ ...t, keywords: [...t.keywords] }) }
       })
     })
@@ -334,7 +334,7 @@ export default function UploadClient() {
   }
 
   // ─── Derived counts ────────────────────────────────────────────────────
-  var totalCheckedThemes = industryThemes ? Array.from(checkedInds).reduce(function(sum, l) { return sum + (industryThemes[l] || []).length }, 0) : 0
+  var totalCheckedThemes = industryThemes ? Array.from(checkedInds).reduce(function(sum, l) { return sum + (industryThemes![l] || []).length }, 0) : 0
 
   // ═══════════════════════════════════════════════════════════════════════
   return (
