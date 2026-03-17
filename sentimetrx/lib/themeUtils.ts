@@ -149,7 +149,7 @@ export function sentBg(s: string): string {
   return map[s] || '#f9fafb'
 }
 
-// Ana THEME_PALETTE -- 8 colours cycling for theme cards
+// Ana THEME_PALETTE -- 20 unique colours for theme cards (no repeats up to 20 themes)
 export const THEME_PALETTE = [
   { bg: '#fff0e6', border: '#e8622a', text: '#b84a18', light: '#ffe4d0' },
   { bg: '#eff6ff', border: '#2563eb', text: '#1d4ed8', light: '#dbeafe' },
@@ -159,6 +159,19 @@ export const THEME_PALETTE = [
   { bg: '#fdf4ff', border: '#a21caf', text: '#86198f', light: '#f5d0fe' },
   { bg: '#f0fdfa', border: '#0d9488', text: '#0f766e', light: '#99f6e4' },
   { bg: '#fefce8', border: '#ca8a04', text: '#a16207', light: '#fef08a' },
+  // Extended: 8 more unique hues
+  { bg: '#fdf2f8', border: '#db2777', text: '#be185d', light: '#fbcfe8' },
+  { bg: '#ecfeff', border: '#0891b2', text: '#0e7490', light: '#a5f3fc' },
+  { bg: '#fef2f2', border: '#dc2626', text: '#b91c1c', light: '#fecaca' },
+  { bg: '#f0f9ff', border: '#0284c7', text: '#075985', light: '#bae6fd' },
+  { bg: '#ecfdf5', border: '#059669', text: '#047857', light: '#a7f3d0' },
+  { bg: '#fffbeb', border: '#d97706', text: '#92400e', light: '#fde68a' },
+  { bg: '#f5f3ff', border: '#6366f1', text: '#4338ca', light: '#c7d2fe' },
+  { bg: '#fff1f2', border: '#e11d48', text: '#be123c', light: '#fecdd3' },
+  { bg: '#f0fdfa', border: '#14b8a6', text: '#0d9488', light: '#5eead4' },
+  { bg: '#faf5ff', border: '#9333ea', text: '#7e22ce', light: '#d8b4fe' },
+  { bg: '#f7fee7', border: '#65a30d', text: '#4d7c0f', light: '#bef264' },
+  { bg: '#fff7ed', border: '#f97316', text: '#c2410c', light: '#fdba74' },
 ]
 
 export function getThemeColor(idx: number) {

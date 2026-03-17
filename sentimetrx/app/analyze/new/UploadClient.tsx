@@ -22,19 +22,26 @@ interface ParsedFile {
 function parseCSV(text: string): Record<string, unknown>[] {
   const lines = text.trim().split('\n').filter(function(l) { return l.trim() })
   if (lines.length < 2) return []
-  const headers = lines[0].split(',').map(function(h) { return h.trim().replace(/^"|"$/g, '') })
-  return lines.slice(1).map(function(line) {
-    const vals: string[] = []
-    let cur = '', inQ = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
+
+  // Quote-aware field splitter — used for both headers and data rows
+  function splitFields(line: string): string[] {
+    var vals: string[] = []
+    var cur = '', inQ = false
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i]
       if (ch === '"') { inQ = !inQ }
       else if (ch === ',' && !inQ) { vals.push(cur); cur = '' }
       else cur += ch
     }
     vals.push(cur)
-    const row: Record<string, unknown> = {}
-    headers.forEach(function(h, i) { row[h] = (vals[i] ?? '').replace(/^"|"$/g, '') })
+    return vals.map(function(v) { return v.trim().replace(/^"|"$/g, '') })
+  }
+
+  const headers = splitFields(lines[0])
+  return lines.slice(1).map(function(line) {
+    var vals = splitFields(line)
+    var row: Record<string, unknown> = {}
+    headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
     return row
   })
 }

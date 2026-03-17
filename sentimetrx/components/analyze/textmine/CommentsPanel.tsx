@@ -2,11 +2,11 @@
 // components/analyze/textmine/CommentsPanel.tsx
 // Shows verbatim responses matching one or more themes.
 // Theme strip at top for quick switching. Multi-select supported.
-// Keyword highlighting, metadata pills, sort controls, AI summary.
+// Per-keyword theme-colored highlighting, metadata pills, sort controls.
 
 import { useState, useMemo } from 'react'
 import {
-  Theme, THEME_PALETTE, commentMatchesTheme, highlightKeywords,
+  Theme, THEME_PALETTE, commentMatchesTheme,
   evenSample, sentColor, sentBg, getThemeColor,
 } from '@/lib/themeUtils'
 
@@ -44,6 +44,65 @@ interface CommentRow {
   matchedThemes: number[]
 }
 
+// ─── Per-keyword theme-colored highlighting ─────────────────────────────────
+
+interface ColoredSegment {
+  text: string
+  themeIdx: number // -1 = no match
+}
+
+function buildKwRegex(kw: string): RegExp {
+  var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp('(?<![a-z])' + esc + '\\w*', 'i')
+}
+
+function highlightWithThemeColors(
+  text: string,
+  themes: Theme[],
+  themeIndices: number[]
+): ColoredSegment[] {
+  // Build keyword → themeIdx map (first theme wins if keyword appears in multiple)
+  var kwMap: { kw: string; themeIdx: number; regex: RegExp }[] = []
+  themeIndices.forEach(function(ti) {
+    var t = themes[ti]
+    if (!t || !t.keywords) return
+    t.keywords.forEach(function(kw) {
+      kwMap.push({ kw: kw, themeIdx: ti, regex: buildKwRegex(kw) })
+    })
+  })
+  if (!kwMap.length) return [{ text: text, themeIdx: -1 }]
+
+  var segments: ColoredSegment[] = []
+  var remaining = text
+  var guard = 0
+  while (remaining.length > 0 && guard < 3000) {
+    guard++
+    var earliest = -1
+    var earliestEnd = -1
+    var earliestThemeIdx = -1
+    for (var ki = 0; ki < kwMap.length; ki++) {
+      var m = remaining.match(kwMap[ki].regex)
+      if (m && m.index !== undefined) {
+        if (earliest === -1 || m.index < earliest) {
+          earliest = m.index
+          earliestEnd = m.index + m[0].length
+          earliestThemeIdx = kwMap[ki].themeIdx
+        }
+      }
+    }
+    if (earliest === -1) {
+      segments.push({ text: remaining, themeIdx: -1 })
+      break
+    }
+    if (earliest > 0) segments.push({ text: remaining.slice(0, earliest), themeIdx: -1 })
+    segments.push({ text: remaining.slice(earliest, earliestEnd), themeIdx: earliestThemeIdx })
+    remaining = remaining.slice(earliestEnd)
+  }
+  return segments
+}
+
+// ─── CommentCard ────────────────────────────────────────────────────────────
+
 function CommentCard({ row, matchedThemes, allThemes, themeColors, schema, aliases, ignoredFields }: {
   row: CommentRow
   matchedThemes: number[]
@@ -53,14 +112,9 @@ function CommentCard({ row, matchedThemes, allThemes, themeColors, schema, alias
   aliases: Record<string, string>
   ignoredFields: string[]
 }) {
-  var allKeywords: string[] = []
-  matchedThemes.forEach(function(ti) {
-    var t = allThemes[ti]
-    if (t) allKeywords = allKeywords.concat(t.keywords || [])
-  })
-  var segments = highlightKeywords(row.text, allKeywords)
+  var segments = highlightWithThemeColors(row.text, allThemes, matchedThemes)
   var primaryIdx = matchedThemes[0] != null ? matchedThemes[0] : 0
-  var pal = themeColors[primaryIdx] || THEME_PALETTE[0]
+  var primaryPal = themeColors[primaryIdx] || THEME_PALETTE[0]
   var ignoredSet = new Set(ignoredFields)
 
   var metaCols = schema
@@ -69,7 +123,7 @@ function CommentCard({ row, matchedThemes, allThemes, themeColors, schema, alias
   var metaEntries = metaCols.filter(function(k) { return row.meta[k] != null && String(row.meta[k]).trim() !== '' })
 
   return (
-    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 14px', marginBottom: 8, borderLeft: '3px solid ' + pal.border, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 14px', marginBottom: 8, borderLeft: '3px solid ' + primaryPal.border, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
       {/* Theme badges */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
         {matchedThemes.map(function(ti) {
@@ -83,10 +137,11 @@ function CommentCard({ row, matchedThemes, allThemes, themeColors, schema, alias
           )
         })}
       </div>
-      {/* Comment text with keyword highlighting */}
+      {/* Comment text with per-keyword theme-colored highlighting */}
       <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: metaEntries.length ? 8 : 0 }}>
         {segments.map(function(seg, i) {
-          if (seg.matched) {
+          if (seg.themeIdx >= 0) {
+            var pal = themeColors[seg.themeIdx] || THEME_PALETTE[0]
             return (
               <mark key={i} style={{ background: pal.light, color: pal.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + pal.border, fontWeight: 600 }}>
                 {seg.text}
@@ -113,6 +168,8 @@ function CommentCard({ row, matchedThemes, allThemes, themeColors, schema, alias
   )
 }
 
+// ─── Main Component ─────────────────────────────────────────────────────────
+
 export default function CommentsPanel({
   initialTheme, allThemes, parsedData, activeField, activeFields,
   catFields, themeColors, onBack, ignoredFields = [], schema, apiKey, columnAliases = {}, datasetId,
@@ -138,7 +195,6 @@ export default function CommentsPanel({
     return catFields
   }, [schema, catFields, ignoredFields])
 
-  // Build all rows with matched themes index
   var allRows = useMemo(function() {
     return parsedData.map(function(r) {
       var text = fields.map(function(f) { return String(r[f] || '') }).join(' ').trim()
@@ -152,7 +208,6 @@ export default function CommentsPanel({
     }).filter(function(r) { return r.text.length > 0 })
   }, [parsedData, fields, metaCols, allThemes])
 
-  // Filter by selected themes
   var selectedIndices = useMemo(function() {
     var indices = new Set<number>()
     allThemes.forEach(function(t, i) {
@@ -166,7 +221,6 @@ export default function CommentsPanel({
     var filtered = allRows.filter(function(r) {
       return r.matchedThemes.some(function(ti) { return selectedIndices.has(ti) })
     })
-    // Relevance = count of selected-theme keyword hits
     function relevanceScore(row: CommentRow): number {
       var hits = 0
       var tLower = row.text.toLowerCase()
@@ -174,8 +228,7 @@ export default function CommentsPanel({
         var t = allThemes[ti]
         if (!t) return
         ;(t.keywords || []).forEach(function(kw) {
-          var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          if (new RegExp('(?<![a-z])' + esc + '\\w*', 'i').test(tLower)) hits++
+          if (buildKwRegex(kw).test(tLower)) hits++
         })
       })
       return hits
@@ -217,7 +270,7 @@ export default function CommentsPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* ─── Header: back + stats ─────────────────────────────────── */}
+      {/* Header */}
       <div style={{ padding: '10px 20px', borderBottom: '1px solid ' + T.border, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
         <button onClick={onBack}
           style={{ fontSize: 12, fontWeight: 600, color: T.textMute, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px 2px 0', flexShrink: 0 }}>
@@ -232,8 +285,6 @@ export default function CommentsPanel({
             ({selectedThemeIds.size} theme{selectedThemeIds.size !== 1 ? 's' : ''} selected)
           </span>
         )}
-
-        {/* Sort + select controls */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <select value={sortBy}
             onChange={function(e) { setSortBy(e.target.value as typeof sortBy); setVisibleCount(50) }}
@@ -249,7 +300,7 @@ export default function CommentsPanel({
         </div>
       </div>
 
-      {/* ─── Theme strip: clickable pills for switching ──────────── */}
+      {/* Theme strip */}
       <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, flexShrink: 0, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', background: T.bgCard }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Themes:</span>
         {allThemes.map(function(t, ti) {
@@ -280,7 +331,7 @@ export default function CommentsPanel({
         })}
       </div>
 
-      {/* ─── Comments list ────────────────────────────────────────── */}
+      {/* Comments list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
         {matched.length === 0 && (
           <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
