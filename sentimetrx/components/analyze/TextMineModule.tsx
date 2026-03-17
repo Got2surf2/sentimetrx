@@ -10,7 +10,10 @@ import {
   recountThemes, sampleSize95, evenSample,
   commentMatchesTheme, getRowText, sentColor, sentBg,
 } from '@/lib/themeUtils'
+import { applyFilters, filterCount } from '@/lib/filterUtils'
+import type { Filters } from '@/lib/filterUtils'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
+import FiltersModal from '@/components/analyze/FiltersModal'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
@@ -483,6 +486,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  // Filter state
+  const [filters, setFilters] = useState<Filters>({})
+  const [showFilters, setShowFilters] = useState(false)
+
   // Warn before leaving with unsaved changes
   useEffect(function() {
     function handleBeforeUnload(e: BeforeUnloadEvent) {
@@ -589,16 +596,20 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     })
   }
 
-  // Stats for active fields
-  var activeFieldRows = rows.filter(function(r) {
+  // Apply global filters to rows
+  var filteredRows = applyFilters(rows, filters)
+  var activeFilterCount = filterCount(filters)
+
+  // Stats for active fields (on filtered data)
+  var activeFieldRows = filteredRows.filter(function(r) {
     return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 })
   })
   var activeFieldCount = activeFieldRows.length
 
   // Prepare corpus sample for mining (combines all active fields)
   function prepareCorpus() {
-    if (!effectiveFields.length || !rows.length) return { texts: [], total: 0 }
-    var texts = rows
+    if (!effectiveFields.length || !filteredRows.length) return { texts: [], total: 0 }
+    var texts = filteredRows
       .map(function(r) { return effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim() })
       .filter(function(t) { return t.length > 0 })
     const total = texts.length
@@ -612,7 +623,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   async function mineThemes() {
     if (!apiKey) { setShowApiKeyModal(true); return }
-    if (!effectiveFields.length || !rows.length) return
+    if (!effectiveFields.length || !filteredRows.length) return
     setLoading(true)
     setError(null)
     try {
@@ -634,7 +645,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         throw new Error(errMsg)
       }
       if (!data.themes) throw new Error('No themes returned')
-      var recounted = recountThemes(data.themes, rows, effectiveFields)
+      var recounted = recountThemes(data.themes, filteredRows, effectiveFields)
       var tm: ThemeModel = {
         themes: recounted,
         summary: data.summary || '',
@@ -658,9 +669,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   function applyIndustryThemes(themeArr: Theme[], libName: string, source: string) {
-    if (!effectiveFields.length || !rows.length) return
-    var recounted = recountThemes(themeArr, rows, effectiveFields)
-    var total = rows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
+    if (!effectiveFields.length || !filteredRows.length) return
+    var recounted = recountThemes(themeArr, filteredRows, effectiveFields)
+    var total = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
     var tm: ThemeModel = {
       themes: recounted,
       summary: 'Industry library: ' + libName,
@@ -799,7 +810,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* Right: source badge + action buttons */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
-              {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
+              {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows{activeFilterCount > 0 ? ' (' + filteredRows.length.toLocaleString() + ' filtered)' : ''}</span>}
+              {/* Filters button */}
+              <button onClick={function() { setShowFilters(true) }}
+                style={{ padding: '4px 12px', fontSize: 11, fontWeight: activeFilterCount > 0 ? 700 : 600, background: activeFilterCount > 0 ? T.accentBg : T.bg, border: '1px solid ' + (activeFilterCount > 0 ? T.accentMid : T.border), borderRadius: 20, color: activeFilterCount > 0 ? T.accent : T.textMid, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {activeFilterCount > 0 && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fde68a' }} />}
+                Filters{activeFilterCount > 0 ? ' (' + activeFilterCount + ')' : ''}
+              </button>
               {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
                   {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}
@@ -825,6 +842,35 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               )}
             </div>
           </div>
+
+          {/* Active filter chips bar */}
+          {activeFilterCount > 0 && (
+            <div style={{ background: T.accentBg, borderBottom: '1px solid ' + T.accentMid, padding: '5px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, flexShrink: 0 }}>{'\u229E'} Filtered:</span>
+              {Object.entries(filters).map(function(e) {
+                var field = e[0], f = e[1]
+                var lbl = fieldLabel(field)
+                var desc = f.type === 'cat'
+                  ? Array.from(f.values).slice(0, 2).join(', ') + (f.values.size > 2 ? ' +' + (f.values.size - 2) : '')
+                  : String(f.values[0]) + '\u2013' + String(f.values[1])
+                return (
+                  <span key={field} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 9px', background: 'white', borderRadius: 10, border: '1px solid ' + T.accentMid, color: T.text, fontWeight: 500 }}>
+                    {lbl}: {desc}
+                    <button onClick={function() { setFilters(function(prev) { var n = { ...prev }; delete n[field]; return n }) }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textFaint, fontSize: 12, lineHeight: 1, padding: 0 }}>{'\u00D7'}</button>
+                  </span>
+                )
+              })}
+              <button onClick={function() { setShowFilters(true) }}
+                style={{ fontSize: 10, fontWeight: 700, color: T.accent, background: 'none', border: '1px solid ' + T.accentMid, borderRadius: 6, cursor: 'pointer', padding: '2px 8px', marginLeft: 'auto' }}>
+                {'\u229E'} Edit
+              </button>
+              <button onClick={function() { setFilters({}) }}
+                style={{ fontSize: 10, fontWeight: 700, color: T.textMute, background: 'none', border: 'none', cursor: 'pointer' }}>
+                Clear all
+              </button>
+            </div>
+          )}
 
           {/* ─── Tab content ─────────────────────────────────────────── */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -890,7 +936,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 {/* ─── Themes content (with Distribution/Cards toggle) ─── */}
                 {rowsLoaded && hasThemes && themes && !loading && (function() {
                   var sortedThemes = [...themes.themes].sort(function(a, b) { return b.count - a.count })
-                  var totalResp = rows.filter(function(r) { return activeField && String(r[activeField] || '').trim().length > 0 }).length
+                  var totalResp = filteredRows.filter(function(r) { return activeField && String(r[activeField] || '').trim().length > 0 }).length
                   var topTone = sortedThemes[0] ? sortedThemes[0].sentiment : '\u2014'
 
                   return (
@@ -1021,7 +1067,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (
-                        <BreakdownDist themes={themes} parsedData={rows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                        <BreakdownDist themes={themes} parsedData={filteredRows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
                       )}
                     </div>
                   )
@@ -1037,7 +1083,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   <WordCloud
                     themes={themes.themes}
                     themeColors={themeColors}
-                    parsedData={rows}
+                    parsedData={filteredRows}
                     activeField={activeField || themes.fieldName}
                     onWordClick={function(word, idx, type) {
                       if (themes) {
@@ -1064,7 +1110,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab themes={themes} parsedData={rows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} onDrillTheme={handleDrillTheme} />
+              <CompareTab themes={themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} onDrillTheme={handleDrillTheme} />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}
@@ -1074,7 +1120,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   <CommentsPanel
                     initialTheme={drillTheme}
                     allThemes={themes.themes}
-                    parsedData={rows}
+                    parsedData={filteredRows}
                     activeField={effectiveFields[0] || themes.fieldName}
                     activeFields={effectiveFields}
                     catFields={catFields}
@@ -1119,6 +1165,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       )}
 
       {/* ─── Modals ────────────────────────────────────────────────────── */}
+      {showFilters && rowsLoaded && (
+        <FiltersModal
+          schema={schema.fields}
+          rows={rows}
+          filters={filters}
+          onApply={function(f) { setFilters(f) }}
+          onClose={function() { setShowFilters(false) }}
+        />
+      )}
       {showApiKeyModal && (
         <ApiKeyModal onSave={function(k) { setApiKey(k) }} onClose={function() { setShowApiKeyModal(false) }} />
       )}
