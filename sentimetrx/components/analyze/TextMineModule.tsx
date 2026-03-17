@@ -459,6 +459,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [showThemeEditor, setShowThemeEditor] = useState(false)
   const [industryThemes, setIndustryThemes] = useState<Record<string, Theme[]> | null>(null)
+  const [industryLoading, setIndustryLoading] = useState(true)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -488,10 +489,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   // Load industry themes on mount
   useEffect(function() {
+    setIndustryLoading(true)
     fetch('/api/industry-themes')
-      .then(function(r) { return r.json() })
-      .then(function(d) { setIndustryThemes(d) })
-      .catch(function() { /* silently ignore */ })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load industry themes')
+        return r.json()
+      })
+      .then(function(d) { setIndustryThemes(d); setIndustryLoading(false) })
+      .catch(function(e) {
+        console.error('[TextMine] Industry themes load failed:', e)
+        setIndustryThemes({})
+        setIndustryLoading(false)
+      })
   }, [])
 
   // Fetch all rows progressively
@@ -1100,13 +1109,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       {showApiKeyModal && (
         <ApiKeyModal onSave={function(k) { setApiKey(k) }} onClose={function() { setShowApiKeyModal(false) }} />
       )}
-      {showThemeEditor && industryThemes && (
+      {showThemeEditor && (industryThemes != null) && (
         <ThemeEditor
           onApply={handleThemeEditorApply}
           onClose={function() { setShowThemeEditor(false) }}
           initialData={themes ? { themes: themes.themes, libName: themeLibName, source: themeSource } : null}
           industryThemes={industryThemes}
         />
+      )}
+      {showThemeEditor && industryThemes == null && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={function() { setShowThemeEditor(false) }}>
+          <div style={{ background: T.bgCard, borderRadius: 16, padding: '40px 32px', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,.28)' }}
+            onClick={function(e) { e.stopPropagation() }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite', margin: '0 auto 16px' }} />
+            <div style={{ fontSize: 13, color: T.textMute }}>Loading industry theme libraries...</div>
+          </div>
+        </div>
       )}
     </div>
   )
