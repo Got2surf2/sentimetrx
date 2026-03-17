@@ -180,15 +180,15 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var allSelected = !selectedVals || selectedVals.size === allVals.length
                 var excludeBlanks = pf && (pf as PendingCat).excludeBlanks === true
 
-                function toggleVal(v: string) {
+                fvar toggleVal = function(v: string) { {
                   var cur = selectedVals ? new Set(selectedVals) : new Set(allVals)
                   if (cur.has(v)) cur.delete(v); else cur.add(v)
                   if (cur.size === allVals.length && !excludeBlanks) { removePending(f.field) }
                   else { updatePending(f.field, { type: 'cat', values: Array.from(cur), excludeBlanks: excludeBlanks }) }
                 }
 
-                function selectAllCat() { removePending(f.field) }
-                function excludeAllCat() { updatePending(f.field, { type: 'cat', values: [], excludeBlanks: excludeBlanks }) }
+                var selectAllCat = function() { removePending(f.field) }
+                var excludeAllCat = function() { updatePending(f.field, { type: 'cat', values: [], excludeBlanks: excludeBlanks }) }
 
                 return (
                   <div key={f.field} style={{ background: T.bgCard, border: (isActive ? '2px solid ' + T.accent : '1px solid ' + T.border), borderRadius: 10, padding: '14px 16px' }}>
@@ -236,7 +236,7 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var curMax = pf && pf.type === 'range' ? pf.values[1] : absMax
                 var inclBlanks = pf ? (pf as PendingRange).includeBlanks !== false : true
 
-                function setNumRange(min: number, max: number, ib?: boolean) {
+                var setNumRange = function(min: number, max: number, ib?: boolean) {
                   var incl = ib !== undefined ? ib : inclBlanks
                   if (min === absMin && max === absMax && incl) { removePending(f.field) }
                   else { updatePending(f.field, { type: 'range', values: [min, max], includeBlanks: incl }) }
@@ -288,7 +288,7 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var fmtDate = function(ts: number) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() }
                 var stepMs = Math.max(86400000, Math.round((absMaxTs - absMinTs) / 200))
 
-                function setDateRange(minTs: number, maxTs: number, ib?: boolean) {
+                var setDateRange = function(minTs: number, maxTs: number, ib?: boolean) {
                   var incl = ib !== undefined ? ib : inclBlanksDt
                   if (minTs === absMinTs && maxTs === absMaxTs && incl) { removePending(f.field) }
                   else { updatePending(f.field, { type: 'daterange', values: [minTs, maxTs], includeBlanks: incl }) }
