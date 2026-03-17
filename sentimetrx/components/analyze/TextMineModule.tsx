@@ -30,6 +30,7 @@ const T = {
 interface SchemaField {
   field: string
   type: 'open-ended' | 'categorical' | 'numeric' | 'date' | 'id' | 'ignore'
+  label?: string
   status?: string
   values?: string[]
 }
