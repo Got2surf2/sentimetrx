@@ -92,7 +92,7 @@ const BANK: BankQuestion[] = [
 
 const CATEGORIES: { id: BankCategory | 'all'; label: string; emoji: string }[] = [
   { id: 'all',       label: 'All',           emoji: '📋' },
-  { id: 'behaviour', label: 'Behaviour',     emoji: '🔄' },
+  { id: 'behaviour', label: 'Behavior',     emoji: '🔄' },
   { id: 'attitudes', label: 'Attitudes',     emoji: '💡' },
   { id: 'media',     label: 'Media',         emoji: '📱' },
   { id: 'decision',  label: 'Decision',      emoji: '🎯' },

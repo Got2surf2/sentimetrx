@@ -739,7 +739,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       {/* ─── Multi-field picker bar (Ana style with checkbox pills) ───── */}
       {openFields.length > 1 && hasThemes && (
         <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Analyse:</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Analyze:</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
             {openFields.map(function(f) {
               var sel = activeFields.includes(f.field)
@@ -803,7 +803,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           {openFields.length > 0 && (
             <div style={{ padding: '0 14px 12px', borderBottom: '1px solid ' + T.border }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-                Analyse Fields {activeFields.length > 1 ? '(' + activeFields.length + ')' : ''}
+                Analyze Fields {activeFields.length > 1 ? '(' + activeFields.length + ')' : ''}
               </div>
               {openFields.map(function(f) {
                 var sel = activeFields.includes(f.field)

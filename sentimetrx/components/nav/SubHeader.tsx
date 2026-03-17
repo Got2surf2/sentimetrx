@@ -80,7 +80,7 @@ export default function SubHeader({ crumbs, isAdmin, orgId, showFilters }: Props
           {isAdmin && (
             <select value={ready ? selectedOrg : ''} onChange={e => { setSelectedOrg(e.target.value); setSelectedUser(''); nav(e.target.value, '') }}
               className={selCls} disabled={!ready}>
-              <option value="">All organisations</option>
+              <option value="">All organizations</option>
               {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           )}

@@ -28,7 +28,7 @@ const TABS = [
   { key: 'textmine',  label: 'TextMine' },
   { key: 'charts',    label: 'Charts' },
   { key: 'stats',     label: 'Statistics' },
-  { key: 'settings',  label: 'Settings' },
+  { key: 'settings',  label: 'Schema & Themes' },
 ]
 
 function timeAgo(iso: string): string {

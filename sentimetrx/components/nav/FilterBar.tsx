@@ -69,7 +69,7 @@ export default function FilterBar({ isAdmin, orgId }: Props) {
       {isAdmin && (
         <select value={ready ? selectedOrg : ''} onChange={e => handleOrgChange(e.target.value)}
           className={selCls} disabled={!ready}>
-          <option value="">All organisations</option>
+          <option value="">All organizations</option>
           {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       )}

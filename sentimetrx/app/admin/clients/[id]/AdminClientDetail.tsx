@@ -186,7 +186,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
 
           {/* Logo upload */}
           <div className="mt-5 pt-5 border-t border-gray-200">
-            <p className="text-xs text-gray-400 mb-3">Organisation Logo</p>
+            <p className="text-xs text-gray-400 mb-3">Organization Logo</p>
             {logoMsg && <p className="text-xs text-green-400 mb-2">{logoMsg}</p>}
             <div className="flex items-center gap-3">
               <div className="w-20 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden">
@@ -279,7 +279,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
         {/* Invite Links */}
         <Section title="Invite Links">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-gray-400">Generate links to invite new members to this organisation.</p>
+            <p className="text-xs text-gray-400">Generate links to invite new members to this organization.</p>
             <button
               onClick={() => setShowInvForm(f => !f)}
               className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors"

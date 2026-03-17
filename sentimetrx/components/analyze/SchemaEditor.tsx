@@ -188,12 +188,20 @@ function FieldCard({ f, onTypeChange, onAliasChange, readOnly, index }: {
   index:         number
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [editingAlias, setEditingAlias] = useState(false)
+  const [aliasVal, setAliasVal] = useState(f.label || '')
   const ut       = getActiveType(f)
   const isIgnored = f.type === 'ignore' || f.type === 'id'
 
+  function commitAlias() {
+    var trimmed = aliasVal.trim()
+    onAliasChange(f.field, trimmed === f.field ? '' : trimmed)
+    setEditingAlias(false)
+  }
+
   return (
     <div
-      onClick={readOnly ? undefined : function() { setExpanded(function(v) { return !v }) }}
+      onClick={readOnly ? undefined : function() { if (!editingAlias) setExpanded(function(v) { return !v }) }}
       style={{
         background: expanded ? P.white : P.white,
         border: '1px solid ' + (expanded ? ut.color + '60' : P.border),
@@ -224,14 +232,52 @@ function FieldCard({ f, onTypeChange, onAliasChange, readOnly, index }: {
           {ut.icon}
         </div>
 
-        {/* Field name + sub-label */}
+        {/* Field name + inline alias editing */}
         <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: P.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {f.label && f.label !== f.field ? f.label : f.field}
-          </div>
-          {f.label && f.label !== f.field && (
-            <div style={{ fontSize: 10, color: P.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {f.field}
+          {editingAlias ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={function(e) { e.stopPropagation() }}>
+              <input
+                autoFocus
+                value={aliasVal}
+                onChange={function(e) { setAliasVal(e.target.value) }}
+                onKeyDown={function(e) {
+                  if (e.key === 'Enter') commitAlias()
+                  if (e.key === 'Escape') { setAliasVal(f.label || ''); setEditingAlias(false) }
+                }}
+                placeholder={f.field}
+                style={{ flex: 1, padding: '2px 6px', fontSize: 13, fontWeight: 700, border: '1.5px solid ' + P.accent, borderRadius: 5, outline: 'none', color: P.text, background: P.white, fontFamily: 'inherit', minWidth: 0 }}
+              />
+              <button onClick={commitAlias}
+                style={{ width: 22, height: 22, borderRadius: 5, background: P.accent, color: 'white', border: 'none', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {'\u2713'}
+              </button>
+              <button onClick={function() { setAliasVal(f.label || ''); setEditingAlias(false) }}
+                style={{ width: 22, height: 22, borderRadius: 5, background: P.bg, color: P.textFaint, border: '1px solid ' + P.border, cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {'\u2715'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: P.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.label && f.label !== f.field ? f.label : f.field}
+                </div>
+                {f.label && f.label !== f.field && (
+                  <div style={{ fontSize: 10, color: P.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.field}
+                  </div>
+                )}
+              </div>
+              {!readOnly && (
+                <button
+                  title="Rename field alias"
+                  onClick={function(e) { e.stopPropagation(); setAliasVal(f.label || f.field); setEditingAlias(true) }}
+                  style={{ width: 20, height: 20, borderRadius: 4, background: 'transparent', border: 'none', color: P.textFaint, cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: 0.5, transition: 'opacity .12s' }}
+                  onMouseEnter={function(e) { (e.target as HTMLElement).style.opacity = '1' }}
+                  onMouseLeave={function(e) { (e.target as HTMLElement).style.opacity = '0.5' }}>
+                  {'\u270E'}
+                </button>
+              )}
             </div>
           )}
         </div>

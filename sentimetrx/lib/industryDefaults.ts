@@ -273,7 +273,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
         opts: ["Passionate — content is central to my leisure time", "Regular consumer — it's a big part of my daily routine", "Casual — I dip in when I have time", "Selective — I seek out specific content I care deeply about"] },
       { key: 'me_platform_loyalty', q: "How do you feel about subscription streaming services?", exportLabel: "Platform Loyalty",
         opts: ["Loyal — I stick with a small number of services long-term", "Value-driven — I subscribe and cancel based on content", "Selective — I choose based on a specific show or film", "Reluctant — I'd rather buy or rent than subscribe"] },
-      { key: 'me_discovery_behaviour', q: "How do you typically discover new content to watch or engage with?", exportLabel: "Discovery Behaviour",
+      { key: 'me_discovery_behaviour', q: "How do you typically discover new content to watch or engage with?", exportLabel: "Discovery Behavior",
         opts: ["Algorithm and platform recommendations", "Friends and social media", "Reviews and critics", "Trailers and marketing", "Browsing until something catches my eye"] },
       { key: 'me_social_viewing', q: "How social is your media consumption?", exportLabel: "Viewing Sociality",
         opts: ["Highly social — I watch with others and discuss content a lot", "Mixed — I enjoy both solo and social viewing", "Mostly solo — I prefer watching on my own terms", "Entirely solo — media time is personal time"] },

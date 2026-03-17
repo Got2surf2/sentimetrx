@@ -148,7 +148,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
 
         {/* Org Logo */}
         <section>
-          <h2 className="text-lg font-semibold mb-1">Organisation Logo</h2>
+          <h2 className="text-lg font-semibold mb-1">Organization Logo</h2>
           <p className="text-gray-400 text-sm mb-4">Appears top-left on all pages and on the survey widget. PNG or JPG, max 2MB.</p>
           <div className="flex items-center gap-4">
             <div className="w-24 h-12 rounded-lg bg-slate-800 border border-gray-200 flex items-center justify-center overflow-hidden">

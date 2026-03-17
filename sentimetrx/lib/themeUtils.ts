@@ -149,7 +149,7 @@ export function sentBg(s: string): string {
   return map[s] || '#f9fafb'
 }
 
-// Ana THEME_PALETTE -- 20 unique colours for theme cards (no repeats up to 20 themes)
+// Ana THEME_PALETTE -- 20 unique colors for theme cards (no repeats up to 20 themes)
 export const THEME_PALETTE = [
   { bg: '#fff0e6', border: '#e8622a', text: '#b84a18', light: '#ffe4d0' },
   { bg: '#eff6ff', border: '#2563eb', text: '#1d4ed8', light: '#dbeafe' },

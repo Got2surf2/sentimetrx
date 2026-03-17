@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 
 interface Props {
@@ -14,6 +15,42 @@ interface Props {
 }
 
 const HERMES = '#E8632A'
+
+function CogMenu({ currentPage }: { currentPage?: string }) {
+  var [open, setOpen] = useState(false)
+  var isActive = currentPage === 'team' || currentPage === 'admin'
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={function() { setOpen(function(v) { return !v }) }}
+        className={'text-sm font-medium transition-all whitespace-nowrap px-2.5 py-1.5 rounded-full ' +
+          (isActive ? 'bg-white/25 text-white' : 'text-orange-100 hover:bg-white/15 hover:text-white')}
+        title="Settings"
+        style={{ fontSize: 16, lineHeight: 1 }}>
+        {'\u2699'}
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={function() { setOpen(false) }} />
+          <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'white', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 100, minWidth: 180, padding: '4px 0', overflow: 'hidden' }}>
+            <Link href="/settings/team" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'team' ? 700 : 500, color: currentPage === 'team' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83D\uDC65'} Team Management
+            </Link>
+            <Link href="/admin" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'admin' ? 700 : 500, color: currentPage === 'admin' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83D\uDD27'} Admin Panel
+            </Link>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled, currentPage }: Props) {
 
@@ -68,14 +105,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
       <div className="flex items-center gap-0.5 flex-shrink-0">
         {navLink('dashboard', '/dashboard', 'Studies')}
         {analyzeEnabled && navLink('analyze', '/analyze', 'Analyze')}
-        {navLink('team', '/settings/team', 'Team')}
-        {isAdmin && (
-          <Link href="/admin"
-            className={'text-sm font-medium whitespace-nowrap px-3 py-1.5 rounded-full transition-all ' +
-              (currentPage === 'admin' ? 'bg-white/25 text-white' : 'text-orange-100 hover:bg-white/15 hover:text-white')}>
-            Admin
-          </Link>
-        )}
+        {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />
         <form action="/api/auth/signout" method="POST">
           <button className="text-sm text-orange-100 hover:text-white hover:bg-white/15 transition-all px-3 py-1.5 rounded-full whitespace-nowrap">

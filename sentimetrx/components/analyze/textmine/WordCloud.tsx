@@ -1,7 +1,7 @@
 'use client'
 // components/analyze/textmine/WordCloud.tsx
 // Renders a word cloud in two modes: frequency (interactive toggle) and grouped by theme.
-// Words sized by corpus frequency. Theme-keyword words coloured by their theme.
+// Words sized by corpus frequency. Theme-keyword words colored by their theme.
 
 import { useState } from 'react'
 import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
