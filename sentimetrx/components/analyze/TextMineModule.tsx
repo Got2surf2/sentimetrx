@@ -309,7 +309,7 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
 
 // ─── CompareTab (inline simplified version) ───────────────────────────────────
 
-function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownField, setBreakdownField }: {
+function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownField, setBreakdownField, onDrillTheme }: {
   themes: ThemeModel | null
   parsedData: Record<string, unknown>[]
   schema: SchemaField[]
@@ -317,6 +317,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   themeColors: Record<number, typeof THEME_PALETTE[0]>
   breakdownField: string | null
   setBreakdownField: (f: string | null) => void
+  onDrillTheme: (t: Theme) => void
 }) {
   if (!themes) {
     return (
@@ -374,18 +375,20 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
           field={field}
           breakdownField={selField}
           themeColors={themeColors}
+          onDrillTheme={onDrillTheme}
         />
       )}
     </div>
   )
 }
 
-function CompareGroupView({ themes, parsedData, field, breakdownField, themeColors }: {
+function CompareGroupView({ themes, parsedData, field, breakdownField, themeColors, onDrillTheme }: {
   themes: ThemeModel
   parsedData: Record<string, unknown>[]
   field: string
   breakdownField: string
   themeColors: Record<number, typeof THEME_PALETTE[0]>
+  onDrillTheme: (t: Theme) => void
 }) {
   const groupVals = Array.from(new Set(parsedData.map(function(r) { return String(r[breakdownField] ?? '') }).filter(Boolean))).sort()
   const sortedThemes = [...themes.themes].sort(function(a, b) { return b.count - a.count })
@@ -405,8 +408,15 @@ function CompareGroupView({ themes, parsedData, field, breakdownField, themeColo
         return (
           <div key={t.id} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px', marginBottom: 10, borderLeft: '3px solid ' + pal.border }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: pal.text }}>{t.name}</span>
+              <span onClick={function() { onDrillTheme(t) }}
+                style={{ fontSize: 13, fontWeight: 700, color: pal.text, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: pal.border + '60', textUnderlineOffset: '2px' }}>
+                {t.name}
+              </span>
               <span style={{ fontSize: 11, color: T.textMute }}>{t.count} responses overall ({t.percentage}%)</span>
+              <button onClick={function() { onDrillTheme(t) }}
+                style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>
+                View comments {'\u2192'}
+              </button>
             </div>
             {groupData.map(function(g) {
               return (
@@ -458,6 +468,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [isDirty, setIsDirty] = useState(false)
 
   const [apiKey, setApiKey] = useState<string>('')
+  const [aiEnabled, setAiEnabled] = useState<boolean>(false)
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [showThemeEditor, setShowThemeEditor] = useState(false)
   const [industryThemes, setIndustryThemes] = useState<Record<string, Theme[]> | null>(null)
@@ -471,6 +482,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  // Warn before leaving with unsaved changes
+  useEffect(function() {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (isDirty) { e.preventDefault(); e.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return function() { window.removeEventListener('beforeunload', handleBeforeUnload) }
+  }, [isDirty])
+
   const openFields = schema.fields.filter(function(f) { return f.type === 'open-ended' && f.status !== 'ignored' })
   const catFields = schema.fields.filter(function(f) { return f.type === 'categorical' && f.status !== 'ignored' }).map(function(f) { return f.field })
 
@@ -481,11 +501,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
   }, [openFields.length])
 
-  // Load API key from localStorage
+  // Load API key and AI enabled state from localStorage
   useEffect(function() {
     try {
-      const k = localStorage.getItem('sentimetrx_tm_apikey')
+      var k = localStorage.getItem('sentimetrx_tm_apikey')
       if (k) setApiKey(k)
+      var ai = localStorage.getItem('sentimetrx_ai_enabled')
+      if (ai === '1') setAiEnabled(true)
     } catch { /* ignore */ }
   }, [])
 
@@ -784,29 +806,59 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             </div>
           )}
 
-          {/* Actions */}
+          {/* AI toggle + actions */}
           <div style={{ padding: '12px 14px', borderBottom: '1px solid ' + T.border }}>
-            <button onClick={function() { setShowApiKeyModal(true) }}
-              style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 600, borderRadius: 7, background: apiKey ? T.greenBg : T.bg, color: apiKey ? T.green : T.textFaint, border: '1px solid ' + (apiKey ? T.greenMid : T.border), cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}>
-              {apiKey ? '\u2714 AI key connected' : '\uD83D\uDD11 Connect AI key'}
-            </button>
-            {openFields.length > 0 && (
+            {/* AI on/off toggle — Ana.html style */}
+            {apiKey ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <button onClick={function() {
+                  var next = !aiEnabled
+                  setAiEnabled(next)
+                  try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
+                }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? T.accentBg : T.bg, border: '1px solid ' + (aiEnabled ? T.accentMid : T.border), borderRadius: 20, color: aiEnabled ? T.accent : T.textFaint, cursor: 'pointer', flex: 1 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? T.green : '#94a3b8', display: 'inline-block' }} />
+                  {aiEnabled ? 'AI on' : 'AI off'}
+                </button>
+                <button onClick={function() { setShowApiKeyModal(true) }}
+                  style={{ padding: '5px 9px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMute, cursor: 'pointer' }}>
+                  {'\u2699'}
+                </button>
+              </div>
+            ) : (
+              <button onClick={function() { setShowApiKeyModal(true) }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: T.accent, border: 'none', borderRadius: 20, color: 'white', cursor: 'pointer', justifyContent: 'center', marginBottom: 8 }}>
+                {'\uD83D\uDD11'} Connect AI
+              </button>
+            )}
+
+            {/* Mine with AI — only shown when AI is ON */}
+            {openFields.length > 0 && aiEnabled && (
               <button onClick={mineThemes} disabled={!canMine || loading}
                 style={{ width: '100%', padding: '8px 10px', fontSize: 12, fontWeight: 700, background: canMine && !loading ? T.accent : T.borderMid, color: canMine && !loading ? 'white' : T.textFaint, border: 'none', borderRadius: 8, cursor: canMine && !loading ? 'pointer' : 'not-allowed', marginBottom: 6 }}>
                 {loading ? 'Mining...' : '\u29E1 Mine with AI'}
               </button>
             )}
+
+            {/* Theme library — always available */}
             {openFields.length > 0 && (
               <button onClick={function() { setShowThemeEditor(true) }}
                 style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 7, color: T.textMid, cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}>
                 {'\u2261'} Theme library...
               </button>
             )}
-            {hasThemes && (
-              <button onClick={saveThemeModel} disabled={saving}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 600, background: saved ? T.greenBg : T.bg, color: saved ? T.green : T.textMid, border: '1px solid ' + (saved ? T.greenMid : T.border), borderRadius: 7, cursor: 'pointer', textAlign: 'left' }}>
-                {saved ? '\u2714 Saved' : '\u2193 Save theme model'}
+
+            {/* Save — only shown when dirty */}
+            {hasThemes && isDirty && (
+              <button onClick={function() { saveThemeModel() }} disabled={saving}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 7, cursor: saving ? 'not-allowed' : 'pointer', textAlign: 'center' }}>
+                {saving ? 'Saving...' : saved ? '\u2714 Saved' : '\u2193 Save changes'}
               </button>
+            )}
+            {hasThemes && !isDirty && (
+              <div style={{ fontSize: 11, color: T.green, fontWeight: 600, textAlign: 'center', padding: '4px 0' }}>
+                {'\u2714'} All changes saved
+              </div>
             )}
           </div>
 
@@ -883,10 +935,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       {' '}Run an AI analysis or pick an industry theme library to get started.
                     </p>
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <button onClick={mineThemes} disabled={!canMine}
-                        style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine ? T.accent : T.borderMid, color: canMine ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine ? 'pointer' : 'not-allowed' }}>
-                        {'\u29E1'} Mine with AI
-                      </button>
+                      {aiEnabled && (
+                        <button onClick={mineThemes} disabled={!canMine}
+                          style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine ? T.accent : T.borderMid, color: canMine ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine ? 'pointer' : 'not-allowed' }}>
+                          {'\u29E1'} Mine with AI
+                        </button>
+                      )}
+                      {!aiEnabled && !apiKey && (
+                        <button onClick={function() { setShowApiKeyModal(true) }}
+                          style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 9, cursor: 'pointer' }}>
+                          {'\uD83D\uDD11'} Connect AI to mine themes
+                        </button>
+                      )}
                       <button onClick={function() { setShowThemeEditor(true) }}
                         style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
                         {'\u2261'} Choose industry library
@@ -1072,7 +1132,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab themes={themes} parsedData={rows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} />
+              <CompareTab themes={themes} parsedData={rows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} onDrillTheme={handleDrillTheme} />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}
@@ -1151,5 +1211,3 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     </div>
   )
 }
-
-

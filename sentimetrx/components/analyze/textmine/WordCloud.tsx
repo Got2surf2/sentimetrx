@@ -239,5 +239,3 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     </div>
   )
 }
-
-

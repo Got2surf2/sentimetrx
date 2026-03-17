@@ -169,5 +169,3 @@ export function getThemeColor(idx: number) {
 export function getRowText(row: Record<string, unknown>, fields: string[]): string {
   return fields.map(function(f) { return String(row[f] || '') }).join(' ').trim()
 }
-
-
