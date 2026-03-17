@@ -180,7 +180,7 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var allSelected = !selectedVals || selectedVals.size === allVals.length
                 var excludeBlanks = pf && (pf as PendingCat).excludeBlanks === true
 
-                fvar toggleVal = function(v: string) { {
+                var toggleVal = function(v: string) {
                   var cur = selectedVals ? new Set(selectedVals) : new Set(allVals)
                   if (cur.has(v)) cur.delete(v); else cur.add(v)
                   if (cur.size === allVals.length && !excludeBlanks) { removePending(f.field) }
