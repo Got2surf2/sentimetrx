@@ -258,6 +258,32 @@ function FieldCard({ f, onTypeChange, onAliasChange, readOnly, index }: {
           {ut.label}
         </span>
 
+        {/* Ignore/Include toggle — quick toggle without expanding */}
+        {!readOnly && (
+          <button
+            title={isIgnored ? 'Include this field in analysis' : 'Exclude this field from analysis'}
+            onClick={function(e) {
+              e.stopPropagation()
+              if (isIgnored) {
+                // Restore to open-ended as default include type
+                onTypeChange(f.field, 'open-ended', 'open-text')
+              } else {
+                onTypeChange(f.field, 'ignore', null)
+              }
+            }}
+            style={{
+              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: isIgnored ? P.bg : '#f0fdf4',
+              border: '1.5px solid ' + (isIgnored ? P.border : '#bbf7d0'),
+              color: isIgnored ? P.textFaint : '#16a34a',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              marginRight: 10, transition: 'all .12s',
+            }}>
+            {isIgnored ? '\u2205' : '\u2713'}
+          </button>
+        )}
+
         {/* Chevron */}
         {!readOnly && (
           <div style={{ fontSize: 11, color: expanded ? ut.color : P.textFaint, flexShrink: 0, transition: 'transform .15s', transform: expanded ? 'rotate(180deg)' : 'none', lineHeight: 1 }}>

@@ -211,12 +211,17 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingTop: 8, borderTop: '1px solid #f3f4f6', marginTop: 'auto' }}>
         <div style={{ width: 22, height: 22, borderRadius: '50%', background: HERMES_BG, border: '1.5px solid ' + HERMES_MID, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <span style={{ fontSize: 9, fontWeight: 800, color: HERMES }}>
-            {dataset.client_id ? 'C' : 'ME'}
+            {(dataset.creator_name || '?')[0].toUpperCase()}
           </span>
         </div>
-        <span style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-          {dataset.client_id ? 'Client dataset' : 'Personal dataset'}
+        <span style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, flex: 1 }}>
+          {dataset.creator_name || 'Unknown'}
         </span>
+        {dataset.org_name && (
+          <span style={{ fontSize: 10, color: '#9ca3af', flexShrink: 0 }}>
+            {dataset.org_name}
+          </span>
+        )}
         {isStudy && dataset.last_synced_at && (
           <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>
             Synced {timeAgo(dataset.last_synced_at)}

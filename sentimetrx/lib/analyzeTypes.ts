@@ -181,8 +181,10 @@ export interface ProcessedRow {
 }
 
 export interface DatasetWithState extends Dataset {
-  state?:      DatasetState
-  study_name?: string | null
+  state?:        DatasetState
+  study_name?:   string | null
+  creator_name?: string | null
+  org_name?:     string | null
 }
 
 // -- Paginated rows response (for TextMine) ------------------------------

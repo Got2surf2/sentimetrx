@@ -28,14 +28,16 @@ export default async function AnalyzePage() {
 
   const { data: rawDatasets } = await supabase
     .from('datasets')
-    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, studies(name)')
+    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name), users!datasets_created_by_fkey(full_name, email)')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
 
   const datasets = (rawDatasets || []).map(function(d: any) {
     const studyName = d.studies?.name ?? null
-    const { studies: _s, ...rest } = d
-    return { ...rest, study_name: studyName }
+    const creator = d.users
+    const creatorName = creator?.full_name || creator?.email || null
+    const { studies: _s, users: _u, ...rest } = d
+    return { ...rest, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null }
   })
 
   return (

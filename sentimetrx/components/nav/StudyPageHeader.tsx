@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import ExportModal from '@/components/nav/ExportModal'
+import AnalyzeButton from '@/components/analyze/AnalyzeButton'
 
 interface Props {
   studyId:     string
@@ -18,6 +19,7 @@ interface Props {
   // export modal — we own the modal state here
   sentiment?:  string
   total?:      number
+  analyzeEnabled?: boolean
 }
 
 const HERMES = '#E8632A'
@@ -25,7 +27,7 @@ const HERMES = '#E8632A'
 export default function StudyPageHeader({
   studyId, studyName, botEmoji, activePage,
   dateFrom, dateTo, onDateFrom, onDateTo, onLast30, onAllTime,
-  sentiment = '', total = 0,
+  sentiment = '', total = 0, analyzeEnabled = false,
 }: Props) {
   const [exportOpen, setExportOpen] = useState(false)
   return (
@@ -67,6 +69,11 @@ export default function StudyPageHeader({
                 Analytics
               </Link>
             </div>
+
+            {/* Analyze in Ana */}
+            {analyzeEnabled && (
+              <AnalyzeButton studyId={studyId} />
+            )}
 
             {/* Date shortcuts */}
             <button onClick={onLast30}

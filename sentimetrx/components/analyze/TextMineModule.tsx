@@ -491,13 +491,29 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return function() { window.removeEventListener('beforeunload', handleBeforeUnload) }
   }, [isDirty])
 
-  const openFields = schema.fields.filter(function(f) { return f.type === 'open-ended' && f.status !== 'ignored' })
-  const catFields = schema.fields.filter(function(f) { return f.type === 'categorical' && f.status !== 'ignored' }).map(function(f) { return f.field })
+  var openFields = schema.fields.filter(function(f) { return f.type === 'open-ended' && f.status !== 'ignored' })
+  var catFields = schema.fields.filter(function(f) { return f.type === 'categorical' && f.status !== 'ignored' }).map(function(f) { return f.field })
 
-  // Set initial active field
+  // Issue 7: Always use alias (label) if available
+  function fieldLabel(fieldName: string): string {
+    var f = schema.fields.find(function(s) { return s.field === fieldName })
+    return (f && f.label && f.label !== f.field) ? f.label : fieldName
+  }
+
+  // Effective fields for analysis — multi-field support
+  var effectiveFields = activeFields.length > 0 ? activeFields : (activeField ? [activeField] : [])
+
+  // Set initial active field(s)
   useEffect(function() {
-    if (!activeField && openFields.length > 0) {
-      setActiveField(savedThemeModel?.fieldName || openFields[0].field)
+    if (activeFields.length === 0 && openFields.length > 0) {
+      var saved = savedThemeModel?.fieldNames || (savedThemeModel?.fieldName ? [savedThemeModel.fieldName] : null)
+      if (saved && saved.length) {
+        setActiveFields(saved.filter(function(f) { return openFields.some(function(o) { return o.field === f }) }))
+        setActiveField(saved[0])
+      } else {
+        setActiveFields([openFields[0].field])
+        setActiveField(openFields[0].field)
+      }
     }
   }, [openFields.length])
 
@@ -572,17 +588,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     })
   }
 
-  // Stats for active field
-  const activeFieldRows = rows.filter(function(r) {
-    return activeField && String(r[activeField] || '').trim().length > 0
+  // Stats for active fields
+  var activeFieldRows = rows.filter(function(r) {
+    return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 })
   })
-  const activeFieldCount = activeFieldRows.length
+  var activeFieldCount = activeFieldRows.length
 
-  // Prepare corpus sample for mining
+  // Prepare corpus sample for mining (combines all active fields)
   function prepareCorpus() {
-    if (!activeField || !rows.length) return { texts: [], total: 0 }
-    const texts = rows
-      .map(function(r) { return String(r[activeField!] || '').trim() })
+    if (!effectiveFields.length || !rows.length) return { texts: [], total: 0 }
+    var texts = rows
+      .map(function(r) { return effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim() })
       .filter(function(t) { return t.length > 0 })
     const total = texts.length
     const defaultN = sampleSize95(total)
@@ -595,42 +611,42 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   async function mineThemes() {
     if (!apiKey) { setShowApiKeyModal(true); return }
-    if (!activeField || !rows.length) return
+    if (!effectiveFields.length || !rows.length) return
     setLoading(true)
     setError(null)
     try {
-      const { texts, total } = prepareCorpus()
-      if (!texts.length) throw new Error('No text found in selected field.')
-      const schemaCtx = schema.fields.map(function(f) {
+      var { texts, total } = prepareCorpus()
+      if (!texts.length) throw new Error('No text found in selected fields.')
+      var schemaCtx = schema.fields.map(function(f) {
         return f.field + ':' + f.type + (f.type === 'categorical' && f.values ? ' (' + f.values.slice(0, 6).join(',') + ')' : '')
       }).join('; ')
-      const res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
+      var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, texts, fieldName: activeField, schemaCtx }),
+        body: JSON.stringify({ apiKey: apiKey, texts: texts, fieldName: effectiveFields[0], schemaCtx: schemaCtx }),
       })
-      const data = await res.json()
+      var data = await res.json()
       if (!res.ok) {
-        const errMsg = data.error || 'Mining failed'
+        var errMsg = data.error || 'Mining failed'
         if (errMsg.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
         if (errMsg.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
         throw new Error(errMsg)
       }
       if (!data.themes) throw new Error('No themes returned')
-      const recounted = recountThemes(data.themes, rows, activeField)
-      const tm: ThemeModel = {
+      var recounted = recountThemes(data.themes, rows, effectiveFields)
+      var tm: ThemeModel = {
         themes: recounted,
         summary: data.summary || '',
-        fieldName: activeField,
-        fieldNames: [activeField],
+        fieldName: effectiveFields[0],
+        fieldNames: effectiveFields,
         themeSource: 'ai',
         themeLibName: null,
-        samplingInfo: { sampled: texts.length, total },
+        samplingInfo: { sampled: texts.length, total: total },
       }
       setThemes(tm)
       setThemeSource('ai')
       setThemeLibName(null)
-      setSamplingInfo({ sampled: texts.length, total })
+      setSamplingInfo({ sampled: texts.length, total: total })
       setLastRunPct(samplePct)
       setSubTab('themes')
       setIsDirty(true)
@@ -641,17 +657,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   function applyIndustryThemes(themeArr: Theme[], libName: string, source: string) {
-    if (!activeField || !rows.length) return
-    const recounted = recountThemes(themeArr, rows, activeField)
-    const total = rows.filter(function(r) { return String(r[activeField!] || '').trim().length > 0 }).length
-    const tm: ThemeModel = {
+    if (!effectiveFields.length || !rows.length) return
+    var recounted = recountThemes(themeArr, rows, effectiveFields)
+    var total = rows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
+    var tm: ThemeModel = {
       themes: recounted,
       summary: 'Industry library: ' + libName,
-      fieldName: activeField,
-      fieldNames: [activeField],
+      fieldName: effectiveFields[0],
+      fieldNames: effectiveFields,
       themeSource: source,
       themeLibName: libName,
-      samplingInfo: { sampled: total, total },
+      samplingInfo: { sampled: total, total: total },
     }
     setThemes(tm)
     setThemeSource(source)
@@ -700,8 +716,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setIsDirty(true)
   }
 
-  const hasThemes = themes && themes.themes && themes.themes.length > 0
-  const canMine = rowsLoaded && activeField && rows.length > 0
+  var hasThemes = themes && themes.themes && themes.themes.length > 0
+  var canMine = rowsLoaded && effectiveFields.length > 0 && rows.length > 0
   const subTabs: { id: SubTab; label: string }[] = [
     { id: 'themes', label: 'Themes' },
     { id: 'clouds', label: 'Theme Clouds' },
@@ -725,18 +741,28 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Analyse:</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
             {openFields.map(function(f) {
-              var sel = activeField === f.field
+              var sel = activeFields.includes(f.field)
               return (
-                <button key={f.field} onClick={function() { setActiveField(f.field) }}
+                <button key={f.field} onClick={function() {
+                  var next = sel ? activeFields.filter(function(x) { return x !== f.field }) : activeFields.concat([f.field])
+                  var final = next.length ? next : [f.field]
+                  setActiveFields(final)
+                  setActiveField(final[0])
+                }}
                   style={{ padding: '3px 12px', fontSize: 12, fontWeight: sel ? 700 : 500, background: sel ? T.accentBg : 'white', border: '1.5px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'all .12s' }}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, border: '1.5px solid ' + (sel ? T.accent : T.borderMid), background: sel ? T.accent : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'white', flexShrink: 0, transition: 'all .12s' }}>
                     {sel ? '\u2713' : ''}
                   </span>
-                  {f.field}
+                  {fieldLabel(f.field)}
                 </button>
               )
             })}
           </div>
+          {activeFields.length > 1 && (
+            <span style={{ fontSize: 11, color: T.textMute, flexShrink: 0, whiteSpace: 'nowrap' }}>
+              Combining {activeFields.length} fields
+            </span>
+          )}
         </div>
       )}
 
@@ -772,16 +798,32 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {rowsError && <div style={{ fontSize: 11, color: T.red }}>{rowsError}</div>}
           </div>
 
-          {/* Field picker (single field, sidebar style) */}
+          {/* Field picker (multi-select, sidebar style) */}
           {openFields.length > 0 && (
             <div style={{ padding: '0 14px 12px', borderBottom: '1px solid ' + T.border }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>Analyse Field</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                Analyse Fields {activeFields.length > 1 ? '(' + activeFields.length + ')' : ''}
+              </div>
               {openFields.map(function(f) {
-                var sel = activeField === f.field
+                var sel = activeFields.includes(f.field)
                 return (
-                  <button key={f.field} onClick={function() { setActiveField(f.field) }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: sel ? T.accentBg : 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: 7, borderLeft: '3px solid ' + (sel ? T.accent : 'transparent'), marginBottom: 2 }}>
-                    <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? T.accent : T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.field}</span>
+                  <button key={f.field} onClick={function() {
+                    var next = sel ? activeFields.filter(function(x) { return x !== f.field }) : activeFields.concat([f.field])
+                    var final = next.length ? next : [f.field]
+                    setActiveFields(final)
+                    setActiveField(final[0])
+                  }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: sel ? T.accentBg : 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: 7, marginBottom: 2 }}>
+                    <span style={{
+                      width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                      border: '1.5px solid ' + (sel ? T.accent : T.borderMid),
+                      background: sel ? T.accent : 'transparent',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, color: 'white',
+                    }}>{sel ? '\u2713' : ''}</span>
+                    <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? T.accent : T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {fieldLabel(f.field)}
+                    </span>
                   </button>
                 )
               })}
@@ -806,32 +848,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             </div>
           )}
 
-          {/* AI toggle + actions */}
+          {/* Actions (mine, library, save) */}
           <div style={{ padding: '12px 14px', borderBottom: '1px solid ' + T.border }}>
-            {/* AI on/off toggle — Ana.html style */}
-            {apiKey ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <button onClick={function() {
-                  var next = !aiEnabled
-                  setAiEnabled(next)
-                  try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
-                }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? T.accentBg : T.bg, border: '1px solid ' + (aiEnabled ? T.accentMid : T.border), borderRadius: 20, color: aiEnabled ? T.accent : T.textFaint, cursor: 'pointer', flex: 1 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? T.green : '#94a3b8', display: 'inline-block' }} />
-                  {aiEnabled ? 'AI on' : 'AI off'}
-                </button>
-                <button onClick={function() { setShowApiKeyModal(true) }}
-                  style={{ padding: '5px 9px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMute, cursor: 'pointer' }}>
-                  {'\u2699'}
-                </button>
-              </div>
-            ) : (
-              <button onClick={function() { setShowApiKeyModal(true) }}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, background: T.accent, border: 'none', borderRadius: 20, color: 'white', cursor: 'pointer', justifyContent: 'center', marginBottom: 8 }}>
-                {'\uD83D\uDD11'} Connect AI
-              </button>
-            )}
-
             {/* Mine with AI — only shown when AI is ON */}
             {openFields.length > 0 && aiEnabled && (
               <button onClick={mineThemes} disabled={!canMine || loading}
@@ -884,14 +902,37 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 </button>
               )
             })}
-            {/* Source badge in sub-tab bar */}
-            {themeSource && (
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
+            {/* Right side: source badge + AI toggle (Ana.html top-right style) */}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
+              {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
                   {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}
                 </span>
-              </div>
-            )}
+              )}
+              <div style={{ width: 1, height: 20, background: T.border, margin: '0 4px' }} />
+              {apiKey ? (
+                <>
+                  <button onClick={function() {
+                    var next = !aiEnabled
+                    setAiEnabled(next)
+                    try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
+                  }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(232,98,42,.12)' : T.bg, border: '1px solid ' + (aiEnabled ? T.accentMid : T.border), borderRadius: 20, color: aiEnabled ? T.accent : T.textFaint, cursor: 'pointer' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? '#4ade80' : '#94a3b8', display: 'inline-block' }} />
+                    {aiEnabled ? 'AI on' : 'AI off'}
+                  </button>
+                  <button onClick={function() { setShowApiKeyModal(true) }}
+                    style={{ padding: '4px 9px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMute, cursor: 'pointer' }}>
+                    {'\u2699'}
+                  </button>
+                </>
+              ) : (
+                <button onClick={function() { setShowApiKeyModal(true) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', fontSize: 12, fontWeight: 700, background: T.accent, border: 'none', borderRadius: 20, color: 'white', cursor: 'pointer' }}>
+                  {'\uD83D\uDD11'} Connect AI
+                </button>
+              )}
+            </div>
           </div>
 
           {/* ─── Tab content ─────────────────────────────────────────── */}
@@ -970,7 +1011,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: 0 }}>Themes</h2>
                           </div>
                           <p style={{ fontSize: 12, color: T.textMid, margin: '3px 0 0' }}>
-                            Field: <strong>{activeField}</strong> {'\u00B7'} {themes.themes.length} themes {'\u00B7'} {totalResp.toLocaleString()} responses
+                            {effectiveFields.length > 1 ? 'Fields' : 'Field'}: <strong>{effectiveFields.map(fieldLabel).join(' + ')}</strong> {'\u00B7'} {themes.themes.length} themes {'\u00B7'} {totalResp.toLocaleString()} responses
                           </p>
                         </div>
                         <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border, flexShrink: 0 }}>
@@ -1143,7 +1184,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     initialTheme={drillTheme}
                     allThemes={themes.themes}
                     parsedData={rows}
-                    activeField={activeField || themes.fieldName}
+                    activeField={effectiveFields[0] || themes.fieldName}
+                    activeFields={effectiveFields}
                     catFields={catFields}
                     themeColors={themeColors}
                     onBack={handleBackFromComments}
