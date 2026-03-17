@@ -454,6 +454,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [breakdownField, setBreakdownField] = useState<string | null>(null)
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
   const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
+  const [previousTab, setPreviousTab] = useState<SubTab>('themes')
+  const [isDirty, setIsDirty] = useState(false)
 
   const [apiKey, setApiKey] = useState<string>('')
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
@@ -609,6 +611,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setSamplingInfo({ sampled: texts.length, total })
       setLastRunPct(samplePct)
       setSubTab('themes')
+      setIsDirty(true)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
     }
@@ -647,23 +650,32 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         body: JSON.stringify({ theme_model: themes }),
       })
       setSaved(true)
+      setIsDirty(false)
       setTimeout(function() { setSaved(false) }, 3000)
     } catch { /* ignore */ }
     setSaving(false)
   }
 
   function handleSubTab(tab: SubTab) {
+    if (tab === 'comments') setPreviousTab(subTab)
     setSubTab(tab)
     if (tab !== 'comments') setDrillTheme(null)
   }
 
   function handleDrillTheme(t: Theme) {
+    setPreviousTab(subTab)
     setDrillTheme(t)
     setSubTab('comments')
   }
 
+  function handleBackFromComments() {
+    setDrillTheme(null)
+    setSubTab(previousTab)
+  }
+
   function handleThemeEditorApply(themeArr: Theme[], libName: string, source: string) {
     applyIndustryThemes(themeArr, libName, source)
+    setIsDirty(true)
   }
 
   const hasThemes = themes && themes.themes && themes.themes.length > 0
@@ -676,7 +688,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, position: 'relative' }}>
       <style>{'\
         @keyframes spin{to{transform:rotate(360deg)}}\
         @keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}\
@@ -1066,37 +1078,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                {drillTheme && hasThemes && themes && rowsLoaded ? (
+                {hasThemes && themes && rowsLoaded ? (
                   <CommentsPanel
-                    theme={drillTheme} allThemes={themes.themes} parsedData={rows}
-                    activeField={activeField || themes.fieldName} catFields={catFields}
+                    initialTheme={drillTheme}
+                    allThemes={themes.themes}
+                    parsedData={rows}
+                    activeField={activeField || themes.fieldName}
+                    catFields={catFields}
                     themeColors={themeColors}
-                    onBack={function() { setDrillTheme(null); setSubTab('themes') }}
-                    schema={schema.fields} apiKey={apiKey || undefined} datasetId={datasetId}
+                    onBack={handleBackFromComments}
+                    schema={schema.fields}
+                    apiKey={apiKey || undefined}
+                    datasetId={datasetId}
                   />
                 ) : (
-                  <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
-                    {hasThemes && themes && rowsLoaded ? (
-                      <div>
-                        <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 4 }}>Comments</h2>
-                        <p style={{ fontSize: 13, color: T.textMute, marginBottom: 16 }}>Click a theme to browse its matched responses.</p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                          {themes.themes.map(function(t, ti) {
-                            var pal = themeColors[ti] || THEME_PALETTE[0]
-                            return (
-                              <button key={t.id} onClick={function() { handleDrillTheme(t) }}
-                                style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: pal.bg, color: pal.text, border: '1.5px solid ' + pal.border, borderRadius: 9, cursor: 'pointer', transition: 'all .12s' }}>
-                                {t.name} ({t.count})
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
-                        Run a TextMine analysis first, then click a theme to browse comments.
-                      </div>
-                    )}
+                  <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
+                    Run a TextMine analysis first, then click a theme to browse comments.
                   </div>
                 )}
               </div>
@@ -1104,6 +1101,30 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           </div>
         </div>
       </div>
+
+      {/* ─── Floating save bar (appears when themes modified) ─── */}
+      {isDirty && hasThemes && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          background: T.bgCard, borderTop: '2px solid ' + T.accent,
+          padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 12,
+          boxShadow: '0 -4px 20px rgba(0,0,0,.1)', zIndex: 50,
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fde68a', flexShrink: 0, boxShadow: '0 0 6px #fde68a' }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.text, flex: 1 }}>
+            Unsaved theme changes
+          </span>
+          <button onClick={function() { setIsDirty(false) }}
+            style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, color: T.textMid, cursor: 'pointer' }}>
+            Discard
+          </button>
+          <button onClick={function() { saveThemeModel() }}
+            disabled={saving}
+            style={{ padding: '7px 20px', fontSize: 12, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {saving ? 'Saving...' : saved ? '\u2714 Saved' : 'Save Theme Model'}
+          </button>
+        </div>
+      )}
 
       {/* ─── Modals ────────────────────────────────────────────────────── */}
       {showApiKeyModal && (
@@ -1130,3 +1151,5 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     </div>
   )
 }
+
+
