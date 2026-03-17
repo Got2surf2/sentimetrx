@@ -186,6 +186,14 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         {isArchived && (
           <Badge label="Archived" color="#b45309" bg="#fffbeb" border="#fde68a" />
         )}
+        {dataset.theme_count && dataset.theme_count > 0 ? (
+          <Badge
+            label={(dataset.theme_source === 'ai' ? '\u29E1 ' : '\u2261 ') + dataset.theme_count + ' themes'}
+            color={dataset.theme_source === 'ai' ? '#2563eb' : '#e8622a'}
+            bg={dataset.theme_source === 'ai' ? '#eff6ff' : '#fff4ef'}
+            border={dataset.theme_source === 'ai' ? '#bfdbfe' : '#fbd5c2'}
+          />
+        ) : null}
       </div>
 
       {/* 3. Stats row */}

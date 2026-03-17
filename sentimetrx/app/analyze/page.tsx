@@ -28,7 +28,7 @@ export default async function AnalyzePage() {
 
   const { data: rawDatasets, error: dsErr } = await supabase
     .from('datasets')
-    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name)')
+    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name), dataset_state(theme_model)')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
 
@@ -48,8 +48,13 @@ export default async function AnalyzePage() {
   const datasets = (rawDatasets || []).map(function(d: any) {
     const studyName = d.studies?.name ?? null
     const creatorName = creatorMap[d.created_by] || null
-    const { studies: _s, ...rest } = d
-    return { ...rest, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null }
+    const stateArr = d.dataset_state
+    const state = Array.isArray(stateArr) ? stateArr[0] : stateArr
+    const tm = state?.theme_model || null
+    const themeCount = tm?.themes?.length || 0
+    const themeSource = tm?.themeSource || tm?.themeLibName || null
+    const { studies: _s, dataset_state: _ds, ...rest } = d
+    return { ...rest, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null, theme_count: themeCount, theme_source: themeSource }
   })
 
   return (
@@ -69,5 +74,3 @@ export default async function AnalyzePage() {
     </div>
   )
 }
-
-

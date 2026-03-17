@@ -185,6 +185,8 @@ export interface DatasetWithState extends Dataset {
   study_name?:   string | null
   creator_name?: string | null
   org_name?:     string | null
+  theme_count?:  number
+  theme_source?: string | null
 }
 
 // -- Paginated rows response (for TextMine) ------------------------------
