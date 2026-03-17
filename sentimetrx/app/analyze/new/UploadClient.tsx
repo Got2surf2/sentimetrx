@@ -242,11 +242,11 @@ export default function UploadClient() {
   }
 
   function applyCheckedThemes() {
-    if (!industryThemes || !checkedInds.size) return
+    if (industryThemes == null || !checkedInds.size) return
     var merged: Theme[] = []
     var seen = new Set<string>()
     Array.from(checkedInds).forEach(function(l) {
-      ;(industryThemes[l] || []).forEach(function(t) {
+      ;(industryThemes![l] || []).forEach(function(t) {
         if (!seen.has(t.id)) { seen.add(t.id); merged.push({ ...t, keywords: [...t.keywords] }) }
       })
     })
