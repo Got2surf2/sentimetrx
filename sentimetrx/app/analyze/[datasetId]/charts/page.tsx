@@ -7,7 +7,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import ChartsModule from '@/components/analyze/ChartsModule'
 
-export var dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic'
 
 interface Props { params: { datasetId: string } }
 
