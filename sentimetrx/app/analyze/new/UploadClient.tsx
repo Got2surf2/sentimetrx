@@ -242,11 +242,11 @@ export default function UploadClient() {
   }
 
   function applyCheckedThemes() {
-    if (industryThemes == null || !checkedInds.size) return
+    if (!industryThemes || !checkedInds.size) return
     var merged: Theme[] = []
     var seen = new Set<string>()
     Array.from(checkedInds).forEach(function(l) {
-      ;(industryThemes![l] || []).forEach(function(t) {
+      ;(industryThemes[l] || []).forEach(function(t) {
         if (!seen.has(t.id)) { seen.add(t.id); merged.push({ ...t, keywords: [...t.keywords] }) }
       })
     })
@@ -300,9 +300,10 @@ export default function UploadClient() {
 
       // 3. Save schema + themes to state
       setPublishMsg('Saving schema and themes...')
+      var openEndedFields = schema!.fields.filter(function(f) { return f.type === 'open-ended' }).map(function(f) { return f.field })
       var themeModel = selectedThemes.length > 0
-        ? { themes: selectedThemes, themeSource: 'industry', themeLibName: themeLibName, version: 1 }
-        : { themes: [], aiGenerated: false, version: 1 }
+        ? { themes: selectedThemes, themeSource: 'industry', themeLibName: themeLibName, fieldName: openEndedFields[0] || null, fieldNames: openEndedFields, version: 1 }
+        : { themes: [], aiGenerated: false, fieldName: openEndedFields[0] || null, fieldNames: openEndedFields, version: 1 }
 
       await fetch('/api/datasets/' + dsData.id + '/state', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -333,7 +334,7 @@ export default function UploadClient() {
   }
 
   // ─── Derived counts ────────────────────────────────────────────────────
-  var totalCheckedThemes = industryThemes ? Array.from(checkedInds).reduce(function(sum, l) { return sum + (industryThemes![l] || []).length }, 0) : 0
+  var totalCheckedThemes = industryThemes ? Array.from(checkedInds).reduce(function(sum, l) { return sum + (industryThemes[l] || []).length }, 0) : 0
 
   // ═══════════════════════════════════════════════════════════════════════
   return (
@@ -620,5 +621,3 @@ export default function UploadClient() {
     </div>
   )
 }
-
-
