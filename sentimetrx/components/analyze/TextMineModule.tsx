@@ -807,16 +807,19 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 </button>
               )
             })}
-            {/* Right: source badge + action buttons */}
+
+            {/* Filters — tab-level, with divider */}
+            <div style={{ width: 1, height: 20, background: T.border, alignSelf: 'center', margin: '0 4px', flexShrink: 0 }} />
+            <button onClick={function() { setShowFilters(true) }}
+              style={{ padding: '0 16px', height: '100%', fontSize: 13, fontWeight: activeFilterCount > 0 ? 700 : 500, color: activeFilterCount > 0 ? T.accent : T.textMid, background: activeFilterCount > 0 ? T.accentBg : 'transparent', border: 'none', borderBottom: activeFilterCount > 0 ? '2px solid ' + T.accent : '2px solid transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, transition: 'color .12s' }}>
+              {activeFilterCount > 0 && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
+              Filters{activeFilterCount > 0 ? ' (' + activeFilterCount + ')' : ''}
+            </button>
+
+            {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
               {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows{activeFilterCount > 0 ? ' (' + filteredRows.length.toLocaleString() + ' filtered)' : ''}</span>}
-              {/* Filters button */}
-              <button onClick={function() { setShowFilters(true) }}
-                style={{ padding: '4px 12px', fontSize: 11, fontWeight: activeFilterCount > 0 ? 700 : 600, background: activeFilterCount > 0 ? T.accentBg : T.bg, border: '1px solid ' + (activeFilterCount > 0 ? T.accentMid : T.border), borderRadius: 20, color: activeFilterCount > 0 ? T.accent : T.textMid, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                {activeFilterCount > 0 && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fde68a' }} />}
-                Filters{activeFilterCount > 0 ? ' (' + activeFilterCount + ')' : ''}
-              </button>
               {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
                   {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}
@@ -1001,24 +1004,39 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       {/* ── Distribution view ─── */}
                       {themesView === 'distribution' && (
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '18px 20px', marginBottom: 20 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 14 }}>Theme Distribution {'\u2014'} click a bar to view comments</div>
-                          {sortedThemes.map(function(t) {
-                            var idx = themes.themes.indexOf(t)
-                            var pal = themeColors[idx] || THEME_PALETTE[0]
-                            var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : 0
-                            var pctFrac = totalResp > 0 ? t.count / totalResp : 0
+                          {/* Compute rounded max for axis */}
+                          {(function() {
+                            var maxPctRaw = sortedThemes.reduce(function(m, t) { var p = totalResp > 0 ? t.count / totalResp * 100 : 0; return p > m ? p : m }, 0)
+                            var axisMax = Math.ceil(maxPctRaw / 10) * 10 || 10
                             return (
-                              <div key={t.id} onClick={function() { handleDrillTheme(t) }}
-                                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: 'pointer', borderRadius: 6 }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: pal.text, width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{t.name}</span>
-                                <div style={{ flex: 1, height: 22, background: T.bg, borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
-                                  <div style={{ height: '100%', width: (pctFrac * 100) + '%', background: pal.border, borderRadius: 4, transition: 'width .6s ease', minWidth: pctFrac > 0 ? 2 : 0 }} />
+                              <div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Theme Distribution {'\u2014'} click a bar to view comments</div>
+                                {/* Axis labels */}
+                                <div style={{ display: 'flex', marginLeft: 150, marginBottom: 2 }}>
+                                  {Array.from({ length: (axisMax / 10) + 1 }, function(_, i) { return i * 10 }).map(function(v) {
+                                    return <span key={v} style={{ flex: v === 0 ? 0 : 1, textAlign: v === 0 ? 'left' : 'right', fontSize: 9, color: T.textFaint }}>{v}%</span>
+                                  })}
                                 </div>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{pct}%</span>
-                                <span style={{ fontSize: 11, color: T.textFaint, width: 50, textAlign: 'right', flexShrink: 0 }}>n={t.count}</span>
+                                {sortedThemes.map(function(t) {
+                                  var idx = themes.themes.indexOf(t)
+                                  var pal = themeColors[idx] || THEME_PALETTE[0]
+                                  var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : 0
+                                  var pctFrac = totalResp > 0 ? t.count / totalResp * 100 / axisMax : 0
+                                  return (
+                                    <div key={t.id} onClick={function() { handleDrillTheme(t) }}
+                                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: 'pointer', borderRadius: 6 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: pal.text, width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{t.name}</span>
+                                      <div style={{ flex: 1, height: 22, background: T.bg, borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                                        <div style={{ height: '100%', width: (pctFrac * 100) + '%', background: pal.border, borderRadius: 4, transition: 'width .6s ease', minWidth: pctFrac > 0 ? 2 : 0 }} />
+                                      </div>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{pct}%</span>
+                                      <span style={{ fontSize: 11, color: T.textFaint, width: 50, textAlign: 'right', flexShrink: 0 }}>n={t.count}</span>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             )
-                          })}
+                          })()}
                         </div>
                       )}
 

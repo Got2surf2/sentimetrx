@@ -18,6 +18,7 @@ export interface SchemaFieldConfig {
   type:          AnaFieldType
   sqt?:          AnaFieldSqt
   label?:        string
+  scoreField?:   boolean
   remapping?:    Record<string, number>
   hidden?:       boolean
   nonNullCount?: number
@@ -199,3 +200,5 @@ export interface PagedRowsResponse {
   totalPages: number
   field?:     string    // if filtered to single field
 }
+
+

@@ -188,7 +188,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         )}
         {dataset.theme_count && dataset.theme_count > 0 ? (
           <Badge
-            label={(dataset.theme_source === 'ai' ? '\u29E1 ' : '\u2261 ') + dataset.theme_count + ' themes'}
+            label={dataset.theme_source === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (dataset.theme_source || dataset.theme_count + ' themes')}
             color={dataset.theme_source === 'ai' ? '#2563eb' : '#e8622a'}
             bg={dataset.theme_source === 'ai' ? '#eff6ff' : '#fff4ef'}
             border={dataset.theme_source === 'ai' ? '#bfdbfe' : '#fbd5c2'}

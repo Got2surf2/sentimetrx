@@ -180,10 +180,11 @@ function FieldEditor({ f, onTypeChange, onAliasChange }: {
 }
 
 // Full-width row card
-function FieldCard({ f, onTypeChange, onAliasChange, readOnly, index }: {
+function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, index }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
+  onScoreToggle: (field: string) => void
   readOnly?:     boolean
   index:         number
 }) {
@@ -304,6 +305,29 @@ function FieldCard({ f, onTypeChange, onAliasChange, readOnly, index }: {
           {ut.label}
         </span>
 
+        {/* Scoring flag toggle */}
+        {!readOnly && !isIgnored && (f.type === 'numeric' || f.type === 'categorical') && (
+          <button
+            title={f.scoreField ? 'Remove scoring flag' : 'Flag as scoring field'}
+            onClick={function(e) {
+              e.stopPropagation()
+              onScoreToggle(f.field)
+            }}
+            style={{
+              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: f.scoreField ? '#fff7ed' : 'transparent',
+              border: '1.5px solid ' + (f.scoreField ? '#fb923c' : P.border),
+              color: f.scoreField ? '#ea580c' : P.textFaint,
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              marginRight: 4, transition: 'all .12s', opacity: f.scoreField ? 1 : 0.5,
+            }}
+            onMouseEnter={function(e) { (e.target as HTMLElement).style.opacity = '1' }}
+            onMouseLeave={function(e) { if (!f.scoreField) (e.target as HTMLElement).style.opacity = '0.5' }}>
+            {'\u2605'}
+          </button>
+        )}
+
         {/* Ignore/Include toggle — quick toggle without expanding */}
         {!readOnly && (
           <button
@@ -368,6 +392,13 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
     applyUpdate({ ...schema,
       fields: schema.fields.map(function(f) {
         return f.field === field ? { ...f, label: alias || undefined } : f
+      }) })
+  }
+
+  function handleScoreToggle(field: string) {
+    applyUpdate({ ...schema,
+      fields: schema.fields.map(function(f) {
+        return f.field === field ? { ...f, scoreField: !f.scoreField } : f
       }) })
   }
 
@@ -508,6 +539,7 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
             <FieldCard key={f.field} f={f} index={i}
               onTypeChange={handleTypeChange}
               onAliasChange={handleAliasChange}
+              onScoreToggle={handleScoreToggle}
               readOnly={readOnly}
             />
           )

@@ -68,11 +68,15 @@ export default async function DatasetLayout({ children, params }: Props) {
           userName={userData?.full_name || user.email || ''}
           orgName={orgData?.name || ''}
         />
-        {/* Full-width content — no max-w constraint for TextMine/Charts */}
-        <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {/* Full-width content — overflow auto allows Settings to scroll, TextMine/Charts manage their own */}
+        <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           {children}
         </main>
       </div>
     </div>
   )
 }
+
+
+
+
