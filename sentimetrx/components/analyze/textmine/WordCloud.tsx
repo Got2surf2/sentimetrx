@@ -41,20 +41,22 @@ interface Props {
   onWordClick?: (word: string | null, themeIdx: number, type: string) => void
 }
 
-function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq }: {
+function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, onClick }: {
   word: string; freq: number; themeIdx: number; dimmed: boolean
   themeColors: Record<number, typeof THEME_PALETTE[0]>; maxFreq: number
+  onClick?: () => void
 }) {
   const [hov, setHov] = useState(false)
   const pal = (!dimmed && themeIdx >= 0) ? (themeColors[themeIdx] || THEME_PALETTE[0]) : null
   const size = 12 + Math.round((freq / Math.max(maxFreq, 1)) * 20)
   return (
     <span
+      onClick={onClick}
       style={{
         fontSize: size, fontWeight: freq > maxFreq * 0.5 ? 700 : 500,
         color: pal ? (hov ? pal.border : pal.text) : (dimmed ? '#d1d5db' : T.textMute),
         background: pal && hov ? pal.light : 'transparent',
-        padding: '1px 4px', borderRadius: 4, cursor: 'default',
+        padding: '1px 4px', borderRadius: 4, cursor: onClick ? 'pointer' : 'default',
         transition: 'all .15s', display: 'inline-block',
         opacity: dimmed ? 0.3 : 1,
       }}
@@ -188,7 +190,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
               let dimmed = false
               if (hoveredTheme !== null) dimmed = w.themeIdx !== hoveredTheme
               else if (activeThemes !== null) dimmed = w.themeIdx >= 0 && !activeThemes.has(w.themeIdx)
-              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} />
+              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} onClick={function() { if (onWordClick) onWordClick(w.word, w.themeIdx, w.themeIdx >= 0 ? 'keyword' : 'word') }} />
             })}
           </div>
         </div>
@@ -225,7 +227,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', alignItems: 'baseline' }}>
                     {tWords.map(function(w) {
-                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} />
+                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
                     })}
                   </div>
                 </div>

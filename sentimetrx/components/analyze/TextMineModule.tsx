@@ -448,7 +448,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
 
   const [activeField, setActiveField] = useState<string | null>(null)
+  const [activeFields, setActiveFields] = useState<string[]>([])
   const [subTab, setSubTab] = useState<SubTab>('themes')
+  const [themesView, setThemesView] = useState<'distribution' | 'cards'>('cards')
   const [breakdownField, setBreakdownField] = useState<string | null>(null)
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
   const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
@@ -666,400 +668,415 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg }}>
+      <style>{'\
+        @keyframes spin{to{transform:rotate(360deg)}}\
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}\
+        @keyframes fadein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}\
+        .fadein{animation:fadein .22s ease forwards}\
+        .theme-card:hover{box-shadow:0 4px 18px rgba(0,0,0,.10)!important;transform:translateY(-2px)}\
+      '}</style>
 
-      {/* Top bar */}
-      <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '12px 20px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* Field picker */}
-        {openFields.length > 1 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {/* ─── Multi-field picker bar (Ana style with checkbox pills) ───── */}
+      {openFields.length > 1 && hasThemes && (
+        <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Analyse:</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
             {openFields.map(function(f) {
+              var sel = activeField === f.field
               return (
-                <button
-                  key={f.field}
-                  onClick={function() { setActiveField(f.field) }}
-                  style={{
-                    padding: '4px 12px', fontSize: 12, fontWeight: 600, borderRadius: 8,
-                    background: activeField === f.field ? T.accentBg : T.bg,
-                    color: activeField === f.field ? T.accent : T.textMid,
-                    border: '1px solid ' + (activeField === f.field ? T.accentMid : T.border),
-                    cursor: 'pointer',
-                  }}
-                >
+                <button key={f.field} onClick={function() { setActiveField(f.field) }}
+                  style={{ padding: '3px 12px', fontSize: 12, fontWeight: sel ? 700 : 500, background: sel ? T.accentBg : 'white', border: '1.5px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'all .12s' }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, border: '1.5px solid ' + (sel ? T.accent : T.borderMid), background: sel ? T.accent : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'white', flexShrink: 0, transition: 'all .12s' }}>
+                    {sel ? '\u2713' : ''}
+                  </span>
                   {f.field}
                 </button>
               )
             })}
           </div>
-        )}
-        {openFields.length === 1 && (
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
-            {'\u25C8'} {activeField}
-          </span>
-        )}
-        {openFields.length === 0 && (
-          <span style={{ fontSize: 12, color: T.textMute }}>No open-ended fields found. Edit schema in Settings.</span>
-        )}
-
-        {/* Source badge */}
-        {themeSource && (
-          <span style={{
-            fontSize: 11, padding: '2px 10px', borderRadius: 20, fontWeight: 600,
-            background: themeSource === 'ai' ? T.blueBg : T.accentBg,
-            color: themeSource === 'ai' ? T.blue : T.accent,
-            border: '1px solid ' + (themeSource === 'ai' ? T.blue + '40' : T.accentMid),
-          }}>
-            {themeSource === 'ai' ? 'AI Themes' : themeLibName || 'Industry Themes'}
-          </span>
-        )}
-
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* API key status */}
-          <button
-            onClick={function() { setShowApiKeyModal(true) }}
-            style={{
-              padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 7,
-              background: apiKey ? T.greenBg : T.bg,
-              color: apiKey ? T.green : T.textFaint,
-              border: '1px solid ' + (apiKey ? T.greenMid : T.border),
-              cursor: 'pointer',
-            }}
-          >
-            {apiKey ? '\u2714 AI key set' : '\uD83D\uDD11 Add API key'}
-          </button>
-
-          {/* Theme editor */}
-          {openFields.length > 0 && (
-            <button
-              onClick={function() { setShowThemeEditor(true) }}
-              style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 7, color: T.textMid, cursor: 'pointer' }}
-            >
-              {'\u2261'} Themes
-            </button>
-          )}
-
-          {/* Mine themes */}
-          {openFields.length > 0 && (
-            <button
-              onClick={mineThemes}
-              disabled={!canMine || loading}
-              style={{
-                padding: '6px 16px', fontSize: 12, fontWeight: 700,
-                background: canMine && !loading ? T.accent : T.borderMid,
-                color: canMine && !loading ? 'white' : T.textFaint,
-                border: 'none', borderRadius: 8,
-                cursor: canMine && !loading ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              {loading ? 'Mining...' : '\u29E1 Mine Themes'}
-            </button>
-          )}
-
-          {/* Save */}
-          {hasThemes && (
-            <button
-              onClick={saveThemeModel}
-              disabled={saving}
-              style={{
-                padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                background: saved ? T.greenBg : T.bg,
-                color: saved ? T.green : T.textMid,
-                border: '1px solid ' + (saved ? T.greenMid : T.border),
-                borderRadius: 8, cursor: 'pointer',
-              }}
-            >
-              {saved ? '\u2714 Saved' : 'Save'}
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
-      {/* Error banner */}
+      {/* ─── Error banner ──────────────────────────────────────────────── */}
       {error && (
         <div style={{ padding: '10px 20px', background: T.redBg, borderBottom: '1px solid ' + T.red + '30', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 14 }}>{'\u26A0'}</span>
           <span style={{ fontSize: 12, color: T.red, flex: 1 }}>
             {error === 'AUTH_ERROR' ? 'Invalid API key. Check it at console.anthropic.com/keys'
               : error === 'QUOTA_ERROR' ? 'Insufficient API credits. Add credits at console.anthropic.com'
               : error}
           </span>
-          <button onClick={function() { setError(null) }} style={{ background: 'transparent', border: 'none', color: T.red, cursor: 'pointer', fontSize: 16 }}>x</button>
+          <button onClick={function() { setError(null) }} style={{ background: 'transparent', border: 'none', color: T.red, cursor: 'pointer', fontSize: 16, opacity: 0.6 }}>{'\u2715'}</button>
         </div>
       )}
 
-      {/* Main layout */}
+      {/* ─── Main layout ──────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-        {/* Sidebar */}
+        {/* ─── Sidebar ──────────────────────────────────────────────────── */}
         <div style={{ width: 220, flexShrink: 0, background: T.bgSidebar, borderRight: '1px solid ' + T.border, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           {/* Stats */}
           <div style={{ padding: '14px 14px 10px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-              Dataset
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 2 }}>
-              {totalRows.toLocaleString()} rows
-            </div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Dataset</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 2 }}>{totalRows.toLocaleString()} rows</div>
             {rowsLoading && (
               <div style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.accent, animation: 'pulse 1s infinite' }} />
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite' }} />
                 Loading rows...
               </div>
             )}
-            {rowsLoaded && (
-              <div style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows loaded</div>
-            )}
-            {rowsError && (
-              <div style={{ fontSize: 11, color: T.red }}>{rowsError}</div>
-            )}
+            {rowsLoaded && <div style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows loaded</div>}
+            {rowsError && <div style={{ fontSize: 11, color: T.red }}>{rowsError}</div>}
           </div>
+
+          {/* Field picker (single field, sidebar style) */}
+          {openFields.length > 0 && (
+            <div style={{ padding: '0 14px 12px', borderBottom: '1px solid ' + T.border }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>Analyse Field</div>
+              {openFields.map(function(f) {
+                var sel = activeField === f.field
+                return (
+                  <button key={f.field} onClick={function() { setActiveField(f.field) }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: sel ? T.accentBg : 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: 7, borderLeft: '3px solid ' + (sel ? T.accent : 'transparent'), marginBottom: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? T.accent : T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.field}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {/* Sampling control */}
           {rowsLoaded && activeField && (
-            <div style={{ padding: '0 14px 12px', borderBottom: '1px solid ' + T.border }}>
-              <SamplingControl
-                samplePct={samplePct}
-                setSamplePct={setSamplePct}
-                total={activeFieldCount}
-                lastRunPct={lastRunPct}
-                onRerun={mineThemes}
-              />
+            <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid ' + T.border }}>
+              <SamplingControl samplePct={samplePct} setSamplePct={setSamplePct} total={activeFieldCount} lastRunPct={lastRunPct} onRerun={mineThemes} />
             </div>
           )}
 
           {/* Sampling info */}
           {samplingInfo && (
             <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>
-                Last Analysis
-              </div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Last Analysis</div>
               <div style={{ fontSize: 11, color: T.textMid }}>
                 {samplingInfo.sampled.toLocaleString()} of {samplingInfo.total.toLocaleString()} responses
-                {samplingInfo.sampled < samplingInfo.total && (
-                  <span style={{ color: T.textFaint }}> (sampled)</span>
-                )}
+                {samplingInfo.sampled < samplingInfo.total && <span style={{ color: T.textFaint }}> (sampled)</span>}
               </div>
             </div>
           )}
 
+          {/* Actions */}
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid ' + T.border }}>
+            <button onClick={function() { setShowApiKeyModal(true) }}
+              style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 600, borderRadius: 7, background: apiKey ? T.greenBg : T.bg, color: apiKey ? T.green : T.textFaint, border: '1px solid ' + (apiKey ? T.greenMid : T.border), cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}>
+              {apiKey ? '\u2714 AI key connected' : '\uD83D\uDD11 Connect AI key'}
+            </button>
+            {openFields.length > 0 && (
+              <button onClick={mineThemes} disabled={!canMine || loading}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 12, fontWeight: 700, background: canMine && !loading ? T.accent : T.borderMid, color: canMine && !loading ? 'white' : T.textFaint, border: 'none', borderRadius: 8, cursor: canMine && !loading ? 'pointer' : 'not-allowed', marginBottom: 6 }}>
+                {loading ? 'Mining...' : '\u29E1 Mine with AI'}
+              </button>
+            )}
+            {openFields.length > 0 && (
+              <button onClick={function() { setShowThemeEditor(true) }}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 7, color: T.textMid, cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}>
+                {'\u2261'} Theme library...
+              </button>
+            )}
+            {hasThemes && (
+              <button onClick={saveThemeModel} disabled={saving}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 600, background: saved ? T.greenBg : T.bg, color: saved ? T.green : T.textMid, border: '1px solid ' + (saved ? T.greenMid : T.border), borderRadius: 7, cursor: 'pointer', textAlign: 'left' }}>
+                {saved ? '\u2714 Saved' : '\u2193 Save theme model'}
+              </button>
+            )}
+          </div>
+
           {/* Breakdown selector */}
           {rowsLoaded && catFields.length > 0 && (
-            <BreakdownSelector
-              catFields={catFields}
-              breakdownField={breakdownField}
-              setBreakdownField={setBreakdownField}
-              schema={schema.fields}
-              parsedData={rows}
-              selectedValues={selectedValues}
-              setSelectedValues={setSelectedValues}
-            />
+            <BreakdownSelector catFields={catFields} breakdownField={breakdownField} setBreakdownField={setBreakdownField} schema={schema.fields} parsedData={rows} selectedValues={selectedValues} setSelectedValues={setSelectedValues} />
           )}
         </div>
 
-        {/* Main content */}
+        {/* ─── Main content ────────────────────────────────────────────── */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
           {/* Sub-tab bar */}
-          <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '0 20px', flexShrink: 0, display: 'flex', gap: 0 }}>
+          <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
             {subTabs.map(function(tab) {
-              const isActive = subTab === tab.id
-              const isLocked = !hasThemes && tab.id !== 'themes'
+              var isActive = subTab === tab.id
+              var isLocked = !hasThemes && tab.id !== 'themes'
               return (
-                <button
-                  key={tab.id}
-                  onClick={function() { if (!isLocked) handleSubTab(tab.id) }}
-                  style={{
-                    padding: '12px 16px', fontSize: 13, fontWeight: isActive ? 700 : 500,
-                    color: isActive ? T.accent : (isLocked ? T.textFaint : T.textMid),
-                    background: 'transparent', border: 'none',
-                    borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'),
-                    cursor: isLocked ? 'not-allowed' : 'pointer',
-                    transition: 'all .15s', opacity: isLocked ? 0.5 : 1,
-                  }}
-                >
+                <button key={tab.id} onClick={function() { if (!isLocked) handleSubTab(tab.id) }}
+                  style={{ padding: '0 18px', height: '100%', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : (isLocked ? T.textFaint : T.textMid), background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: isLocked ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: isLocked ? 0.4 : 1, transition: 'color .12s' }}
+                  title={isLocked ? 'Run a theme model first' : ''}>
                   {tab.label}
                 </button>
               )
             })}
+            {/* Source badge in sub-tab bar */}
+            {themeSource && (
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
+                  {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Tab content */}
+          {/* ─── Tab content ─────────────────────────────────────────── */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
-            {/* Themes tab */}
+            {/* ═══ THEMES TAB ═══ */}
             {subTab === 'themes' && (
-              <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-                {!rowsLoaded && (
-                  <div style={{ textAlign: 'center', padding: 40, color: T.textMute }}>
-                    <div style={{ fontSize: 24, marginBottom: 12 }}>{'\u231B'}</div>
-                    <p style={{ fontSize: 14 }}>Loading dataset rows...</p>
+              <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
+
+                {/* Loading spinner — Ana style */}
+                {loading && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, paddingTop: 80, paddingBottom: 80 }}>
+                    <div style={{ width: 52, height: 52, borderRadius: '50%', border: '3px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite' }} />
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 6 }}>Analyzing your responses</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                        {[0, 1, 2, 3].map(function(i) { return <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: T.accent, display: 'inline-block', animation: 'blink 1.4s ease infinite', animationDelay: (i * 0.2) + 's' }} /> })}
+                      </div>
+                      <div style={{ fontSize: 12, color: T.textMute, marginTop: 8 }}>Claude is reading and grouping themes...</div>
+                    </div>
                   </div>
                 )}
-                {rowsLoaded && !hasThemes && (
-                  <div style={{ textAlign: 'center', padding: 48, maxWidth: 420, margin: '0 auto' }}>
-                    <div style={{ fontSize: 40, marginBottom: 16 }}>
-                      <span style={{ color: T.accent, fontWeight: 800 }}>Ana</span>
+
+                {/* Rows still loading */}
+                {!rowsLoaded && !loading && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, paddingTop: 80 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid ' + T.borderMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite' }} />
+                    <div style={{ fontSize: 13, color: T.textMute }}>Loading dataset rows...</div>
+                  </div>
+                )}
+
+                {/* Empty state — no themes yet */}
+                {rowsLoaded && !hasThemes && !loading && (
+                  <div style={{ textAlign: 'center', padding: '48px 20px', maxWidth: 440, margin: '0 auto' }}>
+                    <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #fff3ee, #ffe4d6)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 28 }}>
+                      <span style={{ color: T.accent, fontWeight: 900, fontStyle: 'italic' }}>A</span>
                     </div>
-                    <h3 style={{ fontSize: 18, fontWeight: 800, color: T.text, marginBottom: 8 }}>TextMine is ready</h3>
+                    <h3 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 8 }}>TextMine is ready</h3>
                     <p style={{ fontSize: 13, color: T.textMute, lineHeight: 1.6, marginBottom: 24 }}>
                       {rows.length.toLocaleString()} responses loaded across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
-                      Run an AI analysis or pick an industry theme library to get started.
+                      {' '}Run an AI analysis or pick an industry theme library to get started.
                     </p>
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <button
-                        onClick={mineThemes}
-                        disabled={!canMine}
-                        style={{ padding: '10px 20px', fontSize: 13, fontWeight: 700, background: canMine ? T.accent : T.borderMid, color: canMine ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine ? 'pointer' : 'not-allowed' }}
-                      >
+                      <button onClick={mineThemes} disabled={!canMine}
+                        style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine ? T.accent : T.borderMid, color: canMine ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine ? 'pointer' : 'not-allowed' }}>
                         {'\u29E1'} Mine with AI
                       </button>
-                      <button
-                        onClick={function() { setShowThemeEditor(true) }}
-                        style={{ padding: '10px 20px', fontSize: 13, fontWeight: 700, background: T.bg, border: '1px solid ' + T.border, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}
-                      >
+                      <button onClick={function() { setShowThemeEditor(true) }}
+                        style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
                         {'\u2261'} Choose industry library
                       </button>
                     </div>
                   </div>
                 )}
-                {rowsLoaded && hasThemes && themes && (
-                  <div>
-                    {/* Summary */}
-                    {themes.summary && (
-                      <div style={{ background: T.accentBg, border: '1px solid ' + T.accentMid, borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: T.textMid, lineHeight: 1.6 }}>
-                        {themes.summary}
-                      </div>
-                    )}
 
-                    {/* Theme bars */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-                      {[...themes.themes].sort(function(a, b) { return b.count - a.count }).map(function(t, ti) {
-                        const pal = themeColors[themes.themes.indexOf(t)] || THEME_PALETTE[0]
-                        const pct = t.percentage || 0
-                        return (
-                          <div
-                            key={t.id}
-                            style={{ background: T.bgCard, border: '1px solid ' + T.border, borderLeft: '3px solid ' + pal.border, borderRadius: 10, padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s' }}
-                            onClick={function() { handleDrillTheme(t) }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: pal.text, background: pal.bg, border: '1px solid ' + pal.border + '60', borderRadius: 20, padding: '2px 8px', flexShrink: 0 }}>
-                                {pct}%
-                              </span>
-                              <span style={{ fontSize: 14, fontWeight: 700, color: T.text, flex: 1 }}>{t.name}</span>
-                              <span style={{ fontSize: 11, color: sentColor(t.sentiment), background: sentBg(t.sentiment), padding: '2px 8px', borderRadius: 20, border: '1px solid ' + sentColor(t.sentiment) + '30', fontWeight: 600 }}>
-                                {t.sentiment}
-                              </span>
-                              <span style={{ fontSize: 11, color: T.textFaint }}>{t.count} responses &rarr;</span>
-                            </div>
-                            <div style={{ height: 7, background: T.bg, borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
-                              <div style={{ height: '100%', width: pct + '%', background: pal.border, borderRadius: 4, transition: 'width .6s ease' }} />
-                            </div>
-                            {t.description && (
-                              <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5 }}>{t.description}</div>
-                            )}
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-                              {(t.keywords || []).slice(0, 8).map(function(kw) {
-                                return (
-                                  <span key={kw} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50' }}>
-                                    {kw}
-                                  </span>
-                                )
-                              })}
-                              {(t.keywords || []).length > 8 && (
-                                <span style={{ fontSize: 10, color: T.textFaint, padding: '1px 4px' }}>+{t.keywords.length - 8} more</span>
-                              )}
-                            </div>
+                {/* ─── Themes content (with Distribution/Cards toggle) ─── */}
+                {rowsLoaded && hasThemes && themes && !loading && (function() {
+                  var sortedThemes = [...themes.themes].sort(function(a, b) { return b.count - a.count })
+                  var totalResp = rows.filter(function(r) { return activeField && String(r[activeField] || '').trim().length > 0 }).length
+                  var topTone = sortedThemes[0] ? sortedThemes[0].sentiment : '\u2014'
+
+                  return (
+                    <div>
+                      {/* Header: title + source + view toggle */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: 0 }}>Themes</h2>
                           </div>
-                        )
-                      })}
-                    </div>
+                          <p style={{ fontSize: 12, color: T.textMid, margin: '3px 0 0' }}>
+                            Field: <strong>{activeField}</strong> {'\u00B7'} {themes.themes.length} themes {'\u00B7'} {totalResp.toLocaleString()} responses
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border, flexShrink: 0 }}>
+                          {[['distribution', '\u2261 Distribution'], ['cards', '\u229E Cards']].map(function(pair) {
+                            var v = pair[0]; var lbl = pair[1]
+                            return (
+                              <button key={v} onClick={function() { setThemesView(v as 'distribution' | 'cards') }}
+                                style={{ fontSize: 12, fontWeight: themesView === v ? 700 : 500, padding: '5px 14px', borderRadius: 18, background: themesView === v ? T.accent : 'transparent', color: themesView === v ? 'white' : T.textMute, border: 'none', cursor: 'pointer', transition: 'background .15s' }}>
+                                {lbl}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
 
-                    {/* Breakdown distribution */}
-                    {breakdownField && selectedValues.size > 0 && (
-                      <BreakdownDist
-                        themes={themes}
-                        parsedData={rows}
-                        activeField={activeField || themes.fieldName}
-                        breakdownField={breakdownField}
-                        selectedValues={selectedValues}
-                        themeColors={themeColors}
-                        onDrillTheme={handleDrillTheme}
-                      />
-                    )}
-                  </div>
-                )}
+                      {/* 3 summary stat cards — Ana style */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
+                        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                            <div>
+                              <div style={{ fontSize: 22, fontWeight: 800, color: T.accent, lineHeight: 1 }}>{(samplingInfo ? samplingInfo.sampled : totalResp).toLocaleString()}</div>
+                              <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>{samplingInfo ? 'Sampled' : 'Responses'}</div>
+                            </div>
+                            {samplingInfo && (
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: T.textMid, lineHeight: 1 }}>{samplingInfo.total.toLocaleString()}</div>
+                                <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Total</div>
+                              </div>
+                            )}
+                          </div>
+                          {samplingInfo && (
+                            <div>
+                              <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: 'hidden', marginBottom: 6 }}>
+                                <div style={{ height: '100%', width: Math.round(samplingInfo.sampled / samplingInfo.total * 100) + '%', background: T.accent, borderRadius: 2 }} />
+                              </div>
+                              <div style={{ fontSize: 11, color: T.textMute }}>{Math.round(samplingInfo.sampled / samplingInfo.total * 100)}% sample rate</div>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: T.blue, lineHeight: 1 }}>{themes.themes.length}</div>
+                          <div style={{ fontSize: 10, color: T.textMute, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Themes Found</div>
+                        </div>
+                        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: T.green, lineHeight: 1, textTransform: 'capitalize' }}>{topTone}</div>
+                          <div style={{ fontSize: 10, color: T.textMute, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Top Tone</div>
+                        </div>
+                      </div>
+
+                      {/* ── Distribution view ─── */}
+                      {themesView === 'distribution' && (
+                        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '18px 20px', marginBottom: 20 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 14 }}>Theme Distribution {'\u2014'} click a bar to view comments</div>
+                          {sortedThemes.map(function(t) {
+                            var idx = themes.themes.indexOf(t)
+                            var pal = themeColors[idx] || THEME_PALETTE[0]
+                            var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : 0
+                            var pctFrac = totalResp > 0 ? t.count / totalResp : 0
+                            return (
+                              <div key={t.id} onClick={function() { handleDrillTheme(t) }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: 'pointer', borderRadius: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: pal.text, width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{t.name}</span>
+                                <div style={{ flex: 1, height: 22, background: T.bg, borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                                  <div style={{ height: '100%', width: (pctFrac * 100) + '%', background: pal.border, borderRadius: 4, transition: 'width .6s ease', minWidth: pctFrac > 0 ? 2 : 0 }} />
+                                </div>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{pct}%</span>
+                                <span style={{ fontSize: 11, color: T.textFaint, width: 50, textAlign: 'right', flexShrink: 0 }}>n={t.count}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* ── Cards view (exact Ana.html style) ─── */}
+                      {themesView === 'cards' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
+                          {sortedThemes.map(function(t) {
+                            var idx = themes.themes.indexOf(t)
+                            var pal = themeColors[idx] || THEME_PALETTE[0]
+                            var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : (t.percentage || 0)
+                            return (
+                              <div key={t.id} className="theme-card"
+                                onClick={function() { handleDrillTheme(t) }}
+                                style={{ background: T.bgCard, border: '2px solid ' + pal.border, borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .15s, transform .12s' }}>
+                                {/* Top row: dot + sentiment badge */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: pal.border, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
+                                </div>
+                                {/* Theme name */}
+                                <div style={{ fontSize: 15, fontWeight: 800, color: T.text, marginBottom: 4 }}>{t.name}</div>
+                                {/* Description */}
+                                <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5, marginBottom: 10, minHeight: 32 }}>{t.description}</div>
+                                {/* Keywords (max 4) */}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 14 }}>
+                                  {(t.keywords || []).slice(0, 4).map(function(k) {
+                                    return <span key={k} style={{ fontSize: 11, padding: '2px 8px', background: T.bg, color: T.textMid, borderRadius: 20, border: '1px solid ' + T.border }}>{k}</span>
+                                  })}
+                                </div>
+                                {/* Count + % + CI + mini bar */}
+                                <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
+                                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+                                    <span style={{ fontSize: 13, color: T.textMid }}><strong style={{ fontSize: 18, color: pal.border }}>{t.count.toLocaleString()}</strong> responses</span>
+                                    <span style={{ fontSize: 22, fontWeight: 800, color: pal.border }}>{pct}%</span>
+                                  </div>
+                                  <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>95% CI: {t.ciLow ?? 0}{'\u2013'}{t.ciHigh ?? 0}%</div>
+                                  <div style={{ height: 5, background: T.border, borderRadius: 3, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: pct + '%', background: pal.border, borderRadius: 3, transition: 'width .6s ease' }} />
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Breakdown distribution */}
+                      {breakdownField && selectedValues.size > 0 && (
+                        <BreakdownDist themes={themes} parsedData={rows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
-            {/* Theme Clouds tab */}
+            {/* ═══ THEME CLOUDS TAB ═══ */}
             {subTab === 'clouds' && (
-              <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 16 }}>Theme Clouds</h2>
                 {hasThemes && themes && rowsLoaded ? (
                   <WordCloud
                     themes={themes.themes}
                     themeColors={themeColors}
                     parsedData={rows}
                     activeField={activeField || themes.fieldName}
-                    onWordClick={function(_, idx, type) {
-                      if (type === 'theme' && themes) {
-                        const t = themes.themes[idx]
-                        if (t) handleDrillTheme(t)
+                    onWordClick={function(word, idx, type) {
+                      if (themes) {
+                        if (type === 'theme') {
+                          var t = themes.themes[idx]
+                          if (t) handleDrillTheme(t)
+                        } else {
+                          var owner = idx >= 0 ? themes.themes[idx] : null
+                          if (!owner && word) {
+                            owner = themes.themes.find(function(th) {
+                              return (th.keywords || []).some(function(k) { return k.toLowerCase() === (word || '').toLowerCase() })
+                            }) || null
+                          }
+                          if (owner) handleDrillTheme(owner)
+                        }
                       }
                     }}
                   />
                 ) : (
-                  <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
-                    Run a TextMine analysis first to see theme clouds.
-                  </div>
+                  <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>Run a TextMine analysis first to see theme clouds.</div>
                 )}
               </div>
             )}
 
-            {/* Compare tab */}
+            {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab
-                themes={themes}
-                parsedData={rows}
-                schema={schema.fields}
-                activeField={activeField}
-                themeColors={themeColors}
-                breakdownField={breakdownField}
-                setBreakdownField={setBreakdownField}
-              />
+              <CompareTab themes={themes} parsedData={rows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} />
             )}
 
-            {/* Comments tab */}
+            {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {drillTheme && hasThemes && themes && rowsLoaded ? (
                   <CommentsPanel
-                    theme={drillTheme}
-                    allThemes={themes.themes}
-                    parsedData={rows}
-                    activeField={activeField || themes.fieldName}
-                    catFields={catFields}
+                    theme={drillTheme} allThemes={themes.themes} parsedData={rows}
+                    activeField={activeField || themes.fieldName} catFields={catFields}
                     themeColors={themeColors}
                     onBack={function() { setDrillTheme(null); setSubTab('themes') }}
-                    schema={schema.fields}
-                    apiKey={apiKey || undefined}
-                    datasetId={datasetId}
+                    schema={schema.fields} apiKey={apiKey || undefined} datasetId={datasetId}
                   />
                 ) : (
-                  <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
                     {hasThemes && themes && rowsLoaded ? (
                       <div>
-                        <p style={{ fontSize: 13, color: T.textMute, marginBottom: 16 }}>
-                          Click a theme below to browse its responses.
-                        </p>
+                        <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 4 }}>Comments</h2>
+                        <p style={{ fontSize: 13, color: T.textMute, marginBottom: 16 }}>Click a theme to browse its matched responses.</p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {themes.themes.map(function(t, ti) {
-                            const pal = themeColors[ti] || THEME_PALETTE[0]
+                            var pal = themeColors[ti] || THEME_PALETTE[0]
                             return (
-                              <button
-                                key={t.id}
-                                onClick={function() { handleDrillTheme(t) }}
-                                style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border, borderRadius: 9, cursor: 'pointer' }}
-                              >
+                              <button key={t.id} onClick={function() { handleDrillTheme(t) }}
+                                style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: pal.bg, color: pal.text, border: '1.5px solid ' + pal.border, borderRadius: 9, cursor: 'pointer', transition: 'all .12s' }}>
                                 {t.name} ({t.count})
                               </button>
                             )
@@ -1079,12 +1096,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         </div>
       </div>
 
-      {/* Modals */}
+      {/* ─── Modals ────────────────────────────────────────────────────── */}
       {showApiKeyModal && (
-        <ApiKeyModal
-          onSave={function(k) { setApiKey(k) }}
-          onClose={function() { setShowApiKeyModal(false) }}
-        />
+        <ApiKeyModal onSave={function(k) { setApiKey(k) }} onClose={function() { setShowApiKeyModal(false) }} />
       )}
       {showThemeEditor && industryThemes && (
         <ThemeEditor

@@ -10,6 +10,8 @@ export interface Theme {
   sentiment: string
   count: number
   percentage: number
+  ciLow?: number
+  ciHigh?: number
   relatedThemes: string[]
 }
 
@@ -42,6 +44,20 @@ export function commentMatchesTheme(text: string, theme: Theme): boolean {
   })
 }
 
+// Wilson score interval — lower and upper bounds at 95% confidence
+function wilsonCI(count: number, total: number): { ciLow: number; ciHigh: number } {
+  if (total === 0) return { ciLow: 0, ciHigh: 0 }
+  const z = 1.96
+  const p = count / total
+  const z2 = z * z
+  const denom = 1 + z2 / total
+  const centre = p + z2 / (2 * total)
+  const spread = z * Math.sqrt((p * (1 - p) + z2 / (4 * total)) / total)
+  const lo = Math.max(0, (centre - spread) / denom)
+  const hi = Math.min(1, (centre + spread) / denom)
+  return { ciLow: Math.round(lo * 100), ciHigh: Math.round(hi * 100) }
+}
+
 export function recountThemes(
   themes: Theme[],
   rows: Record<string, unknown>[],
@@ -59,7 +75,8 @@ export function recountThemes(
       return commentMatchesTheme(text, t)
     }).length
     const pct = nonEmpty.length > 0 ? Math.round(count / nonEmpty.length * 100) : 0
-    return { ...t, count, percentage: pct }
+    const ci = wilsonCI(count, nonEmpty.length)
+    return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh }
   })
 }
 

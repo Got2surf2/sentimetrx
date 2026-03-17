@@ -137,6 +137,7 @@ export default function CommentsPanel({
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
+  const [sortBy, setSortBy] = useState<'relevance' | 'length-desc' | 'length-asc'>('relevance')
 
   const fields = activeFields && activeFields.length ? activeFields : [activeField]
   const ignoredSet = new Set(ignoredFields)
@@ -160,8 +161,27 @@ export default function CommentsPanel({
   }, [parsedData, fields, metaCols])
 
   const matched = useMemo(function() {
-    return allRows.filter(function(r) { return commentMatchesTheme(r.text, theme) })
-  }, [allRows, theme])
+    const raw = allRows.filter(function(r) { return commentMatchesTheme(r.text, theme) })
+    // Score relevance = number of distinct keywords matched
+    function relevanceScore(text: string): number {
+      var t = text.toLowerCase()
+      var hits = 0
+      ;(theme.keywords || []).forEach(function(kw) {
+        var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        if (new RegExp('(?<![a-z])' + esc + '\\w*', 'i').test(t)) hits++
+      })
+      return hits
+    }
+    var sorted = raw.slice()
+    if (sortBy === 'relevance') {
+      sorted.sort(function(a, b) { return relevanceScore(b.text) - relevanceScore(a.text) })
+    } else if (sortBy === 'length-desc') {
+      sorted.sort(function(a, b) { return b.text.length - a.text.length })
+    } else if (sortBy === 'length-asc') {
+      sorted.sort(function(a, b) { return a.text.length - b.text.length })
+    }
+    return sorted
+  }, [allRows, theme, sortBy])
 
   async function generateSummary() {
     if (!matched.length || !apiKey) return
@@ -224,8 +244,19 @@ export default function CommentsPanel({
         <span style={{ fontSize: 12, color: T.textMute }}>
           {matched.length.toLocaleString()} of {total.toLocaleString()} responses ({matchPct}%)
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 8px', borderRadius: 10, background: sentBg(theme.sentiment), color: sentColor(theme.sentiment), border: '1px solid ' + sentColor(theme.sentiment) + '30', fontWeight: 600 }}>
-          {theme.sentiment}
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <select
+            value={sortBy}
+            onChange={function(e) { setSortBy(e.target.value as typeof sortBy); setVisibleCount(50) }}
+            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid ' + T.border, background: T.bg, color: T.textMid, cursor: 'pointer' }}
+          >
+            <option value="relevance">Sort: Relevance</option>
+            <option value="length-desc">Sort: Longest first</option>
+            <option value="length-asc">Sort: Shortest first</option>
+          </select>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: sentBg(theme.sentiment), color: sentColor(theme.sentiment), border: '1px solid ' + sentColor(theme.sentiment) + '30', fontWeight: 600 }}>
+            {theme.sentiment}
+          </span>
         </span>
       </div>
 
