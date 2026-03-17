@@ -333,7 +333,7 @@ export default function UploadClient() {
   }
 
   // ─── Derived counts ────────────────────────────────────────────────────
-  var totalCheckedThemes = industryThemes ? Array.from(checkedInds).reduce(function(sum, l) { return sum + (industryThemes[l] || []).length }, 0) : 0
+  var totalCheckedThemes = industryThemes ? Array.from(checkedInds).reduce(function(sum, l) { return sum + (industryThemes![l] || []).length }, 0) : 0
 
   // ═══════════════════════════════════════════════════════════════════════
   return (
