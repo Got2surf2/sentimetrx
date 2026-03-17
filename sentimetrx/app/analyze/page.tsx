@@ -26,17 +26,29 @@ export default async function AnalyzePage() {
 
   const orgId = userData?.org_id
 
-  const { data: rawDatasets } = await supabase
+  const { data: rawDatasets, error: dsErr } = await supabase
     .from('datasets')
-    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name), users!datasets_created_by_fkey(full_name, email)')
+    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name)')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
 
+  if (dsErr) console.error('[AnalyzePage] datasets query error:', dsErr.message)
+
+  // Fetch creator names separately (the FK join to auth.users is unreliable)
+  var creatorIds = Array.from(new Set((rawDatasets || []).map(function(d: any) { return d.created_by }).filter(Boolean)))
+  var creatorMap: Record<string, string> = {}
+  if (creatorIds.length > 0) {
+    var { data: creators } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', creatorIds)
+    ;(creators || []).forEach(function(c: any) { creatorMap[c.id] = c.full_name || c.email || 'Unknown' })
+  }
+
   const datasets = (rawDatasets || []).map(function(d: any) {
     const studyName = d.studies?.name ?? null
-    const creator = d.users
-    const creatorName = creator?.full_name || creator?.email || null
-    const { studies: _s, users: _u, ...rest } = d
+    const creatorName = creatorMap[d.created_by] || null
+    const { studies: _s, ...rest } = d
     return { ...rest, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null }
   })
 

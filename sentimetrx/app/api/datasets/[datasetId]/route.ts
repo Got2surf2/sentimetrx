@@ -101,6 +101,11 @@ export async function DELETE(_req: Request, { params }: Params) {
   }
 
   const service = createServiceRoleClient()
+
+  // Explicitly delete child records first (belt-and-suspenders with CASCADE)
+  await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
+  await service.from('dataset_state').delete().eq('dataset_id', params.datasetId)
+
   const { error: delErr } = await service
     .from('datasets')
     .delete()
