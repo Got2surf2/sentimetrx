@@ -780,117 +780,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         </div>
       )}
 
-      {/* ─── Main layout ──────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* ─── Main layout (no sidebar — full width like Ana.html) ────── */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
-        {/* ─── Sidebar ──────────────────────────────────────────────────── */}
-        <div style={{ width: 220, flexShrink: 0, background: T.bgSidebar, borderRight: '1px solid ' + T.border, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-          {/* Stats */}
-          <div style={{ padding: '14px 14px 10px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Dataset</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 2 }}>{totalRows.toLocaleString()} rows</div>
-            {rowsLoading && (
-              <div style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite' }} />
-                Loading rows...
-              </div>
-            )}
-            {rowsLoaded && <div style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows loaded</div>}
-            {rowsError && <div style={{ fontSize: 11, color: T.red }}>{rowsError}</div>}
-          </div>
-
-          {/* Field picker (multi-select, sidebar style) */}
-          {openFields.length > 0 && (
-            <div style={{ padding: '0 14px 12px', borderBottom: '1px solid ' + T.border }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-                Analyze Fields {activeFields.length > 1 ? '(' + activeFields.length + ')' : ''}
-              </div>
-              {openFields.map(function(f) {
-                var sel = activeFields.includes(f.field)
-                return (
-                  <button key={f.field} onClick={function() {
-                    var next = sel ? activeFields.filter(function(x) { return x !== f.field }) : activeFields.concat([f.field])
-                    var final = next.length ? next : [f.field]
-                    setActiveFields(final)
-                    setActiveField(final[0])
-                  }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: sel ? T.accentBg : 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: 7, marginBottom: 2 }}>
-                    <span style={{
-                      width: 14, height: 14, borderRadius: 3, flexShrink: 0,
-                      border: '1.5px solid ' + (sel ? T.accent : T.borderMid),
-                      background: sel ? T.accent : 'transparent',
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 9, color: 'white',
-                    }}>{sel ? '\u2713' : ''}</span>
-                    <span style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: sel ? T.accent : T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {fieldLabel(f.field)}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Sampling control */}
-          {rowsLoaded && activeField && (
-            <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid ' + T.border }}>
-              <SamplingControl samplePct={samplePct} setSamplePct={setSamplePct} total={activeFieldCount} lastRunPct={lastRunPct} onRerun={mineThemes} />
-            </div>
-          )}
-
-          {/* Sampling info */}
-          {samplingInfo && (
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Last Analysis</div>
-              <div style={{ fontSize: 11, color: T.textMid }}>
-                {samplingInfo.sampled.toLocaleString()} of {samplingInfo.total.toLocaleString()} responses
-                {samplingInfo.sampled < samplingInfo.total && <span style={{ color: T.textFaint }}> (sampled)</span>}
-              </div>
-            </div>
-          )}
-
-          {/* Actions (mine, library, save) */}
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid ' + T.border }}>
-            {/* Mine with AI — only shown when AI is ON */}
-            {openFields.length > 0 && aiEnabled && (
-              <button onClick={mineThemes} disabled={!canMine || loading}
-                style={{ width: '100%', padding: '8px 10px', fontSize: 12, fontWeight: 700, background: canMine && !loading ? T.accent : T.borderMid, color: canMine && !loading ? 'white' : T.textFaint, border: 'none', borderRadius: 8, cursor: canMine && !loading ? 'pointer' : 'not-allowed', marginBottom: 6 }}>
-                {loading ? 'Mining...' : '\u29E1 Mine with AI'}
-              </button>
-            )}
-
-            {/* Theme library — always available */}
-            {openFields.length > 0 && (
-              <button onClick={function() { setShowThemeEditor(true) }}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 7, color: T.textMid, cursor: 'pointer', marginBottom: 6, textAlign: 'left' }}>
-                {'\u2261'} Theme library...
-              </button>
-            )}
-
-            {/* Save — only shown when dirty */}
-            {hasThemes && isDirty && (
-              <button onClick={function() { saveThemeModel() }} disabled={saving}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 11, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 7, cursor: saving ? 'not-allowed' : 'pointer', textAlign: 'center' }}>
-                {saving ? 'Saving...' : saved ? '\u2714 Saved' : '\u2193 Save changes'}
-              </button>
-            )}
-            {hasThemes && !isDirty && (
-              <div style={{ fontSize: 11, color: T.green, fontWeight: 600, textAlign: 'center', padding: '4px 0' }}>
-                {'\u2714'} All changes saved
-              </div>
-            )}
-          </div>
-
-          {/* Breakdown selector */}
-          {rowsLoaded && catFields.length > 0 && (
-            <BreakdownSelector catFields={catFields} breakdownField={breakdownField} setBreakdownField={setBreakdownField} schema={schema.fields} parsedData={rows} selectedValues={selectedValues} setSelectedValues={setSelectedValues} />
-          )}
-        </div>
-
-        {/* ─── Main content ────────────────────────────────────────────── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-          {/* Sub-tab bar */}
+          {/* Sub-tab bar with actions */}
           <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
             {subTabs.map(function(tab) {
               var isActive = subTab === tab.id
@@ -903,34 +796,31 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 </button>
               )
             })}
-            {/* Right side: source badge + AI toggle (Ana.html top-right style) */}
+            {/* Right: source badge + action buttons */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
+              {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
+              {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
               {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
                   {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}
                 </span>
               )}
-              <div style={{ width: 1, height: 20, background: T.border, margin: '0 4px' }} />
-              {apiKey ? (
-                <>
-                  <button onClick={function() {
-                    var next = !aiEnabled
-                    setAiEnabled(next)
-                    try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
-                  }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(232,98,42,.12)' : T.bg, border: '1px solid ' + (aiEnabled ? T.accentMid : T.border), borderRadius: 20, color: aiEnabled ? T.accent : T.textFaint, cursor: 'pointer' }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? '#4ade80' : '#94a3b8', display: 'inline-block' }} />
-                    {aiEnabled ? 'AI on' : 'AI off'}
-                  </button>
-                  <button onClick={function() { setShowApiKeyModal(true) }}
-                    style={{ padding: '4px 9px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMute, cursor: 'pointer' }}>
-                    {'\u2699'}
-                  </button>
-                </>
-              ) : (
-                <button onClick={function() { setShowApiKeyModal(true) }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', fontSize: 12, fontWeight: 700, background: T.accent, border: 'none', borderRadius: 20, color: 'white', cursor: 'pointer' }}>
-                  {'\uD83D\uDD11'} Connect AI
+              {openFields.length > 0 && (
+                <button onClick={function() { setShowThemeEditor(true) }}
+                  style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMid, cursor: 'pointer' }}>
+                  {'\u2261'} Themes
+                </button>
+              )}
+              {openFields.length > 0 && aiEnabled && (
+                <button onClick={mineThemes} disabled={!canMine || loading}
+                  style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: canMine && !loading ? T.accent : T.borderMid, color: canMine && !loading ? 'white' : T.textFaint, border: 'none', borderRadius: 20, cursor: canMine && !loading ? 'pointer' : 'not-allowed' }}>
+                  {loading ? 'Mining...' : '\u29E1 Mine'}
+                </button>
+              )}
+              {hasThemes && isDirty && (
+                <button onClick={function() { saveThemeModel() }} disabled={saving}
+                  style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 20, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                  {saving ? 'Saving...' : 'Save'}
                 </button>
               )}
             </div>
@@ -1203,7 +1093,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             )}
           </div>
         </div>
-      </div>
 
       {/* ─── Floating save bar (appears when themes modified) ─── */}
       {isDirty && hasThemes && (

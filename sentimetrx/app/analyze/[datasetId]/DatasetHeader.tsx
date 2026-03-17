@@ -1,67 +1,73 @@
 'use client'
 
 // app/analyze/[datasetId]/DatasetHeader.tsx
-// Dataset name, source badge, row count, sync, module tab bar
+// Ana-style header: module tabs + dataset name pill + Filters + AI controls
+// Matches Ana.html's top bar pattern adapted for Sentimetrx's layout
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 
 interface DatasetMeta {
-  id:             string
-  name:           string
-  source:         'upload' | 'study'
-  visibility:     'private' | 'public'
-  status:         'active' | 'archived'
-  row_count:      number
+  id: string
+  name: string
+  source: 'upload' | 'study'
+  visibility: 'private' | 'public'
+  status: 'active' | 'archived'
+  row_count: number
   last_synced_at: string | null
-  study_name:     string | null
+  study_name: string | null
 }
 
 interface Props {
   dataset: DatasetMeta
+  userName?: string
+  orgName?: string
 }
 
-const HERMES = '#E8632A'
+var HERMES = '#E8632A'
+var T = {
+  bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb',
+  text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
+  accent: '#e8622a', accentBg: '#fff4ef', accentMid: '#fbd5c2',
+  green: '#16a34a', amber: '#d97706',
+}
 
-const TABS = [
-  { key: 'textmine',  label: 'TextMine' },
-  { key: 'charts',    label: 'Charts' },
-  { key: 'stats',     label: 'Statistics' },
-  { key: 'settings',  label: 'Schema & Themes' },
+var TABS = [
+  { key: 'textmine', label: 'TextMine' },
+  { key: 'charts', label: 'Charts' },
+  { key: 'stats', label: 'Statistics' },
+  { key: 'settings', label: 'Schema & Themes' },
 ]
 
-function timeAgo(iso: string): string {
-  const diff  = Date.now() - new Date(iso).getTime()
-  const mins  = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days  = Math.floor(diff / 86400000)
-  if (mins < 2)   return 'just now'
-  if (mins < 60)  return mins + 'm ago'
-  if (hours < 24) return hours + 'h ago'
-  return days + 'd ago'
-}
+export default function DatasetHeader({ dataset, userName, orgName }: Props) {
+  var router = useRouter()
+  var pathname = usePathname()
+  var [syncing, setSyncing] = useState(false)
+  var [syncMsg, setSyncMsg] = useState('')
 
-export default function DatasetHeader({ dataset }: Props) {
-  const router   = useRouter()
-  const pathname = usePathname()
-  const [syncing, setSyncing] = useState(false)
-  const [syncMsg, setSyncMsg] = useState('')
+  // AI state (shared across tabs via localStorage)
+  var [apiKey, setApiKey] = useState('')
+  var [aiEnabled, setAiEnabled] = useState(false)
 
-  const activeTab = TABS.find(function(t) { return pathname.endsWith('/' + t.key) })?.key || 'textmine'
+  useEffect(function() {
+    try {
+      var k = localStorage.getItem('sentimetrx_tm_apikey')
+      if (k) setApiKey(k)
+      var ai = localStorage.getItem('sentimetrx_ai_enabled')
+      if (ai === '1') setAiEnabled(true)
+    } catch {}
+  }, [])
+
+  var activeTab = TABS.find(function(t) { return pathname.endsWith('/' + t.key) })?.key || 'textmine'
 
   async function handleSync() {
-    setSyncing(true)
-    setSyncMsg('')
+    setSyncing(true); setSyncMsg('')
     try {
-      const res  = await fetch('/api/datasets/' + dataset.id + '/sync', { method: 'POST' })
-      const data = await res.json()
-      if (data.synced === 0) {
-        setSyncMsg('Already up to date')
-      } else {
-        setSyncMsg(data.synced + ' new rows added')
-        router.refresh()
-      }
+      var res = await fetch('/api/datasets/' + dataset.id + '/sync', { method: 'POST' })
+      var data = await res.json()
+      setSyncMsg(data.synced === 0 ? 'Up to date' : data.synced + ' new rows')
+      if (data.synced > 0) router.refresh()
     } finally {
       setSyncing(false)
       setTimeout(function() { setSyncMsg('') }, 3000)
@@ -69,81 +75,94 @@ export default function DatasetHeader({ dataset }: Props) {
   }
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4">
-      <div className="max-w-6xl mx-auto">
+    <div>
+      {/* ─── Ana-style header bar ────────────────────────────────────── */}
+      <div style={{ background: HERMES, padding: '0 0 0 20px', height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
 
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs text-gray-400 pt-3 pb-1">
-          <Link href="/analyze" className="hover:text-gray-600 transition-colors">Analyze</Link>
-          <span>/</span>
-          <span className="text-gray-600 font-medium truncate max-w-48">{dataset.name}</span>
+        {/* Back + Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 16, borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
+          <Link href="/analyze" style={{ fontSize: 14, color: 'rgba(255,255,255,.7)', textDecoration: 'none', fontWeight: 600 }}>{'\u2190'}</Link>
+          <div style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: 'white' }}>A</div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
         </div>
 
-        {/* Main header row */}
-        <div className="flex items-center justify-between gap-4 py-3 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-lg font-bold text-gray-800">{dataset.name}</h1>
-
-            {/* Source badge */}
-            {dataset.source === 'study' && dataset.study_name ? (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full text-white" style={{ background: HERMES }}>
-                {'Survey: ' + dataset.study_name}
-              </span>
-            ) : (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                Upload
-              </span>
-            )}
-
-            {/* Visibility */}
-            <span className={'text-xs font-medium px-2 py-0.5 rounded-full border ' +
-              (dataset.visibility === 'public' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-400 border-gray-200')}>
-              {dataset.visibility}
-            </span>
-
-            {/* Row count */}
-            <span className="text-xs text-gray-400 font-semibold">{dataset.row_count.toLocaleString()} rows</span>
-
-            {/* Last synced (study datasets only) */}
-            {dataset.source === 'study' && dataset.last_synced_at && (
-              <span className="text-xs text-gray-400">Synced {timeAgo(dataset.last_synced_at)}</span>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            {syncMsg && (
-              <span className="text-xs text-green-600 font-medium">{syncMsg}</span>
-            )}
-            {dataset.source === 'study' && (
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
-                style={{ background: HERMES }}
-              >
-                {syncing ? 'Syncing...' : 'Sync'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Module tab bar */}
-        <div className="flex items-center gap-1 pb-0">
+        {/* Module tabs */}
+        <div style={{ display: 'flex', alignItems: 'stretch', flex: 1, paddingLeft: 4 }}>
           {TABS.map(function(tab) {
-            const isActive = activeTab === tab.key
-            const href     = '/analyze/' + dataset.id + '/' + tab.key
+            var isActive = activeTab === tab.key
+            var href = '/analyze/' + dataset.id + '/' + tab.key
             return (
-              <Link
-                key={tab.key}
-                href={href}
-                className={'px-4 py-2.5 text-sm font-semibold border-b-2 transition-all ' +
-                  (isActive ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300')}
-              >
+              <Link key={tab.key} href={href}
+                style={{
+                  padding: '0 20px', height: '100%', display: 'flex', alignItems: 'center',
+                  fontSize: 13, fontWeight: isActive ? 700 : 500, textDecoration: 'none',
+                  color: isActive ? 'white' : 'rgba(255,255,255,.65)',
+                  background: isActive ? 'rgba(255,255,255,.18)' : 'transparent',
+                  borderBottom: isActive ? '3px solid white' : '3px solid transparent',
+                  transition: 'all .12s',
+                }}>
                 {tab.label}
               </Link>
             )
           })}
+        </div>
+
+        {/* Dataset name pill */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0, minWidth: 0, maxWidth: 220 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'white', background: 'rgba(255,255,255,.2)', borderRadius: 20, padding: '3px 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }} title={dataset.name}>
+            {dataset.name}
+          </span>
+        </div>
+
+        {/* Row count + Sync */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{dataset.row_count.toLocaleString()} rows</span>
+          {dataset.source === 'study' && (
+            <button onClick={handleSync} disabled={syncing}
+              style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: syncing ? 'not-allowed' : 'pointer' }}>
+              {syncing ? '...' : syncMsg || 'Sync'}
+            </button>
+          )}
+        </div>
+
+        {/* AI toggle (Ana.html style) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', flexShrink: 0 }}>
+          {apiKey ? (
+            <>
+              <button onClick={function() {
+                var next = !aiEnabled
+                setAiEnabled(next)
+                try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
+              }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.2)', border: '1px solid ' + (aiEnabled ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)'), borderRadius: 20, color: 'white', cursor: 'pointer' }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? '#4ade80' : '#94a3b8', display: 'inline-block' }} />
+                {aiEnabled ? 'AI on' : 'AI off'}
+              </button>
+              <button onClick={function() {
+                var key = prompt('Enter your Anthropic API key:', apiKey)
+                if (key !== null) {
+                  setApiKey(key)
+                  try { localStorage.setItem('sentimetrx_tm_apikey', key) } catch {}
+                  if (key && !aiEnabled) { setAiEnabled(true); try { localStorage.setItem('sentimetrx_ai_enabled', '1') } catch {} }
+                }
+              }}
+                style={{ padding: '4px 9px', fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 20, color: 'rgba(255,255,255,.8)', cursor: 'pointer' }}>
+                {'\u2699'}
+              </button>
+            </>
+          ) : (
+            <button onClick={function() {
+              var key = prompt('Enter your Anthropic API key:')
+              if (key) {
+                setApiKey(key)
+                setAiEnabled(true)
+                try { localStorage.setItem('sentimetrx_tm_apikey', key); localStorage.setItem('sentimetrx_ai_enabled', '1') } catch {}
+              }
+            }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', fontSize: 12, fontWeight: 700, background: 'white', border: 'none', borderRadius: 20, color: HERMES, cursor: 'pointer' }}>
+              {'\uD83D\uDD11'} Connect AI
+            </button>
+          )}
         </div>
       </div>
     </div>

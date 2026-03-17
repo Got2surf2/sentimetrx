@@ -1,5 +1,6 @@
 // app/analyze/[datasetId]/layout.tsx
-// Shared layout for all dataset module pages -- header + tab bar
+// Shared layout for all dataset module pages
+// Full-width content area matching Ana.html's layout
 
 import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/server'
@@ -10,8 +11,8 @@ import DatasetHeader from './DatasetHeader'
 export const dynamic = 'force-dynamic'
 
 interface Props {
-  children:  ReactNode
-  params:    { datasetId: string }
+  children: ReactNode
+  params: { datasetId: string }
 }
 
 export default async function DatasetLayout({ children, params }: Props) {
@@ -42,7 +43,7 @@ export default async function DatasetLayout({ children, params }: Props) {
   const studyName = (dataset as any).studies?.name ?? null
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <TopNav
         logoUrl={orgData?.logo_url    || ''}
         orgName={orgData?.name        || ''}
@@ -52,7 +53,7 @@ export default async function DatasetLayout({ children, params }: Props) {
         analyzeEnabled={true}
         currentPage="analyze"
       />
-      <div className="pt-14">
+      <div style={{ paddingTop: 56, display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         <DatasetHeader
           dataset={{
             id:             dataset.id,
@@ -64,8 +65,11 @@ export default async function DatasetLayout({ children, params }: Props) {
             last_synced_at: dataset.last_synced_at,
             study_name:     studyName,
           }}
+          userName={userData?.full_name || user.email || ''}
+          orgName={orgData?.name || ''}
         />
-        <main className="px-4 pb-12 max-w-6xl mx-auto">
+        {/* Full-width content — no max-w constraint for TextMine/Charts */}
+        <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {children}
         </main>
       </div>
