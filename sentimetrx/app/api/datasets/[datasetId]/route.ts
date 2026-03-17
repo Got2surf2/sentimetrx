@@ -114,3 +114,5 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+

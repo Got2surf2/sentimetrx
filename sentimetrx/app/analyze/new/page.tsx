@@ -1,5 +1,5 @@
 // app/analyze/new/page.tsx
-// Upload flow -- server component with analyze gate
+// Upload wizard -- server component with analyze gate
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
@@ -35,9 +35,11 @@ export default async function NewDatasetPage() {
         analyzeEnabled={true}
         currentPage="analyze"
       />
-      <main className="pt-20 px-4 pb-12 max-w-2xl mx-auto">
+      <main className="pt-20 px-4 pb-12 max-w-4xl mx-auto">
         <UploadClient />
       </main>
     </div>
   )
 }
+
+
