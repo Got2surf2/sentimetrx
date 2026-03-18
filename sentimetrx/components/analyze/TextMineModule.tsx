@@ -533,6 +533,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       var ai = localStorage.getItem('sentimetrx_ai_enabled')
       if (ai === '1') setAiEnabled(true)
     } catch { /* ignore */ }
+
+    // Poll localStorage for AI toggle changes from header (same-tab, no storage event)
+    var interval = setInterval(function() {
+      try {
+        var key = localStorage.getItem('sentimetrx_tm_apikey') || ''
+        var on = localStorage.getItem('sentimetrx_ai_enabled') === '1'
+        setApiKey(function(prev) { return key || prev })
+        setAiEnabled(on)
+      } catch {}
+    }, 2000)
+    return function() { clearInterval(interval) }
   }, [])
 
   // Load industry themes on mount
@@ -627,7 +638,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   async function mineThemes() {
-    if (!apiKey) { setShowApiKeyModal(true); return }
+    // Read real-time toggle state from localStorage (header may have changed it)
+    var liveAi = false; try { liveAi = localStorage.getItem('sentimetrx_ai_enabled') === '1' } catch {}
+    if (!liveAi) { setAiEnabled(false); setError('AI is turned off. Enable AI in the header to mine themes.'); return }
+    var liveKey = ''; try { liveKey = localStorage.getItem('sentimetrx_tm_apikey') || '' } catch {}
+    if (liveKey) setApiKey(liveKey)
+    if (!liveKey) { setShowApiKeyModal(true); return }
     if (!effectiveFields.length || !filteredRows.length) return
     setLoading(true)
     setError(null)
@@ -1090,7 +1106,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (
-                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
                       )}
                     </div>
                   )
@@ -1138,10 +1154,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
-              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                {hasThemes && themes && rowsLoaded && drillTheme ? (
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                {hasThemes && themes && themes.themes.length > 0 && rowsLoaded ? (
                   <CommentsPanel
-                    theme={drillTheme}
+                    theme={drillTheme || themes.themes[0]}
                     allThemes={themes.themes}
                     parsedData={filteredRows}
                     activeField={effectiveFields[0] || themes.fieldName}
@@ -1150,7 +1166,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     themeColors={themeColors}
                     onBack={handleBackFromComments}
                     schema={schema.fields}
-                    apiKey={apiKey || undefined}
+                    apiKey={aiEnabled ? (apiKey || undefined) : undefined}
                     datasetId={datasetId}
                   />
                 ) : (
