@@ -1,7 +1,5 @@
 // app/analyze/[datasetId]/charts/page.tsx
-// Charts module — loads schema + analytics from dataset_state.
-// All chart data comes from pre-computed fieldSummaries where possible,
-// with on-demand row fetching for cross-field charts (scatter, crosstab, gantt).
+// Charts module — loads schema + analytics, renders ChartsModule.
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
@@ -23,14 +21,14 @@ export default async function ChartsPage({ params }: Props) {
     .single()
 
   var rawOrg = userData?.organizations
-  var orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as unknown as { features?: { analyze?: boolean } }
+  var orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   var service = createServiceRoleClient()
 
   var { data: stateRow } = await service
     .from('dataset_state')
-    .select('schema_config, analytics')
+    .select('schema_config, analytics, saved_charts')
     .eq('dataset_id', params.datasetId)
     .single()
 
@@ -39,11 +37,5 @@ export default async function ChartsPage({ params }: Props) {
   var schema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
   var analytics = stateRow.analytics || null
 
-  return (
-    <ChartsModule
-      datasetId={params.datasetId}
-      schema={schema}
-      analytics={analytics}
-    />
-  )
+  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} />
 }

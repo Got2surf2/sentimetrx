@@ -168,7 +168,7 @@ function useRows(datasetId: string, needed: boolean) {
     var page = 0
     var PAGE_SIZE = 500
 
-    function fetchPage() {
+    var fetchPage = function() {
       fetch('/api/datasets/' + datasetId + '/rows?page=' + page + '&pageSize=' + PAGE_SIZE)
         .then(function(r) { return r.json() })
         .then(function(data) {
@@ -392,7 +392,7 @@ function WaterfallView({ analytics, schema }: { analytics: Analytics; schema: Sc
   var labels = entries.map(function(e) { return e[0] }).concat(['Total'])
   var values = entries.map(function(e) { return e[1] })
   var total = values.reduce(function(a, b) { return a + b }, 0)
-  var measures: string[] = values.map(function() { return 'relative' }).concat(['total'])
+  var measures = values.map(function() { return 'relative' as const }).concat(['total' as const])
   values.push(total)
   var traces = [{ type: 'waterfall', x: labels, y: values, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: T.accent } } }]
   return (
@@ -573,18 +573,175 @@ function TableView({ analytics, schema, datasetId }: { analytics: Analytics; sch
 // MAIN CHARTS MODULE
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ─── Field relevance per chart type (from Ana.html) ────────────────────────
+var CHART_FIELD_RELEVANCE: Record<string, { cat?: boolean; num?: boolean | 'optional'; date?: boolean; open?: boolean; all?: boolean }> = {
+  bar: { cat: true, num: 'optional' },
+  distribution: { num: true },
+  scatter: { num: true },
+  crosstab: { cat: true },
+  timeseries: { date: true, num: 'optional' },
+  treemap: { cat: true, num: 'optional' },
+  bubbles: { cat: true, num: 'optional' },
+  waterfall: { cat: true },
+  bullet: { num: true },
+  funnel: { cat: true },
+  gantt: { cat: true, num: true },
+  driver: { num: true },
+  table: { all: true },
+}
+
+interface SavedChart {
+  id: string
+  name: string
+  chartType: string
+  createdAt: string
+}
+
 export default function ChartsModule({ datasetId, schema, analytics }: Props) {
   var [activeChart, setActiveChart] = useState('bar')
   var [hovered, setHovered] = useState<string | null>(null)
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
   var hasData = analytics && analytics.totalRows > 0
 
+  // Saved charts state
+  var [savedCharts, setSavedCharts] = useState<SavedChart[]>([])
+  var [savedExpanded, setSavedExpanded] = useState(true)
+  var [showManage, setShowManage] = useState(false)
+  var [saveName, setSaveName] = useState('')
+  var [showSavePrompt, setShowSavePrompt] = useState(false)
+
+  // Load saved charts from dataset_state
+  useEffect(function() {
+    fetch('/api/datasets/' + datasetId + '/state')
+      .then(function(r) { return r.ok ? r.json() : {} })
+      .then(function(d) { if (d.saved_charts && Array.isArray(d.saved_charts)) setSavedCharts(d.saved_charts) })
+      .catch(function() {})
+  }, [datasetId])
+
+  var persistSavedCharts = function(charts: SavedChart[]) {
+    setSavedCharts(charts)
+    fetch('/api/datasets/' + datasetId + '/state', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ saved_charts: charts }),
+    }).catch(function() {})
+  }
+
+  var handleSaveChart = function() {
+    if (!saveName.trim()) return
+    var chart: SavedChart = { id: 'sc_' + Date.now(), name: saveName.trim(), chartType: activeChart, createdAt: new Date().toISOString() }
+    persistSavedCharts(savedCharts.concat([chart]))
+    setSaveName('')
+    setShowSavePrompt(false)
+  }
+
+  var handleDeleteSaved = function(id: string) {
+    persistSavedCharts(savedCharts.filter(function(c) { return c.id !== id }))
+  }
+
+  // Group fields by type for left sidebar
+  var catFields = fields.filter(function(f) { return f.type === 'categorical' })
+  var numFields = fields.filter(function(f) { return f.type === 'numeric' })
+  var dateFields = fields.filter(function(f) { return f.type === 'date' })
+  var openFields = fields.filter(function(f) { return f.type === 'open-ended' })
+
+  var relevance = CHART_FIELD_RELEVANCE[activeChart] || {}
+  var isRelevant = function(type: string): boolean {
+    if (relevance.all) return true
+    if (type === 'categorical' && relevance.cat) return true
+    if (type === 'numeric' && (relevance.num === true || relevance.num === 'optional')) return true
+    if (type === 'date' && relevance.date) return true
+    if (type === 'open-ended' && relevance.open) return true
+    return false
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg }}>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
 
+        {/* ─── Left sidebar: Fields + Saved Charts ─────────────────── */}
+        <div style={{ width: 200, flexShrink: 0, borderRight: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+
+          {/* Saved Charts (collapsible) */}
+          {savedCharts.length > 0 && (
+            <div style={{ borderBottom: '1px solid ' + T.border }}>
+              <button onClick={function() { setSavedExpanded(function(v) { return !v }) }}
+                style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>{savedExpanded ? '\u2212' : '+'} Saved Charts</span>
+                <span style={{ fontSize: 10, color: T.textFaint }}>{savedCharts.length}</span>
+              </button>
+              {savedExpanded && (
+                <div style={{ padding: '0 8px 8px' }}>
+                  {savedCharts.map(function(sc) {
+                    var ct = CHART_TYPE_DEFS.find(function(c) { return c.id === sc.chartType })
+                    return (
+                      <button key={sc.id} onClick={function() { setActiveChart(sc.chartType) }}
+                        style={{ width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: activeChart === sc.chartType ? T.accentBg : 'transparent', borderRadius: 6, cursor: 'pointer', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 12 }}>{ct ? ct.icon : '\u25A0'}</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name}</span>
+                      </button>
+                    )
+                  })}
+                  <button onClick={function() { setShowManage(true) }}
+                    style={{ width: '100%', padding: '4px 8px', fontSize: 10, fontWeight: 600, color: T.accent, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', marginTop: 2 }}>
+                    Manage saved charts...
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Field groups */}
+          {[
+            { label: 'Categorical', type: 'categorical', list: catFields, color: '#7c3aed', icon: '\u2261' },
+            { label: 'Numeric', type: 'numeric', list: numFields, color: '#16a34a', icon: '#' },
+            { label: 'Date', type: 'date', list: dateFields, color: '#d97706', icon: '\uD83D\uDCC5' },
+            { label: 'Open-ended', type: 'open-ended', list: openFields, color: '#2563eb', icon: '\u2756' },
+          ].filter(function(g) { return g.list.length > 0 }).map(function(group) {
+            var relevant = isRelevant(group.type)
+            return (
+              <div key={group.type} style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border, opacity: relevant ? 1 : 0.35, transition: 'opacity .15s' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: group.color, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span>{group.icon}</span> {group.label}
+                  {!relevant && <span style={{ fontSize: 9, fontWeight: 400, color: T.textFaint, marginLeft: 'auto' }}>n/a</span>}
+                </div>
+                {group.list.map(function(f) {
+                  return (
+                    <div key={f.field}
+                      style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: relevant ? T.textMid : T.textFaint, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }}
+                      title={f.field}>
+                      {fl(f)}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+
         {/* ─── Chart body ──────────────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+          {/* Save button */}
+          {hasData && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              {showSavePrompt ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input value={saveName} onChange={function(e) { setSaveName(e.target.value) }}
+                    onKeyDown={function(e) { if (e.key === 'Enter') handleSaveChart(); if (e.key === 'Escape') setShowSavePrompt(false) }}
+                    autoFocus placeholder="Chart name..."
+                    style={{ padding: '5px 10px', fontSize: 12, border: '1.5px solid ' + T.accent, borderRadius: 7, outline: 'none', width: 200 }} />
+                  <button onClick={handleSaveChart} disabled={!saveName.trim()}
+                    style={{ padding: '5px 12px', fontSize: 11, fontWeight: 700, background: saveName.trim() ? T.accent : T.borderMid, color: saveName.trim() ? 'white' : T.textFaint, border: 'none', borderRadius: 7, cursor: saveName.trim() ? 'pointer' : 'not-allowed' }}>Save</button>
+                  <button onClick={function() { setShowSavePrompt(false); setSaveName('') }}
+                    style={{ padding: '5px 8px', fontSize: 12, background: 'transparent', border: 'none', color: T.textFaint, cursor: 'pointer' }}>{'\u2715'}</button>
+                </div>
+              ) : (
+                <button onClick={function() { setShowSavePrompt(true) }}
+                  style={{ padding: '5px 14px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMid, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {'\u2605'} Save Chart
+                </button>
+              )}
+            </div>
+          )}
           {!hasData && <EmptyChart msg="No data loaded. Upload a dataset or sync a study first." />}
           {hasData && activeChart === 'bar' && <BarChartView analytics={analytics!} schema={fields} datasetId={datasetId} />}
           {hasData && activeChart === 'distribution' && <DistributionView analytics={analytics!} schema={fields} />}
@@ -601,7 +758,7 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
           {hasData && activeChart === 'table' && <TableView analytics={analytics!} schema={fields} datasetId={datasetId} />}
         </div>
 
-        {/* ─── Chart type picker sidebar ───────────────────────────── */}
+        {/* ─── Chart type picker sidebar (right) ───────────────────── */}
         <div style={{ width: 220, flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Chart Type</div>
@@ -632,6 +789,41 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
           </div>
         </div>
       </div>
+
+      {/* ─── Manage Saved Charts Modal ─────────────────────────────── */}
+      {showManage && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={function() { setShowManage(false) }}>
+          <div style={{ background: T.bgCard, borderRadius: 16, width: 420, maxHeight: '70vh', boxShadow: '0 24px 64px rgba(0,0,0,.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            onClick={function(e) { e.stopPropagation() }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Manage Saved Charts</span>
+              <button onClick={function() { setShowManage(false) }} style={{ background: 'transparent', border: 'none', fontSize: 18, color: T.textMute, cursor: 'pointer' }}>{'\u00D7'}</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
+              {savedCharts.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 30, color: T.textFaint, fontSize: 13 }}>No saved charts yet.</div>
+              )}
+              {savedCharts.map(function(sc) {
+                var ct = CHART_TYPE_DEFS.find(function(c) { return c.id === sc.chartType })
+                return (
+                  <div key={sc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid ' + T.border }}>
+                    <span style={{ fontSize: 16 }}>{ct ? ct.icon : '\u25A0'}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name}</div>
+                      <div style={{ fontSize: 10, color: T.textFaint }}>{ct ? ct.label : sc.chartType}</div>
+                    </div>
+                    <button onClick={function() { handleDeleteSaved(sc.id) }}
+                      style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: T.redBg, color: T.red, border: '1px solid ' + T.red + '30', borderRadius: 6, cursor: 'pointer' }}>
+                      Delete
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
