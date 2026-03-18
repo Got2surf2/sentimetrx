@@ -393,19 +393,17 @@ export default function CommentsPanel({
             <button
               onClick={generateSummary}
               disabled={!apiKey || !matched.length}
+              title={!apiKey ? 'Enable AI in the header bar to use summaries' : !matched.length ? 'No matching comments to summarize' : ''}
               style={{
                 padding: '7px 14px', fontSize: 12, fontWeight: 700,
-                background: apiKey ? T.accentBg : T.bg,
-                color: apiKey ? T.accent : T.textFaint,
-                border: '1px solid ' + (apiKey ? T.accentMid : T.border),
-                borderRadius: 8, cursor: apiKey ? 'pointer' : 'not-allowed',
+                background: apiKey && matched.length ? T.accentBg : T.bg,
+                color: apiKey && matched.length ? T.accent : T.textFaint,
+                border: '1px solid ' + (apiKey && matched.length ? T.accentMid : T.border),
+                borderRadius: 8, cursor: apiKey && matched.length ? 'pointer' : 'not-allowed',
               }}
             >
               {'\u29E1'} AI Summary
             </button>
-            {!apiKey && (
-              <span style={{ fontSize: 11, color: T.textFaint }}>Add your API key to enable AI summaries</span>
-            )}
             {summaryError && (
               <span style={{ fontSize: 11, color: T.red }}>{summaryError}</span>
             )}

@@ -881,9 +881,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   {'\u2261'} Themes
                 </button>
               )}
-              {openFields.length > 0 && aiEnabled && (
-                <button onClick={mineThemes} disabled={!canMine || loading}
-                  style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: canMine && !loading ? T.accent : T.borderMid, color: canMine && !loading ? 'white' : T.textFaint, border: 'none', borderRadius: 20, cursor: canMine && !loading ? 'pointer' : 'not-allowed' }}>
+              {openFields.length > 0 && (
+                <button onClick={mineThemes} disabled={!canMine || loading || !aiEnabled}
+                  title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
+                  style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: canMine && !loading && aiEnabled ? T.accent : T.borderMid, color: canMine && !loading && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 20, cursor: canMine && !loading && aiEnabled ? 'pointer' : 'not-allowed' }}>
                   {loading ? 'Mining...' : '\u29E1 Mine'}
                 </button>
               )}
@@ -937,18 +938,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       {' '}Run an AI analysis or pick an industry theme library to get started.
                     </p>
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      {aiEnabled && (
-                        <button onClick={mineThemes} disabled={!canMine}
-                          style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine ? T.accent : T.borderMid, color: canMine ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine ? 'pointer' : 'not-allowed' }}>
-                          {'\u29E1'} Mine with AI
-                        </button>
-                      )}
-                      {!aiEnabled && !apiKey && (
-                        <button onClick={function() { setShowApiKeyModal(true) }}
-                          style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 9, cursor: 'pointer' }}>
-                          {'\uD83D\uDD11'} Connect AI to mine themes
-                        </button>
-                      )}
+                      <button onClick={mineThemes} disabled={!canMine || !aiEnabled}
+                        title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
+                        style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
+                        {'\u29E1'} Mine with AI
+                      </button>
                       <button onClick={function() { setShowThemeEditor(true) }}
                         style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
                         {'\u2261'} Choose industry library

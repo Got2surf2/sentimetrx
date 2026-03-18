@@ -689,7 +689,7 @@ function InsightsPanel({ numFields, catFields, data, aliases }: { numFields: Sch
         <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: '0 0 4px' }}>{'\u2726'} Insights</h2>
         <p style={{ fontSize: 13, color: T.textMid, margin: 0, lineHeight: 1.6 }}>Pick a numeric metric and fields to compare. AI tells the story in plain English.</p>
       </div>
-      {!aiEnabled && <div style={{ padding: '12px 16px', background: T.amberBg, border: '1px solid ' + T.amberMid, borderRadius: 10, fontSize: 13, color: T.amber, fontWeight: 600 }}>AI is off {'\u2014'} enable it using the toggle in the top bar to use Insights.</div>}
+      {!aiEnabled && <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 14 }}>{'\u26A0'}</span>{apiKey ? 'AI is turned off. Use the AI toggle in the header bar to enable it.' : 'Add an API key via the AI button in the header to use Insights.'}</div>}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 200 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>Metric (numeric)</label>
@@ -737,6 +737,7 @@ function InsightsPanel({ numFields, catFields, data, aliases }: { numFields: Sch
         </div>
       )}
       <button onClick={generate} disabled={loading || !numField || !selectedCats.length || !aiEnabled || !apiKey}
+        title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : !selectedCats.length ? 'Select at least one field to compare' : ''}
         style={{ alignSelf: 'flex-start', padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (loading || !numField || !selectedCats.length || !aiEnabled || !apiKey) ? T.bg : T.accent, color: (loading || !numField || !selectedCats.length || !aiEnabled || !apiKey) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (loading || !numField || !selectedCats.length || !aiEnabled || !apiKey) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
         {loading ? 'Generating\u2026' : '\u2726 Generate Insights'}
       </button>
