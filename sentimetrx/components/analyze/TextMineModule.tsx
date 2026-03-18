@@ -1139,9 +1139,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* ═══ COMMENTS TAB ═══ */}
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                {hasThemes && themes && rowsLoaded ? (
+                {hasThemes && themes && rowsLoaded && drillTheme ? (
                   <CommentsPanel
-                    theme={drillTheme!}
+                    theme={drillTheme}
                     allThemes={themes.themes}
                     parsedData={filteredRows}
                     activeField={effectiveFields[0] || themes.fieldName}
