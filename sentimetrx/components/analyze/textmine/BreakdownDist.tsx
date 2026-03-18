@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from 'react'
 import { Theme, THEME_PALETTE, commentMatchesTheme } from '@/lib/themeUtils'
+import { sigTest } from '@/lib/statsUtils'
 
 const T = {
   bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
@@ -64,6 +65,19 @@ export default function BreakdownDist({
     })
     return gt
   }, [selVals, parsedData, breakdownField, field])
+
+  // Total matches per theme + total rows for sig testing
+  var totalThemeMatches = useMemo(function() {
+    var ttm: Record<string, number> = {}
+    sortedThemes.forEach(function(t) {
+      ttm[t.id] = selVals.reduce(function(s, v) { return s + (valueCounts[v] ? valueCounts[v][t.id] || 0 : 0) }, 0)
+    })
+    return ttm
+  }, [sortedThemes, selVals, valueCounts])
+
+  var totalAllRows = useMemo(function() {
+    return selVals.reduce(function(s, v) { return s + (groupTotals[v] || 0) }, 0)
+  }, [selVals, groupTotals])
 
   if (!breakdownField || !selVals.length) return null
 
@@ -132,6 +146,8 @@ export default function BreakdownDist({
                   const cnt = valueCounts[v] ? valueCounts[v][t.id] || 0 : 0
                   const pct = groupTotal > 0 ? Math.round((cnt / groupTotal) * 100) : 0
                   if (cnt === 0) return null
+                  var sig = sigTest(cnt, groupTotal, totalThemeMatches[t.id] || 0, totalAllRows)
+                  var sigColor = sig && sig.dir === 'over' ? '#16a34a' : sig && sig.dir === 'under' ? '#dc2626' : null
                   return (
                     <div
                       key={t.id}
@@ -143,6 +159,7 @@ export default function BreakdownDist({
                       <div style={{ width: 80, height: 7, background: T.bg, borderRadius: 4, overflow: 'hidden', flexShrink: 0 }}>
                         <div style={{ height: '100%', width: pct + '%', background: pal.border, borderRadius: 4 }} />
                       </div>
+                      {sigColor && <span style={{ fontSize: 11, fontWeight: 800, color: sigColor, flexShrink: 0 }} title={sig!.dir === 'over' ? 'Significantly over-represented (z=' + sig!.z.toFixed(1) + ')' : 'Significantly under-represented (z=' + sig!.z.toFixed(1) + ')'}>★</span>}
                       <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>
                         {pct}%
                       </span>
@@ -184,12 +201,15 @@ export default function BreakdownDist({
                   const groupTotal = groupTotals[v] || 0
                   const pct = groupTotal > 0 ? Math.round((cnt / groupTotal) * 100) : 0
                   const barPct = maxCnt > 0 ? (cnt / maxCnt) * 100 : 0
+                  var sig = sigTest(cnt, groupTotal, totalThemeMatches[t.id] || 0, totalAllRows)
+                  var sigColor = sig && sig.dir === 'over' ? '#16a34a' : sig && sig.dir === 'under' ? '#dc2626' : null
                   return (
                     <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                       <span style={{ fontSize: 11, color: T.amber, width: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{v}</span>
                       <div style={{ flex: 1, height: 7, background: T.bg, borderRadius: 4, overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: barPct + '%', background: pal.border, borderRadius: 4, transition: 'width .5s' }} />
                       </div>
+                      {sigColor && <span style={{ fontSize: 11, fontWeight: 800, color: sigColor, flexShrink: 0 }} title={sig!.dir === 'over' ? 'Significantly over-represented (z=' + sig!.z.toFixed(1) + ')' : 'Significantly under-represented (z=' + sig!.z.toFixed(1) + ')'}>★</span>}
                       <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{pct}%</span>
                       <span style={{ fontSize: 10, color: T.textFaint, width: 28, textAlign: 'right', flexShrink: 0 }}>{cnt}</span>
                     </div>

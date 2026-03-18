@@ -9,6 +9,9 @@ import {
   pearsonR, spearmanR, welchTTest, mannWhitneyU, oneWayANOVA,
   chiSquareStat, olsRegression, getNum, probit,
   fmt2, fmt4, fmtN, fmtP, sigLabel,
+  descBL, descBL_naive, corrBL, corrBL_naive,
+  ttestBL, ttestBL_naive, anovaBL, anovaBL_naive,
+  chiBL, chiBL_naive, regrBL, regrBL_naive,
 } from '@/lib/statsUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
@@ -97,6 +100,26 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
   )
 }
 
+function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
+  var [mode, setMode] = useState('expert')
+  if (!text) return null
+  var shown = mode === 'naive' && naiveText ? naiveText : text
+  return (
+    <div style={{ marginTop: 18, marginBottom: 6, background: T.accentBg, border: '1px solid ' + T.accentMid, borderLeft: '3px solid ' + T.accent, borderRadius: 8, padding: '12px 16px 16px', fontSize: 13, lineHeight: 1.7, color: T.textMid }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: T.accent }}>{'\u25C6'} Bottom Line</div>
+        {naiveText && (
+          <div style={{ display: 'flex', gap: 3, background: T.bg, borderRadius: 7, padding: '2px 3px', border: '1px solid ' + T.border }}>
+            <button onClick={function() { setMode('expert') }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 9px', borderRadius: 5, border: 'none', background: mode === 'expert' ? T.accent : 'transparent', color: mode === 'expert' ? 'white' : T.textFaint, cursor: 'pointer', transition: 'all .12s' }}>Expert</button>
+            <button onClick={function() { setMode('naive') }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 9px', borderRadius: 5, border: 'none', background: mode === 'naive' ? T.accent : 'transparent', color: mode === 'naive' ? 'white' : T.textFaint, cursor: 'pointer', transition: 'all .12s' }}>Plain English</button>
+          </div>
+        )}
+      </div>
+      {shown}
+    </div>
+  )
+}
+
 // ─── SUB-PANELS ───────────────────────────────────────────────────────────────
 
 function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[] }) {
@@ -117,6 +140,7 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
   return (
     <div>
       <PanelHeader icon={'\u2211'} title="Descriptive Statistics" desc="Summary statistics, distribution shape, and normality tests for each numeric variable." />
+      {stats && <BottomLine text={descBL(sel, stats)} naiveText={descBL_naive(sel, stats)} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
         {numFields.map(function(f) { return <FieldPill key={f.field} label={f.label || f.field} active={sel === f.field} onClick={function() { setSel(f.field) }} /> })}
       </div>
@@ -222,6 +246,7 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
   return (
     <div>
       <PanelHeader icon={'\u2295'} title="Correlation Matrix" desc={'Pearson r or Spearman \u03C1 between all active numeric variables. Click any cell to see details.'} />
+      {selCell && <BottomLine text={corrBL(selCell.f1, selCell.f2, selCell.r, selCell.p, selCell.n, corrType)} naiveText={corrBL_naive(selCell.f1, selCell.f2, selCell.r, selCell.p, selCell.n)} />}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute, textTransform: 'uppercase', letterSpacing: '.07em' }}>Method:</span>
         {[['pearson', 'Pearson r'], ['spearman', 'Spearman \u03C1']].map(function(pair) {
@@ -234,14 +259,14 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>
                 <th style={{ padding: '10px 12px', fontSize: 10, color: T.textFaint, background: T.bg, minWidth: 100, textAlign: 'left' }} />
-                {matrix!.fields.map(function(f) { return <th key={f} style={{ padding: '10px 10px', fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', background: T.bg, textAlign: 'center', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f}>{f.slice(0, 10)}</th> })}
+                {matrix.fields.map(function(f) { return <th key={f} style={{ padding: '10px 10px', fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', background: T.bg, textAlign: 'center', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f}>{f.slice(0, 10)}</th> })}
               </tr></thead>
-              <tbody>{matrix!.fields.map(function(f1, i) {
+              <tbody>{matrix.fields.map(function(f1, i) {
                 return (
                   <tr key={f1}>
                     <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: T.textMute, background: T.bg, borderRight: '1px solid ' + T.border, whiteSpace: 'nowrap', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }} title={f1}>{f1.slice(0, 14)}</td>
-                    {matrix!.fields.map(function(f2, j) {
-                      var cell = matrix!.mat[i][j], isDiag = i === j, isSel = selCell && selCell.i === i && selCell.j === j
+                    {matrix.fields.map(function(f2, j) {
+                      var cell = matrix.mat[i][j], isDiag = i === j, isSel = selCell && selCell.i === i && selCell.j === j
                       return (
                         <td key={f2} onClick={function() { if (!isDiag) setSelCell({ i: i, j: j, f1: f1, f2: f2, r: cell.r, p: cell.p, n: cell.n }) }}
                           style={{ padding: '11px 10px', textAlign: 'center', background: isDiag ? T.bg : cellBg(cell.r), cursor: isDiag ? 'default' : 'pointer', outline: isSel ? '2px solid ' + T.accent : 'none', outlineOffset: -2, userSelect: 'none' }}>
@@ -320,6 +345,10 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
   return (
     <div>
       <PanelHeader icon={'\u2297'} title="Group Tests" desc={"Compare distributions across groups: Welch\u2019s t-test, one-way ANOVA, Mann-Whitney U, and Chi-square."} />
+      {result && result.res && <BottomLine
+        text={result.type === 'ttest' ? ttestBL(result.res, numF) : result.type === 'anova' ? anovaBL(result.res, numF) : result.type === 'chisq' ? chiBL(result.res, catF, catF2) : ''}
+        naiveText={result.type === 'ttest' ? ttestBL_naive(result.res, numF) : result.type === 'anova' ? anovaBL_naive(result.res, numF) : result.type === 'chisq' ? chiBL_naive(result.res, catF, catF2) : ''}
+      />}
       <Card style={{ padding: '16px 20px', marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {[['auto', 'Auto-select'], ['ttest', 't-test'], ['anova', 'ANOVA'], ['mw', 'Mann-Whitney'], ['chisq', 'Chi-square']].map(function(pair) {
@@ -422,6 +451,7 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
   return (
     <div>
       <PanelHeader icon={'\u27CB'} title="OLS Linear Regression" desc="Ordinary least squares regression with coefficient table, fit statistics, and residual diagnostics." />
+      {result && <BottomLine text={regrBL(result, outcome)} naiveText={regrBL_naive(result, outcome)} />}
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, marginBottom: 20 }}>
         <Card style={{ padding: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Outcome</div>

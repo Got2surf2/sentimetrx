@@ -199,3 +199,125 @@ export function sigLabel(p: number): { stars: string; color: string; bg: string;
   if (p < 0.05) return { stars: '*', color: '#d97706', bg: '#fffbeb', border: '#fde68a', label: 'marginally significant' }
   return { stars: 'ns', color: '#6b7280', bg: '#f4f5f7', border: '#e5e7eb', label: 'not significant' }
 }
+
+// ─── Two-proportion z-test (for Compare significance) ─────────────────────
+export function sigTest(k: number, n: number, K: number, N: number): { dir: 'over' | 'under' | 'ns'; z: number; p1: number; p2: number } | null {
+  var rn = N - n; var rk = K - k
+  if (n < 30 || rn < 30 || K < 5) return null
+  var p_pool = K / N
+  var se = Math.sqrt(p_pool * (1 - p_pool) * (1 / n + 1 / rn))
+  if (se === 0) return null
+  var p1 = k / n; var p2 = rk / rn
+  var z = Math.abs((p1 - p2) / se)
+  if (z <= 1.96) return { dir: 'ns', z: z, p1: p1, p2: p2 }
+  return { dir: p1 > p2 ? 'over' : 'under', z: z, p1: p1, p2: p2 }
+}
+
+export function sigTooltip(sig: { dir: string; z: number; p1: number; p2: number } | null, groupName: string, themeName: string): string {
+  if (!sig || sig.dir === 'ns') return ''
+  var thisPct = Math.round(sig.p1 * 100)
+  var restPct = Math.round(sig.p2 * 100)
+  var z = sig.z.toFixed(1)
+  if (sig.dir === 'over') return thisPct + '% of ' + groupName + ' mention ' + themeName + ', vs ' + restPct + '% in all other groups \u2014 significantly over-represented (z=' + z + ', p<0.05)'
+  return thisPct + '% of ' + groupName + ' mention ' + themeName + ', vs ' + restPct + '% in all other groups \u2014 significantly under-represented (z=' + z + ', p<0.05)'
+}
+
+// ─── BottomLine text generators (Expert) ──────────────────────────────────
+export function descBL(field: string, s: any): string {
+  var normal = s.sw && s.sw.p > 0.05
+  var sk = Math.abs(s.skew) < 0.5 ? 'approximately symmetric' : s.skew > 0 ? 'positively skewed' : 'negatively skewed'
+  var normStr = s.sw && !isNaN(s.sw.p) ? ' and ' + (normal ? 'appears normally distributed' : 'departs from normality') + ' (Shapiro-Wilk W=' + fmt2(s.sw.W) + ', ' + fmtP(s.sw.p) + ')' : '.'
+  return field + ' has ' + s.n + ' valid observations. Mean = ' + fmt2(s.mn) + ', SD = ' + fmt2(s.sd) + ', median = ' + fmt2(s.med) + '. The distribution is ' + sk + normStr
+}
+
+export function corrBL(f1: string, f2: string, r: number, p: number, n: number, type: string): string {
+  var s = sigLabel(p)
+  var str = Math.abs(r) < 0.1 ? 'negligible' : Math.abs(r) < 0.3 ? 'weak' : Math.abs(r) < 0.5 ? 'moderate' : Math.abs(r) < 0.7 ? 'strong' : 'very strong'
+  var dir = r > 0 ? 'positive' : 'negative'
+  if (s.label === 'not significant') return 'No significant ' + type + ' correlation between ' + f1 + ' and ' + f2 + ' (r=' + fmt2(r) + ', ' + fmtP(p) + ', n=' + n + ').'
+  var dirStr = r > 0 ? 'Higher ' + f1 + ' is associated with higher ' + f2 + '.' : 'Higher ' + f1 + ' is associated with lower ' + f2 + '.'
+  return f1 + ' and ' + f2 + ' show a ' + str + ' ' + dir + ' ' + type + ' correlation (r=' + fmt2(r) + ', ' + fmtP(p) + ', n=' + n + '). ' + dirStr
+}
+
+export function ttestBL(res: any, f: string): string {
+  if (!res) return ''
+  var d = Math.abs(res.d) < 0.2 ? 'negligible' : Math.abs(res.d) < 0.5 ? 'small' : Math.abs(res.d) < 0.8 ? 'medium' : 'large'
+  if (res.p >= 0.05) return 'No significant difference in ' + f + ' between the two groups (t=' + fmt2(res.t) + ', df=' + fmt2(res.df) + ', ' + fmtP(res.p) + '). Means: ' + fmt2(res.ma) + ' vs ' + fmt2(res.mb) + '.'
+  var hi = res.ma > res.mb ? 'First' : 'Second'
+  return 'Significant difference in ' + f + ' between groups (t=' + fmt2(res.t) + ', df=' + fmt2(res.df) + ', ' + fmtP(res.p) + '). ' + hi + ' group has higher mean (' + fmt2(res.ma) + ' vs ' + fmt2(res.mb) + '). Effect size is ' + d + " (Cohen's d = " + fmt2(res.d) + ').'
+}
+
+export function anovaBL(res: any, f: string): string {
+  if (!res) return ''
+  var eff = res.eta2 < 0.01 ? 'negligible' : res.eta2 < 0.06 ? 'small' : res.eta2 < 0.14 ? 'medium' : 'large'
+  if (res.p >= 0.05) return 'No significant difference in ' + f + ' across ' + res.k + ' groups (F=' + fmt2(res.F) + ', df=' + res.dfB + ',' + res.dfW + ', ' + fmtP(res.p) + ', \u03B7\u00B2=' + fmt2(res.eta2) + ').'
+  var sig = res.pairwise ? res.pairwise.filter(function(pw: any) { return pw.pAdj < 0.05 }) : []
+  var pwStr = sig.length ? ' Significant pairwise differences: ' + sig.map(function(pw: any) { return pw.a + ' vs ' + pw.b }).join('; ') + '.' : ''
+  return 'Significant difference in ' + f + ' across ' + res.k + ' groups (F=' + fmt2(res.F) + ', ' + fmtP(res.p) + '). Effect size is ' + eff + ' (\u03B7\u00B2=' + fmt2(res.eta2) + ').' + pwStr
+}
+
+export function chiBL(res: any, rf: string, cf: string): string {
+  if (!res) return ''
+  var assoc = res.V < 0.1 ? 'negligible' : res.V < 0.3 ? 'weak' : res.V < 0.5 ? 'moderate' : 'strong'
+  if (res.p >= 0.05) return 'No significant association between ' + rf + ' and ' + cf + ' (\u03C7\u00B2=' + fmt2(res.chi2) + ', df=' + res.df + ', ' + fmtP(res.p) + ', N=' + res.N + ').'
+  return 'Significant association between ' + rf + ' and ' + cf + ' (\u03C7\u00B2=' + fmt2(res.chi2) + ', df=' + res.df + ', ' + fmtP(res.p) + ', N=' + res.N + '). The association is ' + assoc + " (Cram\u00E9r\u2019s V=" + fmt2(res.V) + ').'
+}
+
+export function regrBL(res: any, out: string): string {
+  if (!res) return ''
+  var r2 = Math.round(res.R2 * 100)
+  var sig = res.coefs.slice(1).filter(function(c: any) { return c.p < 0.05 })
+  var s = sigLabel(res.Fp)
+  if (s.label === 'not significant') return 'The model is not significant (F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '), explaining only ' + r2 + '% of variance in ' + out + '.'
+  var sigStr = sig.length ? ' Significant predictors: ' + sig.map(function(c: any) { return c.name + ' (\u03B2=' + fmt2(c.beta) + ', ' + fmtP(c.p) + ')' }).join(', ') + '.' : 'No individual predictors reached significance.'
+  return 'The model explains ' + r2 + '% of variance in ' + out + ' (R\u00B2=' + fmt2(res.R2) + ', adj.R\u00B2=' + fmt2(res.R2adj) + ', F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '). ' + sigStr
+}
+
+// ─── BottomLine text generators (Plain English) ───────────────────────────
+export function descBL_naive(field: string, s: any): string {
+  var skLabel = Math.abs(s.skew) < 0.5 ? 'clustered around the middle' : s.skew > 0 ? 'skewed toward lower values (a few high outliers pull the average up)' : 'skewed toward higher values (a few low outliers pull the average down)'
+  var normNote = s.sw && !isNaN(s.sw.p) ? (s.sw.p > 0.05 ? ' Scores follow a reasonably bell-shaped distribution.' : " Scores don't follow a typical bell curve \u2014 the spread is uneven.") : ''
+  return field + ' had ' + s.n.toLocaleString() + ' answers. The average score was ' + fmt2(s.mn) + ' and the middle answer was ' + fmt2(s.med) + '. Scores were ' + skLabel + ', typically varying by about \u00B1' + fmt2(s.sd) + ' from the average.' + normNote
+}
+
+export function corrBL_naive(f1: string, f2: string, r: number, p: number, n: number): string {
+  var str = Math.abs(r) < 0.1 ? 'almost no' : Math.abs(r) < 0.3 ? 'a weak' : Math.abs(r) < 0.5 ? 'a moderate' : Math.abs(r) < 0.7 ? 'a strong' : 'a very strong'
+  var dir = r > 0 ? 'when one is higher, the other tends to be higher too' : 'when one is higher, the other tends to be lower'
+  if (p >= 0.05) return 'We checked whether ' + f1 + ' and ' + f2 + ' go together. The answer is: not really. Any connection we see could just be random chance.'
+  return "There's " + str + ' connection between ' + f1 + ' and ' + f2 + ' \u2014 ' + dir + '. This pattern is unlikely to be a coincidence (seen across ' + n + ' observations).'
+}
+
+export function ttestBL_naive(res: any, f: string): string {
+  if (!res) return ''
+  var d = Math.abs(res.d)
+  var sizeStr = d < 0.2 ? 'tiny (barely noticeable in practice)' : d < 0.5 ? 'small but real' : d < 0.8 ? 'a noticeable difference' : 'quite a big difference'
+  if (res.p >= 0.05) return 'We compared two groups on ' + f + ". There's no meaningful difference between them \u2014 the gap we see could just be random variation."
+  var hi = res.ma > res.mb ? 'the first group' : 'the second group'
+  return 'There is a real difference in ' + f + ' \u2014 ' + hi + ' scores higher on average (' + fmt2(res.ma) + ' vs ' + fmt2(res.mb) + '). The gap is ' + sizeStr + '.'
+}
+
+export function anovaBL_naive(res: any, f: string): string {
+  if (!res) return ''
+  var eff = res.eta2 < 0.01 ? 'tiny' : res.eta2 < 0.06 ? 'small' : res.eta2 < 0.14 ? 'moderate' : 'large'
+  if (res.p >= 0.05) return 'We compared ' + res.k + ' groups on ' + f + '. No meaningful differences \u2014 the variation looks like normal randomness.'
+  var sig = res.pairwise ? res.pairwise.filter(function(pw: any) { return pw.pAdj < 0.05 }) : []
+  var pwStr = sig.length ? ' In particular, these pairs stand out: ' + sig.slice(0, 3).map(function(pw: any) { return pw.a + ' vs ' + pw.b }).join(', ') + '.' : ''
+  return "The groups are genuinely different on " + f + " \u2014 which group someone's in explains a " + eff + ' chunk of the variation.' + pwStr
+}
+
+export function chiBL_naive(res: any, rf: string, cf: string): string {
+  if (!res) return ''
+  var assoc = res.V < 0.1 ? 'barely related' : res.V < 0.3 ? 'weakly related' : res.V < 0.5 ? 'noticeably related' : 'strongly related'
+  if (res.p >= 0.05) return 'We checked if ' + rf + ' and ' + cf + " are connected. They don't appear to be \u2014 the pattern looks like it could just be random."
+  return rf + ' and ' + cf + ' are ' + assoc + ' to each other. How people answer one question tends to go with how they answer the other. This is not just coincidence (based on ' + res.N + ' people).'
+}
+
+export function regrBL_naive(res: any, out: string): string {
+  if (!res) return ''
+  var r2 = Math.round(res.R2 * 100)
+  var sig = res.coefs.slice(1).filter(function(c: any) { return c.p < 0.05 })
+  if (res.Fp >= 0.05) return "We tried to predict " + out + " using the other factors. The model isn't reliable \u2014 it doesn't do meaningfully better than just guessing the average."
+  var r2str = r2 < 10 ? 'only a small slice' : r2 < 30 ? 'a fair amount' : r2 < 60 ? 'a lot' : 'most'
+  var sigStr = sig.length ? ' The factors that matter most are: ' + sig.map(function(c: any) { return c.name }).join(', ') + '.' : ''
+  return 'Our factors explain ' + r2str + ' of why ' + out + ' varies across people (' + r2 + '% of the variation).' + sigStr
+}
