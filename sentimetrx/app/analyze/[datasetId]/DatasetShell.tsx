@@ -1,7 +1,6 @@
 'use client'
 // app/analyze/[datasetId]/DatasetShell.tsx
-// Client wrapper: FilterProvider + DatasetHeader + global FiltersModal
-// Filter button sits at the tab level (alongside TextMine/Charts/Statistics).
+// Client wrapper: FilterProvider + DatasetHeader + global FiltersModal + Session save/restore
 
 import { useState, useEffect } from 'react'
 import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
@@ -30,6 +29,35 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [loadingRows, setLoadingRows] = useState(false)
+  var [chipsExpanded, setChipsExpanded] = useState(false)
+  var [sessionSaving, setSessionSaving] = useState(false)
+  var [sessionSaved, setSessionSaved] = useState(false)
+
+  // Build aliases from schema
+  var aliases: Record<string, string> = {}
+  schemaFields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
+
+  // Restore session (filters) on mount
+  useEffect(function() {
+    fetch('/api/datasets/' + datasetId + '/state')
+      .then(function(r) { return r.ok ? r.json() : {} as any })
+      .then(function(d) {
+        if (d.session_state && d.session_state.filters) {
+          // Restore filters from session — need to reconstruct Sets from arrays
+          var restored: Filters = {}
+          Object.entries(d.session_state.filters).forEach(function(entry) {
+            var field = entry[0], f = entry[1] as any
+            if (f.type === 'cat') {
+              restored[field] = { type: 'cat', values: new Set(f.values || []), excludeBlanks: f.excludeBlanks || false }
+            } else {
+              restored[field] = f
+            }
+          })
+          if (Object.keys(restored).length > 0) setFilters(restored)
+        }
+      })
+      .catch(function() {})
+  }, [datasetId])
 
   // Lazy-load rows when filter modal opens
   useEffect(function() {
@@ -55,17 +83,41 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
   }, [showFilters, rowsLoaded, loadingRows, datasetId])
 
   var fCount = filterCount(filters)
-  var [chipsExpanded, setChipsExpanded] = useState(false)
 
-  // Build aliases from schema
-  var aliases: Record<string, string> = {}
-  schemaFields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
+  // Save session handler
+  var handleSaveSession = function() {
+    setSessionSaving(true)
+    // Serialize filters (Sets → arrays for JSON)
+    var serializedFilters: Record<string, any> = {}
+    Object.entries(filters).forEach(function(entry) {
+      var field = entry[0], f = entry[1]
+      if (f.type === 'cat') {
+        serializedFilters[field] = { type: 'cat', values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
+      } else {
+        serializedFilters[field] = f
+      }
+    })
+
+    var sessionState = {
+      filters: serializedFilters,
+      savedAt: new Date().toISOString(),
+    }
+
+    fetch('/api/datasets/' + datasetId + '/state', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_state: sessionState }),
+    })
+      .then(function() { setSessionSaved(true); setTimeout(function() { setSessionSaved(false) }, 3000) })
+      .catch(function() {})
+      .finally(function() { setSessionSaving(false) })
+  }
 
   return (
     <>
-      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} onFilterClick={function() { setShowFilters(true) }} />
+      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} />
 
-      {/* Global filter chips bar — visible on ALL tabs when filters active */}
+      {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (
         <div style={{ background: '#fff4ef', borderBottom: '1px solid #fbd5c2', padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: chipsExpanded ? 'wrap' : 'nowrap', overflow: chipsExpanded ? 'visible' : 'hidden', maxHeight: chipsExpanded ? 'none' : 32 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Filtered:</span>

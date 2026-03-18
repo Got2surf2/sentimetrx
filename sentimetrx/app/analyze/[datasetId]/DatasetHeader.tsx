@@ -1,7 +1,7 @@
 'use client'
 
 // app/analyze/[datasetId]/DatasetHeader.tsx
-// Ana-style header: back + brand → module tabs + FILTERS → dataset pill → row count → AI toggle
+// Ana-style header: back + brand → module tabs + Filters + Save Session → dataset pill → row count → AI toggle
 
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
@@ -18,6 +18,9 @@ interface Props {
   orgName?: string
   filterCount?: number
   onFilterClick?: () => void
+  onSaveSession?: () => void
+  sessionSaving?: boolean
+  sessionSaved?: boolean
 }
 
 var HERMES = '#E8632A'
@@ -29,11 +32,9 @@ var TABS = [
   { key: 'settings', label: 'Schema & Themes' },
 ]
 
-export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick, onSaveSession, sessionSaving, sessionSaved }: Props) {
   var router = useRouter()
   var pathname = usePathname()
-  var [syncing, setSyncing] = useState(false)
-  var [syncMsg, setSyncMsg] = useState('')
 
   var [apiKey, setApiKey] = useState('')
   var [aiEnabled, setAiEnabled] = useState(false)
@@ -50,16 +51,11 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var activeTab = TABS.find(function(t) { return pathname.endsWith('/' + t.key) })?.key || 'textmine'
 
   async function handleSync() {
-    setSyncing(true); setSyncMsg('')
     try {
       var res = await fetch('/api/datasets/' + dataset.id + '/sync', { method: 'POST' })
       var data = await res.json()
-      setSyncMsg(data.synced === 0 ? 'Up to date' : data.synced + ' new rows')
       if (data.synced > 0) router.refresh()
-    } finally {
-      setSyncing(false)
-      setTimeout(function() { setSyncMsg('') }, 3000)
-    }
+    } catch {}
   }
 
   return (
@@ -73,7 +69,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
         </div>
 
-        {/* Module tabs + Filters button */}
+        {/* Module tabs + Filters + Save Session */}
         <div style={{ display: 'flex', alignItems: 'stretch', flex: 1, paddingLeft: 4 }}>
           {TABS.map(function(tab) {
             var isActive = activeTab === tab.key
@@ -93,7 +89,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             )
           })}
 
-          {/* Filters button — same level as module tabs */}
+          {/* Filters button */}
           <button onClick={onFilterClick}
             style={{
               padding: '0 18px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
@@ -106,6 +102,21 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
             Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
           </button>
+
+          {/* Save Session button */}
+          {onSaveSession && (
+            <button onClick={onSaveSession} disabled={sessionSaving}
+              style={{
+                padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 12, fontWeight: 600,
+                color: sessionSaved ? '#4ade80' : 'rgba(255,255,255,.6)',
+                background: 'transparent',
+                border: 'none', borderBottom: '3px solid transparent',
+                cursor: sessionSaving ? 'wait' : 'pointer', flexShrink: 0,
+              }}>
+              {sessionSaving ? '\u23F3' : sessionSaved ? '\u2714' : '\uD83D\uDCBE'} {sessionSaving ? 'Saving...' : sessionSaved ? 'Saved' : 'Save Session'}
+            </button>
+          )}
         </div>
 
         {/* Dataset name pill */}
@@ -119,9 +130,9 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{dataset.row_count.toLocaleString()} rows</span>
           {dataset.source === 'study' && (
-            <button onClick={handleSync} disabled={syncing}
-              style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: syncing ? 'not-allowed' : 'pointer' }}>
-              {syncing ? '...' : syncMsg || 'Sync'}
+            <button onClick={handleSync}
+              style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: 'pointer' }}>
+              Sync
             </button>
           )}
         </div>
