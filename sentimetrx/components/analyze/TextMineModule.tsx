@@ -600,6 +600,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var filteredRows = applyFilters(rows, filters)
   var activeFilterCount = filterCount(filters)
 
+  // Recount theme hits against filtered data for display
+  var displayThemes: ThemeModel | null = themes && filteredRows.length > 0 && effectiveFields.length > 0
+    ? { ...themes, themes: recountThemes(themes.themes, filteredRows, effectiveFields) }
+    : themes
+
   // Stats for active fields (on filtered data)
   var activeFieldRows = filteredRows.filter(function(r) {
     return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 })
@@ -937,9 +942,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 )}
 
                 {/* ─── Themes content (with Distribution/Cards toggle) ─── */}
-                {rowsLoaded && hasThemes && themes && !loading && (function() {
-                  var sortedThemes = [...themes.themes].sort(function(a, b) { return b.count - a.count })
-                  var totalResp = filteredRows.filter(function(r) { return activeField && String(r[activeField] || '').trim().length > 0 }).length
+                {rowsLoaded && hasThemes && displayThemes && !loading && (function() {
+                  var sortedThemes = [...displayThemes.themes].sort(function(a, b) { return b.count - a.count })
+                  var totalResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
                   var topTone = sortedThemes[0] ? sortedThemes[0].sentiment : '\u2014'
 
                   return (
@@ -951,7 +956,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: 0 }}>Themes</h2>
                           </div>
                           <p style={{ fontSize: 12, color: T.textMid, margin: '3px 0 0' }}>
-                            {effectiveFields.length > 1 ? 'Fields' : 'Field'}: <strong>{effectiveFields.map(fieldLabel).join(' + ')}</strong> {'\u00B7'} {themes.themes.length} themes {'\u00B7'} {totalResp.toLocaleString()} responses
+                            {effectiveFields.length > 1 ? 'Fields' : 'Field'}: <strong>{effectiveFields.map(fieldLabel).join(' + ')}</strong> {'\u00B7'} {displayThemes!.themes.length} themes {'\u00B7'} {totalResp.toLocaleString()} responses
                           </p>
                         </div>
                         <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border, flexShrink: 0 }}>
@@ -992,7 +997,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           )}
                         </div>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
-                          <div style={{ fontSize: 24, fontWeight: 800, color: T.blue, lineHeight: 1 }}>{themes.themes.length}</div>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: T.blue, lineHeight: 1 }}>{displayThemes!.themes.length}</div>
                           <div style={{ fontSize: 10, color: T.textMute, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Themes Found</div>
                         </div>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
@@ -1018,7 +1023,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   })}
                                 </div>
                                 {sortedThemes.map(function(t) {
-                                  var idx = themes.themes.indexOf(t)
+                                  var idx = displayThemes!.themes.indexOf(t)
                                   var pal = themeColors[idx] || THEME_PALETTE[0]
                                   var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : 0
                                   var pctFrac = totalResp > 0 ? t.count / totalResp * 100 / axisMax : 0
@@ -1044,7 +1049,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       {themesView === 'cards' && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
                           {sortedThemes.map(function(t) {
-                            var idx = themes.themes.indexOf(t)
+                            var idx = displayThemes!.themes.indexOf(t)
                             var pal = themeColors[idx] || THEME_PALETTE[0]
                             var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : (t.percentage || 0)
                             return (
@@ -1085,7 +1090,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (
-                        <BreakdownDist themes={themes} parsedData={filteredRows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
                       )}
                     </div>
                   )
@@ -1128,7 +1133,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab themes={themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} onDrillTheme={handleDrillTheme} />
+              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} onDrillTheme={handleDrillTheme} />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}

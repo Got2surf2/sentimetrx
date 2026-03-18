@@ -188,6 +188,7 @@ export interface DatasetWithState extends Dataset {
   org_name?:     string | null
   theme_count?:  number
   theme_source?: string | null
+  theme_lib_name?: string | null
 }
 
 // -- Paginated rows response (for TextMine) ------------------------------
@@ -200,5 +201,3 @@ export interface PagedRowsResponse {
   totalPages: number
   field?:     string    // if filtered to single field
 }
-
-

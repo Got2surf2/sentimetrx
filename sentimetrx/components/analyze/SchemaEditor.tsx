@@ -532,9 +532,16 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
         })}
       </div>
 
-      {/* Full-width row list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {display.map(function(f, i) {
+      {/* Responsive grid — ignored fields pushed to end */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
+        {display
+          .slice()
+          .sort(function(a, b) {
+            var aIgn = a.type === 'ignore' || a.type === 'id' ? 1 : 0
+            var bIgn = b.type === 'ignore' || b.type === 'id' ? 1 : 0
+            return aIgn - bIgn
+          })
+          .map(function(f, i) {
           return (
             <FieldCard key={f.field} f={f} index={i}
               onTypeChange={handleTypeChange}

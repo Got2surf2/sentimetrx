@@ -187,12 +187,15 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           <Badge label="Archived" color="#b45309" bg="#fffbeb" border="#fde68a" />
         )}
         {dataset.theme_count && dataset.theme_count > 0 ? (
-          <Badge
-            label={dataset.theme_source === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (dataset.theme_source || dataset.theme_count + ' themes')}
-            color={dataset.theme_source === 'ai' ? '#2563eb' : '#e8622a'}
-            bg={dataset.theme_source === 'ai' ? '#eff6ff' : '#fff4ef'}
-            border={dataset.theme_source === 'ai' ? '#bfdbfe' : '#fbd5c2'}
-          />
+          dataset.theme_source === 'ai' ? (
+            <Badge label={'\u29E1 AI Mined'} color="#2563eb" bg="#eff6ff" border="#bfdbfe" />
+          ) : dataset.theme_lib_name ? (
+            <>{dataset.theme_lib_name.split(' + ').map(function(lib: string) {
+              return <Badge key={lib} label={'\u2261 ' + lib.trim()} color="#e8622a" bg="#fff4ef" border="#fbd5c2" />
+            })}</>
+          ) : (
+            <Badge label={'\u2261 ' + dataset.theme_count + ' themes'} color="#e8622a" bg="#fff4ef" border="#fbd5c2" />
+          )
         ) : null}
       </div>
 
