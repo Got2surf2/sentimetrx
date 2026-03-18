@@ -335,7 +335,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   }
 
   const catFields = schema.filter(function(f) { return f.type === 'categorical' }).map(function(f) { return f.field })
-  const field = activeField || themes.fieldName
+  const field = activeField || themes!.fieldName
   const selField = breakdownField || catFields[0] || null
 
   if (!catFields.length) {
@@ -1018,7 +1018,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '18px 20px', marginBottom: 20 }}>
                           {/* Compute rounded max for axis */}
                           {(function() {
+                            var classifiedCount = sortedThemes.reduce(function(s, t) { return s + t.count }, 0)
+                            var unclassifiedCount = Math.max(0, totalResp - classifiedCount)
                             var maxPctRaw = sortedThemes.reduce(function(m, t) { var p = totalResp > 0 ? t.count / totalResp * 100 : 0; return p > m ? p : m }, 0)
+                            if (unclassifiedCount > 0) { var uPct = totalResp > 0 ? unclassifiedCount / totalResp * 100 : 0; if (uPct > maxPctRaw) maxPctRaw = uPct }
                             var axisMax = Math.ceil(maxPctRaw / 10) * 10 || 10
                             return (
                               <div>
@@ -1046,6 +1049,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     </div>
                                   )
                                 })}
+                                {/* Unclassified bar */}
+                                {unclassifiedCount > 0 && (
+                                  <div onClick={function() { handleDrillTheme({ id: 'unclassified', name: 'Unclassified', description: 'Responses that did not match any theme.', keywords: [], sentiment: 'mixed', count: unclassifiedCount, percentage: 0, relatedThemes: [] }) }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: 'pointer', borderRadius: 6, opacity: 0.7 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textFaint, width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>Unclassified</span>
+                                    <div style={{ flex: 1, height: 22, background: T.bg, borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                                      <div style={{ height: '100%', width: (totalResp > 0 ? unclassifiedCount / totalResp * 100 / axisMax * 100 : 0) + '%', background: '#94a3b8', borderRadius: 4, transition: 'width .6s ease' }} />
+                                    </div>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textFaint, width: 36, textAlign: 'right', flexShrink: 0 }}>{totalResp > 0 ? Math.round(unclassifiedCount / totalResp * 100) : 0}%</span>
+                                    <span style={{ fontSize: 11, color: T.textFaint, width: 50, textAlign: 'right', flexShrink: 0 }}>n={unclassifiedCount}</span>
+                                  </div>
+                                )}
                               </div>
                             )
                           })()}
@@ -1062,6 +1077,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             return (
                               <div key={t.id} className="theme-card"
                                 onClick={function() { handleDrillTheme(t) }}
+                                onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 18px rgba(0,0,0,.10)' }}
+                                onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '' }}
                                 style={{ background: T.bgCard, border: '2px solid ' + pal.border, borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .15s, transform .12s' }}>
                                 {/* Top row: dot + sentiment badge */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -1097,8 +1114,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (
-                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName}
- breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
                       )}
                     </div>
                   )
@@ -1116,7 +1132,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     themeColors={themeColors}
                     parsedData={filteredRows}
                     activeField={activeField || themes!.fieldName}
-
                     onWordClick={function(word, idx, type) {
                       if (themes) {
                         if (type === 'theme') {
@@ -1149,20 +1164,49 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {subTab === 'comments' && (
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                 {hasThemes && themes && themes.themes.length > 0 && rowsLoaded ? (
-                  <CommentsPanel
-                    theme={drillTheme || themes.themes[0]}
-                    allThemes={themes.themes}
-                    parsedData={filteredRows}
-                    activeField={effectiveFields[0] || themes!.fieldName}
-
-                    activeFields={effectiveFields}
-                    catFields={catFields}
-                    themeColors={themeColors}
-                    onBack={handleBackFromComments}
-                    schema={schema.fields}
-                    apiKey={aiEnabled ? (apiKey || undefined) : undefined}
-                    datasetId={datasetId}
-                  />
+                  <>
+                    {/* Breadcrumb + Theme strip */}
+                    <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={handleBackFromComments} style={{ fontSize: 12, fontWeight: 600, color: T.textMute, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px 2px 0', flexShrink: 0 }}>{'\u2190'} Back</button>
+                      <span style={{ fontSize: 12, color: T.border, flexShrink: 0 }}>|</span>
+                      {drillTheme ? (
+                        <span style={{ fontSize: 11, color: T.textFaint }}>Viewing comments for</span>
+                      ) : (
+                        <span style={{ fontSize: 11, color: T.textFaint }}>All responses {'\u2014'} click a theme to filter</span>
+                      )}
+                      {/* Theme strip — click to switch themes */}
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1 }}>
+                        <button onClick={function() { setDrillTheme(null) }}
+                          style={{ fontSize: 11, fontWeight: !drillTheme ? 700 : 500, padding: '2px 10px', borderRadius: 20, background: !drillTheme ? T.bg : 'transparent', border: '1px solid ' + (!drillTheme ? T.borderMid : 'transparent'), color: !drillTheme ? T.text : T.textFaint, cursor: 'pointer' }}>
+                          All
+                        </button>
+                        {themes.themes.map(function(t, i) {
+                          var pal = themeColors[i] || THEME_PALETTE[0]
+                          var isActive = drillTheme && drillTheme.id === t.id
+                          return (
+                            <button key={t.id} onClick={function() { setDrillTheme(t) }}
+                              style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, padding: '2px 10px', borderRadius: 20, background: isActive ? pal.bg : 'transparent', border: '1px solid ' + (isActive ? pal.border : 'transparent'), color: isActive ? pal.text : T.textFaint, cursor: 'pointer', transition: 'all .1s' }}>
+                              {t.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <CommentsPanel
+                      theme={drillTheme || themes.themes[0]}
+                      allThemes={themes.themes}
+                      parsedData={filteredRows}
+                      activeField={effectiveFields[0] || themes!.fieldName}
+                      activeFields={effectiveFields}
+                      catFields={catFields}
+                      themeColors={themeColors}
+                      onBack={handleBackFromComments}
+                      schema={schema.fields}
+                      apiKey={aiEnabled ? (apiKey || undefined) : undefined}
+                      datasetId={datasetId}
+                      showAllMode={!drillTheme}
+                    />
+                  </>
                 ) : (
                   <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
                     Run a TextMine analysis first, then click a theme to browse comments.

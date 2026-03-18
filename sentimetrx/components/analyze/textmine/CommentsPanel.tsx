@@ -44,6 +44,7 @@ interface Props {
   apiKey?: string
   columnAliases?: Record<string, string>
   datasetId: string
+  showAllMode?: boolean
 }
 
 interface CommentRow {
@@ -71,7 +72,7 @@ function Spinner() {
   )
 }
 
-function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFields: cardActiveFields }: {
+function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFields: cardActiveFields, allThemes, themeColors, showAllMode }: {
   row: CommentRow
   theme: Theme
   pal: typeof THEME_PALETTE[0]
@@ -79,9 +80,27 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   aliases: Record<string, string>
   ignoredFields: string[]
   activeFields?: string[]
+  allThemes?: Theme[]
+  themeColors?: Record<number, typeof THEME_PALETTE[0]>
+  showAllMode?: boolean
 }) {
   var [expanded, setExpanded] = useState(false)
-  var segments = highlightKeywords(row.text, theme.keywords || [])
+
+  // In showAllMode, find ALL matching themes for this row
+  var matchingThemes: { theme: Theme; pal: typeof THEME_PALETTE[0] }[] = []
+  if (showAllMode && allThemes && themeColors) {
+    allThemes.forEach(function(t, i) {
+      if (commentMatchesTheme(row.text, t)) {
+        matchingThemes.push({ theme: t, pal: themeColors[i] || THEME_PALETTE[0] })
+      }
+    })
+  }
+
+  // Combine keywords from all matching themes for highlighting
+  var highlightKws = showAllMode
+    ? matchingThemes.reduce(function(acc, m) { return acc.concat(m.theme.keywords || []) }, [] as string[])
+    : (theme.keywords || [])
+  var segments = highlightKeywords(row.text, highlightKws)
   var ignoredSet = new Set(ignoredFields)
   var metaCols = schema
     ? schema.filter(function(f) {
@@ -125,11 +144,26 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
       padding: '12px 14px', marginBottom: 8, borderLeft: '3px solid ' + pal.border,
       boxShadow: '0 1px 4px rgba(0,0,0,.04)',
     }}>
-      {/* Theme badge + field name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border }}>
-          {theme.name}
-        </span>
+      {/* Theme badge(s) + field name */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+        {showAllMode && matchingThemes.length > 0 ? (
+          matchingThemes.map(function(m) {
+            return (
+              <span key={m.theme.id} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: m.pal.bg, color: m.pal.text, border: '1px solid ' + m.pal.border }}>
+                {m.theme.name}
+              </span>
+            )
+          })
+        ) : (
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border }}>
+            {theme.name}
+          </span>
+        )}
+        {showAllMode && matchingThemes.length === 0 && (
+          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0' }}>
+            Unclassified
+          </span>
+        )}
         {showFieldName && (
           <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: '#f0f9ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
             {aliases[row.fieldName!] || row.fieldName}
@@ -202,7 +236,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
 
 export default function CommentsPanel({
   theme, allThemes, parsedData, activeField, activeFields,
-  catFields, themeColors, onBack, ignoredFields = [], schema, apiKey, columnAliases = {}, datasetId,
+  catFields, themeColors, onBack, ignoredFields = [], schema, apiKey, columnAliases = {}, datasetId, showAllMode,
 }: Props) {
   const themeIdx = allThemes.findIndex(function(t) { return t.id === theme.id })
   const pal = themeColors[themeIdx] || THEME_PALETTE[0]
@@ -253,7 +287,7 @@ export default function CommentsPanel({
   }, [parsedData, fields, metaCols])
 
   const matched = useMemo(function() {
-    const raw = allRows.filter(function(r) { return commentMatchesTheme(r.text, theme) })
+    var raw = showAllMode ? allRows : allRows.filter(function(r) { return commentMatchesTheme(r.text, theme) })
     // Score relevance = number of distinct keywords matched
     var relevanceScore = function(text: string): number {
       var t = text.toLowerCase()
@@ -425,6 +459,9 @@ export default function CommentsPanel({
               aliases={columnAliases}
               ignoredFields={ignoredFields}
               activeFields={fields}
+              allThemes={allThemes}
+              themeColors={themeColors}
+              showAllMode={showAllMode}
             />
           )
         })}
