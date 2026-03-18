@@ -528,7 +528,6 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
           </div>
         </Card>
         {result ? (
-          <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -608,8 +607,8 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
               })()}
             </Card>
           </div>
-          </>
-        ) : (          <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40 }}>
+        ) : (
+          <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40 }}>
             Select an outcome and at least one predictor to run regression.
           </div>
         )}

@@ -12,6 +12,7 @@ import {
 } from '@/lib/themeUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
+import { sigTest } from '@/lib/statsUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
@@ -311,16 +312,16 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
   )
 }
 
-// ─── CompareTab (inline simplified version) ───────────────────────────────────
+// ─── CompareTab (multi-field breakdown with significance) ─────────────────────
 
-function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownField, setBreakdownField, onDrillTheme }: {
+function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownFields, setBreakdownFields, onDrillTheme }: {
   themes: ThemeModel | null
   parsedData: Record<string, unknown>[]
   schema: SchemaField[]
   activeField: string | null
   themeColors: Record<number, typeof THEME_PALETTE[0]>
-  breakdownField: string | null
-  setBreakdownField: (f: string | null) => void
+  breakdownFields: string[]
+  setBreakdownFields: (f: string[]) => void
   onDrillTheme: (t: Theme) => void
 }) {
   if (!themes) {
@@ -334,14 +335,25 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     )
   }
 
-  const catFields = schema.filter(function(f) { return f.type === 'categorical' }).map(function(f) { return f.field })
-  const field = activeField || themes!.fieldName
-  const selField = breakdownField || catFields[0] || null
+  var catFields = schema.filter(function(f) { return f.type === 'categorical' }).map(function(f) { return f.field })
+  var field = activeField || themes!.fieldName
+  var fieldLabel = function(f: string) {
+    var sf = schema.find(function(s) { return s.field === f })
+    return (sf && sf.label && sf.label !== f) ? sf.label : f
+  }
+
+  var toggleField = function(f: string) {
+    setBreakdownFields(
+      breakdownFields.includes(f)
+        ? breakdownFields.filter(function(x) { return x !== f })
+        : breakdownFields.concat([f])
+    )
+  }
 
   if (!catFields.length) {
     return (
       <div style={{ padding: 24, color: T.textMute, fontSize: 13 }}>
-        No categorical fields available for comparison. Add categorical fields to your schema to compare groups.
+        No categorical fields available for comparison.
       </div>
     )
   }
@@ -350,65 +362,87 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-          Compare by group
+          Compare by (select one or more)
         </label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {catFields.map(function(f) {
+            var active = breakdownFields.includes(f)
             return (
-              <button
-                key={f}
-                onClick={function() { setBreakdownField(f) }}
+              <button key={f} onClick={function() { toggleField(f) }}
                 style={{
-                  padding: '5px 12px', fontSize: 12, fontWeight: 600,
-                  background: selField === f ? T.amberBg : T.bg,
-                  color: selField === f ? T.amber : T.textMid,
-                  border: '1px solid ' + (selField === f ? T.amber + '60' : T.border),
-                  borderRadius: 8, cursor: 'pointer',
-                }}
-              >
-                {f}
+                  padding: '5px 12px', fontSize: 12, fontWeight: active ? 700 : 500,
+                  background: active ? T.accentBg : T.bg,
+                  color: active ? T.accent : T.textMid,
+                  border: '1px solid ' + (active ? T.accent : T.border),
+                  borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}>
+                {active && <span style={{ fontSize: 10 }}>{'\u2713'}</span>}
+                {fieldLabel(f)}
               </button>
             )
           })}
         </div>
+        {breakdownFields.length > 1 && (
+          <div style={{ marginTop: 8, fontSize: 11, color: T.textMute }}>
+            Segments: <span style={{ fontWeight: 700, color: T.text }}>{breakdownFields.map(fieldLabel).join(' \u00D7 ')}</span>
+            <button onClick={function() { setBreakdownFields([]) }} style={{ marginLeft: 8, fontSize: 10, color: T.textFaint, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>clear all</button>
+          </div>
+        )}
       </div>
-      {selField && (
+      {breakdownFields.length > 0 ? (
         <CompareGroupView
           themes={themes}
           parsedData={parsedData}
           field={field}
-          breakdownField={selField}
+          breakdownFields={breakdownFields}
           themeColors={themeColors}
           onDrillTheme={onDrillTheme}
+          fieldLabel={fieldLabel}
         />
+      ) : (
+        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '40px 24px', textAlign: 'center', color: T.textFaint }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>{'\uD83D\uDC46'}</div>
+          <p style={{ fontSize: 13, margin: 0 }}>Select one or more fields above to compare themes across segments.</p>
+        </div>
       )}
     </div>
   )
 }
 
-function CompareGroupView({ themes, parsedData, field, breakdownField, themeColors, onDrillTheme }: {
+function CompareGroupView({ themes, parsedData, field, breakdownFields, themeColors, onDrillTheme, fieldLabel }: {
   themes: ThemeModel
   parsedData: Record<string, unknown>[]
   field: string
-  breakdownField: string
+  breakdownFields: string[]
   themeColors: Record<number, typeof THEME_PALETTE[0]>
   onDrillTheme: (t: Theme) => void
+  fieldLabel: (f: string) => string
 }) {
-  const groupVals = Array.from(new Set(parsedData.map(function(r) { return String(r[breakdownField] ?? '') }).filter(Boolean))).sort()
-  const sortedThemes = [...themes.themes].sort(function(a, b) { return b.count - a.count })
+  var groupKey = function(row: Record<string, unknown>) {
+    return breakdownFields.map(function(f) { return String(row[f] ?? '(blank)') }).join(' \u00D7 ')
+  }
+  var groupVals = Array.from(new Set(parsedData.map(function(r) { return groupKey(r) }).filter(Boolean))).sort()
+  var sortedThemes = themes.themes.slice().sort(function(a, b) { return b.count - a.count })
+
+  // Compute total matches per theme for sig testing
+  var totalRows = parsedData.filter(function(r) { return String(r[field] || '').trim().length > 0 }).length
+  var totalThemeMatches: Record<string, number> = {}
+  sortedThemes.forEach(function(t) {
+    totalThemeMatches[t.id] = parsedData.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) }).length
+  })
 
   return (
     <div>
       {sortedThemes.map(function(t, ti) {
-        const pal = themeColors[ti] || THEME_PALETTE[0]
-        const groupData = groupVals.map(function(v) {
-          const rows = parsedData.filter(function(r) { return String(r[breakdownField] ?? '') === v })
-          const total = rows.filter(function(r) { return String(r[field] || '').trim().length > 0 }).length
-          const count = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) }).length
-          const pct = total > 0 ? Math.round((count / total) * 100) : 0
-          return { v, count, pct, total }
+        var pal = themeColors[ti] || THEME_PALETTE[0]
+        var groupData = groupVals.map(function(v) {
+          var rows = parsedData.filter(function(r) { return groupKey(r) === v })
+          var total = rows.filter(function(r) { return String(r[field] || '').trim().length > 0 }).length
+          var count = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) }).length
+          var pct = total > 0 ? Math.round((count / total) * 100) : 0
+          return { v: v, count: count, pct: pct, total: total }
         })
-        const maxPct = Math.max(...groupData.map(function(g) { return g.pct }), 1)
+        var maxPct = Math.max.apply(null, groupData.map(function(g) { return g.pct }).concat([1]))
         return (
           <div key={t.id} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px', marginBottom: 10, borderLeft: '3px solid ' + pal.border }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -416,13 +450,15 @@ function CompareGroupView({ themes, parsedData, field, breakdownField, themeColo
                 style={{ fontSize: 13, fontWeight: 700, color: pal.text, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: pal.border + '60', textUnderlineOffset: '2px' }}>
                 {t.name}
               </span>
-              <span style={{ fontSize: 11, color: T.textMute }}>{t.count} responses overall ({t.percentage}%)</span>
+              <span style={{ fontSize: 11, color: T.textMute }}>{totalThemeMatches[t.id]} total matches</span>
               <button onClick={function() { onDrillTheme(t) }}
                 style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>
                 View comments {'\u2192'}
               </button>
             </div>
-            {groupData.map(function(g) {
+            {groupData.sort(function(a, b) { return b.pct - a.pct }).map(function(g) {
+              var sig = sigTest(g.count, g.total, totalThemeMatches[t.id], totalRows)
+              var sigColor = sig && sig.dir === 'over' ? '#16a34a' : sig && sig.dir === 'under' ? '#dc2626' : null
               return (
                 <div key={g.v} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <span style={{ fontSize: 11, color: T.textMid, width: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -431,6 +467,7 @@ function CompareGroupView({ themes, parsedData, field, breakdownField, themeColo
                   <div style={{ flex: 1, height: 8, background: T.bg, borderRadius: 4, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: (g.pct / maxPct * 100) + '%', background: pal.border, borderRadius: 4, transition: 'width .5s' }} />
                   </div>
+                  {sigColor && <span style={{ fontSize: 11, fontWeight: 800, color: sigColor, flexShrink: 0 }} title={sig!.dir === 'over' ? 'Over-represented (z=' + sig!.z.toFixed(1) + ')' : 'Under-represented (z=' + sig!.z.toFixed(1) + ')'}>★</span>}
                   <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>
                     {g.pct}%
                   </span>
@@ -466,6 +503,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [subTab, setSubTab] = useState<SubTab>('themes')
   const [themesView, setThemesView] = useState<'distribution' | 'cards'>('cards')
   const [breakdownField, setBreakdownField] = useState<string | null>(null)
+  const [compareFields, setCompareFields] = useState<string[]>([])
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
   const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
   const [previousTab, setPreviousTab] = useState<SubTab>('themes')
@@ -1157,7 +1195,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownField={breakdownField} setBreakdownField={setBreakdownField} onDrillTheme={handleDrillTheme} />
+              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}
