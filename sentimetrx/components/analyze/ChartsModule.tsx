@@ -613,7 +613,7 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
   // Load saved charts from dataset_state
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
-      .then(function(r) { return r.ok ? r.json() : {} })
+      .then(function(r) { return r.ok ? r.json() : {} as any })
       .then(function(d) { if (d.saved_charts && Array.isArray(d.saved_charts)) setSavedCharts(d.saved_charts) })
       .catch(function() {})
   }, [datasetId])
