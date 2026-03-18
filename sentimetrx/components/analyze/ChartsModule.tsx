@@ -360,7 +360,7 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
     setChartConfigs(function(prev) {
       var updated = Object.assign({}, prev)
       var cfg = Object.assign({}, updated[activeChart] || {})
-      cfg[activeSlot] = fieldName
+      cfg[activeSlot!] = fieldName
       updated[activeChart] = cfg
       return updated
     })

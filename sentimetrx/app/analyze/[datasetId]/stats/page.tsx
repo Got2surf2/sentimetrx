@@ -1,5 +1,5 @@
 // app/analyze/[datasetId]/stats/page.tsx
-// Statistics module — loads schema, renders StatsModule which loads rows client-side.
+// Statistics module — loads schema + theme_model, renders StatsModule.
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
@@ -26,13 +26,14 @@ export default async function StatsPage({ params }: Props) {
 
   var { data: stateRow } = await supabase
     .from('dataset_state')
-    .select('schema_config')
+    .select('schema_config, theme_model')
     .eq('dataset_id', params.datasetId)
     .single()
 
   if (!stateRow) notFound()
 
   var schema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
+  var themeModel = stateRow.theme_model || null
 
-  return <StatsModule datasetId={params.datasetId} schema={schema} />
+  return <StatsModule datasetId={params.datasetId} schema={schema} themeModel={themeModel} />
 }

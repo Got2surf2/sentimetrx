@@ -54,6 +54,7 @@ var T = {
 interface Props {
   datasetId: string
   schema: SchemaConfig
+  themeModel?: any
 }
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
@@ -751,19 +752,22 @@ function InsightsPanel({ numFields, catFields, data, aliases }: { numFields: Sch
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MAIN STATS MODULE
+// MAIN STATS MODULE — left sidebar (fields), right sidebar (analysis types)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-var SUB_TABS = [
-  { id: 'descriptives', label: 'Descriptives' },
-  { id: 'correlations', label: 'Correlations' },
-  { id: 'grouptests', label: 'Group Tests' },
-  { id: 'regression', label: 'Regression' },
-  { id: 'insights', label: '\u2726 Insights' },
+var ANALYSIS_TYPES = [
+  { id: 'descriptives', label: 'Descriptives', icon: '\u2211', color: '#e8622a', tip: 'Summary statistics and distributions.' },
+  { id: 'correlations', label: 'Correlations', icon: '\u2295', color: '#2563eb', tip: 'Relationships between numeric variables.' },
+  { id: 'grouptests', label: 'Group Tests', icon: '\u2297', color: '#16a34a', tip: 't-test, ANOVA, Mann-Whitney, Chi-square.' },
+  { id: 'regression', label: 'Regression', icon: '\u27CB', color: '#7c3aed', tip: 'OLS linear regression modeling.' },
+  { id: 'insights', label: '\u2726 Insights', icon: '\u2726', color: '#e8622a', tip: 'AI-generated narrative insights.' },
 ]
 
-export default function StatsModule({ datasetId, schema }: Props) {
-  var [subTab, setSubTab] = useState('descriptives')
+function fl(f: SchemaFieldConfig): string { return f.label && f.label !== f.field ? f.label : f.field }
+
+export default function StatsModule({ datasetId, schema, themeModel }: Props) {
+  var [activePanel, setActivePanel] = useState('descriptives')
+  var [hovered, setHovered] = useState<string | null>(null)
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
@@ -795,46 +799,116 @@ export default function StatsModule({ datasetId, schema }: Props) {
 
   var filteredData = applyFilters(rows, filters)
 
-  var numFields = schema.fields.filter(function(f) { return f.type === 'numeric' })
-  var catFields = schema.fields.filter(function(f) { return f.type === 'categorical' })
+  var allSchemaFields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
+  var numFields = allSchemaFields.filter(function(f) { return f.type === 'numeric' })
+  var catFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' })
+  var dateFields = allSchemaFields.filter(function(f) { return f.type === 'date' })
+  var openFields = allSchemaFields.filter(function(f) { return f.type === 'open-ended' })
   var aliases: Record<string, string> = {}
   schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
 
+  var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {/* Sub-tab bar */}
-      <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, height: 40, display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
-        {SUB_TABS.map(function(tab) {
-          var isActive = subTab === tab.id
-          return (
-            <button key={tab.id} onClick={function() { setSubTab(tab.id) }}
-              style={{ padding: '0 18px', height: '100%', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.textMid, background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: 'pointer', flexShrink: 0, transition: 'color .12s' }}>
-              {tab.label}
-            </button>
-          )
-        })}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
-          {rowsLoading && <span style={{ fontSize: 11, color: T.textMute }}>Loading rows...</span>}
-          {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
-        </div>
-      </div>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
 
-      {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-        {!rowsLoaded ? (
-          <div style={{ textAlign: 'center', padding: 60, color: T.textMute, fontSize: 13 }}>
-            <div style={{ width: 24, height: 24, borderRadius: '50%', border: '3px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite', margin: '0 auto 12px' }} />
-            Loading data for statistical analysis...
+        {/* ─── Left sidebar: Fields ─────────────────────────── */}
+        <div style={{ width: 200, flexShrink: 0, borderRight: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+
+          {/* Status */}
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
+            {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
+            {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
           </div>
-        ) : (
-          <>
-            {subTab === 'descriptives' && <DescriptivesPanel numFields={numFields} data={filteredData} />}
-            {subTab === 'correlations' && <CorrelationsPanel numFields={numFields} data={filteredData} />}
-            {subTab === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={filteredData} />}
-            {subTab === 'regression' && <RegressionPanel numFields={numFields} data={filteredData} />}
-            {subTab === 'insights' && <InsightsPanel numFields={numFields} catFields={catFields} data={filteredData} aliases={aliases} />}
-          </>
-        )}
+
+          {/* Themes virtual category */}
+          {hasThemes && (
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span>{'\u2756'}</span> Themes
+              </div>
+              {themeModel.themes.map(function(t: any) {
+                return (
+                  <div key={t.id} style={{ fontSize: 11, padding: '3px 8px', color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={t.name + ' (' + (t.count || 0) + ')'}>
+                    {t.name} <span style={{ fontSize: 9, color: T.textFaint }}>({t.count || 0})</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Field groups */}
+          {[
+            { label: 'Numeric', type: 'numeric', list: numFields, color: '#16a34a', icon: '#' },
+            { label: 'Categorical', type: 'categorical', list: catFields, color: '#7c3aed', icon: '\u2261' },
+            { label: 'Date', type: 'date', list: dateFields, color: '#d97706', icon: '\uD83D\uDCC5' },
+            { label: 'Open-ended', type: 'open-ended', list: openFields, color: '#2563eb', icon: '\u2756' },
+          ].filter(function(g) { return g.list.length > 0 }).map(function(group) {
+            return (
+              <div key={group.type} style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: group.color, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span>{group.icon}</span> {group.label}
+                </div>
+                {group.list.map(function(f) {
+                  return (
+                    <div key={f.field} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={fl(f)}>
+                      {fl(f)}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* ─── Main content ─────────────────────────────────── */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          {!rowsLoaded ? (
+            <div style={{ textAlign: 'center', padding: 60, color: T.textMute, fontSize: 13 }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '3px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite', margin: '0 auto 12px' }} />
+              Loading data for statistical analysis...
+            </div>
+          ) : (
+            <>
+              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={filteredData} />}
+              {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={filteredData} />}
+              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={filteredData} />}
+              {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={filteredData} />}
+              {activePanel === 'insights' && <InsightsPanel numFields={numFields} catFields={catFields} data={filteredData} aliases={aliases} />}
+            </>
+          )}
+        </div>
+
+        {/* ─── Right sidebar: Analysis types ────────────────── */}
+        <div style={{ width: 200, flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Analysis Type</div>
+          </div>
+          <div style={{ padding: '8px 0', flex: 1 }}>
+            {ANALYSIS_TYPES.map(function(at) {
+              var isActive = activePanel === at.id
+              var isHov = hovered === at.id
+              return (
+                <button key={at.id}
+                  onClick={function() { setActivePanel(at.id) }}
+                  onMouseEnter={function() { setHovered(at.id) }}
+                  onMouseLeave={function() { setHovered(null) }}
+                  style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: isActive ? (at.color + '14') : (isHov ? T.bg : 'transparent'), cursor: 'pointer', borderLeft: '3px solid ' + (isActive ? at.color : 'transparent'), transition: 'all .12s' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 14, width: 28, height: 28, borderRadius: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: isActive ? at.color : (isHov ? at.color + '22' : T.bg), color: isActive ? 'white' : at.color, flexShrink: 0 }}>{at.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? at.color : T.textMid }}>{at.label}</span>
+                  </div>
+                  {(isHov || isActive) && (
+                    <div style={{ paddingLeft: 36, marginTop: 3 }}>
+                      <div style={{ fontSize: 10, color: T.textMute, lineHeight: 1.45 }}>{at.tip}</div>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
     </div>
   )
