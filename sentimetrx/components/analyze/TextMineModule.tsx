@@ -502,6 +502,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [activeFields, setActiveFields] = useState<string[]>([])
   const [subTab, setSubTab] = useState<SubTab>('themes')
   const [themesView, setThemesView] = useState<'distribution' | 'cards'>('cards')
+  const [showAllThemes, setShowAllThemes] = useState(false)
   const [breakdownField, setBreakdownField] = useState<string | null>(null)
   const [compareFields, setCompareFields] = useState<string[]>([])
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
@@ -955,6 +956,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 {rowsLoaded && hasThemes && displayThemes && !loading && (function() {
                   var sortedThemes = [...displayThemes.themes].sort(function(a, b) { return b.count - a.count })
                   var totalResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
+                  var visibleThemes = showAllThemes ? sortedThemes : sortedThemes.filter(function(t) { return totalResp > 0 && (t.count / totalResp * 100) >= 3 })
+                  if (!visibleThemes.length) visibleThemes = sortedThemes.slice(0, 5)
                   var topTone = sortedThemes[0] ? sortedThemes[0].sentiment : '\u2014'
 
                   return (
@@ -980,9 +983,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             )
                           })}
                         </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer', flexShrink: 0 }}>
+                          <input type="checkbox" checked={showAllThemes} onChange={function() { setShowAllThemes(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+                          Show all
+                        </label>
                       </div>
-
-                      {/* 3 summary stat cards — Ana style */}
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -1023,19 +1028,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           {(function() {
                             var classifiedCount = sortedThemes.reduce(function(s, t) { return s + t.count }, 0)
                             var unclassifiedCount = Math.max(0, totalResp - classifiedCount)
-                            var maxPctRaw = sortedThemes.reduce(function(m, t) { var p = totalResp > 0 ? t.count / totalResp * 100 : 0; return p > m ? p : m }, 0)
+                            var maxPctRaw = visibleThemes.reduce(function(m, t) { var p = totalResp > 0 ? t.count / totalResp * 100 : 0; return p > m ? p : m }, 0)
                             if (unclassifiedCount > 0) { var uPct = totalResp > 0 ? unclassifiedCount / totalResp * 100 : 0; if (uPct > maxPctRaw) maxPctRaw = uPct }
                             var axisMax = Math.ceil(maxPctRaw / 10) * 10 || 10
+                            var hiddenCount = sortedThemes.length - visibleThemes.length
                             return (
                               <div>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Theme Distribution {'\u2014'} click a bar to view comments</div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>Theme Distribution {'\u2014'} click a bar to view comments</div>
+                                  {hiddenCount > 0 && !showAllThemes && <span style={{ fontSize: 10, color: T.textFaint }}>{hiddenCount} theme{hiddenCount !== 1 ? 's' : ''} below 3% hidden</span>}
+                                </div>
                                 {/* Axis labels */}
                                 <div style={{ display: 'flex', marginLeft: 150, marginBottom: 2 }}>
                                   {Array.from({ length: (axisMax / 10) + 1 }, function(_, i) { return i * 10 }).map(function(v) {
                                     return <span key={v} style={{ flex: v === 0 ? 0 : 1, textAlign: v === 0 ? 'left' : 'right', fontSize: 9, color: T.textFaint }}>{v}%</span>
                                   })}
                                 </div>
-                                {sortedThemes.map(function(t) {
+                                {visibleThemes.map(function(t) {
                                   var idx = displayThemes!.themes.indexOf(t)
                                   var pal = themeColors[idx] || THEME_PALETTE[0]
                                   var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : 0
@@ -1073,7 +1082,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       {/* ── Cards view (exact Ana.html style) ─── */}
                       {themesView === 'cards' && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
-                          {sortedThemes.map(function(t) {
+                          {visibleThemes.map(function(t) {
                             var idx = displayThemes!.themes.indexOf(t)
                             var pal = themeColors[idx] || THEME_PALETTE[0]
                             var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : (t.percentage || 0)

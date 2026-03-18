@@ -41,29 +41,33 @@ interface Props {
   onWordClick?: (word: string | null, themeIdx: number, type: string) => void
 }
 
-function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, onClick }: {
+function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, onClick }: {
   word: string; freq: number; themeIdx: number; dimmed: boolean
   themeColors: Record<number, typeof THEME_PALETTE[0]>; maxFreq: number
+  totalResponses: number
   onClick?: () => void
 }) {
   const [hov, setHov] = useState(false)
   const pal = (!dimmed && themeIdx >= 0) ? (themeColors[themeIdx] || THEME_PALETTE[0]) : null
   const size = 12 + Math.round((freq / Math.max(maxFreq, 1)) * 20)
+  const pct = totalResponses > 0 ? Math.round(freq / totalResponses * 100) : 0
   return (
     <span
       onClick={onClick}
+      title={word + ': ' + freq + ' occurrences (' + pct + '% of responses)'}
       style={{
         fontSize: size, fontWeight: freq > maxFreq * 0.5 ? 700 : 500,
         color: pal ? (hov ? pal.border : pal.text) : (dimmed ? '#d1d5db' : T.textMute),
         background: pal && hov ? pal.light : 'transparent',
         padding: '1px 4px', borderRadius: 4, cursor: onClick ? 'pointer' : 'default',
-        transition: 'all .15s', display: 'inline-block',
+        transition: 'all .15s', display: 'inline-flex', alignItems: 'baseline', gap: 2,
         opacity: dimmed ? 0.3 : 1,
       }}
       onMouseEnter={function() { setHov(true) }}
       onMouseLeave={function() { setHov(false) }}
     >
       {word}
+      <span style={{ fontSize: Math.max(9, size - 6), fontWeight: 600, opacity: 0.6 }}>{pct}%</span>
     </span>
   )
 }
@@ -72,6 +76,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   const [cloudMode, setCloudMode] = useState<'frequency' | 'grouped'>('grouped')
   const [activeThemes, setActiveThemes] = useState<Set<number> | null>(null)
   const [hoveredTheme, setHoveredTheme] = useState<number | null>(null)
+  const [showAll, setShowAll] = useState(false)
 
   const fields = activeFields && activeFields.length ? activeFields : (activeField ? [activeField] : [])
   if (!themes || !themes.length || !fields.length) return null
@@ -125,13 +130,27 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
 
   const total = parsedData.filter(function(r) { return String(r[activeField] || '').trim().length > 0 }).length
 
+  // Filter words by 3% threshold unless showAll
+  var MIN_PCT = 3
+  var filteredWords = showAll ? allWords : allWords.filter(function(w) { return total > 0 && (w.freq / total * 100) >= MIN_PCT })
+
+  if (!filteredWords.length && !showAll) filteredWords = allWords.slice(0, 10) // fallback: show top 10
+
   return (
     <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '18px 20px' }}>
-      {/* Mode toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      {/* Mode toggle + Show All */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>Theme Clouds</span>
-        <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
-          {(['frequency', 'grouped'] as const).map(function(mode) {
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+            <input type="checkbox" checked={showAll} onChange={function() { setShowAll(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+            Show all
+          </label>
+          {!showAll && filteredWords.length < allWords.length && (
+            <span style={{ fontSize: 10, color: T.textFaint }}>({allWords.length - filteredWords.length} below {MIN_PCT}% hidden)</span>
+          )}
+          <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
+            {(['frequency', 'grouped'] as const).map(function(mode) {
             return (
               <button
                 key={mode}
@@ -148,6 +167,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
               </button>
             )
           })}
+        </div>
         </div>
       </div>
 
@@ -186,11 +206,11 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
             })}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 10px', alignItems: 'baseline', lineHeight: 1.6 }}>
-            {[...allWords].sort(function(a, b) { return b.freq - a.freq }).map(function(w) {
+            {[...filteredWords].sort(function(a, b) { return b.freq - a.freq }).map(function(w) {
               let dimmed = false
               if (hoveredTheme !== null) dimmed = w.themeIdx !== hoveredTheme
               else if (activeThemes !== null) dimmed = w.themeIdx >= 0 && !activeThemes.has(w.themeIdx)
-              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} onClick={function() { if (onWordClick) onWordClick(w.word, w.themeIdx, w.themeIdx >= 0 ? 'keyword' : 'word') }} />
+              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} onClick={function() { if (onWordClick) onWordClick(w.word, w.themeIdx, w.themeIdx >= 0 ? 'keyword' : 'word') }} />
             })}
           </div>
         </div>
@@ -202,7 +222,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
           {[...themes].sort(function(a, b) { return b.count - a.count }).map(function(t) {
             const idx = themes.indexOf(t)
             const pal = themeColors[idx] || THEME_PALETTE[0]
-            const tWords = allWords.filter(function(w) { return w.themeIdx === idx }).sort(function(a, b) { return b.freq - a.freq })
+            const tWords = filteredWords.filter(function(w) { return w.themeIdx === idx }).sort(function(a, b) { return b.freq - a.freq })
             if (!tWords.length) return null
             const pct = total > 0 ? Math.round(t.count / total * 100) : 0
             return (
@@ -227,7 +247,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', alignItems: 'baseline' }}>
                     {tWords.map(function(w) {
-                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
+                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
                     })}
                   </div>
                 </div>
