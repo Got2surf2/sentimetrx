@@ -1123,7 +1123,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     themes={themes.themes}
                     themeColors={themeColors}
                     parsedData={filteredRows}
-                    activeField={activeField || themes.fieldName}
+                    activeField={activeField || themes!.fieldName}
                     onWordClick={function(word, idx, type) {
                       if (themes) {
                         if (type === 'theme') {
