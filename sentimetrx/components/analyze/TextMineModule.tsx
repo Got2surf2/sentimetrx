@@ -1106,7 +1106,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (
-                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
                       )}
                     </div>
                   )
@@ -1160,7 +1160,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     theme={drillTheme || themes.themes[0]}
                     allThemes={themes.themes}
                     parsedData={filteredRows}
-                    activeField={effectiveFields[0] || themes.fieldName}
+                    activeField={effectiveFields[0] || themes!.fieldName}
                     activeFields={effectiveFields}
                     catFields={catFields}
                     themeColors={themeColors}
