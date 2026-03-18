@@ -1,37 +1,26 @@
 'use client'
 
 // app/analyze/[datasetId]/DatasetHeader.tsx
-// Ana-style header: module tabs + dataset name pill + Filters + AI controls
-// Matches Ana.html's top bar pattern adapted for Sentimetrx's layout
+// Ana-style header: back + brand → module tabs + FILTERS → dataset pill → row count → AI toggle
 
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 
 interface DatasetMeta {
-  id: string
-  name: string
-  source: 'upload' | 'study'
-  visibility: 'private' | 'public'
-  status: 'active' | 'archived'
-  row_count: number
-  last_synced_at: string | null
-  study_name: string | null
+  id: string; name: string; source: 'upload' | 'study'; visibility: 'private' | 'public'
+  status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 
 interface Props {
   dataset: DatasetMeta
   userName?: string
   orgName?: string
+  filterCount?: number
+  onFilterClick?: () => void
 }
 
 var HERMES = '#E8632A'
-var T = {
-  bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb',
-  text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
-  accent: '#e8622a', accentBg: '#fff4ef', accentMid: '#fbd5c2',
-  green: '#16a34a', amber: '#d97706',
-}
 
 var TABS = [
   { key: 'textmine', label: 'TextMine' },
@@ -40,13 +29,12 @@ var TABS = [
   { key: 'settings', label: 'Schema & Themes' },
 ]
 
-export default function DatasetHeader({ dataset, userName, orgName }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick }: Props) {
   var router = useRouter()
   var pathname = usePathname()
   var [syncing, setSyncing] = useState(false)
   var [syncMsg, setSyncMsg] = useState('')
 
-  // AI state (shared across tabs via localStorage)
   var [apiKey, setApiKey] = useState('')
   var [aiEnabled, setAiEnabled] = useState(false)
 
@@ -76,7 +64,6 @@ export default function DatasetHeader({ dataset, userName, orgName }: Props) {
 
   return (
     <div>
-      {/* ─── Ana-style header bar ────────────────────────────────────── */}
       <div style={{ background: HERMES, padding: '0 0 0 20px', height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
 
         {/* Back + Brand */}
@@ -86,7 +73,7 @@ export default function DatasetHeader({ dataset, userName, orgName }: Props) {
           <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
         </div>
 
-        {/* Module tabs */}
+        {/* Module tabs + Filters button */}
         <div style={{ display: 'flex', alignItems: 'stretch', flex: 1, paddingLeft: 4 }}>
           {TABS.map(function(tab) {
             var isActive = activeTab === tab.key
@@ -105,6 +92,20 @@ export default function DatasetHeader({ dataset, userName, orgName }: Props) {
               </Link>
             )
           })}
+
+          {/* Filters button — same level as module tabs */}
+          <button onClick={onFilterClick}
+            style={{
+              padding: '0 18px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 13, fontWeight: filterCount > 0 ? 700 : 500,
+              color: filterCount > 0 ? 'white' : 'rgba(255,255,255,.65)',
+              background: filterCount > 0 ? 'rgba(255,255,255,.18)' : 'transparent',
+              border: 'none', borderBottom: filterCount > 0 ? '3px solid white' : '3px solid transparent',
+              cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
+            }}>
+            {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
+            Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
+          </button>
         </div>
 
         {/* Dataset name pill */}
@@ -125,13 +126,12 @@ export default function DatasetHeader({ dataset, userName, orgName }: Props) {
           )}
         </div>
 
-        {/* AI toggle (Ana.html style) */}
+        {/* AI toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', flexShrink: 0 }}>
           {apiKey ? (
             <>
               <button onClick={function() {
-                var next = !aiEnabled
-                setAiEnabled(next)
+                var next = !aiEnabled; setAiEnabled(next)
                 try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
               }}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.2)', border: '1px solid ' + (aiEnabled ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)'), borderRadius: 20, color: 'white', cursor: 'pointer' }}>
@@ -141,8 +141,7 @@ export default function DatasetHeader({ dataset, userName, orgName }: Props) {
               <button onClick={function() {
                 var key = prompt('Enter your Anthropic API key:', apiKey)
                 if (key !== null) {
-                  setApiKey(key)
-                  try { localStorage.setItem('sentimetrx_tm_apikey', key) } catch {}
+                  setApiKey(key); try { localStorage.setItem('sentimetrx_tm_apikey', key) } catch {}
                   if (key && !aiEnabled) { setAiEnabled(true); try { localStorage.setItem('sentimetrx_ai_enabled', '1') } catch {} }
                 }
               }}
@@ -153,11 +152,7 @@ export default function DatasetHeader({ dataset, userName, orgName }: Props) {
           ) : (
             <button onClick={function() {
               var key = prompt('Enter your Anthropic API key:')
-              if (key) {
-                setApiKey(key)
-                setAiEnabled(true)
-                try { localStorage.setItem('sentimetrx_tm_apikey', key); localStorage.setItem('sentimetrx_ai_enabled', '1') } catch {}
-              }
+              if (key) { setApiKey(key); setAiEnabled(true); try { localStorage.setItem('sentimetrx_tm_apikey', key); localStorage.setItem('sentimetrx_ai_enabled', '1') } catch {} }
             }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', fontSize: 12, fontWeight: 700, background: 'white', border: 'none', borderRadius: 20, color: HERMES, cursor: 'pointer' }}>
               {'\uD83D\uDD11'} Connect AI

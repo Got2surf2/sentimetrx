@@ -12,8 +12,8 @@ import {
 } from '@/lib/themeUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
+import { useFilters } from '@/components/analyze/FilterContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
-import FiltersModal from '@/components/analyze/FiltersModal'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
@@ -486,13 +486,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  // Filter state
-  const [filters, setFilters] = useState<Filters>({})
-  const [showFilters, setShowFilters] = useState(false)
+  // Filter state (from global context)
+  var { filters, setFilters, setShowFilters } = useFilters()
 
   // Warn before leaving with unsaved changes
   useEffect(function() {
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
+    var handleBeforeUnload = function(e: BeforeUnloadEvent) {
       if (isDirty) { e.preventDefault(); e.returnValue = '' }
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
@@ -829,14 +828,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               )
             })}
 
-            {/* Filters — tab-level, with divider */}
-            <div style={{ width: 1, height: 20, background: T.border, alignSelf: 'center', margin: '0 4px', flexShrink: 0 }} />
-            <button onClick={function() { setShowFilters(true) }}
-              style={{ padding: '0 16px', height: '100%', fontSize: 13, fontWeight: activeFilterCount > 0 ? 700 : 500, color: activeFilterCount > 0 ? T.accent : T.textMid, background: activeFilterCount > 0 ? T.accentBg : 'transparent', border: 'none', borderBottom: activeFilterCount > 0 ? '2px solid ' + T.accent : '2px solid transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, transition: 'color .12s' }}>
-              {activeFilterCount > 0 && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
-              Filters{activeFilterCount > 0 ? ' (' + activeFilterCount + ')' : ''}
-            </button>
-
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
@@ -1106,7 +1097,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (
-                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
                       )}
                     </div>
                   )
@@ -1123,7 +1114,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     themes={themes.themes}
                     themeColors={themeColors}
                     parsedData={filteredRows}
-                    activeField={activeField || themes!.fieldName}
+                    activeField={activeField || themes.fieldName}
                     onWordClick={function(word, idx, type) {
                       if (themes) {
                         if (type === 'theme') {
@@ -1160,7 +1151,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     theme={drillTheme || themes.themes[0]}
                     allThemes={themes.themes}
                     parsedData={filteredRows}
-                    activeField={effectiveFields[0] || themes!.fieldName}
+                    activeField={effectiveFields[0] || themes.fieldName}
                     activeFields={effectiveFields}
                     catFields={catFields}
                     themeColors={themeColors}
@@ -1204,15 +1195,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       )}
 
       {/* ─── Modals ────────────────────────────────────────────────────── */}
-      {showFilters && rowsLoaded && (
-        <FiltersModal
-          schema={schema.fields}
-          rows={rows}
-          filters={filters}
-          onApply={function(f) { setFilters(f) }}
-          onClose={function() { setShowFilters(false) }}
-        />
-      )}
       {showApiKeyModal && (
         <ApiKeyModal onSave={function(k) { setApiKey(k) }} onClose={function() { setShowApiKeyModal(false) }} />
       )}

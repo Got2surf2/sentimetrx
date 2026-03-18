@@ -1,12 +1,11 @@
 // app/analyze/[datasetId]/layout.tsx
-// Shared layout for all dataset module pages
-// Full-width content area matching Ana.html's layout
+// Shared layout — wraps all dataset module pages in DatasetShell (FilterProvider + header + global filter modal)
 
 import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
-import DatasetHeader from './DatasetHeader'
+import DatasetShell from './DatasetShell'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,16 +30,24 @@ export default async function DatasetLayout({ children, params }: Props) {
 
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
-  const { data: dataset } = await supabase
-    .from('datasets')
-    .select('id, name, source, study_id, visibility, status, row_count, last_synced_at, updated_at, studies(name)')
-    .eq('id', params.datasetId)
-    .eq('org_id', userData?.org_id)
-    .single()
+  const [{ data: dataset }, { data: stateRow }] = await Promise.all([
+    supabase
+      .from('datasets')
+      .select('id, name, source, study_id, visibility, status, row_count, last_synced_at, updated_at, studies(name)')
+      .eq('id', params.datasetId)
+      .eq('org_id', userData?.org_id)
+      .single(),
+    supabase
+      .from('dataset_state')
+      .select('schema_config')
+      .eq('dataset_id', params.datasetId)
+      .single(),
+  ])
 
   if (!dataset) notFound()
 
   const studyName = (dataset as any).studies?.name ?? null
+  const schemaFields = stateRow?.schema_config?.fields || []
 
   return (
     <div className="min-h-screen bg-gray-50" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -54,7 +61,7 @@ export default async function DatasetLayout({ children, params }: Props) {
         currentPage="analyze"
       />
       <div style={{ paddingTop: 56, display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-        <DatasetHeader
+        <DatasetShell
           dataset={{
             id:             dataset.id,
             name:           dataset.name,
@@ -67,11 +74,11 @@ export default async function DatasetLayout({ children, params }: Props) {
           }}
           userName={userData?.full_name || user.email || ''}
           orgName={orgData?.name || ''}
-        />
-        {/* Full-width content — overflow auto allows Settings to scroll, TextMine/Charts manage their own */}
-        <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+          schemaFields={schemaFields}
+          datasetId={params.datasetId}
+        >
           {children}
-        </main>
+        </DatasetShell>
       </div>
     </div>
   )
