@@ -392,8 +392,7 @@ function WaterfallView({ analytics, schema }: { analytics: Analytics; schema: Sc
   var labels = entries.map(function(e) { return e[0] }).concat(['Total'])
   var values = entries.map(function(e) { return e[1] })
   var total = values.reduce(function(a, b) { return a + b }, 0)
-  var measures = values.map(function() { return 'relative' as const }).concat(['total' as const])
-  values.push(total)
+  var measures: string[] = values.map(function() { return 'relative' }).concat(['total'])  values.push(total)
   var traces = [{ type: 'waterfall', x: labels, y: values, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: T.accent } } }]
   return (
     <div>
