@@ -19,7 +19,7 @@ var T = {
   text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
   accent: '#e8622a', accentBg: '#fff4ef', accentMid: '#fbd5c2',
   green: '#16a34a', greenBg: '#f0fdf4',
-  red: '#dc2626', amber: '#d97706',
+  red: '#dc2626', redBg: '#fef2f2', amber: '#d97706',
   blue: '#2563eb', blueBg: '#eff6ff',
   purple: '#7c3aed',
 }
