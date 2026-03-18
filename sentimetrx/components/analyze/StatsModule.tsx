@@ -234,14 +234,14 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>
                 <th style={{ padding: '10px 12px', fontSize: 10, color: T.textFaint, background: T.bg, minWidth: 100, textAlign: 'left' }} />
-                {matrix.fields.map(function(f) { return <th key={f} style={{ padding: '10px 10px', fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', background: T.bg, textAlign: 'center', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f}>{f.slice(0, 10)}</th> })}
+                {matrix!.fields.map(function(f) { return <th key={f} style={{ padding: '10px 10px', fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', background: T.bg, textAlign: 'center', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f}>{f.slice(0, 10)}</th> })}
               </tr></thead>
-              <tbody>{matrix.fields.map(function(f1, i) {
+              <tbody>{matrix!.fields.map(function(f1, i) {
                 return (
                   <tr key={f1}>
                     <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: T.textMute, background: T.bg, borderRight: '1px solid ' + T.border, whiteSpace: 'nowrap', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }} title={f1}>{f1.slice(0, 14)}</td>
-                    {matrix.fields.map(function(f2, j) {
-                      var cell = matrix.mat[i][j], isDiag = i === j, isSel = selCell && selCell.i === i && selCell.j === j
+                    {matrix!.fields.map(function(f2, j) {
+                      var cell = matrix!.mat[i][j], isDiag = i === j, isSel = selCell && selCell.i === i && selCell.j === j
                       return (
                         <td key={f2} onClick={function() { if (!isDiag) setSelCell({ i: i, j: j, f1: f1, f2: f2, r: cell.r, p: cell.p, n: cell.n }) }}
                           style={{ padding: '11px 10px', textAlign: 'center', background: isDiag ? T.bg : cellBg(cell.r), cursor: isDiag ? 'default' : 'pointer', outline: isSel ? '2px solid ' + T.accent : 'none', outlineOffset: -2, userSelect: 'none' }}>
