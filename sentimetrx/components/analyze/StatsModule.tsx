@@ -838,5 +838,3 @@ export default function StatsModule({ datasetId, schema }: Props) {
     </div>
   )
 }
-
-

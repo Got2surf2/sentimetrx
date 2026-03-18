@@ -477,5 +477,3 @@ export default function CommentsPanel({
     </div>
   )
 }
-
-

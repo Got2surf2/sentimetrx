@@ -835,5 +835,3 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
     </div>
   )
 }
-
-

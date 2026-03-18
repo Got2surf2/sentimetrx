@@ -102,5 +102,3 @@ export default function DatasetShell(props: Props) {
     </FilterProvider>
   )
 }
-
-

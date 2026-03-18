@@ -116,5 +116,3 @@ export function filterSummary(filters: Filters, aliases: Record<string, string>)
     return label
   }).join(' \u00B7 ')
 }
-
-

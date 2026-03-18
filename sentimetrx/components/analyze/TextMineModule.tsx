@@ -896,35 +896,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             </div>
           </div>
 
-          {/* Active filter chips bar */}
-          {activeFilterCount > 0 && (
-            <div style={{ background: T.accentBg, borderBottom: '1px solid ' + T.accentMid, padding: '5px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, flexShrink: 0 }}>{'\u229E'} Filtered:</span>
-              {Object.entries(filters).map(function(e) {
-                var field = e[0], f = e[1]
-                var lbl = fieldLabel(field)
-                var desc = f.type === 'cat'
-                  ? Array.from(f.values).slice(0, 2).join(', ') + (f.values.size > 2 ? ' +' + (f.values.size - 2) : '')
-                  : String(f.values[0]) + '\u2013' + String(f.values[1])
-                return (
-                  <span key={field} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 9px', background: 'white', borderRadius: 10, border: '1px solid ' + T.accentMid, color: T.text, fontWeight: 500 }}>
-                    {lbl}: {desc}
-                    <button onClick={function() { setFilters(function(prev) { var n = { ...prev }; delete n[field]; return n }) }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textFaint, fontSize: 12, lineHeight: 1, padding: 0 }}>{'\u00D7'}</button>
-                  </span>
-                )
-              })}
-              <button onClick={function() { setShowFilters(true) }}
-                style={{ fontSize: 10, fontWeight: 700, color: T.accent, background: 'none', border: '1px solid ' + T.accentMid, borderRadius: 6, cursor: 'pointer', padding: '2px 8px', marginLeft: 'auto' }}>
-                {'\u229E'} Edit
-              </button>
-              <button onClick={function() { setFilters({}) }}
-                style={{ fontSize: 10, fontWeight: 700, color: T.textMute, background: 'none', border: 'none', cursor: 'pointer' }}>
-                Clear all
-              </button>
-            </div>
-          )}
-
           {/* ─── Tab content ─────────────────────────────────────────── */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
@@ -1304,5 +1275,3 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     </div>
   )
 }
-
-

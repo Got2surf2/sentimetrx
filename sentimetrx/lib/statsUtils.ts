@@ -321,5 +321,3 @@ export function regrBL_naive(res: any, out: string): string {
   var sigStr = sig.length ? ' The factors that matter most are: ' + sig.map(function(c: any) { return c.name }).join(', ') + '.' : ''
   return 'Our factors explain ' + r2str + ' of why ' + out + ' varies across people (' + r2 + '% of the variation).' + sigStr
 }
-
-

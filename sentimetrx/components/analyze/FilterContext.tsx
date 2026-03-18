@@ -32,5 +32,3 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
     </FilterCtx.Provider>
   )
 }
-
-

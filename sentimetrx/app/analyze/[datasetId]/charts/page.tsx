@@ -28,7 +28,7 @@ export default async function ChartsPage({ params }: Props) {
 
   var { data: stateRow } = await service
     .from('dataset_state')
-    .select('schema_config, analytics, saved_charts')
+    .select('schema_config, analytics')
     .eq('dataset_id', params.datasetId)
     .single()
 
