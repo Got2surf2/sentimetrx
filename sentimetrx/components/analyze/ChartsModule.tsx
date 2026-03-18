@@ -19,7 +19,7 @@ var T = {
   text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
   accent: '#e8622a', accentBg: '#fff4ef', accentMid: '#fbd5c2',
   green: '#16a34a', greenBg: '#f0fdf4',
-  red: '#dc2626', redBg: '#fef2f2', amber: '#d97706',
+  red: '#dc2626', amber: '#d97706',
   blue: '#2563eb', blueBg: '#eff6ff',
   purple: '#7c3aed',
 }
@@ -392,7 +392,7 @@ function WaterfallView({ analytics, schema }: { analytics: Analytics; schema: Sc
   var labels = entries.map(function(e) { return e[0] }).concat(['Total'])
   var values = entries.map(function(e) { return e[1] })
   var total = values.reduce(function(a, b) { return a + b }, 0)
-  var measures: string[] = values.map(function() { return 'relative' }).concat(['total'])
+  var measures = values.map(function() { return 'relative' as const }).concat(['total' as const])
   values.push(total)
   var traces = [{ type: 'waterfall', x: labels, y: values, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: T.accent } } }]
   return (
@@ -613,7 +613,7 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
   // Load saved charts from dataset_state
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
-      .then(function(r) { return r.ok ? r.json() : {} as any })
+      .then(function(r) { return r.ok ? r.json() : {} })
       .then(function(d) { if (d.saved_charts && Array.isArray(d.saved_charts)) setSavedCharts(d.saved_charts) })
       .catch(function() {})
   }, [datasetId])
@@ -670,15 +670,23 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
                 <span style={{ fontSize: 10, color: T.textFaint }}>{savedCharts.length}</span>
               </button>
               {savedExpanded && (
-                <div style={{ padding: '0 8px 8px' }}>
+                <div style={{ padding: '0 8px 8px', maxHeight: 198, overflowY: 'auto' }}>
                   {savedCharts.map(function(sc) {
                     var ct = CHART_TYPE_DEFS.find(function(c) { return c.id === sc.chartType })
                     return (
-                      <button key={sc.id} onClick={function() { setActiveChart(sc.chartType) }}
-                        style={{ width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: activeChart === sc.chartType ? T.accentBg : 'transparent', borderRadius: 6, cursor: 'pointer', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 12 }}>{ct ? ct.icon : '\u25A0'}</span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name}</span>
-                      </button>
+                      <div key={sc.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
+                        <button onClick={function() { setActiveChart(sc.chartType) }}
+                          style={{ flex: 1, textAlign: 'left', padding: '6px 8px', border: 'none', background: activeChart === sc.chartType ? T.accentBg : 'transparent', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={{ fontSize: 12 }}>{ct ? ct.icon : '\u25A0'}</span>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name}</span>
+                        </button>
+                        <button onClick={function(e) { e.stopPropagation(); if (confirm('Delete "' + sc.name + '"?')) handleDeleteSaved(sc.id) }}
+                          style={{ padding: '2px 5px', fontSize: 11, color: T.textFaint, background: 'transparent', border: 'none', cursor: 'pointer', flexShrink: 0, borderRadius: 4 }}
+                          onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = '#dc2626' }}
+                          onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.color = T.textFaint }}>
+                          {'\u2715'}
+                        </button>
+                      </div>
                     )
                   })}
                   <button onClick={function() { setShowManage(true) }}

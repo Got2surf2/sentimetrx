@@ -4,6 +4,29 @@
 // Loads raw rows from the API, applies filters, runs all computations client-side.
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+
+// Dynamic Plotly import — avoids SSR crash
+var PlotlyRef: any = null
+function getPlotly(): Promise<any> {
+  if (PlotlyRef) return Promise.resolve(PlotlyRef)
+  return import('plotly.js-dist-min').then(function(m) { PlotlyRef = m.default || m; return PlotlyRef })
+}
+
+function PlotlyChart({ data, layout, style }: { data: any[]; layout?: any; style?: React.CSSProperties }) {
+  var ref = useRef<HTMLDivElement>(null)
+  useEffect(function() {
+    if (!ref.current || !data.length) return
+    var T2 = { bg: '#f4f5f7', border: '#e5e7eb', borderMid: '#d1d5db', textMute: '#6b7280' }
+    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T2.textMute, size: 11 }, margin: { t: 16, r: 20, b: 48, l: 56 }, xaxis: { gridcolor: T2.border, zerolinecolor: T2.borderMid, linecolor: T2.border }, yaxis: { gridcolor: T2.border, zerolinecolor: T2.borderMid, linecolor: T2.border } }
+    var merged = Object.assign({}, base, layout || {})
+    getPlotly().then(function(Plotly) {
+      Plotly.newPlot(ref.current, data, merged, { responsive: true, displayModeBar: false })
+    })
+    return function() { if (ref.current) getPlotly().then(function(Plotly) { try { Plotly.purge(ref.current) } catch {} }) }
+  }, [data, layout])
+  return <div ref={ref} style={style || { width: '100%', height: 260 }} />
+}
+
 import {
   mean, std, median, quantile, skewness, kurtosis, shapiroWilk,
   pearsonR, spearmanR, welchTTest, mannWhitneyU, oneWayANOVA,
@@ -177,21 +200,11 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card style={{ padding: '14px 16px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Distribution</div>
-              <div style={{ height: 200, display: 'flex', alignItems: 'flex-end', gap: 2, padding: '0 4px' }}>
-                {(function() {
-                  var bins = Math.min(30, Math.ceil(Math.sqrt(stats.n)))
-                  var min = stats.min, max = stats.max, w = (max - min) / bins || 1
-                  var counts = new Array(bins).fill(0)
-                  stats.vals.forEach(function(v) { var b = Math.min(Math.floor((v - min) / w), bins - 1); counts[b]++ })
-                  var mx = Math.max.apply(null, counts) || 1
-                  return counts.map(function(c, i) {
-                    return <div key={i} style={{ flex: 1, background: T.accent, opacity: 0.8, borderRadius: '2px 2px 0 0', height: (c / mx * 100) + '%', minHeight: c > 0 ? 2 : 0, transition: 'height .3s' }} title={Math.round(min + i * w) + '-' + Math.round(min + (i + 1) * w) + ': ' + c} />
-                  })
-                })()}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textFaint, marginTop: 4 }}>
-                <span>{fmtN(stats.min)}</span><span>{fmtN(stats.max)}</span>
-              </div>
+              <PlotlyChart
+                data={[{ x: stats.vals, type: 'histogram', marker: { color: T.accent, opacity: 0.8, line: { color: T.accentMid, width: 1 } }, nbinsx: Math.min(50, Math.ceil(Math.sqrt(stats.n))) }]}
+                layout={{ xaxis: { title: { text: sel, font: { size: 11 } } }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.04, showlegend: false, margin: { t: 10, r: 16, b: 44, l: 48 } }}
+                style={{ height: 220, width: '100%' }}
+              />
             </Card>
             <Card style={{ padding: '14px 16px', background: T.bg }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
@@ -304,6 +317,26 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
                 {' '}{selCell.r > 0 ? 'positive' : 'negative'} correlation.
                 {selCell.p < 0.05 ? ' Statistically significant.' : ' Not statistically significant.'}
               </div>
+              {/* Scatter plot */}
+              {(function() {
+                var v1 = getNum(selCell.f1, data), v2 = getNum(selCell.f2, data)
+                var n = Math.min(v1.length, v2.length)
+                var x = v1.slice(0, n), y = v2.slice(0, n)
+                var mx = mean(x), my = mean(y)
+                var slope = x.reduce(function(s, v, i) { return s + (v - mx) * (y[i] - my) }, 0) / (x.reduce(function(s, v) { return s + (v - mx) ** 2 }, 0) || 1)
+                var int_ = my - slope * mx
+                var xmn = Math.min.apply(null, x), xmx = Math.max.apply(null, x)
+                return (
+                  <PlotlyChart
+                    data={[
+                      { x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 5, opacity: 0.5 }, name: 'Data' },
+                      { x: [xmn, xmx], y: [int_ + slope * xmn, int_ + slope * xmx], mode: 'lines', line: { color: T.red, width: 2, dash: 'dot' }, showlegend: false },
+                    ]}
+                    layout={{ xaxis: { title: { text: selCell.f1, font: { size: 11 } } }, yaxis: { title: { text: selCell.f2, font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 46, l: 50 } }}
+                    style={{ height: 260, width: '100%', marginTop: 12 }}
+                  />
+                )
+              })()}
             </Card>
           )}
         </div>
@@ -417,6 +450,21 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
         </Card>
       )}
 
+      {/* Box plots for numeric group comparisons */}
+      {result && result.res && result.type !== 'chisq' && result.groups && (
+        <Card style={{ padding: '14px 16px', marginTop: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Group Distributions</div>
+          <PlotlyChart
+            data={Object.entries(result.groups as Record<string, number[]>).slice(0, 10).map(function(entry, i) {
+              var pal = [T.accent, T.blue, T.green, T.purple, T.amber, T.red]
+              return { y: entry[1], type: 'box', name: entry[0].slice(0, 20), marker: { color: pal[i % pal.length] }, boxpoints: 'outliers', jitter: 0.3, pointpos: -1.8 }
+            })}
+            layout={{ yaxis: { title: { text: numF, font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 40, l: 50 } }}
+            style={{ height: 280, width: '100%' }}
+          />
+        </Card>
+      )}
+
       {!result && (
         <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
           Select fields above to run a group test. Need at least 2 groups with 2+ observations each.
@@ -525,6 +573,38 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
                   )
                 })}</tbody>
               </table>
+            </Card>
+          </div>
+          {/* Residual diagnostic plots */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+            <Card style={{ padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Residuals vs. Fitted</div>
+              <PlotlyChart
+                data={[
+                  { x: result.yhat, y: result.resid, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 5, opacity: 0.5 } },
+                  { x: [Math.min.apply(null, result.yhat), Math.max.apply(null, result.yhat)], y: [0, 0], mode: 'lines', line: { color: T.red, width: 1.5, dash: 'dash' }, showlegend: false },
+                ]}
+                layout={{ xaxis: { title: { text: 'Fitted', font: { size: 11 } } }, yaxis: { title: { text: 'Residuals', font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 44, l: 50 } }}
+                style={{ height: 240, width: '100%' }}
+              />
+            </Card>
+            <Card style={{ padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Q-Q Plot (Residuals)</div>
+              {(function() {
+                var sr = result.resid.slice().sort(function(a: number, b: number) { return a - b })
+                var n = sr.length, th = sr.map(function(_: number, i: number) { return probit((i + 1 - 0.375) / (n + 0.25)) })
+                var sm = mean(sr), ss = std(sr)
+                return (
+                  <PlotlyChart
+                    data={[
+                      { x: th, y: sr, mode: 'markers', type: 'scatter', marker: { color: T.purple, size: 4, opacity: 0.65 } },
+                      { x: [Math.min.apply(null, th), Math.max.apply(null, th)], y: [Math.min.apply(null, th) * ss + sm, Math.max.apply(null, th) * ss + sm], mode: 'lines', line: { color: T.amber, width: 1.5, dash: 'dot' }, showlegend: false },
+                    ]}
+                    layout={{ xaxis: { title: { text: 'Theoretical quantiles', font: { size: 11 } } }, yaxis: { title: { text: 'Sample quantiles', font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 44, l: 50 } }}
+                    style={{ height: 240, width: '100%' }}
+                  />
+                )
+              })()}
             </Card>
           </div>
         ) : (

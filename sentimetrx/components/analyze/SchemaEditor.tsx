@@ -201,10 +201,11 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, in
   }
 
   return (
+    <>
     <div
       onClick={readOnly ? undefined : function() { if (!editingAlias) setExpanded(function(v) { return !v }) }}
       style={{
-        background: expanded ? P.white : P.white,
+        background: P.white,
         border: '1px solid ' + (expanded ? ut.color + '60' : P.border),
         borderLeft: '3px solid ' + (expanded ? ut.color : P.border),
         borderRadius: 10,
@@ -215,26 +216,9 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, in
         opacity: isIgnored ? 0.55 : 1,
       }}>
 
-      {/* Row header — always visible */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '10px 14px' }}>
-
-        {/* Index number */}
-        <div style={{ width: 22, fontSize: 10, fontWeight: 700, color: P.textFaint, flexShrink: 0, userSelect: 'none' as const }}>
-          {index + 1}
-        </div>
-
-        {/* Type icon square */}
-        <div style={{
-          width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-          background: ut.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 13, color: ut.color, marginRight: 12,
-          border: '1px solid ' + ut.color + '30',
-        }}>
-          {ut.icon}
-        </div>
-
-        {/* Field name + inline alias editing */}
-        <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
+      {/* Full label — always visible at top */}
+      <div style={{ padding: '10px 14px 0 14px' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: P.text, lineHeight: 1.3, wordBreak: 'break-word' as const }}>
           {editingAlias ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={function(e) { e.stopPropagation() }}>
               <input
@@ -258,68 +242,75 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, in
               </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: P.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {f.label && f.label !== f.field ? f.label : f.field}
-                </div>
-                {f.label && f.label !== f.field && (
-                  <div style={{ fontSize: 10, color: P.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {f.field}
-                  </div>
-                )}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+              <span>{f.label && f.label !== f.field ? f.label : f.field}</span>
               {!readOnly && (
                 <button
                   title="Rename field alias"
                   onClick={function(e) { e.stopPropagation(); setAliasVal(f.label || f.field); setEditingAlias(true) }}
-                  style={{ width: 20, height: 20, borderRadius: 4, background: 'transparent', border: 'none', color: P.textFaint, cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: 0.5, transition: 'opacity .12s' }}
+                  style={{ width: 18, height: 18, borderRadius: 4, background: 'transparent', border: 'none', color: P.textFaint, cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: 0.4, marginTop: 1 }}
                   onMouseEnter={function(e) { (e.target as HTMLElement).style.opacity = '1' }}
-                  onMouseLeave={function(e) { (e.target as HTMLElement).style.opacity = '0.5' }}>
+                  onMouseLeave={function(e) { (e.target as HTMLElement).style.opacity = '0.4' }}>
                   {'\u270E'}
                 </button>
               )}
             </div>
           )}
         </div>
-
-        {/* Stats */}
-        {f.nonNullCount != null && (
-          <div style={{ fontSize: 11, color: P.textFaint, marginRight: 20, flexShrink: 0, textAlign: 'right' as const, minWidth: 80 }}>
-            <span style={{ color: P.textMid, fontWeight: 600 }}>{f.nonNullCount.toLocaleString()}</span> rows
-            {f.uniqueRatio && (
-              <div style={{ fontSize: 10 }}>{f.uniqueRatio}% unique</div>
-            )}
-          </div>
+        {f.label && f.label !== f.field && (
+          <div style={{ fontSize: 10, color: P.textFaint, marginTop: 1 }}>{f.field}</div>
         )}
+      </div>
+
+      {/* Bottom row: type + stats + controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '6px 14px 10px' }}>
+
+        {/* Index number */}
+        <div style={{ width: 22, fontSize: 10, fontWeight: 700, color: P.textFaint, flexShrink: 0, userSelect: 'none' as const }}>
+          {index + 1}
+        </div>
+
+        {/* Type icon square */}
+        <div style={{
+          width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+          background: ut.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, color: ut.color, marginRight: 8,
+          border: '1px solid ' + ut.color + '30',
+        }}>
+          {ut.icon}
+        </div>
 
         {/* Type badge */}
         <span style={{
-          fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
+          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
           background: ut.bg, color: ut.color,
           border: '1px solid ' + ut.color + '50',
           whiteSpace: 'nowrap', flexShrink: 0,
-          display: 'inline-flex', alignItems: 'center', gap: 3,
-          marginRight: readOnly ? 0 : 10,
+          marginRight: 8,
         }}>
           {ut.label}
         </span>
+
+        {/* Stats */}
+        {f.nonNullCount != null && (
+          <div style={{ fontSize: 10, color: P.textFaint, marginRight: 'auto', flexShrink: 0 }}>
+            <span style={{ color: P.textMid, fontWeight: 600 }}>{f.nonNullCount.toLocaleString()}</span> rows
+          </div>
+        )}
+        {!f.nonNullCount && <div style={{ flex: 1 }} />}
 
         {/* Scoring flag toggle */}
         {!readOnly && !isIgnored && (f.type === 'numeric' || f.type === 'categorical') && (
           <button
             title={f.scoreField ? 'Remove scoring flag' : 'Flag as scoring field'}
-            onClick={function(e) {
-              e.stopPropagation()
-              onScoreToggle(f.field)
-            }}
+            onClick={function(e) { e.stopPropagation(); onScoreToggle(f.field) }}
             style={{
-              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+              width: 24, height: 24, borderRadius: 5, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: f.scoreField ? '#fff7ed' : 'transparent',
               border: '1.5px solid ' + (f.scoreField ? '#fb923c' : P.border),
               color: f.scoreField ? '#ea580c' : P.textFaint,
-              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              fontSize: 11, fontWeight: 700, cursor: 'pointer',
               marginRight: 4, transition: 'all .12s', opacity: f.scoreField ? 1 : 0.5,
             }}
             onMouseEnter={function(e) { (e.target as HTMLElement).style.opacity = '1' }}
@@ -328,27 +319,23 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, in
           </button>
         )}
 
-        {/* Ignore/Include toggle — quick toggle without expanding */}
+        {/* Ignore/Include toggle */}
         {!readOnly && (
           <button
-            title={isIgnored ? 'Include this field in analysis' : 'Exclude this field from analysis'}
+            title={isIgnored ? 'Include this field' : 'Exclude this field'}
             onClick={function(e) {
               e.stopPropagation()
-              if (isIgnored) {
-                // Restore to open-ended as default include type
-                onTypeChange(f.field, 'open-ended', 'open-text')
-              } else {
-                onTypeChange(f.field, 'ignore', null)
-              }
+              if (isIgnored) onTypeChange(f.field, 'open-ended', 'open-text')
+              else onTypeChange(f.field, 'ignore', null)
             }}
             style={{
-              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+              width: 24, height: 24, borderRadius: 5, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: isIgnored ? P.bg : '#f0fdf4',
               border: '1.5px solid ' + (isIgnored ? P.border : '#bbf7d0'),
               color: isIgnored ? P.textFaint : '#16a34a',
-              fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              marginRight: 10, transition: 'all .12s',
+              fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              marginRight: 6, transition: 'all .12s',
             }}>
             {isIgnored ? '\u2205' : '\u2713'}
           </button>
@@ -361,14 +348,28 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, in
           </div>
         )}
       </div>
-
-      {/* Expanded editor */}
-      {expanded && !readOnly && (
-        <div style={{ padding: '0 14px 14px' }} onClick={function(e) { e.stopPropagation() }}>
-          <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} />
-        </div>
-      )}
     </div>
+
+    {/* Floating editor overlay */}
+    {expanded && !readOnly && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onClick={function() { setExpanded(false) }}>
+        <div style={{ background: P.white, borderRadius: 16, width: 480, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.25)', border: '2px solid ' + ut.color + '40' }}
+          onClick={function(e) { e.stopPropagation() }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid ' + P.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: P.text }}>{f.label && f.label !== f.field ? f.label : f.field}</div>
+              {f.label && f.label !== f.field && <div style={{ fontSize: 11, color: P.textFaint }}>{f.field}</div>}
+            </div>
+            <button onClick={function() { setExpanded(false) }} style={{ background: 'transparent', border: 'none', fontSize: 18, color: P.textMute, cursor: 'pointer' }}>{'\u00D7'}</button>
+          </div>
+          <div style={{ padding: '16px 20px' }}>
+            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
