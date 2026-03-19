@@ -6,6 +6,11 @@
 
 import { useState } from 'react'
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt } from '@/lib/analyzeTypes'
+import { suggestMapping } from '@/lib/scaleUtils'
+
+function suggestMappingForField(values: string[]): Record<string, number> | null {
+  return suggestMapping(values)
+}
 
 interface Props {
   schema:    SchemaConfig
@@ -97,13 +102,20 @@ function ValuePills({ values }: { values: string[] }) {
 }
 
 // Expanded inline editor
-function FieldEditor({ f, onTypeChange, onAliasChange }: {
+function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
+  onValueAliasChange: (field: string, value: string, alias: string) => void
+  onRemappingChange: (field: string, remapping: Record<string, number> | undefined) => void
 }) {
   const ut     = getActiveType(f)
   const isAuto = !f.sqt
+  const vals   = f.values || []
+  const canMap = vals.length > 0 && vals.length <= 50 && f.type === 'categorical'
+  const canAlias = vals.length > 0 && vals.length <= 50 && f.type !== 'open-ended' && f.type !== 'date'
+  const hasRemapping = f.remapping && Object.keys(f.remapping).length > 0 && Object.values(f.remapping).some(function(v) { return v != null })
+  const hasValueAliases = f.valueAliases && Object.keys(f.valueAliases).length > 0 && Object.values(f.valueAliases).some(function(v) { return !!v })
 
   return (
     <div style={{ borderTop: '1px solid ' + P.border, marginTop: 14, paddingTop: 14 }}>
@@ -175,16 +187,114 @@ function FieldEditor({ f, onTypeChange, onAliasChange }: {
           {f.avg && <span>Avg <strong style={{ color: P.textMid }}>{f.avg}</strong></span>}
         </div>
       )}
+
+      {/* ── Value Aliases (per-value display labels) ─────────────────────── */}
+      {canAlias && (
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid ' + P.border }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: P.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' as const }}>
+              Value Labels
+              {hasValueAliases && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: P.accentBg, color: P.accent, border: '1px solid ' + P.accent + '40' }}>
+                {Object.values(f.valueAliases || {}).filter(Boolean).length} mapped
+              </span>}
+            </div>
+            {hasValueAliases && (
+              <button onClick={function() { vals.forEach(function(v) { onValueAliasChange(f.field, v, '') }) }}
+                style={{ fontSize: 10, fontWeight: 600, color: '#dc2626', background: '#fef2f2', border: '1px solid #dc262630', borderRadius: 6, cursor: 'pointer', padding: '2px 8px' }}>
+                {'\u2715'} Clear labels
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {vals.slice(0, 20).map(function(v) {
+              var cur = (f.valueAliases && f.valueAliases[v]) || ''
+              var isSet = cur.trim().length > 0
+              return (
+                <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: '0 0 120px', fontSize: 11, color: P.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 8px', background: P.bg, border: '1px solid ' + P.border, borderRadius: 6, fontFamily: 'monospace' }}>{v}</span>
+                  <span style={{ fontSize: 12, color: P.textFaint, flexShrink: 0 }}>{'\u2192'}</span>
+                  <input type="text" value={cur} placeholder="display label\u2026"
+                    onChange={function(e) { onValueAliasChange(f.field, v, e.target.value) }}
+                    style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid ' + (isSet ? P.accent : P.border), borderRadius: 6, background: isSet ? P.accentBg : P.bg, color: P.text, outline: 'none' }} />
+                </div>
+              )
+            })}
+          </div>
+          {hasValueAliases && <p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: '8px 0 0' }}>
+            {'\u2713'} {Object.values(f.valueAliases || {}).filter(Boolean).length} value{Object.values(f.valueAliases || {}).filter(Boolean).length !== 1 ? 's' : ''} relabelled {'\u2014'} applies across charts, filters, and comments
+          </p>}
+        </div>
+      )}
+
+      {/* ── Numeric Score Mapping (categorical → numeric) ────────────────── */}
+      {canMap && (
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid ' + P.border }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: P.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' as const }}>
+              Numeric Score Mapping <span style={{ fontWeight: 400 }}>(map categories to numbers)</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {hasRemapping && <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>{'\u2713'} mapped</span>}
+              {!hasRemapping ? (
+                <button onClick={function() {
+                  var suggested = suggestMappingForField(vals)
+                  onRemappingChange(f.field, suggested || {})
+                }}
+                  style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 12, cursor: 'pointer', background: P.bg, color: P.textMid, border: '1px solid ' + P.borderMid }}>
+                  {'\u21C4'} Enable mapping
+                </button>
+              ) : (
+                <button onClick={function() { onRemappingChange(f.field, undefined) }}
+                  style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 12, cursor: 'pointer', background: 'transparent', color: P.textFaint, border: '1px solid ' + P.border }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          {hasRemapping && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 11, color: P.textMute, marginBottom: 4, lineHeight: 1.5 }}>
+                Assign a number to each value. The mapped field appears as numeric in Charts and Statistics.
+              </div>
+              {vals.map(function(v) {
+                var cur = f.remapping && f.remapping[v] != null ? f.remapping[v] : ''
+                return (
+                  <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ flex: 1, fontSize: 12, color: P.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{v}</span>
+                    <span style={{ fontSize: 12, color: P.textFaint }}>{'\u2192'}</span>
+                    <input type="number" value={cur} placeholder="#"
+                      onChange={function(e) {
+                        var next = Object.assign({}, f.remapping || {})
+                        if (e.target.value === '') { delete next[v] } else { next[v] = parseFloat(e.target.value) }
+                        onRemappingChange(f.field, Object.keys(next).length > 0 ? next : undefined)
+                      }}
+                      style={{ width: 72, padding: '4px 8px', fontSize: 12, border: '1px solid ' + (cur !== '' ? P.accent : P.border), borderRadius: 6, background: cur !== '' ? P.accentBg : P.bg, color: P.text, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }} />
+                  </div>
+                )
+              })}
+              {(function() {
+                var allMapped = vals.length > 0 && vals.every(function(v) { return f.remapping && f.remapping[v] != null })
+                if (!allMapped) return null
+                return <p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: '8px 0 0' }}>
+                  {'\u2713'} Fully mapped {'\u2014'} this field can now be used as numeric in Statistics
+                </p>
+              })()}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 // Full-width row card
-function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, index }: {
+function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, readOnly, index }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onScoreToggle: (field: string) => void
+  onValueAliasChange: (field: string, value: string, alias: string) => void
+  onRemappingChange: (field: string, remapping: Record<string, number> | undefined) => void
   readOnly?:     boolean
   index:         number
 }) {
@@ -291,13 +401,18 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, in
           {ut.label}
         </span>
 
-        {/* Stats */}
-        {f.nonNullCount != null && (
+        {/* Unique values count */}
+        {f.values && f.values.length > 0 && (
+          <div style={{ fontSize: 10, color: P.textFaint, marginRight: 'auto', flexShrink: 0 }}>
+            <span style={{ color: P.textMid, fontWeight: 600 }}>{f.values.length > 20 ? '20+' : f.values.length}</span> unique
+          </div>
+        )}
+        {!f.values && f.nonNullCount != null && (
           <div style={{ fontSize: 10, color: P.textFaint, marginRight: 'auto', flexShrink: 0 }}>
             <span style={{ color: P.textMid, fontWeight: 600 }}>{f.nonNullCount.toLocaleString()}</span> rows
           </div>
         )}
-        {!f.nonNullCount && <div style={{ flex: 1 }} />}
+        {!f.values && !f.nonNullCount && <div style={{ flex: 1 }} />}
 
         {/* Scoring flag toggle */}
         {!readOnly && !isIgnored && (f.type === 'numeric' || f.type === 'categorical') && (
@@ -364,7 +479,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, readOnly, in
             <button onClick={function() { setExpanded(false) }} style={{ background: 'transparent', border: 'none', fontSize: 18, color: P.textMute, cursor: 'pointer' }}>{'\u00D7'}</button>
           </div>
           <div style={{ padding: '16px 20px' }}>
-            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} />
+            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} />
           </div>
         </div>
       </div>
@@ -400,6 +515,25 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
     applyUpdate({ ...schema,
       fields: schema.fields.map(function(f) {
         return f.field === field ? { ...f, scoreField: !f.scoreField } : f
+      }) })
+  }
+
+  function handleValueAliasChange(field: string, value: string, alias: string) {
+    applyUpdate({ ...schema,
+      fields: schema.fields.map(function(f) {
+        if (f.field !== field) return f
+        var existing = f.valueAliases || {}
+        var next = Object.assign({}, existing)
+        if (alias.trim()) next[value] = alias.trim()
+        else delete next[value]
+        return { ...f, valueAliases: Object.keys(next).length > 0 ? next : undefined }
+      }) })
+  }
+
+  function handleRemappingChange(field: string, remapping: Record<string, number> | undefined) {
+    applyUpdate({ ...schema,
+      fields: schema.fields.map(function(f) {
+        return f.field === field ? { ...f, remapping: remapping } : f
       }) })
   }
 
@@ -548,6 +682,8 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
               onTypeChange={handleTypeChange}
               onAliasChange={handleAliasChange}
               onScoreToggle={handleScoreToggle}
+              onValueAliasChange={handleValueAliasChange}
+              onRemappingChange={handleRemappingChange}
               readOnly={readOnly}
             />
           )

@@ -3,6 +3,7 @@
 // Charts module with labeled drop zones, click-to-assign from sidebar, chart state caching.
 
 import { useState, useEffect, useRef } from 'react'
+import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 
 // Dynamic Plotly import
 var PlotlyRef: any = null
@@ -27,7 +28,7 @@ interface SchemaField { field: string; type: string; label?: string; values?: st
 interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
-interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null }
+interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any }
 
 // ─── Chart slot definitions ───────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ interface SlotDef {
 }
 
 var CHART_SLOTS: Record<string, SlotDef[]> = {
-  bar:          [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'value', label: 'Value (optional)', accepts: ['numeric'], required: false }],
+  bar:          [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'colorBy', label: 'Color / Stack by', accepts: ['categorical'], required: false }, { key: 'value', label: 'Value (optional)', accepts: ['numeric'], required: false }],
   distribution: [{ key: 'field', label: 'Numeric Field', accepts: ['numeric'], required: true }],
   scatter:      [{ key: 'x', label: 'X Axis', accepts: ['numeric'], required: true }, { key: 'y', label: 'Y Axis', accepts: ['numeric'], required: true }],
   crosstab:     [{ key: 'rows', label: 'Row Variable', accepts: ['categorical'], required: true }, { key: 'cols', label: 'Column Variable', accepts: ['categorical'], required: true }],
@@ -130,15 +131,32 @@ function DropZone({ slot, value, schema, activeSlot, onActivate, onClear }: {
 
 // ─── Chart Renderers (receive field values as params) ─────────────────────
 
-function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string): React.ReactNode {
+function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean }): React.ReactNode {
   var fs = analytics.fieldSummaries
+  var useSmartOrder = opts?.smartAxes !== false
 
   if (chartType === 'bar') {
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />
-    var entries = Object.entries(summary.counts).sort(function(a, b) { return b[1] - a[1] }).slice(0, 30)
-    var cats = entries.map(function(e) { return e[0] }); var vals = entries.map(function(e) { return e[1] })
-    return <PlotlyChart traces={[{ type: 'bar', x: cats, y: vals, marker: { color: T.accent }, text: vals.map(String), textposition: 'outside', textfont: { size: 11 } }]} layout={{ xaxis: { title: flByName(catField, schema), tickangle: cats.length > 8 ? -35 : 0 }, yaxis: { title: 'Count' } }} />
+    var rawEntries = Object.entries(summary.counts)
+    // Smart axes: order by detected scale, otherwise by count desc
+    var orderedKeys = useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] })) : rawEntries.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] })
+    var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
+    var cats = entries.map(function(e) { return e[0] })
+    var vals = entries.map(function(e) { return e[1] })
+    var totalCount = vals.reduce(function(a, b) { return a + b }, 0)
+    var displayVals = opts?.barMode === 'percent' ? vals.map(function(v) { return totalCount > 0 ? Math.round(v / totalCount * 1000) / 10 : 0 }) : vals
+    var yTitle = opts?.barMode === 'percent' ? '% of Total' : 'Count'
+
+    // Stacked/grouped with colorBy
+    var colorByField = config.colorBy
+    if (colorByField && fs[colorByField] && fs[colorByField].counts) {
+      // Need raw rows for crosstab — show simple bar if no colorBy data
+      return <BarStackedInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} colorByField={colorByField} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} />
+    }
+
+    var traces = [{ type: 'bar', x: cats, y: displayVals, marker: { color: T.accent }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 } }]
+    return <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(catField, schema), tickangle: cats.length > 8 ? -35 : 0 }, yaxis: { title: yTitle } }} />
   }
 
   if (chartType === 'distribution') {
@@ -169,7 +187,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'treemap') {
     var catF2 = config.category; if (!catF2) return <EmptyChart msg="Assign a category field above." />
     var s2 = fs[catF2]; if (!s2 || !s2.counts) return <EmptyChart msg="No data." />
-    var e2 = Object.entries(s2.counts).sort(function(a, b) { return b[1] - a[1] }).slice(0, 30)
+    var e2 = (function() { var raw = Object.entries(s2.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
     return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
@@ -184,7 +202,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'waterfall') {
     var catF4 = config.category; if (!catF4) return <EmptyChart msg="Assign a category field above." />
     var s4 = fs[catF4]; if (!s4 || !s4.counts) return <EmptyChart msg="No data." />
-    var e4 = Object.entries(s4.counts).sort(function(a, b) { return b[1] - a[1] }).slice(0, 15)
+    var e4 = (function() { var raw = Object.entries(s4.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 15).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
     var wLabels = e4.map(function(e) { return e[0] }).concat(['Total'])
     var wValues = e4.map(function(e) { return e[1] })
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
@@ -202,7 +220,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'funnel') {
     var catF5 = config.category; if (!catF5) return <EmptyChart msg="Assign a category field above." />
     var s5 = fs[catF5]; if (!s5 || !s5.counts) return <EmptyChart msg="No data." />
-    var e5 = Object.entries(s5.counts).sort(function(a, b) { return b[1] - a[1] }).slice(0, 12)
+    var e5 = (function() { var raw = Object.entries(s5.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 12).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
     return <PlotlyChart traces={[{ type: 'funnel', y: e5.map(function(e) { return e[0] }), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length] }) } }]} layout={{ margin: { t: 8, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
@@ -239,6 +257,42 @@ function useRows(datasetId: string) {
     fetchPage()
   }, [datasetId])
   return { rows: rows, loaded: loaded, loading: loading }
+}
+
+function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean }) {
+  var { rows, loaded } = useRows(datasetId)
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+
+  // Build crosstab: category × colorBy
+  var grid: Record<string, Record<string, number>> = {}
+  var colorVals = new Set<string>()
+  rows.forEach(function(r) {
+    var cat = String(r[catField] || '').trim()
+    var col = String(r[colorByField] || '').trim()
+    if (!cat || !col) return
+    colorVals.add(col)
+    if (!grid[cat]) grid[cat] = {}
+    grid[cat][col] = (grid[cat][col] || 0) + 1
+  })
+  var cats = Object.keys(grid).sort(function(a, b) {
+    var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0)
+    var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0)
+    return ta - tb
+  }).slice(0, 30)
+  var colors = Array.from(colorVals).sort()
+
+  var traces = colors.map(function(col, i) {
+    var ys = cats.map(function(cat) { return grid[cat] ? (grid[cat][col] || 0) : 0 })
+    if (barMode === 'percent') {
+      ys = cats.map(function(cat) {
+        var total = Object.values(grid[cat] || {}).reduce(function(s, v) { return s + v }, 0)
+        return total > 0 ? Math.round((grid[cat] ? (grid[cat][col] || 0) : 0) / total * 1000) / 10 : 0
+      })
+    }
+    return { type: 'bar', name: col, x: cats, y: ys, marker: { color: CHART_COLORS[i % CHART_COLORS.length] } }
+  })
+
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: flByName(catField, schema), tickangle: cats.length > 8 ? -35 : 0 }, yaxis: { title: barMode === 'percent' ? '% of Category' : 'Count' }, legend: { orientation: 'h', y: -0.2 } }} />
 }
 
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
@@ -316,11 +370,32 @@ interface SavedChart { id: string; name: string; chartType: string; config: Reco
 // MAIN MODULE
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function ChartsModule({ datasetId, schema, analytics }: Props) {
+export default function ChartsModule({ datasetId, schema, analytics, themeModel }: Props) {
   var [activeChart, setActiveChart] = useState('bar')
   var [hovered, setHovered] = useState<string | null>(null)
+  var [barMode, setBarMode] = useState<'count' | 'percent'>('count')
+  var [barStack, setBarStack] = useState(false)
+  var [smartAxes, setSmartAxes] = useState(true)
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
   var hasData = analytics && analytics.totalRows > 0
+
+  // Inject virtual "Themes" field if theme model exists
+  var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+  var allFields = hasThemes
+    ? fields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes (from TextMine)' }])
+    : fields
+
+  // Build theme counts for the virtual field
+  var enrichedAnalytics = analytics
+  if (hasThemes && analytics) {
+    var themeCounts: Record<string, number> = {}
+    themeModel.themes.forEach(function(t: any) { themeCounts[t.name] = t.count || 0 })
+    enrichedAnalytics = Object.assign({}, analytics, {
+      fieldSummaries: Object.assign({}, analytics.fieldSummaries, {
+        __themes__: { type: 'categorical', nonNull: analytics.totalRows, counts: themeCounts, topN: Object.keys(themeCounts) }
+      })
+    })
+  }
 
   // Chart config state — cached per chart type
   var [chartConfigs, setChartConfigs] = useState<Record<string, Record<string, string>>>({})
@@ -360,7 +435,7 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
     setChartConfigs(function(prev) {
       var updated = Object.assign({}, prev)
       var cfg = Object.assign({}, updated[activeChart] || {})
-      cfg[activeSlot!] = fieldName
+      cfg[activeSlot] = fieldName
       updated[activeChart] = cfg
       return updated
     })
@@ -411,10 +486,10 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
   }
 
   // Field type groups
-  var catFields = fields.filter(function(f) { return f.type === 'categorical' })
-  var numFields = fields.filter(function(f) { return f.type === 'numeric' })
-  var dateFields = fields.filter(function(f) { return f.type === 'date' })
-  var openFields = fields.filter(function(f) { return f.type === 'open-ended' })
+  var catFields = allFields.filter(function(f) { return f.type === 'categorical' })
+  var numFields = allFields.filter(function(f) { return f.type === 'numeric' })
+  var dateFields = allFields.filter(function(f) { return f.type === 'date' })
+  var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
 
   // Which field types the current slot accepts
   var slotAccepts = function(fieldType: string): boolean {
@@ -516,8 +591,45 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
           {currentSlots.length > 0 && (
             <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
               {currentSlots.map(function(slot) {
-                return <DropZone key={slot.key} slot={slot} value={currentConfig[slot.key] || ''} schema={fields} activeSlot={activeSlot} onActivate={function() { setActiveSlot(slot.key) }} onClear={function() { clearSlot(slot.key) }} />
+                return <DropZone key={slot.key} slot={slot} value={currentConfig[slot.key] || ''} schema={allFields} activeSlot={activeSlot} onActivate={function() { setActiveSlot(slot.key) }} onClear={function() { clearSlot(slot.key) }} />
               })}
+            </div>
+          )}
+
+          {/* Smart Axes toggle — visible when any categorical slot is filled */}
+          {hasData && currentSlots.some(function(s) { return s.accepts.includes('categorical') && currentConfig[s.key] }) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: smartAxes ? T.accent : T.textMute, cursor: 'pointer' }}>
+                <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+                Smart Axes
+              </label>
+              {smartAxes && (function() {
+                var catSlot = currentSlots.find(function(s) { return s.accepts.includes('categorical') && currentConfig[s.key] })
+                if (!catSlot) return null
+                var fieldName = currentConfig[catSlot.key]
+                var fieldObj = allFields.find(function(f) { return f.field === fieldName })
+                var vals = fieldObj && fieldObj.values ? fieldObj.values : []
+                if (!vals.length) return null
+                var dir = scaleDirectionLabel(vals)
+                if (!dir) return null
+                return <span style={{ fontSize: 10, color: T.textFaint, fontStyle: 'italic' }}>{dir}</span>
+              })()}
+            </div>
+          )}
+
+          {/* Bar chart options */}
+          {activeChart === 'bar' && hasData && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
+                <button onClick={function() { setBarMode('count') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'count' ? T.bgCard : 'transparent', color: barMode === 'count' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'count' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Count</button>
+                <button onClick={function() { setBarMode('percent') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'percent' ? T.bgCard : 'transparent', color: barMode === 'percent' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'percent' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Percentage</button>
+              </div>
+              {currentConfig.colorBy && (
+                <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
+                  <button onClick={function() { setBarStack(false) }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: !barStack ? T.bgCard : 'transparent', color: !barStack ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: !barStack ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Grouped</button>
+                  <button onClick={function() { setBarStack(true) }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barStack ? T.bgCard : 'transparent', color: barStack ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barStack ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Stacked</button>
+                </div>
+              )}
             </div>
           )}
 
@@ -553,7 +665,7 @@ export default function ChartsModule({ datasetId, schema, analytics }: Props) {
           {/* Chart render area */}
           <div ref={chartBodyRef}>
             {!hasData && <EmptyChart msg="No data loaded." />}
-            {hasData && renderChart(activeChart, currentConfig, analytics!, fields, datasetId)}
+            {hasData && renderChart(activeChart, currentConfig, enrichedAnalytics!, allFields, datasetId, { barMode: barMode, barStack: barStack, smartAxes: smartAxes })}
           </div>
         </div>
 

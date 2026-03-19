@@ -20,6 +20,7 @@ export interface SchemaFieldConfig {
   label?:        string
   scoreField?:   boolean
   remapping?:    Record<string, number>
+  valueAliases?: Record<string, string>
   hidden?:       boolean
   nonNullCount?: number
   avgLen?:       string
