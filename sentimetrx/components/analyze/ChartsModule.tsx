@@ -24,6 +24,16 @@ var T = {
 
 var CHART_COLORS = ['#e8622a','#2563eb','#16a34a','#7c3aed','#ea580c','#a21caf','#0d9488','#ca8a04','#db2777','#0891b2','#dc2626','#0284c7','#059669','#d97706','#6366f1','#e11d48','#14b8a6','#9333ea','#65a30d','#f97316']
 
+var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
+  hermes:  { name: 'Hermes',  colors: ['#e8622a','#2563eb','#16a34a','#7c3aed','#ea580c','#a21caf','#0d9488','#ca8a04','#db2777','#0891b2'] },
+  ocean:   { name: 'Ocean',   colors: ['#0077b6','#00b4d8','#90e0ef','#023e8a','#48cae4','#0096c7','#caf0f8','#ade8f4','#0077b6','#03045e'] },
+  sunset:  { name: 'Sunset',  colors: ['#ff6b6b','#feca57','#ff9ff3','#54a0ff','#5f27cd','#01a3a4','#ee5a24','#009432','#6d214f','#0c2461'] },
+  earth:   { name: 'Earth',   colors: ['#606c38','#283618','#dda15e','#bc6c25','#fefae0','#936639','#9b2226','#bb3e03','#005f73','#0a9396'] },
+  pastel:  { name: 'Pastel',  colors: ['#a8dadc','#f4a261','#e76f51','#457b9d','#264653','#2a9d8f','#e9c46a','#606c38','#bc6c25','#9b2226'] },
+  vivid:   { name: 'Vivid',   colors: ['#ef476f','#ffd166','#06d6a0','#118ab2','#073b4c','#8338ec','#ff006e','#3a86ff','#fb5607','#ffbe0b'] },
+  mono:    { name: 'Mono',    colors: ['#111827','#374151','#4b5563','#6b7280','#9ca3af','#d1d5db','#e5e7eb','#f3f4f6','#1f2937','#030712'] },
+}
+
 interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number }
 interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
@@ -131,9 +141,11 @@ function DropZone({ slot, value, schema, activeSlot, onActivate, onClear }: {
 
 // ─── Chart Renderers (receive field values as params) ─────────────────────
 
-function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean }): React.ReactNode {
+function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean; colors?: string[] }): React.ReactNode {
   var fs = analytics.fieldSummaries
   var useSmartOrder = opts?.smartAxes !== false
+  var pal = opts?.colors || CHART_COLORS
+  var primaryColor = pal[0] || '#e8622a'
 
   if (chartType === 'bar') {
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
@@ -155,7 +167,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       return <BarStackedInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} colorByField={colorByField} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} />
     }
 
-    var traces = [{ type: 'bar', x: cats, y: displayVals, marker: { color: T.accent }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 } }]
+    var traces = [{ type: 'bar', x: cats, y: displayVals, marker: { color: primaryColor }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 } }]
     return <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(catField, schema), tickangle: cats.length > 8 ? -35 : 0 }, yaxis: { title: yTitle } }} />
   }
 
@@ -189,14 +201,14 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var s2 = fs[catF2]; if (!s2 || !s2.counts) return <EmptyChart msg="No data." />
     var e2 = (function() { var raw = Object.entries(s2.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
-    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ margin: { t: 8, r: 8, b: 8, l: 8 } }} />
+    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'bubbles') {
     var catF3 = config.category; if (!catF3) return <EmptyChart msg="Assign a category field above." />
     var s3 = fs[catF3]; if (!s3 || !s3.counts) return <EmptyChart msg="No data." />
     var e3 = Object.entries(s3.counts).sort(function(a, b) { return b[1] - a[1] }).slice(0, 20)
-    return <PlotlyChart traces={[{ x: e3.map(function(e, i) { return (i % 5) * 2 }), y: e3.map(function(e, i) { return Math.floor(i / 5) * 2 }), mode: 'markers+text', marker: { size: e3.map(function(e) { return Math.max(20, Math.sqrt(e[1]) * 4) }), color: e3.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length] }), opacity: 0.8 }, text: e3.map(function(e) { return e[0] + '\n' + e[1] }), textposition: 'center', textfont: { size: 10 } }]} layout={{ showlegend: false, xaxis: { visible: false }, yaxis: { visible: false }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
+    return <PlotlyChart traces={[{ x: e3.map(function(e, i) { return (i % 5) * 2 }), y: e3.map(function(e, i) { return Math.floor(i / 5) * 2 }), mode: 'markers+text', marker: { size: e3.map(function(e) { return Math.max(20, Math.sqrt(e[1]) * 4) }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.8 }, text: e3.map(function(e) { return e[0] + '\n' + e[1] }), textposition: 'center', textfont: { size: 10 } }]} layout={{ showlegend: false, xaxis: { visible: false }, yaxis: { visible: false }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'waterfall') {
@@ -208,20 +220,20 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
     var measures: string[] = wValues.map(function() { return 'relative' }).concat(['total'])
     wValues.push(total)
-    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: T.accent } } }]} layout={{ margin: { t: 12, r: 16, b: 48, l: 56 }, showlegend: false }} />
+    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: primaryColor } } }]} layout={{ margin: { t: 12, r: 16, b: 48, l: 56 }, showlegend: false }} />
   }
 
   if (chartType === 'bullet') {
     var bField = config.field; if (!bField) return <EmptyChart msg="Assign a numeric field above." />
     var bs = fs[bField]; if (!bs || bs.avg == null) return <EmptyChart msg="No numeric data." />
-    return <PlotlyChart traces={[{ type: 'indicator', mode: 'number+gauge', value: bs.avg, gauge: { axis: { range: [bs.min || 0, bs.max || 100] }, bar: { color: T.accent }, steps: [{ range: [bs.min || 0, (bs.avg || 0)], color: T.bg }, { range: [(bs.avg || 0), bs.max || 100], color: T.border }] }, title: { text: flByName(bField, schema) } }]} layout={{ margin: { t: 40, r: 30, b: 20, l: 30 }, height: 200 }} style={{ height: 200 }} />
+    return <PlotlyChart traces={[{ type: 'indicator', mode: 'number+gauge', value: bs.avg, gauge: { axis: { range: [bs.min || 0, bs.max || 100] }, bar: { color: primaryColor }, steps: [{ range: [bs.min || 0, (bs.avg || 0)], color: T.bg }, { range: [(bs.avg || 0), bs.max || 100], color: T.border }] }, title: { text: flByName(bField, schema) } }]} layout={{ margin: { t: 40, r: 30, b: 20, l: 30 }, height: 200 }} style={{ height: 200 }} />
   }
 
   if (chartType === 'funnel') {
     var catF5 = config.category; if (!catF5) return <EmptyChart msg="Assign a category field above." />
     var s5 = fs[catF5]; if (!s5 || !s5.counts) return <EmptyChart msg="No data." />
     var e5 = (function() { var raw = Object.entries(s5.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 12).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
-    return <PlotlyChart traces={[{ type: 'funnel', y: e5.map(function(e) { return e[0] }), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length] }) } }]} layout={{ margin: { t: 8, r: 16, b: 8, l: 120 }, showlegend: false }} />
+    return <PlotlyChart traces={[{ type: 'funnel', y: e5.map(function(e) { return e[0] }), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ margin: { t: 8, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
   if (chartType === 'gantt') {
@@ -301,7 +313,7 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
-  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ xaxis: { title: flByName(xField, schema) }, yaxis: { title: flByName(yField, schema) }, showlegend: false }} />
+  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: primaryColor, size: 6, opacity: 0.6 } }]} layout={{ xaxis: { title: flByName(xField, schema) }, yaxis: { title: flByName(yField, schema) }, showlegend: false }} />
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
@@ -376,6 +388,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   var [barMode, setBarMode] = useState<'count' | 'percent'>('count')
   var [barStack, setBarStack] = useState(false)
   var [smartAxes, setSmartAxes] = useState(true)
+  var [activePalette, setActivePalette] = useState('hermes')
+  var [showPalettePicker, setShowPalettePicker] = useState(false)
+  var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
   var hasData = analytics && analytics.totalRows > 0
 
@@ -657,6 +672,33 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
                     style={{ padding: '5px 14px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMid, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                     {'\u2B07'} PNG
                   </button>
+                  <div style={{ position: 'relative' }}>
+                    <button onClick={function() { setShowPalettePicker(function(v) { return !v }) }}
+                      style={{ padding: '5px 14px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMid, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {'\uD83C\uDFA8'} Colors
+                    </button>
+                    {showPalettePicker && (
+                      <div style={{ position: 'absolute', top: 32, right: 0, background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.12)', zIndex: 30, padding: '12px', width: 220 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Color Palette</div>
+                        {Object.entries(COLOR_PALETTES).map(function(entry) {
+                          var key = entry[0], p = entry[1]
+                          var isActive = activePalette === key
+                          return (
+                            <button key={key} onClick={function() { setActivePalette(key); setShowPalettePicker(false) }}
+                              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, background: isActive ? T.accentBg : 'transparent', border: isActive ? '1.5px solid ' + T.accent : '1.5px solid transparent', cursor: 'pointer', marginBottom: 4 }}>
+                              <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : T.textMid, width: 50, textAlign: 'left' }}>{p.name}</span>
+                              <div style={{ display: 'flex', gap: 2 }}>
+                                {p.colors.slice(0, 6).map(function(c, i) {
+                                  return <span key={i} style={{ width: 14, height: 14, borderRadius: 3, background: c, display: 'inline-block', border: '1px solid rgba(0,0,0,.1)' }} />
+                                })}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {showPalettePicker && <div style={{ position: 'fixed', inset: 0, zIndex: 29 }} onClick={function() { setShowPalettePicker(false) }} />}
+                  </div>
                 </>
               )}
             </div>
@@ -665,7 +707,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
           {/* Chart render area */}
           <div ref={chartBodyRef}>
             {!hasData && <EmptyChart msg="No data loaded." />}
-            {hasData && renderChart(activeChart, currentConfig, enrichedAnalytics!, allFields, datasetId, { barMode: barMode, barStack: barStack, smartAxes: smartAxes })}
+            {hasData && renderChart(activeChart, currentConfig, enrichedAnalytics!, allFields, datasetId, { barMode: barMode, barStack: barStack, smartAxes: smartAxes, colors: currentColors })}
           </div>
         </div>
 

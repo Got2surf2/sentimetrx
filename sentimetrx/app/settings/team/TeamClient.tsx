@@ -151,7 +151,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
           <h2 className="text-lg font-semibold mb-1">Organization Logo</h2>
           <p className="text-gray-400 text-sm mb-4">Appears top-left on all pages and on the survey widget. PNG or JPG, max 2MB.</p>
           <div className="flex items-center gap-4">
-            <div className="w-24 h-12 rounded-lg bg-slate-800 border border-gray-200 flex items-center justify-center overflow-hidden">
+            <div className="w-24 h-12 rounded-lg bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
               {logoUrl
                 ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" />
                 : <span className="text-xs font-bold" style={{ color: HERMES }}>sentimetrx.ai</span>
@@ -159,12 +159,13 @@ export default function TeamClient({ org, members: initialMembers, invites: init
             </div>
             <div className="flex gap-2">
               <button onClick={() => fileRef.current?.click()} disabled={busy}
-                className="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-gray-200 transition-colors">
+                className="text-sm px-3 py-1.5 rounded-lg hover:opacity-80 border transition-colors font-semibold"
+                style={{ background: HERMES, color: 'white', borderColor: HERMES }}>
                 {logoUrl ? 'Change Logo' : 'Upload Logo'}
               </button>
               {logoUrl && (
                 <button onClick={removeLogo} disabled={busy}
-                  className="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900 border border-gray-200 text-red-400 transition-colors">
+                  className="text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 border border-red-300 text-red-500 transition-colors font-semibold">
                   Remove
                 </button>
               )}
@@ -187,12 +188,12 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                   {isOwner && m.id !== currentUserId ? (
                     <>
                       <select value={m.role} onChange={e => changeRole(m.id, e.target.value)}
-                        className="text-xs bg-slate-800 border border-gray-200 rounded px-2 py-1 text-gray-300">
+                        className="text-xs bg-white border border-gray-300 rounded px-2 py-1 text-gray-600 focus:border-orange-400 outline-none">
                         <option value="owner">Owner</option>
                         <option value="member">Member</option>
                       </select>
                       <button onClick={() => removeMember(m.id)}
-                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-slate-800 transition-colors">
+                        className="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors font-semibold">
                         Remove
                       </button>
                     </>

@@ -218,6 +218,53 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         </div>
       </div>
 
+      {/* 3b. Scoring donut — shows when a scored field exists with analytics */}
+      {(function() {
+        var fields = dataset.state?.schema_config?.fields || []
+        var analytics = dataset.state?.analytics as any
+        var scoreField = fields.find(function(f: any) { return f.scoreField && f.remapping && Object.keys(f.remapping).length > 0 })
+        if (!scoreField || !analytics || !analytics.fieldSummaries) return null
+        var summary = analytics.fieldSummaries[scoreField.field]
+        if (!summary || !summary.counts) return null
+        var remap = scoreField.remapping as Record<string, number>
+        var entries = Object.entries(summary.counts as Record<string, number>)
+        var total = entries.reduce(function(s, e) { return s + e[1] }, 0)
+        if (total === 0) return null
+        // Compute weighted average score
+        var weightedSum = 0; var mappedCount = 0
+        entries.forEach(function(e) { var num = remap[e[0]]; if (num != null) { weightedSum += num * e[1]; mappedCount += e[1] } })
+        if (mappedCount === 0) return null
+        var avgScore = weightedSum / mappedCount
+        var maxScore = Math.max.apply(null, Object.values(remap))
+        var minScore = Math.min.apply(null, Object.values(remap))
+        var pct = maxScore > minScore ? Math.round((avgScore - minScore) / (maxScore - minScore) * 100) : 50
+        var label = (scoreField.label || scoreField.field)
+        // SVG donut
+        var r = 28, cx = 32, cy = 32, stroke = 7
+        var circ = 2 * Math.PI * r
+        var dash = circ * pct / 100
+        var color = pct >= 70 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626'
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
+            <svg width={64} height={64} viewBox="0 0 64 64">
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f3f4f6" strokeWidth={stroke} />
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={stroke}
+                strokeDasharray={dash + ' ' + (circ - dash)}
+                strokeDashoffset={circ * 0.25}
+                strokeLinecap="round"
+                style={{ transition: 'stroke-dasharray .6s ease' }} />
+              <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="central"
+                style={{ fontSize: 13, fontWeight: 800, fill: color }}>{avgScore.toFixed(1)}</text>
+            </svg>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#111827' }}>{label}</div>
+              <div style={{ fontSize: 10, color: '#9ca3af' }}>Avg score ({minScore}–{maxScore} scale)</div>
+              <div style={{ fontSize: 10, color: '#9ca3af' }}>{mappedCount.toLocaleString()} scored responses</div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* 4. Owner row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingTop: 8, borderTop: '1px solid #f3f4f6', marginTop: 'auto' }}>
         <div style={{ width: 22, height: 22, borderRadius: '50%', background: HERMES_BG, border: '1.5px solid ' + HERMES_MID, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

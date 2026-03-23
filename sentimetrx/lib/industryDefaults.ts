@@ -20,6 +20,15 @@ export type Industry =
   | 'political'
   | 'media_entertainment'
   | 'performing_arts'
+  | 'saas_software'
+  | 'retail_ecommerce'
+  | 'financial_services'
+  | 'education'
+  | 'higher_education'
+  | 'hr_employee'
+  | 'sports'
+  | 'nonprofit'
+  | 'automotive_repair'
   | 'other'
 
 // Human-readable labels shown in the study creator dropdown
@@ -33,6 +42,15 @@ export const INDUSTRY_LABELS: Record<Industry, string> = {
   political:           'Politics & Advocacy',
   media_entertainment: 'Entertainment — Media & Film',
   performing_arts:     'Entertainment — Performing Arts & Venues',
+  saas_software:       'SaaS / Software',
+  retail_ecommerce:    'Retail / E-commerce',
+  financial_services:  'Financial Services',
+  education:           'Education (K-12)',
+  higher_education:    'Higher Education',
+  hr_employee:         'HR / Employee Experience',
+  sports:              'Sports',
+  nonprofit:           'Non-Profit / Charity',
+  automotive_repair:   'Automotive Repair',
   other:               'Other / Custom',
 }
 
@@ -48,6 +66,15 @@ export const ANA_LIBRARY_KEY: Record<Exclude<Industry, 'other'>, string> = {
   political:           'Political Opinion Survey',
   media_entertainment: 'Media / Entertainment',
   performing_arts:     'Performing Arts / Venues',
+  saas_software:       'SaaS / Software',
+  retail_ecommerce:    'Retail / E-commerce',
+  financial_services:  'Financial Services',
+  education:           'Education',
+  higher_education:    'Higher Education',
+  hr_employee:         'HR / Employee Experience',
+  sports:              'Sports',
+  nonprofit:           'Non-Profit / Charity',
+  automotive_repair:   'Automotive Repair',
 }
 
 type Defaults = Pick<StudyConfig,
@@ -307,6 +334,237 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     ],
   },
 
+  // ── SAAS / SOFTWARE ────────────────────────────────────────────────────────
+  saas_software: {
+    greeting: "Hi! We'd love your feedback on your experience with our product. It only takes a few minutes and helps us build a better tool for you.",
+    ratingPrompt: "How would you rate your overall experience with our software?",
+    promoterQ1: "That's great to hear! What do you value most about the product?",
+    passiveQ1: "Thank you for sharing. What's the main thing we could improve?",
+    detractorQ1: "Sorry to hear that. What's the biggest issue you're facing?",
+    q3: "Are there specific features, workflows, or areas of the product you'd like to comment on?",
+    q4: "Is there anything else you'd like our product team to know?",
+    clarifiers: {
+      default: "Could you tell me a bit more about that?",
+      feature: "Which specific feature or workflow are you referring to?",
+      performance: "Is this about speed, reliability, errors, or something else?",
+      support: "What was your experience with our support team?",
+    },
+    psychographicBank: [
+      { key: 'sw_role', q: "What best describes your role when using this product?", exportLabel: "User Role",
+        opts: ["Decision-maker — I chose and manage the tool", "Power user — I use it daily and deeply", "Casual user — I use it occasionally", "Administrator — I manage it for others"] },
+      { key: 'sw_tech_comfort', q: "How comfortable are you with learning new software tools?", exportLabel: "Tech Comfort",
+        opts: ["Very comfortable — I pick things up quickly", "Fairly comfortable — I need a bit of guidance", "Moderate — I prefer simple interfaces", "Not very comfortable — I need a lot of hand-holding"] },
+      { key: 'sw_eval_factor', q: "What matters most when evaluating software?", exportLabel: "Evaluation Factor",
+        opts: ["Ease of use", "Feature depth", "Price / value", "Integration with existing tools", "Customer support quality"] },
+      { key: 'sw_switch_risk', q: "How likely are you to consider switching to an alternative product?", exportLabel: "Switch Risk",
+        opts: ["Very unlikely — deeply invested", "Unlikely — satisfied for now", "Possible — if something better comes along", "Actively evaluating alternatives"] },
+    ],
+  },
+
+  // ── RETAIL / E-COMMERCE ────────────────────────────────────────────────────
+  retail_ecommerce: {
+    greeting: "Hi! We'd love to hear about your recent shopping experience with us. Your feedback helps us serve you better.",
+    ratingPrompt: "How would you rate your overall shopping experience?",
+    promoterQ1: "Wonderful! What made your shopping experience great?",
+    passiveQ1: "Thanks for sharing. What could we have done better?",
+    detractorQ1: "Sorry about that. What was the main issue with your experience?",
+    q3: "Were there any specific aspects — the website, products, delivery, or service — you'd like to comment on?",
+    q4: "Is there anything else you'd like us to know?",
+    clarifiers: {
+      default: "Could you tell me a bit more about that?",
+      delivery: "Was this about delivery speed, packaging, tracking, or something else?",
+      product: "Was this about the product quality, description accuracy, or sizing?",
+      returns: "Was there an issue with the returns or exchange process?",
+    },
+    psychographicBank: [
+      { key: 're_shop_style', q: "How would you describe your shopping style?", exportLabel: "Shopping Style",
+        opts: ["Researcher — I compare options carefully before buying", "Impulse buyer — I buy what catches my eye", "Loyal — I stick with brands I trust", "Deal hunter — price and discounts drive my decisions"] },
+      { key: 're_channel', q: "How do you prefer to shop?", exportLabel: "Channel Preference",
+        opts: ["Mostly online", "Mostly in-store", "A mix of both", "Wherever offers the best deal"] },
+      { key: 're_brand_loyalty', q: "How loyal are you to specific brands?", exportLabel: "Brand Loyalty",
+        opts: ["Very loyal — I repeatedly buy the same brands", "Somewhat loyal — I have preferences but explore", "Not very loyal — I go with whatever meets my needs", "I actively seek variety"] },
+      { key: 're_returns', q: "How important is a flexible return policy in your purchase decisions?", exportLabel: "Return Policy Importance",
+        opts: ["Essential — I won't buy without it", "Very important", "Somewhat important", "Not a major factor"] },
+    ],
+  },
+
+  // ── FINANCIAL SERVICES ─────────────────────────────────────────────────────
+  financial_services: {
+    greeting: "Hello! We'd appreciate a few minutes of your time to share feedback on your experience with our services.",
+    ratingPrompt: "How would you rate your overall experience with our financial services?",
+    promoterQ1: "Great to hear! What do you value most about our services?",
+    passiveQ1: "Thank you. What could we improve to better meet your needs?",
+    detractorQ1: "I'm sorry to hear that. What was the main issue?",
+    q3: "Were there any specific interactions — with our team, products, online banking, or processes — you'd like to highlight?",
+    q4: "Is there anything else you'd like us to know?",
+    clarifiers: {
+      default: "Could you tell me a bit more about that?",
+      fees: "Which specific fee or charge are you referring to?",
+      service: "Was this about in-branch service, phone support, or online banking?",
+      process: "Was this about a specific process — account opening, loan application, or something else?",
+    },
+    psychographicBank: [
+      { key: 'fs_relationship', q: "How would you describe your relationship with financial institutions?", exportLabel: "Financial Relationship",
+        opts: ["Highly engaged — I actively manage my finances", "Moderate — I check in periodically", "Passive — I set it and forget it", "Frustrated — I find financial services confusing"] },
+      { key: 'fs_digital', q: "How do you prefer to manage your finances?", exportLabel: "Digital Preference",
+        opts: ["All digital — app and online only", "Mostly digital with occasional branch visits", "Equal mix of digital and in-person", "Prefer in-person for most things"] },
+      { key: 'fs_trust', q: "How much do you trust your financial institution?", exportLabel: "Trust Level",
+        opts: ["Very high — they have my best interests at heart", "High — generally reliable", "Moderate — some concerns", "Low — I stay because switching is hard"] },
+      { key: 'fs_priority', q: "What matters most to you in a financial service provider?", exportLabel: "Service Priority",
+        opts: ["Low fees and good rates", "Excellent customer service", "Easy-to-use digital tools", "A wide range of products", "Trustworthiness and transparency"] },
+    ],
+  },
+
+  // ── EDUCATION (K-12) ───────────────────────────────────────────────────────
+  education: {
+    greeting: "Hi! We'd love to hear your thoughts on the educational experience. Your feedback helps us improve for students and families.",
+    ratingPrompt: "How would you rate the overall educational experience?",
+    promoterQ1: "That's wonderful! What stands out most about the experience?",
+    passiveQ1: "Thank you for sharing. What could be improved?",
+    detractorQ1: "I'm sorry to hear that. What's the main concern?",
+    q3: "Are there specific aspects — teaching quality, communication, facilities, or programs — you'd like to comment on?",
+    q4: "Is there anything else you'd like the school to know?",
+    clarifiers: {
+      default: "Could you tell me a bit more about that?",
+      teaching: "Which subject, teacher, or aspect of instruction are you referring to?",
+      communication: "Is this about teacher-parent communication, school updates, or something else?",
+      safety: "What specifically concerns you about safety or wellbeing?",
+    },
+    psychographicBank: [
+      { key: 'ed_involvement', q: "How involved are you in your child's education?", exportLabel: "Parent Involvement",
+        opts: ["Very involved — I participate actively", "Involved — I stay informed and attend events", "Moderately involved — I check in when needed", "Minimally involved — I trust the school"] },
+      { key: 'ed_priority', q: "What matters most to you in a school?", exportLabel: "Education Priority",
+        opts: ["Academic excellence", "Social and emotional development", "Safety and wellbeing", "Extracurricular opportunities", "Community and values"] },
+      { key: 'ed_communication', q: "How satisfied are you with school communication?", exportLabel: "Communication Satisfaction",
+        opts: ["Very satisfied", "Satisfied", "Neutral", "Dissatisfied", "Very dissatisfied"] },
+    ],
+  },
+
+  // ── HIGHER EDUCATION ───────────────────────────────────────────────────────
+  higher_education: {
+    greeting: "Hi! We'd value your feedback on your experience with us. Your perspective helps shape the future of our institution.",
+    ratingPrompt: "How would you rate your overall experience with our institution?",
+    promoterQ1: "That's great to hear! What makes the experience stand out?",
+    passiveQ1: "Thank you. What would make your experience better?",
+    detractorQ1: "I'm sorry about that. What's the biggest issue?",
+    q3: "Are there specific aspects — academics, campus life, support services, or facilities — you'd like to comment on?",
+    q4: "Is there anything else you'd like the institution to know?",
+    clarifiers: {
+      default: "Could you tell me more about that?",
+      academics: "Which program, course, or faculty are you referring to?",
+      support: "Is this about advising, career services, mental health, or another support area?",
+      campus: "Which facility or campus area are you referring to?",
+    },
+    psychographicBank: [
+      { key: 'he_motivation', q: "What is your primary motivation for pursuing higher education?", exportLabel: "Education Motivation",
+        opts: ["Career advancement", "Personal growth and learning", "Required for my field", "Social and networking opportunities", "Family expectations"] },
+      { key: 'he_learning', q: "How do you prefer to learn?", exportLabel: "Learning Preference",
+        opts: ["In-person lectures and discussions", "Online or hybrid formats", "Hands-on / experiential learning", "Self-paced with resources", "Small group collaboration"] },
+      { key: 'he_balance', q: "How well do you balance academics with other responsibilities?", exportLabel: "Life Balance",
+        opts: ["Very well — I have a good system", "Fairly well — some stress but manageable", "Struggling — it's hard to keep up", "Not well — I'm overwhelmed"] },
+    ],
+  },
+
+  // ── HR / EMPLOYEE EXPERIENCE ───────────────────────────────────────────────
+  hr_employee: {
+    greeting: "Hi! We'd like to hear about your experience as an employee. Your honest feedback helps us build a better workplace.",
+    ratingPrompt: "How would you rate your overall employee experience?",
+    promoterQ1: "That's great! What do you value most about working here?",
+    passiveQ1: "Thanks for sharing. What one thing would improve your experience?",
+    detractorQ1: "I'm sorry to hear that. What's the biggest challenge you face?",
+    q3: "Are there specific aspects — management, culture, growth opportunities, or benefits — you'd like to comment on?",
+    q4: "Is there anything else you'd like leadership to know?",
+    clarifiers: {
+      default: "Could you tell me more about that?",
+      management: "Is this about your direct manager, senior leadership, or management style in general?",
+      culture: "What specifically about the culture are you referring to?",
+      growth: "Is this about training, promotions, career development, or something else?",
+    },
+    psychographicBank: [
+      { key: 'hr_engagement', q: "How engaged do you feel at work?", exportLabel: "Engagement Level",
+        opts: ["Highly engaged — I love what I do", "Engaged — I'm satisfied and productive", "Neutral — it's a job", "Disengaged — I'm going through the motions", "Actively disengaged — I'm looking to leave"] },
+      { key: 'hr_values', q: "What matters most to you in a workplace?", exportLabel: "Workplace Values",
+        opts: ["Good compensation and benefits", "Work-life balance", "Growth and learning opportunities", "Positive culture and relationships", "Meaningful work and purpose"] },
+      { key: 'hr_feedback', q: "How comfortable are you giving honest feedback at work?", exportLabel: "Feedback Comfort",
+        opts: ["Very comfortable — it's encouraged here", "Comfortable — but I'm selective", "Somewhat comfortable — depends on the topic", "Not comfortable — I worry about consequences"] },
+    ],
+  },
+
+  // ── SPORTS ─────────────────────────────────────────────────────────────────
+  sports: {
+    greeting: "Hey! We'd love to hear about your experience at today's event. Your feedback helps us make game days even better.",
+    ratingPrompt: "How would you rate your overall experience at today's event?",
+    promoterQ1: "Awesome! What made today's experience great?",
+    passiveQ1: "Thanks for coming! What could we do to make it better next time?",
+    detractorQ1: "Sorry to hear that. What was the main issue today?",
+    q3: "Were there any specific aspects — the game, venue, food, atmosphere, or logistics — you'd like to comment on?",
+    q4: "Anything else you'd like to share about your experience?",
+    clarifiers: {
+      default: "Could you tell me more about that?",
+      venue: "Was this about seating, facilities, cleanliness, or accessibility?",
+      food: "Was this about the food quality, variety, pricing, or service speed?",
+      logistics: "Was this about parking, entry, exit, or getting to your seats?",
+    },
+    psychographicBank: [
+      { key: 'sp_fandom', q: "How would you describe your level of fandom?", exportLabel: "Fan Level",
+        opts: ["Die-hard — I never miss a game", "Regular — I attend frequently", "Casual — I go occasionally", "Social — I come for the atmosphere, not the sport"] },
+      { key: 'sp_motivation', q: "What's the main reason you attend live events?", exportLabel: "Attendance Motivation",
+        opts: ["Love the sport and the team", "Social experience with friends/family", "The atmosphere and excitement", "Corporate or client entertainment", "Taking kids to the game"] },
+      { key: 'sp_spend', q: "How do you typically approach spending at the venue?", exportLabel: "Spending Attitude",
+        opts: ["Big spender — food, drinks, merchandise", "Moderate — some food and drinks", "Conservative — I keep costs low", "Pre-game only — I eat and drink before arriving"] },
+    ],
+  },
+
+  // ── NON-PROFIT / CHARITY ───────────────────────────────────────────────────
+  nonprofit: {
+    greeting: "Hi! Thank you for your involvement with us. We'd love to hear your feedback — it helps us serve our mission more effectively.",
+    ratingPrompt: "How would you rate your overall experience with our organization?",
+    promoterQ1: "That's wonderful! What resonates most with you about our work?",
+    passiveQ1: "Thank you for sharing. How could we better engage you?",
+    detractorQ1: "I'm sorry to hear that. What could we do better?",
+    q3: "Are there specific aspects — our programs, communication, events, or impact — you'd like to comment on?",
+    q4: "Is there anything else you'd like us to know?",
+    clarifiers: {
+      default: "Could you tell me more about that?",
+      impact: "What specifically about our impact are you referring to?",
+      communication: "Is this about how often we communicate, the content, or the channels we use?",
+      events: "Which event or program are you referring to?",
+    },
+    psychographicBank: [
+      { key: 'np_involvement', q: "How are you involved with our organization?", exportLabel: "Involvement Type",
+        opts: ["Regular donor", "Volunteer", "Event attendee", "Board or committee member", "Beneficiary of services", "Supporter from a distance"] },
+      { key: 'np_motivation', q: "What motivates your support?", exportLabel: "Support Motivation",
+        opts: ["Passion for the cause", "Personal connection to the issue", "Community involvement", "Tax benefits", "Social influence — friends or colleagues involved"] },
+      { key: 'np_trust', q: "How much do you trust our organization to use resources effectively?", exportLabel: "Trust Level",
+        opts: ["Very high trust", "High trust", "Moderate trust", "Some concerns", "Low trust"] },
+    ],
+  },
+
+  // ── AUTOMOTIVE REPAIR ──────────────────────────────────────────────────────
+  automotive_repair: {
+    greeting: "Hi! We'd love your feedback on your recent visit. It helps us keep doing what we do best — and fix what we don't.",
+    ratingPrompt: "How would you rate your overall experience with our service?",
+    promoterQ1: "Great to hear! What did we get right?",
+    passiveQ1: "Thanks for sharing. What could we have done better?",
+    detractorQ1: "Sorry about that. What was the main issue?",
+    q3: "Were there specific aspects — the repair quality, communication, pricing, or wait time — you'd like to comment on?",
+    q4: "Is there anything else you'd like us to know?",
+    clarifiers: {
+      default: "Could you tell me a bit more about that?",
+      pricing: "Was this about the quoted price, the final bill, or unexpected charges?",
+      quality: "Was this about the quality of the repair itself, or something else?",
+      timing: "Was this about the estimated time, actual time taken, or pickup process?",
+    },
+    psychographicBank: [
+      { key: 'ar_relationship', q: "How do you typically choose an auto repair shop?", exportLabel: "Shop Selection",
+        opts: ["Loyalty — I always go to the same place", "Referrals — I ask friends and family", "Reviews — I check online ratings", "Convenience — whoever is closest", "Price — I shop around for the best deal"] },
+      { key: 'ar_knowledge', q: "How knowledgeable are you about car maintenance?", exportLabel: "Car Knowledge",
+        opts: ["Very knowledgeable — I understand what's needed", "Somewhat knowledgeable — I know the basics", "Limited — I rely on the shop to advise me", "Minimal — I just want it fixed"] },
+      { key: 'ar_trust', q: "How much do you trust auto repair shops in general?", exportLabel: "Industry Trust",
+        opts: ["High trust — I believe they're honest", "Moderate — I trust but verify", "Low — I'm wary of upselling", "Very low — I often feel taken advantage of"] },
+    ],
+  },
+
 }
 
 // ── Suggested questions for the Custom Questions step (Step 4) ───────────────
@@ -442,6 +700,105 @@ export const INDUSTRY_SUGGESTED_QUESTIONS: Partial<Record<Exclude<Industry, 'oth
     { key: 'i_pa_seat',     q: 'How would you rate the sightlines and comfort of your seating?',
       exportLabel: 'Seating Experience',
       opts: ['Excellent', 'Good', 'Adequate', 'Poor', 'Very poor'] },
+  ],
+
+  saas_software: [
+    { key: 'i_sw_role', q: 'What is your primary role when using this product?',
+      exportLabel: 'User Role',
+      opts: ['Individual contributor', 'Team lead / manager', 'Executive / decision-maker', 'Administrator', 'Developer / technical'] },
+    { key: 'i_sw_tenure', q: 'How long have you been using this product?',
+      exportLabel: 'Product Tenure',
+      opts: ['Less than a month', '1–6 months', '6–12 months', '1–2 years', 'Over 2 years'] },
+    { key: 'i_sw_frequency', q: 'How often do you use this product?',
+      exportLabel: 'Usage Frequency',
+      opts: ['Multiple times a day', 'Daily', 'A few times a week', 'Weekly', 'Less than weekly'] },
+  ],
+
+  retail_ecommerce: [
+    { key: 'i_re_channel', q: 'How did you shop with us this time?',
+      exportLabel: 'Shopping Channel',
+      opts: ['Website on desktop', 'Mobile app', 'Mobile website', 'In-store', 'Phone order'] },
+    { key: 'i_re_frequency', q: 'How often do you shop with us?',
+      exportLabel: 'Shopping Frequency',
+      opts: ['First time', 'A few times a year', 'Monthly', 'Weekly', 'Multiple times a week'] },
+    { key: 'i_re_spend', q: 'How would you describe your typical order size with us?',
+      exportLabel: 'Order Size',
+      opts: ['Small — under $25', 'Medium — $25-$75', 'Large — $75-$150', 'Very large — over $150'] },
+  ],
+
+  financial_services: [
+    { key: 'i_fs_product', q: 'Which of our products or services do you primarily use?',
+      exportLabel: 'Primary Product',
+      opts: ['Checking / current account', 'Savings account', 'Credit card', 'Mortgage / loan', 'Investment / wealth management', 'Insurance', 'Multiple products'] },
+    { key: 'i_fs_tenure', q: 'How long have you been a customer?',
+      exportLabel: 'Customer Tenure',
+      opts: ['Less than 1 year', '1–3 years', '3–5 years', '5–10 years', 'Over 10 years'] },
+    { key: 'i_fs_channel', q: 'How do you most often interact with us?',
+      exportLabel: 'Interaction Channel',
+      opts: ['Mobile app', 'Online banking website', 'In-branch', 'Phone / call centre', 'ATM'] },
+  ],
+
+  education: [
+    { key: 'i_ed_role', q: 'What is your relationship to the school?',
+      exportLabel: 'Respondent Role',
+      opts: ['Parent / guardian', 'Student', 'Teacher / staff', 'Administrator', 'Community member'] },
+    { key: 'i_ed_grade', q: 'Which grade level is most relevant to your feedback?',
+      exportLabel: 'Grade Level',
+      opts: ['Pre-K / Kindergarten', 'Elementary (1-5)', 'Middle school (6-8)', 'High school (9-12)'] },
+  ],
+
+  higher_education: [
+    { key: 'i_he_status', q: 'What is your current status?',
+      exportLabel: 'Student Status',
+      opts: ['Undergraduate student', 'Graduate student', 'Doctoral student', 'Alumni', 'Faculty / staff', 'Parent / family'] },
+    { key: 'i_he_mode', q: 'What is your primary mode of study?',
+      exportLabel: 'Study Mode',
+      opts: ['Full-time on-campus', 'Part-time on-campus', 'Fully online', 'Hybrid', 'Evening / weekend'] },
+  ],
+
+  hr_employee: [
+    { key: 'i_hr_tenure', q: 'How long have you worked at this organization?',
+      exportLabel: 'Employee Tenure',
+      opts: ['Less than 6 months', '6 months – 1 year', '1–3 years', '3–5 years', '5–10 years', 'Over 10 years'] },
+    { key: 'i_hr_level', q: 'What level best describes your role?',
+      exportLabel: 'Role Level',
+      opts: ['Individual contributor', 'Team lead', 'Manager', 'Director / VP', 'Executive / C-suite'] },
+    { key: 'i_hr_remote', q: 'What is your current work arrangement?',
+      exportLabel: 'Work Arrangement',
+      opts: ['Fully in-office', 'Hybrid (mostly office)', 'Hybrid (mostly remote)', 'Fully remote', 'Field-based'] },
+  ],
+
+  sports: [
+    { key: 'i_sp_type', q: 'What type of event did you attend?',
+      exportLabel: 'Event Type',
+      opts: ['Regular season game', 'Playoff / championship', 'Exhibition / friendly', 'Special event', 'Youth / amateur event'] },
+    { key: 'i_sp_tickets', q: 'How did you get your tickets?',
+      exportLabel: 'Ticket Source',
+      opts: ['Season ticket holder', 'Purchased online in advance', 'Bought at the venue', 'Secondary market (StubHub, etc.)', 'Complimentary / gift'] },
+    { key: 'i_sp_group', q: 'Who did you come with today?',
+      exportLabel: 'Attendance Group',
+      opts: ['Alone', 'Partner', 'Friends', 'Family with kids', 'Corporate / business group'] },
+  ],
+
+  nonprofit: [
+    { key: 'i_np_involvement', q: 'How are you involved with our organization?',
+      exportLabel: 'Involvement Type',
+      opts: ['Donor', 'Volunteer', 'Event attendee', 'Program participant', 'Board / committee member', 'Staff'] },
+    { key: 'i_np_tenure', q: 'How long have you been involved with us?',
+      exportLabel: 'Involvement Duration',
+      opts: ['Less than 1 year', '1–3 years', '3–5 years', 'Over 5 years'] },
+  ],
+
+  automotive_repair: [
+    { key: 'i_ar_service', q: 'What type of service did you come in for?',
+      exportLabel: 'Service Type',
+      opts: ['Routine maintenance (oil change, tires, etc.)', 'Specific repair', 'Diagnostic / inspection', 'Warranty work', 'Body / collision repair'] },
+    { key: 'i_ar_vehicle', q: 'How old is the vehicle you brought in?',
+      exportLabel: 'Vehicle Age',
+      opts: ['Under 1 year', '1–3 years', '4–7 years', '8–12 years', 'Over 12 years'] },
+    { key: 'i_ar_first', q: 'Is this your first visit to our shop?',
+      exportLabel: 'First Visit',
+      opts: ['Yes — first time', 'No — been here before', 'No — regular customer'] },
   ],
 
 }
