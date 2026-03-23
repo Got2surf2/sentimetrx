@@ -313,7 +313,7 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
-  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: primaryColor, size: 6, opacity: 0.6 } }]} layout={{ xaxis: { title: flByName(xField, schema) }, yaxis: { title: flByName(yField, schema) }, showlegend: false }} />
+  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ xaxis: { title: flByName(xField, schema) }, yaxis: { title: flByName(yField, schema) }, showlegend: false }} />
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
