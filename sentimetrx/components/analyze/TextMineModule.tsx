@@ -322,8 +322,12 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   themeColors: Record<number, typeof THEME_PALETTE[0]>
   breakdownFields: string[]
   setBreakdownFields: (f: string[]) => void
-  onDrillTheme: (t: Theme) => void
+  onDrillTheme: (t: Theme, group?: string) => void
 }) {
+  var [viewMode, setViewMode] = useState<'group' | 'theme'>('group')
+  var [showSummary, setShowSummary] = useState(false)
+  var [copied, setCopied] = useState(false)
+
   if (!themes) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 14, padding: 40 }}>
@@ -335,7 +339,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     )
   }
 
-  var catFields = schema.filter(function(f) { return f.type === 'categorical' }).map(function(f) { return f.field })
+  var catFields = schema.filter(function(f) { return f.type === 'categorical' || f.type === 'date' }).map(function(f) { return f.field })
   var field = activeField || themes!.fieldName
   var fieldLabel = function(f: string) {
     var sf = schema.find(function(s) { return s.field === f })
@@ -351,135 +355,302 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   }
 
   if (!catFields.length) {
+    return (<div style={{ padding: 24, color: T.textMute, fontSize: 13 }}>No categorical fields available for comparison.</div>)
+  }
+
+  // ── Compute stats ────────────────────────────────────────────────────────
+  var groupKey = function(row: Record<string, unknown>) {
+    return breakdownFields.map(function(f) { return String(row[f] ?? '(blank)') }).join(' \u00D7 ')
+  }
+
+  var compStats = (function() {
+    if (!themes || !themes.themes || !breakdownFields.length || !parsedData.length) return null
+    var totalRows = parsedData.length
+    var groupMap: Record<string, Record<string, unknown>[]> = {}
+    parsedData.forEach(function(r) { var key = groupKey(r); if (!groupMap[key]) groupMap[key] = []; groupMap[key].push(r) })
+    var groupKeys = Object.keys(groupMap).sort()
+
+    var groupStats = groupKeys.map(function(gk) {
+      var rows = groupMap[gk]
+      var groupTotal = rows.length
+      var groupPct = Math.round(groupTotal / totalRows * 100)
+      var themeCounts = themes.themes.map(function(t) {
+        var matches = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) })
+        return { themeId: t.id, themeName: t.name, count: matches.length }
+      })
+      var unclassified = rows.filter(function(r) {
+        return String(r[field] || '').trim().length > 0 && !themes.themes.some(function(t) { return commentMatchesTheme(String(r[field] || ''), t) })
+      }).length
+      return { group: gk, groupTotal: groupTotal, groupPct: groupPct, themeCounts: themeCounts, unclassified: unclassified }
+    })
+
+    var themeStats = themes.themes.map(function(t) {
+      var totalMatches = groupStats.reduce(function(s, g) { var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id }); return s + (tc ? tc.count : 0) }, 0)
+      var perGroup = groupStats.map(function(g) {
+        var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
+        var count = tc ? tc.count : 0
+        var mentionRate = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
+        return { group: g.group, count: count, mentionRate: mentionRate, groupTotal: g.groupTotal, groupPct: g.groupPct }
+      })
+      return { themeId: t.id, themeName: t.name, totalMatches: totalMatches, perGroup: perGroup }
+    })
+    return { groupStats: groupStats, themeStats: themeStats, groupKeys: groupKeys, totalRows: totalRows }
+  })()
+
+  // ── Collect outliers ─────────────────────────────────────────────────────
+  var outliers = (function() {
+    if (!compStats) return []
+    var list: { group: string; themeName: string; thisPct: number; restPct: number; dir: string; z: number; groupTotal: number; count: number }[] = []
+    compStats.themeStats.forEach(function(ts) {
+      ts.perGroup.forEach(function(g) {
+        var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats.totalRows)
+        if (sig && sig.dir !== 'ns') {
+          list.push({ group: g.group, themeName: ts.themeName, thisPct: Math.round(sig.p1 * 100), restPct: Math.round(sig.p2 * 100), dir: sig.dir, z: sig.z, groupTotal: g.groupTotal, count: g.count })
+        }
+      })
+    })
+    list.sort(function(a, b) { return Math.abs(b.z) - Math.abs(a.z) })
+    return list
+  })()
+
+  // ── Summary text ─────────────────────────────────────────────────────────
+  var summaryText = (function() {
+    if (!outliers.length) return 'No statistically significant outliers found (p < 0.05, min n = 30).'
+    var lines = ['SEGMENT ANALYSIS SUMMARY', 'Breakdown: ' + breakdownFields.map(fieldLabel).join(' \u00D7 '), 'Generated: ' + new Date().toLocaleDateString(), '\u2500'.repeat(50), '']
+    var over = outliers.filter(function(o) { return o.dir === 'over' })
+    var under = outliers.filter(function(o) { return o.dir === 'under' })
+    if (over.length) {
+      lines.push('OVER-INDEXED SEGMENTS (significantly higher than baseline)')
+      over.forEach(function(o) { lines.push('\u2022 "' + o.group + '" \u2192 "' + o.themeName + '": ' + o.thisPct + '% vs ' + o.restPct + '% baseline (z=' + o.z.toFixed(1) + ', n=' + o.groupTotal + ')') })
+      lines.push('')
+    }
+    if (under.length) {
+      lines.push('UNDER-INDEXED SEGMENTS (significantly lower than baseline)')
+      under.forEach(function(o) { lines.push('\u2022 "' + o.group + '" \u2192 "' + o.themeName + '": ' + o.thisPct + '% vs ' + o.restPct + '% baseline (z=' + o.z.toFixed(1) + ', n=' + o.groupTotal + ')') })
+    }
+    return lines.join('\n')
+  })()
+
+  // ── Compare bar component ────────────────────────────────────────────────
+  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void }) {
+    var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
     return (
-      <div style={{ padding: 24, color: T.textMute, fontSize: 13 }}>
-        No categorical fields available for comparison.
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: props.onClick ? 'pointer' : 'default' }} onClick={props.onClick}>
+        <span style={{ fontSize: 11, color: props.isUnclassified ? T.textFaint : T.textMid, width: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, fontStyle: props.isUnclassified ? 'italic' : 'normal' }}>
+          {props.label}
+        </span>
+        <div style={{ flex: 1, height: 10, background: T.bg, borderRadius: 5, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: Math.max(props.maxPct > 0 ? props.pct / props.maxPct * 100 : 0, props.pct > 0 ? 2 : 0) + '%', background: props.isUnclassified ? T.borderMid : props.color, borderRadius: 5, transition: 'width .5s' }} />
+        </div>
+        {sigColor && <span style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center' }} title={(props.sig!.dir === 'over' ? 'Over' : 'Under') + '-indexed (z=' + props.sig!.z.toFixed(1) + ')'}>★</span>}
+        {!sigColor && <span style={{ width: 14, flexShrink: 0 }} />}
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{props.pct}%</span>
+        <span style={{ fontSize: 10, color: T.textFaint, width: 44, textAlign: 'right', flexShrink: 0 }}>n={props.count}</span>
       </div>
     )
   }
 
   return (
     <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-          Compare by (select one or more)
-        </label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {catFields.map(function(f) {
-            var active = breakdownFields.includes(f)
-            return (
-              <button key={f} onClick={function() { toggleField(f) }}
-                style={{
-                  padding: '5px 12px', fontSize: 12, fontWeight: active ? 700 : 500,
-                  background: active ? T.accentBg : T.bg,
-                  color: active ? T.accent : T.textMid,
-                  border: '1px solid ' + (active ? T.accent : T.border),
-                  borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
-                }}>
-                {active && <span style={{ fontSize: 10 }}>{'\u2713'}</span>}
-                {fieldLabel(f)}
-              </button>
-            )
-          })}
+      {/* Header */}
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: '0 0 6px' }}>Group Comparison</h2>
+          <span style={{ fontSize: 11, color: T.textMute }}>
+            <span style={{ color: '#16a34a', fontWeight: 800 }}>★</span> over-indexed&nbsp;
+            <span style={{ color: '#dc2626', fontWeight: 800 }}>★</span> under-indexed&nbsp;
+            <span style={{ color: T.textFaint, fontSize: 10 }}>(p &lt; 0.05, min n=30)</span>
+          </span>
         </div>
-        {breakdownFields.length > 1 && (
-          <div style={{ marginTop: 8, fontSize: 11, color: T.textMute }}>
-            Segments: <span style={{ fontWeight: 700, color: T.text }}>{breakdownFields.map(fieldLabel).join(' \u00D7 ')}</span>
-            <button onClick={function() { setBreakdownFields([]) }} style={{ marginLeft: 8, fontSize: 10, color: T.textFaint, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>clear all</button>
-          </div>
-        )}
+        <p style={{ fontSize: 13, color: T.textMid, margin: 0 }}>Select one or more fields to build segments and compare theme distribution.</p>
       </div>
-      {breakdownFields.length > 0 ? (
-        <CompareGroupView
-          themes={themes}
-          parsedData={parsedData}
-          field={field}
-          breakdownFields={breakdownFields}
-          themeColors={themeColors}
-          onDrillTheme={onDrillTheme}
-          fieldLabel={fieldLabel}
-        />
-      ) : (
-        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '40px 24px', textAlign: 'center', color: T.textFaint }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>{'\uD83D\uDC46'}</div>
-          <p style={{ fontSize: 13, margin: 0 }}>Select one or more fields above to compare themes across segments.</p>
-        </div>
-      )}
-    </div>
-  )
-}
 
-function CompareGroupView({ themes, parsedData, field, breakdownFields, themeColors, onDrillTheme, fieldLabel }: {
-  themes: ThemeModel
-  parsedData: Record<string, unknown>[]
-  field: string
-  breakdownFields: string[]
-  themeColors: Record<number, typeof THEME_PALETTE[0]>
-  onDrillTheme: (t: Theme) => void
-  fieldLabel: (f: string) => string
-}) {
-  var groupKey = function(row: Record<string, unknown>) {
-    return breakdownFields.map(function(f) { return String(row[f] ?? '(blank)') }).join(' \u00D7 ')
-  }
-  var groupVals = Array.from(new Set(parsedData.map(function(r) { return groupKey(r) }).filter(Boolean))).sort()
-  var sortedThemes = themes.themes.slice().sort(function(a, b) { return b.count - a.count })
-
-  // Compute total matches per theme for sig testing
-  var totalRows = parsedData.filter(function(r) { return String(r[field] || '').trim().length > 0 }).length
-  var totalThemeMatches: Record<string, number> = {}
-  sortedThemes.forEach(function(t) {
-    totalThemeMatches[t.id] = parsedData.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) }).length
-  })
-
-  return (
-    <div>
-      {sortedThemes.map(function(t, ti) {
-        var pal = themeColors[ti] || THEME_PALETTE[0]
-        var groupData = groupVals.map(function(v) {
-          var rows = parsedData.filter(function(r) { return groupKey(r) === v })
-          var total = rows.filter(function(r) { return String(r[field] || '').trim().length > 0 }).length
-          var count = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) }).length
-          var pct = total > 0 ? Math.round((count / total) * 100) : 0
-          return { v: v, count: count, pct: pct, total: total }
-        })
-        var maxPct = Math.max.apply(null, groupData.map(function(g) { return g.pct }).concat([1]))
-        return (
-          <div key={t.id} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px', marginBottom: 10, borderLeft: '3px solid ' + pal.border }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <span onClick={function() { onDrillTheme(t) }}
-                style={{ fontSize: 13, fontWeight: 700, color: pal.text, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: pal.border + '60', textUnderlineOffset: '2px' }}>
-                {t.name}
-              </span>
-              <span style={{ fontSize: 11, color: T.textMute }}>{totalThemeMatches[t.id]} total matches</span>
-              <button onClick={function() { onDrillTheme(t) }}
-                style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>
-                View comments {'\u2192'}
-              </button>
+      {/* Controls card */}
+      <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '18px 20px', marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+              Segment by <span style={{ fontWeight: 400 }}>(select one or more)</span>
             </div>
-            {groupData.sort(function(a, b) { return b.pct - a.pct }).map(function(g) {
-              var sig = sigTest(g.count, g.total, totalThemeMatches[t.id], totalRows)
-              var sigColor = sig && sig.dir === 'over' ? '#16a34a' : sig && sig.dir === 'under' ? '#dc2626' : null
-              return (
-                <div key={g.v} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: T.textMid, width: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    {g.v}
-                  </span>
-                  <div style={{ flex: 1, height: 8, background: T.bg, borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: (g.pct / maxPct * 100) + '%', background: pal.border, borderRadius: 4, transition: 'width .5s' }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {catFields.sort(function(a, b) { return fieldLabel(a).localeCompare(fieldLabel(b)) }).map(function(f) {
+                var active = breakdownFields.includes(f)
+                return (
+                  <button key={f} onClick={function() { toggleField(f) }}
+                    style={{ padding: '5px 12px', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? T.accentBg : T.bg, color: active ? T.accent : T.textMid, border: '1px solid ' + (active ? T.accent : T.border), borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    {active && <span style={{ fontSize: 10 }}>{'\u2713'}</span>}
+                    {fieldLabel(f)}
+                  </button>
+                )
+              })}
+            </div>
+            {breakdownFields.length > 1 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: T.textMute }}>
+                Segments: <span style={{ fontWeight: 700, color: T.text }}>{breakdownFields.map(fieldLabel).join(' \u00D7 ')}</span>
+                <button onClick={function() { setBreakdownFields([]) }} style={{ marginLeft: 8, fontSize: 10, color: T.textFaint, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>clear all</button>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+            {/* By Group / By Theme toggle */}
+            <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border }}>
+              {[['group', 'By Group'], ['theme', 'By Theme']].map(function(pair) {
+                var m = pair[0]; var lbl = pair[1]
+                return <button key={m} onClick={function() { setViewMode(m as 'group' | 'theme') }}
+                  style={{ fontSize: 11, fontWeight: viewMode === m ? 700 : 500, padding: '4px 12px', borderRadius: 18, background: viewMode === m ? T.bgCard : 'transparent', color: viewMode === m ? T.text : T.textMute, border: 'none', cursor: 'pointer', transition: 'all .12s' }}>
+                  {lbl}
+                </button>
+              })}
+            </div>
+            {/* Summarize Findings */}
+            {outliers.length > 0 && (
+              <button onClick={function() { setShowSummary(true) }}
+                style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: T.accentBg, color: T.accent, border: '1px solid ' + T.accentMid, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {'\uD83D\uDCCB'} Summarize <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: T.accent, color: 'white' }}>{outliers.length}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Stats cards — By Group or By Theme */}
+      {compStats && breakdownFields.length > 0 && (function() {
+        if (viewMode === 'group') {
+          return (
+            <div>
+              {compStats.groupStats.map(function(g) {
+                var maxShare = g.themeCounts.reduce(function(m, tc) { return Math.max(m, g.groupTotal > 0 ? Math.round(tc.count / g.groupTotal * 100) : 0) }, 1)
+                if (g.unclassified > 0) { var uPct = g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0; if (uPct > maxShare) maxShare = uPct }
+                return (
+                  <div key={g.group} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '16px 18px', marginBottom: 12 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 14 }}>
+                      <span style={{ color: T.accent }}>{g.group}</span>
+                      <span style={{ fontSize: 12, fontWeight: 400, color: T.textMute, marginLeft: 6 }}>({g.groupPct}% of dataset {'\u00B7'} {g.groupTotal.toLocaleString()} responses)</span>
+                    </div>
+                    {themes.themes.map(function(t, ti) {
+                      var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
+                      var count = tc ? tc.count : 0
+                      var ts = compStats.themeStats.find(function(ts) { return ts.themeId === t.id })
+                      var pct = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
+                      var pal = themeColors[ti] || THEME_PALETTE[0]
+                      var sig = sigTest(count, g.groupTotal, ts ? ts.totalMatches : 0, compStats.totalRows)
+                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} />
+                    })}
+                    {g.unclassified > 0 && <CompareBar label="Unclassified" pct={g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0} count={g.unclassified} maxPct={maxShare} color={T.borderMid} labelColor={T.textFaint} sig={null} isUnclassified={true} />}
                   </div>
-                  {sigColor && <span style={{ fontSize: 11, fontWeight: 800, color: sigColor, flexShrink: 0 }} title={sig!.dir === 'over' ? 'Over-represented (z=' + sig!.z.toFixed(1) + ')' : 'Under-represented (z=' + sig!.z.toFixed(1) + ')'}>★</span>}
-                  <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>
-                    {g.pct}%
-                  </span>
-                  <span style={{ fontSize: 10, color: T.textFaint, width: 40, textAlign: 'right', flexShrink: 0 }}>
-                    n={g.count}
-                  </span>
+                )
+              })}
+            </div>
+          )
+        }
+
+        // By Theme view
+        return (
+          <div>
+            {compStats.themeStats.map(function(ts, ti) {
+              var pal = themeColors[ti] || THEME_PALETTE[0]
+              var perGroupSorted = ts.perGroup.slice().sort(function(a, b) { return b.mentionRate - a.mentionRate })
+              var maxShare = perGroupSorted.reduce(function(m, g) { return Math.max(m, g.mentionRate) }, 1)
+              var themeObj = themes.themes.find(function(t) { return t.id === ts.themeId })
+              return (
+                <div key={ts.themeId} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '16px 18px', marginBottom: 12, borderLeft: '4px solid ' + pal.border }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: T.text, flex: 1 }}>{ts.themeName}</span>
+                    <span style={{ fontSize: 11, color: T.textMute }}>{ts.totalMatches.toLocaleString()} total matches</span>
+                    {themeObj && <button onClick={function() { onDrillTheme(themeObj!) }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>View comments {'\u2192'}</button>}
+                  </div>
+                  {perGroupSorted.map(function(g) {
+                    var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats.totalRows)
+                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} />
+                  })}
                 </div>
               )
             })}
           </div>
         )
-      })}
+      })()}
+
+      {/* Empty state */}
+      {!breakdownFields.length && (
+        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '40px 24px', textAlign: 'center', color: T.textFaint }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>{'\uD83D\uDC46'}</div>
+          <p style={{ fontSize: 13, margin: 0 }}>Select one or more fields above to start comparing themes across segments.</p>
+        </div>
+      )}
+
+      {/* ── Summarize Findings Modal ──────────────────────────────────────── */}
+      {showSummary && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={function() { setShowSummary(false) }}>
+          <div style={{ background: T.bgCard, borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,.22)', width: '100%', maxWidth: 620, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            onClick={function(e) { e.stopPropagation() }}>
+            <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: T.text, margin: '0 0 2px' }}>{'\uD83D\uDCCB'} Segment Findings Summary</h3>
+                <p style={{ fontSize: 11, color: T.textMute, margin: 0 }}>{outliers.length} statistically significant outlier{outliers.length !== 1 ? 's' : ''} {'\u00B7'} {breakdownFields.map(fieldLabel).join(' \u00D7 ')}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={function() { navigator.clipboard.writeText(summaryText).then(function() { setCopied(true); setTimeout(function() { setCopied(false) }, 2000) }) }}
+                  style={{ padding: '7px 14px', fontSize: 12, fontWeight: 700, background: copied ? T.greenBg : T.accentBg, color: copied ? T.green : T.accent, border: '1px solid ' + (copied ? T.greenMid : T.accentMid), borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {copied ? '\u2713 Copied!' : '\u2767 Copy'}
+                </button>
+                <button onClick={function() { setShowSummary(false) }} style={{ padding: '7px 10px', fontSize: 14, background: 'transparent', border: '1px solid ' + T.border, borderRadius: 7, cursor: 'pointer', color: T.textMid, lineHeight: 1 }}>{'\u2715'}</button>
+              </div>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '16px 22px', flex: 1 }}>
+              {outliers.length === 0 ? (
+                <p style={{ color: T.textMute, fontSize: 13 }}>No statistically significant outliers found.</p>
+              ) : (function() {
+                var over = outliers.filter(function(o) { return o.dir === 'over' })
+                var under = outliers.filter(function(o) { return o.dir === 'under' })
+                return (
+                  <>
+                    {over.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>{'\u25B2'} Over-indexed segments</div>
+                        {over.map(function(o, i) {
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 12px', background: T.greenBg, border: '1px solid ' + T.greenMid, borderRadius: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }}>★</span>
+                              <div style={{ flex: 1 }}>
+                                <span style={{ fontWeight: 700, color: T.text, fontSize: 13 }}>{o.group}</span>
+                                <span style={{ color: T.textMid, fontSize: 13 }}> mentions </span>
+                                <span style={{ fontWeight: 700, color: T.text, fontSize: 13 }}>"{o.themeName}"</span>
+                                <span style={{ fontSize: 12, color: T.textMid }}> at <strong style={{ color: '#16a34a' }}>{o.thisPct}%</strong> vs {o.restPct}% baseline</span>
+                                <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 6 }}>z={o.z.toFixed(1)} {'\u00B7'} n={o.groupTotal}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div style={{ height: 12 }} />
+                      </>
+                    )}
+                    {under.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>{'\u25BC'} Under-indexed segments</div>
+                        {under.map(function(o, i) {
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 12px', background: T.redBg, border: '1px solid ' + T.red + '30', borderRadius: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }}>★</span>
+                              <div style={{ flex: 1 }}>
+                                <span style={{ fontWeight: 700, color: T.text, fontSize: 13 }}>{o.group}</span>
+                                <span style={{ color: T.textMid, fontSize: 13 }}> mentions </span>
+                                <span style={{ fontWeight: 700, color: T.text, fontSize: 13 }}>"{o.themeName}"</span>
+                                <span style={{ fontSize: 12, color: T.textMid }}> at <strong style={{ color: '#dc2626' }}>{o.thisPct}%</strong> vs {o.restPct}% baseline</span>
+                                <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 6 }}>z={o.z.toFixed(1)} {'\u00B7'} n={o.groupTotal}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -507,6 +678,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [compareFields, setCompareFields] = useState<string[]>([])
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
   const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
+  const [drillGroup, setDrillGroup] = useState<string | null>(null)
   const [previousTab, setPreviousTab] = useState<SubTab>('themes')
   const [isDirty, setIsDirty] = useState(false)
 
@@ -768,17 +940,19 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   function handleSubTab(tab: SubTab) {
     if (tab === 'comments') setPreviousTab(subTab)
     setSubTab(tab)
-    if (tab !== 'comments') setDrillTheme(null)
+    if (tab !== 'comments') { setDrillTheme(null); setDrillGroup(null) }
   }
 
-  function handleDrillTheme(t: Theme) {
+  function handleDrillTheme(t: Theme, group?: string) {
     setPreviousTab(subTab)
     setDrillTheme(t)
+    setDrillGroup(group || null)
     setSubTab('comments')
   }
 
   function handleBackFromComments() {
     setDrillTheme(null)
+    setDrillGroup(null)
     setSubTab(previousTab)
   }
 
@@ -1188,7 +1362,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       )}
                       {/* Theme strip — click to switch themes */}
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1 }}>
-                        <button onClick={function() { setDrillTheme(null) }}
+                        <button onClick={function() { setDrillTheme(null); setDrillGroup(null) }}
                           style={{ fontSize: 11, fontWeight: !drillTheme ? 700 : 500, padding: '2px 10px', borderRadius: 20, background: !drillTheme ? T.bg : 'transparent', border: '1px solid ' + (!drillTheme ? T.borderMid : 'transparent'), color: !drillTheme ? T.text : T.textFaint, cursor: 'pointer' }}>
                           All
                         </button>
