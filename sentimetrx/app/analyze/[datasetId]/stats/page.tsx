@@ -1,7 +1,7 @@
 // app/analyze/[datasetId]/stats/page.tsx
 // Statistics module — loads schema + theme_model, renders StatsModule.
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import StatsModule from '@/components/analyze/StatsModule'
 
@@ -24,7 +24,9 @@ export default async function StatsPage({ params }: Props) {
   var orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
-  var { data: stateRow } = await supabase
+  var service = createServiceRoleClient()
+
+  var { data: stateRow } = await service
     .from('dataset_state')
     .select('schema_config, theme_model')
     .eq('dataset_id', params.datasetId)

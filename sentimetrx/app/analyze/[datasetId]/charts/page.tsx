@@ -1,5 +1,5 @@
 // app/analyze/[datasetId]/charts/page.tsx
-// Charts module — loads schema + analytics, renders ChartsModule.
+// Charts module — loads schema + analytics + theme_model, renders ChartsModule.
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
@@ -28,7 +28,7 @@ export default async function ChartsPage({ params }: Props) {
 
   var { data: stateRow } = await service
     .from('dataset_state')
-    .select('schema_config, analytics')
+    .select('schema_config, analytics, theme_model')
     .eq('dataset_id', params.datasetId)
     .single()
 
@@ -36,6 +36,7 @@ export default async function ChartsPage({ params }: Props) {
 
   var schema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
   var analytics = stateRow.analytics || null
+  var themeModel = stateRow.theme_model || null
 
-  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} />
+  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} />
 }
