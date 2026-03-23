@@ -403,7 +403,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     var list: { group: string; themeName: string; thisPct: number; restPct: number; dir: string; z: number; groupTotal: number; count: number }[] = []
     compStats.themeStats.forEach(function(ts) {
       ts.perGroup.forEach(function(g) {
-        var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats.totalRows)
+        var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
         if (sig && sig.dir !== 'ns') {
           list.push({ group: g.group, themeName: ts.themeName, thisPct: Math.round(sig.p1 * 100), restPct: Math.round(sig.p2 * 100), dir: sig.dir, z: sig.z, groupTotal: g.groupTotal, count: g.count })
         }
