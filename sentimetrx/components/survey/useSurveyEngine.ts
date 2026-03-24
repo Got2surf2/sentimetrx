@@ -335,7 +335,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     const wrap = document.createElement('div')
     wrap.className = 'flex flex-col gap-2 mt-1.5'
     const row = document.createElement('div')
-    row.className = 'flex gap-2 items-end overflow-hidden w-full'
+    row.className = 'flex gap-2 items-end w-full'
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
@@ -372,7 +372,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     row.append(ta, sendBtn)
     wrap.append(row, skipBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
+    setTimeout(() => ta.focus(), 100)
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom])
 
@@ -429,7 +429,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-2 mt-1.5'
           const row = document.createElement('div')
-          row.className = 'flex gap-2 items-end overflow-hidden w-full'
+          row.className = 'flex gap-2 items-end w-full'
           const ta = document.createElement('textarea')
           ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
@@ -469,7 +469,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           }
           clearInput()
           inputRef.current.appendChild(wrap)
-          setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
+          setTimeout(() => ta.focus(), 100)
           scrollBottom()
 
         // ── radio ───────────────────────────────────────────────
@@ -668,7 +668,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         // -- numeric input ---------------------------------------
         } else if (q.type === 'numeric') {
           const wrap = document.createElement('div')
-          wrap.className = 'flex gap-2 items-center mt-1.5 overflow-hidden'
+          wrap.className = 'flex gap-2 items-center mt-1.5'
           const inp = document.createElement('input')
           inp.type = 'number'
           inp.placeholder = 'Enter a number...'
@@ -706,7 +706,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           }
           clearInput()
           inputRef.current.appendChild(wrap)
-          setTimeout(() => { inp.focus(); window.scrollTo(0, 0) }, 100)
+          setTimeout(() => inp.focus(), 100)
           scrollBottom()
         }
       })
@@ -761,7 +761,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const showTextInput = useCallback((qKey: 'q3' | 'q4') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
-    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden w-full'
+    wrap.className = 'flex gap-2 items-end w-full mt-1.5'
 
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
@@ -804,14 +804,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     wrap.append(ta, sendBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
+    setTimeout(() => ta.focus(), 100)
     scrollBottom()
   }, [addMsg, config, handleOpenEnded, inputRef, scrollBottom])
 
   const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string) => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
-    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden w-full'
+    wrap.className = 'flex gap-2 items-end w-full mt-1.5'
 
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
@@ -856,7 +856,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     wrap.append(ta, sendBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
+    setTimeout(() => ta.focus(), 100)
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, state])
 
@@ -873,7 +873,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     wrap.className = 'flex flex-col gap-2 mt-1.5'
 
     const row = document.createElement('div')
-    row.className = 'flex gap-2 items-end overflow-hidden w-full'
+    row.className = 'flex gap-2 items-end w-full'
 
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
@@ -932,7 +932,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     row.append(ta, sendBtn)
     wrap.append(row, skipBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
+    setTimeout(() => ta.focus(), 100)
     scrollBottom()
   }, [addMsg, clearInput, config, handleOpenEnded, inputRef, progressFlow, scrollBottom, state])
 

@@ -21,24 +21,25 @@ export default function SurveyWidget({ study }: Props) {
   const scrollBottom = useCallback(() => {
     const el = chatRef.current
     if (!el) return
+    // Always scroll to bottom -- on mobile the near-bottom guard misfires when keyboard
+    // shrinks the viewport, so we scroll unconditionally and use two retries for
+    // late-rendering DOM elements (buttons, option lists)
     const doScroll = () => { el.scrollTop = el.scrollHeight }
     setTimeout(doScroll, 60)
     setTimeout(doScroll, 350)
   }, [chatRef])
 
   // Fix mobile keyboard: on iOS, 100dvh doesn't shrink when keyboard opens.
+  // Listen to visualViewport resize and update the wrapper height.
   const wrapperRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
-    // Set initial height immediately — 100dvh can be wrong on iOS when address bar shows
-    if (wrapperRef.current) {
-      wrapperRef.current.style.height = vv.height + 'px'
-    }
     const onResize = () => {
       if (wrapperRef.current) {
         wrapperRef.current.style.height = vv.height + 'px'
       }
+      // After viewport shrinks (keyboard open), scroll chat to bottom
       scrollBottom()
     }
     vv.addEventListener('resize', onResize)
@@ -47,33 +48,14 @@ export default function SurveyWidget({ study }: Props) {
 
   const { renderInput } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
 
-  // Lock body scroll on mount — prevents iOS from scrolling the page when keyboard opens
-  useEffect(() => {
-    const html = document.documentElement
-    const body = document.body
-    html.style.overflow = 'hidden'
-    html.style.height = '100%'
-    body.style.overflow = 'hidden'
-    body.style.height = '100%'
-    body.style.position = 'fixed'
-    body.style.width = '100%'
-    body.style.top = '0'
-    return () => {
-      html.style.overflow = ''
-      html.style.height = ''
-      body.style.overflow = ''
-      body.style.height = ''
-      body.style.position = ''
-      body.style.width = ''
-      body.style.top = ''
-    }
-  }, [])
-
+  // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
+  // are always the latest from the DB, not potentially stale server-rendered props
   useEffect(() => {
     fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
       .then(async res => {
         if (!res.ok) { setStatus('closed'); return }
         const data = await res.json()
+        // Update live fields from fresh API response
         if (data.bot_name)  setLiveBotName(data.bot_name)
         if (data.bot_emoji) setLiveBotEmoji(data.bot_emoji)
         if (data.config)    setLiveConfig(data.config)
@@ -134,19 +116,19 @@ export default function SurveyWidget({ study }: Props) {
 
   // Active survey
   return (
-    <div ref={wrapperRef} style={{
+    <div style={{
       width: '100%',
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
       background: theme.backgroundColor,
       overflow: 'hidden',
+      // Desktop card style via inline media won't work — handled by page wrapper
     }}>
-      {/* Header */}
+      {/* Fixed header — never scrolls */}
       <div style={{
         background: theme.headerGradient,
         padding: '12px 16px',
-        paddingTop: 'max(12px, env(safe-area-inset-top))',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -166,7 +148,7 @@ export default function SurveyWidget({ study }: Props) {
         </div>
       </div>
 
-      {/* Chat area */}
+      {/* Chat area — scrollable, fills all available space between header and input */}
       <div
         ref={chatRef}
         className="survey-chat"
@@ -178,11 +160,12 @@ export default function SurveyWidget({ study }: Props) {
           display: 'flex',
           flexDirection: 'column',
           gap: 8,
+          // Ensure it can shrink
           minHeight: 0,
         }}
       />
 
-      {/* Input area — always visible at bottom */}
+      {/* Input area — fixed height, max-height to prevent psycho buttons overflowing */}
       <div
         ref={inputRef}
         style={{
