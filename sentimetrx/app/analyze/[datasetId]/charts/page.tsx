@@ -40,5 +40,3 @@ export default async function ChartsPage({ params }: Props) {
 
   return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} />
 }
-
-

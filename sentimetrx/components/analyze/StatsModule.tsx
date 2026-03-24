@@ -125,7 +125,7 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
 }
 
 function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
-  var [mode, setMode] = useState('expert')
+  var [mode, setMode] = useState('naive')
   if (!text) return null
   var shown = mode === 'naive' && naiveText ? naiveText : text
   return (
@@ -705,7 +705,7 @@ function InsightsPanel({ numFields, catFields, data, aliases }: { numFields: Sch
             {catFields.map(function(f) {
               var sel = selectedCats.includes(f.field)
               return <button key={f.field} onClick={function() { toggleCat(f.field) }}
-                style={{ padding: '6px 14px', fontSize: 12, fontWeight: sel ? 700 : 500, borderRadius: 20, background: sel ? T.accent : T.bgCard, color: sel ? 'white' : T.textMid, border: '1px solid ' + (sel ? T.accent : T.border), cursor: 'pointer' }}>
+                style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 20, background: sel ? T.accent : T.bgCard, color: sel ? 'white' : T.textMid, border: '1px solid ' + (sel ? T.accent : T.border), cursor: 'pointer', transition: 'background .12s, color .12s, border-color .12s' }}>
                 {fLbl(f.field)}
               </button>
             })}

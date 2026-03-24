@@ -34,7 +34,7 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
   mono:    { name: 'Mono',    colors: ['#111827','#374151','#4b5563','#6b7280','#9ca3af','#d1d5db','#e5e7eb','#f3f4f6','#1f2937','#030712'] },
 }
 
-interface SchemaField { field: string; type: string; label?: string; values?: string[]; sqt?: string; remapping?: Record<string, number>; scoreField?: boolean }
+interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number; remapping?: Record<string, number>; scoreField?: boolean; sqt?: string }
 interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
@@ -125,7 +125,7 @@ function ChartSelect({ label, value, onChange, options, required }: {
 
 // ─── Chart Renderers (receive field values as params) ─────────────────────
 
-function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean; colors?: string[] }): React.ReactNode {
+function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }): React.ReactNode {
   var fs = analytics.fieldSummaries
   var useSmartOrder = opts?.smartAxes !== false
   var pal = opts?.colors || CHART_COLORS
@@ -142,21 +142,29 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var vals = entries.map(function(e) { return e[1] })
     var totalCount = vals.reduce(function(a, b) { return a + b }, 0)
     var displayVals = opts?.barMode === 'percent' ? vals.map(function(v) { return totalCount > 0 ? Math.round(v / totalCount * 1000) / 10 : 0 }) : vals
-    var yTitle = opts?.barMode === 'percent' ? '% of Total' : 'Count'
+    var catLabel = flByName(catField, schema)
+    var yTitle = opts?.barMode === 'percent' ? '% of ' + catLabel : 'Count'
+    var isH = opts?.orient === 'h'
 
     // Stacked/grouped with colorBy
     var colorByField = config.colorBy
     if (colorByField && fs[colorByField] && fs[colorByField].counts) {
-      // Need raw rows for crosstab — show simple bar if no colorBy data
-      return <BarStackedInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} colorByField={colorByField} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} />
+      return <BarStackedInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} colorByField={colorByField} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
     }
 
-    var traces = [{ type: 'bar', x: cats, y: displayVals, marker: { color: primaryColor }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 } }]
-    return <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(catField, schema), tickangle: cats.length > 8 ? -35 : 0 }, yaxis: { title: yTitle } }} />
+    var trace: any = { type: 'bar', marker: { color: primaryColor }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<extra>%{' + (isH ? 'y' : 'x') + '}</extra>' }
+    if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
+    else { trace.x = cats; trace.y = displayVals }
+
+    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : yTitle } }} />
   }
 
   if (chartType === 'distribution') {
     var field = config.field; if (!field) return <EmptyChart msg="Assign a numeric field above." />
+    var splitByField = config.splitBy
+    if (splitByField) {
+      return <DistSplitInner analytics={analytics} schema={schema} datasetId={datasetId} numField={field} splitByField={splitByField} colors={pal} />
+    }
     var sum = fs[field]; if (!sum) return <EmptyChart msg="No data." />
     if (sum.histogram) {
       var hx = sum.histogram.map(function(b) { return (b.min + b.max) / 2 }); var hy = sum.histogram.map(function(b) { return b.count })
@@ -311,9 +319,10 @@ function enrichRows(rows: Record<string, unknown>[], themeModel?: any, schema?: 
   })
 }
 
-function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean }) {
+function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
   var { rows, loaded } = useRows(datasetId)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  var pal = colors || CHART_COLORS
 
   // Build crosstab: category × colorBy
   var grid: Record<string, Record<string, number>> = {}
@@ -326,14 +335,31 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     if (!grid[cat]) grid[cat] = {}
     grid[cat][col] = (grid[cat][col] || 0) + 1
   })
-  var cats = Object.keys(grid).sort(function(a, b) {
-    var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0)
-    var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0)
-    return ta - tb
-  }).slice(0, 30)
-  var colors = Array.from(colorVals).sort()
 
-  var traces = colors.map(function(col, i) {
+  // Smart axes ordering
+  var cats = Object.keys(grid)
+  if (smartAxes) {
+    var fieldObj = schema.find(function(f) { return f.field === catField })
+    var orderedVals = fieldObj?.values
+    if (fieldObj?.remapping) {
+      var remap = fieldObj.remapping
+      orderedVals = Object.keys(remap).sort(function(a, b) { return (remap[a] || 0) - (remap[b] || 0) })
+    }
+    if (orderedVals && orderedVals.length > 0) {
+      cats = orderedVals.filter(function(v) { return grid[v] })
+      var extras = Object.keys(grid).filter(function(v) { return !orderedVals!.includes(v) }).sort()
+      cats = cats.concat(extras)
+    } else {
+      cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+    }
+  } else {
+    cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+  }
+  cats = cats.slice(0, 30)
+  var colorArr = Array.from(colorVals).sort()
+
+  var isH = orient === 'h'
+  var traces = colorArr.map(function(col, i) {
     var ys = cats.map(function(cat) { return grid[cat] ? (grid[cat][col] || 0) : 0 })
     if (barMode === 'percent') {
       ys = cats.map(function(cat) {
@@ -341,10 +367,15 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
         return total > 0 ? Math.round((grid[cat] ? (grid[cat][col] || 0) : 0) / total * 1000) / 10 : 0
       })
     }
-    return { type: 'bar', name: col, x: cats, y: ys, marker: { color: CHART_COLORS[i % CHART_COLORS.length] } }
+    var trace: any = { type: 'bar', name: col, marker: { color: pal[i % pal.length] }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' }
+    if (isH) { trace.y = cats; trace.x = ys; trace.orientation = 'h' }
+    else { trace.x = cats; trace.y = ys }
+    return trace
   })
 
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: flByName(catField, schema), tickangle: cats.length > 8 ? -35 : 0 }, yaxis: { title: barMode === 'percent' ? '% of Category' : 'Count' }, legend: { orientation: 'h', y: -0.2 } }} />
+  var catLabel = flByName(catField, schema)
+  var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : valLabel }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } } }} />
 }
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
@@ -411,6 +442,26 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: str
       </div>
     </div>
   )
+}
+
+function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[] }) {
+  var { rows, loaded } = useRows(datasetId)
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  var pal = colors || CHART_COLORS
+  var groups: Record<string, number[]> = {}
+  rows.forEach(function(r) {
+    var grp = String(r[splitByField] || '').trim()
+    var val = parseFloat(String(r[numField] || ''))
+    if (!grp || isNaN(val)) return
+    if (!groups[grp]) groups[grp] = []
+    groups[grp].push(val)
+  })
+  var keys = Object.keys(groups).sort()
+  if (!keys.length) return <EmptyChart msg="No data for this split." />
+  var traces = keys.map(function(k, i) {
+    return { type: 'box' as const, y: groups[k], name: k, marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
+  })
+  return <PlotlyChart traces={traces} layout={{ yaxis: { title: flByName(numField, schema) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
 }
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string }) {
@@ -488,28 +539,33 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
 }
 
 function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; schema: SchemaField[]; datasetId: string }) {
-  var [rows, setRows] = useState<Record<string, unknown>[]>([])
-  var [page, setPage] = useState(0); var [total, setTotal] = useState(0); var [loading, setLoading] = useState(false)
-  useEffect(function() {
-    setLoading(true)
-    fetch('/api/datasets/' + datasetId + '/rows?page=' + page + '&pageSize=50')
-      .then(function(r) { return r.json() })
-      .then(function(data) { setRows(data.rows || []); setTotal(data.totalRows || 0); setLoading(false) })
-      .catch(function() { setLoading(false) })
-  }, [datasetId, page])
-  var cols = schema.filter(function(f) { return f.type !== 'ignore' })
+  var { rows: allRows, loaded } = useRows(datasetId)
+  var [page, setPage] = useState(0)
+  var PAGE = 50
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  var total = allRows.length
+  var rows = allRows.slice(page * PAGE, (page + 1) * PAGE)
+  // Use allFields from enrichment context — includes __themes__ and __mapped__
+  var virtualFields: SchemaField[] = []
+  if (_enrichCtx.themeModel?.themes?.length) virtualFields.push({ field: '__themes__', type: 'categorical', label: 'Themes' })
+  ;(_enrichCtx.schema?.fields || []).forEach(function(f) {
+    if (f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0) {
+      virtualFields.push({ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (mapped)' })
+    }
+  })
+  var cols = schema.filter(function(f) { return f.type !== 'ignore' }).concat(virtualFields)
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead><tr>{cols.map(function(f) { return <th key={f.field} style={{ padding: '8px 10px', textAlign: 'left', background: T.bg, borderBottom: '2px solid ' + T.border, fontSize: 11, fontWeight: 700, color: T.textMid, whiteSpace: 'nowrap' }}>{fl(f)}</th> })}</tr></thead>
-        <tbody>{rows.map(function(r, i) { return <tr key={i}>{cols.map(function(f) { return <td key={f.field} style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, color: T.textMid, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(r[f.field] ?? '')}</td> })}</tr> })}</tbody>
+        <tbody>{rows.map(function(r, i) { return <tr key={i}>{cols.map(function(f) { var val = r[f.field]; return <td key={f.field} style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, color: T.textMid, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val != null ? String(val) : ''}</td> })}</tr> })}</tbody>
       </table>
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontSize: 11, color: T.textMute }}>
-        <span>{total} total rows</span>
+        <span>{total.toLocaleString()} total rows</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={function() { setPage(function(p) { return Math.max(0, p - 1) }) }} disabled={page === 0} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + T.border, background: T.bgCard, cursor: page === 0 ? 'not-allowed' : 'pointer', color: T.textMid, fontSize: 11 }}>{'\u2190'} Prev</button>
-          <span style={{ padding: '3px 8px' }}>Page {page + 1}</span>
-          <button onClick={function() { setPage(function(p) { return p + 1 }) }} disabled={rows.length < 50} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + T.border, background: T.bgCard, cursor: rows.length < 50 ? 'not-allowed' : 'pointer', color: T.textMid, fontSize: 11 }}>Next {'\u2192'}</button>
+          <span style={{ padding: '3px 8px' }}>Page {page + 1} of {Math.ceil(total / PAGE)}</span>
+          <button onClick={function() { setPage(function(p) { return p + 1 }) }} disabled={(page + 1) * PAGE >= total} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid ' + T.border, background: T.bgCard, cursor: (page + 1) * PAGE >= total ? 'not-allowed' : 'pointer', color: T.textMid, fontSize: 11 }}>Next {'\u2192'}</button>
         </div>
       </div>
     </div>
@@ -532,6 +588,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   var [hovered, setHovered] = useState<string | null>(null)
   var [barMode, setBarMode] = useState<'count' | 'percent'>('count')
   var [barStack, setBarStack] = useState(false)
+  var [barOrient, setBarOrient] = useState<'v' | 'h'>('v')
   var [smartAxes, setSmartAxes] = useState(true)
   var [activePalette, setActivePalette] = useState('hermes')
   var [showPalettePicker, setShowPalettePicker] = useState(false)
@@ -793,6 +850,10 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
                 <button onClick={function() { setBarMode('count') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'count' ? T.bgCard : 'transparent', color: barMode === 'count' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'count' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Count</button>
                 <button onClick={function() { setBarMode('percent') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'percent' ? T.bgCard : 'transparent', color: barMode === 'percent' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'percent' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Percentage</button>
               </div>
+              <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
+                <button onClick={function() { setBarOrient('v') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barOrient === 'v' ? T.bgCard : 'transparent', color: barOrient === 'v' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barOrient === 'v' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Vertical</button>
+                <button onClick={function() { setBarOrient('h') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barOrient === 'h' ? T.bgCard : 'transparent', color: barOrient === 'h' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barOrient === 'h' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Horizontal</button>
+              </div>
               {currentConfig.colorBy && (
                 <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
                   <button onClick={function() { setBarStack(false) }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: !barStack ? T.bgCard : 'transparent', color: !barStack ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: !barStack ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Grouped</button>
@@ -861,7 +922,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
           {/* Chart render area */}
           <div ref={chartBodyRef}>
             {!hasData && <EmptyChart msg="No data loaded." />}
-            {hasData && renderChart(activeChart, currentConfig, enrichedAnalytics!, allFields, datasetId, { barMode: barMode, barStack: barStack, smartAxes: smartAxes, colors: currentColors })}
+            {hasData && renderChart(activeChart, currentConfig, enrichedAnalytics!, allFields, datasetId, { barMode: barMode, barStack: barStack, smartAxes: smartAxes, colors: currentColors, orient: barOrient })}
           </div>
         </div>
 
@@ -923,5 +984,3 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     </div>
   )
 }
-
-
