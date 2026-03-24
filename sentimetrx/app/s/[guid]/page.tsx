@@ -30,14 +30,14 @@ export default async function SurveyPage({ params }: Props) {
 
   if (study.status !== 'active') {
     return (
-      <main style={{ height: '100vh', height: '100dvh' as any, background: bg, overflow: 'hidden', position: 'fixed' as any, inset: 0 }}>
+      <main style={{ height: '100vh', minHeight: '100dvh' as any, background: bg, overflow: 'hidden', position: 'fixed' as any, inset: 0 }}>
         <SurveyWidget study={study as Study} />
       </main>
     )
   }
 
   return (
-    <main style={{ height: '100vh', height: '100dvh' as any, background: bg, overflow: 'hidden', position: 'fixed' as any, inset: 0 }}>
+    <main style={{ height: '100vh', minHeight: '100dvh' as any, background: bg, overflow: 'hidden', position: 'fixed' as any, inset: 0 }}>
       <SurveyWidget study={study as Study} />
     </main>
   )
