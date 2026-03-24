@@ -1,54 +1,164 @@
 // lib/scaleUtils.ts
 // Ordinal scale detection, intelligent mapping suggestions, and smart axis ordering.
 
-// ── Known ordinal scales ──────────────────────────────────────────────────
-var AGREE_SCALE = ['Strongly Disagree', 'Disagree', 'Neither', 'Neutral', 'Agree', 'Strongly Agree']
-var FREQ_SCALE  = ['Never', 'Rarely', 'Sometimes', 'Often', 'Always']
-var SAT_SCALE   = ['Very Dissatisfied', 'Dissatisfied', 'Neutral', 'Satisfied', 'Very Satisfied']
-var LIKE_SCALE  = ['Very Unlikely', 'Unlikely', 'Neutral', 'Likely', 'Very Likely']
-var SAT5_SCALE  = ['Highly Dissatisfied', 'Dissatisfied', 'Neutral', 'Satisfied', 'Highly Satisfied']
-var QUALITY_SCALE = ['Very Poor', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent']
-var IMPORT_SCALE  = ['Not at all Important', 'Slightly Important', 'Moderately Important', 'Important', 'Very Important', 'Extremely Important']
-var YES_NO_SCALE  = ['No', 'Yes']
-var BOOL_SCALE    = ['False', 'True']
-var SIZE_SCALE    = ['Very Small', 'Small', 'Medium', 'Large', 'Very Large']
-var PRIORITY_SCALE = ['Low', 'Medium', 'High', 'Critical']
+// ── Known ordinal scales (canonical form, lowest to highest) ──────────────
+// Each scale entry: [canonicalLabel, ...aliases]
+// Detection matches against ALL aliases, not just the canonical form.
 
-var ALL_SCALES = [
-  AGREE_SCALE, FREQ_SCALE, SAT_SCALE, LIKE_SCALE, SAT5_SCALE,
-  QUALITY_SCALE, IMPORT_SCALE, YES_NO_SCALE, BOOL_SCALE,
-  SIZE_SCALE, PRIORITY_SCALE,
+var SCALES: { name: string; points: { canonical: string; aliases: string[] }[] }[] = [
+  { name: 'satisfaction-5', points: [
+    { canonical: 'Very Dissatisfied', aliases: ['very dissatisfied', 'highly dissatisfied', 'extremely dissatisfied', 'very unsatisfied'] },
+    { canonical: 'Dissatisfied', aliases: ['dissatisfied', 'unsatisfied', 'somewhat dissatisfied'] },
+    { canonical: 'Neutral', aliases: ['neutral', 'neither satisfied nor dissatisfied', 'neither', 'neither agree nor disagree', 'neither satisfied or dissatisfied', 'neither dissatisfied nor satisfied', 'indifferent', 'mixed feelings'] },
+    { canonical: 'Satisfied', aliases: ['satisfied', 'somewhat satisfied'] },
+    { canonical: 'Very Satisfied', aliases: ['very satisfied', 'highly satisfied', 'extremely satisfied'] },
+  ]},
+  { name: 'agreement-5', points: [
+    { canonical: 'Strongly Disagree', aliases: ['strongly disagree'] },
+    { canonical: 'Disagree', aliases: ['disagree', 'somewhat disagree'] },
+    { canonical: 'Neutral', aliases: ['neutral', 'neither', 'neither agree nor disagree', 'undecided'] },
+    { canonical: 'Agree', aliases: ['agree', 'somewhat agree'] },
+    { canonical: 'Strongly Agree', aliases: ['strongly agree'] },
+  ]},
+  { name: 'likelihood-5', points: [
+    { canonical: 'Very Unlikely', aliases: ['very unlikely', 'extremely unlikely', 'highly unlikely'] },
+    { canonical: 'Unlikely', aliases: ['unlikely', 'somewhat unlikely'] },
+    { canonical: 'Neutral', aliases: ['neutral', 'neither likely nor unlikely', 'undecided'] },
+    { canonical: 'Likely', aliases: ['likely', 'somewhat likely'] },
+    { canonical: 'Very Likely', aliases: ['very likely', 'extremely likely', 'highly likely', 'definitely'] },
+  ]},
+  { name: 'frequency-5', points: [
+    { canonical: 'Never', aliases: ['never', 'not at all'] },
+    { canonical: 'Rarely', aliases: ['rarely', 'seldom', 'almost never'] },
+    { canonical: 'Sometimes', aliases: ['sometimes', 'occasionally'] },
+    { canonical: 'Often', aliases: ['often', 'frequently', 'most of the time'] },
+    { canonical: 'Always', aliases: ['always', 'all the time', 'every time'] },
+  ]},
+  { name: 'quality-5', points: [
+    { canonical: 'Very Poor', aliases: ['very poor', 'terrible', 'awful'] },
+    { canonical: 'Poor', aliases: ['poor', 'bad'] },
+    { canonical: 'Fair', aliases: ['fair', 'average', 'okay', 'ok', 'adequate'] },
+    { canonical: 'Good', aliases: ['good', 'above average'] },
+    { canonical: 'Excellent', aliases: ['excellent', 'outstanding', 'exceptional', 'very good', 'great', 'superb'] },
+  ]},
+  { name: 'importance-5', points: [
+    { canonical: 'Not Important', aliases: ['not important', 'not at all important', 'unimportant'] },
+    { canonical: 'Slightly Important', aliases: ['slightly important', 'a little important'] },
+    { canonical: 'Moderately Important', aliases: ['moderately important', 'somewhat important'] },
+    { canonical: 'Important', aliases: ['important', 'quite important'] },
+    { canonical: 'Very Important', aliases: ['very important', 'extremely important', 'critically important'] },
+  ]},
+  { name: 'yes-no', points: [
+    { canonical: 'No', aliases: ['no', 'false', '0'] },
+    { canonical: 'Yes', aliases: ['yes', 'true', '1'] },
+  ]},
+  { name: 'size-4', points: [
+    { canonical: 'Small', aliases: ['small', 'very small', 'tiny'] },
+    { canonical: 'Medium', aliases: ['medium', 'moderate', 'average'] },
+    { canonical: 'Large', aliases: ['large', 'big'] },
+    { canonical: 'Very Large', aliases: ['very large', 'huge', 'massive'] },
+  ]},
+  { name: 'priority-3', points: [
+    { canonical: 'Low', aliases: ['low', 'minor'] },
+    { canonical: 'Medium', aliases: ['medium', 'moderate', 'normal'] },
+    { canonical: 'High', aliases: ['high', 'critical', 'urgent'] },
+  ]},
+  { name: 'difficulty-5', points: [
+    { canonical: 'Very Easy', aliases: ['very easy', 'extremely easy'] },
+    { canonical: 'Easy', aliases: ['easy', 'somewhat easy'] },
+    { canonical: 'Moderate', aliases: ['moderate', 'neutral', 'neither easy nor difficult'] },
+    { canonical: 'Difficult', aliases: ['difficult', 'hard', 'somewhat difficult'] },
+    { canonical: 'Very Difficult', aliases: ['very difficult', 'extremely difficult', 'very hard'] },
+  ]},
+  { name: 'amount-5', points: [
+    { canonical: 'Much Less', aliases: ['much less', 'far less', 'significantly less'] },
+    { canonical: 'Less', aliases: ['less', 'somewhat less', 'a little less'] },
+    { canonical: 'About the Same', aliases: ['about the same', 'same', 'no change', 'unchanged'] },
+    { canonical: 'More', aliases: ['more', 'somewhat more', 'a little more'] },
+    { canonical: 'Much More', aliases: ['much more', 'far more', 'significantly more'] },
+  ]},
+  { name: 'nps-3', points: [
+    { canonical: 'Detractor', aliases: ['detractor', 'detractors'] },
+    { canonical: 'Passive', aliases: ['passive', 'passives', 'neutral'] },
+    { canonical: 'Promoter', aliases: ['promoter', 'promoters'] },
+  ]},
 ]
+
+// ── Match a value against a scale point (exact then fuzzy) ────────────────
+function matchPoint(value: string, point: { canonical: string; aliases: string[] }): boolean {
+  var lower = value.toLowerCase().trim()
+  // Exact alias match first
+  if (point.aliases.some(function(a) { return lower === a })) return true
+  // Partial match — value contains the canonical, but NOT a substring of another word
+  var canon = point.canonical.toLowerCase()
+  if (lower.includes(canon) && lower.length < canon.length * 3) return true
+  return false
+}
 
 // ── Detect which known scale a set of values matches ──────────────────────
 export function detectScale(values: string[]): string[] | null {
   if (!values || values.length < 2) return null
-  var lower = values.map(function(v) { return v.toLowerCase().trim() })
 
-  for (var i = 0; i < ALL_SCALES.length; i++) {
-    var scale = ALL_SCALES[i]
-    var hits = scale.filter(function(s) {
-      return lower.some(function(v) { return v === s.toLowerCase() || v.includes(s.toLowerCase()) })
+  var bestScale: string[] | null = null
+  var bestHits = 0
+
+  for (var s = 0; s < SCALES.length; s++) {
+    var scale = SCALES[s]
+    // For each value, find which scale point it matches (if any)
+    var matched: { value: string; idx: number }[] = []
+    var usedIndices = new Set<number>()
+
+    values.forEach(function(v) {
+      for (var p = 0; p < scale.points.length; p++) {
+        if (usedIndices.has(p)) continue
+        if (matchPoint(v, scale.points[p])) {
+          matched.push({ value: v, idx: p })
+          usedIndices.add(p)
+          return
+        }
+      }
     })
-    if (hits.length >= 2) {
-      // Return the ordered subset that matches
-      var ordered = scale.map(function(s) {
-        return values.find(function(v) { return v.toLowerCase() === s.toLowerCase() || v.toLowerCase().includes(s.toLowerCase()) })
-      }).filter(Boolean) as string[]
-      var remaining = values.filter(function(v) { return !ordered.includes(v) })
-      return ordered.concat(remaining)
+
+    if (matched.length >= 2 && matched.length > bestHits) {
+      // Sort matched values by their scale position
+      matched.sort(function(a, b) { return a.idx - b.idx })
+      var ordered = matched.map(function(m) { return m.value })
+      // Add unmatched values at the end
+      var matchedValues = new Set(ordered)
+      var remaining = values.filter(function(v) { return !matchedValues.has(v) })
+      bestScale = ordered.concat(remaining)
+      bestHits = matched.length
     }
   }
-  return null
+
+  return bestScale
+}
+
+// ── Order by numeric remapping if available ───────────────────────────────
+export function orderByRemapping(values: string[], remapping: Record<string, number>): string[] {
+  if (!remapping || Object.keys(remapping).length === 0) return values
+  return values.slice().sort(function(a, b) {
+    var na = remapping[a], nb = remapping[b]
+    if (na != null && nb != null) return na - nb
+    if (na != null) return -1
+    if (nb != null) return 1
+    return a.localeCompare(b)
+  })
 }
 
 // ── Smart ordering for chart axes ─────────────────────────────────────────
-export function smartOrder(values: string[]): string[] {
+export function smartOrder(values: string[], remapping?: Record<string, number>): string[] {
+  // Priority 1: use explicit numeric remapping
+  if (remapping && Object.keys(remapping).length >= 2) {
+    return orderByRemapping(values, remapping)
+  }
+
+  // Priority 2: detect known ordinal scale
   var detected = detectScale(values)
   if (detected) return detected
 
-  // Try pure numeric sort
-  var allNumeric = values.every(function(v) { return !isNaN(Number(v)) })
+  // Priority 3: try pure numeric sort
+  var allNumeric = values.every(function(v) { return !isNaN(Number(v)) && v.trim() !== '' })
   if (allNumeric) return values.slice().sort(function(a, b) { return Number(a) - Number(b) })
 
   // Default alphabetical
@@ -58,6 +168,7 @@ export function smartOrder(values: string[]): string[] {
 // ── Intelligent mapping suggestions for categorical → numeric ─────────────
 export function suggestMapping(values: string[]): Record<string, number> | null {
   if (!values || values.length < 2) return null
+
   var detected = detectScale(values)
   if (detected) {
     var map: Record<string, number> = {}
@@ -67,15 +178,14 @@ export function suggestMapping(values: string[]): Record<string, number> | null 
     return map
   }
 
-  // Try pure numeric values already
-  var allNumeric = values.every(function(v) { return !isNaN(Number(v)) })
+  // Try pure numeric values
+  var allNumeric = values.every(function(v) { return !isNaN(Number(v)) && v.trim() !== '' })
   if (allNumeric) {
     var numMap: Record<string, number> = {}
     values.forEach(function(v) { numMap[v] = Number(v) })
     return numMap
   }
 
-  // No intelligent suggestion possible
   return null
 }
 
@@ -88,5 +198,5 @@ export function isOrdinalScale(values: string[]): boolean {
 export function scaleDirectionLabel(values: string[]): string | null {
   var detected = detectScale(values)
   if (!detected || detected.length < 2) return null
-  return detected[0] + ' → ' + detected[detected.length - 1]
+  return detected[0] + ' \u2192 ' + detected[detected.length - 1]
 }

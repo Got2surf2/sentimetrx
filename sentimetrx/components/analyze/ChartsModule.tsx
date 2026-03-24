@@ -140,8 +140,10 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />
     var rawEntries = Object.entries(summary.counts)
-    // Smart axes: order by detected scale; otherwise alphabetical (Item 20)
-    var orderedKeys = useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] })) : rawEntries.map(function(e) { return e[0] }).sort()
+    // Smart axes: order by remapping, then detected scale, then alphabetical (Item 20)
+    var catFieldObj = schema.find(function(f) { return f.field === catField })
+    var catRemap = catFieldObj?.remapping
+    var orderedKeys = useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] }), catRemap) : rawEntries.map(function(e) { return e[0] }).sort()
     var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
     var cats = entries.map(function(e) { return e[0] })
     var vals = entries.map(function(e) { return e[1] })
@@ -197,7 +199,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'treemap') {
     var catF2 = config.category; if (!catF2) return <EmptyChart msg="Assign a category field above." />
     var s2 = fs[catF2]; if (!s2 || !s2.counts) return <EmptyChart msg="No data." />
-    var e2 = (function() { var raw = Object.entries(s2.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
+    var e2 = (function() { var raw = Object.entries(s2.counts); var f2Obj = schema.find(function(f) { return f.field === catF2 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f2Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
     return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
@@ -212,7 +214,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'waterfall') {
     var catF4 = config.category; if (!catF4) return <EmptyChart msg="Assign a category field above." />
     var s4 = fs[catF4]; if (!s4 || !s4.counts) return <EmptyChart msg="No data." />
-    var e4 = (function() { var raw = Object.entries(s4.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 15).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
+    var e4 = (function() { var raw = Object.entries(s4.counts); var f4Obj = schema.find(function(f) { return f.field === catF4 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f4Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 15).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
     var wLabels = e4.map(function(e) { return e[0] }).concat(['Total'])
     var wValues = e4.map(function(e) { return e[1] })
     var total = wValues.reduce(function(a, b) { return a + b }, 0)

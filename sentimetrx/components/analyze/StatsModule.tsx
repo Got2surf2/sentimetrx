@@ -149,6 +149,7 @@ function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
 function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[] }) {
   var [sel, setSel] = useState(numFields[0]?.field || '')
   useEffect(function() { if (!sel && numFields.length) setSel(numFields[0].field) }, [numFields.length])
+  var selLabel = (function() { var f = numFields.find(function(nf) { return nf.field === sel }); return f && f.label ? f.label : sel })()
 
   var stats = useMemo(function() {
     if (!sel || !data.length) return null
@@ -164,14 +165,14 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
   return (
     <div>
       <PanelHeader icon={'\u2211'} title="Descriptive Statistics" desc="Summary statistics, distribution shape, and normality tests for each numeric variable." />
-      {stats && <BottomLine text={descBL(sel, stats)} naiveText={descBL_naive(sel, stats)} />}
+      {stats && <BottomLine text={descBL(selLabel, stats)} naiveText={descBL_naive(selLabel, stats)} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
         {numFields.map(function(f) { return <FieldPill key={f.field} label={f.label || f.field} active={sel === f.field} onClick={function() { setSel(f.field) }} /> })}
       </div>
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 18px', borderBottom: '1px solid ' + T.border, fontSize: 13, fontWeight: 700, color: T.text }}>{sel} <span style={{ fontWeight: 400, color: T.textFaint, fontSize: 11 }}>{'\u2014'} {stats.n} observations</span></div>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid ' + T.border, fontSize: 13, fontWeight: 700, color: T.text }}>{selLabel} <span style={{ fontWeight: 400, color: T.textFaint, fontSize: 11 }}>{'\u2014'} {stats.n} observations</span></div>
             <div style={{ padding: '2px 16px 12px' }}>
               <StatRow label="Mean" value={fmtN(stats.mn)} />
               <StatRow label="Median" value={fmtN(stats.med)} />
@@ -203,7 +204,7 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
               <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Distribution</div>
               <PlotlyChart
                 data={[{ x: stats.vals, type: 'histogram', marker: { color: T.accent, opacity: 0.8, line: { color: T.accentMid, width: 1 } }, nbinsx: Math.min(50, Math.ceil(Math.sqrt(stats.n))) }]}
-                layout={{ xaxis: { title: { text: sel, font: { size: 11 } } }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.04, showlegend: false, margin: { t: 10, r: 16, b: 44, l: 48 } }}
+                layout={{ xaxis: { title: { text: selLabel, font: { size: 11 } } }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.04, showlegend: false, margin: { t: 10, r: 16, b: 44, l: 48 } }}
                 style={{ height: 220, width: '100%' }}
               />
             </Card>
