@@ -34,7 +34,7 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
   mono:    { name: 'Mono',    colors: ['#111827','#374151','#4b5563','#6b7280','#9ca3af','#d1d5db','#e5e7eb','#f3f4f6','#1f2937','#030712'] },
 }
 
-interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number }
+interface SchemaField { field: string; type: string; label?: string; values?: string[]; sqt?: string; remapping?: Record<string, number>; scoreField?: boolean }
 interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
