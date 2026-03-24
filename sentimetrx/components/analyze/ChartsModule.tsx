@@ -90,8 +90,13 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
   var ref = useRef<HTMLDivElement>(null)
   useEffect(function() {
     if (!ref.current || !traces.length) return
-    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 16, r: 20, b: 48, l: 56 }, xaxis: { gridcolor: T.border, zerolinecolor: T.borderMid }, yaxis: { gridcolor: T.border, zerolinecolor: T.borderMid } }
+    var baseX = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
+    var baseY = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
+    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 16, r: 20, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
     var merged = Object.assign({}, base, layout || {})
+    // Deep merge axes so caller's title/tickangle don't lose grid settings
+    merged.xaxis = Object.assign({}, baseX, layout?.xaxis || {})
+    merged.yaxis = Object.assign({}, baseY, layout?.yaxis || {})
     getPlotly().then(function(Plotly) { Plotly.newPlot(ref.current, traces, merged, { responsive: true, displayModeBar: false }) })
     return function() { if (ref.current) getPlotly().then(function(Plotly) { try { Plotly.purge(ref.current) } catch {} }) }
   }, [traces, layout])
@@ -135,8 +140,8 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />
     var rawEntries = Object.entries(summary.counts)
-    // Smart axes: order by detected scale, otherwise by count desc
-    var orderedKeys = useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] })) : rawEntries.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] })
+    // Smart axes: order by detected scale; otherwise alphabetical (Item 20)
+    var orderedKeys = useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] })) : rawEntries.map(function(e) { return e[0] }).sort()
     var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
     var cats = entries.map(function(e) { return e[0] })
     var vals = entries.map(function(e) { return e[1] })
@@ -152,11 +157,11 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       return <BarStackedInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} colorByField={colorByField} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
     }
 
-    var trace: any = { type: 'bar', marker: { color: primaryColor }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<extra>%{' + (isH ? 'y' : 'x') + '}</extra>' }
+    var trace: any = { type: 'bar', marker: { color: primaryColor, line: { color: primaryColor + '40', width: 1 } }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<extra>%{' + (isH ? 'y' : 'x') + '}</extra>' }
     if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = displayVals }
 
-    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : yTitle } }} />
+    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : yTitle }, barcornerradius: 4 }} />
   }
 
   if (chartType === 'distribution') {
@@ -166,11 +171,12 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       return <DistSplitInner analytics={analytics} schema={schema} datasetId={datasetId} numField={field} splitByField={splitByField} colors={pal} />
     }
     var sum = fs[field]; if (!sum) return <EmptyChart msg="No data." />
+    var fieldAlias = flByName(field, schema)
     if (sum.histogram) {
       var hx = sum.histogram.map(function(b) { return (b.min + b.max) / 2 }); var hy = sum.histogram.map(function(b) { return b.count })
-      return <PlotlyChart traces={[{ type: 'bar', x: hx, y: hy, marker: { color: T.purple, opacity: 0.8 } }]} layout={{ xaxis: { title: flByName(field, schema) }, yaxis: { title: 'Count' }, bargap: 0.05 }} />
+      return <PlotlyChart traces={[{ type: 'bar', x: hx, y: hy, marker: { color: T.purple, opacity: 0.8, line: { color: T.purple + '60', width: 1 } } }]} layout={{ xaxis: { title: fieldAlias }, yaxis: { title: 'Count of ' + fieldAlias }, bargap: 0.04, barcornerradius: 3 }} />
     }
-    return <PlotlyChart traces={[{ type: 'box', y: [sum.min, sum.avg, sum.median, sum.max].filter(function(v) { return v != null }), boxpoints: 'all', marker: { color: T.purple }, name: flByName(field, schema) }]} layout={{ yaxis: { title: flByName(field, schema) } }} />
+    return <PlotlyChart traces={[{ type: 'box', y: [sum.min, sum.avg, sum.median, sum.max].filter(function(v) { return v != null }), boxpoints: 'all', marker: { color: T.purple }, name: fieldAlias }]} layout={{ yaxis: { title: fieldAlias } }} />
   }
 
   if (chartType === 'scatter') {
@@ -191,7 +197,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'treemap') {
     var catF2 = config.category; if (!catF2) return <EmptyChart msg="Assign a category field above." />
     var s2 = fs[catF2]; if (!s2 || !s2.counts) return <EmptyChart msg="No data." />
-    var e2 = (function() { var raw = Object.entries(s2.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
+    var e2 = (function() { var raw = Object.entries(s2.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
     return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
@@ -199,14 +205,14 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'bubbles') {
     var catF3 = config.category; if (!catF3) return <EmptyChart msg="Assign a category field above." />
     var s3 = fs[catF3]; if (!s3 || !s3.counts) return <EmptyChart msg="No data." />
-    var e3 = Object.entries(s3.counts).sort(function(a, b) { return b[1] - a[1] }).slice(0, 20)
-    return <PlotlyChart traces={[{ x: e3.map(function(e, i) { return (i % 5) * 2 }), y: e3.map(function(e, i) { return Math.floor(i / 5) * 2 }), mode: 'markers+text', marker: { size: e3.map(function(e) { return Math.max(20, Math.sqrt(e[1]) * 4) }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.8 }, text: e3.map(function(e) { return e[0] + '\n' + e[1] }), textposition: 'center', textfont: { size: 10 } }]} layout={{ showlegend: false, xaxis: { visible: false }, yaxis: { visible: false }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
+    var e3 = Object.entries(s3.counts).sort(function(a, b) { return a[0].localeCompare(b[0]) }).slice(0, 20)
+    return <PlotlyChart traces={[{ x: e3.map(function(e, i) { return (i % 5) * 2 }), y: e3.map(function(e, i) { return Math.floor(i / 5) * 2 }), mode: 'markers+text', marker: { size: e3.map(function(e) { return Math.max(20, Math.sqrt(e[1]) * 4) }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.8, line: { color: e3.map(function(_, i) { return pal[i % pal.length] + '40' }), width: 1 } }, text: e3.map(function(e) { return e[0] + '\n' + e[1] }), textposition: 'center', textfont: { size: 10 } }]} layout={{ showlegend: false, xaxis: { visible: false }, yaxis: { visible: false }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'waterfall') {
     var catF4 = config.category; if (!catF4) return <EmptyChart msg="Assign a category field above." />
     var s4 = fs[catF4]; if (!s4 || !s4.counts) return <EmptyChart msg="No data." />
-    var e4 = (function() { var raw = Object.entries(s4.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 15).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
+    var e4 = (function() { var raw = Object.entries(s4.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 15).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
     var wLabels = e4.map(function(e) { return e[0] }).concat(['Total'])
     var wValues = e4.map(function(e) { return e[1] })
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
@@ -367,7 +373,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
         return total > 0 ? Math.round((grid[cat] ? (grid[cat][col] || 0) : 0) / total * 1000) / 10 : 0
       })
     }
-    var trace: any = { type: 'bar', name: col, marker: { color: pal[i % pal.length] }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' }
+    var trace: any = { type: 'bar', name: col, marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' }
     if (isH) { trace.y = cats; trace.x = ys; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = ys }
     return trace
@@ -375,7 +381,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
 
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : valLabel }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } } }} />
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : valLabel }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
