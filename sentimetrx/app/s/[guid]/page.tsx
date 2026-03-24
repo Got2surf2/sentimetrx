@@ -28,14 +28,6 @@ export default async function SurveyPage({ params }: Props) {
 
   const bg = study.config?.theme?.backgroundColor || '#0a1628'
 
-  if (study.status !== 'active') {
-    return (
-      <main style={{ height: '100dvh', minHeight: '100vh', background: bg, overflow: 'hidden' }}>
-        <SurveyWidget study={study as Study} />
-      </main>
-    )
-  }
-
   return (
     <main style={{ height: '100dvh', minHeight: '100vh', background: bg, overflow: 'hidden' }}>
       <SurveyWidget study={study as Study} />
@@ -56,5 +48,3 @@ export async function generateMetadata({ params }: Props) {
     description: `Share your feedback with ${data.bot_name}`,
   }
 }
-
-

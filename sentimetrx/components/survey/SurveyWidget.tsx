@@ -21,16 +21,12 @@ export default function SurveyWidget({ study }: Props) {
   const scrollBottom = useCallback(() => {
     const el = chatRef.current
     if (!el) return
-    // Always scroll to bottom -- on mobile the near-bottom guard misfires when keyboard
-    // shrinks the viewport, so we scroll unconditionally and use two retries for
-    // late-rendering DOM elements (buttons, option lists)
     const doScroll = () => { el.scrollTop = el.scrollHeight }
     setTimeout(doScroll, 60)
     setTimeout(doScroll, 350)
   }, [chatRef])
 
   // Fix mobile keyboard: on iOS, 100dvh doesn't shrink when keyboard opens.
-  // Listen to visualViewport resize and update the wrapper height.
   const wrapperRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const vv = window.visualViewport
@@ -39,7 +35,6 @@ export default function SurveyWidget({ study }: Props) {
       if (wrapperRef.current) {
         wrapperRef.current.style.height = vv.height + 'px'
       }
-      // After viewport shrinks (keyboard open), scroll chat to bottom
       scrollBottom()
     }
     vv.addEventListener('resize', onResize)
@@ -48,14 +43,11 @@ export default function SurveyWidget({ study }: Props) {
 
   const { renderInput } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
 
-  // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
-  // are always the latest from the DB, not potentially stale server-rendered props
   useEffect(() => {
     fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
       .then(async res => {
         if (!res.ok) { setStatus('closed'); return }
         const data = await res.json()
-        // Update live fields from fresh API response
         if (data.bot_name)  setLiveBotName(data.bot_name)
         if (data.bot_emoji) setLiveBotEmoji(data.bot_emoji)
         if (data.config)    setLiveConfig(data.config)
@@ -116,7 +108,7 @@ export default function SurveyWidget({ study }: Props) {
 
   // Active survey
   return (
-    <div style={{
+    <div ref={wrapperRef} style={{
       width: '100%',
       height: '100%',
       display: 'flex',
@@ -124,7 +116,7 @@ export default function SurveyWidget({ study }: Props) {
       background: theme.backgroundColor,
       overflow: 'hidden',
     }}>
-      {/* Fixed header — never scrolls */}
+      {/* Header */}
       <div style={{
         background: theme.headerGradient,
         padding: '12px 16px',
@@ -148,7 +140,7 @@ export default function SurveyWidget({ study }: Props) {
         </div>
       </div>
 
-      {/* Chat area — scrollable, fills all available space between header and input */}
+      {/* Chat area */}
       <div
         ref={chatRef}
         className="survey-chat"
@@ -160,12 +152,11 @@ export default function SurveyWidget({ study }: Props) {
           display: 'flex',
           flexDirection: 'column',
           gap: 8,
-          // Ensure it can shrink
           minHeight: 0,
         }}
       />
 
-      {/* Input area — always visible at bottom, safe area aware */}
+      {/* Input area — always visible at bottom */}
       <div
         ref={inputRef}
         style={{
@@ -177,10 +168,8 @@ export default function SurveyWidget({ study }: Props) {
           maxHeight: '35vh',
           overflowY: 'auto',
           overflowX: 'hidden',
-          WebkitOverflowScrolling: 'touch' as any,
         }}
       />
     </div>
   )
 }
-
