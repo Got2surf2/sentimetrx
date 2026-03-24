@@ -401,9 +401,9 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   var outliers = (function() {
     if (!compStats) return []
     var list: { group: string; themeName: string; thisPct: number; restPct: number; dir: string; z: number; groupTotal: number; count: number }[] = []
-    compStats!.themeStats.forEach(function(ts) {
+    compStats.themeStats.forEach(function(ts) {
       ts.perGroup.forEach(function(g) {
-        var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
+        var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats.totalRows)
         if (sig && sig.dir !== 'ns') {
           list.push({ group: g.group, themeName: ts.themeName, thisPct: Math.round(sig.p1 * 100), restPct: Math.round(sig.p2 * 100), dir: sig.dir, z: sig.z, groupTotal: g.groupTotal, count: g.count })
         }
@@ -518,7 +518,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         if (viewMode === 'group') {
           return (
             <div>
-              {compStats!.groupStats.map(function(g) {
+              {compStats.groupStats.map(function(g) {
                 var maxShare = g.themeCounts.reduce(function(m, tc) { return Math.max(m, g.groupTotal > 0 ? Math.round(tc.count / g.groupTotal * 100) : 0) }, 1)
                 if (g.unclassified > 0) { var uPct = g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0; if (uPct > maxShare) maxShare = uPct }
                 return (
@@ -530,10 +530,10 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     {themes.themes.map(function(t, ti) {
                       var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
                       var count = tc ? tc.count : 0
-                      var ts = compStats!.themeStats.find(function(ts) { return ts.themeId === t.id })
+                      var ts = compStats.themeStats.find(function(ts) { return ts.themeId === t.id })
                       var pct = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
                       var pal = themeColors[ti] || THEME_PALETTE[0]
-                      var sig = sigTest(count, g.groupTotal, ts ? ts.totalMatches : 0, compStats!.totalRows)
+                      var sig = sigTest(count, g.groupTotal, ts ? ts.totalMatches : 0, compStats.totalRows)
                       return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} />
                     })}
                     {g.unclassified > 0 && <CompareBar label="Unclassified" pct={g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0} count={g.unclassified} maxPct={maxShare} color={T.borderMid} labelColor={T.textFaint} sig={null} isUnclassified={true} />}
@@ -547,7 +547,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         // By Theme view
         return (
           <div>
-            {compStats!.themeStats.map(function(ts, ti) {
+            {compStats.themeStats.map(function(ts, ti) {
               var pal = themeColors[ti] || THEME_PALETTE[0]
               var perGroupSorted = ts.perGroup.slice().sort(function(a, b) { return b.mentionRate - a.mentionRate })
               var maxShare = perGroupSorted.reduce(function(m, g) { return Math.max(m, g.mentionRate) }, 1)
@@ -560,7 +560,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     {themeObj && <button onClick={function() { onDrillTheme(themeObj!) }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>View comments {'\u2192'}</button>}
                   </div>
                   {perGroupSorted.map(function(g) {
-                    var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
+                    var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats.totalRows)
                     return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} />
                   })}
                 </div>
@@ -1044,7 +1044,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
-              {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows{activeFilterCount > 0 ? ' (' + filteredRows.length.toLocaleString() + ' filtered)' : ''}</span>}
               {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
                   {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}

@@ -285,8 +285,8 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var curMinTs = pf && pf.type === 'daterange' ? pf.values[0] : absMinTs
                 var curMaxTs = pf && pf.type === 'daterange' ? pf.values[1] : absMaxTs
                 var inclBlanksDt = pf ? (pf as PendingDate).includeBlanks !== false : true
-                var fmtDate = function(ts: number) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() }
-                var stepMs = Math.max(86400000, Math.round((absMaxTs - absMinTs) / 200))
+                var toDateStr = function(ts: number) { var d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+                var fmtDateDisplay = function(ts: number) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() }
 
                 var setDateRange = function(minTs: number, maxTs: number, ib?: boolean) {
                   var incl = ib !== undefined ? ib : inclBlanksDt
@@ -294,27 +294,31 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                   else { updatePending(f.field, { type: 'daterange', values: [minTs, maxTs], includeBlanks: incl }) }
                 }
 
-                var dtPctLeft = absMaxTs > absMinTs ? ((curMinTs - absMinTs) / (absMaxTs - absMinTs) * 100) : 0
-                var dtPctRight = absMaxTs > absMinTs ? (100 - (curMaxTs - absMinTs) / (absMaxTs - absMinTs) * 100) : 0
+                var dateInputStyle = { padding: '6px 10px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 7, background: T.bg, color: T.text, outline: 'none', fontFamily: 'inherit', flex: 1, minWidth: 0 }
 
                 return (
                   <div key={f.field} style={{ background: T.bgCard, border: (isActive ? '2px solid ' + T.accent : '1px solid ' + T.border), borderRadius: 10, padding: '14px 16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>{lbl}</div>
-                      {isActive && <span style={{ fontSize: 10, color: T.accent, fontWeight: 700 }}>{fmtDate(curMinTs)} \u2013 {fmtDate(curMaxTs)}</span>}
+                      {isActive && <span style={{ fontSize: 10, color: T.accent, fontWeight: 700 }}>{fmtDateDisplay(curMinTs)} {'\u2013'} {fmtDateDisplay(curMaxTs)}</span>}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textFaint, marginBottom: 4 }}>
-                      <span>{fmtDate(absMinTs)}</span><span>{fmtDate(absMaxTs)}</span>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 3 }}>From</div>
+                        <input type="date" value={toDateStr(curMinTs)} min={toDateStr(absMinTs)} max={toDateStr(curMaxTs)}
+                          onChange={function(e) { var ts = new Date(e.target.value + 'T00:00:00').getTime(); if (!isNaN(ts)) setDateRange(ts, curMaxTs) }}
+                          style={dateInputStyle as any} />
+                      </div>
+                      <span style={{ fontSize: 12, color: T.textFaint, paddingTop: 16 }}>{'\u2192'}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 3 }}>To</div>
+                        <input type="date" value={toDateStr(curMaxTs)} min={toDateStr(curMinTs)} max={toDateStr(absMaxTs)}
+                          onChange={function(e) { var ts = new Date(e.target.value + 'T23:59:59').getTime(); if (!isNaN(ts)) setDateRange(curMinTs, ts) }}
+                          style={dateInputStyle as any} />
+                      </div>
                     </div>
-                    <div style={{ position: 'relative', height: 20, marginBottom: 8 }}>
-                      <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: T.border, borderRadius: 2, transform: 'translateY(-50%)' }} />
-                      <div style={{ position: 'absolute', top: '50%', left: dtPctLeft + '%', right: dtPctRight + '%', height: 4, background: T.accent, borderRadius: 2, transform: 'translateY(-50%)' }} />
-                      <input type="range" min={absMinTs} max={absMaxTs} step={stepMs} value={curMinTs}
-                        onChange={function(e) { setDateRange(Math.min(Number(e.target.value), curMaxTs), curMaxTs) }}
-                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }} />
-                      <input type="range" min={absMinTs} max={absMaxTs} step={stepMs} value={curMaxTs}
-                        onChange={function(e) { setDateRange(curMinTs, Math.max(Number(e.target.value), curMinTs)) }}
-                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }} />
+                    <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>
+                      Range: {fmtDateDisplay(absMinTs)} {'\u2013'} {fmtDateDisplay(absMaxTs)}
                     </div>
                     {blankCount > 0 && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 11, color: inclBlanksDt ? T.textMid : T.red }}>
