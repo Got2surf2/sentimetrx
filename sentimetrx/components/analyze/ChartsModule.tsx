@@ -397,7 +397,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   // Inject virtual "Themes" field if theme model exists
   var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
   var allFields = hasThemes
-    ? fields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes (from TextMine)' }])
+    ? fields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' }])
     : fields
 
   // Build theme counts for the virtual field
@@ -502,7 +502,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   }
 
   // Field type groups
-  var catFields = allFields.filter(function(f) { return f.type === 'categorical' && f.field !== '__themes__' })
+  var catFields = allFields.filter(function(f) { return f.type === 'categorical' })
   var numFields = allFields.filter(function(f) { return f.type === 'numeric' })
   var dateFields = allFields.filter(function(f) { return f.type === 'date' })
   var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
@@ -569,27 +569,6 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
                   })}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Themes section — shows individual themes with counts, click assigns __themes__ virtual field */}
-          {hasThemes && (
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border, opacity: activeSlot ? (slotAccepts('categorical') ? 1 : 0.35) : 1, transition: 'opacity .15s' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span>{'\u2756'}</span> Themes
-              </div>
-              <div
-                onClick={function() { if (slotAccepts('categorical') || !activeSlot) assignField('__themes__') }}
-                style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: Object.values(currentConfig).includes('__themes__') ? T.accent : (slotAccepts('categorical') || !activeSlot ? T.textMid : T.textFaint), fontWeight: Object.values(currentConfig).includes('__themes__') ? 700 : 600, cursor: slotAccepts('categorical') ? 'pointer' : 'default', background: Object.values(currentConfig).includes('__themes__') ? T.accentBg : 'transparent', marginBottom: 4, transition: 'all .1s' }}>
-                {Object.values(currentConfig).includes('__themes__') && '\u2713 '}All Themes (as category)
-              </div>
-              {themeModel.themes.map(function(t: any) {
-                return (
-                  <div key={t.id} style={{ fontSize: 11, padding: '3px 8px', color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={t.name + ' (' + (t.count || 0) + ')'}>
-                    {t.name} <span style={{ fontSize: 9, color: T.textFaint }}>({t.count || 0})</span>
-                  </div>
-                )
-              })}
             </div>
           )}
 

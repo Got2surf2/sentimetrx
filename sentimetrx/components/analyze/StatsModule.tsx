@@ -800,14 +800,41 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var filteredData = applyFilters(rows, filters)
 
   var allSchemaFields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
-  var numFields = allSchemaFields.filter(function(f) { return f.type === 'numeric' })
-  var catFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' })
-  var dateFields = allSchemaFields.filter(function(f) { return f.type === 'date' })
-  var openFields = allSchemaFields.filter(function(f) { return f.type === 'open-ended' })
-  var aliases: Record<string, string> = {}
-  schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
 
   var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+
+  // Inject __themes__ column into each row — assign primary (best-matching) theme name
+  var enrichedData = filteredData
+  if (hasThemes && filteredData.length > 0) {
+    var openField = themeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || ''
+    enrichedData = filteredData.map(function(row) {
+      var text = String(row[openField] || '').toLowerCase()
+      if (!text.trim()) return Object.assign({}, row, { __themes__: '' })
+      var bestTheme = ''
+      var bestCount = 0
+      themeModel.themes.forEach(function(t: any) {
+        var hits = 0
+        ;(t.keywords || []).forEach(function(kw: string) {
+          if (text.includes(kw.toLowerCase())) hits++
+        })
+        if (hits > bestCount) { bestCount = hits; bestTheme = t.name }
+      })
+      return Object.assign({}, row, { __themes__: bestTheme || 'Unclassified' })
+    })
+  }
+
+  // Add __themes__ as a virtual categorical field
+  var allFields = hasThemes
+    ? allSchemaFields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as any])
+    : allSchemaFields
+
+  var numFields = allFields.filter(function(f) { return f.type === 'numeric' })
+  var catFields = allFields.filter(function(f) { return f.type === 'categorical' })
+  var dateFields = allFields.filter(function(f) { return f.type === 'date' })
+  var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
+  var aliases: Record<string, string> = {}
+  schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
+  if (hasThemes) aliases['__themes__'] = 'Themes'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -821,22 +848,6 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
             {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
             {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
           </div>
-
-          {/* Themes virtual category */}
-          {hasThemes && (
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span>{'\u2756'}</span> Themes
-              </div>
-              {themeModel.themes.map(function(t: any) {
-                return (
-                  <div key={t.id} style={{ fontSize: 11, padding: '3px 8px', color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={t.name + ' (' + (t.count || 0) + ')'}>
-                    {t.name} <span style={{ fontSize: 9, color: T.textFaint }}>({t.count || 0})</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
 
           {/* Field groups */}
           {[
@@ -871,11 +882,11 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
             </div>
           ) : (
             <>
-              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={filteredData} />}
-              {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={filteredData} />}
-              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={filteredData} />}
-              {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={filteredData} />}
-              {activePanel === 'insights' && <InsightsPanel numFields={numFields} catFields={catFields} data={filteredData} aliases={aliases} />}
+              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} />}
+              {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} />}
+              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
+              {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} />}
+              {activePanel === 'insights' && <InsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
             </>
           )}
         </div>
