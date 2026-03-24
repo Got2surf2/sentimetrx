@@ -335,12 +335,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     const wrap = document.createElement('div')
     wrap.className = 'flex flex-col gap-2 mt-1.5'
     const row = document.createElement('div')
-    row.className = 'flex gap-2 items-end overflow-hidden'
+    row.className = 'flex gap-2 items-end overflow-hidden w-full'
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts...'
-    ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;'
+    ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
     ta.oninput  = () => {
@@ -372,7 +372,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     row.append(ta, sendBtn)
     wrap.append(row, skipBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => ta.focus(), 100)
+    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom])
 
@@ -429,12 +429,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-2 mt-1.5'
           const row = document.createElement('div')
-          row.className = 'flex gap-2 items-end overflow-hidden'
+          row.className = 'flex gap-2 items-end overflow-hidden w-full'
           const ta = document.createElement('textarea')
           ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
           ta.placeholder = 'Share your thoughts...'
-          ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;'
+          ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
           ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
           ta.onblur  = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
           ta.oninput = () => {
@@ -469,7 +469,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           }
           clearInput()
           inputRef.current.appendChild(wrap)
-          setTimeout(() => ta.focus(), 100)
+          setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
           scrollBottom()
 
         // ── radio ───────────────────────────────────────────────
@@ -706,7 +706,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           }
           clearInput()
           inputRef.current.appendChild(wrap)
-          setTimeout(() => inp.focus(), 100)
+          setTimeout(() => { inp.focus(); window.scrollTo(0, 0) }, 100)
           scrollBottom()
         }
       })
@@ -761,7 +761,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const showTextInput = useCallback((qKey: 'q3' | 'q4') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
-    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden'
+    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden w-full'
 
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
@@ -771,7 +771,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;
+      max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -804,14 +804,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     wrap.append(ta, sendBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => ta.focus(), 100)
+    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
     scrollBottom()
   }, [addMsg, config, handleOpenEnded, inputRef, scrollBottom])
 
   const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string) => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
-    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden'
+    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden w-full'
 
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
@@ -821,7 +821,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;
+      max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -856,7 +856,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     wrap.append(ta, sendBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => ta.focus(), 100)
+    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, state])
 
@@ -873,7 +873,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     wrap.className = 'flex flex-col gap-2 mt-1.5'
 
     const row = document.createElement('div')
-    row.className = 'flex gap-2 items-end overflow-hidden'
+    row.className = 'flex gap-2 items-end overflow-hidden w-full'
 
     const ta = document.createElement('textarea')
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
@@ -883,7 +883,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;
+      max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -932,7 +932,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     row.append(ta, sendBtn)
     wrap.append(row, skipBtn)
     inputRef.current.appendChild(wrap)
-    setTimeout(() => ta.focus(), 100)
+    setTimeout(() => { ta.focus(); window.scrollTo(0, 0) }, 100)
     scrollBottom()
   }, [addMsg, clearInput, config, handleOpenEnded, inputRef, progressFlow, scrollBottom, state])
 

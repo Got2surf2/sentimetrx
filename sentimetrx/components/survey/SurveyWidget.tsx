@@ -31,6 +31,10 @@ export default function SurveyWidget({ study }: Props) {
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
+    // Set initial height immediately — 100dvh can be wrong on iOS when address bar shows
+    if (wrapperRef.current) {
+      wrapperRef.current.style.height = vv.height + 'px'
+    }
     const onResize = () => {
       if (wrapperRef.current) {
         wrapperRef.current.style.height = vv.height + 'px'
@@ -42,6 +46,28 @@ export default function SurveyWidget({ study }: Props) {
   }, [scrollBottom])
 
   const { renderInput } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
+
+  // Lock body scroll on mount — prevents iOS from scrolling the page when keyboard opens
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    html.style.overflow = 'hidden'
+    html.style.height = '100%'
+    body.style.overflow = 'hidden'
+    body.style.height = '100%'
+    body.style.position = 'fixed'
+    body.style.width = '100%'
+    body.style.top = '0'
+    return () => {
+      html.style.overflow = ''
+      html.style.height = ''
+      body.style.overflow = ''
+      body.style.height = ''
+      body.style.position = ''
+      body.style.width = ''
+      body.style.top = ''
+    }
+  }, [])
 
   useEffect(() => {
     fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
