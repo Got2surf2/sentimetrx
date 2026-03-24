@@ -123,9 +123,6 @@ export default function SurveyWidget({ study }: Props) {
       flexDirection: 'column',
       background: theme.backgroundColor,
       overflow: 'hidden',
-      // Guarantee full viewport on mobile — prevents keyboard/address bar issues
-      width: '100%',
-      height: '100%',
     }}>
       {/* Fixed header — never scrolls */}
       <div style={{
