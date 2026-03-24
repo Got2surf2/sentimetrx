@@ -338,7 +338,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     row.className = 'flex gap-2 items-end w-full'
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts...'
     ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
@@ -433,7 +433,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           row.className = 'flex gap-2 items-end w-full'
           const ta = document.createElement('textarea')
     ta.cols = 1
-          ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+          ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
           ta.placeholder = 'Share your thoughts...'
           ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
@@ -553,7 +553,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const wrap = document.createElement('div')
           wrap.className = 'flex gap-2 mt-1.5 items-center'
           const sel = document.createElement('select')
-          sel.className = 'flex-1 rounded-xl text-sm px-3 py-2.5 outline-none cursor-pointer'
+          sel.className = 'flex-1 rounded-xl text-base px-3 py-2.5 outline-none cursor-pointer'
           sel.style.cssText = 'background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.85);font-family:inherit;'
           const placeholder = document.createElement('option')
           placeholder.value = ''
@@ -674,7 +674,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const inp = document.createElement('input')
           inp.type = 'number'
           inp.placeholder = 'Enter a number...'
-          inp.className = 'flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-sm outline-none'
+          inp.className = 'flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-base outline-none'
           inp.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);font-family:inherit;'
           inp.onfocus = () => { inp.style.borderColor = config.theme.primaryColor }
           inp.onblur  = () => { inp.style.borderColor = 'rgba(255,255,255,0.1)' }
@@ -767,7 +767,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts here...'
     ta.style.cssText = `
@@ -818,7 +818,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Feel free to add a bit more...'
     ta.style.cssText = `
@@ -881,7 +881,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts, or skip...'
     ta.style.cssText = `
