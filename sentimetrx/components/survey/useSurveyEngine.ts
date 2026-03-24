@@ -337,6 +337,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     const row = document.createElement('div')
     row.className = 'flex gap-2 items-end w-full'
     const ta = document.createElement('textarea')
+    ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts...'
@@ -431,6 +432,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const row = document.createElement('div')
           row.className = 'flex gap-2 items-end w-full'
           const ta = document.createElement('textarea')
+    ta.cols = 1
           ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
           ta.placeholder = 'Share your thoughts...'
@@ -764,6 +766,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     wrap.className = 'flex gap-2 items-end w-full mt-1.5'
 
     const ta = document.createElement('textarea')
+    ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts here...'
@@ -814,6 +817,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     wrap.className = 'flex gap-2 items-end w-full mt-1.5'
 
     const ta = document.createElement('textarea')
+    ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Feel free to add a bit more...'
@@ -876,6 +880,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     row.className = 'flex gap-2 items-end w-full'
 
     const ta = document.createElement('textarea')
+    ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts, or skip...'
