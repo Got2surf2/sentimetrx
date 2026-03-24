@@ -39,3 +39,5 @@ export default async function StatsPage({ params }: Props) {
 
   return <StatsModule datasetId={params.datasetId} schema={schema} themeModel={themeModel} />
 }
+
+

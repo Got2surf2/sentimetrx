@@ -804,29 +804,46 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
 
   // Inject __themes__ column into each row — assign primary (best-matching) theme name
+  // Also inject __mapped_Field__ columns for categoricals with numeric remapping
+  var mappedFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
   var enrichedData = filteredData
-  if (hasThemes && filteredData.length > 0) {
-    var openField = themeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || ''
+  if ((hasThemes || mappedFields.length > 0) && filteredData.length > 0) {
+    var openField = hasThemes ? (themeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
     enrichedData = filteredData.map(function(row) {
-      var text = String(row[openField] || '').toLowerCase()
-      if (!text.trim()) return Object.assign({}, row, { __themes__: '' })
-      var bestTheme = ''
-      var bestCount = 0
-      themeModel.themes.forEach(function(t: any) {
-        var hits = 0
-        ;(t.keywords || []).forEach(function(kw: string) {
-          if (text.includes(kw.toLowerCase())) hits++
-        })
-        if (hits > bestCount) { bestCount = hits; bestTheme = t.name }
+      var enriched = Object.assign({}, row)
+      // Themes
+      if (hasThemes && openField) {
+        var text = String(row[openField] || '').toLowerCase()
+        if (!text.trim()) {
+          enriched['__themes__'] = ''
+        } else {
+          var bestTheme = '', bestCount = 0
+          themeModel.themes.forEach(function(t: any) {
+            var hits = 0
+            ;(t.keywords || []).forEach(function(kw: string) {
+              if (text.includes(kw.toLowerCase())) hits++
+            })
+            if (hits > bestCount) { bestCount = hits; bestTheme = t.name }
+          })
+          enriched['__themes__'] = bestTheme || 'Unclassified'
+        }
+      }
+      // Mapped numeric values
+      mappedFields.forEach(function(f) {
+        var catVal = String(row[f.field] || '')
+        var numVal = f.remapping![catVal]
+        enriched['__mapped_' + f.field + '__'] = numVal != null ? numVal : null
       })
-      return Object.assign({}, row, { __themes__: bestTheme || 'Unclassified' })
+      return enriched
     })
   }
 
-  // Add __themes__ as a virtual categorical field
-  var allFields = hasThemes
-    ? allSchemaFields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as any])
-    : allSchemaFields
+  // Add virtual fields to schema
+  var allFields = allSchemaFields.slice()
+  if (hasThemes) allFields = allFields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as any])
+  mappedFields.forEach(function(f) {
+    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (mapped)' } as any])
+  })
 
   var numFields = allFields.filter(function(f) { return f.type === 'numeric' })
   var catFields = allFields.filter(function(f) { return f.type === 'categorical' })
@@ -835,6 +852,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var aliases: Record<string, string> = {}
   schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
   if (hasThemes) aliases['__themes__'] = 'Themes'
+  mappedFields.forEach(function(f) { aliases['__mapped_' + f.field + '__'] = (f.label || f.field) + ' (mapped)' })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -924,5 +942,3 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
     </div>
   )
 }
-
-

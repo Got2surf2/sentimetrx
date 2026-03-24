@@ -242,6 +242,9 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
 
 // ─── Chart sub-components that need raw rows ──────────────────────────────
 
+// Module-level enrichment context — set by ChartsModule, read by useRows
+var _enrichCtx: { themeModel?: any; schema?: SchemaConfig } = {}
+
 function useRows(datasetId: string) {
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [loaded, setLoaded] = useState(false)
@@ -254,13 +257,58 @@ function useRows(datasetId: string) {
         .then(function(r) { return r.json() })
         .then(function(data) {
           allRows = allRows.concat(data.rows || [])
-          if (page >= (data.totalPages || 0) - 1 || (data.rows || []).length < PAGE_SIZE) { setRows(allRows); setLoaded(true); setLoading(false) }
+          if (page >= (data.totalPages || 0) - 1 || (data.rows || []).length < PAGE_SIZE) {
+            var enriched = enrichRows(allRows, _enrichCtx.themeModel, _enrichCtx.schema)
+            setRows(enriched); setLoaded(true); setLoading(false)
+          }
           else { page++; fetchPage() }
         }).catch(function() { setLoading(false) })
     }
     fetchPage()
   }, [datasetId])
   return { rows: rows, loaded: loaded, loading: loading }
+}
+
+function enrichRows(rows: Record<string, unknown>[], themeModel?: any, schema?: SchemaConfig): Record<string, unknown>[] {
+  if (!rows.length) return rows
+  var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+  var mappedFields = (schema?.fields || []).filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
+  if (!hasThemes && !mappedFields.length) return rows
+
+  // Build theme lookup
+  var themes = hasThemes ? themeModel.themes : []
+  var openField = hasThemes ? (themeModel.fieldName || (schema?.fields || []).find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
+
+  return rows.map(function(row) {
+    var enriched = Object.assign({}, row)
+
+    // Inject __themes__ — primary matching theme
+    if (hasThemes && openField) {
+      var text = String(row[openField] || '').toLowerCase()
+      if (!text.trim()) {
+        enriched['__themes__'] = ''
+      } else {
+        var bestTheme = '', bestCount = 0
+        themes.forEach(function(t: any) {
+          var hits = 0
+          ;(t.keywords || []).forEach(function(kw: string) {
+            if (text.includes(kw.toLowerCase())) hits++
+          })
+          if (hits > bestCount) { bestCount = hits; bestTheme = t.name }
+        })
+        enriched['__themes__'] = bestTheme || 'Unclassified'
+      }
+    }
+
+    // Inject __mapped_FieldName__ — numeric value from categorical remapping
+    mappedFields.forEach(function(f) {
+      var catVal = String(row[f.field] || '')
+      var numVal = f.remapping![catVal]
+      enriched['__mapped_' + f.field + '__'] = numVal != null ? numVal : null
+    })
+
+    return enriched
+  })
 }
 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean }) {
@@ -477,6 +525,9 @@ interface SavedChart { id: string; name: string; chartType: string; config: Reco
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function ChartsModule({ datasetId, schema, analytics, themeModel }: Props) {
+  // Set enrichment context for useRows — must be before any inner component renders
+  _enrichCtx = { themeModel: themeModel, schema: schema }
+
   var [activeChart, setActiveChart] = useState('bar')
   var [hovered, setHovered] = useState<string | null>(null)
   var [barMode, setBarMode] = useState<'count' | 'percent'>('count')
@@ -494,16 +545,45 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     ? fields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' }])
     : fields
 
+  // Inject virtual mapped numeric fields for categoricals with remapping
+  var mappedFields = fields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
+  mappedFields.forEach(function(f) {
+    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (mapped)' } as any])
+  })
+
   // Build theme counts for the virtual field
   var enrichedAnalytics = analytics
-  if (hasThemes && analytics) {
-    var themeCounts: Record<string, number> = {}
-    themeModel.themes.forEach(function(t: any) { themeCounts[t.name] = t.count || 0 })
-    enrichedAnalytics = Object.assign({}, analytics, {
-      fieldSummaries: Object.assign({}, analytics.fieldSummaries, {
-        __themes__: { type: 'categorical', nonNull: analytics.totalRows, counts: themeCounts, topN: Object.keys(themeCounts) }
+  if (analytics) {
+    var extraSummaries: Record<string, any> = {}
+    if (hasThemes) {
+      var themeCounts: Record<string, number> = {}
+      themeModel.themes.forEach(function(t: any) { themeCounts[t.name] = t.count || 0 })
+      extraSummaries['__themes__'] = { type: 'categorical', nonNull: analytics.totalRows, counts: themeCounts, topN: Object.keys(themeCounts) }
+    }
+    // Build summaries for mapped numeric fields from categorical counts + remapping
+    mappedFields.forEach(function(f) {
+      var catSummary = analytics.fieldSummaries[f.field]
+      if (!catSummary || !catSummary.counts || !f.remapping) return
+      var vals: number[] = []
+      Object.entries(catSummary.counts).forEach(function(entry) {
+        var numVal = f.remapping![entry[0]]
+        if (numVal != null) { for (var i = 0; i < entry[1]; i++) vals.push(numVal) }
       })
+      if (!vals.length) return
+      vals.sort(function(a, b) { return a - b })
+      var sum = vals.reduce(function(a, b) { return a + b }, 0)
+      extraSummaries['__mapped_' + f.field + '__'] = {
+        type: 'numeric', nonNull: vals.length,
+        min: vals[0], max: vals[vals.length - 1],
+        avg: sum / vals.length, median: vals[Math.floor(vals.length / 2)],
+        stddev: Math.sqrt(vals.reduce(function(s, v) { return s + (v - sum / vals.length) * (v - sum / vals.length) }, 0) / vals.length)
+      }
     })
+    if (Object.keys(extraSummaries).length > 0) {
+      enrichedAnalytics = Object.assign({}, analytics, {
+        fieldSummaries: Object.assign({}, analytics.fieldSummaries, extraSummaries)
+      })
+    }
   }
 
   // Chart config state — cached per chart type
@@ -843,5 +923,3 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     </div>
   )
 }
-
-
