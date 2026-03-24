@@ -335,12 +335,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     const wrap = document.createElement('div')
     wrap.className = 'flex flex-col gap-2 mt-1.5'
     const row = document.createElement('div')
-    row.className = 'flex gap-2 items-end'
+    row.className = 'flex gap-2 items-end overflow-hidden'
     const ta = document.createElement('textarea')
-    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts...'
-    ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
+    ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;'
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
     ta.oninput  = () => {
@@ -429,12 +429,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-2 mt-1.5'
           const row = document.createElement('div')
-          row.className = 'flex gap-2 items-end'
+          row.className = 'flex gap-2 items-end overflow-hidden'
           const ta = document.createElement('textarea')
-          ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+          ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
           ta.placeholder = 'Share your thoughts...'
-          ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
+          ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;'
           ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
           ta.onblur  = () => { ta.style.borderColor = 'rgba(255,255,255,0.1)' }
           ta.oninput = () => {
@@ -600,7 +600,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         } else if (q.type === 'likert') {
           const scale = q.likertScale ?? []
           const row = document.createElement('div')
-          row.className = 'flex gap-1 mt-1.5'
+          row.className = 'flex gap-1 mt-1.5 flex-wrap'
           scale.forEach(s => {
             const sb = document.createElement('button')
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
@@ -668,11 +668,11 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         // -- numeric input ---------------------------------------
         } else if (q.type === 'numeric') {
           const wrap = document.createElement('div')
-          wrap.className = 'flex gap-2 items-center mt-1.5'
+          wrap.className = 'flex gap-2 items-center mt-1.5 overflow-hidden'
           const inp = document.createElement('input')
           inp.type = 'number'
           inp.placeholder = 'Enter a number...'
-          inp.className = 'flex-1 rounded-2xl px-4 py-2.5 text-sm outline-none'
+          inp.className = 'flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-sm outline-none'
           inp.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);font-family:inherit;'
           inp.onfocus = () => { inp.style.borderColor = config.theme.primaryColor }
           inp.onblur  = () => { inp.style.borderColor = 'rgba(255,255,255,0.1)' }
@@ -761,17 +761,17 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const showTextInput = useCallback((qKey: 'q3' | 'q4') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
-    wrap.className = 'flex gap-2 items-end mt-1.5'
+    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden'
 
     const ta = document.createElement('textarea')
-    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts here...'
     ta.style.cssText = `
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;
+      max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -811,17 +811,17 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string) => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
-    wrap.className = 'flex gap-2 items-end mt-1.5'
+    wrap.className = 'flex gap-2 items-end mt-1.5 overflow-hidden'
 
     const ta = document.createElement('textarea')
-    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Feel free to add a bit more...'
     ta.style.cssText = `
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;
+      max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -873,17 +873,17 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     wrap.className = 'flex flex-col gap-2 mt-1.5'
 
     const row = document.createElement('div')
-    row.className = 'flex gap-2 items-end'
+    row.className = 'flex gap-2 items-end overflow-hidden'
 
     const ta = document.createElement('textarea')
-    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 min-w-0 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts, or skip...'
     ta.style.cssText = `
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;
+      max-height:110px;transition:border-color 0.2s;width:100%;box-sizing:border-box;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -1010,7 +1010,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           await showTyping(300)
           if (!inputRef.current) return
           const ratingRow = document.createElement('div')
-          ratingRow.className = 'flex gap-1 mt-1.5'
+          ratingRow.className = 'flex gap-1 mt-1.5 flex-wrap'
           config.ratingScale.forEach((r: any) => {
             const rb = document.createElement('button')
             rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
@@ -1054,7 +1054,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           { stars: '⭐⭐⭐⭐⭐', label: '5 - Definitely!', score: 5 },
         ]
         const npsRow = document.createElement('div')
-        npsRow.className = 'flex gap-1 mt-1.5'
+        npsRow.className = 'flex gap-1 mt-1.5 flex-wrap'
         stars.forEach(s => {
           const sb = document.createElement('button')
           sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'

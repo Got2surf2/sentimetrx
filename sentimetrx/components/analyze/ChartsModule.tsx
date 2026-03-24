@@ -51,14 +51,14 @@ interface SlotDef {
 
 var CHART_SLOTS: Record<string, SlotDef[]> = {
   bar:          [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'colorBy', label: 'Color / Stack by', accepts: ['categorical'], required: false }, { key: 'value', label: 'Value (optional)', accepts: ['numeric'], required: false }],
-  distribution: [{ key: 'field', label: 'Numeric Field', accepts: ['numeric'], required: true }],
-  scatter:      [{ key: 'x', label: 'X Axis', accepts: ['numeric'], required: true }, { key: 'y', label: 'Y Axis', accepts: ['numeric'], required: true }],
+  distribution: [{ key: 'field', label: 'Numeric Field', accepts: ['numeric'], required: true }, { key: 'splitBy', label: 'Split by', accepts: ['categorical'], required: false }],
+  scatter:      [{ key: 'x', label: 'X Axis', accepts: ['numeric'], required: true }, { key: 'y', label: 'Y Axis', accepts: ['numeric'], required: true }, { key: 'colorBy', label: 'Color by', accepts: ['categorical'], required: false }],
   crosstab:     [{ key: 'rows', label: 'Row Variable', accepts: ['categorical'], required: true }, { key: 'cols', label: 'Column Variable', accepts: ['categorical'], required: true }],
   timeseries:   [{ key: 'date', label: 'Date Field', accepts: ['date'], required: true }, { key: 'metric', label: 'Metric', accepts: ['numeric'], required: false }],
   treemap:      [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'size', label: 'Size (optional)', accepts: ['numeric'], required: false }],
   bubbles:      [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'size', label: 'Size (optional)', accepts: ['numeric'], required: false }],
   waterfall:    [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }],
-  bullet:       [{ key: 'field', label: 'Numeric Field', accepts: ['numeric'], required: true }],
+  bullet:       [{ key: 'field', label: 'Measure', accepts: ['numeric'], required: true }, { key: 'splitBy', label: 'Split by', accepts: ['categorical'], required: false }],
   funnel:       [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }],
   gantt:        [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'range', label: 'Range Field', accepts: ['numeric', 'date'], required: true }],
   driver:       [{ key: 'score', label: 'Score Field', accepts: ['numeric'], required: true }],
@@ -104,37 +104,21 @@ function EmptyChart({ msg }: { msg: string }) {
 
 // ─── Drop Zone component ──────────────────────────────────────────────────
 
-function DropZone({ slot, value, schema, activeSlot, onActivate, onClear }: {
-  slot: SlotDef; value: string; schema: SchemaField[]
-  activeSlot: string | null; onActivate: () => void; onClear: () => void
+function ChartSelect({ label, value, onChange, options, required }: {
+  label: string; value: string; onChange: (v: string) => void
+  options: { v: string; l: string }[]; required?: boolean
 }) {
-  var isActive = activeSlot === slot.key
-  var fieldObj = schema.find(function(f) { return f.field === value })
-  var hasValue = !!value && !!fieldObj
-  var acceptsLabel = slot.accepts.includes('any') ? 'any field' : slot.accepts.join(' / ')
-
   return (
-    <div onClick={onActivate}
-      style={{
-        flex: 1, minWidth: 140, padding: '8px 12px', borderRadius: 8,
-        background: isActive ? T.accentBg : hasValue ? T.bgCard : T.bg,
-        border: '2px ' + (isActive ? 'solid ' + T.accent : hasValue ? 'solid ' + T.border : 'dashed ' + T.borderMid),
-        cursor: 'pointer', transition: 'all .12s',
-      }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: isActive ? T.accent : T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 3 }}>
-        {slot.label}{!slot.required && ' (optional)'}
+    <div style={{ minWidth: 140 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 4 }}>
+        {label}{!required && ' (optional)'}
       </div>
-      {hasValue ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{fl(fieldObj!)}</span>
-          <button onClick={function(e) { e.stopPropagation(); onClear() }}
-            style={{ width: 16, height: 16, borderRadius: 4, background: T.bg, border: '1px solid ' + T.border, color: T.textFaint, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{'\u00D7'}</button>
-        </div>
-      ) : (
-        <div style={{ fontSize: 11, color: isActive ? T.accent : T.textMute, fontStyle: 'italic' }}>
-          {isActive ? 'Click a field in the sidebar...' : 'Click to assign ' + acceptsLabel}
-        </div>
-      )}
+      <select value={value || ''} onChange={function(e) { onChange(e.target.value) }}
+        style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid ' + T.border, borderRadius: 7, background: T.bgCard, color: value ? T.text : T.textMute, outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+        {!required && <option value="">None</option>}
+        {required && !value && <option value="">Select...</option>}
+        {options.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}
+      </select>
     </div>
   )
 }
@@ -224,9 +208,17 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   }
 
   if (chartType === 'bullet') {
-    var bField = config.field; if (!bField) return <EmptyChart msg="Assign a numeric field above." />
+    var bField = config.field; if (!bField) return <EmptyChart msg="Assign a measure field above." />
+    var splitByField = config.splitBy || ''
+    if (splitByField) {
+      return <BulletSplitInner analytics={analytics} schema={schema} datasetId={datasetId} measureField={bField} splitByField={splitByField} />
+    }
     var bs = fs[bField]; if (!bs || bs.avg == null) return <EmptyChart msg="No numeric data." />
-    return <PlotlyChart traces={[{ type: 'indicator', mode: 'number+gauge', value: bs.avg, gauge: { axis: { range: [bs.min || 0, bs.max || 100] }, bar: { color: primaryColor }, steps: [{ range: [bs.min || 0, (bs.avg || 0)], color: T.bg }, { range: [(bs.avg || 0), bs.max || 100], color: T.border }] }, title: { text: flByName(bField, schema) } }]} layout={{ margin: { t: 40, r: 30, b: 20, l: 30 }, height: 200 }} style={{ height: 200 }} />
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, maxWidth: 320, margin: '0 auto' }}>
+        <GaugeCard label={flByName(bField, schema)} avg={bs.avg || 0} median={bs.median || bs.avg || 0} min={bs.min || 0} max={bs.max || 100} n={bs.nonNull || 0} overallAvg={null} />
+      </div>
+    )
   }
 
   if (chartType === 'funnel') {
@@ -305,6 +297,108 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   })
 
   return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: flByName(catField, schema), tickangle: cats.length > 8 ? -35 : 0 }, yaxis: { title: barMode === 'percent' ? '% of Category' : 'Count' }, legend: { orientation: 'h', y: -0.2 } }} />
+}
+
+// ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
+
+function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: string; avg: number; median: number; min: number; max: number; n: number; overallAvg: number | null }) {
+  var range = max - min || 1
+  var pct = Math.max(0, Math.min(1, (avg - min) / range))
+  var angle = -90 + pct * 180 // -90 to 90 degrees
+  var r = 60, cx = 80, cy = 75
+  var arcPath = function(startAngle: number, endAngle: number, radius: number) {
+    var s = (startAngle - 90) * Math.PI / 180
+    var e = (endAngle - 90) * Math.PI / 180
+    var x1 = cx + radius * Math.cos(s), y1 = cy + radius * Math.sin(s)
+    var x2 = cx + radius * Math.cos(e), y2 = cy + radius * Math.sin(e)
+    var largeArc = endAngle - startAngle > 180 ? 1 : 0
+    return 'M ' + x1 + ' ' + y1 + ' A ' + radius + ' ' + radius + ' 0 ' + largeArc + ' 1 ' + x2 + ' ' + y2
+  }
+  // Quartile ranges for color bands
+  var p25 = min + range * 0.25, p50 = min + range * 0.5, p75 = min + range * 0.75
+  var vsOverall = overallAvg != null ? avg - overallAvg : null
+  var vsColor = vsOverall != null ? (vsOverall >= 0 ? '#16a34a' : '#dc2626') : T.textMid
+
+  return (
+    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 18px', textAlign: 'center' }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 8 }}>{label}</div>
+      <svg viewBox="0 0 160 100" style={{ width: '100%', maxWidth: 200, margin: '0 auto', display: 'block' }}>
+        {/* Background bands: bottom 25% (pink), middle 50% (amber), top 25% (green) */}
+        <path d={arcPath(-90, -45, r)} fill="none" stroke="#fecdd3" strokeWidth={14} strokeLinecap="round" />
+        <path d={arcPath(-45, 45, r)} fill="none" stroke="#fed7aa" strokeWidth={14} strokeLinecap="round" />
+        <path d={arcPath(45, 90, r)} fill="none" stroke="#bbf7d0" strokeWidth={14} strokeLinecap="round" />
+        {/* Needle */}
+        {(function() {
+          var a = (angle - 90) * Math.PI / 180
+          var nx = cx + (r - 20) * Math.cos(a), ny = cy + (r - 20) * Math.sin(a)
+          return <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={T.accent} strokeWidth={2.5} strokeLinecap="round" />
+        })()}
+        {/* Center dot */}
+        <circle cx={cx} cy={cy} r={4} fill={T.accent} />
+        {/* Median marker */}
+        {(function() {
+          var mPct = Math.max(0, Math.min(1, (median - min) / range))
+          var mAngle = (-90 + mPct * 180 - 90) * Math.PI / 180
+          var mx = cx + (r + 2) * Math.cos(mAngle), my = cy + (r + 2) * Math.sin(mAngle)
+          return <line x1={mx} y1={my} x2={mx + 0} y2={my - 6} stroke="#2563eb" strokeWidth={2} />
+        })()}
+        {/* Value */}
+        <text x={cx} y={cy - 14} textAnchor="middle" style={{ fontSize: 28, fontWeight: 800, fill: T.text }}>{avg.toFixed(1)}</text>
+        {/* Scale labels */}
+        <text x={cx - r - 6} y={cy + 12} textAnchor="middle" style={{ fontSize: 8, fill: T.textFaint }}>{min.toFixed(1)}</text>
+        <text x={cx + r + 6} y={cy + 12} textAnchor="middle" style={{ fontSize: 8, fill: T.textFaint }}>{max.toFixed(1)}</text>
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, fontSize: 11, marginTop: 4 }}>
+        <div><span style={{ color: T.textFaint }}>N</span> <strong style={{ color: T.text }}>{n.toLocaleString()}</strong></div>
+        <div><span style={{ color: T.textFaint }}>MEDIAN</span> <strong style={{ color: '#2563eb' }}>{median.toFixed(1)}</strong></div>
+        {vsOverall != null && <div><span style={{ color: T.textFaint }}>VS OVERALL</span> <strong style={{ color: vsColor }}>{(vsOverall >= 0 ? '+' : '') + vsOverall.toFixed(2)}</strong></div>}
+      </div>
+      <div style={{ fontSize: 10, color: T.textFaint, marginTop: 6 }}>
+        RANGE <strong style={{ color: T.textMid }}>{min.toFixed(1)}–{max.toFixed(1)}</strong>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, fontSize: 8, color: T.textFaint, marginTop: 6 }}>
+        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#fecdd3', marginRight: 2, verticalAlign: 'middle' }} />Bottom 25%</span>
+        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#fed7aa', marginRight: 2, verticalAlign: 'middle' }} />Middle 50%</span>
+        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#bbf7d0', marginRight: 2, verticalAlign: 'middle' }} />Top 25%</span>
+      </div>
+    </div>
+  )
+}
+
+function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string }) {
+  var { rows, loaded } = useRows(datasetId)
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+
+  var groups: Record<string, number[]> = {}
+  rows.forEach(function(r) {
+    var grp = String(r[splitByField] || '(blank)').trim()
+    var val = parseFloat(String(r[measureField] || ''))
+    if (!grp || isNaN(val)) return
+    if (!groups[grp]) groups[grp] = []
+    groups[grp].push(val)
+  })
+
+  var groupKeys = Object.keys(groups).sort()
+  if (!groupKeys.length) return <EmptyChart msg="No data for this combination." />
+
+  // Overall stats for vs comparison
+  var allVals = Object.values(groups).flat()
+  var overallAvg = allVals.length > 0 ? allVals.reduce(function(a, b) { return a + b }, 0) / allVals.length : null
+
+  var stats = groupKeys.map(function(grp) {
+    var vs = groups[grp].slice().sort(function(a, b) { return a - b })
+    var avg = vs.reduce(function(a, b) { return a + b }, 0) / vs.length
+    var med = vs[Math.floor(vs.length / 2)]
+    return { label: grp, avg: avg, median: med, min: vs[0], max: vs[vs.length - 1], n: vs.length }
+  })
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+      {stats.map(function(s) {
+        return <GaugeCard key={s.label} label={s.label} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} />
+      })}
+    </div>
+  )
 }
 
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
@@ -414,7 +508,17 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
 
   // Chart config state — cached per chart type
   var [chartConfigs, setChartConfigs] = useState<Record<string, Record<string, string>>>({})
-  var [activeSlot, setActiveSlot] = useState<string | null>(null)
+
+  // Update a specific slot in a chart config
+  var updateSlot = function(slotKey: string, value: string) {
+    setChartConfigs(function(prev) {
+      var u = Object.assign({}, prev)
+      var cfg = Object.assign({}, u[activeChart] || {})
+      cfg[slotKey] = value
+      u[activeChart] = cfg
+      return u
+    })
+  }
 
   // Initialize default configs
   useEffect(function() {
@@ -444,31 +548,6 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
 
   var currentConfig = chartConfigs[activeChart] || {}
   var currentSlots = CHART_SLOTS[activeChart] || []
-
-  var assignField = function(fieldName: string) {
-    if (!activeSlot) return
-    var slot = activeSlot
-    setChartConfigs(function(prev) {
-      var updated = Object.assign({}, prev)
-      var cfg = Object.assign({}, updated[activeChart] || {})
-      cfg[slot] = fieldName
-      updated[activeChart] = cfg
-      return updated
-    })
-    // Auto-advance to next empty slot
-    var nextEmpty = currentSlots.find(function(s) { return s.key !== activeSlot && !currentConfig[s.key] })
-    setActiveSlot(nextEmpty ? nextEmpty.key : null)
-  }
-
-  var clearSlot = function(slotKey: string) {
-    setChartConfigs(function(prev) {
-      var updated = Object.assign({}, prev)
-      var cfg = Object.assign({}, updated[activeChart] || {})
-      cfg[slotKey] = ''
-      updated[activeChart] = cfg
-      return updated
-    })
-  }
 
   // Saved charts
   var [savedCharts, setSavedCharts] = useState<SavedChart[]>([])
@@ -507,21 +586,6 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   var dateFields = allFields.filter(function(f) { return f.type === 'date' })
   var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
 
-  // Which field types the current slot accepts
-  var slotAccepts = function(fieldType: string): boolean {
-    if (!activeSlot) return false
-    var slotDef = currentSlots.find(function(s) { return s.key === activeSlot })
-    if (!slotDef) return false
-    return slotDef.accepts.includes(fieldType) || slotDef.accepts.includes('any')
-  }
-
-  // Auto-select first slot when chart changes
-  useEffect(function() {
-    var slots = CHART_SLOTS[activeChart] || []
-    if (slots.length) setActiveSlot(slots[0].key)
-    else setActiveSlot(null)
-  }, [activeChart])
-
   // Download PNG
   var chartBodyRef = useRef<HTMLDivElement>(null)
   var downloadPNG = function() {
@@ -546,7 +610,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
             <div style={{ borderBottom: '1px solid ' + T.border }}>
               <button onClick={function() { setSavedExpanded(function(v) { return !v }) }}
                 style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>{savedExpanded ? '\u2212' : '+'} Saved</span>
+                <span style={{ fontSize: 10, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Saved Graphs</span>
                 <span style={{ fontSize: 10, color: T.textFaint }}>{savedCharts.length}</span>
               </button>
               {savedExpanded && (
@@ -572,16 +636,21 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
             </div>
           )}
 
-          {/* Field groups — click to assign */}
+          {/* Fields header */}
+          <div style={{ padding: '10px 14px 4px' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Fields</div>
+            <div style={{ fontSize: 10, color: T.textFaint, fontStyle: 'italic', marginTop: 2 }}>Fields available for this chart type</div>
+          </div>
+
+          {/* Field groups — reference only */}
           {[
             { label: 'Categorical', type: 'categorical', list: catFields, color: '#7c3aed', icon: '\u2261' },
             { label: 'Numeric', type: 'numeric', list: numFields, color: '#16a34a', icon: '#' },
             { label: 'Date', type: 'date', list: dateFields, color: '#d97706', icon: '\uD83D\uDCC5' },
             { label: 'Open-ended', type: 'open-ended', list: openFields, color: '#2563eb', icon: '\u2756' },
           ].filter(function(g) { return g.list.length > 0 }).map(function(group) {
-            var canAccept = slotAccepts(group.type)
             return (
-              <div key={group.type} style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border, opacity: activeSlot ? (canAccept ? 1 : 0.35) : 1, transition: 'opacity .15s' }}>
+              <div key={group.type} style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: group.color, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span>{group.icon}</span> {group.label}
                 </div>
@@ -589,8 +658,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
                   var isAssigned = Object.values(currentConfig).includes(f.field)
                   return (
                     <div key={f.field}
-                      onClick={function() { if (canAccept || !activeSlot) assignField(f.field) }}
-                      style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : (canAccept || !activeSlot ? T.textMid : T.textFaint), fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, cursor: canAccept ? 'pointer' : 'default', background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s' }}
+                      style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s' }}
                       title={fl(f)}>
                       {isAssigned && '\u2713 '}{fl(f)}
                     </div>
@@ -603,11 +671,16 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
 
         {/* ─── Chart body ──────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-          {/* Drop zones */}
+          {/* Inline field selectors — dropdowns per slot */}
           {currentSlots.length > 0 && (
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
               {currentSlots.map(function(slot) {
-                return <DropZone key={slot.key} slot={slot} value={currentConfig[slot.key] || ''} schema={allFields} activeSlot={activeSlot} onActivate={function() { setActiveSlot(slot.key) }} onClear={function() { clearSlot(slot.key) }} />
+                var opts = allFields.filter(function(f) {
+                  return slot.accepts.includes(f.type) || slot.accepts.includes('any')
+                }).map(function(f) { return { v: f.field, l: fl(f) } })
+                return <ChartSelect key={slot.key} label={slot.label} value={currentConfig[slot.key] || ''} required={slot.required}
+                  onChange={function(v) { setChartConfigs(function(prev) { var u = Object.assign({}, prev); var cfg = Object.assign({}, u[activeChart] || {}); cfg[slot.key] = v; u[activeChart] = cfg; return u }) }}
+                  options={opts} />
               })}
             </div>
           )}
@@ -770,3 +843,5 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     </div>
   )
 }
+
+

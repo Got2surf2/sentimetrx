@@ -56,3 +56,5 @@ export async function generateMetadata({ params }: Props) {
     description: `Share your feedback with ${data.bot_name}`,
   }
 }
+
+
