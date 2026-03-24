@@ -123,12 +123,15 @@ export default function SurveyWidget({ study }: Props) {
       flexDirection: 'column',
       background: theme.backgroundColor,
       overflow: 'hidden',
-      // Desktop card style via inline media won't work — handled by page wrapper
+      // Guarantee full viewport on mobile — prevents keyboard/address bar issues
+      position: 'absolute' as any,
+      inset: 0,
     }}>
       {/* Fixed header — never scrolls */}
       <div style={{
         background: theme.headerGradient,
         padding: '12px 16px',
+        paddingTop: 'max(12px, env(safe-area-inset-top))',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -165,7 +168,7 @@ export default function SurveyWidget({ study }: Props) {
         }}
       />
 
-      {/* Input area — fixed height, max-height to prevent psycho buttons overflowing */}
+      {/* Input area — always visible at bottom, safe area aware */}
       <div
         ref={inputRef}
         style={{
@@ -174,9 +177,10 @@ export default function SurveyWidget({ study }: Props) {
           paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
           background: theme.backgroundColor + 'f0',
           borderTop: '1px solid rgba(255,255,255,0.07)',
-          maxHeight: '45vh',
+          maxHeight: '35vh',
           overflowY: 'auto',
           overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch' as any,
         }}
       />
     </div>
