@@ -88,6 +88,9 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   hoveredThemeId?: string | null
 }) {
   var [expanded, setExpanded] = useState(false)
+  var [localHover, setLocalHover] = useState<string | null>(null)
+  // Effective hover: local card hover takes priority, then parent header hover
+  var effectiveHover = localHover || hoveredThemeId || null
 
   // In showAllMode, find ALL matching themes for this row
   var matchingThemes: { theme: Theme; pal: typeof THEME_PALETTE[0] }[] = []
@@ -108,26 +111,55 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   }
 
   // Combine keywords for highlighting
-  // If a theme is being hovered, ONLY highlight that theme's keywords
+  // Build keyword → palette map for per-theme coloring
+  var kwPalMap: Record<string, typeof THEME_PALETTE[0]> = {}
   var highlightKws: string[]
-  var highlightPal = pal
-  if (hoveredThemeId) {
-    var hoveredTheme = (allThemes || []).find(function(t) { return t.id === hoveredThemeId })
+  var singlePal = false
+
+  if (effectiveHover) {
+    var hoveredTheme = (allThemes || []).find(function(t) { return t.id === effectiveHover })
     if (hoveredTheme) {
       highlightKws = hoveredTheme.keywords || []
-      var hIdx = (allThemes || []).findIndex(function(t) { return t.id === hoveredThemeId })
-      highlightPal = (themeColors && themeColors[hIdx]) || THEME_PALETTE[0]
+      var hIdx = (allThemes || []).findIndex(function(t) { return t.id === effectiveHover })
+      var hPal = (themeColors && themeColors[hIdx]) || THEME_PALETTE[0]
+      highlightKws.forEach(function(kw) { kwPalMap[kw.toLowerCase()] = hPal })
+      singlePal = true
     } else {
       highlightKws = []
     }
-  } else if (showAllMode) {
-    highlightKws = matchingThemes.reduce(function(acc, m) { return acc.concat(m.theme.keywords || []) }, [] as string[])
-  } else if (selectedThemes && selectedThemes.length > 0) {
-    highlightKws = selectedThemes.reduce(function(acc, t) { return acc.concat(t.keywords || []) }, [] as string[])
+  } else if (showAllMode || (selectedThemes && selectedThemes.length > 1)) {
+    // Multi-theme: each keyword gets its theme's palette
+    var themesForKws = showAllMode ? matchingThemes : (selectedThemes || []).map(function(st) {
+      var idx = (allThemes || []).findIndex(function(at) { return at.id === st.id })
+      return { theme: st, pal: (themeColors && themeColors[idx]) || THEME_PALETTE[0] }
+    })
+    highlightKws = []
+    themesForKws.forEach(function(m) {
+      ;(m.theme.keywords || []).forEach(function(kw) {
+        highlightKws.push(kw)
+        if (!kwPalMap[kw.toLowerCase()]) kwPalMap[kw.toLowerCase()] = m.pal
+      })
+    })
+  } else if (selectedThemes && selectedThemes.length === 1) {
+    highlightKws = selectedThemes[0].keywords || []
+    singlePal = true
   } else {
     highlightKws = (theme.keywords || [])
+    singlePal = true
   }
   var segments = highlightKeywords(row.text, highlightKws)
+
+  // Helper: find palette for a matched text segment
+  var segPal = function(segText: string): typeof THEME_PALETTE[0] {
+    if (singlePal || !Object.keys(kwPalMap).length) return pal
+    var lower = segText.toLowerCase()
+    // Find the keyword that best matches this segment
+    var keys = Object.keys(kwPalMap)
+    for (var k = 0; k < keys.length; k++) {
+      if (lower.indexOf(keys[k]) >= 0 || keys[k].indexOf(lower) >= 0) return kwPalMap[keys[k]]
+    }
+    return pal
+  }
   var ignoredSet = new Set(ignoredFields)
   var metaCols = schema
     ? schema.filter(function(f) {
@@ -175,9 +207,12 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
         {(showAllMode || (selectedThemes && selectedThemes.length > 1)) && matchingThemes.length > 0 ? (
           matchingThemes.map(function(m) {
-            var isHov = hoveredThemeId === m.theme.id
+            var isHov = effectiveHover === m.theme.id
             return (
-              <span key={m.theme.id} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: m.pal.bg, color: m.pal.text, border: '1px solid ' + m.pal.border, opacity: hoveredThemeId && !isHov ? 0.4 : 1, transition: 'opacity .15s' }}>
+              <span key={m.theme.id}
+                onMouseEnter={function() { setLocalHover(m.theme.id) }}
+                onMouseLeave={function() { setLocalHover(null) }}
+                style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: m.pal.bg, color: m.pal.text, border: '1px solid ' + m.pal.border, opacity: effectiveHover && !isHov ? 0.4 : 1, transition: 'opacity .15s', cursor: 'default' }}>
                 {m.theme.name}
               </span>
             )
@@ -203,9 +238,9 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
       <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: (ratingFields.length > 0 || hasMore) ? 8 : 0 }}>
         {segments.map(function(seg, i) {
           if (seg.matched) {
-            var hPal = hoveredThemeId ? highlightPal : pal
+            var sp = segPal(seg.text)
             return (
-              <mark key={i} style={{ background: hPal.light || hPal.bg, color: hPal.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + hPal.border, fontWeight: 600 }}>
+              <mark key={i} style={{ background: sp.light || sp.bg, color: sp.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + sp.border, fontWeight: 600 }}>
                 {seg.text}
               </mark>
             )
