@@ -285,7 +285,7 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var curMinTs = pf && pf.type === 'daterange' ? pf.values[0] : absMinTs
                 var curMaxTs = pf && pf.type === 'daterange' ? pf.values[1] : absMaxTs
                 var inclBlanksDt = pf ? (pf as PendingDate).includeBlanks !== false : true
-                var fmtD = function(ts: number) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear().toString().slice(2) }
+                var fmtD = function(ts: number) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() }
                 var stepMs = Math.max(86400000, Math.round((absMaxTs - absMinTs) / 200))
 
                 var setDateRange = function(minTs: number, maxTs: number, ib?: boolean) {
@@ -296,25 +296,56 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
 
                 var dtPctLeft = absMaxTs > absMinTs ? ((curMinTs - absMinTs) / (absMaxTs - absMinTs) * 100) : 0
                 var dtPctRight = absMaxTs > absMinTs ? (100 - (curMaxTs - absMinTs) / (absMaxTs - absMinTs) * 100) : 0
+                var thumbStyle = { position: 'absolute' as const, top: '50%', width: 16, height: 16, borderRadius: '50%', background: '#fff', border: '2px solid ' + T.accent, transform: 'translate(-50%, -50%)', cursor: 'grab', zIndex: 5, boxShadow: '0 1px 4px rgba(0,0,0,.15)' }
 
                 return (
                   <div key={f.field} style={{ background: T.bgCard, border: (isActive ? '2px solid ' + T.accent : '1px solid ' + T.border), borderRadius: 10, padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>{lbl}</div>
-                      {isActive && <span style={{ fontSize: 10, color: T.accent, fontWeight: 700 }}>{fmtD(curMinTs)} {'\u2013'} {fmtD(curMaxTs)}</span>}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textFaint, marginBottom: 4 }}>
-                      <span>{fmtD(absMinTs)}</span><span>{fmtD(absMaxTs)}</span>
+                    {/* Selected range — grey, above slider */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textMid, marginBottom: 6, fontWeight: 600 }}>
+                      <span>{fmtD(curMinTs)}</span><span>{fmtD(curMaxTs)}</span>
                     </div>
-                    <div style={{ position: 'relative', height: 20, marginBottom: 6 }}>
+                    {/* Slider track with visible thumbs */}
+                    <div style={{ position: 'relative', height: 24, marginBottom: 6 }}>
+                      {/* Grey track */}
                       <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: T.border, borderRadius: 2, transform: 'translateY(-50%)' }} />
+                      {/* Orange active range */}
                       <div style={{ position: 'absolute', top: '50%', left: dtPctLeft + '%', right: dtPctRight + '%', height: 4, background: T.accent, borderRadius: 2, transform: 'translateY(-50%)' }} />
+                      {/* Left thumb */}
+                      <div style={Object.assign({}, thumbStyle, { left: dtPctLeft + '%' })} />
+                      {/* Right thumb */}
+                      <div style={Object.assign({}, thumbStyle, { left: (100 - dtPctRight) + '%' })} />
+                      {/* Left invisible input — pointer-events only on left half */}
                       <input type="range" min={absMinTs} max={absMaxTs} step={stepMs} value={curMinTs}
                         onChange={function(e) { setDateRange(Math.min(Number(e.target.value), curMaxTs - stepMs), curMaxTs) }}
-                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }} />
+                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 6, pointerEvents: 'none' }}
+                        onMouseDown={function(e) { (e.target as HTMLElement).style.pointerEvents = 'auto' }}
+                        onTouchStart={function(e) { (e.target as HTMLElement).style.pointerEvents = 'auto' }}
+                        onMouseUp={function(e) { (e.target as HTMLElement).style.pointerEvents = 'none' }}
+                        onTouchEnd={function(e) { (e.target as HTMLElement).style.pointerEvents = 'none' }}
+                      />
+                      {/* Right invisible input — always active */}
                       <input type="range" min={absMinTs} max={absMaxTs} step={stepMs} value={curMaxTs}
                         onChange={function(e) { setDateRange(curMinTs, Math.max(Number(e.target.value), curMinTs + stepMs)) }}
-                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 2 }} />
+                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 4 }} />
+                      {/* Clickable left zone to grab left thumb */}
+                      <div style={{ position: 'absolute', top: 0, left: 0, width: Math.max(dtPctLeft + 5, 10) + '%', height: '100%', zIndex: 7, cursor: 'pointer' }}
+                        onMouseDown={function(e) {
+                          var rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect()
+                          var pct = (e.clientX - rect.left) / rect.width
+                          var ts = Math.round(absMinTs + pct * (absMaxTs - absMinTs))
+                          ts = Math.round(ts / stepMs) * stepMs
+                          setDateRange(Math.min(ts, curMaxTs - stepMs), curMaxTs)
+                        }}
+                      />
+                    </div>
+                    {/* Bounds — orange, below slider */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.accent, fontWeight: 600, marginBottom: 6 }}>
+                      <span>{fmtD(absMinTs)}</span>
+                      <span style={{ color: T.textFaint, fontWeight: 400 }}>{'\u2192'}</span>
+                      <span>{fmtD(absMaxTs)}</span>
                     </div>
                     {blankCount > 0 && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 11, color: inclBlanksDt ? T.textMid : T.red }}>
