@@ -33,6 +33,7 @@ interface SchemaField {
 interface Props {
   theme: Theme
   allThemes: Theme[]
+  selectedThemes?: Theme[]
   parsedData: Record<string, unknown>[]
   activeField: string
   activeFields?: string[]
@@ -72,7 +73,7 @@ function Spinner() {
   )
 }
 
-function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFields: cardActiveFields, allThemes, themeColors, showAllMode }: {
+function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFields: cardActiveFields, allThemes, themeColors, showAllMode, selectedThemes, hoveredThemeId }: {
   row: CommentRow
   theme: Theme
   pal: typeof THEME_PALETTE[0]
@@ -83,6 +84,8 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   allThemes?: Theme[]
   themeColors?: Record<number, typeof THEME_PALETTE[0]>
   showAllMode?: boolean
+  selectedThemes?: Theme[]
+  hoveredThemeId?: string | null
 }) {
   var [expanded, setExpanded] = useState(false)
 
@@ -94,12 +97,36 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
         matchingThemes.push({ theme: t, pal: themeColors[i] || THEME_PALETTE[0] })
       }
     })
+  } else if (selectedThemes && selectedThemes.length > 0 && allThemes && themeColors) {
+    // Multi-theme mode: show badges for each selected theme that matches
+    selectedThemes.forEach(function(st) {
+      if (commentMatchesTheme(row.text, st)) {
+        var idx = allThemes.findIndex(function(at) { return at.id === st.id })
+        matchingThemes.push({ theme: st, pal: themeColors[idx] || THEME_PALETTE[0] })
+      }
+    })
   }
 
-  // Combine keywords from all matching themes for highlighting
-  var highlightKws = showAllMode
-    ? matchingThemes.reduce(function(acc, m) { return acc.concat(m.theme.keywords || []) }, [] as string[])
-    : (theme.keywords || [])
+  // Combine keywords for highlighting
+  // If a theme is being hovered, ONLY highlight that theme's keywords
+  var highlightKws: string[]
+  var highlightPal = pal
+  if (hoveredThemeId) {
+    var hoveredTheme = (allThemes || []).find(function(t) { return t.id === hoveredThemeId })
+    if (hoveredTheme) {
+      highlightKws = hoveredTheme.keywords || []
+      var hIdx = (allThemes || []).findIndex(function(t) { return t.id === hoveredThemeId })
+      highlightPal = (themeColors && themeColors[hIdx]) || THEME_PALETTE[0]
+    } else {
+      highlightKws = []
+    }
+  } else if (showAllMode) {
+    highlightKws = matchingThemes.reduce(function(acc, m) { return acc.concat(m.theme.keywords || []) }, [] as string[])
+  } else if (selectedThemes && selectedThemes.length > 0) {
+    highlightKws = selectedThemes.reduce(function(acc, t) { return acc.concat(t.keywords || []) }, [] as string[])
+  } else {
+    highlightKws = (theme.keywords || [])
+  }
   var segments = highlightKeywords(row.text, highlightKws)
   var ignoredSet = new Set(ignoredFields)
   var metaCols = schema
@@ -146,10 +173,11 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
     }}>
       {/* Theme badge(s) + field name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
-        {showAllMode && matchingThemes.length > 0 ? (
+        {(showAllMode || (selectedThemes && selectedThemes.length > 1)) && matchingThemes.length > 0 ? (
           matchingThemes.map(function(m) {
+            var isHov = hoveredThemeId === m.theme.id
             return (
-              <span key={m.theme.id} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: m.pal.bg, color: m.pal.text, border: '1px solid ' + m.pal.border }}>
+              <span key={m.theme.id} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: m.pal.bg, color: m.pal.text, border: '1px solid ' + m.pal.border, opacity: hoveredThemeId && !isHov ? 0.4 : 1, transition: 'opacity .15s' }}>
                 {m.theme.name}
               </span>
             )
@@ -159,7 +187,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
             {theme.name}
           </span>
         )}
-        {showAllMode && matchingThemes.length === 0 && (
+        {(showAllMode || (selectedThemes && selectedThemes.length > 1)) && matchingThemes.length === 0 && (
           <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0' }}>
             Unclassified
           </span>
@@ -175,8 +203,9 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
       <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: (ratingFields.length > 0 || hasMore) ? 8 : 0 }}>
         {segments.map(function(seg, i) {
           if (seg.matched) {
+            var hPal = hoveredThemeId ? highlightPal : pal
             return (
-              <mark key={i} style={{ background: pal.light, color: pal.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + pal.border, fontWeight: 600 }}>
+              <mark key={i} style={{ background: hPal.light || hPal.bg, color: hPal.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + hPal.border, fontWeight: 600 }}>
                 {seg.text}
               </mark>
             )
@@ -235,11 +264,15 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
 }
 
 export default function CommentsPanel({
-  theme, allThemes, parsedData, activeField, activeFields,
+  theme, allThemes, selectedThemes, parsedData, activeField, activeFields,
   catFields, themeColors, onBack, ignoredFields = [], schema, apiKey, columnAliases = {}, datasetId, showAllMode,
 }: Props) {
-  const themeIdx = allThemes.findIndex(function(t) { return t.id === theme.id })
+  const activeThemes = selectedThemes && selectedThemes.length > 0 ? selectedThemes : [theme]
+  const isMulti = activeThemes.length > 1 || showAllMode
+  const themeIdx = allThemes.findIndex(function(t) { return t.id === activeThemes[0].id })
   const pal = themeColors[themeIdx] || THEME_PALETTE[0]
+
+  const [hoveredThemeId, setHoveredThemeId] = useState<string | null>(null)
 
   const [aiSummary, setAiSummary] = useState<{
     headline: string; summary: string; sentiment: string; keyQuotes: string[]
@@ -287,12 +320,15 @@ export default function CommentsPanel({
   }, [parsedData, fields, metaCols])
 
   const matched = useMemo(function() {
-    var raw = showAllMode ? allRows : allRows.filter(function(r) { return commentMatchesTheme(r.text, theme) })
-    // Score relevance = number of distinct keywords matched
+    var raw = showAllMode ? allRows : allRows.filter(function(r) {
+      return activeThemes.some(function(t) { return commentMatchesTheme(r.text, t) })
+    })
+    // Score relevance = number of distinct keywords matched across all active themes
+    var allKws = activeThemes.reduce(function(acc, t) { return acc.concat(t.keywords || []) }, [] as string[])
     var relevanceScore = function(text: string): number {
       var t = text.toLowerCase()
       var hits = 0
-      ;(theme.keywords || []).forEach(function(kw) {
+      allKws.forEach(function(kw) {
         var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         if (new RegExp('(?<![a-z])' + esc + '\\w*', 'i').test(t)) hits++
       })
@@ -307,7 +343,7 @@ export default function CommentsPanel({
       sorted.sort(function(a, b) { return a.text.length - b.text.length })
     }
     return sorted
-  }, [allRows, theme, sortBy])
+  }, [allRows, activeThemes, sortBy, showAllMode])
 
   async function generateSummary() {
     if (!matched.length || !apiKey) return
@@ -357,16 +393,30 @@ export default function CommentsPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid ' + T.border, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid ' + T.border, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button
           onClick={onBack}
           style={{ fontSize: 12, fontWeight: 600, color: T.textMute, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px 2px 0', flexShrink: 0 }}
         >
           &larr; Back
         </button>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: pal.text, background: pal.bg, padding: '3px 11px', borderRadius: 20, border: '1px solid ' + pal.border }}>
-          {theme.name}
-        </span>
+        {showAllMode ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: T.textMid, background: T.bg, padding: '3px 11px', borderRadius: 20, border: '1px solid ' + T.border }}>
+            All Themes
+          </span>
+        ) : activeThemes.map(function(t) {
+          var idx = allThemes.findIndex(function(at) { return at.id === t.id })
+          var tp = themeColors[idx] || THEME_PALETTE[0]
+          var isHovered = hoveredThemeId === t.id
+          return (
+            <span key={t.id}
+              onMouseEnter={function() { setHoveredThemeId(t.id) }}
+              onMouseLeave={function() { setHoveredThemeId(null) }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: tp.text, background: tp.bg, padding: '3px 11px', borderRadius: 20, border: (isHovered ? '2px' : '1px') + ' solid ' + tp.border, cursor: 'default', transition: 'border-width .1s', boxShadow: isHovered ? '0 0 0 2px ' + tp.border + '60' : 'none' }}>
+              {t.name}
+            </span>
+          )
+        })}
         <span style={{ fontSize: 12, color: T.textMute }}>
           {matched.length.toLocaleString()} of {total.toLocaleString()} responses ({matchPct}%)
         </span>
@@ -393,17 +443,19 @@ export default function CommentsPanel({
             <button
               onClick={generateSummary}
               disabled={!apiKey || !matched.length}
-              title={!apiKey ? 'Enable AI in the header bar to use summaries' : !matched.length ? 'No matching comments to summarize' : ''}
               style={{
                 padding: '7px 14px', fontSize: 12, fontWeight: 700,
-                background: apiKey && matched.length ? T.accentBg : T.bg,
-                color: apiKey && matched.length ? T.accent : T.textFaint,
-                border: '1px solid ' + (apiKey && matched.length ? T.accentMid : T.border),
-                borderRadius: 8, cursor: apiKey && matched.length ? 'pointer' : 'not-allowed',
+                background: apiKey ? T.accentBg : T.bg,
+                color: apiKey ? T.accent : T.textFaint,
+                border: '1px solid ' + (apiKey ? T.accentMid : T.border),
+                borderRadius: 8, cursor: apiKey ? 'pointer' : 'not-allowed',
               }}
             >
               {'\u29E1'} AI Summary
             </button>
+            {!apiKey && (
+              <span style={{ fontSize: 11, color: T.textFaint }}>Add your API key to enable AI summaries</span>
+            )}
             {summaryError && (
               <span style={{ fontSize: 11, color: T.red }}>{summaryError}</span>
             )}
@@ -460,6 +512,8 @@ export default function CommentsPanel({
               allThemes={allThemes}
               themeColors={themeColors}
               showAllMode={showAllMode}
+              selectedThemes={activeThemes}
+              hoveredThemeId={hoveredThemeId}
             />
           )
         })}

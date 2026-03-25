@@ -720,6 +720,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
   const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
   const [drillGroup, setDrillGroup] = useState<string | null>(null)
+  const [selectedThemes, setSelectedThemes] = useState<Theme[]>([])
   const [previousTab, setPreviousTab] = useState<SubTab>('themes')
   const [isDirty, setIsDirty] = useState(false)
 
@@ -981,18 +982,20 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   function handleSubTab(tab: SubTab) {
     if (tab === 'comments') setPreviousTab(subTab)
     setSubTab(tab)
-    if (tab !== 'comments') { setDrillTheme(null); setDrillGroup(null) }
+    if (tab !== 'comments') { setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }
   }
 
   function handleDrillTheme(t: Theme, group?: string) {
     setPreviousTab(subTab)
     setDrillTheme(t)
+    setSelectedThemes([t])
     setDrillGroup(group || null)
     setSubTab('comments')
   }
 
   function handleBackFromComments() {
     setDrillTheme(null)
+    setSelectedThemes([])
     setDrillGroup(null)
     setSubTab(previousTab)
   }
@@ -1391,26 +1394,29 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                 {hasThemes && themes && themes.themes.length > 0 && rowsLoaded ? (
                   <>
-                    {/* Breadcrumb + Theme strip */}
+                    {/* Breadcrumb + Theme strip — multi-select */}
                     <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <button onClick={handleBackFromComments} style={{ fontSize: 12, fontWeight: 600, color: T.textMute, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px 2px 0', flexShrink: 0 }}>{'\u2190'} Back</button>
                       <span style={{ fontSize: 12, color: T.border, flexShrink: 0 }}>|</span>
-                      {drillTheme ? (
-                        <span style={{ fontSize: 11, color: T.textFaint }}>Viewing comments for</span>
-                      ) : (
-                        <span style={{ fontSize: 11, color: T.textFaint }}>All responses {'\u2014'} click a theme to filter</span>
-                      )}
-                      {/* Theme strip — click to switch themes */}
+                      <span style={{ fontSize: 11, color: T.textFaint }}>{selectedThemes.length === 0 ? 'All responses' : selectedThemes.length === 1 ? 'Viewing' : selectedThemes.length + ' themes selected'} {'\u2014'} click themes to toggle</span>
+                      {/* Theme strip — click to toggle multi-select */}
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1 }}>
-                        <button onClick={function() { setDrillTheme(null); setDrillGroup(null) }}
-                          style={{ fontSize: 11, fontWeight: !drillTheme ? 700 : 500, padding: '2px 10px', borderRadius: 20, background: !drillTheme ? T.bg : 'transparent', border: '1px solid ' + (!drillTheme ? T.borderMid : 'transparent'), color: !drillTheme ? T.text : T.textFaint, cursor: 'pointer' }}>
+                        <button onClick={function() { setDrillTheme(null); setDrillGroup(null); setSelectedThemes([]) }}
+                          style={{ fontSize: 11, fontWeight: selectedThemes.length === 0 ? 700 : 500, padding: '2px 10px', borderRadius: 20, background: selectedThemes.length === 0 ? T.bg : 'transparent', border: '1px solid ' + (selectedThemes.length === 0 ? T.borderMid : 'transparent'), color: selectedThemes.length === 0 ? T.text : T.textFaint, cursor: 'pointer' }}>
                           All
                         </button>
                         {themes.themes.map(function(t, i) {
                           var pal = themeColors[i] || THEME_PALETTE[0]
-                          var isActive = drillTheme && drillTheme.id === t.id
+                          var isActive = selectedThemes.some(function(st) { return st.id === t.id })
                           return (
-                            <button key={t.id} onClick={function() { setDrillTheme(t) }}
+                            <button key={t.id} onClick={function() {
+                              setSelectedThemes(function(prev) {
+                                var exists = prev.some(function(st) { return st.id === t.id })
+                                var next = exists ? prev.filter(function(st) { return st.id !== t.id }) : prev.concat([t])
+                                setDrillTheme(next.length > 0 ? next[0] : null)
+                                return next
+                              })
+                            }}
                               style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, padding: '2px 10px', borderRadius: 20, background: isActive ? pal.bg : 'transparent', border: '1px solid ' + (isActive ? pal.border : 'transparent'), color: isActive ? pal.text : T.textFaint, cursor: 'pointer', transition: 'all .1s' }}>
                               {t.name}
                             </button>
@@ -1421,6 +1427,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     <CommentsPanel
                       theme={drillTheme || { id: '__all__', name: 'All', description: '', keywords: [], sentiment: 'mixed', count: 0, percentage: 0, relatedThemes: [] }}
                       allThemes={themes.themes}
+                      selectedThemes={selectedThemes}
                       parsedData={filteredRows}
                       activeField={effectiveFields[0] || themes!.fieldName}
                       activeFields={effectiveFields}
@@ -1430,7 +1437,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       schema={schema.fields}
                       apiKey={aiEnabled ? (apiKey || undefined) : undefined}
                       datasetId={datasetId}
-                      showAllMode={!drillTheme}
+                      showAllMode={selectedThemes.length === 0}
                     />
                   </>
                 ) : (
