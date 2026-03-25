@@ -296,7 +296,40 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
 
                 var dtPctLeft = absMaxTs > absMinTs ? ((curMinTs - absMinTs) / (absMaxTs - absMinTs) * 100) : 0
                 var dtPctRight = absMaxTs > absMinTs ? (100 - (curMaxTs - absMinTs) / (absMaxTs - absMinTs) * 100) : 0
-                var thumbStyle = { position: 'absolute' as const, top: '50%', width: 16, height: 16, borderRadius: '50%', background: '#fff', border: '2px solid ' + T.accent, transform: 'translate(-50%, -50%)', cursor: 'grab', zIndex: 5, boxShadow: '0 1px 4px rgba(0,0,0,.15)' }
+
+                var startDrag = function(side: 'left' | 'right') {
+                  return function(e: React.MouseEvent | React.TouchEvent) {
+                    e.preventDefault()
+                    var track = (e.currentTarget as HTMLElement).parentElement as HTMLElement
+                    var rect = track.getBoundingClientRect()
+                    var getX = function(ev: MouseEvent | TouchEvent): number {
+                      return 'touches' in ev ? ev.touches[0].clientX : (ev as MouseEvent).clientX
+                    }
+                    var onMove = function(ev: MouseEvent | TouchEvent) {
+                      var pct = Math.max(0, Math.min(1, (getX(ev) - rect.left) / rect.width))
+                      var ts = Math.round(absMinTs + pct * (absMaxTs - absMinTs))
+                      ts = Math.round(ts / stepMs) * stepMs
+                      ts = Math.max(absMinTs, Math.min(absMaxTs, ts))
+                      if (side === 'left') {
+                        setDateRange(Math.min(ts, curMaxTs - stepMs), curMaxTs)
+                      } else {
+                        setDateRange(curMinTs, Math.max(ts, curMinTs + stepMs))
+                      }
+                    }
+                    var onUp = function() {
+                      document.removeEventListener('mousemove', onMove)
+                      document.removeEventListener('mouseup', onUp)
+                      document.removeEventListener('touchmove', onMove)
+                      document.removeEventListener('touchend', onUp)
+                    }
+                    document.addEventListener('mousemove', onMove)
+                    document.addEventListener('mouseup', onUp)
+                    document.addEventListener('touchmove', onMove)
+                    document.addEventListener('touchend', onUp)
+                  }
+                }
+
+                var thumbBase: React.CSSProperties = { position: 'absolute', top: '50%', width: 18, height: 18, borderRadius: '50%', background: '#fff', border: '3px solid ' + T.accent, transform: 'translate(-50%, -50%)', cursor: 'grab', zIndex: 5, boxShadow: '0 1px 4px rgba(0,0,0,.18)', touchAction: 'none' }
 
                 return (
                   <div key={f.field} style={{ background: T.bgCard, border: (isActive ? '2px solid ' + T.accent : '1px solid ' + T.border), borderRadius: 10, padding: '14px 16px' }}>
@@ -307,39 +340,20 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textMid, marginBottom: 6, fontWeight: 600 }}>
                       <span>{fmtD(curMinTs)}</span><span>{fmtD(curMaxTs)}</span>
                     </div>
-                    {/* Slider track with visible thumbs */}
-                    <div style={{ position: 'relative', height: 24, marginBottom: 6 }}>
+                    {/* Slider track with draggable thumbs */}
+                    <div style={{ position: 'relative', height: 28, marginBottom: 6, userSelect: 'none' }}>
                       {/* Grey track */}
                       <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: T.border, borderRadius: 2, transform: 'translateY(-50%)' }} />
                       {/* Orange active range */}
                       <div style={{ position: 'absolute', top: '50%', left: dtPctLeft + '%', right: dtPctRight + '%', height: 4, background: T.accent, borderRadius: 2, transform: 'translateY(-50%)' }} />
-                      {/* Left thumb */}
-                      <div style={Object.assign({}, thumbStyle, { left: dtPctLeft + '%' })} />
-                      {/* Right thumb */}
-                      <div style={Object.assign({}, thumbStyle, { left: (100 - dtPctRight) + '%' })} />
-                      {/* Left invisible input — pointer-events only on left half */}
-                      <input type="range" min={absMinTs} max={absMaxTs} step={stepMs} value={curMinTs}
-                        onChange={function(e) { setDateRange(Math.min(Number(e.target.value), curMaxTs - stepMs), curMaxTs) }}
-                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 6, pointerEvents: 'none' }}
-                        onMouseDown={function(e) { (e.target as HTMLElement).style.pointerEvents = 'auto' }}
-                        onTouchStart={function(e) { (e.target as HTMLElement).style.pointerEvents = 'auto' }}
-                        onMouseUp={function(e) { (e.target as HTMLElement).style.pointerEvents = 'none' }}
-                        onTouchEnd={function(e) { (e.target as HTMLElement).style.pointerEvents = 'none' }}
-                      />
-                      {/* Right invisible input — always active */}
-                      <input type="range" min={absMinTs} max={absMaxTs} step={stepMs} value={curMaxTs}
-                        onChange={function(e) { setDateRange(curMinTs, Math.max(Number(e.target.value), curMinTs + stepMs)) }}
-                        style={{ position: 'absolute', width: '100%', top: 0, height: '100%', opacity: 0, cursor: 'pointer', zIndex: 4 }} />
-                      {/* Clickable left zone to grab left thumb */}
-                      <div style={{ position: 'absolute', top: 0, left: 0, width: Math.max(dtPctLeft + 5, 10) + '%', height: '100%', zIndex: 7, cursor: 'pointer' }}
-                        onMouseDown={function(e) {
-                          var rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect()
-                          var pct = (e.clientX - rect.left) / rect.width
-                          var ts = Math.round(absMinTs + pct * (absMaxTs - absMinTs))
-                          ts = Math.round(ts / stepMs) * stepMs
-                          setDateRange(Math.min(ts, curMaxTs - stepMs), curMaxTs)
-                        }}
-                      />
+                      {/* Left thumb — drag to change min */}
+                      <div style={Object.assign({}, thumbBase, { left: dtPctLeft + '%' })}
+                        onMouseDown={startDrag('left') as any}
+                        onTouchStart={startDrag('left') as any} />
+                      {/* Right thumb — drag to change max */}
+                      <div style={Object.assign({}, thumbBase, { left: (100 - dtPctRight) + '%' })}
+                        onMouseDown={startDrag('right') as any}
+                        onTouchStart={startDrag('right') as any} />
                     </div>
                     {/* Bounds — orange, below slider */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.accent, fontWeight: 600, marginBottom: 6 }}>
