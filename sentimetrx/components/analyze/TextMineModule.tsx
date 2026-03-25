@@ -474,10 +474,12 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     style={{ fontSize: 14, background: 'transparent', border: 'none', color: T.textFaint, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>{'\u00D7'}</button>
                 </div>
                 <div style={{ fontSize: 11, color: T.textMid, lineHeight: 1.5, marginBottom: 8 }}>{plainEnglish}</div>
-                <button onClick={function(e) { e.stopPropagation(); navigator.clipboard.writeText(plainEnglish).then(function() { setCopiedSig(true) }) }}
-                  style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: copiedSig ? T.greenBg : T.bg, color: copiedSig ? T.green : T.textMid, border: '1px solid ' + (copiedSig ? T.greenMid : T.border), cursor: 'pointer' }}>
-                  {copiedSig ? '\u2713 Copied' : '\u2398 Copy'}
-                </button>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={function(e) { e.stopPropagation(); navigator.clipboard.writeText(plainEnglish).then(function() { setCopiedSig(true) }) }}
+                    style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: copiedSig ? T.greenBg : T.bg, color: copiedSig ? T.green : T.textMid, border: '1px solid ' + (copiedSig ? T.greenMid : T.border), cursor: 'pointer' }}>
+                    {copiedSig ? '\u2713 Copied' : '\u2398 Copy'}
+                  </button>
+                </div>
               </div>
             )}
           </span>
