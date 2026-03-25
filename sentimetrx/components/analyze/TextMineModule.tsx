@@ -438,7 +438,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
   var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string }) {
     var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
-    var sigId = props.barId || props.label
+    var sigId = (props.groupName || '') + '::' + (props.themeName || '') + '::' + props.label
     var grpLabel = props.groupName || props.label
     var thLabel = props.themeName || props.label
     var plainEnglish = props.sig ? (
