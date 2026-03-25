@@ -432,17 +432,47 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   })()
 
   // ── Compare bar component ────────────────────────────────────────────────
-  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void }) {
+  var [hoveredSig, setHoveredSig] = useState<string | null>(null)
+  var [copiedSig, setCopiedSig] = useState(false)
+
+  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string }) {
     var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
+    var sigId = props.barId || props.label
+    var plainEnglish = props.sig ? (
+      props.sig.dir === 'over'
+        ? '"' + props.label + '" mentions this theme at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly higher than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably more likely to discuss this topic.'
+        : '"' + props.label + '" mentions this theme at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly lower than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably less likely to discuss this topic.'
+    ) : ''
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: props.onClick ? 'pointer' : 'default' }} onClick={props.onClick}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: props.onClick ? 'pointer' : 'default', position: 'relative' }} onClick={props.onClick}>
         <span style={{ fontSize: 11, color: props.isUnclassified ? T.textFaint : T.textMid, width: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, fontStyle: props.isUnclassified ? 'italic' : 'normal' }}>
           {props.label}
         </span>
         <div style={{ flex: 1, height: 10, background: T.bg, borderRadius: 5, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: Math.max(props.maxPct > 0 ? props.pct / props.maxPct * 100 : 0, props.pct > 0 ? 2 : 0) + '%', background: props.isUnclassified ? T.borderMid : props.color, borderRadius: 5, transition: 'width .5s' }} />
         </div>
-        {sigColor && <span style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center' }} title={(props.sig!.dir === 'over' ? 'Over' : 'Under') + '-indexed (z=' + props.sig!.z.toFixed(1) + ')'}>★</span>}
+        {sigColor && (
+          <span
+            style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center', cursor: 'help', position: 'relative' }}
+            onMouseEnter={function() { setHoveredSig(sigId); setCopiedSig(false) }}
+            onMouseLeave={function() { setHoveredSig(null) }}
+            onClick={function(e) { e.stopPropagation() }}>
+            {'★'}
+            {hoveredSig === sigId && (
+              <div style={{ position: 'absolute', bottom: 22, right: -10, width: 280, background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '12px 14px', zIndex: 50, textAlign: 'left', cursor: 'default' }}
+                onClick={function(e) { e.stopPropagation() }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: sigColor, marginBottom: 6 }}>
+                  {props.sig!.dir === 'over' ? '\u25B2 Over-indexed' : '\u25BC Under-indexed'}
+                </div>
+                <div style={{ fontSize: 11, color: T.textMid, lineHeight: 1.5, marginBottom: 8 }}>{plainEnglish}</div>
+                <button onClick={function(e) { e.stopPropagation(); navigator.clipboard.writeText(plainEnglish).then(function() { setCopiedSig(true) }) }}
+                  style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: copiedSig ? T.greenBg : T.bg, color: copiedSig ? T.green : T.textMid, border: '1px solid ' + (copiedSig ? T.greenMid : T.border), cursor: 'pointer' }}>
+                  {copiedSig ? '\u2713 Copied' : '\u2767 Copy'}
+                </button>
+              </div>
+            )}
+          </span>
+        )}
         {!sigColor && <span style={{ width: 14, flexShrink: 0 }} />}
         <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{props.pct}%</span>
         <span style={{ fontSize: 10, color: T.textFaint, width: 44, textAlign: 'right', flexShrink: 0 }}>n={props.count}</span>
@@ -1378,7 +1408,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       </div>
                     </div>
                     <CommentsPanel
-                      theme={drillTheme || themes.themes[0]}
+                      theme={drillTheme || { id: '__all__', name: 'All', description: '', keywords: [], sentiment: 'mixed', count: 0, percentage: 0, relatedThemes: [] }}
                       allThemes={themes.themes}
                       parsedData={filteredRows}
                       activeField={effectiveFields[0] || themes!.fieldName}
