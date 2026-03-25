@@ -142,21 +142,28 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
     })
   } else if (selectedThemes && selectedThemes.length === 1) {
     highlightKws = selectedThemes[0].keywords || []
+    var stIdx = (allThemes || []).findIndex(function(at) { return at.id === selectedThemes[0].id })
+    var stPal = (themeColors && themeColors[stIdx]) || THEME_PALETTE[0]
+    highlightKws.forEach(function(kw) { kwPalMap[kw.toLowerCase()] = stPal })
     singlePal = true
   } else {
     highlightKws = (theme.keywords || [])
+    highlightKws.forEach(function(kw) { kwPalMap[kw.toLowerCase()] = pal })
     singlePal = true
   }
   var segments = highlightKeywords(row.text, highlightKws)
 
   // Helper: find palette for a matched text segment
   var segPal = function(segText: string): typeof THEME_PALETTE[0] {
-    if (singlePal || !Object.keys(kwPalMap).length) return pal
-    var lower = segText.toLowerCase()
-    // Find the keyword that best matches this segment
-    var keys = Object.keys(kwPalMap)
-    for (var k = 0; k < keys.length; k++) {
-      if (lower.indexOf(keys[k]) >= 0 || keys[k].indexOf(lower) >= 0) return kwPalMap[keys[k]]
+    // If kwPalMap has entries, always try it first (covers hover + multi-theme)
+    if (Object.keys(kwPalMap).length) {
+      var lower = segText.toLowerCase()
+      var keys = Object.keys(kwPalMap)
+      for (var k = 0; k < keys.length; k++) {
+        if (lower.indexOf(keys[k]) >= 0 || keys[k].indexOf(lower) >= 0) return kwPalMap[keys[k]]
+      }
+      // singlePal hover: all keywords share one palette, return it
+      if (singlePal) return kwPalMap[keys[0]]
     }
     return pal
   }
