@@ -432,16 +432,19 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   })()
 
   // ── Compare bar component ────────────────────────────────────────────────
-  var [hoveredSig, setHoveredSig] = useState<string | null>(null)
+  var [pinnedSig, setPinnedSig] = useState<string | null>(null)
   var [copiedSig, setCopiedSig] = useState(false)
+  var sigLeaveTimer = useRef<any>(null)
 
-  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string }) {
+  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string }) {
     var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
     var sigId = props.barId || props.label
+    var grpLabel = props.groupName || props.label
+    var thLabel = props.themeName || props.label
     var plainEnglish = props.sig ? (
       props.sig.dir === 'over'
-        ? '"' + props.label + '" mentions this theme at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly higher than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably more likely to discuss this topic.'
-        : '"' + props.label + '" mentions this theme at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly lower than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably less likely to discuss this topic.'
+        ? '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly higher than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably more likely to discuss "' + thLabel + '".'
+        : '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly lower than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably less likely to discuss "' + thLabel + '".'
     ) : ''
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: props.onClick ? 'pointer' : 'default', position: 'relative' }} onClick={props.onClick}>
@@ -453,21 +456,27 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         </div>
         {sigColor && (
           <span
-            style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center', cursor: 'help', position: 'relative' }}
-            onMouseEnter={function() { setHoveredSig(sigId); setCopiedSig(false) }}
-            onMouseLeave={function() { setHoveredSig(null) }}
-            onClick={function(e) { e.stopPropagation() }}>
+            style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center', cursor: 'pointer', position: 'relative' }}
+            onMouseEnter={function() { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null }; if (!pinnedSig) { setPinnedSig(sigId); setCopiedSig(false) } }}
+            onMouseLeave={function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(null) }, 400) }}
+            onClick={function(e) { e.stopPropagation(); setPinnedSig(pinnedSig === sigId ? null : sigId); setCopiedSig(false) }}>
             {'★'}
-            {hoveredSig === sigId && (
+            {pinnedSig === sigId && (
               <div style={{ position: 'absolute', bottom: 22, right: -10, width: 280, background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '12px 14px', zIndex: 50, textAlign: 'left', cursor: 'default' }}
+                onMouseEnter={function() { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null } }}
+                onMouseLeave={function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(null) }, 400) }}
                 onClick={function(e) { e.stopPropagation() }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: sigColor, marginBottom: 6 }}>
-                  {props.sig!.dir === 'over' ? '\u25B2 Over-indexed' : '\u25BC Under-indexed'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: sigColor }}>
+                    {props.sig!.dir === 'over' ? '\u25B2 Over-indexed' : '\u25BC Under-indexed'}
+                  </span>
+                  <button onClick={function(e) { e.stopPropagation(); setPinnedSig(null) }}
+                    style={{ fontSize: 14, background: 'transparent', border: 'none', color: T.textFaint, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>{'\u00D7'}</button>
                 </div>
                 <div style={{ fontSize: 11, color: T.textMid, lineHeight: 1.5, marginBottom: 8 }}>{plainEnglish}</div>
                 <button onClick={function(e) { e.stopPropagation(); navigator.clipboard.writeText(plainEnglish).then(function() { setCopiedSig(true) }) }}
                   style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: copiedSig ? T.greenBg : T.bg, color: copiedSig ? T.green : T.textMid, border: '1px solid ' + (copiedSig ? T.greenMid : T.border), cursor: 'pointer' }}>
-                  {copiedSig ? '\u2713 Copied' : '\u2767 Copy'}
+                  {copiedSig ? '\u2713 Copied' : '\u2398 Copy'}
                 </button>
               </div>
             )}
@@ -564,7 +573,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                       var pct = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
                       var pal = themeColors[ti] || THEME_PALETTE[0]
                       var sig = sigTest(count, g.groupTotal, ts ? ts.totalMatches : 0, compStats!.totalRows)
-                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} />
+                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} groupName={g.group} themeName={t.name} />
                     })}
                     {g.unclassified > 0 && <CompareBar label="Unclassified" pct={g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0} count={g.unclassified} maxPct={maxShare} color={T.borderMid} labelColor={T.textFaint} sig={null} isUnclassified={true} />}
                   </div>
@@ -591,7 +600,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                   </div>
                   {perGroupSorted.map(function(g) {
                     var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
-                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} />
+                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} />
                   })}
                 </div>
               )
