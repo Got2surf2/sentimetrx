@@ -174,6 +174,13 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
       })
     : []
 
+  // Build aliases from schema labels — these take priority over passed-in aliases
+  var fieldAlias = function(field: string): string {
+    if (aliases[field]) return aliases[field]
+    var sf = (schema || []).find(function(s) { return s.field === field })
+    return (sf && sf.label && sf.label !== sf.field) ? sf.label : field
+  }
+
   var metaEntries = metaCols
     .filter(function(f) { return row.meta[f.field] != null && String(row.meta[f.field]).trim() !== '' })
 
@@ -185,6 +192,12 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   var otherFields = metaEntries.filter(function(f) {
     return f.sqt !== 'rating' && f.sqt !== 'nps' && f.sqt !== 'likert' && f.scoreField !== true
   })
+  // Combine all metadata into one list: ratings first, then others
+  var allMeta = ratingFields.concat(otherFields)
+  // Show first row (up to ~5 items), rest behind expand
+  var FIRST_ROW_MAX = 5
+  var firstRowMeta = allMeta.slice(0, FIRST_ROW_MAX)
+  var overflowMeta = allMeta.slice(FIRST_ROW_MAX)
 
   // Red-green color scale for numeric scores
   var scoreColor = function(val: unknown, f: SchemaField): string {
@@ -202,7 +215,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
     return 'rgb(' + r2 + ',' + g2 + ',40)'
   }
 
-  var hasMore = otherFields.length > 0
+  var hasMore = overflowMeta.length > 0
 
   return (
     <div style={{
@@ -236,7 +249,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
         )}
         {showFieldName && (
           <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: '#f0f9ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
-            {aliases[row.fieldName!] || row.fieldName}
+            {fieldAlias(row.fieldName!) || row.fieldName}
           </span>
         )}
       </div>
@@ -256,46 +269,39 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
         })}
       </div>
 
-      {/* Smart metadata: rating scores with color scale */}
-      {ratingFields.length > 0 && (
+      {/* Metadata: 1 row, then expand */}
+      {firstRowMeta.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 2 }}>
-          {ratingFields.map(function(f) {
+          {firstRowMeta.map(function(f) {
             var val = row.meta[f.field]
-            var color = scoreColor(val, f)
+            var isRating = f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
+            var color = isRating ? scoreColor(val, f) : null
             return (
-              <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color + '15', color: color, border: '1px solid ' + color + '40', display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 700 }}>
-                <span style={{ opacity: 0.7, fontWeight: 500 }}>{aliases[f.field] || f.field}:</span> {String(val)}
+              <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
+                <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span> {String(val)}
               </span>
             )
           })}
-          {/* Expand button */}
           {hasMore && (
             <button onClick={function() { setExpanded(function(v) { return !v }) }}
               style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: expanded ? T.accentBg : T.bg, color: expanded ? T.accent : T.textFaint, border: '1px solid ' + (expanded ? T.accentMid : T.border), cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-              {expanded ? '\u2212' : '+'} {otherFields.length}
+              {expanded ? '\u2212 Less' : '+ ' + overflowMeta.length + ' more'}
             </button>
           )}
         </div>
       )}
 
-      {/* Expand button when no rating fields */}
-      {ratingFields.length === 0 && hasMore && (
-        <div style={{ marginTop: 2 }}>
-          <button onClick={function() { setExpanded(function(v) { return !v }) }}
-            style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: expanded ? T.accentBg : T.bg, color: expanded ? T.accent : T.textFaint, border: '1px solid ' + (expanded ? T.accentMid : T.border), cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-            {expanded ? '\u2212 Less' : '+ ' + otherFields.length + ' more'}
-          </button>
-        </div>
-      )}
-
-      {/* Expanded metadata */}
-      {expanded && otherFields.length > 0 && (
+      {/* Expanded overflow metadata */}
+      {expanded && overflowMeta.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6, paddingTop: 6, borderTop: '1px solid ' + T.border }}>
-          {otherFields.map(function(f) {
+          {overflowMeta.map(function(f) {
+            var val = row.meta[f.field]
+            var isRating = f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
+            var color = isRating ? scoreColor(val, f) : null
             return (
-              <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: T.bg, color: T.textMute, border: '1px solid ' + T.border, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                <span style={{ opacity: 0.7, fontWeight: 400 }}>{aliases[f.field] || f.field}:</span>{' '}
-                <span style={{ fontWeight: 700 }}>{String(row.meta[f.field])}</span>
+              <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
+                <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span>{' '}
+                <span style={{ fontWeight: 700 }}>{String(val)}</span>
               </span>
             )
           })}
