@@ -338,7 +338,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     row.className = 'flex gap-2 items-end w-full'
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts...'
     ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
@@ -433,7 +433,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           row.className = 'flex gap-2 items-end w-full'
           const ta = document.createElement('textarea')
     ta.cols = 1
-          ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+          ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
           ta.placeholder = 'Share your thoughts...'
           ta.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
@@ -602,7 +602,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         } else if (q.type === 'likert') {
           const scale = q.likertScale ?? []
           const row = document.createElement('div')
-          row.className = 'flex gap-1 mt-1.5 flex-wrap'
+          row.className = 'flex gap-1 mt-1.5'
           scale.forEach(s => {
             const sb = document.createElement('button')
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
@@ -674,7 +674,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const inp = document.createElement('input')
           inp.type = 'number'
           inp.placeholder = 'Enter a number...'
-          inp.className = 'flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-base outline-none'
+          inp.className = 'flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-sm outline-none'
           inp.style.cssText = 'background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);font-family:inherit;'
           inp.onfocus = () => { inp.style.borderColor = config.theme.primaryColor }
           inp.onblur  = () => { inp.style.borderColor = 'rgba(255,255,255,0.1)' }
@@ -745,7 +745,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
     clearInput()
-    if (state.current.clarifyCount < 2 && shouldClarify(val)) {
+    // Only attempt clarification if enabled for this question
+    const clarifyEnabled = qKey === 'q3' ? config.q3Clarify : config.q4Clarify
+    if (clarifyEnabled && state.current.clarifyCount < 2 && shouldClarify(val)) {
       const cq = await buildClarify(val, qKey)
       if (cq) {
         state.current.clarifyCount++
@@ -767,14 +769,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts here...'
     ta.style.cssText = `
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;
+      max-height:110px;transition:border-color 0.2s;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -818,14 +820,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Feel free to add a bit more...'
     ta.style.cssText = `
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;
+      max-height:110px;transition:border-color 0.2s;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -881,14 +883,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     const ta = document.createElement('textarea')
     ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.className = 'flex-1 resize-none text-sm leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = 'Share your thoughts, or skip...'
     ta.style.cssText = `
       background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       color:rgba(255,255,255,0.9);outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;
+      max-height:110px;transition:border-color 0.2s;
     `
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }

@@ -37,17 +37,31 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           onChange={v => updateConfig({ q3ExportLabel: v })}
           placeholder="Label for this column in exports — e.g. Improvement Suggestion"
         />
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => updateConfig({ q3Required: c.q3Required === false ? undefined : false })}
-            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q3Required !== false ? 'bg-orange-500' : 'bg-gray-200'}`}
-          >
-            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q3Required !== false ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
-          <span className="text-sm text-gray-600">
-            {c.q3Required !== false ? <><strong className="text-gray-800">Required</strong> — respondents must answer</> : <><strong className="text-gray-800">Optional</strong> — respondents can skip</>}
-          </span>
+        <div className="flex items-center gap-6 flex-wrap">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => updateConfig({ q3Required: c.q3Required === false ? undefined : false })}
+              className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q3Required !== false ? 'bg-orange-500' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q3Required !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+            <span className="text-sm text-gray-600">
+              {c.q3Required !== false ? <><strong className="text-gray-800">Required</strong></> : <><strong className="text-gray-800">Optional</strong></>}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => updateConfig({ q3Clarify: !c.q3Clarify })}
+              className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q3Clarify ? 'bg-orange-500' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q3Clarify ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+            <span className="text-sm text-gray-600">
+              {c.q3Clarify ? <><strong className="text-gray-800">Clarifier on</strong> — bot may ask a follow-up</> : <><strong className="text-gray-800">No clarifier</strong> — moves to next question</>}
+            </span>
+          </div>
         </div>
       </Section>
 
@@ -60,17 +74,31 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           onChange={v => updateConfig({ q4ExportLabel: v })}
           placeholder="Label for this column in exports — e.g. Additional Comments"
         />
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => updateConfig({ q4Required: c.q4Required === true ? undefined : true })}
-            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q4Required === true ? 'bg-orange-500' : 'bg-gray-200'}`}
-          >
-            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q4Required === true ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
-          <span className="text-sm text-gray-600">
-            {c.q4Required === true ? <><strong className="text-gray-800">Required</strong> — respondents must answer</> : <><strong className="text-gray-800">Optional</strong> — respondents can skip</>}
-          </span>
+        <div className="flex items-center gap-6 flex-wrap">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => updateConfig({ q4Required: c.q4Required === true ? undefined : true })}
+              className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q4Required === true ? 'bg-orange-500' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q4Required === true ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+            <span className="text-sm text-gray-600">
+              {c.q4Required === true ? <><strong className="text-gray-800">Required</strong></> : <><strong className="text-gray-800">Optional</strong></>}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => updateConfig({ q4Clarify: !c.q4Clarify })}
+              className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.q4Clarify ? 'bg-orange-500' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.q4Clarify ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+            <span className="text-sm text-gray-600">
+              {c.q4Clarify ? <><strong className="text-gray-800">Clarifier on</strong> — bot may ask a follow-up</> : <><strong className="text-gray-800">No clarifier</strong> — moves to next question</>}
+            </span>
+          </div>
         </div>
       </Section>
 

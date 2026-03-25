@@ -124,9 +124,11 @@ export interface StudyConfig {
   q3:                 string
   q3Required?:        boolean
   q3ExportLabel?:     string
+  q3Clarify?:         boolean   // enable clarifier follow-up for Q3
   q4:                 string
   q4Required?:        boolean
   q4ExportLabel?:     string
+  q4Clarify?:         boolean   // enable clarifier follow-up for Q4
 
   // Custom questions (drag-ordered)
   questions?:         SurveyQuestion[]
