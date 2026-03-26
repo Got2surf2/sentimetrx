@@ -199,4 +199,6 @@ export function scaleDirectionLabel(values: string[]): string | null {
   var detected = detectScale(values)
   if (!detected || detected.length < 2) return null
   return detected[0] + ' \u2192 ' + detected[detected.length - 1]
+
+
 }
