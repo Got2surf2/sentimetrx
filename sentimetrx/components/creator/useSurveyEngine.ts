@@ -263,7 +263,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     }
 
     // Add device fingerprint to payload for server-side duplicate check
-    ;(payload as any).deviceFingerprint = deviceFingerprint.current
+    const fullPayload = Object.assign({}, payload, { deviceFingerprint: deviceFingerprint.current })
 
     const duration_sec = Math.round((Date.now() - s.startTime) / 1000)
 
@@ -273,7 +273,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           study_guid:   study.guid,
-          payload,
+          payload:      fullPayload,
           duration_sec,
           session_id:   sessionId.current,
           status:       'complete',
