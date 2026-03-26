@@ -263,7 +263,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     }
 
     // Add device fingerprint to payload for server-side duplicate check
-    ;(payload as Record<string, unknown>).deviceFingerprint = deviceFingerprint.current
+    const fullPayload = Object.assign({}, payload, { deviceFingerprint: deviceFingerprint.current })
 
     const duration_sec = Math.round((Date.now() - s.startTime) / 1000)
 
@@ -273,7 +273,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           study_guid:   study.guid,
-          payload,
+          payload:      fullPayload,
           duration_sec,
           session_id:   sessionId.current,
           status:       'complete',
@@ -806,6 +806,13 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
   const progressFlow = useCallback(async (qKey: 'q3' | 'q4') => {
     if (qKey === 'q3') {
+      // Skip Q4 if disabled
+      if (config.q4Enabled === false) {
+        await showTyping(700)
+        addMsg('bot', 'Got it -- that\'s genuinely helpful.')
+        await stepCustomQuestions()
+        return
+      }
       await showTyping(700)
       addMsg('bot', 'Got it -- that\'s genuinely helpful.')
       await showTyping(800)
@@ -1082,6 +1089,11 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
         // Jump straight to Q3 after scores are captured
         const stepQ3 = async () => {
+          // Skip Q3 entirely if disabled
+          if (config.q3Enabled === false) {
+            await progressFlow('q3')
+            return
+          }
           clearInput()
           await showTyping(800)
           addMsg('bot', config.q3)
