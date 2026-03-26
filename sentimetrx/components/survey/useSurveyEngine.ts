@@ -852,6 +852,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     await progressFlow(qKey)
   }, [addMsg, clearInput, config, progressFlow, savePartial, showTyping, state])
 
+  // Refs so imperative DOM handlers always call the latest function versions
+  const handleOpenEndedRef = useRef(handleOpenEnded)
+  handleOpenEndedRef.current = handleOpenEnded
+  const progressFlowRef = useRef(progressFlow)
+  progressFlowRef.current = progressFlow
+
   // -- Input Renderers ---------------------------------------
 
   const showTextInput = useCallback((qKey: 'q3' | 'q4') => {
@@ -896,14 +902,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       const val = ta.value.trim(); if (!val) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', val)
-      handleOpenEnded(qKey, val)
+      handleOpenEndedRef.current(qKey, val)
     }
 
     wrap.append(ta, sendBtn)
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, config, handleOpenEnded, inputRef, scrollBottom])
+  }, [addMsg, config, inputRef, scrollBottom])
 
   const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string) => {
     if (!inputRef.current) return
@@ -949,14 +955,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       addMsg('user', val)
       if (!isDecline(val)) state.current.answers[qKey] = originalVal + ' [+ ' + val + ']'
       clearInput()
-      await progressFlow(qKey)
+      await progressFlowRef.current(qKey)
     }
 
     wrap.append(ta, sendBtn)
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, state])
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, state])
 
 
 
@@ -1005,12 +1011,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (val) {
         addMsg('user', val)
-        handleOpenEnded(qKey, val)
+        handleOpenEndedRef.current(qKey, val)
       } else {
         addMsg('user', 'Skip')
         state.current.answers[qKey] = ''
         clearInput()
-        progressFlow(qKey)
+        progressFlowRef.current(qKey)
       }
     }
 
@@ -1025,7 +1031,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       addMsg('user', 'Skip')
       state.current.answers[qKey] = ''
       clearInput()
-      progressFlow(qKey)
+      progressFlowRef.current(qKey)
     }
 
     row.append(ta, sendBtn)
@@ -1033,7 +1039,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, handleOpenEnded, inputRef, progressFlow, scrollBottom, state])
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, state])
 
   // -- Main renderInput dispatcher ---------------------------
 
