@@ -837,8 +837,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     state.current.answers[qKey] = val
     savePartial()
     clearInput()
-    // Only attempt clarification if enabled for this question
-    const clarifyEnabled = qKey === 'q3' ? config.q3Clarify : config.q4Clarify
+    // Only attempt clarification if enabled for this question (default: on)
+    const clarifyEnabled = qKey === 'q3' ? config.q3Clarify !== false : config.q4Clarify !== false
     if (clarifyEnabled && state.current.clarifyCount < 2 && shouldClarify(val)) {
       const cq = await buildClarify(val, qKey)
       if (cq) {
@@ -850,7 +850,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       }
     }
     await progressFlow(qKey)
-  }, [addMsg, clearInput, config, progressFlow, showTyping, state])
+  }, [addMsg, clearInput, config, progressFlow, savePartial, showTyping, state])
 
   // -- Input Renderers ---------------------------------------
 
@@ -1193,4 +1193,4 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   return { renderInput, deviceBlocked: deviceBlocked.current }
 }
 
-// Force update
+
