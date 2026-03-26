@@ -137,6 +137,9 @@ export interface StudyConfig {
   clarifiers:         StudyClarifiers
   useAIClarify?:      boolean
 
+  // Response control
+  allowMultipleResponses?: boolean   // default false — one response per device
+
   // Psychographics
   psychographicBank:  PsychoQuestion[]
   psychoCount?:       number           // how many to randomly show per session (default 3)
@@ -183,6 +186,8 @@ export interface SurveyPayload {
 
 export interface SubmitResponseBody {
   study_guid:   string
-  payload:      SurveyPayload
+  payload:      Partial<SurveyPayload>
   duration_sec: number
+  session_id?:  string
+  status?:      'incomplete' | 'complete'
 }

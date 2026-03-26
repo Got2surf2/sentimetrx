@@ -48,6 +48,75 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     startTime: Date.now(),
   })
 
+  // ── Session ID — persists for this browser tab, new on new visit ──────────
+  const sessionId = useRef<string>('')
+  if (!sessionId.current) {
+    try {
+      var existing = sessionStorage.getItem('sentimetrx_session_' + study.guid)
+      if (existing) { sessionId.current = existing }
+      else {
+        sessionId.current = 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+        sessionStorage.setItem('sentimetrx_session_' + study.guid, sessionId.current)
+      }
+    } catch { sessionId.current = 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36) }
+  }
+
+  // ── Device fingerprint — screen + timezone + platform + language ───────────
+  const deviceFingerprint = useRef<string>('')
+  if (!deviceFingerprint.current) {
+    try {
+      var parts = [
+        screen.width + 'x' + screen.height,
+        screen.colorDepth,
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+        navigator.language,
+        navigator.platform,
+        navigator.hardwareConcurrency || 0,
+      ]
+      deviceFingerprint.current = parts.join('|')
+    } catch { deviceFingerprint.current = 'unknown' }
+  }
+
+  // ── Check device limit — returns true if already completed ────────────────
+  const deviceBlocked = useRef<boolean>(false)
+  if (config.allowMultipleResponses !== true) {
+    try {
+      var completedKey = 'sentimetrx_completed_' + study.guid
+      if (localStorage.getItem(completedKey)) deviceBlocked.current = true
+    } catch {}
+  }
+
+  // ── Partial save — fire-and-forget POST after each answered question ──────
+  const savePartial = useCallback(() => {
+    try {
+      var s = state.current
+      var partialPayload: Record<string, unknown> = {
+        agent:     study.bot_name,
+        timestamp: new Date().toISOString(),
+        deviceFingerprint: deviceFingerprint.current,
+      }
+      if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
+      if (s.rating != null) partialPayload.experienceRating = { score: s.rating, label: s.ratingLabel || '', sentiment: s.sentiment || 'neutral' }
+      if (s.answers.q1 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
+      if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
+      if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
+      if (s.demographics.age || s.demographics.gender || s.demographics.zip) partialPayload.demographics = s.demographics
+
+      var duration_sec = Math.round((Date.now() - s.startTime) / 1000)
+      fetch('/api/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          study_guid:   study.guid,
+          payload:      partialPayload,
+          duration_sec: duration_sec,
+          session_id:   sessionId.current,
+          status:       'incomplete',
+        }),
+      }).catch(function() { /* fail silently */ })
+    } catch { /* fail silently */ }
+  }, [study])
+
   // -- Helpers -----------------------------------------------
 
   const clearInput = useCallback(() => {
@@ -193,17 +262,29 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       demographics:   s.demographics,
     }
 
+    // Add device fingerprint to payload for server-side duplicate check
+    ;(payload as Record<string, unknown>).deviceFingerprint = deviceFingerprint.current
+
     const duration_sec = Math.round((Date.now() - s.startTime) / 1000)
 
     try {
-      await fetch('/api/respond', {
+      const res = await fetch('/api/respond', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ study_guid: study.guid, payload, duration_sec }),
+        body: JSON.stringify({
+          study_guid:   study.guid,
+          payload,
+          duration_sec,
+          session_id:   sessionId.current,
+          status:       'complete',
+        }),
       })
+      // Mark device as having completed this survey
+      if (res.ok) {
+        try { localStorage.setItem('sentimetrx_completed_' + study.guid, new Date().toISOString()) } catch {}
+      }
     } catch (err) {
       console.error('Failed to submit response:', err)
-      // Fail silently -- the user has already seen the thank-you screen
     }
   }
 
@@ -282,6 +363,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       state.current.demographics.age    = ageS.value
       state.current.demographics.gender = genderS.value
       state.current.demographics.zip    = zipInput.value
+      savePartial()
       clearInput()
       await stepDone()
     }
@@ -314,6 +396,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         addMsg('user', opt)
         state.current.psychoAnswers[q.key] = opt
         state.current.psychoIdx++
+        savePartial()
         stepPsychoQ()
       }
       col.appendChild(btn)
@@ -716,6 +799,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
     // Store all custom answers in state
     state.current.customAnswers = customAnswers
+    savePartial()
     await stepPsychoIntro()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, stepPsychoIntro])
 
@@ -744,6 +828,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
   const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
+    savePartial()
     clearInput()
     // Only attempt clarification if enabled for this question
     const clarifyEnabled = qKey === 'q3' ? config.q3Clarify : config.q4Clarify
@@ -1031,6 +1116,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
               rb.style.background  = config.theme.primaryColor + '20'
               state.current.rating      = r.score
               state.current.ratingLabel = r.label
+              savePartial()
               addMsg('user', r.emoji + ' ' + r.label)
               await showLikertFollowUp(config.experienceFollowUp, r.score, stepQ3)
             }
@@ -1076,6 +1162,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             state.current.npsScore = s.score
             state.current.npsLabel = s.label
             state.current.sentiment = s.score >= 5 ? 'positive' : s.score >= 4 ? 'neutral' : 'negative'
+            savePartial()
             addMsg('user', s.stars + ' ' + s.label)
             await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating)
           }
@@ -1091,7 +1178,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, showLikertFollowUpInput, showTextInput, showTyping, state])
 
-  return { renderInput }
+  return { renderInput, deviceBlocked: deviceBlocked.current }
 }
 
 

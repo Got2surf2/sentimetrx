@@ -45,7 +45,7 @@ const INDUSTRY_EMOJIS: Record<string, string[]> = {
   sports:              ['🏋️','⚽','🏆','🎽','🏅','🏃','⛹️','🤸','🧗','🏊','🚴','🏈','🎾','⛷️','🏒'],
   travel_tourism:      ['✈️','🗺️','🧳','🏖️','🏝️','🗼','🌍','🏔️','🚂','🛳️','🌅','🎡','🏕️','🧭'],
   hr_employee:         ['👔','🤝','👥','🏢','📋','💼','🧑‍💼','👨‍💼','👩‍💼','📊','🏅','🌱','🎯'],
-  nonprofit:           ['🤝','🌍','❤️','🙏','🫂','💚','🌱','🕊️','🙌','🌈','🤲','🫶','♻️','🌻'],
+  nonprofits:          ['🤝','🌍','❤️','🙏','🫂','💚','🌱','🕊️','🙌','🌈','🤲','🫶','♻️','🌻'],
   performing_arts:     ['🎭','🎬','🎵','🎤','🎪','🎩','🩰','🎻','🎸','🥁','🎺','🎷','🎼','🎟️','📽️'],
   media_entertainment: ['📺','🎮','🎬','🎙️','📻','🎧','🎥','📸','🕹️','📡','🖥️','📱','🎞️'],
   political:           ['🏛️','🗳️','⚖️','🎙️','📜','🗺️','🤝','📢','📰','🫡'],
@@ -189,22 +189,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
   function applyIndustryDefaults() {
     if (!industry || industry === 'other') return
     const defaults = INDUSTRY_DEFAULTS[industry as Exclude<Industry, 'other'>]
-    // Only apply defaults for fields that are empty or still at a previous industry's default.
-    // This prevents overwriting user edits from other steps (clarifiers, psychographic, adaptive prompts).
-    const safeDefaults: Record<string, unknown> = { industry, otherIndustry }
-    const c = draft.config
-    if (!c.greeting || c.greeting.trim().length < 5) safeDefaults.greeting = defaults.greeting
-    if (!c.ratingPrompt || c.ratingPrompt.trim().length < 5) safeDefaults.ratingPrompt = defaults.ratingPrompt
-    if (!c.promoterQ1) safeDefaults.promoterQ1 = defaults.promoterQ1
-    if (!c.passiveQ1) safeDefaults.passiveQ1 = defaults.passiveQ1
-    if (!c.detractorQ1) safeDefaults.detractorQ1 = defaults.detractorQ1
-    if (!c.q3 || c.q3.trim().length < 5) safeDefaults.q3 = defaults.q3
-    if (!c.q4) safeDefaults.q4 = defaults.q4
-    // Only apply default clarifiers if user hasn't customized them
-    if (!c.clarifiers || Object.keys(c.clarifiers).length <= 1) safeDefaults.clarifiers = defaults.clarifiers
-    // Only apply default psychographic bank if empty
-    if (!c.psychographicBank || c.psychographicBank.length === 0) safeDefaults.psychographicBank = defaults.psychographicBank
-    updateConfig(safeDefaults as any)
+    updateConfig({ ...defaults, industry, otherIndustry })
     setApplied(true)
   }
 
@@ -346,6 +331,23 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
               updateConfig({ theme: { ...theme, primaryColor: c, headerGradient: `linear-gradient(135deg,${c},${c}cc)`, accentColor: c, botAvatarGradient: `linear-gradient(135deg,${c},${c}cc)` } })
             }}
             className="w-10 h-10 rounded-lg cursor-pointer border border-gray-300 bg-white p-0.5" />
+        </div>
+      </Section>
+
+      <Section title="Response limits" description="Control whether respondents can submit more than once from the same device.">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateConfig({ allowMultipleResponses: !c.allowMultipleResponses })}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.allowMultipleResponses ? 'bg-orange-500' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.allowMultipleResponses ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+          <span className="text-sm text-gray-600">
+            {c.allowMultipleResponses
+              ? <><strong className="text-gray-800">Multiple responses allowed</strong> — same device can submit again</>
+              : <><strong className="text-gray-800">One response per device</strong> — prevents duplicate submissions</>}
+          </span>
         </div>
       </Section>
 

@@ -46,7 +46,7 @@ export default function SurveyWidget({ study }: Props) {
     return () => vv.removeEventListener('resize', onResize)
   }, [scrollBottom])
 
-  const { renderInput } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
+  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
 
   // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
   // are always the latest from the DB, not potentially stale server-rendered props
@@ -104,6 +104,38 @@ export default function SurveyWidget({ study }: Props) {
             <div style={{ color: 'white', fontWeight: 700, fontSize: 18, marginBottom: 8 }}>{isClosed ? 'This survey is now closed' : 'Not yet available'}</div>
             <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.6 }}>
               {isClosed ? 'Thank you for your interest. This survey is no longer accepting responses.' : "This survey isn't published yet. Please check back soon."}
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'center', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
+        </div>
+      </div>
+    )
+  }
+
+  // Active survey
+  if (deviceBlocked) {
+    return (
+      <div style={{
+        width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+        background: theme.backgroundColor, overflow: 'hidden',
+      }}>
+        <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+            {liveBotEmoji}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: 'white', fontSize: 15 }}>{liveBotName}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{liveStudy.name}</div>
+          </div>
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', gap: 16 }}>
+          <div style={{ fontSize: 48 }}>{'✓'}</div>
+          <div>
+            <div style={{ color: 'white', fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Thank you!</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.6 }}>
+              A response has already been submitted from this device. We appreciate your feedback!
             </div>
           </div>
         </div>
