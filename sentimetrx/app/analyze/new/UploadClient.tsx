@@ -185,6 +185,8 @@ export default function UploadClient() {
   const [uploadPct,   setUploadPct]   = useState(0)
   const [uploadMsg,   setUploadMsg]   = useState('')
   const [error,       setError]       = useState('')
+  const [fieldInclude, setFieldInclude] = useState<Record<string, boolean>>({})
+  const [fieldAlias,   setFieldAlias]   = useState<Record<string, string>>({})
 
   function handleFile(file: File) {
     setParseError('')
@@ -210,7 +212,12 @@ export default function UploadClient() {
           fmt = 'csv'
         }
         if (rows.length === 0) { setParseError('No data rows found.'); return }
-        setParsed({ rows, columns: Object.keys(rows[0] || {}), filename: file.name, sourceFormat: fmt })
+        var cols = Object.keys(rows[0] || {})
+        var inc: Record<string, boolean> = {}
+        cols.forEach(function(c) { inc[c] = true })
+        setFieldInclude(inc)
+        setFieldAlias({})
+        setParsed({ rows, columns: cols, filename: file.name, sourceFormat: fmt })
         setName(file.name.replace(/\.[^/.]+$/, ''))
         setStep(2)
       } catch {
@@ -228,9 +235,24 @@ export default function UploadClient() {
 
   async function handleCreate() {
     if (!parsed || !name.trim()) return
-    setCreating(true); setError(''); setUploadPct(0); setUploadMsg('Creating dataset...')
+    setCreating(true); setError(''); setUploadPct(0); setUploadMsg('Preparing data...')
     try {
-      const schema = autoDetectSchema(parsed.rows)
+      // Filter rows to only include selected fields
+      var includedCols = parsed.columns.filter(function(c) { return fieldInclude[c] !== false })
+      if (includedCols.length === 0) { setError('Select at least one field.'); setCreating(false); return }
+      var filteredRows = parsed.rows.map(function(row) {
+        var filtered: Record<string, unknown> = {}
+        includedCols.forEach(function(c) { filtered[c] = row[c] })
+        return filtered
+      })
+
+      var schema = autoDetectSchema(filteredRows)
+
+      // Apply user-provided aliases
+      schema.fields.forEach(function(f) {
+        var alias = fieldAlias[f.field]
+        if (alias && alias.trim()) f.label = alias.trim()
+      })
 
       // 1. Create dataset record
       const dsRes  = await fetch('/api/datasets', {
@@ -241,7 +263,7 @@ export default function UploadClient() {
       if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
 
       // 2. Upload rows in safe-sized chunks
-      const chunks = splitChunks(parsed.rows)
+      const chunks = splitChunks(filteredRows)
       for (let i = 0; i < chunks.length; i++) {
         setUploadMsg('Uploading rows — batch ' + (i + 1) + ' of ' + chunks.length)
         const res = await fetch('/api/datasets/' + dsData.id + '/rows', {
@@ -286,7 +308,13 @@ export default function UploadClient() {
     }
   }
 
-  const chunks         = parsed ? splitChunks(parsed.rows) : []
+  var includedColsList = parsed ? parsed.columns.filter(function(c) { return fieldInclude[c] !== false }) : []
+  var previewRows = parsed ? parsed.rows.map(function(row) {
+    var filtered: Record<string, unknown> = {}
+    includedColsList.forEach(function(c) { filtered[c] = row[c] })
+    return filtered
+  }) : []
+  const chunks         = previewRows.length ? splitChunks(previewRows) : []
   const estimatedChunks = chunks.length
 
   return (
@@ -382,6 +410,45 @@ export default function UploadClient() {
               </div>
             </div>
           </div>
+
+          {/* Field selection + aliases */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Fields</h3>
+                <p className="text-xs text-gray-400">Uncheck fields you don't need. Add aliases for cleaner column names.</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={function() { var inc: Record<string, boolean> = {}; parsed.columns.forEach(function(c) { inc[c] = true }); setFieldInclude(inc) }}
+                  className="text-xs font-semibold text-orange-600 hover:underline">All</button>
+                <button onClick={function() { var inc: Record<string, boolean> = {}; parsed.columns.forEach(function(c) { inc[c] = false }); setFieldInclude(inc) }}
+                  className="text-xs font-semibold text-gray-400 hover:underline">None</button>
+              </div>
+            </div>
+            <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {parsed.columns.map(function(col) {
+                var included = fieldInclude[col] !== false
+                return (
+                  <div key={col} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 8, background: included ? '#fff' : '#f9fafb', border: '1px solid ' + (included ? '#e5e7eb' : '#f3f4f6'), opacity: included ? 1 : 0.5, transition: 'all .15s' }}>
+                    <input type="checkbox" checked={included}
+                      onChange={function() { setFieldInclude(function(prev) { return Object.assign({}, prev, { [col]: !included }) }) }}
+                      style={{ width: 14, height: 14, accentColor: HERMES, cursor: 'pointer', flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: '#374151', fontFamily: 'monospace', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={col}>{col}</span>
+                    <input
+                      type="text"
+                      value={fieldAlias[col] || ''}
+                      onChange={function(e) { setFieldAlias(function(prev) { return Object.assign({}, prev, { [col]: e.target.value }) }) }}
+                      placeholder="Alias"
+                      disabled={!included}
+                      style={{ width: 140, flexShrink: 0, padding: '4px 8px', fontSize: 11, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', color: '#374151', background: included ? '#fff' : '#f9fafb' }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-400">{parsed.columns.filter(function(c) { return fieldInclude[c] !== false }).length} of {parsed.columns.length} fields selected</p>
+          </div>
+
           <div className="flex gap-3">
             <button onClick={function() { setStep(1) }} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 transition-colors">Back</button>
             <button onClick={function() { setStep(3) }} disabled={!name.trim()}
@@ -398,7 +465,7 @@ export default function UploadClient() {
             {([
               ['Name',       name],
               ['Rows',       parsed.rows.length.toLocaleString()],
-              ['Columns',    String(parsed.columns.length)],
+              ['Columns',    includedColsList.length + ' of ' + parsed.columns.length],
               ['Format',     parsed.sourceFormat === 'surveymonkey' ? 'SurveyMonkey (auto-detected)' : parsed.sourceFormat === 'tsv' ? 'TSV' : parsed.sourceFormat === 'json' ? 'JSON' : 'CSV'],
               ['Batches',    estimatedChunks + ' × ' + CHUNK_SIZE + ' rows'],
               ['Visibility', visibility],
@@ -411,10 +478,11 @@ export default function UploadClient() {
               )
             })}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Columns</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Included fields</p>
               <div className="flex flex-wrap gap-1.5">
-                {parsed.columns.map(function(c) {
-                  return <span key={c} className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-1 rounded-lg">{c}</span>
+                {includedColsList.map(function(c) {
+                  var alias = fieldAlias[c]
+                  return <span key={c} className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-1 rounded-lg">{alias && alias.trim() ? alias.trim() + ' (' + c + ')' : c}</span>
                 })}
               </div>
             </div>

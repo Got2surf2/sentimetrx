@@ -9,13 +9,10 @@ import SchemaEditor from '@/components/analyze/SchemaEditor'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
 interface Props {
-  dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'visibility' | 'status' | 'row_count'>
-  schema:     SchemaConfig
-  isOwner:    boolean
-  themeModel?: any
-  datasetId?: string
+  dataset:  Pick<Dataset, 'id' | 'name' | 'description' | 'visibility' | 'status' | 'row_count'>
+  schema:   SchemaConfig
+  isOwner:  boolean
 }
-
 
 const HERMES = '#E8632A'
 
@@ -86,7 +83,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors'
 
   return (
-    <div className="flex flex-col gap-6 py-6 max-w-2xl">
+    <div className="flex flex-col gap-6 py-6 max-w-5xl">
 
       {/* Details */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
@@ -193,5 +190,3 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
     </div>
   )
 }
-
-
