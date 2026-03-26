@@ -9,9 +9,11 @@ import SchemaEditor from '@/components/analyze/SchemaEditor'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
 interface Props {
-  dataset:  Pick<Dataset, 'id' | 'name' | 'description' | 'visibility' | 'status' | 'row_count'>
-  schema:   SchemaConfig
-  isOwner:  boolean
+  dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'visibility' | 'status' | 'row_count'>
+  schema:     SchemaConfig
+  isOwner:    boolean
+  themeModel?: any
+  datasetId?: string
 }
 
 const HERMES = '#E8632A'
