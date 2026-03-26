@@ -338,13 +338,13 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => updateConfig({ allowMultipleResponses: !c.allowMultipleResponses })}
-            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${c.allowMultipleResponses ? 'bg-orange-500' : 'bg-gray-200'}`}
+            onClick={() => updateConfig({ allowMultipleResponses: !draft.config.allowMultipleResponses })}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.allowMultipleResponses ? 'bg-orange-500' : 'bg-gray-200'}`}
           >
-            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${c.allowMultipleResponses ? 'translate-x-5' : 'translate-x-0'}`} />
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.allowMultipleResponses ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
           <span className="text-sm text-gray-600">
-            {c.allowMultipleResponses
+            {draft.config.allowMultipleResponses
               ? <><strong className="text-gray-800">Multiple responses allowed</strong> — same device can submit again</>
               : <><strong className="text-gray-800">One response per device</strong> — prevents duplicate submissions</>}
           </span>
