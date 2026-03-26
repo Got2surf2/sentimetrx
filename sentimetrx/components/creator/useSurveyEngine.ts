@@ -263,7 +263,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     }
 
     // Add device fingerprint to payload for server-side duplicate check
-    ;(payload as unknown as Record<string, unknown>).deviceFingerprint = deviceFingerprint.current
+    ;(payload as any).deviceFingerprint = deviceFingerprint.current
 
     const duration_sec = Math.round((Date.now() - s.startTime) / 1000)
 
