@@ -355,3 +355,5 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
     </div>
   )
 }
+
+// Force update
