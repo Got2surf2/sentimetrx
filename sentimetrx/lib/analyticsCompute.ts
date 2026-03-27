@@ -19,8 +19,8 @@ import type {
 } from './analyzeTypes'
 
 // How many dataset_rows records to fetch per DB round-trip.
-// Each record holds up to 50 data rows, so this = up to 5000 rows per pass.
-const BATCH_PAGE_SIZE = 100
+// Each record holds up to 50 data rows, so this = up to 10000 rows per pass.
+const BATCH_PAGE_SIZE = 200
 
 // -- Running accumulators per field type ---------------------------------
 
@@ -36,14 +36,17 @@ interface NumAccum {
   sum:     number
   min:     number
   max:     number
-  values:  number[]          // kept for median + stddev (capped at 10k)
+  values:  number[]          // kept for median + stddev (capped at 50k)
+  valueCounts: Record<string, number>  // for discrete numerics (1-5 ratings etc)
 }
 
 interface TextAccum {
   type:        'open-ended'
   nonNull:     number
   totalWords:  number
-  sample:      string[]      // first 5
+  totalChars:  number
+  maxLen:      number
+  sample:      string[]      // first 10
 }
 
 interface DateAccum {
@@ -57,22 +60,24 @@ interface DateAccum {
 interface IgnoreAccum {
   type:    'id' | 'ignore'
   nonNull: number
+  uniqueSet: Set<string>     // track uniqueness for id detection
+  sample:  string[]          // first 5
 }
 
 type Accum = CatAccum | NumAccum | TextAccum | DateAccum | IgnoreAccum
 
 function makeAccum(field: SchemaFieldConfig): Accum {
-  const t = field.type
+  var t = field.type
   if (t === 'categorical') return { type: 'categorical', counts: {}, nonNull: 0 }
-  if (t === 'numeric')     return { type: 'numeric', nonNull: 0, sum: 0, min: Infinity, max: -Infinity, values: [] }
-  if (t === 'open-ended')  return { type: 'open-ended', nonNull: 0, totalWords: 0, sample: [] }
+  if (t === 'numeric')     return { type: 'numeric', nonNull: 0, sum: 0, min: Infinity, max: -Infinity, values: [], valueCounts: {} }
+  if (t === 'open-ended')  return { type: 'open-ended', nonNull: 0, totalWords: 0, totalChars: 0, maxLen: 0, sample: [] }
   if (t === 'date')        return { type: 'date', nonNull: 0, min: '', max: '', counts: {} }
-  return { type: t as 'id' | 'ignore', nonNull: 0 }
+  return { type: t as 'id' | 'ignore', nonNull: 0, uniqueSet: new Set(), sample: [] }
 }
 
 function accumRow(accum: Accum, raw: unknown): void {
   if (raw === null || raw === undefined || raw === '') return
-  const str = String(raw).trim()
+  var str = String(raw).trim()
   if (!str) return
 
   if (accum.type === 'categorical') {
@@ -82,13 +87,16 @@ function accumRow(accum: Accum, raw: unknown): void {
   }
 
   if (accum.type === 'numeric') {
-    const n = Number(raw)
+    var n = Number(raw)
     if (!isNaN(n)) {
       accum.nonNull++
       accum.sum += n
       if (n < accum.min) accum.min = n
       if (n > accum.max) accum.max = n
-      if (accum.values.length < 10000) accum.values.push(n)
+      if (accum.values.length < 50000) accum.values.push(n)
+      // Track value counts for discrete numerics (ratings, scores)
+      var vk = String(n)
+      accum.valueCounts[vk] = (accum.valueCounts[vk] || 0) + 1
     }
     return
   }
@@ -96,14 +104,16 @@ function accumRow(accum: Accum, raw: unknown): void {
   if (accum.type === 'open-ended') {
     accum.nonNull++
     accum.totalWords += str.split(/\s+/).filter(Boolean).length
-    if (accum.sample.length < 5) accum.sample.push(str)
+    accum.totalChars += str.length
+    if (str.length > accum.maxLen) accum.maxLen = str.length
+    if (accum.sample.length < 10) accum.sample.push(str)
     return
   }
 
   if (accum.type === 'date') {
     accum.nonNull++
     // Normalize to YYYY-MM-DD for bucketing
-    const d = str.slice(0, 10)
+    var d = str.slice(0, 10)
     if (!accum.min || d < accum.min) accum.min = d
     if (!accum.max || d > accum.max) accum.max = d
     accum.counts[d] = (accum.counts[d] || 0) + 1
@@ -113,6 +123,8 @@ function accumRow(accum: Accum, raw: unknown): void {
   // id / ignore
   if (accum.type === 'id' || accum.type === 'ignore') {
     accum.nonNull++
+    if (accum.uniqueSet.size < 1000) accum.uniqueSet.add(str)
+    if (accum.sample.length < 5) accum.sample.push(str)
   }
 }
 
@@ -120,60 +132,82 @@ function histogram(values: number[], min: number, max: number, buckets: number):
   if (values.length === 0 || min === max) {
     return [{ min, max, count: values.length }]
   }
-  const width = (max - min) / buckets
-  const result: HistogramBucket[] = []
-  for (let i = 0; i < buckets; i++) {
-    const lo = min + i * width
-    const hi = i === buckets - 1 ? max : min + (i + 1) * width
+  var width = (max - min) / buckets
+  var result: HistogramBucket[] = []
+  for (var i = 0; i < buckets; i++) {
+    var lo = min + i * width
+    var hi = i === buckets - 1 ? max : min + (i + 1) * width
     result.push({ min: parseFloat(lo.toFixed(4)), max: parseFloat(hi.toFixed(4)), count: 0 })
   }
-  for (const v of values) {
-    const idx = Math.min(Math.floor((v - min) / width), buckets - 1)
+  for (var vi = 0; vi < values.length; vi++) {
+    var idx = Math.min(Math.floor((values[vi] - min) / width), buckets - 1)
     result[idx].count++
   }
   return result
 }
 
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0
+  var k = (sorted.length - 1) * p
+  var f = Math.floor(k)
+  var c = Math.ceil(k)
+  if (f === c) return sorted[f]
+  return sorted[f] + (sorted[c] - sorted[f]) * (k - f)
+}
+
 function median(sorted: number[]): number {
   if (sorted.length === 0) return 0
-  const mid = Math.floor(sorted.length / 2)
+  var mid = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
 }
 
 function stddev(values: number[], avg: number): number {
   if (values.length < 2) return 0
-  const variance = values.reduce(function(s, v) { return s + (v - avg) * (v - avg) }, 0) / values.length
+  var variance = values.reduce(function(s, v) { return s + (v - avg) * (v - avg) }, 0) / values.length
   return Math.sqrt(variance)
 }
 
-function finalize(accum: Accum): FieldSummary {
+function finalize(accum: Accum, totalRows: number): FieldSummary {
   if (accum.type === 'categorical') {
-    const sorted = Object.entries(accum.counts).sort(function(a, b) { return b[1] - a[1] })
-    const topN   = sorted.slice(0, 20).map(function(e) { return e[0] })
+    var sorted = Object.entries(accum.counts).sort(function(a, b) { return b[1] - a[1] })
+    var topN   = sorted.slice(0, 20).map(function(e) { return e[0] })
+    // Complete sorted values list (up to 500) for filters and chart axes
+    var values = sorted.slice(0, 500).map(function(e) { return e[0] })
     return {
       type:        'categorical',
       nonNull:     accum.nonNull,
       counts:      Object.fromEntries(sorted),
       topN,
+      values,
       uniqueCount: sorted.length,
+      uniqueRatio: accum.nonNull > 0 ? parseFloat((sorted.length / accum.nonNull).toFixed(4)) : 0,
     } satisfies CategoricalSummary
   }
 
   if (accum.type === 'numeric') {
-    const n   = accum.nonNull
-    const avg = n > 0 ? accum.sum / n : 0
-    const sorted = [...accum.values].sort(function(a, b) { return a - b })
-    const min = accum.min === Infinity  ? 0 : accum.min
-    const max = accum.max === -Infinity ? 0 : accum.max
+    var nn   = accum.nonNull
+    var avg = nn > 0 ? accum.sum / nn : 0
+    var sortedVals = accum.values.slice().sort(function(a, b) { return a - b })
+    var min = accum.min === Infinity  ? 0 : accum.min
+    var max = accum.max === -Infinity ? 0 : accum.max
+    // Determine if this is a discrete numeric (few unique values like 1-5 rating)
+    var uniqueNumCount = Object.keys(accum.valueCounts).length
+    var isDiscrete = uniqueNumCount <= 20
     return {
       type:      'numeric',
-      nonNull:   n,
+      nonNull:   nn,
       min,
       max,
       avg:       parseFloat(avg.toFixed(4)),
-      median:    parseFloat(median(sorted).toFixed(4)),
+      median:    parseFloat(median(sortedVals).toFixed(4)),
       stddev:    parseFloat(stddev(accum.values, avg).toFixed(4)),
-      histogram: histogram(sorted, min, max, 10),
+      p25:       parseFloat(percentile(sortedVals, 0.25).toFixed(4)),
+      p75:       parseFloat(percentile(sortedVals, 0.75).toFixed(4)),
+      histogram: histogram(sortedVals, min, max, 10),
+      // For discrete numerics (ratings), include value counts for chart axes
+      valueCounts:    isDiscrete ? accum.valueCounts : undefined,
+      uniqueCount:    uniqueNumCount,
+      isDiscrete,
     } satisfies NumericSummary
   }
 
@@ -182,6 +216,8 @@ function finalize(accum: Accum): FieldSummary {
       type:         'open-ended',
       nonNull:      accum.nonNull,
       avgWordCount: accum.nonNull > 0 ? parseFloat((accum.totalWords / accum.nonNull).toFixed(1)) : 0,
+      avgCharLen:   accum.nonNull > 0 ? Math.round(accum.totalChars / accum.nonNull) : 0,
+      maxCharLen:   accum.maxLen,
       sample:       accum.sample,
     } satisfies OpenEndedSummary
   }
@@ -197,8 +233,10 @@ function finalize(accum: Accum): FieldSummary {
   }
 
   return {
-    type:    accum.type,
-    nonNull: accum.nonNull,
+    type:        accum.type,
+    nonNull:     accum.nonNull,
+    uniqueCount: accum.uniqueSet ? accum.uniqueSet.size : 0,
+    sample:      accum.sample || [],
   } satisfies IgnoredSummary
 }
 
@@ -209,53 +247,57 @@ function finalize(accum: Accum): FieldSummary {
  * statistics, and returns a DatasetAnalytics object ready to write to
  * dataset_state.analytics.
  *
- * Never holds more than BATCH_PAGE_SIZE * 50 = ~5000 rows in memory at once.
+ * Never holds more than BATCH_PAGE_SIZE * 50 = ~10000 rows in memory at once.
  */
 export async function computeAnalytics(
   service:   SupabaseClient,
   datasetId: string,
   schema:    SchemaConfig
 ): Promise<DatasetAnalytics> {
-  const activeFields = schema.fields.filter(function(f) {
+  var activeFields = schema.fields.filter(function(f) {
     return f.type !== 'ignore' && f.type !== 'id'
   })
 
   // Initialise accumulators
-  const accumulators: Record<string, Accum> = {}
-  for (const f of activeFields) {
-    accumulators[f.field] = makeAccum(f)
+  var accumulators: Record<string, Accum> = {}
+  for (var ai = 0; ai < activeFields.length; ai++) {
+    accumulators[activeFields[ai].field] = makeAccum(activeFields[ai])
   }
   // Also track id fields for nonNull count
-  for (const f of schema.fields) {
-    if (!accumulators[f.field]) accumulators[f.field] = makeAccum(f)
+  for (var si = 0; si < schema.fields.length; si++) {
+    if (!accumulators[schema.fields[si].field]) {
+      accumulators[schema.fields[si].field] = makeAccum(schema.fields[si])
+    }
   }
 
-  let totalRows = 0
-  let page      = 0
-  let hasMore   = true
+  var totalRows = 0
+  var page      = 0
+  var hasMore   = true
 
   while (hasMore) {
-    const from = page * BATCH_PAGE_SIZE
-    const to   = from + BATCH_PAGE_SIZE - 1
+    var from = page * BATCH_PAGE_SIZE
+    var to   = from + BATCH_PAGE_SIZE - 1
 
-    const { data: batches, error } = await service
+    var result = await service
       .from('dataset_rows')
       .select('rows, row_count')
       .eq('dataset_id', datasetId)
       .order('batch_index', { ascending: true })
       .range(from, to)
 
-    if (error) throw new Error('analyticsCompute: ' + error.message)
+    if (result.error) throw new Error('analyticsCompute: ' + result.error.message)
+    var batches = result.data
     if (!batches || batches.length === 0) { hasMore = false; break }
 
-    for (const batch of batches) {
-      const batchRows: Record<string, unknown>[] = batch.rows || []
+    for (var bi = 0; bi < batches.length; bi++) {
+      var batchRows: Record<string, unknown>[] = batches[bi].rows || []
       totalRows += batchRows.length
 
-      for (const row of batchRows) {
-        for (const f of schema.fields) {
-          const accum = accumulators[f.field]
-          if (accum) accumRow(accum, row[f.field])
+      for (var ri = 0; ri < batchRows.length; ri++) {
+        var row = batchRows[ri]
+        for (var fi = 0; fi < schema.fields.length; fi++) {
+          var accum = accumulators[schema.fields[fi].field]
+          if (accum) accumRow(accum, row[schema.fields[fi].field])
         }
       }
     }
@@ -265,9 +307,9 @@ export async function computeAnalytics(
   }
 
   // Finalize all accumulators
-  const fieldSummaries: Record<string, FieldSummary> = {}
-  for (const f of schema.fields) {
-    fieldSummaries[f.field] = finalize(accumulators[f.field])
+  var fieldSummaries: Record<string, FieldSummary> = {}
+  for (var ffi = 0; ffi < schema.fields.length; ffi++) {
+    fieldSummaries[schema.fields[ffi].field] = finalize(accumulators[schema.fields[ffi].field], totalRows)
   }
 
   return {

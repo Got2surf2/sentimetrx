@@ -18,10 +18,9 @@ export interface SchemaFieldConfig {
   type:          AnaFieldType
   sqt?:          AnaFieldSqt
   label?:        string
-  scoreField?:   boolean
   remapping?:    Record<string, number>
-  valueAliases?: Record<string, string>
   hidden?:       boolean
+  scoreField?:   boolean
   nonNullCount?: number
   avgLen?:       string
   avgWords?:     string
@@ -44,22 +43,29 @@ export interface SchemaConfig {
 // Modules read these instead of loading raw rows.
 
 export interface CategoricalSummary {
-  type:       'categorical'
-  nonNull:    number
-  counts:     Record<string, number>   // value -> count, sorted desc
-  topN:       string[]                 // top 20 values by count
+  type:        'categorical'
+  nonNull:     number
+  counts:      Record<string, number>   // value -> count, sorted desc
+  topN:        string[]                 // top 20 values by count
+  values?:     string[]                 // all unique values sorted by count (up to 500)
   uniqueCount: number
+  uniqueRatio?: number                  // uniqueCount / nonNull — high = possible id field
 }
 
 export interface NumericSummary {
-  type:      'numeric'
-  nonNull:   number
-  min:       number
-  max:       number
-  avg:       number
-  median:    number
-  stddev:    number
-  histogram: HistogramBucket[]         // 10 equal-width buckets
+  type:         'numeric'
+  nonNull:      number
+  min:          number
+  max:          number
+  avg:          number
+  median:       number
+  stddev:       number
+  p25?:         number                  // 25th percentile
+  p75?:         number                  // 75th percentile
+  histogram:    HistogramBucket[]       // 10 equal-width buckets
+  valueCounts?: Record<string, number>  // for discrete numerics (1-5 ratings) — value -> count
+  uniqueCount?: number                  // number of distinct values
+  isDiscrete?:  boolean                 // true if ≤20 unique values (rating scales etc)
 }
 
 export interface HistogramBucket {
@@ -69,10 +75,12 @@ export interface HistogramBucket {
 }
 
 export interface OpenEndedSummary {
-  type:         'open-ended'
-  nonNull:      number
-  avgWordCount: number
-  sample:       string[]               // first 5 non-empty values
+  type:          'open-ended'
+  nonNull:       number
+  avgWordCount:  number
+  avgCharLen?:   number                 // average character length
+  maxCharLen?:   number                 // longest response
+  sample:        string[]               // first 10 non-empty values
 }
 
 export interface DateSummary {
@@ -84,8 +92,10 @@ export interface DateSummary {
 }
 
 export interface IgnoredSummary {
-  type:    'id' | 'ignore'
-  nonNull: number
+  type:         'id' | 'ignore'
+  nonNull:      number
+  uniqueCount?: number                 // how many distinct values
+  sample?:      string[]               // first 5 values
 }
 
 export type FieldSummary =
@@ -183,13 +193,8 @@ export interface ProcessedRow {
 }
 
 export interface DatasetWithState extends Dataset {
-  state?:        DatasetState
-  study_name?:   string | null
-  creator_name?: string | null
-  org_name?:     string | null
-  theme_count?:  number
-  theme_source?: string | null
-  theme_lib_name?: string | null
+  state?:      DatasetState
+  study_name?: string | null
 }
 
 // -- Paginated rows response (for TextMine) ------------------------------
