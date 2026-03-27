@@ -14,22 +14,23 @@ export type AnaFieldSqt =
   | null
 
 export interface SchemaFieldConfig {
-  field:         string
-  type:          AnaFieldType
-  sqt?:          AnaFieldSqt
-  label?:        string
-  remapping?:    Record<string, number>
-  hidden?:       boolean
-  scoreField?:   boolean
-  nonNullCount?: number
-  avgLen?:       string
-  avgWords?:     string
-  uniqueRatio?:  string
-  sample?:       string[]
-  values?:       string[]
-  min?:          number
-  max?:          number
-  avg?:          string
+  field:          string
+  type:           AnaFieldType
+  sqt?:           AnaFieldSqt
+  label?:         string
+  remapping?:     Record<string, number>
+  valueAliases?:  Record<string, string>
+  hidden?:        boolean
+  scoreField?:    boolean
+  nonNullCount?:  number
+  avgLen?:        string
+  avgWords?:      string
+  uniqueRatio?:   string
+  sample?:        string[]
+  values?:        string[]
+  min?:           number
+  max?:           number
+  avg?:           string
 }
 
 export interface SchemaConfig {
