@@ -94,16 +94,19 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Build row data ────────────────────────────────────────────────────────
+  // Sentiment: prefer experience rating (derived client-side from actual scale range)
+  // Fallback to NPS: 4-5 positive, 3 neutral, 1-2 negative (1-5 scale)
   const sentiment: Sentiment | null =
-    (payload.npsRecommend?.score != null
-      ? (payload.npsRecommend.score >= 5 ? 'positive' : payload.npsRecommend.score >= 4 ? 'neutral' : 'negative')
-      : payload.experienceRating?.sentiment as Sentiment ?? null)
+    (payload.experienceRating?.sentiment as Sentiment
+      ?? (payload.npsRecommend?.score != null
+        ? (payload.npsRecommend.score >= 4 ? 'positive' : payload.npsRecommend.score >= 3 ? 'neutral' : 'negative')
+        : null))
 
   const experience_score = payload.experienceRating?.score ?? null
   const nps_score        = payload.npsRecommend?.score ?? null
 
   // Build fingerprint hash if provided
-  const deviceFp = (payload as Record<string, unknown>).deviceFingerprint as string | undefined
+  const deviceFp = (payload as any).deviceFingerprint as string | undefined
   const fp_hash  = deviceFp ? createHash('sha256').update(deviceFp).digest('hex') : null
 
   const rowData: Record<string, unknown> = {
@@ -165,5 +168,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true, response_id: response.id }, { status: 201 })
 }
-
-// Force update

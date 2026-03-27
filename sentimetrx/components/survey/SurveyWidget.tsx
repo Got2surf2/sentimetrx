@@ -178,6 +178,14 @@ export default function SurveyWidget({ study }: Props) {
             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Ready for your feedback</span>
           </div>
         </div>
+        {liveConfig.showBranding !== false && (
+          <div style={{ flexShrink: 0, textAlign: 'right', lineHeight: 1.2 }}>
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, letterSpacing: '0.05em' }}>by</div>
+            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              {(liveConfig.brandingLabel || 'DATANAUTIX').slice(0, 15)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Chat area — scrollable, fills all available space between header and input */}
@@ -214,5 +222,3 @@ export default function SurveyWidget({ study }: Props) {
     </div>
   )
 }
-
-// Force update

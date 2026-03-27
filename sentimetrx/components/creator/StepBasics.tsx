@@ -351,9 +351,36 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         </div>
       </Section>
 
+      <Section title="Branding" description="Control the 'by' label shown in the survey header.">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateConfig({ showBranding: draft.config.showBranding === false ? true : false })}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.showBranding !== false ? 'bg-orange-500' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.showBranding !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+          <span className="text-sm text-gray-600">
+            {draft.config.showBranding !== false
+              ? <><strong className="text-gray-800">Branding visible</strong> — shows &ldquo;by {draft.config.brandingLabel || 'DATANAUTIX'}&rdquo; in header</>
+              : <><strong className="text-gray-800">Branding hidden</strong></>}
+          </span>
+        </div>
+        {draft.config.showBranding !== false && (
+          <div className="flex flex-col gap-1.5 mt-2">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Label (max 15 characters)</label>
+            <input
+              value={draft.config.brandingLabel ?? 'DATANAUTIX'}
+              onChange={e => updateConfig({ brandingLabel: e.target.value.slice(0, 15) })}
+              placeholder="DATANAUTIX"
+              maxLength={15}
+              className="w-full max-w-xs px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-sm placeholder-gray-400 outline-none focus:border-orange-400 transition-colors"
+            />
+          </div>
+        )}
+      </Section>
+
       <NavButtons onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Opening" />
     </div>
   )
 }
-
-// Force update

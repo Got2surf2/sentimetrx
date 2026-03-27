@@ -150,6 +150,10 @@ export interface StudyConfig {
   otherIndustry?:     string           // free-text when industry === 'other'
 
   theme:              StudyTheme
+
+  // Branding
+  brandingLabel?:     string           // default 'DATANAUTIX'; max 15 chars; empty string = no branding
+  showBranding?:      boolean          // default true — show "by <label>" on survey hero
 }
 
 // -- Study row ------------------------------------------------
@@ -177,10 +181,8 @@ export interface SurveyPayload {
   agent:            string
   timestamp:        string
   npsRecommend:     { score: number; label: string }
-  npsFollowUp?:     string                              // open-end after NPS
   experienceRating: { score: number; label: string; sentiment: Sentiment }
-  experienceFollowUp?: string                           // open-end after experience rating
-  openEnded:        { q1: string; q3: string; q4: string }
+  openEnded:        { q1: string; q2: string; q3: string; q4: string }
   customAnswers?:   Record<string, string | string[]>   // keyed by SurveyQuestion.id
   psychographics:   Record<string, string>
   demographics:     { age: string; gender: string; zip: string }
@@ -193,5 +195,3 @@ export interface SubmitResponseBody {
   session_id?:  string
   status?:      'incomplete' | 'complete'
 }
-
-// Force update

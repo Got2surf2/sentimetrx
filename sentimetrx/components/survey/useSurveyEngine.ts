@@ -23,12 +23,10 @@ interface State {
   sentiment:       Sentiment | null
   npsScore:        number | null
   npsLabel:        string | null
-  npsFollowUp:     string
-  experienceFollowUp: string
-  answers:         { q1: string; q3: string; q4: string }
+  answers:         { q1: string; q2: string; q3: string; q4: string }
   clarifyCount:    number
   customAnswers:   Record<string, string | string[]>
-  currentQuestion: string   // the exact question text currently being answered
+  currentQuestion: string
   psychoQuestions: Array<{ key: string; q: string; opts: string[] }>
   psychoIdx:       number
   psychoAnswers:   Record<string, string>
@@ -41,8 +39,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const state  = useRef<State>({
     rating: null, ratingLabel: null, sentiment: null,
     npsScore: null, npsLabel: null,
-    npsFollowUp: '', experienceFollowUp: '',
-    answers: { q1: '', q3: '', q4: '' },
+    answers: { q1: '', q2: '', q3: '', q4: '' },
     clarifyCount: 0,
     customAnswers: {},
     currentQuestion: '',
@@ -100,9 +97,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       }
       if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
       if (s.rating != null) partialPayload.experienceRating = { score: s.rating, label: s.ratingLabel || '', sentiment: s.sentiment || 'neutral' }
-      if (s.npsFollowUp) partialPayload.npsFollowUp = s.npsFollowUp
-      if (s.experienceFollowUp) partialPayload.experienceFollowUp = s.experienceFollowUp
-      if (s.answers.q1 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
+      if (s.answers.q1 || s.answers.q2 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
       if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
       if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
       if (s.demographics.age || s.demographics.gender || s.demographics.zip) partialPayload.demographics = s.demographics
@@ -261,8 +256,6 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         sentiment: s.sentiment!,
       },
       npsRecommend:  { score: s.npsScore!, label: s.npsLabel! },
-      npsFollowUp:       s.npsFollowUp || undefined,
-      experienceFollowUp: s.experienceFollowUp || undefined,
       openEnded:     s.answers,
       customAnswers: s.customAnswers,
       psychographics: s.psychoAnswers,
@@ -420,7 +413,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   
 
 
-  const showLikertFollowUpInput = useCallback((next: () => Promise<void>, storageKey?: 'npsFollowUp' | 'experienceFollowUp') => {
+  const showLikertFollowUpInput = useCallback((next: () => Promise<void>, storageKey?: 'q1' | 'q2') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
     wrap.className = 'flex flex-col gap-2 mt-1.5'
@@ -456,11 +449,22 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (v) {
         addMsg('user', v)
-        // Store the follow-up answer
-        if (storageKey) state.current[storageKey] = v
+        if (storageKey) state.current.answers[storageKey] = v
       }
-      savePartial()
+      savePartialRef.current()
       clearInput()
+      // Check for clarifier on short responses
+      if (v && storageKey && shouldClarify(v) && state.current.clarifyCount < 2) {
+        const cq = await buildClarify(v, storageKey === 'q1' ? 'q3' : 'q4')
+        if (cq) {
+          state.current.clarifyCount++
+          await showTyping(1100)
+          addMsg('bot', cq)
+          // Show clarify input — on submit, append to existing answer then proceed
+          showLikertClarifyInput(storageKey, v, next)
+          return
+        }
+      }
       await next()
     }
     sendBtn.onclick = submit
@@ -470,8 +474,43 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, savePartial, scrollBottom])
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping])
 
+  // Clarify input for likert follow-ups (q1/q2)
+  const showLikertClarifyInput = useCallback((storageKey: 'q1' | 'q2', originalVal: string, next: () => Promise<void>) => {
+    if (!inputRef.current) return
+    const wrap = document.createElement('div')
+    wrap.className = 'flex gap-2 items-end w-full mt-1.5'
+    const ta = document.createElement('textarea')
+    ta.cols = 1
+    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.rows = 1
+    ta.placeholder = 'Feel free to add a bit more...'
+    ta.style.cssText = `background:rgba(255,255,255,0.06);border:1.5px solid ${config.theme.primaryColor}28;color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;`
+    ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
+    ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
+    ta.oninput  = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px' }
+    ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
+    const sendBtn = document.createElement('button')
+    sendBtn.textContent = '→'
+    sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+    sendBtn.style.cssText = `background:${config.theme.primaryColor};color:#fff;border:none;cursor:pointer;font-family:inherit;`
+    sendBtn.onclick = async () => {
+      const val = ta.value.trim()
+      wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+      if (val && !isDecline(val)) {
+        addMsg('user', val)
+        state.current.answers[storageKey] = originalVal + ' [+ ' + val + ']'
+      }
+      savePartialRef.current()
+      clearInput()
+      await next()
+    }
+    wrap.append(ta, sendBtn)
+    inputRef.current.appendChild(wrap)
+    setTimeout(() => ta.focus(), 100)
+    scrollBottom()
+  }, [addMsg, clearInput, config, inputRef, scrollBottom])
 
 
     const stepPsychoIntro = useCallback(async () => {
@@ -1096,7 +1135,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           followUp: any,
           score: number,
           next: () => Promise<void>,
-          storageKey?: 'npsFollowUp' | 'experienceFollowUp'
+          storageKey?: 'q1' | 'q2'
         ) => {
           if (!followUp?.enabled) { await next(); return }
           const pr = followUp.mode === 'per-response'
@@ -1155,9 +1194,15 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
               rb.style.background  = config.theme.primaryColor + '20'
               state.current.rating      = r.score
               state.current.ratingLabel = r.label
+              // Derive sentiment: top-2-box positive, bottom-2-box negative, middle neutral
+              var maxScore = Math.max.apply(null, config.ratingScale.map(function(x: any) { return x.score }))
+              var minScore = Math.min.apply(null, config.ratingScale.map(function(x: any) { return x.score }))
+              var range = maxScore - minScore || 1
+              var pct = (r.score - minScore) / range
+              state.current.sentiment = pct >= 0.6 ? 'positive' : pct <= 0.4 ? 'negative' : 'neutral'
               savePartial()
               addMsg('user', r.emoji + ' ' + r.label)
-              await showLikertFollowUp(config.experienceFollowUp, r.score, stepQ3, 'experienceFollowUp')
+              await showLikertFollowUp(config.experienceFollowUp, r.score, stepQ3, 'q2')
             }
             ratingRow.appendChild(rb)
           })
@@ -1200,10 +1245,10 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             sb.style.background  = config.theme.primaryColor + '20'
             state.current.npsScore = s.score
             state.current.npsLabel = s.label
-            state.current.sentiment = s.score >= 5 ? 'positive' : s.score >= 4 ? 'neutral' : 'negative'
+            state.current.sentiment = s.score >= 4 ? 'positive' : s.score >= 3 ? 'neutral' : 'negative'
             savePartial()
             addMsg('user', s.stars + ' ' + s.label)
-            await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating, 'npsFollowUp')
+            await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating, 'q1')
           }
           npsRow.appendChild(sb)
         })
