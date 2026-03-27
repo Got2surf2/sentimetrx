@@ -245,4 +245,3 @@ export default function SurveyWidget({ study }: Props) {
       />
     </div>
   )
-}

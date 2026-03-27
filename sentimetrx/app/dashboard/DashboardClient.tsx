@@ -97,11 +97,12 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
 }
 
 // -- Study card -----------------------------------------------------------------
-function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplicate }: {
+function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDelete, onDuplicate, onRefresh }: {
   study: Study; stats: StudyStats; isAdmin: boolean; userId: string
   onPatch: (id: string, body: object) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDuplicate: (study: Study) => Promise<void>
+  onRefresh?: (id: string) => Promise<void>
 }) {
   const [busy,       setBusy]       = useState(false)
   const [confirm,    setConfirm]    = useState<{ msg: string; action: () => void } | null>(null)
@@ -109,6 +110,8 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
   const [deleteConf, setDeleteConf] = useState(false)
   const [vis,        setVis]        = useState(study.visibility)
   const [status,     setStatus]     = useState(study.status)
+  const [refreshing, setRefreshing] = useState(false)
+  const [stats,      setStats]      = useState(initialStats)
 
   const canEdit  = study.created_by === userId || isAdmin
   const theme    = study.config?.theme || {}
@@ -141,6 +144,29 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
     window.location.href = '/studies/' + study.id + '/responses?export=csv'
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const res = await fetch('/api/studies/' + study.id + '/analytics')
+      if (res.ok) {
+        const data = await res.json()
+        if (data) {
+          const rows = data.responses || []
+          const total = rows.length
+          const promoters = rows.filter((r: any) => r.sentiment === 'positive' || r.sentiment === 'promoter').length
+          const passives = rows.filter((r: any) => r.sentiment === 'neutral' || r.sentiment === 'passive').length
+          const detractors = rows.filter((r: any) => r.sentiment === 'negative' || r.sentiment === 'detractor').length
+          const scoreRows = rows.filter((r: any) => r.experience_score != null)
+          const avgScore = scoreRows.length > 0
+            ? Math.round(scoreRows.reduce((s: number, r: any) => s + (r.experience_score || 0), 0) / scoreRows.length * 10) / 10
+            : (total > 0 ? Math.round(rows.reduce((s: number, r: any) => s + (r.nps_score || 0), 0) / total * 10) / 10 : 0)
+          setStats({ total, promoters, passives, detractors, avgScore, ratingLabel: stats.ratingLabel, lastResponse: stats.lastResponse })
+        }
+      }
+    } catch { /* fail silently */ }
+    setRefreshing(false)
+  }
+
   const industryLabel = study.config?.industry
     ? (INDUSTRY_LABELS as any)[study.config.industry] || study.config.industry
     : null
@@ -168,10 +194,6 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
                 <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' + statusColor(status)}>
                   {status}
                 </span>
-                <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' +
-                  (vis === 'public' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-gray-100 text-gray-500 border-gray-200')}>
-                  {vis}
-                </span>
                 {industryLabel && (
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                     style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
@@ -180,6 +202,17 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
                 )}
               </div>
             </div>
+            {/* Refresh icon */}
+            <button onClick={handleRefresh} disabled={refreshing}
+              title="Refresh stats"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition-all flex-shrink-0 mt-0.5"
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={refreshing ? 'animate-spin' : ''}>
+                <path d="M21 12a9 9 0 0 1-15.36 6.36" /><path d="M3 12a9 9 0 0 1 15.36-6.36" />
+                <polyline points="21 3 21 12 12 12" /><polyline points="3 21 3 12 12 12" />
+              </svg>
+            </button>
             <DonutChart
               promoters={stats.promoters}
               passives={stats.passives}
@@ -213,21 +246,35 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-1.5 flex-wrap mt-auto pt-2 border-t border-gray-100">
-            <Link href={'/studies/' + study.id + '/analytics'}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Analytics</Link>
-            <Link href={'/studies/' + study.id + '/responses'}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Responses</Link>
-            <button onClick={handleExport}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">
-              Export
-            </button>
+          {/* Action pills — 3 rows */}
+          <div className="flex flex-col gap-1.5 mt-auto pt-2 border-t border-gray-100">
+            {/* Row 1: Data — pale orange */}
+            <div className="flex items-center gap-1.5 flex-wrap" style={{ minHeight: 30 }}>
+              <Link href={'/studies/' + study.id + '/analytics'}
+                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+                style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                Analytics
+              </Link>
+              <button onClick={handleExport}
+                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+                style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                Export
+              </button>
+              <Link href={'/studies/' + study.id + '/responses'}
+                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+                style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                Responses
+              </Link>
+            </div>
+
+            {/* Row 2: Actions — deploy green, close/delete red */}
             {canEdit && (
-              <>
-                <button onClick={() => do_patch({ visibility: vis === 'public' ? 'private' : 'public' })} disabled={busy}
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all disabled:opacity-50">
-                  {vis === 'public' ? 'Make private' : 'Make public'}
+              <div className="flex items-center gap-1.5 flex-wrap" style={{ minHeight: 30 }}>
+                <button onClick={() => status === 'active' ? setDeployOpen(true) : undefined}
+                  disabled={status !== 'active'}
+                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-40"
+                  style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                  Deploy
                 </button>
                 <button
                   onClick={() => setConfirm({
@@ -235,29 +282,38 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
                     action: () => do_patch({ status: status === 'active' ? 'closed' : 'active' })
                   })}
                   disabled={busy}
-                  className={'text-xs px-2.5 py-1.5 rounded-lg transition-all disabled:opacity-50 ' +
-                    (status === 'active' ? 'bg-red-50 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-green-50 text-green-600 hover:bg-green-500 hover:text-white')}>
+                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
+                  style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
                   {status === 'active' ? 'Close' : 'Reopen'}
                 </button>
                 <button onClick={() => setConfirm({ msg: 'Delete "' + study.name + '"? This cannot be undone.', action: () => onDelete(study.id) })}
                   disabled={busy}
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-red-400 hover:bg-red-500 hover:text-white transition-all disabled:opacity-50">
+                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
+                  style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
                   Delete
                 </button>
+              </div>
+            )}
+
+            {/* Row 3: Meta — gray */}
+            {canEdit && (
+              <div className="flex items-center gap-1.5 flex-wrap" style={{ minHeight: 30 }}>
                 <Link href={'/studies/' + study.id + '/edit'}
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">Edit</Link>
-                <button onClick={() => status === 'active' ? setDeployOpen(true) : undefined}
-                  className={'text-xs px-2.5 py-1.5 rounded-lg transition-all ' +
-                    (status === 'active'
-                      ? 'bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white'
-                      : 'bg-gray-50 text-gray-300 cursor-not-allowed')}>
-                  Deploy
-                </button>
+                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+                  style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
+                  Edit
+                </Link>
                 <button onClick={() => onDuplicate(study)}
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white transition-all">
+                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+                  style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                   Duplicate
                 </button>
-              </>
+                <button onClick={() => do_patch({ visibility: vis === 'public' ? 'private' : 'public' })} disabled={busy}
+                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
+                  style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
+                  {vis === 'public' ? 'Make Private' : 'Make Public'}
+                </button>
+              </div>
             )}
           </div>
         </div>
