@@ -69,23 +69,27 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   const studyIds = studies.map((s: any) => s.id)
   const statsQuery = studyIds.length > 0
-    ? await supabase.from('responses').select('study_id, sentiment, nps_score, completed_at').in('study_id', studyIds)
+    ? await supabase.from('responses').select('study_id, sentiment, nps_score, experience_score, completed_at').in('study_id', studyIds)
     : { data: [] }
   const stats = statsQuery.data || []
 
-  const statsMap: Record<string, { total: number; promoters: number; passives: number; detractors: number; avgNps: number; lastResponse: string | null }> = {}
+  const statsMap: Record<string, { total: number; promoters: number; passives: number; detractors: number; avgScore: number; ratingLabel: string; lastResponse: string | null }> = {}
   for (const s of studies) {
     const rows       = stats.filter((r: any) => r.study_id === s.id)
     const total      = rows.length
-    const promoters  = rows.filter((r: any) => r.sentiment === 'promoter').length
-    const passives   = rows.filter((r: any) => r.sentiment === 'passive').length
-    const detractors = rows.filter((r: any) => r.sentiment === 'detractor').length
-    const avgNps     = total > 0
-      ? Math.round(rows.reduce((sum: number, r: any) => sum + (r.nps_score || 0), 0) / total * 10) / 10
-      : 0
+    // Use new sentiment values (positive/neutral/negative) — also support legacy (promoter/passive/detractor)
+    const promoters  = rows.filter((r: any) => r.sentiment === 'positive' || r.sentiment === 'promoter').length
+    const passives   = rows.filter((r: any) => r.sentiment === 'neutral'  || r.sentiment === 'passive').length
+    const detractors = rows.filter((r: any) => r.sentiment === 'negative' || r.sentiment === 'detractor').length
+    // Average the experience score (primary rating), fall back to nps_score
+    const scoreRows  = rows.filter((r: any) => r.experience_score != null)
+    const avgScore   = scoreRows.length > 0
+      ? Math.round(scoreRows.reduce((sum: number, r: any) => sum + (r.experience_score || 0), 0) / scoreRows.length * 10) / 10
+      : (total > 0 ? Math.round(rows.reduce((sum: number, r: any) => sum + (r.nps_score || 0), 0) / total * 10) / 10 : 0)
+    const ratingLabel = (s as any).config?.experienceRatingLabel || 'Avg Rating'
     const dates = rows.map((r: any) => r.completed_at).filter(Boolean).sort()
     const lastResponse = dates.length > 0 ? dates[dates.length - 1] : null
-    statsMap[s.id] = { total, promoters, passives, detractors, avgNps, lastResponse }
+    statsMap[s.id] = { total, promoters, passives, detractors, avgScore, ratingLabel, lastResponse }
   }
 
   return (

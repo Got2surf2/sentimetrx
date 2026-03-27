@@ -9,13 +9,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 interface Study {
-  id: string; guid: string; name: string; bot_name: string; bot_emoji: string
+  id: string; guid: string; slug?: string; name: string; bot_name: string; bot_emoji: string
   status: string; visibility: string; created_by: string; created_at: string
   config: any; org_id?: string; orgName?: string; creatorName?: string
 }
 interface StudyStats {
   total: number; promoters: number; passives: number; detractors: number
-  avgNps: number; lastResponse: string | null
+  avgScore: number; ratingLabel: string; lastResponse: string | null
 }
 interface Props {
   logoUrl?: string; orgId?: string
@@ -29,8 +29,8 @@ type StatusFilter = 'all' | 'active' | 'closed' | 'draft'
 const HERMES = '#E8632A'
 
 // -- Donut chart ----------------------------------------------------------------
-function DonutChart({ promoters, passives, detractors, total, avgNps, npsLabel }: {
-  promoters: number; passives: number; detractors: number; total: number; avgNps: number; npsLabel?: string
+function DonutChart({ promoters, passives, detractors, total, avgScore, ratingLabel }: {
+  promoters: number; passives: number; detractors: number; total: number; avgScore: number; ratingLabel?: string
 }) {
   const p = total > 0 ? Math.round(promoters / total * 100) : 0
   const a = total > 0 ? Math.round(passives  / total * 100) : 0
@@ -43,8 +43,8 @@ function DonutChart({ promoters, passives, detractors, total, avgNps, npsLabel }
       <div style={{ width: 96, height: 96, borderRadius: '50%', background: bg }} />
       <div style={{ position: 'absolute', top: 14, left: 14, width: 68, height: 68, borderRadius: '50%', background: 'white' }} />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: HERMES }}>{total > 0 ? avgNps : '--'}</span>
-        <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>{npsLabel || 'NPS'}</span>
+        <span style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: HERMES }}>{total > 0 ? avgScore : '--'}</span>
+        <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>{ratingLabel || 'Avg Rating'}</span>
       </div>
     </div>
   )
@@ -56,7 +56,7 @@ function QRCode({ url }: { url: string }) {
 }
 
 function DeployModal({ study, onClose }: { study: Study; onClose: () => void }) {
-  const url = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai') + '/s/' + ((study as any).slug || study.guid)
+  const url = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai') + '/s/' + (study.slug || study.guid)
   const [copied, setCopied] = useState(false)
   const copy = () => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }
   return (
@@ -185,8 +185,8 @@ function StudyCard({ study, stats, isAdmin, userId, onPatch, onDelete, onDuplica
               passives={stats.passives}
               detractors={stats.detractors}
               total={stats.total}
-              avgNps={stats.avgNps}
-              npsLabel={study.config?.npsLabel}
+              avgScore={stats.avgScore}
+              ratingLabel={stats.ratingLabel}
             />
           </div>
 
@@ -394,7 +394,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
               <StudyCard
                 key={study.id}
                 study={study}
-                stats={statsMap[study.id] || { total: 0, promoters: 0, passives: 0, detractors: 0, avgNps: 0, lastResponse: null }}
+                stats={statsMap[study.id] || { total: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: 'Avg Rating', lastResponse: null }}
                 isAdmin={!!user.isAdmin}
                 userId={user.userId}
                 onPatch={handlePatch}

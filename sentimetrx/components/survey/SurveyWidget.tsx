@@ -179,15 +179,28 @@ export default function SurveyWidget({ study }: Props) {
           </div>
         </div>
         {liveConfig.showBranding !== false && (() => {
-          // Compute a Hermes orange that contrasts against the header
+          // Compute a complementary accent that contrasts against the header
           const pc = theme.primaryColor || '#1a1a2e'
           const r = parseInt(pc.slice(1, 3), 16) || 0
           const g = parseInt(pc.slice(3, 5), 16) || 0
           const b = parseInt(pc.slice(5, 7), 16) || 0
           const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-          // Dark bg → bright warm orange; light bg → deep burnt orange
-          const brandColor = lum < 0.45 ? '#F4845F' : '#C2501A'
-          const byColor = lum < 0.45 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)'
+          // Compute hue of primary color
+          const max = Math.max(r, g, b), min = Math.min(r, g, b)
+          let h = 0
+          if (max !== min) {
+            const d = max - min
+            if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60
+            else if (max === g) h = ((b - r) / d + 2) * 60
+            else h = ((r - g) / d + 4) * 60
+          }
+          // Shift hue by 180° for complement, use muted gold-champagne tone
+          const compHue = (h + 150) % 360
+          // Dark bg → light complementary; light bg → deep complementary
+          const brandColor = lum < 0.45
+            ? `hsl(${compHue}, 35%, 75%)`
+            : `hsl(${compHue}, 40%, 30%)`
+          const byColor = lum < 0.45 ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)'
           return (
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1, gap: 2 }}>
               <span style={{ color: byColor, fontSize: 8, fontWeight: 500, letterSpacing: '0.06em' }}>by</span>
