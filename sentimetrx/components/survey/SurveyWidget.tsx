@@ -6,6 +6,23 @@ import type { Study } from '@/lib/types'
 
 interface Props { study: Study }
 
+// All font sizes use rem so they scale with the user's OS/browser
+// accessibility text-size settings. Conversions from the original px values
+// assume a 16px root (browser default):
+//
+//   8px  → 0.5rem
+//  10px  → 0.625rem
+//  11px  → 0.6875rem
+//  14px  → 0.875rem
+//  15px  → 0.9375rem
+//  18px  → 1.125rem
+//  20px  → 1.25rem
+//  48px  → 3rem
+//
+// Structural px values (gap, padding, border-radius, width/height of fixed
+// chrome like the avatar) are intentionally kept in px — they are layout
+// measurements, not text, and should not inflate with font size.
+
 export default function SurveyWidget({ study }: Props) {
   const chatRef    = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLDivElement>(null)
@@ -90,31 +107,31 @@ export default function SurveyWidget({ study }: Props) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: theme.backgroundColor, overflow: 'hidden' }}>
         <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>
             {liveBotEmoji}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveBotName}</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveStudy.name}</div>
+            <div style={{ fontWeight: 600, color: 'white', fontSize: '0.9375rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveBotName}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveStudy.name}</div>
           </div>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center', gap: 16 }}>
-          <div style={{ fontSize: 48 }}>{isClosed ? '🔒' : '🚧'}</div>
+          <div style={{ fontSize: '3rem' }}>{isClosed ? '🔒' : '🚧'}</div>
           <div>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: 18, marginBottom: 8 }}>{isClosed ? 'This survey is now closed' : 'Not yet available'}</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.6 }}>
+            <div style={{ color: 'white', fontWeight: 700, fontSize: '1.125rem', marginBottom: 8 }}>{isClosed ? 'This survey is now closed' : 'Not yet available'}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.875rem', lineHeight: 1.6 }}>
               {isClosed ? 'Thank you for your interest. This survey is no longer accepting responses.' : "This survey isn't published yet. Please check back soon."}
             </div>
           </div>
         </div>
         <div style={{ textAlign: 'center', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
-          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.6875rem' }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
         </div>
       </div>
     )
   }
 
-  // Active survey
+  // Active survey — device already responded
   if (deviceBlocked) {
     return (
       <div style={{
@@ -122,25 +139,25 @@ export default function SurveyWidget({ study }: Props) {
         background: theme.backgroundColor, overflow: 'hidden',
       }}>
         <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>
             {liveBotEmoji}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, color: 'white', fontSize: 15 }}>{liveBotName}</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{liveStudy.name}</div>
+            <div style={{ fontWeight: 600, color: 'white', fontSize: '0.9375rem' }}>{liveBotName}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{liveStudy.name}</div>
           </div>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', gap: 16 }}>
-          <div style={{ fontSize: 48 }}>{'✓'}</div>
+          <div style={{ fontSize: '3rem' }}>{'✓'}</div>
           <div>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Thank you!</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.6 }}>
+            <div style={{ color: 'white', fontWeight: 700, fontSize: '1.125rem', marginBottom: 8 }}>Thank you!</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.875rem', lineHeight: 1.6 }}>
               A response has already been submitted from this device. We appreciate your feedback!
             </div>
           </div>
         </div>
         <div style={{ textAlign: 'center', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
-          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.6875rem' }}>Powered by <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>sentimetrx.ai</span></span>
         </div>
       </div>
     )
@@ -167,15 +184,15 @@ export default function SurveyWidget({ study }: Props) {
         flexShrink: 0,
         zIndex: 10,
       }}>
-        <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>
           {liveBotEmoji}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, color: 'white', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveBotName}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveStudy.name}</div>
+          <div style={{ fontWeight: 600, color: 'white', fontSize: '0.9375rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveBotName}</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveStudy.name}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <span className="live-dot" />
-            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Ready for your feedback</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.6875rem' }}>Ready for your feedback</span>
           </div>
         </div>
         {liveConfig.showBranding !== false && (() => {
@@ -203,8 +220,8 @@ export default function SurveyWidget({ study }: Props) {
           const byColor = lum < 0.45 ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)'
           return (
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1, gap: 2 }}>
-              <span style={{ color: byColor, fontSize: 8, fontWeight: 500, letterSpacing: '0.06em' }}>by</span>
-              <span style={{ color: brandColor, fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              <span style={{ color: byColor, fontSize: '0.5rem', fontWeight: 500, letterSpacing: '0.06em' }}>by</span>
+              <span style={{ color: brandColor, fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                 {(liveConfig.brandingLabel || 'DATANAUTIX').slice(0, 15)}
               </span>
             </div>
