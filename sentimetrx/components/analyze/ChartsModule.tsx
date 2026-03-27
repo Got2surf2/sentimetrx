@@ -62,6 +62,7 @@ var CHART_SLOTS: Record<string, SlotDef[]> = {
   funnel:       [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }],
   gantt:        [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'range', label: 'Range Field', accepts: ['numeric', 'date'], required: true }],
   driver:       [{ key: 'score', label: 'Score Field', accepts: ['numeric'], required: true }],
+  table:        [],
 }
 
 var CHART_TYPE_DEFS = [
@@ -77,6 +78,7 @@ var CHART_TYPE_DEFS = [
   { id: 'funnel',       label: 'Funnel',         icon: '\u25BD', color: '#f59e0b', tip: 'Ranked bars in funnel shape.' },
   { id: 'gantt',        label: 'Gantt / Range',  icon: '\u27FA', color: '#14b8a6', tip: 'Min-max range bars per category.' },
   { id: 'driver',       label: 'Score Driver',   icon: '\uD83C\uDFAF', color: '#e8622a', tip: 'Which themes drive higher/lower scores.' },
+  { id: 'table',        label: 'Data Table',     icon: '\u229F', color: '#475569', tip: 'Sortable, filterable data table.' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -136,15 +138,9 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
 
   if (chartType === 'bar') {
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
-
-    // If a numeric Value field is selected, aggregate by that field (needs raw rows)
-    var valueField = config.value
-    if (valueField) {
-      return <BarValueInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} valueField={valueField} colorByField={config.colorBy || ''} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
-    }
-
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />
     var rawEntries = Object.entries(summary.counts)
+    // Smart axes: order by remapping, then detected scale, then alphabetical (Item 20)
     var catFieldObj = schema.find(function(f) { return f.field === catField })
     var catRemap = catFieldObj?.remapping
     var orderedKeys = useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] }), catRemap) : rawEntries.map(function(e) { return e[0] }).sort()
@@ -236,7 +232,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var bs = fs[bField]; if (!bs || bs.avg == null) return <EmptyChart msg="No numeric data." />
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, maxWidth: 320, margin: '0 auto' }}>
-        <GaugeCard label={flByName(bField, schema)} avg={bs.avg || 0} median={bs.median || bs.avg || 0} min={bs.min || 0} max={bs.max || 100} n={bs.nonNull || 0} overallAvg={null} accentColor={primaryColor} />
+        <GaugeCard label={flByName(bField, schema)} avg={bs.avg || 0} median={bs.median || bs.avg || 0} min={bs.min || 0} max={bs.max || 100} n={bs.nonNull || 0} overallAvg={null} />
       </div>
     )
   }
@@ -271,20 +267,13 @@ function useRows(datasetId: string) {
   var [loading, setLoading] = useState(false)
   useEffect(function() {
     if (loaded || loading) return; setLoading(true)
-    var page = 0, PAGE_SIZE = 500, allRows: Record<string, unknown>[] = []
-    var fetchPage = function() {
-      fetch('/api/datasets/' + datasetId + '/rows?page=' + page + '&pageSize=' + PAGE_SIZE)
-        .then(function(r) { return r.json() })
-        .then(function(data) {
-          allRows = allRows.concat(data.rows || [])
-          if (page >= (data.totalPages || 0) - 1 || (data.rows || []).length < PAGE_SIZE) {
-            var enriched = enrichRows(allRows, _enrichCtx.themeModel, _enrichCtx.schema)
-            setRows(enriched); setLoaded(true); setLoading(false)
-          }
-          else { page++; fetchPage() }
-        }).catch(function() { setLoading(false) })
-    }
-    fetchPage()
+    fetch('/api/datasets/' + datasetId + '/rows?all=true')
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        var allRows = data.rows || []
+        var enriched = enrichRows(allRows, _enrichCtx.themeModel, _enrichCtx.schema)
+        setRows(enriched); setLoaded(true); setLoading(false)
+      }).catch(function() { setLoading(false) })
   }, [datasetId])
   return { rows: rows, loaded: loaded, loading: loading }
 }
@@ -329,36 +318,6 @@ function enrichRows(rows: Record<string, unknown>[], themeModel?: any, schema?: 
 
     return enriched
   })
-}
-
-function BarValueInner({ analytics, schema, datasetId, catField, valueField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; valueField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
-  var { rows, loaded } = useRows(datasetId)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
-  var pal = colors || CHART_COLORS
-  var groups: Record<string, number[]> = {}
-  rows.forEach(function(r) {
-    var cat = String(r[catField] || '').trim()
-    var val = parseFloat(String(r[valueField] || ''))
-    if (!cat || isNaN(val)) return
-    if (!groups[cat]) groups[cat] = []
-    groups[cat].push(val)
-  })
-  var catFieldObj = schema.find(function(f) { return f.field === catField })
-  var cats = Object.keys(groups)
-  if (smartAxes) {
-    cats = smartOrder(cats, catFieldObj?.remapping)
-  } else {
-    cats.sort()
-  }
-  cats = cats.slice(0, 30)
-  var avgs = cats.map(function(c) { var vs = groups[c]; return vs.length ? Math.round(vs.reduce(function(a, b) { return a + b }, 0) / vs.length * 100) / 100 : 0 })
-  var isH = orient === 'h'
-  var catLabel = flByName(catField, schema)
-  var valLabel = 'Avg ' + flByName(valueField, schema)
-  var trace: any = { type: 'bar', marker: { color: pal[0], line: { color: pal[0] + '40', width: 1 } }, text: avgs.map(function(v) { return v.toFixed(1) }), textposition: 'outside', textfont: { size: 11 } }
-  if (isH) { trace.y = cats; trace.x = avgs; trace.orientation = 'h' }
-  else { trace.x = cats; trace.y = avgs }
-  return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? valLabel : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : valLabel }, barcornerradius: 4 }} />
 }
 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
@@ -422,7 +381,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
 
-function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }: { label: string; avg: number; median: number; min: number; max: number; n: number; overallAvg: number | null; accentColor?: string }) {
+function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: string; avg: number; median: number; min: number; max: number; n: number; overallAvg: number | null }) {
   var range = max - min || 1
   var pct = Math.max(0, Math.min(1, (avg - min) / range))
   var angle = -90 + pct * 180 // -90 to 90 degrees
@@ -452,10 +411,10 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }:
         {(function() {
           var a = (angle - 90) * Math.PI / 180
           var nx = cx + (r - 20) * Math.cos(a), ny = cy + (r - 20) * Math.sin(a)
-          return <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={accentColor || T.accent} strokeWidth={2.5} strokeLinecap="round" />
+          return <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={T.accent} strokeWidth={2.5} strokeLinecap="round" />
         })()}
         {/* Center dot */}
-        <circle cx={cx} cy={cy} r={4} fill={accentColor || T.accent} />
+        <circle cx={cx} cy={cy} r={4} fill={T.accent} />
         {/* Median marker */}
         {(function() {
           var mPct = Math.max(0, Math.min(1, (median - min) / range))
@@ -535,8 +494,8 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-      {stats.map(function(s, si) {
-        return <GaugeCard key={s.label} label={s.label} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} accentColor={CHART_COLORS[si % CHART_COLORS.length]} />
+      {stats.map(function(s) {
+        return <GaugeCard key={s.label} label={s.label} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} />
       })}
     </div>
   )
@@ -774,43 +733,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
       getPlotly().then(function(Plotly) {
         Plotly.downloadImage(plotDiv, { format: 'png', width: 1200, height: 700, filename: activeChart + '_chart' })
       })
-      return
     }
-    // Fallback for SVG-based charts (bullet/KPI gauges): serialize SVGs to canvas
-    var svgs = chartBodyRef.current.querySelectorAll('svg')
-    if (!svgs.length) return
-    var container = chartBodyRef.current
-    var rect = container.getBoundingClientRect()
-    var canvas = document.createElement('canvas')
-    canvas.width = rect.width * 2; canvas.height = rect.height * 2
-    var ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.scale(2, 2)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, rect.width, rect.height)
-    var pending = svgs.length
-    var tryDownload = function() {
-      pending--
-      if (pending > 0) return
-      var link = document.createElement('a')
-      link.download = activeChart + '_chart.png'
-      link.href = canvas.toDataURL('image/png')
-      link.click()
-    }
-    svgs.forEach(function(svg) {
-      var svgRect = svg.getBoundingClientRect()
-      var svgData = new XMLSerializer().serializeToString(svg)
-      var blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-      var url = URL.createObjectURL(blob)
-      var img = new Image()
-      img.onload = function() {
-        ctx!.drawImage(img, svgRect.left - rect.left, svgRect.top - rect.top, svgRect.width, svgRect.height)
-        URL.revokeObjectURL(url)
-        tryDownload()
-      }
-      img.onerror = function() { URL.revokeObjectURL(url); tryDownload() }
-      img.src = url
-    })
   }
 
   return (
@@ -1062,5 +985,3 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     </div>
   )
 }
-
-

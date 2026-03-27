@@ -819,19 +819,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     setRowsError(null)
-    const PAGE_SIZE = 500
-    let page = 0
-    const allRows: Record<string, unknown>[] = []
     try {
-      while (true) {
-        const r = await fetch('/api/datasets/' + datasetId + '/rows?page=' + page + '&pageSize=' + PAGE_SIZE)
-        if (!r.ok) throw new Error('Failed to load rows (page ' + page + ')')
-        const data = await r.json()
-        const batch: Record<string, unknown>[] = data.rows || []
-        allRows.push(...batch)
-        if (page >= (data.totalPages || 0) - 1 || batch.length < PAGE_SIZE) break
-        page++
-      }
+      const r = await fetch('/api/datasets/' + datasetId + '/rows?all=true')
+      if (!r.ok) throw new Error('Failed to load rows')
+      const data = await r.json()
+      const allRows: Record<string, unknown>[] = data.rows || []
       setRows(allRows)
       // Recount saved themes against fresh rows
       if (savedThemeModel && savedThemeModel.themes && allRows.length > 0) {

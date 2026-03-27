@@ -778,23 +778,17 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   useEffect(function() {
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
-    var PAGE_SIZE = 500, page = 0, allRows: Record<string, unknown>[] = []
     var cancelled = false
-    ;(async function() {
-      try {
-        while (!cancelled) {
-          var r = await fetch('/api/datasets/' + datasetId + '/rows?page=' + page + '&pageSize=' + PAGE_SIZE)
-          if (!r.ok) break
-          var data = await r.json()
-          var batch: Record<string, unknown>[] = data.rows || []
-          allRows = allRows.concat(batch)
-          if (page >= (data.totalPages || 0) - 1 || batch.length < PAGE_SIZE) break
-          page++
+    fetch('/api/datasets/' + datasetId + '/rows?all=true')
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        if (!cancelled) {
+          setRows(data.rows || [])
+          setRowsLoaded(true)
         }
-        if (!cancelled) { setRows(allRows); setRowsLoaded(true) }
-      } catch {} 
-      if (!cancelled) setRowsLoading(false)
-    })()
+      })
+      .catch(function() {})
+      .finally(function() { if (!cancelled) setRowsLoading(false) })
     return function() { cancelled = true }
   }, [datasetId])
 
@@ -864,8 +858,8 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
           {/* Status */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
-            {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading data...</span>}
-            {rowsLoaded && !rowsLoading && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} Data ready</span>}
+            {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
+            {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
           </div>
 
           {/* Field groups */}
