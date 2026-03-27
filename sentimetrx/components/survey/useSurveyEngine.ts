@@ -23,6 +23,8 @@ interface State {
   sentiment:       Sentiment | null
   npsScore:        number | null
   npsLabel:        string | null
+  npsFollowUp:     string
+  experienceFollowUp: string
   answers:         { q1: string; q3: string; q4: string }
   clarifyCount:    number
   customAnswers:   Record<string, string | string[]>
@@ -39,6 +41,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   const state  = useRef<State>({
     rating: null, ratingLabel: null, sentiment: null,
     npsScore: null, npsLabel: null,
+    npsFollowUp: '', experienceFollowUp: '',
     answers: { q1: '', q3: '', q4: '' },
     clarifyCount: 0,
     customAnswers: {},
@@ -97,6 +100,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       }
       if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
       if (s.rating != null) partialPayload.experienceRating = { score: s.rating, label: s.ratingLabel || '', sentiment: s.sentiment || 'neutral' }
+      if (s.npsFollowUp) partialPayload.npsFollowUp = s.npsFollowUp
+      if (s.experienceFollowUp) partialPayload.experienceFollowUp = s.experienceFollowUp
       if (s.answers.q1 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
       if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
       if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
@@ -256,6 +261,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         sentiment: s.sentiment!,
       },
       npsRecommend:  { score: s.npsScore!, label: s.npsLabel! },
+      npsFollowUp:       s.npsFollowUp || undefined,
+      experienceFollowUp: s.experienceFollowUp || undefined,
       openEnded:     s.answers,
       customAnswers: s.customAnswers,
       psychographics: s.psychoAnswers,
@@ -413,7 +420,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   
 
 
-  const showLikertFollowUpInput = useCallback((next: () => Promise<void>) => {
+  const showLikertFollowUpInput = useCallback((next: () => Promise<void>, storageKey?: 'npsFollowUp' | 'experienceFollowUp') => {
     if (!inputRef.current) return
     const wrap = document.createElement('div')
     wrap.className = 'flex flex-col gap-2 mt-1.5'
@@ -447,7 +454,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     const submit = async () => {
       const v = ta.value.trim()
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
-      if (v) addMsg('user', v)
+      if (v) {
+        addMsg('user', v)
+        // Store the follow-up answer
+        if (storageKey) state.current[storageKey] = v
+      }
+      savePartial()
       clearInput()
       await next()
     }
@@ -458,7 +470,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom])
+  }, [addMsg, clearInput, config, inputRef, savePartial, scrollBottom])
 
 
 
@@ -857,6 +869,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   handleOpenEndedRef.current = handleOpenEnded
   const progressFlowRef = useRef(progressFlow)
   progressFlowRef.current = progressFlow
+  const savePartialRef = useRef(savePartial)
+  savePartialRef.current = savePartial
 
   // -- Input Renderers ---------------------------------------
 
@@ -902,6 +916,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       const val = ta.value.trim(); if (!val) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', val)
+      // Store immediately and save — belt-and-suspenders, don't rely solely on handleOpenEnded
+      state.current.answers[qKey] = val
+      savePartialRef.current()
       handleOpenEndedRef.current(qKey, val)
     }
 
@@ -954,6 +971,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', val)
       if (!isDecline(val)) state.current.answers[qKey] = originalVal + ' [+ ' + val + ']'
+      savePartialRef.current()
       clearInput()
       await progressFlowRef.current(qKey)
     }
@@ -1011,6 +1029,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (val) {
         addMsg('user', val)
+        state.current.answers[qKey] = val
+        savePartialRef.current()
         handleOpenEndedRef.current(qKey, val)
       } else {
         addMsg('user', 'Skip')
@@ -1075,7 +1095,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         const showLikertFollowUp = async (
           followUp: any,
           score: number,
-          next: () => Promise<void>
+          next: () => Promise<void>,
+          storageKey?: 'npsFollowUp' | 'experienceFollowUp'
         ) => {
           if (!followUp?.enabled) { await next(); return }
           const pr = followUp.mode === 'per-response'
@@ -1087,7 +1108,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           await showTyping(900)
           addMsg('bot', prompt)
           state.current.currentQuestion = prompt
-          showLikertFollowUpInput(next)
+          showLikertFollowUpInput(next, storageKey)
         }
 
         const npsEnabled        = config.npsEnabled !== false
@@ -1097,7 +1118,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         const stepQ3 = async () => {
           // Skip Q3 entirely if disabled
           if (config.q3Enabled === false) {
-            await progressFlow('q3')
+            await progressFlowRef.current('q3')
             return
           }
           clearInput()
@@ -1136,7 +1157,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
               state.current.ratingLabel = r.label
               savePartial()
               addMsg('user', r.emoji + ' ' + r.label)
-              await showLikertFollowUp(config.experienceFollowUp, r.score, stepQ3)
+              await showLikertFollowUp(config.experienceFollowUp, r.score, stepQ3, 'experienceFollowUp')
             }
             ratingRow.appendChild(rb)
           })
@@ -1182,7 +1203,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             state.current.sentiment = s.score >= 5 ? 'positive' : s.score >= 4 ? 'neutral' : 'negative'
             savePartial()
             addMsg('user', s.stars + ' ' + s.label)
-            await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating)
+            await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating, 'npsFollowUp')
           }
           npsRow.appendChild(sb)
         })
