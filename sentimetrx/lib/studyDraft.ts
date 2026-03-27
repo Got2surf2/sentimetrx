@@ -5,6 +5,7 @@ export interface StudyDraft {
   name:           string
   bot_name:       string
   bot_emoji:      string
+  slug?:          string           // custom URL slug — e.g. 'acme-feedback-2026'
   config:         StudyConfig
   industry?:      Industry
   otherIndustry?: string

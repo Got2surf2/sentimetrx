@@ -28,6 +28,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     name:         study.name,
     bot_name:     study.bot_name,
     bot_emoji:    study.bot_emoji,
+    slug:         study.slug || '',
     config: {
       // For legacy studies created before industry moved into config,
       // seed it from the top-level study.industry column if config doesn't have it

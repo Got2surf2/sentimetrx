@@ -36,28 +36,48 @@ export async function POST(req: NextRequest) {
     .single()
 
   const body = await req.json()
-  const { name, bot_name, bot_emoji, config } = body
+  const { name, bot_name, bot_emoji, config, slug: rawSlug } = body
 
   if (!name || !bot_name || !config) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  // Validate slug if provided
+  let slug: string | null = null
+  if (rawSlug && typeof rawSlug === 'string' && rawSlug.trim()) {
+    slug = rawSlug.toLowerCase().trim()
+    if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(slug)) {
+      return NextResponse.json({ error: 'Slug must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
+    }
+    const { data: conflict } = await supabase
+      .from('studies')
+      .select('id')
+      .eq('slug', slug)
+      .limit(1)
+    if (conflict && conflict.length > 0) {
+      return NextResponse.json({ error: 'This URL is already taken' }, { status: 409 })
+    }
+  }
+
   const guid = generateStudyGuid()
+
+  const insertData: Record<string, unknown> = {
+    guid,
+    client_id:  userData?.client_id || null,
+    org_id:     userData?.org_id    || null,
+    created_by: user.id,
+    name,
+    bot_name,
+    bot_emoji:  bot_emoji || '💬',
+    status:     body.status === 'active' ? 'active' : 'draft',
+    config,
+  }
+  if (slug) insertData.slug = slug
 
   const { data, error } = await supabase
     .from('studies')
-    .insert({
-      guid,
-      client_id:  userData?.client_id || null,
-      org_id:     userData?.org_id    || null,
-      created_by: user.id,
-      name,
-      bot_name,
-      bot_emoji:  bot_emoji || '💬',
-      status:     body.status === 'active' ? 'active' : 'draft',
-      config,
-    })
-    .select('id, guid')
+    .insert(insertData)
+    .select('id, guid, slug')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

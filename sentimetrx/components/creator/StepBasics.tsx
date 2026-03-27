@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, type Industry } from '@/lib/industryDefaults'
@@ -178,6 +178,50 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
   const isEditing = !!presetIndustry   // true when editing an existing study
   const [showPicker,    setShowPicker]    = useState(false)
 
+  // ── Slug (custom URL) ──────────────────────────────────────
+  const [slugInput,    setSlugInput]    = useState(draft.slug || '')
+  const [slugStatus,   setSlugStatus]   = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
+  const slugTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50)
+
+  const checkSlug = useCallback((val: string) => {
+    if (slugTimer.current) clearTimeout(slugTimer.current)
+    const clean = val.toLowerCase().trim()
+    if (!clean) { setSlugStatus('idle'); return }
+    if (clean.length < 3 || !/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(clean)) {
+      setSlugStatus('invalid'); return
+    }
+    setSlugStatus('checking')
+    slugTimer.current = setTimeout(async () => {
+      try {
+        const studyId = (draft as any).id || ''
+        const res = await fetch(`/api/studies/check-slug?slug=${encodeURIComponent(clean)}&exclude=${studyId}`)
+        const data = await res.json()
+        setSlugStatus(data.available ? 'available' : 'taken')
+      } catch { setSlugStatus('idle') }
+    }, 400)
+  }, [draft])
+
+  const handleSlugChange = (val: string) => {
+    const clean = slugify(val)
+    setSlugInput(clean)
+    update({ slug: clean || undefined })
+    checkSlug(clean)
+  }
+
+  const handleSlugBlur = () => {
+    // Auto-suggest from study name if empty
+    if (!slugInput && draft.name.trim()) {
+      const suggested = slugify(draft.name)
+      if (suggested.length >= 3) {
+        setSlugInput(suggested)
+        update({ slug: suggested })
+        checkSlug(suggested)
+      }
+    }
+  }
+
   const inputCls = 'w-full px-4 py-2.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
 
   function applyPreset(p: typeof PRESETS[0]) {
@@ -281,6 +325,36 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         <Input value={draft.name} onChange={v => update({ name: v })}
           placeholder="e.g. Q2 Patient Satisfaction Study"
           hint="Internal name — respondents don't see this" />
+      </Section>
+
+      {/* Custom URL */}
+      <Section title="Custom survey URL" description="Give your survey a short, memorable link. Leave blank to use the default.">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-0 rounded-xl border border-gray-300 overflow-hidden bg-white focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 transition-all">
+            <span className="px-3 py-2.5 text-sm text-gray-400 bg-gray-50 border-r border-gray-200 whitespace-nowrap flex-shrink-0">sentimetrx.ai/s/</span>
+            <input
+              value={slugInput}
+              onChange={e => handleSlugChange(e.target.value)}
+              onBlur={handleSlugBlur}
+              placeholder="your-survey-name"
+              className="flex-1 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 outline-none bg-transparent min-w-0"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            {slugStatus === 'checking' && <span className="px-3 text-gray-400 text-xs animate-pulse">checking...</span>}
+            {slugStatus === 'available' && <span className="px-3 text-green-500 text-sm font-bold">{'\u2713'}</span>}
+            {slugStatus === 'taken' && <span className="px-3 text-red-500 text-xs font-semibold">taken</span>}
+            {slugStatus === 'invalid' && <span className="px-3 text-amber-500 text-xs font-semibold">3+ chars</span>}
+          </div>
+          {slugInput && slugStatus === 'available' && (
+            <p className="text-xs text-green-600">
+              {'\u2713'} Your survey will be available at <strong>sentimetrx.ai/s/{slugInput}</strong>
+            </p>
+          )}
+          {!slugInput && (
+            <p className="text-xs text-gray-400">The default UUID link will always work too.</p>
+          )}
+        </div>
       </Section>
 
       {/* Bot identity */}

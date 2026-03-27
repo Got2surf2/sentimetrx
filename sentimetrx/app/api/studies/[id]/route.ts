@@ -51,10 +51,34 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   // Allow visibility changes only by creator or admin
-  const allowed = ['name', 'bot_name', 'bot_emoji', 'status', 'config', 'visibility']
+  const allowed = ['name', 'bot_name', 'bot_emoji', 'status', 'config', 'visibility', 'slug']
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+
+  // Validate slug if provided
+  if (updates.slug != null) {
+    const slug = String(updates.slug).toLowerCase().trim()
+    if (slug === '') {
+      updates.slug = null  // clear slug
+    } else {
+      // Validate format: lowercase alphanumeric + hyphens, 3-50 chars
+      if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(slug)) {
+        return NextResponse.json({ error: 'Slug must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
+      }
+      // Check uniqueness
+      const { data: conflict } = await supabase
+        .from('studies')
+        .select('id')
+        .eq('slug', slug)
+        .neq('id', params.id)
+        .limit(1)
+      if (conflict && conflict.length > 0) {
+        return NextResponse.json({ error: 'This URL is already taken. Try a different one.' }, { status: 409 })
+      }
+      updates.slug = slug
+    }
   }
 
   if (Object.keys(updates).length === 0) {
@@ -65,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .from('studies')
     .update(updates)
     .eq('id', params.id)
-    .select('id, guid, status, visibility')
+    .select('id, guid, slug, status, visibility')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

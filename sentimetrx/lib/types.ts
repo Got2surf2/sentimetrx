@@ -161,6 +161,7 @@ export interface StudyConfig {
 export interface Study {
   id:          string
   guid:        string
+  slug?:       string           // custom URL slug — e.g. 'acme-feedback-2026'
   name:        string
   bot_name:    string
   bot_emoji:   string
