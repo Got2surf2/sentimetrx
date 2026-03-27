@@ -12,7 +12,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from('studies')
     .select(`
-      id, guid, name, bot_name, bot_emoji, status, created_at, updated_at,
+      id, guid, slug, name, bot_name, bot_emoji, status, created_at, updated_at,
       config->theme,
       responses(count)
     `)

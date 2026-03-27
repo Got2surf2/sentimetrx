@@ -20,7 +20,7 @@ export default function StepReview({ draft, update, updateConfig, onBack, onSave
   const [justPublished, setJustPublished] = useState(false)
 
   const surveyUrl = studyId
-    ? (typeof window !== 'undefined' ? window.location.origin : '') + '/survey/' + studyId
+    ? (typeof window !== 'undefined' ? window.location.origin : '') + '/s/' + (draft.slug || studyId)
     : null
 
   function handlePublish() {

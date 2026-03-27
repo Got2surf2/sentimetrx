@@ -56,7 +56,7 @@ function QRCode({ url }: { url: string }) {
 }
 
 function DeployModal({ study, onClose }: { study: Study; onClose: () => void }) {
-  const url = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai') + '/s/' + study.guid
+  const url = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai') + '/s/' + (study.slug || study.guid)
   const [copied, setCopied] = useState(false)
   const copy = () => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }
   return (

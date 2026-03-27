@@ -21,7 +21,7 @@ export default async function DeployPage({ params }: Props) {
   const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
-  const surveyUrl = `${baseUrl}/s/${study.guid}`
+  const surveyUrl = `${baseUrl}/s/${study.slug || study.guid}`
 
   return (
     <DeployClient

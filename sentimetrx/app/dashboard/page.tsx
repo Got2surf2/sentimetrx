@@ -22,7 +22,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   let studiesQuery = supabase
     .from('studies')
-    .select('id, guid, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config, org_id')
+    .select('id, guid, slug, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config, org_id')
     .order('created_at', { ascending: false })
 
   if (isAdmin && searchParams?.org) {
