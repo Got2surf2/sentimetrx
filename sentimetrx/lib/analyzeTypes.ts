@@ -198,6 +198,9 @@ export interface DatasetWithState extends Dataset {
   theme_count?:    number
   theme_source?:   string
   theme_lib_name?: string
+  creator_name?:   string
+  creator_email?:  string
+  org_name?:       string
 }
 
 // -- Paginated rows response (for TextMine) ------------------------------
