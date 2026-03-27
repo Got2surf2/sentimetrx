@@ -147,20 +147,22 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      const res = await fetch('/api/studies/' + study.id + '/analytics')
+      const res = await fetch('/api/studies/' + study.id + '/responses?limit=50000&offset=0')
       if (res.ok) {
         const data = await res.json()
-        if (data) {
-          const rows = data.responses || []
+        const rows = data.responses || data.data || []
+        if (Array.isArray(rows)) {
           const total = rows.length
-          const promoters = rows.filter((r: any) => r.sentiment === 'positive' || r.sentiment === 'promoter').length
-          const passives = rows.filter((r: any) => r.sentiment === 'neutral' || r.sentiment === 'passive').length
-          const detractors = rows.filter((r: any) => r.sentiment === 'negative' || r.sentiment === 'detractor').length
+          const promoters = rows.filter((r: any) => (r.sentiment === 'positive' || r.sentiment === 'promoter')).length
+          const passives = rows.filter((r: any) => (r.sentiment === 'neutral' || r.sentiment === 'passive')).length
+          const detractors = rows.filter((r: any) => (r.sentiment === 'negative' || r.sentiment === 'detractor')).length
           const scoreRows = rows.filter((r: any) => r.experience_score != null)
           const avgScore = scoreRows.length > 0
             ? Math.round(scoreRows.reduce((s: number, r: any) => s + (r.experience_score || 0), 0) / scoreRows.length * 10) / 10
             : (total > 0 ? Math.round(rows.reduce((s: number, r: any) => s + (r.nps_score || 0), 0) / total * 10) / 10 : 0)
-          setStats({ total, promoters, passives, detractors, avgScore, ratingLabel: stats.ratingLabel, lastResponse: stats.lastResponse })
+          const dates = rows.map((r: any) => r.completed_at).filter(Boolean).sort()
+          const lastResponse = dates.length > 0 ? dates[dates.length - 1] : stats.lastResponse
+          setStats({ total, promoters, passives, detractors, avgScore, ratingLabel: stats.ratingLabel, lastResponse })
         }
       }
     } catch { /* fail silently */ }
@@ -176,7 +178,20 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
       {confirm    && <ConfirmModal message={confirm.msg} onConfirm={() => { confirm.action(); setConfirm(null) }} onCancel={() => setConfirm(null)} />}
       {deployOpen && <DeployModal study={study} onClose={() => setDeployOpen(false)} />}
 
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden" style={{ position: 'relative' }}>
+
+        {/* Refresh icon — absolute top-right */}
+        <button onClick={handleRefresh} disabled={refreshing}
+          title="Refresh stats"
+          style={{ position: 'absolute', top: 10, right: 10, zIndex: 2, width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: refreshing ? '#fff4ef' : 'transparent', cursor: 'pointer', color: refreshing ? HERMES : '#9ca3af', transition: 'all 0.15s' }}
+          onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.color = HERMES; (e.currentTarget as HTMLElement).style.background = '#fff4ef' }}
+          onMouseLeave={function(e) { if (!refreshing) { (e.currentTarget as HTMLElement).style.color = '#9ca3af'; (e.currentTarget as HTMLElement).style.background = 'transparent' } }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={refreshing ? { animation: 'spin 0.8s linear infinite' } : {}}>
+            <path d="M1 4v6h6" /><path d="M23 20v-6h-6" />
+            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 0 1 3.51 15" />
+          </svg>
+        </button>
 
         {/* Color strip */}
         <div className="h-1.5 w-full" style={{ background: headerBg }} />
@@ -202,17 +217,6 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
                 )}
               </div>
             </div>
-            {/* Refresh icon */}
-            <button onClick={handleRefresh} disabled={refreshing}
-              title="Refresh stats"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition-all flex-shrink-0 mt-0.5"
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                className={refreshing ? 'animate-spin' : ''}>
-                <path d="M21 12a9 9 0 0 1-15.36 6.36" /><path d="M3 12a9 9 0 0 1 15.36-6.36" />
-                <polyline points="21 3 21 12 12 12" /><polyline points="3 21 3 12 12 12" />
-              </svg>
-            </button>
             <DonutChart
               promoters={stats.promoters}
               passives={stats.passives}
