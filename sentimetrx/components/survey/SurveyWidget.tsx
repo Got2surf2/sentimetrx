@@ -178,14 +178,25 @@ export default function SurveyWidget({ study }: Props) {
             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Ready for your feedback</span>
           </div>
         </div>
-        {liveConfig.showBranding !== false && (
-          <div style={{ flexShrink: 0, textAlign: 'right', lineHeight: 1.2 }}>
-            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, letterSpacing: '0.05em' }}>by</div>
-            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              {(liveConfig.brandingLabel || 'DATANAUTIX').slice(0, 15)}
+        {liveConfig.showBranding !== false && (() => {
+          // Compute a Hermes orange that contrasts against the header
+          const pc = theme.primaryColor || '#1a1a2e'
+          const r = parseInt(pc.slice(1, 3), 16) || 0
+          const g = parseInt(pc.slice(3, 5), 16) || 0
+          const b = parseInt(pc.slice(5, 7), 16) || 0
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+          // Dark bg → bright warm orange; light bg → deep burnt orange
+          const brandColor = lum < 0.45 ? '#F4845F' : '#C2501A'
+          const byColor = lum < 0.45 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)'
+          return (
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1, gap: 2 }}>
+              <span style={{ color: byColor, fontSize: 8, fontWeight: 500, letterSpacing: '0.06em' }}>by</span>
+              <span style={{ color: brandColor, fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                {(liveConfig.brandingLabel || 'DATANAUTIX').slice(0, 15)}
+              </span>
             </div>
-          </div>
-        )}
+          )
+        })()}
       </div>
 
       {/* Chat area — scrollable, fills all available space between header and input */}
