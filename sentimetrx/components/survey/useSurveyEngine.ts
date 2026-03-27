@@ -321,7 +321,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     wrap.className = 'flex flex-col gap-1.5 mt-1.5'
 
     const selectStyle = `
-      padding:10px 13px;border-radius:10px;font-size:13.5px;
+      padding:10px 13px;border-radius:10px;font-size:0.844rem;
       color:rgba(255,255,255,0.82);background:rgba(255,255,255,0.06);
       border:1.5px solid ${config.theme.primaryColor}28;
       outline:none;cursor:pointer;appearance:none;font-family:inherit;
@@ -720,7 +720,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           if (!q.required) {
             const skipBtn = document.createElement('button')
             skipBtn.textContent = 'Skip'
-            skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-size:12px;font-family:inherit;margin-left:4px;'
+            skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-size:0.75rem;font-family:inherit;margin-left:4px;'
             skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
             skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
             skipBtn.onclick = () => { wrap.querySelectorAll('select,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
@@ -741,7 +741,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             const sb = document.createElement('button')
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             sb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
-            sb.innerHTML = '<span style="font-size:18px">' + (s.emoji || '⭐') + '</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
+            sb.innerHTML = '<span style="font-size:1.125rem">' + (s.emoji || '⭐') + '</span><span style="font-size:0.5rem;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
             sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '18' }
             sb.onmouseleave = () => { sb.style.borderColor = 'rgba(255,255,255,0.1)'; sb.style.background = 'rgba(255,255,255,0.05)' }
             sb.onclick = async () => {
@@ -834,7 +834,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           if (!q.required) {
             const skipBtn = document.createElement('button')
             skipBtn.textContent = 'Skip'
-            skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-size:12px;font-family:inherit;margin-left:4px;'
+            skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-size:0.75rem;font-family:inherit;margin-left:4px;'
             skipBtn.onmouseenter = () => { skipBtn.style.color = 'rgba(255,255,255,0.6)' }
             skipBtn.onmouseleave = () => { skipBtn.style.color = 'rgba(255,255,255,0.3)' }
             skipBtn.onclick = () => { wrap.querySelectorAll('input,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
@@ -1185,7 +1185,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
             const rb = document.createElement('button')
             rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             rb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
-            rb.innerHTML = '<span style="font-size:20px">' + r.emoji + '</span><span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap">' + r.label + '</span>'
+            rb.innerHTML = '<span style="font-size:1.25rem">' + r.emoji + '</span><span style="font-size:0.5625rem;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap">' + r.label + '</span>'
             rb.onmouseenter = () => { rb.style.borderColor = config.theme.primaryColor; rb.style.background = config.theme.primaryColor + '18' }
             rb.onmouseleave = () => { rb.style.borderColor = 'rgba(255,255,255,0.1)'; rb.style.background = 'rgba(255,255,255,0.05)' }
             rb.onclick = async () => {
@@ -1236,7 +1236,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           const sb = document.createElement('button')
           sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
           sb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
-          sb.innerHTML = '<span style="font-size:13px">' + s.stars + '</span><span style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
+          sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
           sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '18' }
           sb.onmouseleave = () => { sb.style.borderColor = 'rgba(255,255,255,0.1)'; sb.style.background = 'rgba(255,255,255,0.05)' }
           sb.onclick = async () => {
