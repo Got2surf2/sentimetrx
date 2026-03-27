@@ -454,6 +454,41 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         )}
       </Section>
 
+      <Section title="Survey font size" description="Set the base text size for respondents. Larger sizes improve readability for older audiences.">
+        <div className="flex items-center gap-2 flex-wrap">
+          {[
+            { value: 14, label: 'Small', desc: '14px' },
+            { value: 16, label: 'Normal', desc: '16px' },
+            { value: 18, label: 'Large', desc: '18px — default' },
+            { value: 20, label: 'X-Large', desc: '20px' },
+            { value: 22, label: 'XX-Large', desc: '22px' },
+          ].map(function(opt) {
+            var current = draft.config.surveyFontSize || 18
+            var active = current === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={function() { updateConfig({ surveyFontSize: opt.value }) }}
+                className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all"
+                style={{
+                  background: active ? '#fff4ef' : '#f9fafb',
+                  border: '1.5px solid ' + (active ? '#e8622a' : '#e5e7eb'),
+                  cursor: 'pointer',
+                  minWidth: 64,
+                }}
+              >
+                <span className="font-bold" style={{ fontSize: opt.value, lineHeight: 1.2, color: active ? '#e8622a' : '#374151' }}>Aa</span>
+                <span className="text-xs" style={{ color: active ? '#e8622a' : '#6b7280', fontWeight: active ? 600 : 400 }}>{opt.label}</span>
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Preview: all survey text will render at {draft.config.surveyFontSize || 18}px base size
+        </p>
+      </Section>
+
       <NavButtons onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Opening" />
     </div>
   )

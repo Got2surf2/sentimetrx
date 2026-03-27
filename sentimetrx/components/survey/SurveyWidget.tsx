@@ -89,10 +89,11 @@ export default function SurveyWidget({ study }: Props) {
   }, [status, renderInput])
 
   const theme = liveConfig.theme
+  const baseFontSize = (liveConfig.surveyFontSize || 18) + 'px'
 
   if (status === 'checking') {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.backgroundColor }}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.backgroundColor, fontSize: baseFontSize }}>
         <div style={{ display: 'flex', gap: 6 }}>
           {[0, 150, 300].map(d => (
             <span key={d} className="typing-dot" style={{ animationDelay: `${d}ms` }} />
@@ -105,7 +106,7 @@ export default function SurveyWidget({ study }: Props) {
   if (status === 'closed' || status === 'draft') {
     const isClosed = status === 'closed'
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: theme.backgroundColor, overflow: 'hidden' }}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: theme.backgroundColor, overflow: 'hidden', fontSize: baseFontSize }}>
         <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>
             {liveBotEmoji}
@@ -136,7 +137,7 @@ export default function SurveyWidget({ study }: Props) {
     return (
       <div style={{
         width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
-        background: theme.backgroundColor, overflow: 'hidden',
+        background: theme.backgroundColor, overflow: 'hidden', fontSize: baseFontSize,
       }}>
         <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>
@@ -172,6 +173,7 @@ export default function SurveyWidget({ study }: Props) {
       flexDirection: 'column',
       background: theme.backgroundColor,
       overflow: 'hidden',
+      fontSize: baseFontSize,
       // Desktop card style via inline media won't work — handled by page wrapper
     }}>
       {/* Fixed header — never scrolls */}

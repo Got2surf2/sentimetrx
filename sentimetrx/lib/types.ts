@@ -154,6 +154,9 @@ export interface StudyConfig {
   // Branding
   brandingLabel?:     string           // default 'DATANAUTIX'; max 15 chars; empty string = no branding
   showBranding?:      boolean          // default true — show "by <label>" on survey hero
+
+  // Accessibility
+  surveyFontSize?:    number           // base font size in px for survey widget (default 18)
 }
 
 // -- Study row ------------------------------------------------
