@@ -91,6 +91,14 @@ export default function SurveyWidget({ study }: Props) {
   const theme = liveConfig.theme
   const baseFontSize = (liveConfig.surveyFontSize || 18) + 'px'
 
+  // Set the root font-size so all rem units scale proportionally.
+  // Safe because the survey page (/s/[guid]) only contains this widget.
+  useEffect(() => {
+    const prev = document.documentElement.style.fontSize
+    document.documentElement.style.fontSize = baseFontSize
+    return () => { document.documentElement.style.fontSize = prev }
+  }, [baseFontSize])
+
   if (status === 'checking') {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.backgroundColor, fontSize: baseFontSize }}>
