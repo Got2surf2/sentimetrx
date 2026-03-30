@@ -298,7 +298,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
           <>
             <select value={industry} onChange={e => handleIndustrySelect(e.target.value as Industry)} className={inputCls}>
               <option value="">— Select an industry —</option>
-              {(Object.keys(INDUSTRY_LABELS) as Industry[]).map(k => (
+              {(Object.keys(INDUSTRY_LABELS) as Industry[]).sort((a, b) => INDUSTRY_LABELS[a].localeCompare(INDUSTRY_LABELS[b])).map(k => (
                 <option key={k} value={k}>{INDUSTRY_LABELS[k]}</option>
               ))}
             </select>
