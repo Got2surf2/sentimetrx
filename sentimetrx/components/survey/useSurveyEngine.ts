@@ -30,7 +30,7 @@ interface State {
   psychoQuestions: Array<{ key: string; q: string; opts: string[] }>
   psychoIdx:       number
   psychoAnswers:   Record<string, string>
-  demographics:    { age: string; gender: string; zip: string }
+  demographics:    Record<string, string>
   startTime:       number
 }
 
@@ -44,7 +44,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     customAnswers: {},
     currentQuestion: '',
     psychoQuestions: [], psychoIdx: 0, psychoAnswers: {},
-    demographics: { age: '', gender: '', zip: '' },
+    demographics: {},
     startTime: Date.now(),
   })
 
@@ -100,7 +100,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       if (s.answers.q1 || s.answers.q2 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
       if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
       if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
-      if (s.demographics.age || s.demographics.gender || s.demographics.zip) partialPayload.demographics = s.demographics
+      if (Object.values(s.demographics).some(function(v) { return !!v })) partialPayload.demographics = s.demographics
 
       var duration_sec = Math.round((Date.now() - s.startTime) / 1000)
       fetch('/api/respond', {
@@ -311,64 +311,71 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   }, [addMsg, chatRef, clearInput, config, scrollBottom, showTyping, study])
 
   const stepDemographics = useCallback(async () => {
+    // Get enabled demo fields from config, or default to age/gender/zip
+    var demoFields = config.demoFields
+    if (!demoFields || demoFields.length === 0) {
+      demoFields = [
+        { key: 'age', label: 'Age Range', type: 'select' as const, enabled: true, options: [['18-24','18-24'],['25-34','25-34'],['35-44','35-44'],['45-54','45-54'],['55-64','55-64'],['65+','65 or over']] },
+        { key: 'gender', label: 'Gender', type: 'select' as const, enabled: true, options: [['male','Male'],['female','Female'],['nonbinary','Non-binary'],['other','Prefer to self-describe'],['prefer_not','Prefer not to say']] },
+        { key: 'zip', label: 'ZIP / Postal Code', type: 'text' as const, enabled: true },
+      ]
+    }
+    var activeFields = demoFields.filter(function(f) { return f.enabled })
+    if (activeFields.length === 0) { await stepDone(); return }
+
     clearInput()
     await showTyping(800)
     addMsg('bot', 'Almost done -- a couple of optional questions about you. Completely up to you.')
     await showTyping(350)
 
     if (!inputRef.current) return
-    const wrap = document.createElement('div')
+    var wrap = document.createElement('div')
     wrap.className = 'flex flex-col gap-1.5 mt-1.5'
 
-    const selectStyle = `
-      padding:10px 13px;border-radius:10px;font-size:0.844rem;
-      color:rgba(255,255,255,0.82);background:rgba(255,255,255,0.06);
-      border:1.5px solid ${config.theme.primaryColor}28;
-      outline:none;cursor:pointer;appearance:none;font-family:inherit;
-    `
+    var selectStyle = 'padding:10px 13px;border-radius:10px;font-size:0.844rem;color:rgba(255,255,255,0.82);background:rgba(255,255,255,0.06);border:1.5px solid ' + config.theme.primaryColor + '28;outline:none;cursor:pointer;appearance:none;font-family:inherit;'
 
-    const makeSelect = (placeholder: string, options: [string, string][]) => {
-      const s = document.createElement('select')
-      s.style.cssText = selectStyle
-      const ph = document.createElement('option')
-      ph.value = ''; ph.textContent = placeholder
-      s.appendChild(ph)
-      options.forEach(([v, l]) => {
-        const o = document.createElement('option')
-        o.value = v; o.textContent = l
-        s.appendChild(o)
-      })
-      return s
+    var fieldElements: { key: string; el: HTMLSelectElement | HTMLInputElement }[] = []
+
+    for (var fi = 0; fi < activeFields.length; fi++) {
+      var df = activeFields[fi]
+      if (df.type === 'select' && df.options && df.options.length > 0) {
+        var sel = document.createElement('select')
+        sel.style.cssText = selectStyle
+        var ph = document.createElement('option')
+        ph.value = ''; ph.textContent = df.label + '...'
+        sel.appendChild(ph)
+        for (var oi = 0; oi < df.options.length; oi++) {
+          var opt = document.createElement('option')
+          opt.value = df.options[oi][0]; opt.textContent = df.options[oi][1]
+          sel.appendChild(opt)
+        }
+        wrap.appendChild(sel)
+        fieldElements.push({ key: df.key, el: sel })
+      } else {
+        var inp = document.createElement('input')
+        inp.type = 'text'
+        inp.placeholder = df.label + ' (optional)'
+        inp.style.cssText = selectStyle + 'border-radius:10px;'
+        wrap.appendChild(inp)
+        fieldElements.push({ key: df.key, el: inp })
+      }
     }
 
-    const ageS = makeSelect('Age range...', [
-      ['18-24','18-24'],['25-34','25-34'],['35-44','35-44'],
-      ['45-54','45-54'],['55-64','55-64'],['65+','65 or over'],
-    ])
-    const genderS = makeSelect('Gender...', [
-      ['male','Male'],['female','Female'],['nonbinary','Non-binary'],
-      ['other','Prefer to self-describe'],['prefer_not','Prefer not to say'],
-    ])
-    const zipInput = document.createElement('input')
-    zipInput.type = 'text'
-    zipInput.placeholder = 'ZIP code (optional)'
-    zipInput.style.cssText = selectStyle + 'border-radius:10px;'
-
-    const submitBtn = document.createElement('button')
-    submitBtn.textContent = 'Submit my feedback →'
+    var submitBtn = document.createElement('button')
+    submitBtn.textContent = 'Submit my feedback \u2192'
     submitBtn.className = 'mt-1 rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
-    submitBtn.style.cssText = `background:${config.theme.primaryColor};color:#fff;border:none;cursor:pointer;font-family:inherit;`
-    submitBtn.onclick = async () => {
-      wrap.querySelectorAll('select,input,button').forEach((el: any) => el.disabled = true)
-      state.current.demographics.age    = ageS.value
-      state.current.demographics.gender = genderS.value
-      state.current.demographics.zip    = zipInput.value
+    submitBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;'
+    submitBtn.onclick = async function() {
+      wrap.querySelectorAll('select,input,button').forEach(function(el) { (el as any).disabled = true })
+      for (var ei = 0; ei < fieldElements.length; ei++) {
+        state.current.demographics[fieldElements[ei].key] = fieldElements[ei].el.value
+      }
       savePartial()
       clearInput()
       await stepDone()
     }
 
-    wrap.append(ageS, genderS, zipInput, submitBtn)
+    wrap.appendChild(submitBtn)
     inputRef.current.appendChild(wrap)
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDone])

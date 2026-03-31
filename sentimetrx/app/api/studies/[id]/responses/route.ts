@@ -39,11 +39,12 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (isCSV) {
     const { data: allRows } = await supabase
-      .from('responses').select('payload').eq('study_id', params.id)
+      .from('responses').select('payload, status').eq('study_id', params.id)
 
     const psychoSet = new Set<string>()
     const demoSet   = new Set<string>()
     for (const r of allRows || []) {
+      if (r.status && r.status !== 'complete') continue
       Object.keys(r.payload?.psychographics || {}).forEach((k: string) => psychoSet.add(k))
       Object.keys(r.payload?.demographics   || {}).forEach((k: string) => demoSet.add(k))
     }
@@ -55,12 +56,21 @@ export async function GET(req: NextRequest, { params }: Params) {
     allDemoKeys = Array.from(demoSet)
   }
 
+  const statusF  = url.searchParams.get('status')
+
   // ── Build query ───────────────────────────────────────────────────────────
   let query = supabase
     .from('responses')
     .select('*', { count: 'exact' })
     .eq('study_id', params.id)
     .order('completed_at', { ascending: false })
+
+  // For CSV exports, default to only complete responses unless explicitly overridden
+  if (statusF) {
+    query = query.eq('status', statusF)
+  } else if (isCSV) {
+    query = query.or('status.eq.complete,status.is.null')
+  }
 
   if (sentiment) query = query.eq('sentiment', sentiment)
   if (minNps)    query = query.gte('nps_score', parseInt(minNps))

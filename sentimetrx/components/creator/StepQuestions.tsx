@@ -289,19 +289,13 @@ function QuestionCard({
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
       {/* Card header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200">
-        {/* Reorder buttons */}
-        <div className="flex flex-col gap-0.5 flex-shrink-0">
-          <button type="button" onClick={onMoveUp} disabled={idx === 0}
-            className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 disabled:opacity-20 disabled:cursor-default transition-colors text-xs">
-            up
-          </button>
-          <button type="button" onClick={onMoveDown} disabled={idx === total - 1}
-            className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 disabled:opacity-20 disabled:cursor-default transition-colors text-xs">
-            dn
-          </button>
+        {/* Drag grip + reorder */}
+        <div className="flex flex-col items-center gap-0 flex-shrink-0 cursor-grab select-none" title="Drag to reorder">
+          <span className="text-gray-300 text-sm leading-none">⠿</span>
         </div>
 
         {/* Type badge */}
+        <span className="text-xs font-bold text-gray-300 flex-shrink-0 w-5 text-center">Q{idx + 1}</span>
         <span className="text-sm flex-shrink-0">{TYPE_ICONS[q.type]}</span>
         <span className="text-xs font-semibold text-gray-400 flex-shrink-0">{TYPE_LABELS[q.type]}</span>
 
@@ -504,6 +498,19 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
   const totalQ       = questions.length
 
   const setQuestions = (qs: SurveyQuestion[]) => updateConfig({ questions: qs })
+  const dragIdx = useRef<number | null>(null)
+
+  const onDragStart = (i: number) => { dragIdx.current = i }
+  const onDragOver = (e: React.DragEvent, i: number) => {
+    e.preventDefault()
+    if (dragIdx.current === null || dragIdx.current === i) return
+    const next = [...questions]
+    const [moved] = next.splice(dragIdx.current, 1)
+    next.splice(i, 0, moved)
+    dragIdx.current = i
+    setQuestions(next)
+  }
+  const onDragEnd = () => { dragIdx.current = null }
 
   const addQuestion = (type: QuestionType) => {
     const q: SurveyQuestion = {
@@ -558,8 +565,8 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
       {questions.length > 0 && (
         <div className="flex flex-col gap-3">
           {questions.map((q, i) => (
+            <div key={q.id} draggable onDragStart={() => onDragStart(i)} onDragOver={e => onDragOver(e, i)} onDragEnd={onDragEnd}>
             <QuestionCard
-              key={q.id}
               q={q}
               idx={i}
               total={questions.length}
@@ -568,6 +575,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
               onMoveUp={() => moveUp(i)}
               onMoveDown={() => moveDown(i)}
             />
+            </div>
           ))}
         </div>
       )}
