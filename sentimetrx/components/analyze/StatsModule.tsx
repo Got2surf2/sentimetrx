@@ -530,7 +530,6 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
           </div>
         </Card>
         {result ? (
-          <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
