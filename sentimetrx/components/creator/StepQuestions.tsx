@@ -486,6 +486,140 @@ function SuggestedQuestionsPanel({
   )
 }
 
+// -- Survey Flow Panel (compact reorder view) ----------------
+function SurveyFlowPanel({ draft, onReorderQuestions }: { draft: StepProps['draft']; onReorderQuestions: (qs: SurveyQuestion[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const c = draft.config
+  const questions: SurveyQuestion[] = c.questions ?? []
+  const psychoBank: any[] = c.psychographicBank ?? []
+  const dragIdx = useRef<number | null>(null)
+  const dragGroup = useRef<string | null>(null)
+
+  // Drag within "custom" group
+  const onDragStartQ = (i: number) => { dragIdx.current = i; dragGroup.current = 'custom' }
+  const onDragOverQ = (e: React.DragEvent, i: number) => {
+    e.preventDefault()
+    if (dragGroup.current !== 'custom' || dragIdx.current === null || dragIdx.current === i) return
+    const next = [...questions]
+    const [moved] = next.splice(dragIdx.current, 1)
+    next.splice(i, 0, moved)
+    dragIdx.current = i
+    onReorderQuestions(next)
+  }
+  const onDragEnd = () => { dragIdx.current = null; dragGroup.current = null }
+
+  // Compact row renderer
+  const Row = ({ icon, label, sub, dim, draggable: isDraggable, onDS, onDO }: {
+    icon: string; label: string; sub?: string; dim?: boolean
+    draggable?: boolean; onDS?: () => void; onDO?: (e: React.DragEvent) => void
+  }) => (
+    <div
+      draggable={isDraggable}
+      onDragStart={onDS}
+      onDragOver={onDO}
+      onDragEnd={onDragEnd}
+      className={'flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-all ' + (dim ? 'opacity-40' : '') + (isDraggable ? ' cursor-grab hover:bg-orange-50' : '')}
+      style={{ borderLeft: '2px solid ' + (dim ? '#e5e7eb' : '#e8622a'), minHeight: 28 }}
+    >
+      {isDraggable && <span className="text-gray-300 text-xs select-none flex-shrink-0">⠿</span>}
+      <span className="flex-shrink-0">{icon}</span>
+      <span className={'font-medium truncate flex-1 ' + (dim ? 'text-gray-400' : 'text-gray-700')}>{label}</span>
+      {sub && <span className="text-gray-400 flex-shrink-0 text-xs">{sub}</span>}
+    </div>
+  )
+
+  const npsOn = c.npsEnabled !== false
+  const expOn = c.experienceEnabled !== false
+  const q3On  = c.q3Enabled !== false
+  const q4On  = c.q4Enabled !== false
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-gray-50 transition-colors">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">🗂</span>
+          <span className="text-sm font-semibold text-gray-800">Survey Flow</span>
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            {(npsOn ? 1 : 0) + (expOn ? 1 : 0) + (q3On ? 1 : 0) + (q4On ? 1 : 0) + questions.length + psychoBank.length} questions
+          </span>
+        </div>
+        <span className="text-xs text-gray-400">{open ? 'hide' : 'show'}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-3">
+          <p className="text-xs text-gray-400 px-1">Drag ⠿ to reorder within a group. Greyed-out items are disabled.</p>
+
+          {/* Core */}
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Core Ratings</div>
+            <Row icon="⭐" label={c.ratingPrompt || 'Experience Rating'} dim={!expOn} sub={expOn ? 'On' : 'Off'} />
+            <Row icon="📊" label={c.npsPrompt || 'NPS Score'} dim={!npsOn} sub={npsOn ? 'On' : 'Off'} />
+          </div>
+
+          {/* Follow-ups */}
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Follow-ups</div>
+            <Row icon="💬" label="Q1 — NPS follow-up" dim={!npsOn} sub={npsOn ? 'Auto' : 'Off'} />
+            <Row icon="💬" label="Q2 — Rating follow-up" dim={!expOn} sub={expOn ? 'Auto' : 'Off'} />
+          </div>
+
+          {/* Conversation */}
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Conversation</div>
+            <Row icon="🗣" label={'Q3 — ' + (c.q3 || 'Conversation question 3').slice(0, 50)} dim={!q3On} sub={q3On ? 'On' : 'Off'} />
+            <Row icon="🗣" label={'Q4 — ' + (c.q4 || 'Conversation question 4').slice(0, 50)} dim={!q4On} sub={q4On ? 'On' : 'Off'} />
+          </div>
+
+          {/* Custom — draggable */}
+          {questions.length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Custom Questions ({questions.length})</div>
+              {questions.map((q, i) => (
+                <Row
+                  key={q.id}
+                  icon={TYPE_ICONS[q.type] || '❓'}
+                  label={'CQ' + (i + 1) + ' — ' + (q.prompt || 'Untitled').slice(0, 50)}
+                  sub={TYPE_LABELS[q.type]}
+                  draggable
+                  onDS={() => onDragStartQ(i)}
+                  onDO={(e) => onDragOverQ(e, i)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Psychographics */}
+          {psychoBank.length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Psychographics ({psychoBank.length})</div>
+              {psychoBank.slice(0, 8).map((q: any) => (
+                <Row key={q.key} icon="🧠" label={(q.exportLabel || q.q || q.key).slice(0, 50)} sub="Bank" />
+              ))}
+              {psychoBank.length > 8 && (
+                <div className="text-xs text-gray-400 px-3 py-1">+{psychoBank.length - 8} more</div>
+              )}
+            </div>
+          )}
+
+          {/* Demographics */}
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Demographics</div>
+            {(c.demoFields || [
+              { key: 'age', label: 'Age Range', enabled: true },
+              { key: 'gender', label: 'Gender', enabled: true },
+              { key: 'zip', label: 'ZIP Code', enabled: true },
+            ]).filter((f: any) => f.enabled).map((f: any) => (
+              <Row key={f.key} icon="👤" label={f.label || f.key} sub="Demo" />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // -- Main component -------------------------------------------
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
 
@@ -545,6 +679,9 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Survey flow overview — compact reorder view */}
+      <SurveyFlowPanel draft={draft} onReorderQuestions={setQuestions} />
+
       <div>
         <h2 className="text-xl font-bold text-gray-800 mb-1">Custom questions</h2>
         <p className="text-gray-500 text-sm">
