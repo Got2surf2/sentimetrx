@@ -85,13 +85,18 @@ var SCALES: { name: string; points: { canonical: string; aliases: string[] }[] }
 ]
 
 // ── Match a value against a scale point (exact then fuzzy) ────────────────
-function matchPoint(value: string, point: { canonical: string; aliases: string[] }): boolean {
+function matchPointExact(value: string, point: { canonical: string; aliases: string[] }): boolean {
   var lower = value.toLowerCase().trim()
-  // Exact alias match first
-  if (point.aliases.some(function(a) { return lower === a })) return true
+  return point.aliases.some(function(a) { return lower === a })
+}
+
+function matchPointFuzzy(value: string, point: { canonical: string; aliases: string[] }): boolean {
+  var lower = value.toLowerCase().trim()
   // Partial match — value contains the canonical, but NOT a substring of another word
   var canon = point.canonical.toLowerCase()
   if (lower.includes(canon) && lower.length < canon.length * 3) return true
+  // Also check if canonical contains value (e.g. value="satisfied", canonical="very satisfied")
+  // but only if value is sufficiently long (4+ chars) to avoid false positives
   return false
 }
 
@@ -104,16 +109,33 @@ export function detectScale(values: string[]): string[] | null {
 
   for (var s = 0; s < SCALES.length; s++) {
     var scale = SCALES[s]
-    // For each value, find which scale point it matches (if any)
     var matched: { value: string; idx: number }[] = []
     var usedIndices = new Set<number>()
+    var usedValues = new Set<string>()
 
+    // Pass 1: exact alias matches only (highest confidence)
     values.forEach(function(v) {
+      if (usedValues.has(v)) return
       for (var p = 0; p < scale.points.length; p++) {
         if (usedIndices.has(p)) continue
-        if (matchPoint(v, scale.points[p])) {
+        if (matchPointExact(v, scale.points[p])) {
           matched.push({ value: v, idx: p })
           usedIndices.add(p)
+          usedValues.add(v)
+          return
+        }
+      }
+    })
+
+    // Pass 2: fuzzy matches for remaining values
+    values.forEach(function(v) {
+      if (usedValues.has(v)) return
+      for (var p = 0; p < scale.points.length; p++) {
+        if (usedIndices.has(p)) continue
+        if (matchPointFuzzy(v, scale.points[p])) {
+          matched.push({ value: v, idx: p })
+          usedIndices.add(p)
+          usedValues.add(v)
           return
         }
       }
@@ -199,6 +221,4 @@ export function scaleDirectionLabel(values: string[]): string | null {
   var detected = detectScale(values)
   if (!detected || detected.length < 2) return null
   return detected[0] + ' \u2192 ' + detected[detected.length - 1]
-
-
 }
