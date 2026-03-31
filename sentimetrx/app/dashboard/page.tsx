@@ -69,14 +69,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   const studyIds = studies.map((s: any) => s.id)
   const statsQuery = studyIds.length > 0
-    ? await supabase.from('responses').select('study_id, sentiment, nps_score, experience_score, completed_at').in('study_id', studyIds)
+    ? await supabase.from('responses').select('study_id, sentiment, nps_score, experience_score, completed_at, status').in('study_id', studyIds)
     : { data: [] }
   const stats = statsQuery.data || []
 
-  const statsMap: Record<string, { total: number; promoters: number; passives: number; detractors: number; avgScore: number; ratingLabel: string; lastResponse: string | null }> = {}
+  const statsMap: Record<string, { total: number; completeCount: number; promoters: number; passives: number; detractors: number; avgScore: number; ratingLabel: string; lastResponse: string | null }> = {}
   for (const s of studies) {
     const rows       = stats.filter((r: any) => r.study_id === s.id)
     const total      = rows.length
+    const completeCount = rows.filter((r: any) => r.status === 'complete' || !r.status).length
     // Use new sentiment values (positive/neutral/negative) — also support legacy (promoter/passive/detractor)
     const promoters  = rows.filter((r: any) => r.sentiment === 'positive' || r.sentiment === 'promoter').length
     const passives   = rows.filter((r: any) => r.sentiment === 'neutral'  || r.sentiment === 'passive').length
@@ -89,7 +90,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     const ratingLabel = (s as any).config?.experienceRatingLabel || 'Avg Rating'
     const dates = rows.map((r: any) => r.completed_at).filter(Boolean).sort()
     const lastResponse = dates.length > 0 ? dates[dates.length - 1] : null
-    statsMap[s.id] = { total, promoters, passives, detractors, avgScore, ratingLabel, lastResponse }
+    statsMap[s.id] = { total, completeCount, promoters, passives, detractors, avgScore, ratingLabel, lastResponse }
   }
 
   return (
@@ -110,5 +111,3 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     />
   )
 }
-
-

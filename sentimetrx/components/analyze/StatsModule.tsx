@@ -231,7 +231,7 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
   )
 }
 
-function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[] }) {
+function CorrelationsPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
   var [corrType, setCorrType] = useState('pearson')
   var [selCell, setSelCell] = useState<{ i: number; j: number; f1: string; f2: string; r: number; p: number; n: number } | null>(null)
 
@@ -261,7 +261,7 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
   return (
     <div>
       <PanelHeader icon={'\u2295'} title="Correlation Matrix" desc={'Pearson r or Spearman \u03C1 between all active numeric variables. Click any cell to see details.'} />
-      {selCell && <BottomLine text={corrBL(selCell.f1, selCell.f2, selCell.r, selCell.p, selCell.n, corrType)} naiveText={corrBL_naive(selCell.f1, selCell.f2, selCell.r, selCell.p, selCell.n)} />}
+      {selCell && <BottomLine text={corrBL(aliases[selCell.f1] || selCell.f1, aliases[selCell.f2] || selCell.f2, selCell.r, selCell.p, selCell.n, corrType)} naiveText={corrBL_naive(aliases[selCell.f1] || selCell.f1, aliases[selCell.f2] || selCell.f2, selCell.r, selCell.p, selCell.n)} />}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute, textTransform: 'uppercase', letterSpacing: '.07em' }}>Method:</span>
         {[['pearson', 'Pearson r'], ['spearman', 'Spearman \u03C1']].map(function(pair) {
@@ -274,12 +274,12 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>
                 <th style={{ padding: '10px 12px', fontSize: 10, color: T.textFaint, background: T.bg, minWidth: 100, textAlign: 'left' }} />
-                {matrix!.fields.map(function(f) { return <th key={f} style={{ padding: '10px 10px', fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', background: T.bg, textAlign: 'center', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f}>{f.slice(0, 10)}</th> })}
+                {matrix!.fields.map(function(f) { var lbl = aliases[f] || f; return <th key={f} style={{ padding: '10px 10px', fontSize: 10, fontWeight: 700, color: T.textMute, textTransform: 'uppercase', background: T.bg, textAlign: 'center', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lbl}>{lbl.slice(0, 10)}</th> })}
               </tr></thead>
               <tbody>{matrix!.fields.map(function(f1, i) {
                 return (
                   <tr key={f1}>
-                    <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: T.textMute, background: T.bg, borderRight: '1px solid ' + T.border, whiteSpace: 'nowrap', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }} title={f1}>{f1.slice(0, 14)}</td>
+                    <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: T.textMute, background: T.bg, borderRight: '1px solid ' + T.border, whiteSpace: 'nowrap', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }} title={aliases[f1] || f1}>{(aliases[f1] || f1).slice(0, 14)}</td>
                     {matrix!.fields.map(function(f2, j) {
                       var cell = matrix!.mat[i][j], isDiag = i === j, isSel = selCell && selCell.i === i && selCell.j === j
                       return (
@@ -297,7 +297,7 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
           </Card>
           {selCell && (
             <Card style={{ padding: '16px 18px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 12 }}>{selCell.f1} {'\u00D7'} {selCell.f2}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 12 }}>{aliases[selCell.f1] || selCell.f1} {'\u00D7'} {aliases[selCell.f2] || selCell.f2}</div>
               <div style={{ display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                 {[
                   { l: corrType === 'pearson' ? 'r' : '\u03C1', v: fmt2(selCell.r), c: Math.abs(selCell.r) > 0.5 ? T.green : T.amber },
@@ -334,7 +334,7 @@ function CorrelationsPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
                       { x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 5, opacity: 0.5 }, name: 'Data' },
                       { x: [xmn, xmx], y: [int_ + slope * xmn, int_ + slope * xmx], mode: 'lines', line: { color: T.red, width: 2, dash: 'dot' }, showlegend: false },
                     ]}
-                    layout={{ xaxis: { title: { text: selCell.f1, font: { size: 11 } } }, yaxis: { title: { text: selCell.f2, font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 46, l: 50 } }}
+                    layout={{ xaxis: { title: { text: aliases[selCell.f1] || selCell.f1, font: { size: 11 } } }, yaxis: { title: { text: aliases[selCell.f2] || selCell.f2, font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 46, l: 50 } }}
                     style={{ height: 260, width: '100%', marginTop: 12 }}
                   />
                 )
@@ -476,7 +476,7 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
   )
 }
 
-function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[] }) {
+function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
   var [outcome, setOutcome] = useState(numFields[0]?.field || '')
   var [predictors, setPredictors] = useState<Set<string>>(new Set())
 
@@ -501,7 +501,7 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
   return (
     <div>
       <PanelHeader icon={'\u27CB'} title="OLS Linear Regression" desc="Ordinary least squares regression with coefficient table, fit statistics, and residual diagnostics." />
-      {result && <BottomLine text={regrBL(result, outcome)} naiveText={regrBL_naive(result, outcome)} />}
+      {result && <BottomLine text={regrBL(result, aliases[outcome] || outcome)} naiveText={regrBL_naive(result, aliases[outcome] || outcome)} />}
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, marginBottom: 20 }}>
         <Card style={{ padding: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Outcome</div>
@@ -534,7 +534,7 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit {'\u2014'} {outcome}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit {'\u2014'} {aliases[outcome] || outcome}</span>
                 <SigBadge p={result.Fp} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
@@ -565,7 +565,7 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
                 <tbody>{result.coefs.map(function(c: any, i: number) {
                   return (
                     <tr key={i} style={{ background: c.p < 0.05 ? T.greenBg + '80' : 'transparent' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 600, color: T.text, borderBottom: '1px solid ' + T.border, fontSize: 13 }}>{c.name}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 600, color: T.text, borderBottom: '1px solid ' + T.border, fontSize: 13 }}>{aliases[c.name] || c.name}</td>
                       <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtN(c.beta)}</td>
                       <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtN(c.se)}</td>
                       <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmt2(c.t)}</td>
@@ -578,45 +578,46 @@ function RegressionPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; 
               </table>
             </Card>
           </div>
-          {/* Residual diagnostic plots */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
-            <Card style={{ padding: '14px 16px' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Residuals vs. Fitted</div>
-              <PlotlyChart
-                data={[
-                  { x: result.yhat, y: result.resid, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 5, opacity: 0.5 } },
-                  { x: [Math.min.apply(null, result.yhat), Math.max.apply(null, result.yhat)], y: [0, 0], mode: 'lines', line: { color: T.red, width: 1.5, dash: 'dash' }, showlegend: false },
-                ]}
-                layout={{ xaxis: { title: { text: 'Fitted', font: { size: 11 } } }, yaxis: { title: { text: 'Residuals', font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 44, l: 50 } }}
-                style={{ height: 240, width: '100%' }}
-              />
-            </Card>
-            <Card style={{ padding: '14px 16px' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Q-Q Plot (Residuals)</div>
-              {(function() {
-                var sr = result.resid.slice().sort(function(a: number, b: number) { return a - b })
-                var n = sr.length, th = sr.map(function(_: number, i: number) { return probit((i + 1 - 0.375) / (n + 0.25)) })
-                var sm = mean(sr), ss = std(sr)
-                return (
-                  <PlotlyChart
-                    data={[
-                      { x: th, y: sr, mode: 'markers', type: 'scatter', marker: { color: T.purple, size: 4, opacity: 0.65 } },
-                      { x: [Math.min.apply(null, th), Math.max.apply(null, th)], y: [Math.min.apply(null, th) * ss + sm, Math.max.apply(null, th) * ss + sm], mode: 'lines', line: { color: T.amber, width: 1.5, dash: 'dot' }, showlegend: false },
-                    ]}
-                    layout={{ xaxis: { title: { text: 'Theoretical quantiles', font: { size: 11 } } }, yaxis: { title: { text: 'Sample quantiles', font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 44, l: 50 } }}
-                    style={{ height: 240, width: '100%' }}
-                  />
-                )
-              })()}
-            </Card>
-          </div>
-          </>
         ) : (
           <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40 }}>
             Select an outcome and at least one predictor to run regression.
           </div>
         )}
       </div>
+      {/* Residual diagnostic plots — full-width stacked under the grid */}
+      {result && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+          <Card style={{ padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Residuals vs. Fitted</div>
+            <PlotlyChart
+              data={[
+                { x: result.yhat, y: result.resid, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 5, opacity: 0.5 } },
+                { x: [Math.min.apply(null, result.yhat), Math.max.apply(null, result.yhat)], y: [0, 0], mode: 'lines', line: { color: T.red, width: 1.5, dash: 'dash' }, showlegend: false },
+              ]}
+              layout={{ xaxis: { title: { text: 'Fitted', font: { size: 11 } } }, yaxis: { title: { text: 'Residuals', font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 44, l: 50 } }}
+              style={{ height: 280, width: '100%' }}
+            />
+          </Card>
+          <Card style={{ padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Q-Q Plot (Residuals)</div>
+            {(function() {
+              var sr = result.resid.slice().sort(function(a: number, b: number) { return a - b })
+              var n = sr.length, th = sr.map(function(_: number, i: number) { return probit((i + 1 - 0.375) / (n + 0.25)) })
+              var sm = mean(sr), ss = std(sr)
+              return (
+                <PlotlyChart
+                  data={[
+                    { x: th, y: sr, mode: 'markers', type: 'scatter', marker: { color: T.purple, size: 4, opacity: 0.65 } },
+                    { x: [Math.min.apply(null, th), Math.max.apply(null, th)], y: [Math.min.apply(null, th) * ss + sm, Math.max.apply(null, th) * ss + sm], mode: 'lines', line: { color: T.amber, width: 1.5, dash: 'dot' }, showlegend: false },
+                  ]}
+                  layout={{ xaxis: { title: { text: 'Theoretical quantiles', font: { size: 11 } } }, yaxis: { title: { text: 'Sample quantiles', font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 44, l: 50 } }}
+                  style={{ height: 280, width: '100%' }}
+                />
+              )
+            })()}
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
@@ -896,9 +897,9 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           ) : (
             <>
               {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} />}
-              {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} />}
+              {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
-              {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} />}
+              {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'insights' && <InsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
             </>
           )}

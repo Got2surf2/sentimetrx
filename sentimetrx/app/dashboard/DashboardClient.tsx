@@ -14,7 +14,7 @@ interface Study {
   config: any; org_id?: string; orgName?: string; creatorName?: string
 }
 interface StudyStats {
-  total: number; promoters: number; passives: number; detractors: number
+  total: number; completeCount: number; promoters: number; passives: number; detractors: number
   avgScore: number; ratingLabel: string; lastResponse: string | null
 }
 interface Props {
@@ -153,6 +153,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
         const rows = data.responses || data.data || []
         if (Array.isArray(rows)) {
           const total = rows.length
+          const completeCount = rows.filter((r: any) => r.status === 'complete' || !r.status).length
           const promoters = rows.filter((r: any) => (r.sentiment === 'positive' || r.sentiment === 'promoter')).length
           const passives = rows.filter((r: any) => (r.sentiment === 'neutral' || r.sentiment === 'passive')).length
           const detractors = rows.filter((r: any) => (r.sentiment === 'negative' || r.sentiment === 'detractor')).length
@@ -162,7 +163,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
             : (total > 0 ? Math.round(rows.reduce((s: number, r: any) => s + (r.nps_score || 0), 0) / total * 10) / 10 : 0)
           const dates = rows.map((r: any) => r.completed_at).filter(Boolean).sort()
           const lastResponse = dates.length > 0 ? dates[dates.length - 1] : stats.lastResponse
-          setStats({ total, promoters, passives, detractors, avgScore, ratingLabel: stats.ratingLabel, lastResponse })
+          setStats({ total, completeCount, promoters, passives, detractors, avgScore, ratingLabel: stats.ratingLabel, lastResponse })
         }
       }
     } catch { /* fail silently */ }
@@ -227,14 +228,16 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
             />
           </div>
 
-          {/* Stats row */}
-          <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-            <span className="font-medium text-gray-700">{stats.total} responses</span>
+          {/* Stats row — responses, completion rate, sentiment all on one line */}
+          <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+            <span className="font-medium text-gray-700">
+              {stats.total} responses{stats.total > 0 ? ' (' + Math.round(stats.completeCount / stats.total * 100) + '%)' : ''}
+            </span>
             {stats.total > 0 && (
               <>
-                <span className="text-green-600">{pp}% positive</span>
-                <span className="text-yellow-500">{ap}% neutral</span>
-                <span className="text-red-500">{dp}% negative</span>
+                <span style={{ color: '#16a34a', fontWeight: 600 }}>{pp}% +</span>
+                <span style={{ color: '#ca8a04', fontWeight: 600 }}>{ap}% ~</span>
+                <span style={{ color: '#dc2626', fontWeight: 600 }}>{dp}% −</span>
               </>
             )}
           </div>
@@ -454,7 +457,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
               <StudyCard
                 key={study.id}
                 study={study}
-                stats={statsMap[study.id] || { total: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: 'Avg Rating', lastResponse: null }}
+                stats={statsMap[study.id] || { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: 'Avg Rating', lastResponse: null }}
                 isAdmin={!!user.isAdmin}
                 userId={user.userId}
                 onPatch={handlePatch}

@@ -89,12 +89,13 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   // ── Label helpers ─────────────────────────────────────────────────────────
   // For open-ended columns: user label > prompt text > key
-  const oeLabel = (key: 'q1' | 'q3' | 'q4'): string => {
+  const oeLabel = (key: 'q1' | 'q2' | 'q3' | 'q4'): string => {
     const exportLabel = cfg[`${key}ExportLabel` as keyof typeof cfg] as string | undefined
     if (labelMode === 'key')    return exportLabel || key
     // prompt mode: use full question text, fall back to export label, then key
     const prompt =
       key === 'q1' ? (cfg.promoterQ1 || cfg.passiveQ1 || cfg.detractorQ1 || key)
+    : key === 'q2' ? (cfg.ratingFollowUp || cfg.experienceFollowUp || key)
     : key === 'q3' ? (cfg.q3 || key)
     : (cfg.q4 || key)
     return exportLabel || prompt
@@ -135,6 +136,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (sections.has('openended') && !forDatanautix) {
       cols.push(
         { header: oeLabel('q1'), value: r => esc(r.payload?.openEnded?.q1 ?? '') },
+        { header: oeLabel('q2'), value: r => esc(r.payload?.openEnded?.q2 ?? '') },
         { header: oeLabel('q3'), value: r => esc(r.payload?.openEnded?.q3 ?? '') },
         { header: oeLabel('q4'), value: r => esc(r.payload?.openEnded?.q4 ?? '') },
       )
@@ -177,8 +179,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   const closedCols = buildColumns(true)
 
   // The 3 open-ended fields — use user label for the prompt identifier column
-  const oeFields: Array<{ key: 'q1' | 'q3' | 'q4' }> = [
-    { key: 'q1' }, { key: 'q3' }, { key: 'q4' },
+  const oeFields: Array<{ key: 'q1' | 'q2' | 'q3' | 'q4' }> = [
+    { key: 'q1' }, { key: 'q2' }, { key: 'q3' }, { key: 'q4' },
   ]
 
   const dnHeaders = [
