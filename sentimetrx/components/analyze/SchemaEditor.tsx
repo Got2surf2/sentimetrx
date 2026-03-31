@@ -80,7 +80,7 @@ function ValuePills({ values }: { values: string[] }) {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
       {shown.map(function(v) {
         return (
-          <span key={v} style={{ fontSize: 11, padding: '2px 9px', background: P.bg, color: P.textMid, borderRadius: 5, border: '1px solid ' + P.border, whiteSpace: 'nowrap' }}>
+          <span key={v} style={{ fontSize: 11, padding: '2px 9px', background: P.bg, color: P.textMid, borderRadius: 5, border: '1px solid ' + P.border, wordBreak: 'break-word' as const }}>
             {v}
           </span>
         )
@@ -173,7 +173,7 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
           <div style={{ fontSize: 10, color: P.textFaint, fontStyle: 'italic', marginBottom: 4 }}>Sample responses</div>
           {f.sample.slice(0, 2).map(function(v, i) {
             return (
-              <div key={i} style={{ fontSize: 11, color: P.textMid, background: P.bg, borderRadius: 7, padding: '4px 10px', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderLeft: '3px solid ' + P.accentMid }}>
+              <div key={i} style={{ fontSize: 11, color: P.textMid, background: P.bg, borderRadius: 7, padding: '4px 10px', marginBottom: 3, wordBreak: 'break-word' as const, borderLeft: '3px solid ' + P.accentMid }}>
                 {v}
               </div>
             )
@@ -211,7 +211,7 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
               var isSet = cur.trim().length > 0
               return (
                 <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ flex: '0 0 120px', fontSize: 11, color: P.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 8px', background: P.bg, border: '1px solid ' + P.border, borderRadius: 6, fontFamily: 'monospace' }}>{v}</span>
+                  <span style={{ flex: '0 0 120px', fontSize: 11, color: P.textMid, wordBreak: 'break-word' as const, padding: '4px 8px', background: P.bg, border: '1px solid ' + P.border, borderRadius: 6, fontFamily: 'monospace' }}>{v}</span>
                   <span style={{ fontSize: 12, color: P.textFaint, flexShrink: 0 }}>{'\u2192'}</span>
                   <input type="text" value={cur} placeholder="display label\u2026"
                     onChange={function(e) { onValueAliasChange(f.field, v, e.target.value) }}
@@ -260,7 +260,7 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
                 var cur = f.remapping && f.remapping[v] != null ? f.remapping[v] : ''
                 return (
                   <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ flex: 1, fontSize: 12, color: P.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{v}</span>
+                    <span style={{ flex: 1, fontSize: 12, color: P.textMid, wordBreak: 'break-word' as const, minWidth: 0 }}>{v}</span>
                     <span style={{ fontSize: 12, color: P.textFaint }}>{'\u2192'}</span>
                     <input type="number" value={cur} placeholder="#"
                       onChange={function(e) {

@@ -78,6 +78,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (from)      query = query.gte('completed_at', from)
   if (to)        query = query.lte('completed_at', to + 'T23:59:59Z')
   if (!isCSV)    query = query.range(offset, offset + limit - 1)
+  if (isCSV)     query = query.range(0, 49999)  // Supabase caps at 1000 by default — explicit range for CSV
 
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
