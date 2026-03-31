@@ -12,6 +12,7 @@ export function getStepCompletion(draft: StudyDraft): boolean[] {
     !!(c.clarifiers?.default?.trim()),                   // 3 Clarifiers
     true,                                                // 4 Custom Questions (optional — always complete once visited)
     true,                                                // 5 Psychographics (optional — always complete once visited)
+    true,                                                // 6 Demographics (optional — always complete once visited)
   ]
 }
 
@@ -26,6 +27,7 @@ export const CREATOR_STEP_LABELS = [
   'Clarifiers',
   'Questions',
   'Psychographics',
+  'Demographics',
   'Review',
 ] as const
 

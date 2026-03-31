@@ -487,7 +487,7 @@ function SuggestedQuestionsPanel({
 }
 
 // -- Survey Flow Panel (compact reorder view) ----------------
-function SurveyFlowPanel({ draft, onReorderQuestions }: { draft: StepProps['draft']; onReorderQuestions: (qs: SurveyQuestion[]) => void }) {
+function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft: StepProps['draft']; onReorderQuestions: (qs: SurveyQuestion[]) => void; onReorderDemos: (df: any[]) => void }) {
   const [open, setOpen] = useState(false)
   const c = draft.config
   const questions: SurveyQuestion[] = c.questions ?? []
@@ -506,6 +506,34 @@ function SurveyFlowPanel({ draft, onReorderQuestions }: { draft: StepProps['draf
     dragIdx.current = i
     onReorderQuestions(next)
   }
+
+  // Drag within "demo" group
+  const demoFields = c.demoFields || [
+    { key: 'age', label: 'Age Range', type: 'select', enabled: true },
+    { key: 'gender', label: 'Gender', type: 'select', enabled: true },
+    { key: 'zip', label: 'ZIP Code', type: 'text', enabled: true },
+  ]
+  const enabledDemos = demoFields.filter((f: any) => f.enabled)
+
+  const onDragStartD = (i: number) => { dragIdx.current = i; dragGroup.current = 'demo' }
+  const onDragOverD = (e: React.DragEvent, i: number) => {
+    e.preventDefault()
+    if (dragGroup.current !== 'demo' || dragIdx.current === null || dragIdx.current === i) return
+    // Reorder within the full demoFields array using enabled-index mapping
+    const enabledKeys = enabledDemos.map((f: any) => f.key)
+    const full = [...demoFields]
+    // Find actual indices in the full array
+    const fromKey = enabledKeys[dragIdx.current]
+    const toKey = enabledKeys[i]
+    const fromFull = full.findIndex((f: any) => f.key === fromKey)
+    const toFull = full.findIndex((f: any) => f.key === toKey)
+    if (fromFull < 0 || toFull < 0) return
+    const [moved] = full.splice(fromFull, 1)
+    full.splice(toFull, 0, moved)
+    dragIdx.current = i
+    onReorderDemos(full)
+  }
+
   const onDragEnd = () => { dragIdx.current = null; dragGroup.current = null }
 
   // Compact row renderer
@@ -603,16 +631,16 @@ function SurveyFlowPanel({ draft, onReorderQuestions }: { draft: StepProps['draf
             </div>
           )}
 
-          {/* Demographics */}
+          {/* Demographics — draggable */}
           <div>
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Demographics</div>
-            {(c.demoFields || [
-              { key: 'age', label: 'Age Range', enabled: true },
-              { key: 'gender', label: 'Gender', enabled: true },
-              { key: 'zip', label: 'ZIP Code', enabled: true },
-            ]).filter((f: any) => f.enabled).map((f: any) => (
-              <Row key={f.key} icon="👤" label={f.label || f.key} sub="Demo" />
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Demographics ({enabledDemos.length})</div>
+            {enabledDemos.map((f: any, i: number) => (
+              <Row key={f.key} icon="👤" label={f.label || f.key} sub={f.type === 'select' ? 'Dropdown' : 'Text'}
+                draggable onDS={() => onDragStartD(i)} onDO={(e) => onDragOverD(e, i)} />
             ))}
+            {enabledDemos.length === 0 && (
+              <div className="text-xs text-gray-400 px-3 py-1">No demographics enabled</div>
+            )}
           </div>
         </div>
       )}
@@ -680,7 +708,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
   return (
     <div className="flex flex-col gap-6">
       {/* Survey flow overview — compact reorder view */}
-      <SurveyFlowPanel draft={draft} onReorderQuestions={setQuestions} />
+      <SurveyFlowPanel draft={draft} onReorderQuestions={setQuestions} onReorderDemos={function(df) { updateConfig({ demoFields: df }) }} />
 
       <div>
         <h2 className="text-xl font-bold text-gray-800 mb-1">Custom questions</h2>
