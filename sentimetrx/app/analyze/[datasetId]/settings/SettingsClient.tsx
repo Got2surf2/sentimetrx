@@ -50,8 +50,13 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   }
 
   async function handleSaveSchema(updated: SchemaConfig) {
-    // SchemaEditor already PATCHed the API — just update local state
+    // PATCH only schema_config — never overwrite theme_model, saved_charts, etc.
     setSchema(updated)
+    await fetch('/api/datasets/' + dataset.id + '/state', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ schema_config: updated }),
+    })
     router.refresh()
   }
 
