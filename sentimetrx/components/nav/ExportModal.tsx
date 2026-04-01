@@ -24,7 +24,7 @@ type Section   = 'core' | 'openended' | 'psychographics' | 'demographics' | 'met
 
 const SECTIONS: { key: Section; label: string; desc: string }[] = [
   { key: 'core',           label: 'Core scores',        desc: 'Sentiment, experience score, NPS, date, duration' },
-  { key: 'openended',      label: 'Open-ended answers', desc: 'Follow-up Q1, Q3, Q4 verbatim text' },
+  { key: 'openended',      label: 'Open-ended answers', desc: 'Follow-up Q1, Q2, Q3, Q4 verbatim text' },
   { key: 'psychographics', label: 'Psychographics',     desc: 'All psychographic survey answers' },
   { key: 'demographics',   label: 'Demographics',       desc: 'Age, gender, zip and other demographic fields' },
   { key: 'meta',           label: 'Meta / technical',   desc: 'User agent string and submission timestamp' },
@@ -33,6 +33,7 @@ const SECTIONS: { key: Section; label: string; desc: string }[] = [
 export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', sentiment='', total=0 }: Props) {
   const [labelMode,  setLabelMode]  = useState<LabelMode>('key')
   const [exportFmt,  setExportFmt]  = useState<ExportFmt>('standard')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'complete' | 'partial'>('all')
   const [sections,   setSections]   = useState<Set<Section>>(
     new Set(['core', 'openended', 'psychographics', 'demographics'] as Section[])
   )
@@ -57,6 +58,7 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
       params.set('labelMode', labelMode)
       params.set('format',    exportFmt)
       if (exportFmt === 'standard') params.set('sections', Array.from(sections).join(','))
+      if (statusFilter !== 'all')  params.set('status', statusFilter)
       if (dateFrom)  params.set('from',      dateFrom)
       if (dateTo)    params.set('to',        dateTo)
       if (sentiment) params.set('sentiment', sentiment)
@@ -149,6 +151,30 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
                 </div>
               </label>
             </div>
+          </div>
+
+          {/* ── Response status filter ──────────────────────────────── */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Response status</p>
+            <div className="flex items-center bg-gray-100 rounded-xl p-1 w-fit">
+              {([
+                { value: 'all' as const, label: 'All responses' },
+                { value: 'complete' as const, label: 'Complete only' },
+                { value: 'partial' as const, label: 'Partial only' },
+              ]).map(opt => (
+                <button key={opt.value} onClick={() => setStatusFilter(opt.value)}
+                  className={'text-sm font-medium px-4 py-1.5 rounded-lg transition-all ' +
+                    (statusFilter === opt.value ? 'text-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}
+                  style={statusFilter === opt.value ? { background: HERMES } : {}}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">
+              {statusFilter === 'all' ? 'Includes both complete and partial (incomplete) responses'
+               : statusFilter === 'complete' ? 'Only responses that were fully submitted'
+               : 'Only responses that were started but not completed'}
+            </p>
           </div>
 
           {/* ── Section toggles (standard only) ────────────────────── */}

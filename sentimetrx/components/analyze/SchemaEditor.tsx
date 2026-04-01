@@ -694,3 +694,5 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
     </div>
   )
 }
+
+

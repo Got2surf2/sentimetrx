@@ -39,12 +39,11 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (isCSV) {
     const { data: allRows } = await supabase
-      .from('responses').select('payload, status').eq('study_id', params.id)
+      .from('responses').select('payload').eq('study_id', params.id)
 
     const psychoSet = new Set<string>()
     const demoSet   = new Set<string>()
     for (const r of allRows || []) {
-      if (r.status && r.status !== 'complete') continue
       Object.keys(r.payload?.psychographics || {}).forEach((k: string) => psychoSet.add(k))
       Object.keys(r.payload?.demographics   || {}).forEach((k: string) => demoSet.add(k))
     }
@@ -65,11 +64,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     .eq('study_id', params.id)
     .order('completed_at', { ascending: false })
 
-  // For CSV exports, default to only complete responses unless explicitly overridden
+  // Status filter — only applied when explicitly set via query param
   if (statusF) {
-    query = query.eq('status', statusF)
-  } else if (isCSV) {
-    query = query.or('status.eq.complete,status.is.null')
+    if (statusF === 'complete') {
+      query = query.or('status.eq.complete,status.is.null')
+    } else {
+      query = query.eq('status', statusF)
+    }
   }
 
   if (sentiment) query = query.eq('sentiment', sentiment)
@@ -134,9 +135,6 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     if (sections.has('core') || forDatanautix) {
       cols.push(
-        { header: labelMode === 'prompt' ? 'Response ID'       : 'response_id',       value: r => r.id },
-        { header: labelMode === 'prompt' ? 'Completed At (ET)' : 'completed_at',      value: r => fmtDate(r.completed_at) },
-        { header: labelMode === 'prompt' ? 'Duration (sec)'    : 'duration_sec',      value: r => String(r.duration_sec ?? '') },
         { header: labelMode === 'prompt' ? 'Sentiment'         : 'sentiment',         value: r => r.sentiment ?? '' },
         { header: labelMode === 'prompt' ? 'Experience Score'  : 'experience_score',  value: r => String(r.experience_score ?? '') },
         { header: labelMode === 'prompt' ? (study?.config?.npsLabel || 'NPS Score') : (study?.config?.npsLabel || 'nps_score'), value: r => String(r.nps_score ?? '') },
@@ -171,6 +169,16 @@ export async function GET(req: NextRequest, { params }: Params) {
       cols.push(
         { header: labelMode === 'prompt' ? 'User Agent'           : 'agent',             value: r => esc(r.payload?.agent ?? '') },
         { header: labelMode === 'prompt' ? 'Submission Timestamp' : 'payload_timestamp', value: r => esc(r.payload?.timestamp ?? '') },
+      )
+    }
+
+    // Metadata columns at the end
+    if (sections.has('core') || forDatanautix) {
+      cols.push(
+        { header: labelMode === 'prompt' ? 'Status'            : 'status',            value: r => r.status || 'complete' },
+        { header: labelMode === 'prompt' ? 'Response ID'       : 'response_id',       value: r => r.id },
+        { header: labelMode === 'prompt' ? 'Completed At (ET)' : 'completed_at',      value: r => r.completed_at ? fmtDate(r.completed_at) : '' },
+        { header: labelMode === 'prompt' ? 'Duration (sec)'    : 'duration_sec',      value: r => String(r.duration_sec ?? '') },
       )
     }
 
