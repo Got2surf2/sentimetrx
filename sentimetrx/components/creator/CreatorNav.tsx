@@ -26,8 +26,8 @@ export const CREATOR_STEP_LABELS = [
   'Conversation',
   'Clarifiers',
   'Questions',
-  'Psychographics',
-  'Demographics',
+  'Psycho',
+  'Demo',
   'Review',
 ] as const
 
@@ -55,7 +55,7 @@ export default function CreatorNav({
   const canPublish = allDone && !saving
 
   return (
-    <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
+    <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
 
       {/* Step pills */}
       {CREATOR_STEP_LABELS.map((label, i) => {
@@ -95,7 +95,7 @@ export default function CreatorNav({
             onClick={() => { if (isClickable) onStepClick(i) }}
             className={
               'flex items-center gap-1 px-2 py-1 rounded-full ' +
-              'text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ' +
+              'text-xs font-semibold whitespace-nowrap transition-all ' +
               pillCls
             }
           >
