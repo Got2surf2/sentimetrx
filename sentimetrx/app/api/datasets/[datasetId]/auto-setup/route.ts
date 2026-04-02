@@ -76,12 +76,27 @@ export async function POST(_req: Request, { params }: Params) {
   }
   if (anaLibrary && INDUSTRY_THEMES[anaLibrary]) {
     var industryThemes = INDUSTRY_THEMES[anaLibrary]
+    // Map IndustryTheme → AnaTheme format
+    var SENTIMENT_COLORS: Record<string, string> = {
+      positive: '#16a34a', negative: '#dc2626', neutral: '#6b7280', mixed: '#d97706'
+    }
+    var anaThemes = industryThemes.map(function(t) {
+      return {
+        id: t.id,
+        label: t.name,
+        keywords: t.keywords,
+        color: SENTIMENT_COLORS[t.sentiment] || '#6b7280',
+        description: t.description,
+      }
+    })
     themeUpdate.theme_model = {
-      themes: industryThemes,
+      themes: anaThemes,
       industry: anaLibrary,
       aiGenerated: false,
       version: 1,
       fieldName: schema.primaryTextField || 'q3_response',
+      libName: anaLibrary,
+      source: 'industry',
     }
   }
 

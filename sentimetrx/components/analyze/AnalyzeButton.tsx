@@ -75,13 +75,15 @@ export default function AnalyzeButton({ studyId }: Props) {
         var createData = await createRes.json()
         var datasetId = createData.id
 
-        // Initial sync
-        setStatus('Importing responses...')
-        await fetch('/api/datasets/' + datasetId + '/sync', { method: 'POST' })
-
-        // Auto-setup schema from study config
+        // Auto-setup schema + industry themes FIRST (before sync, so schema exists)
         setStatus('Building schema from study...')
-        await fetch('/api/datasets/' + datasetId + '/auto-setup', { method: 'POST' })
+        var setupRes = await fetch('/api/datasets/' + datasetId + '/auto-setup', { method: 'POST' })
+        if (!setupRes.ok) throw new Error('Failed to build schema')
+
+        // Sync responses into dataset rows
+        setStatus('Importing responses...')
+        var syncRes2 = await fetch('/api/datasets/' + datasetId + '/sync', { method: 'POST' })
+        if (!syncRes2.ok) throw new Error('Failed to import responses')
 
         // Compute analytics
         setStatus('Computing analytics...')
