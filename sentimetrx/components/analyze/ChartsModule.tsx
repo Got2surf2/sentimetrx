@@ -838,7 +838,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
           </div>
 
           {/* Field groups — reference only */}
-          <ChartFieldGroups fields={allSchemaFields} currentConfig={currentConfig} />
+          <ChartFieldGroups fields={allFields} currentConfig={currentConfig} />
         </div>
 
         {/* ─── Chart body ──────────────────────────────────── */}
