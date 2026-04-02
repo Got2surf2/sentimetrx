@@ -8,6 +8,7 @@ import StepConversation from '@/components/creator/StepConversation'
 import StepClarifiers from '@/components/creator/StepClarifiers'
 import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
+import StepDemographics from '@/components/creator/StepDemographics'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
 import TopNav from '@/components/nav/TopNav'
@@ -25,17 +26,10 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const [draft,  setDraft]  = useState<StudyDraft>({
-    name:         study.name,
-    bot_name:     study.bot_name,
-    bot_emoji:    study.bot_emoji,
-    slug:         study.slug || '',
-    config: {
-      // For legacy studies created before industry moved into config,
-      // seed it from the top-level study.industry column if config doesn't have it
-      industry:      study.config?.industry      || study.industry      || undefined,
-      otherIndustry: study.config?.otherIndustry || study.otherIndustry || undefined,
-      ...study.config,
-    },
+    name:      study.name,
+    bot_name:  study.bot_name,
+    bot_emoji: study.bot_emoji,
+    config:    study.config,
   })
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState<string | null>(null)
@@ -83,7 +77,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
           <CreatorNav
             draft={draft}
             currentStep={step}
-            highestVisited={6}
+            highestVisited={7}
             onStepClick={goTo}
             onPublish={() => handleSave('active')}
             saving={saving}
@@ -105,10 +99,11 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
         {step === 3 && <StepClarifiers {...stepProps} onNext={() => goTo(4)} onBack={() => goTo(2)} />}
         {step === 4 && <StepQuestions {...stepProps} onNext={() => goTo(5)} onBack={() => goTo(3)} />}
         {step === 5 && <StepPsychographics {...stepProps} onNext={() => goTo(6)} onBack={() => goTo(4)} />}
-        {step === 6 && (
+        {step === 6 && <StepDemographics {...stepProps} onNext={() => goTo(7)} onBack={() => goTo(5)} />}
+        {step === 7 && (
           <StepReview
             {...stepProps}
-            onBack={() => goTo(5)}
+            onBack={() => goTo(6)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}
