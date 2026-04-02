@@ -83,7 +83,10 @@ export default function AnalyzeButton({ studyId }: Props) {
         // Sync responses into dataset rows
         setStatus('Importing responses...')
         var syncRes2 = await fetch('/api/datasets/' + datasetId + '/sync', { method: 'POST' })
-        if (!syncRes2.ok) throw new Error('Failed to import responses')
+        if (!syncRes2.ok) {
+          var syncErr = await syncRes2.json().catch(function() { return {} })
+          throw new Error(syncErr.error || 'Failed to import responses (' + syncRes2.status + ')')
+        }
 
         // Compute analytics
         setStatus('Computing analytics...')
