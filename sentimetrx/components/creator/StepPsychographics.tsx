@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Section, NavButtons } from './CreatorUI'
 import type { PsychoQuestion } from '@/lib/types'

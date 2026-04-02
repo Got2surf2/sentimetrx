@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
-import type { SurveyQuestion, LikertFollowUp, QuestionType } from '@/lib/types'
+import type { SurveyQuestion, LikertFollowUp, QuestionType, KeywordTrigger } from '@/lib/types'
 import { Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
@@ -353,6 +353,9 @@ function QuestionCard({
             <div className="flex flex-col gap-3 pt-2 border-t border-gray-100">
               <Toggle value={!!q.clarify} onChange={v => set({ clarify: v })} label="Keyword clarifier" />
               <Toggle value={!!q.useAI} onChange={v => set({ useAI: v })} label="AI clarifier" />
+              {q.keywordTriggers && q.keywordTriggers.length > 0 && q.clarify && (
+                <KeywordTriggersPreview triggers={q.keywordTriggers} defaultFollowOn={q.defaultFollowOn} />
+              )}
             </div>
           )}
 
@@ -480,6 +483,143 @@ function SuggestedQuestionsPanel({
               </div>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// -- Keyword triggers preview (for open-ended bank questions) --
+function KeywordTriggersPreview({ triggers, defaultFollowOn }: { triggers: KeywordTrigger[]; defaultFollowOn?: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+      <button type="button" onClick={() => setOpen(v => !v)} className="flex items-center gap-2 w-full text-left">
+        <span className="text-xs font-semibold text-gray-500">{triggers.length} keyword clusters loaded</span>
+        <span className="text-xs text-gray-400">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 flex flex-col gap-2">
+          {triggers.map(function(kt, i) {
+            return (
+              <div key={i} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-gray-400">P{kt.priority}</span>
+                  {kt.keywords.slice(0, 6).map(function(kw) {
+                    return <span key={kw} className="text-xs bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded font-mono">{kw}</span>
+                  })}
+                  {kt.keywords.length > 6 && <span className="text-xs text-gray-400">+{kt.keywords.length - 6} more</span>}
+                </div>
+                <div className="text-xs text-gray-500 italic ml-5">{kt.follow_on}</div>
+              </div>
+            )
+          })}
+          {defaultFollowOn && (
+            <div className="pt-1 border-t border-gray-200">
+              <span className="text-xs font-semibold text-gray-400">Default: </span>
+              <span className="text-xs text-gray-500 italic">{defaultFollowOn}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// -- Open-ended question bank panel ---------------------------
+function OpenEndedBankPanel({
+  industry,
+  onAdd,
+  existingPrompts,
+}: {
+  industry: string
+  onAdd: (q: SurveyQuestion) => void
+  existingPrompts: Set<string>
+}) {
+  const [open, setOpen] = useState(false)
+  const [bankQuestions, setBankQuestions] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  function loadBank() {
+    if (loaded) { setOpen(v => !v); return }
+    setOpen(true)
+    setLoading(true)
+    fetch('/api/admin/questions?type=open_ended' + (industry && industry !== 'other' ? '&industry=' + industry : ''))
+      .then(function(r) { return r.json() })
+      .then(function(d) { setBankQuestions(d.openEnded || []); setLoaded(true); setLoading(false) })
+      .catch(function() { setLoading(false) })
+  }
+
+  var industryLabel = INDUSTRY_LABELS[industry as Industry] ?? industry
+
+  return (
+    <div className="bg-purple-50 border border-purple-200 rounded-2xl overflow-hidden">
+      <button
+        type="button"
+        onClick={loadBank}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-purple-500 text-sm font-bold">💬</span>
+          <span className="text-sm font-semibold text-gray-800">
+            Open-ended question bank{industry && industry !== 'other' ? ' — ' + industryLabel : ''}
+          </span>
+          <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full font-medium">
+            with clarifiers
+          </span>
+        </div>
+        <span className="text-gray-400 text-xs">{open ? 'hide' : 'show'}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-2">
+          <p className="text-xs text-purple-700 mb-1">
+            Deep-dive questions with keyword-based follow-on rules. Each question comes with clarifier triggers you can toggle on or off.
+          </p>
+          {loading ? (
+            <div className="py-4 text-center text-gray-400 text-sm">Loading question bank...</div>
+          ) : bankQuestions.length === 0 ? (
+            <div className="py-4 text-center text-gray-400 text-sm">No open-ended questions available for this industry.</div>
+          ) : (
+            bankQuestions.map(function(bq, i) {
+              var alreadyAdded = existingPrompts.has(bq.prompt)
+              return (
+                <div
+                  key={i}
+                  className={'flex items-start gap-3 bg-white border rounded-xl px-4 py-3 transition-all ' + (alreadyAdded ? 'border-green-200 opacity-60' : 'border-purple-200 hover:border-purple-400 cursor-pointer')}
+                  onClick={function() {
+                    if (alreadyAdded) return
+                    onAdd({
+                      id:              genId(),
+                      type:            'open',
+                      prompt:          bq.prompt,
+                      required:        false,
+                      clarify:         true,
+                      useAI:           false,
+                      keywordTriggers: bq.keywordTriggers,
+                      defaultFollowOn: bq.defaultFollowOn,
+                      triggerType:     bq.triggerType,
+                    } as SurveyQuestion)
+                  }}
+                >
+                  <span className="text-base flex-shrink-0 mt-0.5">✏️</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-800">{bq.prompt}</div>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600 font-medium">{bq.triggerType}</span>
+                      <span className="text-xs text-gray-400">{bq.keywordTriggers.length} keyword clusters</span>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 text-xs font-semibold mt-0.5">
+                    {alreadyAdded
+                      ? <span className="text-green-500">Added</span>
+                      : <span className="text-purple-500">+ Add</span>}
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       )}
     </div>
@@ -725,6 +865,13 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
           existingIds={existingIds}
         />
       )}
+
+      {/* Open-ended question bank with clarifiers */}
+      <OpenEndedBankPanel
+        industry={industry || ''}
+        onAdd={addSuggestedQuestion}
+        existingPrompts={new Set(questions.map(function(q) { return q.prompt }))}
+      />
 
       {/* Questions list */}
       {questions.length > 0 && (

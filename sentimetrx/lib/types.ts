@@ -46,6 +46,13 @@ export interface LikertScaleOption {
   label:  string
 }
 
+// Keyword-based follow-on trigger for open-ended questions (from Question Bank)
+export interface KeywordTrigger {
+  priority:   number
+  keywords:   string[]
+  follow_on:  string
+}
+
 export interface SurveyQuestion {
   id:           string         // uuid, generated at creation
   type:         QuestionType
@@ -53,8 +60,11 @@ export interface SurveyQuestion {
   exportLabel?: string
   required?:    boolean
   // open-ended specific
-  clarify?:     boolean
-  useAI?:       boolean
+  clarify?:     boolean          // enable keyword-based clarifiers
+  useAI?:       boolean          // enable AI-based clarifiers
+  keywordTriggers?:  KeywordTrigger[]   // keyword follow-on clusters (from Question Bank)
+  defaultFollowOn?:  string             // default follow-on when no keywords match
+  triggerType?:      string             // trigger category (e.g. 'dissatisfaction_probe')
   // close-ended specific (radio, checkbox, dropdown)
   options?:     string[]
   // likert specific
