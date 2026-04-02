@@ -14,6 +14,7 @@ interface Props {
   logoUrl?:   string
   orgName?:   string
   isAdmin?:   boolean
+  analyzeEnabled?: boolean
   userEmail?: string
   fullName?:  string
 }
@@ -42,7 +43,7 @@ const defaultFrom = () => {
 }
 const defaultTo = () => new Date().toISOString().slice(0, 10)
 
-export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botName, logoUrl='', orgName='', isAdmin=false, userEmail='', fullName='' }: Props) {
+export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botName, logoUrl='', orgName='', isAdmin=false, analyzeEnabled=false, userEmail='', fullName='' }: Props) {
   const [from, setFrom] = useState(defaultFrom())
   const [to,   setTo]   = useState(defaultTo())
 
@@ -86,6 +87,7 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
         onDateFrom={setFrom} onDateTo={setTo}
         onLast30={setLast30} onAllTime={setAllTime}
         total={summary?.total ?? 0}
+        analyzeEnabled={analyzeEnabled}
       />
 
       <main className="max-w-5xl mx-auto px-6 pb-8" style={{ paddingTop: 120 }}>

@@ -12,7 +12,7 @@ export default async function ResponsesPage({ params }: Props) {
 
   const [{ data: study }, { data: userData }] = await Promise.all([
     supabase.from('studies').select('id, name, bot_emoji, status').eq('id', params.id).single(),
-    supabase.from('users').select('full_name, organizations(is_admin_org, logo_url, name)').eq('id', user.id).single(),
+    supabase.from('users').select('full_name, organizations(is_admin_org, logo_url, name, features)').eq('id', user.id).single(),
   ])
 
   if (!study) notFound()
@@ -28,6 +28,7 @@ export default async function ResponsesPage({ params }: Props) {
       logoUrl={orgData?.logo_url   || ''}
       orgName={orgData?.name       || ''}
       isAdmin={!!orgData?.is_admin_org}
+      analyzeEnabled={!!orgData?.features?.analyze}
       userEmail={user.email        || ''}
       fullName={userData?.full_name || ''}
     />

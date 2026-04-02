@@ -24,6 +24,7 @@ interface Props {
   logoUrl?:   string
   orgName?:   string
   isAdmin?:   boolean
+  analyzeEnabled?: boolean
   userEmail?: string
   fullName?:  string
 }
@@ -31,7 +32,7 @@ interface Props {
 const HERMES   = '#E8632A'
 const SENTIMENTS = ['', 'promoter', 'passive', 'detractor']
 
-export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoUrl='', orgName='', isAdmin=false, userEmail='', fullName='' }: Props) {
+export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoUrl='', orgName='', isAdmin=false, analyzeEnabled=false, userEmail='', fullName='' }: Props) {
   const [responses,   setResponses]   = useState<Response[]>([])
   const [total,       setTotal]       = useState(0)
   const [loading,     setLoading]     = useState(true)
@@ -152,6 +153,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
         onLast30={() => { setDateFrom(defaultFrom()); setDateTo(defaultTo()); setOffset(0) }}
         onAllTime={() => { setDateFrom('2024-01-01'); setDateTo(defaultTo()); setOffset(0) }}
         total={total}
+        analyzeEnabled={analyzeEnabled}
       />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
