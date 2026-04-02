@@ -114,5 +114,3 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     </div>
   )
 }
-
-
