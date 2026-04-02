@@ -11,20 +11,24 @@ interface Study   { id: string; guid: string; name: string; bot_name: string; bo
 interface Invite  { id: string; token: string; email: string | null; role: string; used_at: string | null; expires_at: string; created_at: string; invite_url: string }
 interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean; logo_url?: string; features?: { analyze?: boolean } }
 
+interface OrgOption { id: string; name: string }
+
 interface Props {
   org:           Org
   members:       Member[]
   studies:       Study[]
+  allOrgs:       OrgOption[]
   invites:       Invite[]
   baseUrl:       string
   currentUserId: string
   userEmail?:    string
 }
 
-export default function AdminClientDetail({ org, members, studies: initialStudies, invites: initialInvites, baseUrl, currentUserId, userEmail='' }: Props) {
+export default function AdminClientDetail({ org, members, studies: initialStudies, allOrgs, invites: initialInvites, baseUrl, currentUserId, userEmail='' }: Props) {
   const [studies,       setStudies]       = useState(initialStudies)
   const [invites,       setInvites]       = useState(initialInvites)
   const [togglingStudy, setTogglingStudy] = useState<string | null>(null)
+  const [transferring,  setTransferring]  = useState<string | null>(null)
   const [copiedInvite,  setCopiedInvite]  = useState<string | null>(null)
   const [generatingInv, setGeneratingInv] = useState(false)
   const [inviteEmail,   setInviteEmail]   = useState('')
@@ -61,6 +65,24 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
       setError('Failed to update study status.')
     } finally {
       setTogglingStudy(null)
+    }
+  }
+
+  const handleTransferStudy = async (studyId: string, newOrgId: string) => {
+    setTransferring(studyId)
+    setError(null)
+    try {
+      const res = await fetch('/api/studies/' + studyId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: newOrgId }),
+      })
+      if (!res.ok) throw new Error('Failed to transfer study')
+      setStudies(prev => prev.filter(s => s.id !== studyId))
+    } catch {
+      setError('Failed to transfer study.')
+    } finally {
+      setTransferring(null)
     }
   }
 
@@ -262,6 +284,25 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                     <Link href={'/studies/' + study.id + '/responses'} className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors">
                       Responses
                     </Link>
+                    {allOrgs.length > 0 && (
+                      <select
+                        disabled={transferring === study.id}
+                        value=""
+                        onChange={e => {
+                          if (e.target.value && confirm('Transfer "' + study.name + '" to another organization?')) {
+                            handleTransferStudy(study.id, e.target.value)
+                          } else {
+                            e.target.value = ''
+                          }
+                        }}
+                        className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 border-none cursor-pointer transition-colors disabled:opacity-50 appearance-none"
+                      >
+                        <option value="">{transferring === study.id ? 'Transferring...' : 'Transfer'}</option>
+                        {allOrgs.map(o => (
+                          <option key={o.id} value={o.id}>{o.name}</option>
+                        ))}
+                      </select>
+                    )}
                     <button
                       onClick={() => handleToggleStudyStatus(study)}
                       disabled={togglingStudy === study.id}

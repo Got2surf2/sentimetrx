@@ -53,6 +53,11 @@ export default async function AdminClientPage({ params }: Props) {
     response_count: (responsesRaw || []).filter(r => r.study_id === s.id).length,
   }))
 
+  const { data: allOrgs } = await service
+    .from('organizations')
+    .select('id, name')
+    .order('name')
+
   const { data: invites } = await service
     .from('invites')
     .select('id, token, email, role, used_at, expires_at, created_at')
@@ -66,6 +71,7 @@ export default async function AdminClientPage({ params }: Props) {
       org={org}
       members={members || []}
       studies={studiesWithCounts}
+      allOrgs={(allOrgs || []).filter(o => o.id !== params.id)}
       invites={(invites || []).map(inv => ({
         ...inv,
         invite_url: base + '/invite/' + inv.token,

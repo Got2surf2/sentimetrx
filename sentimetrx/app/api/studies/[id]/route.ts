@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface Params { params: { id: string } }
@@ -81,15 +81,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
+  // Admin-only: allow changing org_id (transfer study to another org)
+  if ('org_id' in body) {
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Only admins can transfer studies' }, { status: 403 })
+    }
+    updates.org_id = body.org_id
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
   }
 
-  const { data, error } = await supabase
+  // Use service role client when transferring orgs (RLS may block cross-org updates)
+  const updateClient = updates.org_id ? createServiceRoleClient() : supabase
+  const { data, error } = await updateClient
     .from('studies')
     .update(updates)
     .eq('id', params.id)
-    .select('id, guid, slug, status, visibility')
+    .select('id, guid, slug, status, visibility, org_id')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
