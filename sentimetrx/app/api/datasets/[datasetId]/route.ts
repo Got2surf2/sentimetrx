@@ -12,24 +12,24 @@ interface Params { params: { datasetId: string } }
 
 async function getOrgAndCheck(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { user: null, orgId: null, error: 'Unauthorized' }
+  if (!user) return { user: null, orgId: null, isAdmin: false, error: 'Unauthorized' }
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(features)')
+    .select('org_id, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
 
   const rawOrg  = userData?.organizations
   const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
-  if (!orgData?.features?.analyze) return { user: null, orgId: null, error: 'Analyze module not enabled' }
+  if (!orgData?.features?.analyze) return { user: null, orgId: null, isAdmin: false, error: 'Analyze module not enabled' }
 
-  return { user, orgId: userData?.org_id as string, error: null }
+  return { user, orgId: userData?.org_id as string, isAdmin: !!orgData?.is_admin_org, error: null }
 }
 
 export async function GET(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { user, orgId, error } = await getOrgAndCheck(supabase)
+  const { user, orgId, isAdmin: _isAdmin, error } = await getOrgAndCheck(supabase)
   if (error || !user || !orgId) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
   }
@@ -52,7 +52,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   const supabase = createClient()
-  const { user, orgId, error } = await getOrgAndCheck(supabase)
+  const { user, orgId, isAdmin, error } = await getOrgAndCheck(supabase)
   if (error || !user || !orgId) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
   }
@@ -63,6 +63,15 @@ export async function PATCH(req: Request, { params }: Params) {
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
   }
+
+  // Admin-only: allow changing org_id (transfer dataset to another org)
+  if ('org_id' in body) {
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Only admins can transfer datasets' }, { status: 403 })
+    }
+    updates.org_id = body.org_id
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
   }
@@ -74,7 +83,6 @@ export async function PATCH(req: Request, { params }: Params) {
     .from('datasets')
     .update(updates)
     .eq('id', params.datasetId)
-    .eq('org_id', orgId)
 
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
   return NextResponse.json({ ok: true })
@@ -82,7 +90,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { user, orgId, error } = await getOrgAndCheck(supabase)
+  const { user, orgId, isAdmin: _isAdminDel, error } = await getOrgAndCheck(supabase)
   if (error || !user || !orgId) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
   }

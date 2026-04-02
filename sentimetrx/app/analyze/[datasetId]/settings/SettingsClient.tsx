@@ -8,17 +8,21 @@ import { useRouter } from 'next/navigation'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
+interface OrgOption { id: string; name: string }
+
 interface Props {
   dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'visibility' | 'status' | 'row_count'>
   schema:     SchemaConfig
   isOwner:    boolean
+  isAdmin?:   boolean
+  allOrgs?:   OrgOption[]
   themeModel?: any
   datasetId?: string
 }
 
 const HERMES = '#E8632A'
 
-export default function SettingsClient({ dataset, schema: initialSchema, isOwner }: Props) {
+export default function SettingsClient({ dataset, schema: initialSchema, isOwner, isAdmin = false, allOrgs = [] }: Props) {
   const router = useRouter()
 
   const [name,        setName]        = useState(dataset.name)
@@ -29,6 +33,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   const [saved,       setSaved]       = useState(false)
   const [delConfirm,  setDelConfirm]  = useState(false)
   const [deleting,    setDeleting]    = useState(false)
+  const [transferring, setTransferring] = useState(false)
   const [error,       setError]       = useState('')
 
   async function handleSaveDetails() {
@@ -150,6 +155,57 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         </div>
         <SchemaEditor schema={schema} onChange={handleSaveSchema} />
       </div>
+
+      {/* Admin: transfer to another org */}
+      {isAdmin && allOrgs.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+          <div>
+            <h2 className="font-bold text-gray-800">Transfer Organization</h2>
+            <p className="text-sm text-gray-400 mt-0.5">Move this dataset to a different organization.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              id="transfer-dataset-org"
+              disabled={transferring}
+              defaultValue=""
+              className={inputCls + ' flex-1 disabled:opacity-50'}
+            >
+              <option value="" disabled>Select organization...</option>
+              {allOrgs.map(function(o) {
+                return <option key={o.id} value={o.id}>{o.name}</option>
+              })}
+            </select>
+            <button
+              disabled={transferring}
+              onClick={async function() {
+                const select = document.getElementById('transfer-dataset-org') as HTMLSelectElement
+                const newOrgId = select.value
+                if (!newOrgId) return
+                const orgName = select.options[select.selectedIndex].text
+                if (!confirm('Transfer "' + name + '" to ' + orgName + '?')) return
+                setTransferring(true)
+                setError('')
+                try {
+                  const res = await fetch('/api/datasets/' + dataset.id, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ org_id: newOrgId }),
+                  })
+                  if (!res.ok) throw new Error('Failed to transfer dataset')
+                  router.push('/analyze')
+                } catch {
+                  setError('Failed to transfer dataset')
+                  setTransferring(false)
+                }
+              }}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
+              style={{ background: HERMES }}
+            >
+              {transferring ? 'Transferring...' : 'Transfer'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Danger zone */}
       {isOwner && (
