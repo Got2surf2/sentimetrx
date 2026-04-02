@@ -39,9 +39,9 @@ export default function AnalyzeButton({ studyId }: Props) {
         var syncData = await syncRes.json()
 
         if (syncData.synced > 0) {
-          router.push('/analyze/' + existing.id + '/textmine?synced=' + syncData.synced)
+          window.location.href = '/analyze/' + existing.id + '/textmine?synced=' + syncData.synced
         } else {
-          router.push('/analyze/' + existing.id + '/textmine')
+          window.location.href = '/analyze/' + existing.id + '/textmine'
         }
       } else {
         // First time — fetch study config to get industry for ana_library
@@ -92,8 +92,8 @@ export default function AnalyzeButton({ studyId }: Props) {
         setStatus('Computing analytics...')
         await fetch('/api/datasets/' + datasetId + '/compute', { method: 'POST' }).catch(function() {})
 
-        // Go straight to TextMine — fully automatic, no manual steps
-        router.push('/analyze/' + datasetId + '/textmine?new=1')
+        // Go straight to TextMine — full page load to ensure fresh server data
+        window.location.href = '/analyze/' + datasetId + '/textmine?new=1'
       }
     } catch (err: any) {
       setError(err.message || 'Something went wrong')

@@ -1142,22 +1142,35 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #fff3ee, #ffe4d6)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 28 }}>
                       <span style={{ color: T.accent, fontWeight: 900, fontStyle: 'italic' }}>A</span>
                     </div>
-                    <h3 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 8 }}>TextMine is ready</h3>
-                    <p style={{ fontSize: 13, color: T.textMute, lineHeight: 1.6, marginBottom: 24 }}>
-                      {rows.length.toLocaleString()} responses loaded across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
-                      {' '}Run an AI analysis or pick an industry theme library to get started.
-                    </p>
-                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <button onClick={mineThemes} disabled={!canMine || !aiEnabled}
-                        title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
-                        style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
-                        {'\u29E1'} Mine with AI
-                      </button>
-                      <button onClick={function() { setShowThemeEditor(true) }}
-                        style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
-                        {'\u2261'} Choose industry library
-                      </button>
-                    </div>
+                    {rows.length === 0 ? (
+                      <>
+                        <h3 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 8 }}>Waiting for responses</h3>
+                        <p style={{ fontSize: 13, color: T.textMute, lineHeight: 1.6, marginBottom: 24 }}>
+                          Your study is connected but has no responses yet. Once respondents start submitting, click <strong>Sync</strong> in the header to pull in new data.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 8 }}>TextMine is ready</h3>
+                        <p style={{ fontSize: 13, color: T.textMute, lineHeight: 1.6, marginBottom: 24 }}>
+                          {rows.length.toLocaleString()} responses loaded across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
+                          {' '}Run an AI analysis or pick an industry theme library to get started.
+                        </p>
+                      </>
+                    )}
+                    {rows.length > 0 && (
+                      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button onClick={mineThemes} disabled={!canMine || !aiEnabled}
+                          title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
+                          style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
+                          {'\u29E1'} Mine with AI
+                        </button>
+                        <button onClick={function() { setShowThemeEditor(true) }}
+                          style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
+                          {'\u2261'} Choose industry library
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
