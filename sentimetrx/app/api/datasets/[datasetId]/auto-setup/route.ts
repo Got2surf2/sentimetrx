@@ -6,6 +6,8 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { buildStudySchema } from '@/lib/datasetUtils'
+import { ANA_LIBRARY_KEY, type Industry } from '@/lib/industryDefaults'
+import { INDUSTRY_THEMES } from '@/lib/industryThemes'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,17 +59,36 @@ export async function POST(_req: Request, { params }: Params) {
     if (f.field === 'q4_response' && !f.label) f.label = 'Open Response 2'
   })
 
-  // Update dataset name to study name
-  await service.from('datasets').update({ name: study.name + ' \u2014 Analytics' }).eq('id', params.datasetId)
+  // Extract industry and map to ana_library
+  var industry = study.config.industry as Industry | undefined
+  var anaLibrary = industry && industry !== 'other' ? (ANA_LIBRARY_KEY[industry as Exclude<Industry, 'other'>] || null) : null
 
-  // Save schema to dataset_state
+  // Update dataset name and ana_library
+  var datasetUpdate: Record<string, unknown> = { name: study.name + ' \u2014 Analytics' }
+  if (anaLibrary) datasetUpdate.ana_library = anaLibrary
+  await service.from('datasets').update(datasetUpdate).eq('id', params.datasetId)
+
+  // Build theme model from industry themes if available
+  var themeUpdate: Record<string, unknown> = {
+    schema_config: schema,
+    updated_at: new Date().toISOString(),
+    updated_by: user.id,
+  }
+  if (anaLibrary && INDUSTRY_THEMES[anaLibrary]) {
+    var industryThemes = INDUSTRY_THEMES[anaLibrary]
+    themeUpdate.theme_model = {
+      themes: industryThemes,
+      industry: anaLibrary,
+      aiGenerated: false,
+      version: 1,
+      fieldName: schema.primaryTextField || 'q3_response',
+    }
+  }
+
+  // Save schema + theme model to dataset_state
   var { error: stateErr } = await service
     .from('dataset_state')
-    .update({
-      schema_config: schema,
-      updated_at: new Date().toISOString(),
-      updated_by: user.id,
-    })
+    .update(themeUpdate)
     .eq('dataset_id', params.datasetId)
 
   if (stateErr) return NextResponse.json({ error: stateErr.message }, { status: 500 })

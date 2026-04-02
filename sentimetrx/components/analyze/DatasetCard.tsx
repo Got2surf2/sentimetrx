@@ -173,7 +173,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       {/* 2. Source + visibility badges */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
         {isStudy ? (
-          <Badge label={'Survey: ' + (dataset.study_name || 'Linked')} color={HERMES} bg={HERMES_BG} border={HERMES_MID} />
+          <Badge label={'Sarina: ' + (dataset.study_name || 'Linked')} color={HERMES} bg={HERMES_BG} border={HERMES_MID} />
         ) : (
           <Badge label="Upload" color="#6b7280" bg="#f9fafb" border="#e5e7eb" />
         )}

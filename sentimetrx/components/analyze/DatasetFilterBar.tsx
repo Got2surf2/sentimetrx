@@ -45,7 +45,7 @@ export default function DatasetFilterBar({ filters, onChange }: Props) {
           return (
             <Pill
               key={v}
-              label={v === 'all' ? 'All' : v === 'study' ? 'Survey' : 'Upload'}
+              label={v === 'all' ? 'All' : v === 'study' ? 'Sarina' : 'Upload'}
               active={filters.source === v}
               onClick={function() { set('source', v) }}
             />

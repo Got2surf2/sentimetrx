@@ -44,16 +44,30 @@ export default function AnalyzeButton({ studyId }: Props) {
           router.push('/analyze/' + existing.id + '/textmine')
         }
       } else {
-        // First time — create dataset
+        // First time — fetch study config to get industry for ana_library
+        setStatus('Loading study configuration...')
+        var studyRes = await fetch('/api/studies/' + studyId)
+        var studyData = studyRes.ok ? await studyRes.json() : null
+        var studyName = studyData?.name || 'Study Data'
+        var industry = studyData?.config?.industry || ''
+        var anaLibrary = ''
+        if (industry && industry !== 'other') {
+          // Dynamic import to avoid bundling the full defaults
+          var { ANA_LIBRARY_KEY } = await import('@/lib/industryDefaults')
+          anaLibrary = ANA_LIBRARY_KEY[industry as keyof typeof ANA_LIBRARY_KEY] || ''
+        }
+
+        // Create dataset with industry mapping
         setStatus('Creating dataset...')
         var createRes = await fetch('/api/datasets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: 'Study Data',
+            name: studyName + ' \u2014 Analytics',
             source: 'study',
             study_id: studyId,
             visibility: 'private',
+            ana_library: anaLibrary || null,
           }),
         })
 
@@ -67,21 +81,13 @@ export default function AnalyzeButton({ studyId }: Props) {
 
         // Auto-setup schema from study config
         setStatus('Building schema from study...')
-        var setupRes = await fetch('/api/datasets/' + datasetId + '/auto-setup', { method: 'POST' })
-        if (setupRes.ok) {
-          var setupData = await setupRes.json()
-          if (setupData.needsReview) {
-            // Schema built but needs user review (e.g. missing question types)
-            router.push('/analyze/' + datasetId + '/settings?new=1')
-            return
-          }
-        }
+        await fetch('/api/datasets/' + datasetId + '/auto-setup', { method: 'POST' })
 
         // Compute analytics
         setStatus('Computing analytics...')
         await fetch('/api/datasets/' + datasetId + '/compute', { method: 'POST' }).catch(function() {})
 
-        // Go straight to TextMine
+        // Go straight to TextMine — fully automatic, no manual steps
         router.push('/analyze/' + datasetId + '/textmine?new=1')
       }
     } catch (err: any) {
