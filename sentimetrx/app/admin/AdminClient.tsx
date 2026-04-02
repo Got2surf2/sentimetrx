@@ -112,12 +112,20 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
             <h1 className="text-2xl font-bold text-gray-800">Organizations</h1>
             <p className="text-gray-500 text-sm mt-1">{orgs.length} organizations</p>
           </div>
-          <button
-            onClick={() => setShowNew(true)}
-            className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold text-sm transition-all"
-          >
-            + New Organization
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/questions"
+              className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold text-sm transition-all"
+            >
+              Question Library
+            </Link>
+            <button
+              onClick={() => setShowNew(true)}
+              className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold text-sm transition-all"
+            >
+              + New Organization
+            </button>
+          </div>
         </div>
 
         {error && (

@@ -42,7 +42,7 @@ interface OpenEndedQ {
 
 const HERMES = '#E8632A'
 
-const TABS: { id: Tab; label: string; emoji: string }[] = [
+const TAB_DEFS: { id: Tab; label: string; emoji: string }[] = [
   { id: 'psychographic', label: 'Psychographic Library', emoji: '🧠' },
   { id: 'structured',    label: 'Industry Questions',    emoji: '📋' },
   { id: 'open_ended',    label: 'Open-Ended + Clarifiers', emoji: '💬' },
@@ -106,7 +106,8 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 flex-wrap">
-          {TABS.map(function (t) {
+          {TAB_DEFS.map(function (t) {
+            var count = t.id === 'psychographic' ? psychoFiltered.length : t.id === 'structured' ? structuredFiltered.length : openEndedFiltered.length
             return (
               <button
                 key={t.id}
@@ -115,7 +116,7 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
                   (tab === t.id ? 'text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300')}
                 style={tab === t.id ? { background: HERMES } : undefined}
               >
-                {t.emoji} {t.label}
+                {t.emoji} {t.label} ({count})
               </button>
             )
           })}

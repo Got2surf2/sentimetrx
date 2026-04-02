@@ -539,15 +539,16 @@ function OpenEndedBankPanel({
   const [open, setOpen] = useState(false)
   const [bankQuestions, setBankQuestions] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [loaded, setLoaded] = useState(false)
+  const [loadedIndustry, setLoadedIndustry] = useState<string | null>(null)
 
   function loadBank() {
-    if (loaded) { setOpen(v => !v); return }
+    var currentIndustry = industry && industry !== 'other' ? industry : ''
+    if (loadedIndustry === currentIndustry) { setOpen(v => !v); return }
     setOpen(true)
     setLoading(true)
-    fetch('/api/admin/questions?type=open_ended' + (industry && industry !== 'other' ? '&industry=' + industry : ''))
+    fetch('/api/admin/questions?type=open_ended' + (currentIndustry ? '&industry=' + currentIndustry : ''))
       .then(function(r) { return r.json() })
-      .then(function(d) { setBankQuestions(d.openEnded || []); setLoaded(true); setLoading(false) })
+      .then(function(d) { setBankQuestions(d.openEnded || []); setLoadedIndustry(currentIndustry); setLoading(false) })
       .catch(function() { setLoading(false) })
   }
 
@@ -794,7 +795,7 @@ interface Props extends StepProps { onNext: () => void; onBack: () => void }
 export default function StepQuestions({ draft, updateConfig, onNext, onBack }: Props) {
   const questions: SurveyQuestion[] = draft.config.questions ?? []
   const [addingType, setAddingType] = useState<QuestionType | null>(null)
-  const industry = (draft as any).industry as string | undefined
+  const industry = ((draft as any).industry || draft.config.industry || '') as string
 
   const customQCount = draft.config.customQCount ?? 0
   const totalQ       = questions.length
