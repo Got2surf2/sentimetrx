@@ -4,6 +4,7 @@ import TopNav from '@/components/nav/TopNav'
 import StudyPageHeader from '@/components/nav/StudyPageHeader'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 interface Response {
   id:               string
@@ -208,7 +209,9 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
         {/* Table */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
           {loading ? (
-            <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>
+            <div className="py-16 flex justify-center">
+              <LottieLoader size={100} message="Loading responses..." />
+            </div>
           ) : responses.length === 0 ? (
             <div className="py-16 text-center">
               <div className="text-3xl mb-3">📭</div>

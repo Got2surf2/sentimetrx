@@ -4,6 +4,7 @@ import StudyPageHeader from '@/components/nav/StudyPageHeader'
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 interface Props {
   studyId:    string
@@ -94,7 +95,9 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
         )}
 
         {loading && !summary && (
-          <div className="py-20 text-center text-gray-400 text-sm">Loading analytics...</div>
+          <div className="py-20 flex justify-center">
+            <LottieLoader size={100} message="Loading analytics..." />
+          </div>
         )}
 
         {summary && (
