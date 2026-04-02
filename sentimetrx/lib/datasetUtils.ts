@@ -140,7 +140,11 @@ export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig 
         (colLower.includes('date') && stats.type !== 'numeric')) {
       return { field: col, ...stats, type: 'date' as AnaFieldType }
     }
-    return { field: col, ...stats }
+    // Tag psychographic and demographic fields by prefix
+    var section: 'psychographic' | 'demographic' | undefined = undefined
+    if (colLower.startsWith('psycho_')) section = 'psychographic'
+    else if (colLower.startsWith('demo_')) section = 'demographic'
+    return { field: col, ...stats, ...(section ? { section } : {}) }
   })
 
   const firstOpenEnded = fields.find(function(f) { return f.type === 'open-ended' })
@@ -186,6 +190,15 @@ export function flattenPsychographics(payload: SurveyPayload): Record<string, un
   return out
 }
 
+export function flattenDemographics(payload: SurveyPayload): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (!payload.demographics) return out
+  for (const [key, val] of Object.entries(payload.demographics)) {
+    out['demo_' + sanitizeColumnName(key)] = val
+  }
+  return out
+}
+
 interface ResponseRow {
   id:               string
   created_at:       string
@@ -217,6 +230,7 @@ export function formatResponsesAsRows(
       q4_response:      r.payload?.openEnded?.q4 ?? null,
       ...flattenCustomQuestions(r.payload, study.config),
       ...flattenPsychographics(r.payload),
+      ...flattenDemographics(r.payload),
     }
   })
 }
@@ -241,7 +255,13 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
   }
   if (config.psychographicBank) {
     for (const pq of config.psychographicBank) {
-      fields.push({ field: 'psycho_' + sanitizeColumnName(pq.key), type: 'categorical', sqt: 'single-select' })
+      fields.push({ field: 'psycho_' + sanitizeColumnName(pq.key), type: 'categorical', sqt: 'single-select', section: 'psychographic', label: pq.exportLabel || pq.q })
+    }
+  }
+  if (config.demoFields) {
+    for (const df of config.demoFields) {
+      if (!df.enabled) continue
+      fields.push({ field: 'demo_' + sanitizeColumnName(df.key), type: 'categorical', sqt: df.type === 'text' ? 'open-text' : 'single-select', section: 'demographic', label: df.label })
     }
   }
   return { fields, primaryTextField: 'q3_response', autoDetected: false, version: 1 }

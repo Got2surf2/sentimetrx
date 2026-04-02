@@ -13,10 +13,13 @@ export type AnaFieldSqt =
   | 'numeric-input'
   | null
 
+export type FieldSection = 'core' | 'psychographic' | 'demographic' | null
+
 export interface SchemaFieldConfig {
   field:          string
   type:           AnaFieldType
   sqt?:           AnaFieldSqt
+  section?:       FieldSection    // grouping: psychographic, demographic, or core
   label?:         string
   remapping?:     Record<string, number>
   valueAliases?:  Record<string, string>

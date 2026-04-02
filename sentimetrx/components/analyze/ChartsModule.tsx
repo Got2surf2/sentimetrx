@@ -34,7 +34,7 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
   mono:    { name: 'Mono',    colors: ['#111827','#374151','#4b5563','#6b7280','#9ca3af','#d1d5db','#e5e7eb','#f3f4f6','#1f2937','#030712'] },
 }
 
-interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number; remapping?: Record<string, number>; scoreField?: boolean; sqt?: string }
+interface SchemaField { field: string; type: string; label?: string; section?: string; values?: string[]; min?: number; max?: number; remapping?: Record<string, number>; scoreField?: boolean; sqt?: string }
 interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
@@ -84,6 +84,63 @@ var CHART_TYPE_DEFS = [
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function fl(f: SchemaField): string { return f.label && f.label !== f.field ? f.label : f.field }
+
+// ── Collapsible sidebar field group (Charts) ──────────────────
+function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
+  label: string; icon: string; color: string; fields: SchemaField[]; currentConfig: Record<string, string>
+}) {
+  var [open, setOpen] = useState(true)
+  if (fields.length === 0) return null
+  return (
+    <div style={{ borderBottom: '1px solid ' + T.border }}>
+      <button
+        onClick={function() { setOpen(function(v) { return !v }) }}
+        style={{ width: '100%', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        <div style={{ fontSize: 10, fontWeight: 700, color: color, letterSpacing: '.07em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span>{icon}</span> {label}
+        </div>
+        <span style={{ fontSize: 10, color: '#9ca3af' }}>{open ? '\u25BE' : '\u25B8'} {fields.length}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 12px 8px' }}>
+          {fields.map(function(f) {
+            var isAssigned = Object.values(currentConfig).includes(f.field)
+            return (
+              <div key={f.field}
+                style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s' }}
+                title={fl(f)}>
+                {isAssigned && '\u2713 '}{fl(f)}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; currentConfig: Record<string, string> }) {
+  var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
+  var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
+  var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
+
+  var catFields = coreFields.filter(function(f) { return f.type === 'categorical' })
+  var numFields = coreFields.filter(function(f) { return f.type === 'numeric' })
+  var dateFields = coreFields.filter(function(f) { return f.type === 'date' })
+  var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' })
+
+  return (
+    <>
+      <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} currentConfig={currentConfig} />
+    </>
+  )
+}
 function flByName(name: string, schema: SchemaField[]): string { var f = schema.find(function(s) { return s.field === name }); return f ? fl(f) : name }
 
 function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; style?: React.CSSProperties }) {
@@ -781,30 +838,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
           </div>
 
           {/* Field groups — reference only */}
-          {[
-            { label: 'Categorical', type: 'categorical', list: catFields, color: '#7c3aed', icon: '\u2261' },
-            { label: 'Numeric', type: 'numeric', list: numFields, color: '#16a34a', icon: '#' },
-            { label: 'Date', type: 'date', list: dateFields, color: '#d97706', icon: '\uD83D\uDCC5' },
-            { label: 'Open-ended', type: 'open-ended', list: openFields, color: '#2563eb', icon: '\u2756' },
-          ].filter(function(g) { return g.list.length > 0 }).map(function(group) {
-            return (
-              <div key={group.type} style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: group.color, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span>{group.icon}</span> {group.label}
-                </div>
-                {group.list.map(function(f) {
-                  var isAssigned = Object.values(currentConfig).includes(f.field)
-                  return (
-                    <div key={f.field}
-                      style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s' }}
-                      title={fl(f)}>
-                      {isAssigned && '\u2713 '}{fl(f)}
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
+          <ChartFieldGroups fields={allSchemaFields} currentConfig={currentConfig} />
         </div>
 
         {/* ─── Chart body ──────────────────────────────────── */}

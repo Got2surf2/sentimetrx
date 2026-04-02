@@ -766,6 +766,62 @@ var ANALYSIS_TYPES = [
 
 function fl(f: SchemaFieldConfig): string { return f.label && f.label !== f.field ? f.label : f.field }
 
+// ── Collapsible sidebar field group ────────────────────────────
+function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen }: {
+  label: string; icon: string; color: string; fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; defaultOpen?: boolean
+}) {
+  var [open, setOpen] = useState(defaultOpen !== false)
+  if (fields.length === 0) return null
+  return (
+    <div style={{ borderBottom: '1px solid ' + T.border }}>
+      <button
+        onClick={function() { setOpen(function(v) { return !v }) }}
+        style={{ width: '100%', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        <div style={{ fontSize: 10, fontWeight: 700, color: color, letterSpacing: '.07em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span>{icon}</span> {label}
+        </div>
+        <span style={{ fontSize: 10, color: T.textFaint }}>{open ? '\u25BE' : '\u25B8'} {fields.length}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 12px 8px' }}>
+          {fields.map(function(f) {
+            return (
+              <div key={f.field} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={flFn(f)}>
+                {flFn(f)}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned }: {
+  fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; isAssigned?: (f: SchemaFieldConfig) => boolean
+}) {
+  var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
+  var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
+  var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
+
+  var numFields = coreFields.filter(function(f) { return f.type === 'numeric' })
+  var catFields = coreFields.filter(function(f) { return f.type === 'categorical' })
+  var dateFields = coreFields.filter(function(f) { return f.type === 'date' })
+  var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' })
+
+  return (
+    <>
+      <CollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} T={T} fl={flFn} />
+    </>
+  )
+}
+
 export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [activePanel, setActivePanel] = useState('descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
@@ -863,27 +919,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           </div>
 
           {/* Field groups */}
-          {[
-            { label: 'Numeric', type: 'numeric', list: numFields, color: '#16a34a', icon: '#' },
-            { label: 'Categorical', type: 'categorical', list: catFields, color: '#7c3aed', icon: '\u2261' },
-            { label: 'Date', type: 'date', list: dateFields, color: '#d97706', icon: '\uD83D\uDCC5' },
-            { label: 'Open-ended', type: 'open-ended', list: openFields, color: '#2563eb', icon: '\u2756' },
-          ].filter(function(g) { return g.list.length > 0 }).map(function(group) {
-            return (
-              <div key={group.type} style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: group.color, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span>{group.icon}</span> {group.label}
-                </div>
-                {group.list.map(function(f) {
-                  return (
-                    <div key={f.field} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={fl(f)}>
-                      {fl(f)}
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
+          <FieldSidebarGroups fields={allFields} T={T} fl={fl} />
         </div>
 
         {/* ─── Main content ─────────────────────────────────── */}
