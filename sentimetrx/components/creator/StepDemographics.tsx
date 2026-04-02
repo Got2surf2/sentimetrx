@@ -117,5 +117,3 @@ export default function StepDemographics({ draft, updateConfig, onNext, onBack }
     </div>
   )
 }
-
-
