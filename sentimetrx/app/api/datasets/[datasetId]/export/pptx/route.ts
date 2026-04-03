@@ -99,6 +99,9 @@ function footer(slide: any, datasetName: string) {
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: FY, w: W * 0.72, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
+  slide.addText('Proprietary and Confidential', {
+    x: W * 0.72, y: FY, w: W * 0.28 - PAD * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', align: 'right',
+  })
 }
 
 // pptx is module-level during build — we capture it per call via closure
@@ -352,7 +355,7 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
 
   // Date standalone — larger font, no response count
   if (computedAt) {
-    slide.addText(new Date(computedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), {
+    slide.addText(new Date(computedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), {
       x: PAD + 0.18, y: 4.55, w: W - 4.0, h: 0.44,
       fontSize: 16, color: DN.slate, valign: 'middle',
     })
@@ -361,8 +364,8 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
   // Bottom footer strip
   solidRect(slide, 0, H - 0.48, W, 0.48, DN.navyMid)
   solidRect(slide, 0, H - 0.48, W, 0.03, DN.gold, 50)
-  const generatedOn = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-  slide.addText('Confidential  ·  Prepared by Datanautix  ·  datanautix.com  ·  Report generated ' + generatedOn, {
+  const generatedOn = new Date().toLocaleString()
+  slide.addText('Proprietary and Confidential  ·  Prepared by Datanautix  ·  datanautix.com  ·  Report generated ' + generatedOn, {
     x: PAD + 0.18, y: H - 0.44, w: W - 1.0, h: 0.38,
     fontSize: 8.5, color: DN.slate, valign: 'middle',
   })
@@ -484,7 +487,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   const rightW  = W - rightX - PAD * 0.5
 
   // Left: key findings bullets
-  slide.addText('KEY FINDINGS', { x: PAD, y: colY, w: leftW, h: 0.22, fontSize: 7.5, bold: true, color: DN.gold, charSpacing: 1.5 })
+  slide.addText('KEY FINDINGS', { x: PAD, y: colY, w: leftW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
   solidRect(slide, PAD, colY + 0.24, leftW, 0.025, DN.gold, 62)
 
   const realBullets = bullets.filter(b => b && b.length > 10)
@@ -505,13 +508,13 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
       const fy = colY + 0.34 + i * 0.74
       solidRect(slide, PAD, fy + 0.12, 0.05, 0.05, DN.gold)
       slide.addText(f.label || f.field, { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.28, fontSize: 10, bold: true, color: DN.slate })
-      slide.addText(topPct_ + '% ' + topKey, { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.44, fontSize: 12, bold: true, color: DN.white, wrap: true, lineSpacingMultiple: 1.2 })
+      slide.addText(topPct_ + '% — ' + topKey, { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.44, fontSize: 12, bold: true, color: DN.white, wrap: true, lineSpacingMultiple: 1.2 })
     })
   }
 
   // Right: themes + takeaways
   if (themes.length > 0) {
-    slide.addText('TOP THEMES', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 7.5, bold: true, color: DN.gold, charSpacing: 1.5 })
+    slide.addText('TOP THEMES', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
     solidRect(slide, rightX, colY + 0.24, rightW, 0.025, DN.gold, 62)
     const maxThemes = Math.min(themes.length, 3)
     const thH = 0.62
@@ -533,7 +536,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
 
   if (takeaways.length > 0) {
     const taY = themes.length > 0 ? colY + 0.34 + Math.min(themes.length, 3) * 0.7 + 0.2 : colY + 0.34
-    slide.addText('RECOMMENDED ACTIONS', { x: rightX, y: taY, w: rightW, h: 0.22, fontSize: 7.5, bold: true, color: DN.gold, charSpacing: 1.5 })
+    slide.addText('RECOMMENDED ACTIONS', { x: rightX, y: taY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
     solidRect(slide, rightX, taY + 0.24, rightW, 0.025, DN.gold, 62)
     takeaways.slice(0, 3).forEach(function(ta, i) {
       const ty = taY + 0.34 + i * 0.68
@@ -551,6 +554,9 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   solidRect(slide, 0, H - 0.38, W, 0.02, DN.gold, 62)
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: H - 0.34, w: W * 0.72, h: 0.28, fontSize: 7.5, color: DN.slate, valign: 'middle',
+  })
+  slide.addText('Proprietary and Confidential', {
+    x: W * 0.72, y: H - 0.34, w: W * 0.28 - PAD * 0.5, h: 0.28, fontSize: 7.5, color: DN.slate, valign: 'middle', align: 'right',
   })
 }
 
@@ -1243,11 +1249,14 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.8, y: 0.8, w: 3.6, h: 3.6, fill: { color: DN.teal, transparency: 92 }, line: { color: DN.teal, transparency: 79, width: 1 } })
   slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.1, y: 1.5, w: 2.2, h: 2.2, fill: { color: DN.teal, transparency: 96 }, line: { color: DN.tealLight, transparency: 85, width: 1 } })
 
-  // Icon initial
-  const initials: Record<string, string> = { 'Psychographic Profile': 'P', 'Demographic Breakdown': 'D', 'Core Study Questions': 'Q' }
-  slide.addText(initials[title] || title[0], {
-    x: W - 2.0, y: 1.7, w: 2.0, h: 2.0,
-    fontSize: 88, bold: true, italic: true, color: DN.tealLight, align: 'center', valign: 'middle',
+  // Logo
+  logo(slide)
+
+  // Section emoji icon
+  const sectionEmoji: Record<string, string> = { 'Psychographic Profile': '\uD83E\uDDE0', 'Demographic Breakdown': '\uD83D\uDC65', 'Core Study Questions': '\uD83D\uDCCB' }
+  slide.addText(sectionEmoji[title] || title[0], {
+    x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
+    fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
   })
 
   // Section label chip
@@ -1272,16 +1281,11 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
     fontSize: 14, color: DN.tealLight, italic: true, wrap: true,
   })
 
-  // Field count badge
-  slide.addText(String(fieldCount) + ' field' + (fieldCount !== 1 ? 's' : ''), {
-    x: PAD + 0.18, y: 4.15, w: 1.4, h: 0.36,
-    fontSize: 11, color: DN.slate, valign: 'middle',
-  })
-
   // Bottom footer
   solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
   solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText('datanautix.com', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
+  slide.addText('Proprietary and Confidential', { x: W - 3.6, y: H - 0.4, w: 3.2, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle', align: 'right' })
 }
 
 function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {

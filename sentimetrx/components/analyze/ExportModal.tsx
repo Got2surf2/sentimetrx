@@ -224,6 +224,8 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
         const writable = await handle.createWritable()
         await writable.write(blob)
         await writable.close()
+        URL.revokeObjectURL(blobUrl)
+        onClose()
         return
       } catch (err: any) {
         if (err.name === 'AbortError') return
@@ -235,12 +237,14 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     a.href = blobUrl
     a.download = suggestedName
     a.click()
+    URL.revokeObjectURL(blobUrl)
+    onClose()
   }
 
   if (step === 'done') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}>
+        onClick={function() { if (window.confirm('Discard this file without saving?')) { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() } }}>
         <div style={{ background: S.white, borderRadius: 16, padding: '40px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 320, maxWidth: 420 }}
           onClick={function(e) { e.stopPropagation() }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: S.greenBg, border: '2px solid ' + S.greenBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
@@ -256,7 +260,12 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
             style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <span style={{ fontSize: 16 }}>💾</span> Save file…
           </button>
-          <button onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}
+          <button onClick={function() {
+            if (window.confirm('Discard this file without saving?')) {
+              if (blobUrl) URL.revokeObjectURL(blobUrl)
+              onClose()
+            }
+          }}
             style={{ width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600, color: S.textMid, background: S.bg, border: '1.5px solid ' + S.border, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
             Done
           </button>
@@ -583,12 +592,22 @@ function CommentConfig({
   function hasCatData(f: SchemaField): boolean {
     return fieldCounts[f.field] == null || fieldCounts[f.field] > 0
   }
+  function annotSectionOrder(f: SchemaField): number {
+    if (f.section === 'demographic') return 0
+    if (!f.section) return 1  // categorical no section
+    return 2  // psychographic
+  }
+  function annotColor(f: SchemaField): string {
+    if (f.section === 'demographic') return '#0F7173'
+    if (f.section === 'psychographic') return '#E8622A'
+    return '#6b7280'
+  }
   const annotFields = fields.filter(function(f) {
     return (f.section === 'demographic' || f.section === 'psychographic' || (f.type === 'categorical' && !f.section)) && hasCatData(f)
-  })
+  }).sort(function(a, b) { return annotSectionOrder(a) - annotSectionOrder(b) })
   const colorFields = fields.filter(function(f) {
     return (f.section === 'demographic' || f.section === 'psychographic' || f.type === 'categorical' || f.type === 'numeric') && hasCatData(f)
-  })
+  }).sort(function(a, b) { return annotSectionOrder(a) - annotSectionOrder(b) })
 
   if (openFields.length === 0) return null
 
@@ -643,11 +662,12 @@ function CommentConfig({
           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 5 }}>
             {annotFields.slice(0, 12).map(function(f) {
               const active = commentAnnotations.includes(f.field)
+              const ac = annotColor(f)
               return (
                 <button key={f.field} onClick={function() {
                   setCommentAnnotations(active ? commentAnnotations.filter(function(x) { return x !== f.field }) : [...commentAnnotations, f.field])
                 }}
-                  style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (active ? HERMES : S.border), background: active ? S.accentBg : S.white, color: active ? HERMES : S.textMute, fontSize: 10, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (active ? ac : S.border), background: active ? ac + '15' : S.white, color: active ? ac : S.textMute, fontSize: 10, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
                   {f.label || f.field}
                 </button>
               )
@@ -669,9 +689,10 @@ function CommentConfig({
             {colorFields.slice(0, 10).map(function(f) {
               const active = commentColorField === f.field
               const isNum  = f.type === 'numeric'
+              const ac = annotColor(f)
               return (
                 <button key={f.field} onClick={function() { setCommentColorField(active ? '' : f.field) }}
-                  style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (active ? '#0F7173' : S.border), background: active ? '#e0f2f1' : S.white, color: active ? '#0F7173' : S.textMute, fontSize: 10, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (active ? ac : S.border), background: active ? ac + '15' : S.white, color: active ? ac : S.textMute, fontSize: 10, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
                   {f.label || f.field}{isNum ? ' 🔢' : ''}
                 </button>
               )
@@ -702,6 +723,8 @@ function ThemePicker({
 }) {
   if (themes.length === 0) return null
 
+  const sortedThemes = [...themes].sort(function(a: any, b: any) { return (b.count || 0) - (a.count || 0) })
+
   function toggleTheme(id: string) {
     setSelectedThemeIds(function(prev) {
       const next = new Set(prev)
@@ -730,7 +753,7 @@ function ThemePicker({
           </div>
           {/* Select all / none */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button onClick={function() { setSelectedThemeIds(function() { return new Set(themes.map(function(t: any) { return t.id })) }) }}
+            <button onClick={function() { setSelectedThemeIds(function() { return new Set(sortedThemes.map(function(t: any) { return t.id })) }) }}
               style={{ fontSize: 10, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, padding: 0 }}>
               All
             </button>
@@ -740,9 +763,9 @@ function ThemePicker({
               None
             </button>
           </div>
-          {/* Theme cards grid */}
+          {/* Theme cards grid — sorted by frequency */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-            {themes.map(function(t: any, idx: number) {
+            {sortedThemes.map(function(t: any, idx: number) {
               const color   = t.color || THEME_COLORS[idx % THEME_COLORS.length]
               const checked = selectedThemeIds.has(t.id)
               const sent    = t.sentiment || 'neutral'
