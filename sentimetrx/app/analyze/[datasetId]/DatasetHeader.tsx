@@ -120,7 +120,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
               cursor: 'pointer', flexShrink: 0,
             }}>
-            {'\uD83D\uDCCA'} Export
+            {'\uD83C\uDFAC'} StoryTime
           </button>
 
           {/* Save Session button */}

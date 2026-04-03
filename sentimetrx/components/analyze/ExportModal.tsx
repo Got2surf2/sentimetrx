@@ -75,30 +75,37 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
         const f: SchemaField[] = (d.schema_config?.fields || [])
           .filter(function(f: SchemaField) { return EXPORTABLE_TYPES.has(f.type) && f.status !== 'ignored' })
         setFields(f)
-        // Extract nonNull counts from analytics fieldSummaries for open-ended fields
+        // Extract nonNull counts from analytics fieldSummaries for all field types
         const counts: Record<string, number> = {}
         const summaries = d.analytics?.fieldSummaries || {}
         f.forEach(function(fld: SchemaField) {
-          if (fld.type === 'open-ended' && summaries[fld.field]) {
+          if (summaries[fld.field] != null) {
             counts[fld.field] = summaries[fld.field].nonNull || 0
           }
         })
         setFieldCounts(counts)
+        // Only pre-select fields that have data (or no analytics yet = unknown)
+        function fieldHasData(fld: SchemaField): boolean {
+          return counts[fld.field] == null || counts[fld.field] > 0
+        }
         const pre = new Set<string>()
-        f.forEach(function(fld) { if (fld.type === 'open-ended') pre.add(fld.field) })
+        f.forEach(function(fld) { if (fld.type === 'open-ended' && fieldHasData(fld)) pre.add(fld.field) })
         f.forEach(function(fld) {
-          if (fld.section === 'psychographic' || fld.section === 'demographic') pre.add(fld.field)
+          if ((fld.section === 'psychographic' || fld.section === 'demographic') && fieldHasData(fld)) pre.add(fld.field)
         })
         f.forEach(function(fld) {
-          if ((fld.type === 'categorical' || fld.type === 'numeric') && !fld.section && pre.size < 10) pre.add(fld.field)
+          if ((fld.type === 'categorical' || fld.type === 'numeric') && !fld.section && fieldHasData(fld) && pre.size < 10) pre.add(fld.field)
         })
         setSelected(pre)
         const defCmt: Record<string, { enabled: boolean; slides: number }> = {}
         f.filter(function(fld: SchemaField) { return fld.type === 'open-ended' }).forEach(function(fld: SchemaField) {
-          defCmt[fld.field] = { enabled: true, slides: 2 }
+          const hasData = fieldHasData(fld)
+          defCmt[fld.field] = { enabled: hasData, slides: 2 }
         })
         setCommentConfig(defCmt)
-        setCommentAnnotations(f.filter(function(fld: SchemaField) { return fld.section === 'demographic' || fld.section === 'psychographic' }).map(function(fld: SchemaField) { return fld.field }))
+        setCommentAnnotations(f.filter(function(fld: SchemaField) {
+          return (fld.section === 'demographic' || fld.section === 'psychographic') && fieldHasData(fld)
+        }).map(function(fld: SchemaField) { return fld.field }))
       })
       .catch(function() { setError('Could not load dataset fields') })
       .finally(function() { setLoading(false) })
@@ -314,7 +321,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
               ) : (
                 <>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
-                  <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
+                  <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
                   {error && <ErrorBox message={error} />}
                 </>
@@ -366,7 +373,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                         Select all
                       </button>
                     </div>
-                    <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
+                    <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   </div>
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
 
@@ -416,6 +423,7 @@ interface FieldPickerProps {
   selectAllType: (t: string) => void
   fields: any[]
   setSelected: (fn: (prev: Set<string>) => Set<string>) => void
+  fieldCounts: Record<string, number>
 }
 
 const SECTION_META: Record<string, { label: string; color: string; desc: string }> = {
@@ -424,11 +432,20 @@ const SECTION_META: Record<string, { label: string; color: string; desc: string 
   demographic:    { label: 'Demographics',           color: '#4A6572', desc: 'Audience composition' },
 }
 
-function FieldPicker({ byType, selected, toggleField, selectAllType, fields, setSelected }: FieldPickerProps) {
+function FieldPicker({ byType, selected, toggleField, selectAllType, fields, setSelected, fieldCounts }: FieldPickerProps) {
+  // For categorical/demo/psycho sections: hide fields confirmed to have 0 data
+  function hasData(f: any): boolean {
+    if (f.type === 'open-ended') return true  // open-ended filtered in CommentConfig instead
+    if (fieldCounts[f.field] == null) return true   // no analytics yet → show
+    return fieldCounts[f.field] > 0
+  }
+
   // Group by section first, then by type within each section
   const bySection: Record<string, any[]> = { core: [], psychographic: [], demographic: [] }
   fields.forEach(function(f: any) {
     const sec = (f.section === 'psychographic' || f.section === 'demographic') ? f.section : 'core'
+    // Hide zero-data categorical/demo/psycho fields
+    if ((sec === 'psychographic' || sec === 'demographic' || f.type === 'categorical') && !hasData(f)) return
     bySection[sec].push(f)
   })
 
@@ -526,10 +543,21 @@ function CommentConfig({
   commentColorField: string
   setCommentColorField: (v: string) => void
 }) {
-  const openFields  = fields.filter(function(f) { return f.type === 'open-ended' })
-  // Annotation fields: demo/psycho/categorical for tags; numeric also allowed for color coding
-  const annotFields = fields.filter(function(f) { return f.section === 'demographic' || f.section === 'psychographic' || (f.type === 'categorical' && !f.section) })
-  const colorFields = fields.filter(function(f) { return f.section === 'demographic' || f.section === 'psychographic' || f.type === 'categorical' || f.type === 'numeric' })
+  // Only show open-ended fields that have responses (or no analytics yet)
+  const openFields  = fields.filter(function(f) {
+    if (f.type !== 'open-ended') return false
+    return fieldCounts[f.field] == null || fieldCounts[f.field] > 0
+  })
+  // Annotation/color fields: hide any confirmed to have 0 data
+  function hasCatData(f: SchemaField): boolean {
+    return fieldCounts[f.field] == null || fieldCounts[f.field] > 0
+  }
+  const annotFields = fields.filter(function(f) {
+    return (f.section === 'demographic' || f.section === 'psychographic' || (f.type === 'categorical' && !f.section)) && hasCatData(f)
+  })
+  const colorFields = fields.filter(function(f) {
+    return (f.section === 'demographic' || f.section === 'psychographic' || f.type === 'categorical' || f.type === 'numeric') && hasCatData(f)
+  })
 
   if (openFields.length === 0) return null
 

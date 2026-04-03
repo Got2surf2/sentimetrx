@@ -1445,8 +1445,15 @@ export async function POST(req: Request, { params }: Params) {
   if (allRows.length > 0) {
     for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
     console.log('[pptx/comments] fetched', allRows.length, 'rows')
-    console.log('[pptx/comments] first-row keys:', Object.keys(allRows[0]).slice(0, 20))
-    console.log('[pptx/comments] normalized key map:', JSON.stringify(rowKeyMap).slice(0, 400))
+    console.log('[pptx/comments] first-row keys:', Object.keys(allRows[0]).slice(0, 30))
+    console.log('[pptx/comments] normalized key map:', JSON.stringify(rowKeyMap).slice(0, 600))
+    // Trace q3/q4 values across sample rows
+    const q3key = rowKeyMap['q3_response'] || 'q3_response'
+    const q4key = rowKeyMap['q4_response'] || 'q4_response'
+    for (let ti = 0; ti < Math.min(5, allRows.length); ti++) {
+      const r = allRows[ti]
+      console.log('[pptx/comments] row', ti, '→ q3_response(', q3key, '):', JSON.stringify(String(r[q3key] ?? '(null)')).slice(0, 80), '| q4_response(', q4key, '):', JSON.stringify(String(r[q4key] ?? '(null)')).slice(0, 80))
+    }
   } else {
     console.log('[pptx/comments] NO ROWS RETURNED from dataset_rows for dataset', params.datasetId)
   }

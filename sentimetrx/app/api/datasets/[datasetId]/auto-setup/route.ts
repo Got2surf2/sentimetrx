@@ -60,6 +60,8 @@ export async function POST(_req: Request, { params }: Params) {
     if (f.field === 'sentiment' && !f.label) f.label = 'Sentiment'
     if (f.field === 'duration_sec' && !f.label) f.label = 'Duration (seconds)'
     if (f.field === 'submitted_at' && !f.label) f.label = 'Submitted'
+    if (f.field === 'nps_followup' && !f.label) f.label = 'NPS Follow-up'
+    if (f.field === 'experience_followup' && !f.label) f.label = 'Experience Follow-up'
     if (f.field === 'q3_response' && !f.label) f.label = 'Open Response 1'
     if (f.field === 'q4_response' && !f.label) f.label = 'Open Response 2'
   })

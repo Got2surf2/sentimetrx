@@ -226,6 +226,8 @@ export function formatResponsesAsRows(
       experience_score: r.experience_score ?? null,
       sentiment:        r.sentiment        ?? null,
       duration_sec:     r.duration_sec     ?? null,
+      nps_followup:     r.payload?.openEnded?.q1 ?? null,
+      experience_followup: r.payload?.openEnded?.q2 ?? null,
       q3_response:      r.payload?.openEnded?.q3 ?? null,
       q4_response:      r.payload?.openEnded?.q4 ?? null,
       ...flattenCustomQuestions(r.payload, study.config),
@@ -242,9 +244,11 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
     { field: 'nps_score',        type: 'numeric',    sqt: 'nps' },
     { field: 'experience_score', type: 'numeric',    sqt: 'rating' },
     { field: 'sentiment',        type: 'categorical', sqt: 'single-select' },
-    { field: 'duration_sec',     type: 'numeric',    sqt: 'numeric-input' },
-    { field: 'q3_response',      type: 'open-ended', sqt: 'open-text' },
-    { field: 'q4_response',      type: 'open-ended', sqt: 'open-text' },
+    { field: 'duration_sec',         type: 'numeric',    sqt: 'numeric-input' },
+    { field: 'nps_followup',         type: 'open-ended', sqt: 'open-text', label: 'NPS Follow-up' },
+    { field: 'experience_followup',  type: 'open-ended', sqt: 'open-text', label: 'Experience Follow-up' },
+    { field: 'q3_response',          type: 'open-ended', sqt: 'open-text' },
+    { field: 'q4_response',          type: 'open-ended', sqt: 'open-text' },
   ]
   if (config.questions) {
     for (const q of config.questions) {

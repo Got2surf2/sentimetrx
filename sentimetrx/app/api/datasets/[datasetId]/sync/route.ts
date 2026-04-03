@@ -81,7 +81,24 @@ export async function POST(req: Request, { params }: Params) {
       })
     }
 
+    // Debug: trace q3/q4 data from first few responses
+    const sampleSize = Math.min(3, newResponses.length)
+    for (let di = 0; di < sampleSize; di++) {
+      const r = newResponses[di] as any
+      console.log('[sync/bridge] response', di, 'id:', r.id)
+      console.log('[sync/bridge]   payload keys:', r.payload ? Object.keys(r.payload) : 'no payload')
+      console.log('[sync/bridge]   openEnded (q1=nps_followup, q2=exp_followup, q3/q4=open):', r.payload?.openEnded)
+      console.log('[sync/bridge]   customAnswers keys:', r.payload?.customAnswers ? Object.keys(r.payload.customAnswers) : 'none')
+    }
+
     const rows = formatResponsesAsRows(newResponses as Parameters<typeof formatResponsesAsRows>[0], study as Parameters<typeof formatResponsesAsRows>[1])
+
+    // Debug: show what q3_response/q4_response look like in the first few rows
+    for (let ri = 0; ri < Math.min(3, rows.length); ri++) {
+      const row = rows[ri] as any
+      console.log('[sync/bridge] row', ri, '→ nps_followup:', JSON.stringify(row.nps_followup), '| experience_followup:', JSON.stringify(row.experience_followup), '| q3_response:', JSON.stringify(row.q3_response), '| q4_response:', JSON.stringify(row.q4_response))
+      console.log('[sync/bridge] row', ri, '→ all open-ended keys:', Object.entries(row).filter(([, v]) => typeof v === 'string' && v.length > 20).map(([k]) => k))
+    }
 
     const { data: existingBatches } = await service
       .from('dataset_rows')
