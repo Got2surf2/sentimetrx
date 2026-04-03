@@ -469,62 +469,76 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: str
   var range = max - min || 1
   var pct = Math.max(0, Math.min(1, (avg - min) / range))
   var angle = -90 + pct * 180 // -90 to 90 degrees
-  var r = 60, cx = 80, cy = 75
+  // Arc centered at (100, 100) with r=65 — fully inside 200-wide viewBox
+  var r = 65, gx = 100, gy = 100
   var arcPath = function(startAngle: number, endAngle: number, radius: number) {
     var s = (startAngle - 90) * Math.PI / 180
     var e = (endAngle - 90) * Math.PI / 180
-    var x1 = cx + radius * Math.cos(s), y1 = cy + radius * Math.sin(s)
-    var x2 = cx + radius * Math.cos(e), y2 = cy + radius * Math.sin(e)
+    var x1 = gx + radius * Math.cos(s), y1 = gy + radius * Math.sin(s)
+    var x2 = gx + radius * Math.cos(e), y2 = gy + radius * Math.sin(e)
     var largeArc = endAngle - startAngle > 180 ? 1 : 0
     return 'M ' + x1 + ' ' + y1 + ' A ' + radius + ' ' + radius + ' 0 ' + largeArc + ' 1 ' + x2 + ' ' + y2
   }
-  // Quartile ranges for color bands
-  var p25 = min + range * 0.25, p50 = min + range * 0.5, p75 = min + range * 0.75
   var vsOverall = overallAvg != null ? avg - overallAvg : null
   var vsColor = vsOverall != null ? (vsOverall >= 0 ? '#16a34a' : '#dc2626') : T.textMid
 
+  // All content lives inside the SVG so it serialises cleanly for PNG export
   return (
-    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 18px', textAlign: 'center' }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 8 }}>{label}</div>
-      <svg viewBox="0 0 160 100" style={{ width: '100%', maxWidth: 200, margin: '0 auto', display: 'block' }}>
-        {/* Background bands: bottom 25% (pink), middle 50% (amber), top 25% (green) */}
+    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '8px', textAlign: 'center' }}>
+      <svg viewBox="0 0 200 205" style={{ width: '100%', maxWidth: 220, margin: '0 auto', display: 'block' }}>
+        <defs><style>{'text { font-family: system-ui, -apple-system, Arial, sans-serif; }'}</style></defs>
+
+        {/* Label */}
+        <text x="100" y="20" textAnchor="middle" style={{ fontSize: 13, fontWeight: 700, fill: T.text }}>{label}</text>
+
+        {/* Background bands: bottom 25% pink, middle 50% amber, top 25% green */}
         <path d={arcPath(-90, -45, r)} fill="none" stroke="#fecdd3" strokeWidth={14} strokeLinecap="round" />
         <path d={arcPath(-45, 45, r)} fill="none" stroke="#fed7aa" strokeWidth={14} strokeLinecap="round" />
         <path d={arcPath(45, 90, r)} fill="none" stroke="#bbf7d0" strokeWidth={14} strokeLinecap="round" />
+
         {/* Needle */}
         {(function() {
           var a = (angle - 90) * Math.PI / 180
-          var nx = cx + (r - 20) * Math.cos(a), ny = cy + (r - 20) * Math.sin(a)
-          return <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={T.accent} strokeWidth={2.5} strokeLinecap="round" />
+          var nx = gx + (r - 22) * Math.cos(a), ny = gy + (r - 22) * Math.sin(a)
+          return <line x1={gx} y1={gy} x2={nx} y2={ny} stroke={T.accent} strokeWidth={2.5} strokeLinecap="round" />
         })()}
         {/* Center dot */}
-        <circle cx={cx} cy={cy} r={4} fill={T.accent} />
+        <circle cx={gx} cy={gy} r={4} fill={T.accent} />
         {/* Median marker */}
         {(function() {
           var mPct = Math.max(0, Math.min(1, (median - min) / range))
           var mAngle = (-90 + mPct * 180 - 90) * Math.PI / 180
-          var mx = cx + (r + 2) * Math.cos(mAngle), my = cy + (r + 2) * Math.sin(mAngle)
-          return <line x1={mx} y1={my} x2={mx + 0} y2={my - 6} stroke="#2563eb" strokeWidth={2} />
+          var mx = gx + (r + 4) * Math.cos(mAngle), my = gy + (r + 4) * Math.sin(mAngle)
+          return <line x1={mx} y1={my} x2={mx} y2={my - 8} stroke="#2563eb" strokeWidth={2} />
         })()}
+
         {/* Value */}
-        <text x={cx} y={cy - 14} textAnchor="middle" style={{ fontSize: 28, fontWeight: 800, fill: T.text }}>{avg.toFixed(1)}</text>
+        <text x={gx} y={gy - 14} textAnchor="middle" style={{ fontSize: 28, fontWeight: 800, fill: T.text }}>{avg.toFixed(1)}</text>
         {/* Scale labels */}
-        <text x={cx - r - 6} y={cy + 12} textAnchor="middle" style={{ fontSize: 8, fill: T.textFaint }}>{min.toFixed(1)}</text>
-        <text x={cx + r + 6} y={cy + 12} textAnchor="middle" style={{ fontSize: 8, fill: T.textFaint }}>{max.toFixed(1)}</text>
+        <text x={gx - r - 8} y={gy + 13} textAnchor="middle" style={{ fontSize: 8, fill: T.textFaint }}>{min.toFixed(1)}</text>
+        <text x={gx + r + 8} y={gy + 13} textAnchor="middle" style={{ fontSize: 8, fill: T.textFaint }}>{max.toFixed(1)}</text>
+
+        {/* Stats row */}
+        <text x={vsOverall != null ? '40' : '67'} y="130" textAnchor="middle" style={{ fontSize: 9, fill: T.textFaint }}>N</text>
+        <text x={vsOverall != null ? '40' : '67'} y="144" textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: T.text }}>{n.toLocaleString()}</text>
+        <text x={vsOverall != null ? '100' : '133'} y="130" textAnchor="middle" style={{ fontSize: 9, fill: T.textFaint }}>MEDIAN</text>
+        <text x={vsOverall != null ? '100' : '133'} y="144" textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: '#2563eb' }}>{median.toFixed(1)}</text>
+        {vsOverall != null && <>
+          <text x="160" y="130" textAnchor="middle" style={{ fontSize: 9, fill: T.textFaint }}>VS AVG</text>
+          <text x="160" y="144" textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: vsColor }}>{(vsOverall >= 0 ? '+' : '') + vsOverall.toFixed(1)}</text>
+        </>}
+
+        {/* Range */}
+        <text x="100" y="162" textAnchor="middle" style={{ fontSize: 9, fill: T.textFaint }}>{'RANGE ' + min.toFixed(1) + '–' + max.toFixed(1)}</text>
+
+        {/* Legend */}
+        <rect x="8" y="172" width="8" height="8" rx="2" fill="#fecdd3" />
+        <text x="20" y="180" style={{ fontSize: 8, fill: T.textFaint }}>Bottom 25%</text>
+        <rect x="76" y="172" width="8" height="8" rx="2" fill="#fed7aa" />
+        <text x="88" y="180" style={{ fontSize: 8, fill: T.textFaint }}>Middle 50%</text>
+        <rect x="148" y="172" width="8" height="8" rx="2" fill="#bbf7d0" />
+        <text x="160" y="180" style={{ fontSize: 8, fill: T.textFaint }}>Top 25%</text>
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, fontSize: 11, marginTop: 4 }}>
-        <div><span style={{ color: T.textFaint }}>N</span> <strong style={{ color: T.text }}>{n.toLocaleString()}</strong></div>
-        <div><span style={{ color: T.textFaint }}>MEDIAN</span> <strong style={{ color: '#2563eb' }}>{median.toFixed(1)}</strong></div>
-        {vsOverall != null && <div><span style={{ color: T.textFaint }}>VS OVERALL</span> <strong style={{ color: vsColor }}>{(vsOverall >= 0 ? '+' : '') + vsOverall.toFixed(2)}</strong></div>}
-      </div>
-      <div style={{ fontSize: 10, color: T.textFaint, marginTop: 6 }}>
-        RANGE <strong style={{ color: T.textMid }}>{min.toFixed(1)}–{max.toFixed(1)}</strong>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, fontSize: 8, color: T.textFaint, marginTop: 6 }}>
-        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#fecdd3', marginRight: 2, verticalAlign: 'middle' }} />Bottom 25%</span>
-        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#fed7aa', marginRight: 2, verticalAlign: 'middle' }} />Middle 50%</span>
-        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#bbf7d0', marginRight: 2, verticalAlign: 'middle' }} />Top 25%</span>
-      </div>
     </div>
   )
 }
@@ -965,27 +979,57 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     if (!chartBodyRef.current) return
     var svgEls = Array.from(chartBodyRef.current.querySelectorAll('svg')) as SVGElement[]
     if (!svgEls.length) return
-    // Combine all SVGs horizontally onto one canvas
-    var rects = svgEls.map(function(s) { return s.getBoundingClientRect() })
-    var totalW = rects.reduce(function(sum, r) { return sum + r.width }, 0)
-    var maxH = rects.reduce(function(max, r) { return Math.max(max, r.height) }, 0)
+
+    // Grid layout: max 4 columns, consistent cell size
+    var COLS = Math.min(svgEls.length, 4)
+    var ROWS = Math.ceil(svgEls.length / COLS)
+    var CELL_W = 250, CELL_H = 265, PAD = 14, MARGIN = 20
     var scale = 2
+
+    var totalW = MARGIN * 2 + COLS * CELL_W + (COLS - 1) * PAD
+    var totalH = MARGIN * 2 + ROWS * CELL_H + (ROWS - 1) * PAD
+
     var canvas = document.createElement('canvas')
-    canvas.width = totalW * scale; canvas.height = maxH * scale
+    canvas.width = totalW * scale; canvas.height = totalH * scale
     var ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
-    var pending = svgEls.length, offsetX = 0
+    ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    var drawRoundRect = function(x: number, y: number, w: number, h: number, rad: number) {
+      ctx.beginPath(); ctx.moveTo(x + rad, y)
+      ctx.lineTo(x + w - rad, y); ctx.arcTo(x + w, y, x + w, y + rad, rad)
+      ctx.lineTo(x + w, y + h - rad); ctx.arcTo(x + w, y + h, x + w - rad, y + h, rad)
+      ctx.lineTo(x + rad, y + h); ctx.arcTo(x, y + h, x, y + h - rad, rad)
+      ctx.lineTo(x, y + rad); ctx.arcTo(x, y, x + rad, y, rad); ctx.closePath()
+    }
+
+    var pending = svgEls.length
     svgEls.forEach(function(svgEl, idx) {
-      var w = rects[idx].width, h = rects[idx].height
+      var col = idx % COLS, row = Math.floor(idx / COLS)
+      var cx = (MARGIN + col * (CELL_W + PAD)) * scale
+      var cy = (MARGIN + row * (CELL_H + PAD)) * scale
+
+      // Draw card background
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = scale
+      drawRoundRect(cx, cy, CELL_W * scale, CELL_H * scale, 12 * scale)
+      ctx.fill(); ctx.stroke()
+
       var clone = svgEl.cloneNode(true) as SVGElement
-      clone.setAttribute('width', String(w)); clone.setAttribute('height', String(h))
+      clone.setAttribute('width', String(CELL_W)); clone.setAttribute('height', String(CELL_H))
+      // Inject font-family into defs so it applies during blob render
+      var svgNS = 'http://www.w3.org/2000/svg'
+      var defs = clone.querySelector('defs') as Element | null
+      if (!defs) { defs = document.createElementNS(svgNS, 'defs'); clone.insertBefore(defs, clone.firstChild) }
+      var styleEl = document.createElementNS(svgNS, 'style')
+      styleEl.textContent = 'text { font-family: system-ui, -apple-system, Arial, sans-serif; }'
+      defs.insertBefore(styleEl, defs.firstChild)
+
       var svgStr = new XMLSerializer().serializeToString(clone)
       var blob = new Blob([svgStr], { type: 'image/svg+xml' })
       var url = URL.createObjectURL(blob)
       var img = new window.Image()
-      var capturedX = offsetX
+      var capX = cx, capY = cy
       img.onload = function() {
-        ctx.drawImage(img, capturedX * scale, 0, w * scale, h * scale)
+        ctx.drawImage(img, capX, capY, CELL_W * scale, CELL_H * scale)
         URL.revokeObjectURL(url)
         pending--
         if (pending === 0) {
@@ -994,7 +1038,6 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
         }
       }
       img.src = url
-      offsetX += w
     })
   }
 
