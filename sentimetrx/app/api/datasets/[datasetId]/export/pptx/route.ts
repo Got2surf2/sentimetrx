@@ -1444,6 +1444,11 @@ export async function POST(req: Request, { params }: Params) {
   const rowKeyMap: Record<string, string> = {}  // normalizedKey → actualKey in first row
   if (allRows.length > 0) {
     for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
+    console.log('[pptx/comments] fetched', allRows.length, 'rows')
+    console.log('[pptx/comments] first-row keys:', Object.keys(allRows[0]).slice(0, 20))
+    console.log('[pptx/comments] normalized key map:', JSON.stringify(rowKeyMap).slice(0, 400))
+  } else {
+    console.log('[pptx/comments] NO ROWS RETURNED from dataset_rows for dataset', params.datasetId)
   }
   function rowVal(row: Record<string, any>, fieldKey: string): string {
     // Direct match first, then normalized fallback
@@ -1510,6 +1515,8 @@ export async function POST(req: Request, { params }: Params) {
           const annotFields = commentAnnotations.length > 0
             ? selectedFields.filter(sf => commentAnnotations.includes(sf.field))
             : commentDemoFields
+          const resolvedKey = rowKeyMap[normalize(f.field)] || f.field
+          console.log('[pptx/comments] field:', f.field, '| resolved row key:', resolvedKey, '| sample value:', allRows.length > 0 ? String(allRows[0][resolvedKey] || '(empty)').slice(0, 80) : 'no rows')
           const commentItems: CommentItem[] = allRows
             .map(function(row) {
               const text = rowVal(row, f.field)
@@ -1521,6 +1528,7 @@ export async function POST(req: Request, { params }: Params) {
             })
             .filter(function(c) { return c.text.length > 8 })
             .slice(0, maxComments)
+          console.log('[pptx/comments] field', f.field, '→', commentItems.length, 'comments extracted (from', allRows.length, 'rows)')
           if (commentItems.length > 0) {
             const numSlides = Math.ceil(commentItems.length / perSlide)
             for (let si = 0; si < numSlides; si++) {

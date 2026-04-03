@@ -293,11 +293,31 @@ export async function computeAnalytics(
       var batchRows: Record<string, unknown>[] = batches[bi].rows || []
       totalRows += batchRows.length
 
+      // Build a normalized-key → actual-key map from the first row so we can
+      // match schema field keys (snake_case) against raw row keys (any casing/spacing).
+      // e.g. schema "general_experience_comments" → row "General Experience Comments"
+      var keyMap: Record<string, string> = {}
+      if (batchRows.length > 0) {
+        for (var rk of Object.keys(batchRows[0])) {
+          var norm = rk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+          keyMap[norm] = rk
+        }
+        // Log first-row keys once per compute for debugging
+        if (page === 0 && bi === 0) {
+          console.log('[analyticsCompute] first-row keys:', Object.keys(batchRows[0]).slice(0, 20))
+          console.log('[analyticsCompute] schema field keys:', schema.fields.map(function(f: any) { return f.field }).slice(0, 20))
+        }
+      }
+
       for (var ri = 0; ri < batchRows.length; ri++) {
         var row = batchRows[ri]
         for (var fi = 0; fi < schema.fields.length; fi++) {
           var accum = accumulators[schema.fields[fi].field]
-          if (accum) accumRow(accum, row[schema.fields[fi].field])
+          if (!accum) continue
+          var fieldKey = schema.fields[fi].field
+          // Direct match first; fall back to normalized key lookup
+          var val = row[fieldKey] !== undefined ? row[fieldKey] : row[keyMap[fieldKey] || '']
+          accumRow(accum, val)
         }
       }
     }
