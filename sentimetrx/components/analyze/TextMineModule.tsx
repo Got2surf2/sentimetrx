@@ -52,12 +52,13 @@ interface DatasetAnalytics {
 }
 
 interface Props {
-  datasetId: string
-  schema: SchemaConfig
-  analytics: DatasetAnalytics | null
-  savedThemeModel: ThemeModel | null
-  datasetSource?: 'upload' | 'study'
-  anaLibrary?: string | null
+  datasetId:         string
+  schema:            SchemaConfig
+  analytics:         DatasetAnalytics | null
+  savedThemeModel:   ThemeModel | null
+  datasetSource?:    'upload' | 'study'
+  anaLibrary?:       string | null
+  initialOpenEditor?: boolean
 }
 
 type SubTab = 'themes' | 'clouds' | 'compare' | 'comments'
@@ -700,7 +701,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
-export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, anaLibrary }: Props) {
+export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, anaLibrary, initialOpenEditor }: Props) {
   const totalRows = analytics?.totalRows ?? 0
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [rowsLoading, setRowsLoading] = useState(false)
@@ -729,7 +730,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
-  const [showThemeEditor, setShowThemeEditor] = useState(false)
+  const [showThemeEditor, setShowThemeEditor] = useState(initialOpenEditor || false)
   const [industryThemes, setIndustryThemes] = useState<Record<string, Theme[]> | null>(null)
   const [industryLoading, setIndustryLoading] = useState(true)
 

@@ -154,6 +154,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             <div style={{ position: 'absolute', right: 0, top: 32, background: 'white', border: '1px solid #e8e8ec', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.10)', zIndex: 20, minWidth: 168, padding: '4px 0', overflow: 'hidden' }}>
               {[
                 { label: 'Rename', action: function() { setRenaming(true); setMenuOpen(false) } },
+                { label: 'Edit themes', action: function() { router.push('/analyze/' + dataset.id + '/textmine'); setMenuOpen(false) } },
                 { label: dataset.visibility === 'private' ? 'Make public' : 'Make private', action: function() { onToggleVisibility(dataset.id, dataset.visibility === 'private' ? 'public' : 'private'); setMenuOpen(false) } },
                 { label: isArchived ? 'Unarchive' : 'Archive', action: function() { onToggleArchive(dataset.id, isArchived ? 'active' : 'archived'); setMenuOpen(false) } },
               ].map(function(item) {
@@ -220,6 +221,35 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           )
         ) : null}
       </div>
+
+      {/* Transfer panel — admin only */}
+      {showTransfer && (
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>
+            Move to organization{dataset.study_id ? ' (dataset + linked study)' : ''}
+          </div>
+          <select
+            value={transferOrgId}
+            onChange={function(e) { setTransferOrgId(e.target.value) }}
+            style={{ padding: '6px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 7, outline: 'none', fontFamily: 'inherit', background: 'white', color: '#111827' }}>
+            <option value="">— Select org —</option>
+            {allOrgs.map(function(o) { return <option key={o.id} value={o.id}>{o.name}</option> })}
+          </select>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={handleTransferConfirm}
+              disabled={!transferOrgId || transferring}
+              style={{ flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 700, color: 'white', background: transferring || !transferOrgId ? '#9ca3af' : HERMES, border: 'none', borderRadius: 7, cursor: transferring || !transferOrgId ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+              {transferring ? 'Moving…' : 'Move'}
+            </button>
+            <button
+              onClick={function() { setShowTransfer(false); setTransferOrgId('') }}
+              style={{ padding: '6px 12px', fontSize: 11, color: '#6b7280', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 3. Stats row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
