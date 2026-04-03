@@ -157,7 +157,8 @@ async function generateNarratives(
   datasetName: string,
   totalRows: number,
   audience: string,
-  fields: SelectedField[]
+  fields: SelectedField[],
+  instructions?: string
 ): Promise<Narratives> {
 
   const audienceNote = {
@@ -187,11 +188,13 @@ async function generateNarratives(
     return `${f.label}: no data`
   }).join('\n\n')
 
+  const customInstructions = instructions ? `\n\nCLIENT INSTRUCTIONS (follow these precisely — they override any defaults):\n${instructions}\n` : ''
+
   const prompt = `You are a senior consultant preparing a data readout presentation. Write compelling, specific insights — not generic observations.
 
 Dataset: "${datasetName}" — ${totalRows.toLocaleString()} responses
 Audience: ${audience}. ${audienceNote}
-
+${customInstructions}
 FIELD DATA:
 ${fieldBlocks}
 
@@ -867,8 +870,10 @@ export async function POST(req: Request, { params }: Params) {
   const body = await req.json().catch(() => ({}))
   const selectedFieldNames: string[] = body.fields || []
   const audience: string             = body.audience || 'stakeholder'
+  const mode: string                 = body.mode || 'quick'
+  const instructions: string         = body.instructions || ''
 
-  if (selectedFieldNames.length === 0) {
+  if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
   }
 
@@ -891,7 +896,13 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Analytics not yet computed — run compute first' }, { status: 400 })
   }
 
-  const selectedFields: SelectedField[] = selectedFieldNames
+  // Builder mode with no explicit fields → use all schema fields
+  const allSchemaFields: string[] = (schema?.fields || [])
+    .filter((f: any) => ['open-ended', 'categorical', 'numeric', 'date'].includes(f.type) && f.status !== 'ignored')
+    .map((f: any) => f.field)
+  const fieldNamesToUse = selectedFieldNames.length > 0 ? selectedFieldNames : allSchemaFields
+
+  const selectedFields: SelectedField[] = fieldNamesToUse
     .map(function(fieldName) {
       const schemaField = (schema?.fields || []).find((f: any) => f.field === fieldName)
       if (!schemaField) return null
@@ -912,7 +923,7 @@ export async function POST(req: Request, { params }: Params) {
   }
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (apiKey) {
-    try { narratives = await generateNarratives(apiKey, datasetName, analytics.totalRows, audience, selectedFields) }
+    try { narratives = await generateNarratives(apiKey, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error('[export/pptx] AI error:', e) }
   }
 

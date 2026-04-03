@@ -111,7 +111,6 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
       <div className="flex items-center gap-0.5 flex-shrink-0">
         {navLink('dashboard', '/dashboard', 'Studies')}
         {analyzeEnabled && navLink('analyze', '/analyze', 'Analyze')}
-        {navLink('test-spinner', '/test-spinner', 'TS')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />
         <form action="/api/auth/signout" method="POST">
