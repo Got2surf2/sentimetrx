@@ -13,25 +13,36 @@ interface Params { params: { datasetId: string } }
 
 // ── Datanautix brand palette ──────────────────────────────────────────────────
 const DN = {
-  teal:        '2A7A6F',
-  tealDark:    '1D5A52',
-  tealLight:   '3D9E91',
-  tealPale:    'E6F4F2',
-  tealPale2:   'C8E8E4',
+  // Teal family (brand primary)
+  teal:        '0F7173',
+  tealDark:    '0A4F51',
+  tealLight:   '1DA39A',
+  tealPale:    'E0F2F1',
+  tealPale2:   'B2DFDB',
+  // Navy family (professional dark)
+  navy:        '0D2B45',
+  navyMid:     '0F3A54',
+  navyLight:   '1A5070',
+  // Gold accent (replaces orange in slide design; orange kept for logo only)
+  gold:        'E8B84B',
+  goldLight:   'F5D98A',
+  goldPale:    'FFF8E1',
+  // Orange (logo / brand identity only)
   orange:      'E85A1A',
   orangeLight: 'F07040',
   orangePale:  'FEF0E8',
-  orangePale2: 'FAD5C2',
-  ink:         '1A1714',
-  inkSoft:     '2E2A25',
-  cream:       'FAF6F0',
-  parchment:   'F2EBE0',
-  warmMid:     '8C7E6E',
-  warmLight:   'B8ADA0',
-  divider:     'E4DDD4',
+  // Neutral
+  ink:         '0D2B45',
+  inkSoft:     '1A3A50',
+  slate:       '8FA3AE',
+  slateDark:   '4A6572',
+  slateLight:  'E8EDEF',
+  slateCard:   'F4F7F8',
+  divider:     'D4DDE2',
   white:       'FFFFFF',
-  greenLight:  'D1FAE5',
+  // Semantic
   green:       '059669',
+  greenLight:  'D1FAE5',
   amber:       'D97706',
   amberLight:  'FEF3C7',
   red:         'DC2626',
@@ -49,22 +60,25 @@ const PAD = 0.42
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-function bg(slide: any, pptx: any, color = DN.cream) {
+function bg(slide: any, pptx: any, color = DN.slateCard) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color }, line: { width: 0 } })
 }
 
-function hdr(slide: any, pptx: any, title: string, color = DN.teal, subtitle?: string) {
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: HH, fill: { color }, line: { width: 0 } })
-  // Orange accent line at header bottom
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: HH - 0.04, w: W, h: 0.04, fill: { color: DN.orange }, line: { width: 0 } })
+function hdr(slide: any, pptx: any, title: string, _color = DN.navy, subtitle?: string) {
+  // Thin gold bar at very top
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.06, fill: { color: DN.gold }, line: { width: 0 } })
+  // Navy header band
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: W, h: HH - 0.06, fill: { color: DN.navy }, line: { width: 0 } })
+  // Left teal accent strip inside header
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
   slide.addText(title, {
-    x: PAD, y: 0.06, w: W - PAD * 2 - 2.4, h: subtitle ? 0.5 : HH - 0.12,
+    x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: subtitle ? 0.5 : HH - 0.18,
     fontSize: subtitle ? 17 : 20, bold: true, color: DN.white, valign: 'middle', wrap: true,
   })
   if (subtitle) {
     slide.addText(subtitle, {
-      x: PAD, y: 0.54, w: W - PAD * 2 - 2.4, h: 0.32,
-      fontSize: 10, color: 'B8D4D1', valign: 'middle', italic: true,
+      x: PAD, y: 0.56, w: W - PAD * 2 - 2.4, h: 0.32,
+      fontSize: 10, color: DN.tealLight, valign: 'middle', italic: true,
     })
   }
 }
@@ -72,25 +86,25 @@ function hdr(slide: any, pptx: any, title: string, color = DN.teal, subtitle?: s
 function logo(slide: any) {
   // "data" in orange, "nautix" in teal — all lowercase, right side of header
   slide.addText('data', {
-    x: W - 2.3, y: 0.06, w: 1.0, h: HH - 0.12,
-    fontSize: 16, bold: true, italic: true, color: DN.orangeLight,
+    x: W - 2.3, y: 0.1, w: 1.0, h: HH - 0.18,
+    fontSize: 15, bold: true, italic: true, color: DN.orangeLight,
     valign: 'middle', align: 'right',
   })
   slide.addText('nautix', {
-    x: W - 1.3, y: 0.06, w: 1.1, h: HH - 0.12,
-    fontSize: 16, bold: true, italic: true, color: DN.tealLight,
+    x: W - 1.3, y: 0.1, w: 1.1, h: HH - 0.18,
+    fontSize: 15, bold: true, italic: true, color: DN.tealLight,
     valign: 'middle', align: 'left',
   })
 }
 
 function footer(slide: any, datasetName: string, pageNum: number) {
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.02, fill: { color: DN.divider }, line: { width: 0 } })
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.015, fill: { color: DN.teal + '60' }, line: { width: 0 } })
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
-    x: PAD, y: FY, w: W * 0.72, h: 0.26, fontSize: 7.5, color: DN.warmLight, valign: 'middle',
+    x: PAD, y: FY, w: W * 0.72, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
   slide.addText(String(pageNum), {
     x: W - PAD - 0.4, y: FY, w: 0.4, h: 0.26,
-    fontSize: 7.5, color: DN.warmLight, align: 'right', valign: 'middle',
+    fontSize: 7.5, color: DN.slate, align: 'right', valign: 'middle',
   })
 }
 
