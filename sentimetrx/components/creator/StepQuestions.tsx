@@ -344,6 +344,14 @@ function QuestionCard({
               className={inputCls} />
           </div>
 
+          {/* Analytics display alias */}
+          <div>
+            <label className={labelCls}>Analytics label <span className="text-gray-400 font-normal">(short name shown in charts &amp; PPTX)</span></label>
+            <input type="text" value={(q as any).analyticsLabel || ''} onChange={e => set({ analyticsLabel: e.target.value } as any)}
+              placeholder={q.prompt ? q.prompt.slice(0, 50) : 'Short label for analytics reports'}
+              className={inputCls} />
+          </div>
+
           {/* Required toggle */}
           <Toggle value={!!q.required} onChange={v => set({ required: v })}
             label={q.required ? 'Required -- respondent must answer' : 'Optional -- respondent can skip'} />

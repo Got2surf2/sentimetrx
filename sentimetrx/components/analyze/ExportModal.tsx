@@ -63,6 +63,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   const [fileName,     setFileName]     = useState('')
   const [commentConfig,      setCommentConfig]      = useState<Record<string, { enabled: boolean; slides: number }>>({})
   const [commentAnnotations, setCommentAnnotations] = useState<string[]>([])
+  const [commentColorField,  setCommentColorField]  = useState<string>('')
 
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
@@ -118,7 +119,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     const name = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_report.pptx'
     setFileName(name)
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField }
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
       const res = await fetch('/api/datasets/' + datasetId + '/export/pptx', {
         method: 'POST',
@@ -274,7 +275,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                 <>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
-                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} />
+                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
                   {error && <ErrorBox message={error} />}
                 </>
               )}
@@ -327,7 +328,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                     </div>
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
                   </div>
-                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} />
+                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
 
                   {error && <ErrorBox message={error} />}
                 </>
@@ -472,22 +473,30 @@ function CommentConfig({
   setCommentConfig,
   commentAnnotations,
   setCommentAnnotations,
+  commentColorField,
+  setCommentColorField,
 }: {
   fields: SchemaField[]
   commentConfig: Record<string, { enabled: boolean; slides: number }>
   setCommentConfig: (fn: (prev: Record<string, { enabled: boolean; slides: number }>) => Record<string, { enabled: boolean; slides: number }>) => void
   commentAnnotations: string[]
   setCommentAnnotations: (v: string[]) => void
+  commentColorField: string
+  setCommentColorField: (v: string) => void
 }) {
-  const openFields = fields.filter(function(f) { return f.type === 'open-ended' })
+  const openFields  = fields.filter(function(f) { return f.type === 'open-ended' })
   const annotFields = fields.filter(function(f) { return f.section === 'demographic' || f.section === 'psychographic' || (f.type === 'categorical' && !f.section) })
 
   if (openFields.length === 0) return null
 
+  const anyEnabled = openFields.some(function(f) { return (commentConfig[f.field] || { enabled: true }).enabled })
+
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: S.textFaint, textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 }}>
-        Comment Slides
+    <div style={{ marginBottom: 14, border: '1.5px solid #0F717330', borderRadius: 10, padding: '14px 14px 10px', background: '#f0fdf480' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 14 }}>💬</span>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0F7173', flex: 1 }}>Comment Slides</div>
+        <span style={{ fontSize: 10, color: S.textFaint }}>Verbatim response cards per open-ended field</span>
       </div>
 
       {/* Open-ended fields — enabled + slide count */}
@@ -519,9 +528,9 @@ function CommentConfig({
       })}
 
       {/* Annotation fields for comment cards */}
-      {annotFields.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 9, color: S.textFaint, marginBottom: 5 }}>Show on each comment card:</div>
+      {anyEnabled && annotFields.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 9, color: S.textMute, fontWeight: 600, marginBottom: 5 }}>Show as tags on each card:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 5 }}>
             {annotFields.slice(0, 12).map(function(f) {
               const active = commentAnnotations.includes(f.field)
@@ -535,6 +544,30 @@ function CommentConfig({
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Color-code cards by field value */}
+      {anyEnabled && annotFields.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 9, color: S.textMute, fontWeight: 600, marginBottom: 5 }}>Color-code cards by:</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 5 }}>
+            <button
+              onClick={function() { setCommentColorField('') }}
+              style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (commentColorField === '' ? HERMES : S.border), background: commentColorField === '' ? S.accentBg : S.white, color: commentColorField === '' ? HERMES : S.textMute, fontSize: 10, fontWeight: commentColorField === '' ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+              None
+            </button>
+            {annotFields.slice(0, 8).map(function(f) {
+              const active = commentColorField === f.field
+              return (
+                <button key={f.field} onClick={function() { setCommentColorField(active ? '' : f.field) }}
+                  style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (active ? '#0F7173' : S.border), background: active ? '#e0f2f1' : S.white, color: active ? '#0F7173' : S.textMute, fontSize: 10, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {f.label || f.field}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 9, color: S.textFaint, marginTop: 4 }}>Each card's left accent strip will be colored by the selected field's value.</div>
         </div>
       )}
     </div>

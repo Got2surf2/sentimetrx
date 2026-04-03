@@ -512,12 +512,17 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
     const thH = 0.62
     themes.slice(0, maxThemes).forEach(function(t: any, i: number) {
       const ty = colY + 0.34 + i * (thH + 0.08)
-      const hitPct = totalRows > 0 ? Math.round((t.count || 0) / totalRows * 100) : 0
+      const hasData  = (t.count || 0) > 0
+      const hitPct   = hasData && totalRows > 0 ? Math.round(t.count / totalRows * 100) : 0
       solidRect(slide, rightX, ty, rightW, thH, DN.navyMid)
-      solidRect(slide, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal + '40')
-      solidRect(slide, rightX, ty, 0.05, thH, DN.teal)
+      if (hasData) solidRect(slide, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal + '40')
+      solidRect(slide, rightX, ty, 0.05, thH, hasData ? DN.teal : DN.slate)
       slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.65, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle' })
-      slide.addText(hitPct + '%', { x: rightX + rightW - 0.52, y: ty + 0.06, w: 0.46, h: thH - 0.12, fontSize: 12, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
+      if (hasData) {
+        slide.addText(hitPct + '%', { x: rightX + rightW - 0.52, y: ty + 0.06, w: 0.46, h: thH - 0.12, fontSize: 12, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
+      } else {
+        slide.addText('Insufficient data', { x: rightX + rightW - 1.1, y: ty + 0.06, w: 1.04, h: thH - 0.12, fontSize: 8, color: DN.slate, align: 'right', valign: 'middle', italic: true })
+      }
     })
   }
 
@@ -989,7 +994,16 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   footer(slide, datasetName, pageNum)
 }
 
-interface CommentItem { text: string; demos: Array<{ label: string; value: string }> }
+interface CommentItem { text: string; demos: Array<{ label: string; value: string }>; colorValue?: string }
+
+// Deterministic hue from a string value → hex color for card accent strip
+function valueToColor(val: string): string {
+  // Cycle through a set of pleasant accent colors
+  const palette = [DN.teal, DN.gold, '7C3AED', DN.green, 'E85A1A', DN.navyLight, '0891B2', 'DB2777', '65A30D', '9333EA']
+  let hash = 0
+  for (let i = 0; i < val.length; i++) hash = (hash * 31 + val.charCodeAt(i)) & 0xffff
+  return palette[hash % palette.length]
+}
 
 function buildCommentsSlide(
   datasetName: string,
@@ -1023,9 +1037,10 @@ function buildCommentsSlide(
     const hasDemos = c.demos.length > 0
     const demoRowH = 0.28
 
-    // Card background + left teal strip
+    // Card background + left accent strip (color from colorValue if present)
+    const stripColor = c.colorValue ? valueToColor(c.colorValue) : DN.teal
     rect(slide, cx, cy, cardW, cardH, DN.white, 0.06, DN.divider)
-    solidRect(slide, cx, cy, 0.06, cardH, DN.teal)
+    solidRect(slide, cx, cy, 0.06, cardH, stripColor)
 
     // Opening curly-quote mark
     slide.addText('\u201C', {
@@ -1337,7 +1352,8 @@ export async function POST(req: Request, { params }: Params) {
   const mode: string                 = body.mode || 'quick'
   const instructions: string         = body.instructions || ''
   const commentConfig: Record<string, { enabled: boolean; slides: number }> = body.commentConfig || {}
-  const commentAnnotations: string[] = body.commentAnnotations || []
+  const commentAnnotations: string[]  = body.commentAnnotations || []
+  const commentColorField: string     = body.commentColorField  || ''
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -1451,7 +1467,8 @@ export async function POST(req: Request, { params }: Params) {
               const demos = annotFields
                 .map(function(df) { return { label: df.label, value: String(row[df.field] || '').trim() } })
                 .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
-              return { text, demos }
+              const colorValue = commentColorField ? String(row[commentColorField] || '').trim() : undefined
+              return { text, demos, colorValue }
             })
             .filter(function(c) { return c.text.length > 20 })
             .slice(0, maxComments)

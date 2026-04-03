@@ -42,8 +42,13 @@ export async function POST(_req: Request, { params }: Params) {
     study.config.questions.forEach(function(q: any) {
       var col = q.exportLabel || q.prompt || q.id
       var field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
-      if (field && q.prompt) {
-        field.label = q.prompt.length > 60 ? q.prompt.slice(0, 57) + '...' : q.prompt
+      if (field) {
+        // analyticsLabel takes priority; fall back to truncated prompt
+        if (q.analyticsLabel) {
+          field.label = q.analyticsLabel
+        } else if (q.prompt) {
+          field.label = q.prompt.length > 60 ? q.prompt.slice(0, 57) + '...' : q.prompt
+        }
       }
     })
   }
