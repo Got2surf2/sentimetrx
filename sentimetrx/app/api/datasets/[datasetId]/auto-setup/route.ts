@@ -83,10 +83,14 @@ export async function POST(_req: Request, { params }: Params) {
     var anaThemes = industryThemes.map(function(t) {
       return {
         id: t.id,
-        label: t.name,
+        name: t.name,
         keywords: t.keywords,
         color: SENTIMENT_COLORS[t.sentiment] || '#6b7280',
         description: t.description,
+        sentiment: t.sentiment,
+        count: 0,
+        percentage: 0,
+        relatedThemes: [],
       }
     })
     themeUpdate.theme_model = {

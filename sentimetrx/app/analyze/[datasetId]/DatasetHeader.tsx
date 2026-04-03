@@ -119,10 +119,19 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           )}
         </div>
 
-        {/* Dataset name pill */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0, minWidth: 0, maxWidth: 220 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'white', background: 'rgba(255,255,255,.2)', borderRadius: 20, padding: '3px 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }} title={dataset.name}>
+        {/* Dataset name + source pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0, minWidth: 0, maxWidth: 280 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'white', background: 'rgba(255,255,255,.2)', borderRadius: 20, padding: '3px 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }} title={dataset.name}>
             {dataset.name}
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
+            borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
+            background: dataset.source === 'study' ? 'rgba(56,189,248,.25)' : 'rgba(255,255,255,.12)',
+            color: dataset.source === 'study' ? '#bae6fd' : 'rgba(255,255,255,.6)',
+            border: dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : '1px solid rgba(255,255,255,.2)',
+          }}>
+            {dataset.source === 'study' ? 'Sarina' : 'Upload'}
           </span>
         </div>
 

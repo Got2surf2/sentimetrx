@@ -31,17 +31,24 @@ export default async function TextMinePage({ params }: Props) {
 
   const service = createServiceRoleClient()
 
-  const { data: stateRow } = await service
-    .from('dataset_state')
-    .select('schema_config, theme_model, analytics')
-    .eq('dataset_id', params.datasetId)
-    .single()
+  const [{ data: stateRow }, { data: dataset }] = await Promise.all([
+    service
+      .from('dataset_state')
+      .select('schema_config, theme_model, analytics')
+      .eq('dataset_id', params.datasetId)
+      .single(),
+    service
+      .from('datasets')
+      .select('source, ana_library')
+      .eq('id', params.datasetId)
+      .single(),
+  ])
 
   if (!stateRow) notFound()
 
   const schema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
   const analytics = stateRow.analytics || null
-  const themeModel = stateRow.theme_model && Object.keys(stateRow.theme_model).length > 0
+  const themeModel = stateRow.theme_model && (stateRow.theme_model as any).themes?.length > 0
     ? stateRow.theme_model
     : null
 
@@ -52,6 +59,8 @@ export default async function TextMinePage({ params }: Props) {
         schema={schema}
         analytics={analytics}
         savedThemeModel={themeModel}
+        datasetSource={(dataset?.source as 'upload' | 'study') || 'upload'}
+        anaLibrary={dataset?.ana_library || null}
       />
     </div>
   )

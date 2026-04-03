@@ -56,6 +56,8 @@ interface Props {
   schema: SchemaConfig
   analytics: DatasetAnalytics | null
   savedThemeModel: ThemeModel | null
+  datasetSource?: 'upload' | 'study'
+  anaLibrary?: string | null
 }
 
 type SubTab = 'themes' | 'clouds' | 'compare' | 'comments'
@@ -698,7 +700,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
-export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel }: Props) {
+export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, anaLibrary }: Props) {
   const totalRows = analytics?.totalRows ?? 0
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [rowsLoading, setRowsLoading] = useState(false)
@@ -1146,15 +1148,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       <>
                         <h3 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 8 }}>Waiting for responses</h3>
                         <p style={{ fontSize: 13, color: T.textMute, lineHeight: 1.6, marginBottom: 24 }}>
-                          Your study is connected but has no responses yet. Once respondents start submitting, click <strong>Sync</strong> in the header to pull in new data.
+                          {datasetSource === 'study'
+                            ? 'Your study is connected but has no responses yet. Once respondents start submitting, click Sync in the header to pull in new data.'
+                            : 'No data rows found. Check your dataset configuration.'}
                         </p>
                       </>
                     ) : (
                       <>
-                        <h3 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 8 }}>TextMine is ready</h3>
+                        <h3 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 8 }}>
+                          {datasetSource === 'study' ? 'Your study data is ready' : 'TextMine is ready'}
+                        </h3>
                         <p style={{ fontSize: 13, color: T.textMute, lineHeight: 1.6, marginBottom: 24 }}>
-                          {rows.length.toLocaleString()} responses loaded across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
-                          {' '}Run an AI analysis or pick an industry theme library to get started.
+                          {rows.length.toLocaleString()} response{rows.length !== 1 ? 's' : ''} imported across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
+                          {' '}{datasetSource === 'study'
+                            ? 'Run an AI analysis to discover themes, or apply a theme library.'
+                            : 'Run an AI analysis or pick an industry theme library to get started.'}
                         </p>
                       </>
                     )}
@@ -1167,7 +1175,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         </button>
                         <button onClick={function() { setShowThemeEditor(true) }}
                           style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
-                          {'\u2261'} Choose industry library
+                          {'\u2261'} {anaLibrary ? 'Apply ' + anaLibrary + ' themes' : 'Choose theme library'}
                         </button>
                       </div>
                     )}
