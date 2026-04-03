@@ -476,6 +476,8 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
   )
 }
 
+var MAX_PREDICTORS = 12
+
 function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
   var [outcome, setOutcome] = useState(numFields[0]?.field || '')
   var [predictors, setPredictors] = useState<Set<string>>(new Set())
@@ -483,7 +485,12 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
   useEffect(function() { if (!outcome && numFields.length) setOutcome(numFields[0].field) }, [numFields.length])
 
   var toggleP = function(f: string) {
-    setPredictors(function(prev) { var n = new Set(prev); if (n.has(f)) n.delete(f); else if (n.size < 6) n.add(f); return n })
+    setPredictors(function(prev) {
+      var n = new Set(prev)
+      if (n.has(f)) { n.delete(f) }
+      else if (n.size < MAX_PREDICTORS) { n.add(f) }
+      return n
+    })
   }
 
   var result = useMemo(function() {
@@ -515,15 +522,19 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
               )
             })}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Predictors ({predictors.size}/6)</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Predictors ({predictors.size}/{MAX_PREDICTORS})</div>
+          {predictors.size >= MAX_PREDICTORS && (
+            <div style={{ fontSize: 10, color: T.amber, marginBottom: 6 }}>Max {MAX_PREDICTORS} predictors reached. Deselect one to add another.</div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {numFields.filter(function(f) { return f.field !== outcome }).map(function(f) {
-              var sel = predictors.has(f.field), disabled = !sel && predictors.size >= 6
+              var sel = predictors.has(f.field), atLimit = !sel && predictors.size >= MAX_PREDICTORS
               return (
-                <button key={f.field} onClick={function() { if (!disabled) toggleP(f.field) }}
-                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.greenBg : 'transparent', border: '1px solid ' + (sel ? T.green : T.border), color: disabled ? T.textFaint : sel ? T.green : T.textMid, borderRadius: 7, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button key={f.field} onClick={function() { toggleP(f.field) }}
+                  title={atLimit ? 'Max ' + MAX_PREDICTORS + ' predictors. Deselect one first.' : undefined}
+                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.greenBg : 'transparent', border: '1px solid ' + (sel ? T.green : T.border), color: atLimit ? T.textFaint : sel ? T.green : T.textMid, borderRadius: 7, cursor: atLimit ? 'not-allowed' : 'pointer', opacity: atLimit ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.green : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
-                  {f.label || f.field}
+                  {aliases[f.field] || f.label || f.field}
                 </button>
               )
             })}
