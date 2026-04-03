@@ -9,9 +9,9 @@ import TextMineModule from '@/components/analyze/TextMineModule'
 
 export const dynamic = 'force-dynamic'
 
-interface Props { params: { datasetId: string } }
+interface Props { params: { datasetId: string }; searchParams?: { editThemes?: string } }
 
-export default async function TextMinePage({ params }: Props) {
+export default async function TextMinePage({ params, searchParams }: Props) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -61,6 +61,7 @@ export default async function TextMinePage({ params }: Props) {
         savedThemeModel={themeModel}
         datasetSource={(dataset?.source as 'upload' | 'study') || 'upload'}
         anaLibrary={dataset?.ana_library || null}
+        initialOpenEditor={!!searchParams?.editThemes}
       />
     </div>
   )
