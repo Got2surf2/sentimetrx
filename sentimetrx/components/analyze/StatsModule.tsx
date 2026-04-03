@@ -666,11 +666,22 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
   )
 }
 
-function InsightsPanel({ numFields, catFields, data, aliases }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
-  var [numField, setNumField] = useState(numFields[0]?.field || '')
-  var [selectedCats, setSelectedCats] = useState<string[]>([])
-  var [loading, setLoading] = useState(false)
-  var [report, setReport] = useState<string | null>(null)
+type AutoFinding = {
+  type: 'correlation' | 'group_effect' | 'distribution'
+  title: string
+  detail: string
+  magnitude: number
+  p: number
+  badge: string
+  badgeColor: string
+  badgeBg: string
+}
+
+function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
+  var [findings, setFindings] = useState<AutoFinding[] | null>(null)
+  var [running, setRunning] = useState(false)
+  var [aiReport, setAiReport] = useState<string | null>(null)
+  var [aiLoading, setAiLoading] = useState(false)
   var [apiKey, setApiKey] = useState('')
   var [aiEnabled, setAiEnabled] = useState(false)
 
@@ -678,119 +689,208 @@ function InsightsPanel({ numFields, catFields, data, aliases }: { numFields: Sch
     try {
       var k = localStorage.getItem('sentimetrx_tm_apikey') || ''
       if (k) setApiKey(k)
-      var ai = localStorage.getItem('sentimetrx_ai_enabled') === '1'
-      setAiEnabled(ai)
+      setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1')
     } catch {}
-    var interval = setInterval(function() {
+    var iv = setInterval(function() {
       try { setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1'); setApiKey(localStorage.getItem('sentimetrx_tm_apikey') || '') } catch {}
     }, 2000)
-    return function() { clearInterval(interval) }
+    return function() { clearInterval(iv) }
   }, [])
 
   var fLbl = function(f: string) { return aliases[f] || f }
-  var toggleCat = function(f: string) { setSelectedCats(function(prev) { return prev.includes(f) ? prev.filter(function(x) { return x !== f }) : prev.concat([f]) }) }
 
-  var groupStats = useMemo(function() {
-    if (!numField || !selectedCats.length) return []
-    return selectedCats.map(function(catF) {
-      var groups: Record<string, number[]> = {}
-      data.forEach(function(r) {
-        var v = parseFloat(String(r[numField] || '')); if (isNaN(v)) return
-        var k = String(r[catF] ?? '(blank)'); if (!groups[k]) groups[k] = []; groups[k].push(v)
+  var runAnalysis = useCallback(function() {
+    if (!data.length || !numFields.length) return
+    setRunning(true); setAiReport(null)
+    var fs: AutoFinding[] = []
+
+    // ── 1. Pairwise Pearson correlations ──────────────────────────
+    for (var i = 0; i < numFields.length; i++) {
+      for (var j = i + 1; j < numFields.length; j++) {
+        var fi = numFields[i].field, fj = numFields[j].field
+        var vi = getNum(fi, data), vj = getNum(fj, data), nn = Math.min(vi.length, vj.length)
+        if (nn < 10) continue
+        var cr = pearsonR(vi.slice(0, nn), vj.slice(0, nn))
+        if (isNaN(cr.r) || isNaN(cr.p) || cr.p >= 0.05 || Math.abs(cr.r) < 0.15) continue
+        var strength = Math.abs(cr.r) > 0.7 ? 'strong' : Math.abs(cr.r) > 0.4 ? 'moderate' : 'weak'
+        var dir = cr.r > 0 ? 'positive' : 'negative'
+        fs.push({
+          type: 'correlation',
+          title: fLbl(fi) + ' \u2194 ' + fLbl(fj),
+          detail: strength.charAt(0).toUpperCase() + strength.slice(1) + ' ' + dir + ' correlation — r\u202f=\u202f' + cr.r.toFixed(2) + ', n\u202f=\u202f' + cr.n,
+          magnitude: Math.abs(cr.r),
+          p: cr.p,
+          badge: strength + ' ' + dir,
+          badgeColor: cr.r > 0 ? T.green : T.blue,
+          badgeBg: cr.r > 0 ? T.greenBg : T.blueBg,
+        })
+      }
+    }
+
+    // ── 2. Group differences (categorical × numeric) ───────────────
+    catFields.forEach(function(cf) {
+      numFields.forEach(function(nf) {
+        var groups: Record<string, number[]> = {}
+        data.forEach(function(r) {
+          var v = parseFloat(String(r[nf.field] || '').replace(/,/g, '')); if (isNaN(v)) return
+          var k = String(r[cf.field] ?? '(blank)').trim(); if (!k) return
+          if (!groups[k]) groups[k] = []; groups[k].push(v)
+        })
+        var keys = Object.keys(groups).filter(function(k) { return groups[k].length >= 3 })
+        if (keys.length < 2 || keys.length > 12) return
+
+        var p: number, magnitude: number, detail: string
+        if (keys.length === 2) {
+          var tr = welchTTest(groups[keys[0]], groups[keys[1]]); if (!tr) return
+          p = tr.p; magnitude = Math.min(Math.abs(tr.d) * 0.3, 0.99)
+          var hiK = tr.ma >= tr.mb ? keys[0] : keys[1], loK = tr.ma >= tr.mb ? keys[1] : keys[0]
+          detail = fLbl(cf.field) + ' drives ' + fLbl(nf.field) + ' — ' + hiK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + ' vs ' + loK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1) + " (Cohen's d\u202f=\u202f" + tr.d.toFixed(2) + ')'
+        } else {
+          var ar = oneWayANOVA(groups); if (!ar) return
+          p = ar.p; magnitude = ar.eta2
+          var sorted = keys.slice().sort(function(a, b) { return mean(groups[b]) - mean(groups[a]) })
+          detail = fLbl(cf.field) + ' groups differ on ' + fLbl(nf.field) + ' — highest: ' + sorted[0] + ' (' + mean(groups[sorted[0]]).toFixed(1) + '), lowest: ' + sorted[sorted.length - 1] + ' (' + mean(groups[sorted[sorted.length - 1]]).toFixed(1) + '), \u03B7\u00B2\u202f=\u202f' + ar.eta2.toFixed(2)
+        }
+        if (p >= 0.05) return
+        var eff = magnitude > 0.14 ? 'large effect' : magnitude > 0.06 ? 'medium effect' : 'small effect'
+        fs.push({
+          type: 'group_effect',
+          title: fLbl(cf.field) + ' \u2192 ' + fLbl(nf.field),
+          detail: detail,
+          magnitude: magnitude,
+          p: p,
+          badge: eff,
+          badgeColor: magnitude > 0.14 ? T.accent : magnitude > 0.06 ? T.amber : T.textMid,
+          badgeBg: magnitude > 0.14 ? T.accentBg : magnitude > 0.06 ? T.amberBg : T.bg,
+        })
       })
-      var keys = Object.keys(groups).sort()
-      var stats = keys.map(function(k) { var vs = groups[k]; return { key: k, n: vs.length, mean: mean(vs) } })
-      var testNote = ''
-      if (keys.length === 2) { var res = welchTTest(groups[keys[0]], groups[keys[1]]); if (res) testNote = res.p < 0.05 ? 'Significant difference (p=' + res.p.toFixed(3) + ').' : 'No significant difference (p=' + res.p.toFixed(3) + ').' }
-      else if (keys.length > 2) { var anova = oneWayANOVA(groups); if (anova) testNote = anova.p < 0.05 ? 'Groups differ (ANOVA p=' + anova.p.toFixed(3) + ').' : 'Groups do not differ (ANOVA p=' + anova.p.toFixed(3) + ').' }
-      return { catF: catF, keys: keys, stats: stats, testNote: testNote }
     })
-  }, [data, numField, selectedCats])
 
-  var generate = async function() {
-    if (!numField || !selectedCats.length || !aiEnabled || !apiKey) return
-    setLoading(true); setReport(null)
+    // ── 3. Distribution flags (skew) ──────────────────────────────
+    numFields.forEach(function(nf) {
+      var vals = getNum(nf.field, data)
+      if (vals.length < 20) return
+      var sk = skewness(vals)
+      if (Math.abs(sk) < 1.5) return
+      var dir = sk > 0 ? 'right' : 'left'
+      fs.push({
+        type: 'distribution',
+        title: fLbl(nf.field) + ' is heavily ' + dir + '-skewed',
+        detail: (dir === 'right' ? 'Most values are low with a long tail upward' : 'Most values are high with a long tail downward') + ' — skewness\u202f=\u202f' + sk.toFixed(2) + '. Consider log-transforming before regression.',
+        magnitude: Math.min(Math.abs(sk) / 6, 0.5),
+        p: 1,
+        badge: dir + '-skewed',
+        badgeColor: T.amber,
+        badgeBg: T.amberBg,
+      })
+    })
+
+    // Sort by magnitude desc (correlations + group effects on top, distribution flags below)
+    fs.sort(function(a, b) {
+      var aScore = (a.type === 'distribution' ? 0 : 1) * 10 + a.magnitude
+      var bScore = (b.type === 'distribution' ? 0 : 1) * 10 + b.magnitude
+      return bScore - aScore
+    })
+
+    setFindings(fs)
+    setRunning(false)
+  }, [data, numFields, catFields, aliases])
+
+  // Auto-run when data loads
+  useEffect(function() {
+    if (data.length > 0 && numFields.length > 0 && findings === null) runAnalysis()
+  }, [data.length, numFields.length])
+
+  var generateNarrative = async function() {
+    if (!findings || !findings.length || !apiKey || !aiEnabled) return
+    setAiLoading(true); setAiReport(null)
     try {
-      var nLabel = fLbl(numField)
-      var sections = groupStats.map(function(gs) {
-        var cLabel = fLbl(gs.catF)
-        var statLines = gs.stats.map(function(s) { return s.key + ': avg=' + s.mean.toFixed(2) + ' (n=' + s.n + ')' }).join('; ')
-        return 'Field: \'' + cLabel + '\' (' + gs.keys.length + ' groups). ' + statLines + '. ' + gs.testNote
+      var top = findings.filter(function(f) { return f.type !== 'distribution' }).slice(0, 12)
+      var lines = top.map(function(f, i) {
+        return (i + 1) + '. [' + f.type + '] ' + f.title + ': ' + f.detail + ' (' + fmtP(f.p) + ')'
       }).join('\n')
-
-      var prompt = 'You are an organizational insights storyteller writing for non-statisticians.\nMetric: \'' + nLabel + '\'\nData:\n' + sections + '\n\nWrite a clear narrative (plain English, no bullet points). For each field, name the highest and lowest groups and whether the difference matters. End with one Key Takeaway sentence.'
-
+      var prompt = 'You are a data analyst writing for a business audience. Below are statistically significant findings from a dataset.\n\nFindings:\n' + lines + '\n\nWrite a concise executive summary in 3-5 sentences. Lead with the most important relationship. Use plain English without jargon. End with one concrete recommendation.'
       var res = await fetch('/api/datasets/insights', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: apiKey, prompt: prompt }),
       })
       var d = await res.json()
-      setReport(d.text || d.error || 'No response')
-    } catch (e: unknown) { setReport('Error: ' + (e instanceof Error ? e.message : String(e))) }
-    setLoading(false)
+      setAiReport(d.text || d.error || 'No response')
+    } catch (e: unknown) { setAiReport('Error: ' + (e instanceof Error ? e.message : String(e))) }
+    setAiLoading(false)
   }
+
+  var typeLabel: Record<AutoFinding['type'], string> = { correlation: 'Correlation', group_effect: 'Group Effect', distribution: 'Distribution' }
+  var typeIcon: Record<AutoFinding['type'], string> = { correlation: '\u2295', group_effect: '\u2297', distribution: '\u223F' }
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: '0 0 4px' }}>{'\u2726'} Insights</h2>
-        <p style={{ fontSize: 13, color: T.textMid, margin: 0, lineHeight: 1.6 }}>Pick a numeric metric and fields to compare. AI tells the story in plain English.</p>
-      </div>
-      {!aiEnabled && <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 14 }}>{'\u26A0'}</span>{apiKey ? 'AI is turned off. Use the AI toggle in the header bar to enable it.' : 'Add an API key via the AI button in the header to use Insights.'}</div>}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 200 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>Metric (numeric)</label>
-          <select value={numField} onChange={function(e) { setNumField(e.target.value) }}
-            style={{ padding: '8px 10px', fontSize: 13, border: '1px solid ' + T.border, borderRadius: 8, background: T.bgCard, color: T.text, minWidth: 180 }}>
-            {numFields.map(function(f) { return <option key={f.field} value={f.field}>{fLbl(f.field)}</option> })}
-          </select>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, margin: '0 0 4px' }}>{'\u2726'} Auto-Insights</h2>
+          <p style={{ fontSize: 13, color: T.textMid, margin: 0, lineHeight: 1.6 }}>Automatically scans all fields for significant correlations, group differences, and distribution anomalies.</p>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 240 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>Compare across (pick 1 or more)</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-            {catFields.map(function(f) {
-              var sel = selectedCats.includes(f.field)
-              return <button key={f.field} onClick={function() { toggleCat(f.field) }}
-                style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 20, background: sel ? T.accent : T.bgCard, color: sel ? 'white' : T.textMid, border: '1px solid ' + (sel ? T.accent : T.border), cursor: 'pointer', transition: 'background .12s, color .12s, border-color .12s' }}>
-                {fLbl(f.field)}
-              </button>
-            })}
-          </div>
-        </div>
+        <button onClick={runAnalysis} disabled={running}
+          style={{ flexShrink: 0, padding: '8px 18px', fontSize: 12, fontWeight: 700, background: T.bg, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 20, cursor: running ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+          {running ? 'Scanning\u2026' : '\u21BA Re-run'}
+        </button>
       </div>
-      {groupStats.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {groupStats.map(function(gs) {
+
+      {/* Running spinner */}
+      {running && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: T.textFaint, fontSize: 13 }}>Scanning {numFields.length} numeric \u00D7 {catFields.length} categorical fields\u2026</div>
+      )}
+
+      {/* No findings */}
+      {!running && findings !== null && findings.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: T.textFaint, fontSize: 13 }}>No significant relationships found (p &lt; 0.05) in the current data.</div>
+      )}
+
+      {/* Findings list */}
+      {!running && findings !== null && findings.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>{findings.length} finding{findings.length !== 1 ? 's' : ''} — sorted by effect size</div>
+          {findings.map(function(f, i) {
             return (
-              <div key={gs.catF} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>{fLbl(gs.catF)}</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {gs.stats.slice().sort(function(a, b) { return b.mean - a.mean }).map(function(s) {
-                    var isHi = s.mean === Math.max.apply(null, gs.stats.map(function(x) { return x.mean }))
-                    var isLo = s.mean === Math.min.apply(null, gs.stats.map(function(x) { return x.mean }))
-                    return (
-                      <div key={s.key} style={{ padding: '7px 12px', borderRadius: 8, minWidth: 100, textAlign: 'center', background: isHi ? T.greenBg : isLo ? T.redBg : T.bg, border: '1px solid ' + (isHi ? T.greenMid : isLo ? T.red + '44' : T.border) }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{s.mean.toFixed(2)}</div>
-                        <div style={{ fontSize: 11, color: T.textMid, marginTop: 1 }}>{s.key}</div>
-                        <div style={{ fontSize: 10, color: T.textFaint }}>n={s.n}</div>
-                      </div>
-                    )
-                  })}
+              <div key={i} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                {/* Rank */}
+                <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', background: T.bg, border: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: T.textMid, marginTop: 1 }}>{i + 1}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Title row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>{typeIcon[f.type]} {typeLabel[f.type]}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{f.title}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: f.badgeBg, color: f.badgeColor, border: '1px solid ' + f.badgeColor + '44', whiteSpace: 'nowrap' }}>{f.badge}</span>
+                    {f.p < 1 && <SigBadge p={f.p} />}
+                  </div>
+                  {/* Detail */}
+                  <div style={{ fontSize: 12, color: T.textMid, lineHeight: 1.5 }}>{f.detail}</div>
                 </div>
-                {gs.testNote && <div style={{ marginTop: 8, fontSize: 11, color: T.textFaint, fontStyle: 'italic' }}>{gs.testNote}</div>}
               </div>
             )
           })}
         </div>
       )}
-      <button onClick={generate} disabled={loading || !numField || !selectedCats.length || !aiEnabled || !apiKey}
-        title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : !selectedCats.length ? 'Select at least one field to compare' : ''}
-        style={{ alignSelf: 'flex-start', padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (loading || !numField || !selectedCats.length || !aiEnabled || !apiKey) ? T.bg : T.accent, color: (loading || !numField || !selectedCats.length || !aiEnabled || !apiKey) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (loading || !numField || !selectedCats.length || !aiEnabled || !apiKey) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-        {loading ? 'Generating\u2026' : '\u2726 Generate Insights'}
-      </button>
-      {report && (
-        <div style={{ background: T.accentBg, border: '1px solid ' + T.accentMid, borderRadius: 12, padding: '18px 20px' }}>
-          <div style={{ fontSize: 13, color: T.textMid, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{report}</div>
+
+      {/* AI Narrative */}
+      {!running && findings !== null && findings.length > 0 && (
+        <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 18 }}>
+          {!aiEnabled && (
+            <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span>{'\u26A0'}</span>{apiKey ? 'AI is turned off — enable it in the header to generate a narrative summary.' : 'Add an API key via the AI button in the header to unlock narrative summaries.'}
+            </div>
+          )}
+          <button onClick={generateNarrative} disabled={aiLoading || !aiEnabled || !apiKey}
+            style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (!aiEnabled || !apiKey || aiLoading) ? T.bg : T.accent, color: (!aiEnabled || !apiKey || aiLoading) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (!aiEnabled || !apiKey || aiLoading) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {aiLoading ? 'Writing summary\u2026' : '\u2726 Generate Narrative Summary'}
+          </button>
+          {aiReport && (
+            <div style={{ marginTop: 14, background: T.accentBg, border: '1px solid ' + T.accentMid, borderRadius: 12, padding: '18px 20px' }}>
+              <div style={{ fontSize: 13, color: T.textMid, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{aiReport}</div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -806,7 +906,7 @@ var ANALYSIS_TYPES = [
   { id: 'correlations', label: 'Correlations', icon: '\u2295', color: '#2563eb', tip: 'Relationships between numeric variables.' },
   { id: 'grouptests', label: 'Group Tests', icon: '\u2297', color: '#16a34a', tip: 't-test, ANOVA, Mann-Whitney, Chi-square.' },
   { id: 'regression', label: 'Regression', icon: '\u27CB', color: '#7c3aed', tip: 'OLS linear regression modeling.' },
-  { id: 'insights', label: '\u2726 Insights', icon: '\u2726', color: '#e8622a', tip: 'AI-generated narrative insights.' },
+  { id: 'insights', label: '\u2726 Auto-Insights', icon: '\u2726', color: '#e8622a', tip: 'Auto-scan for significant correlations, group effects, and distribution flags.' },
 ]
 
 function fl(f: SchemaFieldConfig): string { return f.label && f.label !== f.field ? f.label : f.field }
@@ -980,7 +1080,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
               {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
-              {activePanel === 'insights' && <InsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
+              {activePanel === 'insights' && <AutoInsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
             </>
           )}
         </div>
