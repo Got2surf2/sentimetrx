@@ -234,10 +234,20 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
 function CorrelationsPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
   var [corrType, setCorrType] = useState('pearson')
   var [selCell, setSelCell] = useState<{ i: number; j: number; f1: string; f2: string; r: number; p: number; n: number } | null>(null)
+  var [excluded, setExcluded] = useState<Set<string>>(new Set())
+
+  var activeFields = numFields.filter(function(f) { return !excluded.has(f.field) })
+
+  function toggleField(field: string) {
+    setSelCell(null)
+    setExcluded(function(prev) {
+      var next = new Set(prev); if (next.has(field)) next.delete(field); else next.add(field); return next
+    })
+  }
 
   var matrix = useMemo(function() {
-    if (numFields.length < 2) return null
-    var fields = numFields.map(function(f) { return f.field })
+    if (activeFields.length < 2) return null
+    var fields = activeFields.map(function(f) { return f.field })
     var fn = corrType === 'pearson' ? pearsonR : spearmanR
     var mat = fields.map(function(f1) {
       return fields.map(function(f2) {
@@ -247,7 +257,7 @@ function CorrelationsPanel({ numFields, data, aliases }: { numFields: SchemaFiel
       })
     })
     return { fields: fields, mat: mat }
-  }, [numFields, data, corrType])
+  }, [activeFields, data, corrType])
 
   var cellBg = function(r: number) {
     if (isNaN(r) || r === 1) return T.bg
@@ -260,14 +270,29 @@ function CorrelationsPanel({ numFields, data, aliases }: { numFields: SchemaFiel
 
   return (
     <div>
-      <PanelHeader icon={'\u2295'} title="Correlation Matrix" desc={'Pearson r or Spearman \u03C1 between all active numeric variables. Click any cell to see details.'} />
+      <PanelHeader icon={'\u2295'} title="Correlation Matrix" desc={'Pearson r or Spearman \u03C1 between selected numeric variables. Click any cell to see details.'} />
       {selCell && <BottomLine text={corrBL(aliases[selCell.f1] || selCell.f1, aliases[selCell.f2] || selCell.f2, selCell.r, selCell.p, selCell.n, corrType)} naiveText={corrBL_naive(aliases[selCell.f1] || selCell.f1, aliases[selCell.f2] || selCell.f2, selCell.r, selCell.p, selCell.n)} />}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute, textTransform: 'uppercase', letterSpacing: '.07em' }}>Method:</span>
         {[['pearson', 'Pearson r'], ['spearman', 'Spearman \u03C1']].map(function(pair) {
           return <FieldPill key={pair[0]} label={pair[1]} active={corrType === pair[0]} onClick={function() { setCorrType(pair[0]); setSelCell(null) }} />
         })}
       </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Fields:</span>
+        {numFields.map(function(f) {
+          var isExcluded = excluded.has(f.field)
+          var lbl = aliases[f.field] || f.label || f.field
+          return (
+            <button key={f.field} onClick={function() { toggleField(f.field) }}
+              style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, borderRadius: 20, border: '1px solid ' + (isExcluded ? T.border : T.blue), background: isExcluded ? T.bg : T.blueBg, color: isExcluded ? T.textFaint : T.blue, cursor: 'pointer', textDecoration: isExcluded ? 'line-through' : 'none', opacity: isExcluded ? 0.6 : 1 }}>
+              {lbl}
+            </button>
+          )
+        })}
+        {excluded.size > 0 && <button onClick={function() { setExcluded(new Set()); setSelCell(null) }} style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 20, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>Reset</button>}
+      </div>
+      {activeFields.length < 2 && <StatsEmpty icon={'\u229E'} msg="Select at least 2 fields" sub="Re-enable fields above to build the matrix." />}
       {matrix && (
         <div style={{ display: 'grid', gridTemplateColumns: selCell ? '1fr 1fr' : '1fr', gap: 20 }}>
           <Card style={{ padding: 0, overflow: 'auto' }}>
@@ -552,12 +577,12 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
                   { l: 'R\u00B2', v: fmt2(result.R2), c: result.R2 > 0.5 ? T.green : result.R2 > 0.25 ? T.amber : T.textMid },
                   { l: 'Adj. R\u00B2', v: fmt2(result.R2adj), c: T.textMid },
                   { l: 'F stat', v: fmtN(result.F), c: T.textMid },
-                  { l: 'p-value', v: null, c: null },
+                  { l: 'p-value', v: fmtP(result.Fp).replace('p = ', '').replace('p < ', '<'), c: result.Fp < 0.001 ? T.green : result.Fp < 0.05 ? T.amber : T.red },
                   { l: 'n', v: String(result.n), c: T.textMid },
                 ].map(function(s, i) {
                   return (
                     <div key={i} style={{ padding: '14px 12px', borderRight: i < 4 ? '1px solid ' + T.border : 'none', textAlign: 'center' }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: s.c || T.textMid, fontFamily: 'monospace' }}>{s.v !== null ? s.v : <SigBadge p={result.Fp} />}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: s.c || T.textMid, fontFamily: 'monospace' }}>{s.v}</div>
                       <div style={{ fontSize: 10, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginTop: 3 }}>{s.l}</div>
                     </div>
                   )
