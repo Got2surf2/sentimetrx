@@ -772,8 +772,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     if (activeFields.length === 0 && openFields.length > 0) {
       var saved = savedThemeModel?.fieldNames || (savedThemeModel?.fieldName ? [savedThemeModel.fieldName] : null)
       if (saved && saved.length) {
-        setActiveFields(saved.filter(function(f) { return openFields.some(function(o) { return o.field === f }) }))
-        setActiveField(saved[0])
+        var validSaved = saved.filter(function(f) { return openFields.some(function(o) { return o.field === f }) })
+        if (validSaved.length > 0) {
+          // Saved field names are still valid
+          setActiveFields(validSaved)
+          setActiveField(validSaved[0])
+        } else {
+          // Saved field names no longer exist in schema — fall back to first open field
+          setActiveFields([openFields[0].field])
+          setActiveField(openFields[0].field)
+        }
       } else {
         setActiveFields([openFields[0].field])
         setActiveField(openFields[0].field)
@@ -860,8 +868,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var activeFilterCount = filterCount(filters)
 
   // Recount theme hits against filtered data for display
-  var displayThemes: ThemeModel | null = themes && filteredRows.length > 0 && effectiveFields.length > 0
-    ? { ...themes, themes: recountThemes(themes.themes, filteredRows, effectiveFields) }
+  // Use effectiveFields if they actually find data, otherwise fall back to the field names stored in the theme model
+  var _recountFields = effectiveFields.length > 0 ? effectiveFields
+    : (themes?.fieldNames || (themes?.fieldName ? [themes.fieldName] : []))
+  var displayThemes: ThemeModel | null = themes && filteredRows.length > 0 && _recountFields.length > 0
+    ? { ...themes, themes: recountThemes(themes.themes, filteredRows, _recountFields) }
     : themes
 
   // Stats for active fields (on filtered data)
@@ -1137,8 +1148,20 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   </div>
                 )}
 
+                {/* Rows load error */}
+                {!rowsLoaded && !rowsLoading && rowsError && (
+                  <div style={{ margin: '40px auto', maxWidth: 440, padding: '16px 20px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#dc2626', textAlign: 'center' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Failed to load dataset rows</div>
+                    <div style={{ color: '#991b1b', marginBottom: 12 }}>{rowsError}</div>
+                    <button onClick={function() { setRowsLoaded(false); setRowsError(null); fetchAllRows() }}
+                      style={{ padding: '7px 18px', fontSize: 12, fontWeight: 700, background: '#dc2626', color: 'white', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 {/* Rows still loading */}
-                {!rowsLoaded && !loading && (
+                {!rowsLoaded && rowsLoading && !rowsError && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
                     <LottieLoader size={80} message="Loading dataset rows..." />
                   </div>
