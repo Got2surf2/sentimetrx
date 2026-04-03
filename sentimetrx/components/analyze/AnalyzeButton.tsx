@@ -85,10 +85,11 @@ export default function AnalyzeButton({ studyId }: Props) {
         var syncRes2 = await fetch('/api/datasets/' + datasetId + '/sync', { method: 'POST' })
         var syncResult = await syncRes2.json().catch(function() { return {} as any })
         if (!syncRes2.ok) {
-          throw new Error(syncResult.error || 'Failed to import responses (' + syncRes2.status + ')')
+          var detail = syncResult.detail ? ' — ' + syncResult.detail : ''
+          throw new Error((syncResult.error || 'Failed to import responses') + detail)
         }
-        if (syncResult.synced === 0 && syncResult.debug) {
-          console.warn('[AnalyzeButton] Sync returned 0 rows:', syncResult.debug)
+        if (syncResult.synced === 0) {
+          console.warn('[AnalyzeButton] Sync returned 0 rows:', syncResult.debug || syncResult)
         }
 
         // Compute analytics
