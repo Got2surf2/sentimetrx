@@ -234,7 +234,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var field = config.field; if (!field) return <EmptyChart msg="Assign a numeric field above." />
     var splitByField = config.splitBy
     if (splitByField) {
-      return <DistSplitInner analytics={analytics} schema={schema} datasetId={datasetId} numField={field} splitByField={splitByField} colors={pal} />
+      return <DistSplitInner analytics={analytics} schema={schema} datasetId={datasetId} numField={field} splitByField={splitByField} colors={pal} smartAxes={useSmartOrder} />
     }
     var sum = fs[field]; if (!sum) return <EmptyChart msg="No data." />
     var fieldAlias = flByName(field, schema)
@@ -543,7 +543,7 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: str
   )
 }
 
-function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[] }) {
+function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
   var { rows, loaded } = useRows(datasetId)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var pal = colors || CHART_COLORS
@@ -555,12 +555,30 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
     if (!groups[grp]) groups[grp] = []
     groups[grp].push(val)
   })
-  var keys = Object.keys(groups).sort()
+  // Smart ordering of groups by the split-by field's remapping/values scale
+  var splitFieldObj = schema.find(function(f) { return f.field === splitByField })
+  var keys: string[]
+  if (smartAxes !== false && splitFieldObj?.remapping) {
+    var remap = splitFieldObj.remapping
+    var orderedByRemap = Object.keys(remap).sort(function(a, b) { return (remap[a] || 0) - (remap[b] || 0) })
+    keys = orderedByRemap.filter(function(k) { return groups[k] })
+    var extrasSplit = Object.keys(groups).filter(function(k) { return !orderedByRemap.includes(k) }).sort()
+    keys = keys.concat(extrasSplit)
+  } else if (smartAxes !== false && splitFieldObj?.values?.length) {
+    keys = splitFieldObj.values.filter(function(k) { return groups[k] })
+    var extrasSplit2 = Object.keys(groups).filter(function(k) { return !splitFieldObj!.values!.includes(k) }).sort()
+    keys = keys.concat(extrasSplit2)
+  } else {
+    keys = Object.keys(groups).sort()
+  }
   if (!keys.length) return <EmptyChart msg="No data for this split." />
+  // Integer-range ticks on Y-axis when numeric field is a small int range (e.g. NPS 0-10, rating 1-5)
+  var numSum = analytics.fieldSummaries[numField]
+  var intY = isSmallIntRange(numSum?.min, numSum?.max)
   var traces = keys.map(function(k, i) {
     return { type: 'box' as const, y: groups[k], name: k, marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
   })
-  return <PlotlyChart traces={traces} layout={{ yaxis: { title: flByName(numField, schema) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
+  return <PlotlyChart traces={traces} layout={{ yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
 }
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string }) {
@@ -733,7 +751,11 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
-  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ xaxis: { title: flByName(xField, schema) }, yaxis: { title: flByName(yField, schema) }, showlegend: false }} />
+  var xSum = analytics.fieldSummaries[xField]
+  var ySum = analytics.fieldSummaries[yField]
+  var intX = isSmallIntRange(xSum?.min, xSum?.max)
+  var intY = isSmallIntRange(ySum?.min, ySum?.max)
+  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ xaxis: { title: flByName(xField, schema), ...(intX ? { dtick: 1, tick0: xSum?.min } : {}) }, yaxis: { title: flByName(yField, schema), ...(intY ? { dtick: 1, tick0: ySum?.min } : {}) }, showlegend: false }} />
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
