@@ -94,14 +94,10 @@ function logo(slide: any) {
   )
 }
 
-function footer(slide: any, datasetName: string, pageNum: number) {
+function footer(slide: any, datasetName: string) {
   solidRect(slide, 0, FY - 0.02, W, 0.015, DN.teal, 62)
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: FY, w: W * 0.72, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle',
-  })
-  slide.addText(String(pageNum), {
-    x: W - PAD - 0.4, y: FY, w: 0.4, h: 0.26,
-    fontSize: 7.5, color: DN.slate, align: 'right', valign: 'middle',
   })
 }
 
@@ -298,8 +294,8 @@ const PIE_COLORS = [
 
 // ── Slide builders ────────────────────────────────────────────────────────────
 
-function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: number, computedAt: string | null, pageNum: number) {
-  const slide = pptx.addSlide()
+function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: number, computedAt: string | null) {
+  const slide = pptx.addSlide('NUMBERED')
 
   // Deep navy background
   solidRect(slide, 0, 0, W, H, DN.navy)
@@ -322,10 +318,10 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
     x: W - 2.4, y: 1.2, w: 2.6, h: 2.6,
     fill: { color: DN.teal, transparency: 93 }, line: { color: DN.tealLight, transparency: 81, width: 1 }
   })
-  // "D" monogram
-  slide.addText('D', {
+  // "d" monogram
+  slide.addText('d', {
     x: W - 2.1, y: 1.5, w: 2.0, h: 2.0,
-    fontSize: 72, bold: true, italic: true, color: DN.tealLight, align: 'center', valign: 'middle',
+    fontSize: 72, bold: true, italic: true, color: DN.orange, align: 'center', valign: 'middle',
   })
 
   // Logo — "datanautix" as one rich-text word
@@ -354,29 +350,26 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
     })
   }
 
-  // Meta row
-  const metaParts = [totalRows.toLocaleString() + ' responses']
-  if (computedAt) metaParts.push(new Date(computedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }))
-  slide.addText(metaParts.join('  ·  '), {
-    x: PAD + 0.18, y: 4.55, w: W - 4.0, h: 0.36,
-    fontSize: 11.5, color: DN.slate, valign: 'middle',
-  })
+  // Date standalone — larger font, no response count
+  if (computedAt) {
+    slide.addText(new Date(computedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), {
+      x: PAD + 0.18, y: 4.55, w: W - 4.0, h: 0.44,
+      fontSize: 16, color: DN.slate, valign: 'middle',
+    })
+  }
 
   // Bottom footer strip
   solidRect(slide, 0, H - 0.48, W, 0.48, DN.navyMid)
   solidRect(slide, 0, H - 0.48, W, 0.03, DN.gold, 50)
-  slide.addText('Confidential  ·  Prepared by Datanautix  ·  datanautix.com', {
+  const generatedOn = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  slide.addText('Confidential  ·  Prepared by Datanautix  ·  datanautix.com  ·  Report generated ' + generatedOn, {
     x: PAD + 0.18, y: H - 0.44, w: W - 1.0, h: 0.38,
     fontSize: 8.5, color: DN.slate, valign: 'middle',
   })
-  slide.addText(String(pageNum), {
-    x: W - PAD - 0.4, y: H - 0.44, w: 0.4, h: 0.38,
-    fontSize: 8.5, color: DN.slate, align: 'right', valign: 'middle',
-  })
 }
 
-function buildAboutSlide(datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string, pageNum: number) {
-  const slide = pptx.addSlide()
+function buildAboutSlide(datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string) {
+  const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, 'About This Report', DN.teal, 'Methodology, scope and data coverage')
   logo(slide)
@@ -439,11 +432,11 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
     fontSize: 8.5, color: DN.slateDark, italic: true, wrap: true,
   })
 
-  footer(slide, datasetName, pageNum)
+  footer(slide, datasetName)
 }
 
-function buildSummarySlide(datasetName: string, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[], pageNum: number) {
-  const slide = pptx.addSlide()
+function buildSummarySlide(datasetName: string, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]) {
+  const slide = pptx.addSlide('NUMBERED')
 
   // Dark navy background — high impact
   solidRect(slide, 0, 0, W, H, DN.navy)
@@ -559,9 +552,6 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: H - 0.34, w: W * 0.72, h: 0.28, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
-  slide.addText(String(pageNum), {
-    x: W - PAD - 0.4, y: H - 0.34, w: 0.4, h: 0.28, fontSize: 7.5, color: DN.slate, align: 'right', valign: 'middle',
-  })
 }
 
 // ── Bar color for ordinal distribution (best→worst order) ────────────────────
@@ -595,8 +585,8 @@ function autoInsight(label: string, orderedKeys: string[], counts: Record<string
   return '"' + topKey + '" is the most common response (' + topPct + '%), followed by "' + secondKey + '" (' + secondPct + '%). Together they account for ' + (topPct + secondPct) + '% of all responses.'
 }
 
-function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldInsight, pageNum: number) {
-  const slide = pptx.addSlide()
+function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
+  const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, f.label, DN.teal, 'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
   logo(slide)
@@ -739,11 +729,11 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     })
   })
 
-  footer(slide, datasetName, pageNum)
+  footer(slide, datasetName)
 }
 
-function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsight, pageNum: number) {
-  const slide = pptx.addSlide()
+function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
+  const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, f.label, DN.teal, 'Numeric distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
   logo(slide)
@@ -936,11 +926,11 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
     insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
   }
 
-  footer(slide, datasetName, pageNum)
+  footer(slide, datasetName)
 }
 
-function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[], pageNum: number) {
-  const slide = pptx.addSlide()
+function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[]) {
+  const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, f.label, DN.tealDark, 'Open-ended verbatim responses')
   logo(slide)
@@ -1006,7 +996,7 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
     })
   }
 
-  footer(slide, datasetName, pageNum)
+  footer(slide, datasetName)
 }
 
 interface CommentItem { text: string; demos: Array<{ label: string; value: string; section?: string }>; colorValue?: string }
@@ -1031,6 +1021,15 @@ function valueToColor(val: string, allValsForField?: string[]): string {
       return 'DC2626'
     }
   }
+  // Sentiment-aware coloring for implicit positive/negative categorical values
+  const lv = val.toLowerCase().trim()
+  const positiveTerms = ['very satisfied', 'extremely satisfied', 'very likely', 'extremely likely', 'strongly agree', 'excellent', 'outstanding', 'very good', 'promoter', 'positive', 'very happy', 'very pleased', 'always', 'definitely']
+  const negativeTerms = ['very dissatisfied', 'extremely dissatisfied', 'very unlikely', 'extremely unlikely', 'strongly disagree', 'terrible', 'very poor', 'poor', 'detractor', 'negative', 'very unhappy', 'never', 'not at all']
+  const neutralTerms  = ['neutral', 'neither', 'passive', 'somewhat', 'not sure', 'no opinion']
+  if (positiveTerms.some(t => lv.includes(t))) return DN.green
+  if (negativeTerms.some(t => lv.includes(t))) return DN.red
+  if (neutralTerms.some(t => lv.includes(t)))  return DN.slate
+
   // Categorical: deterministic palette color
   const palette = [DN.teal, DN.gold, '7C3AED', DN.green, 'E85A1A', DN.navyLight, '0891B2', 'DB2777', '65A30D', '9333EA']
   let hash = 0
@@ -1044,10 +1043,9 @@ function buildCommentsSlide(
   fieldSection: string | undefined,
   comments: CommentItem[],
   slideNum: number,
-  totalSlides: number,
-  pageNum: number
+  totalSlides: number
 ) {
-  const slide = pptx.addSlide()
+  const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   const sectionTag = fieldSection ? fieldSection.charAt(0).toUpperCase() + fieldSection.slice(1) + ' · ' : ''
   const slideTag = totalSlides > 1 ? '  ·  Slide ' + slideNum + ' of ' + totalSlides : ''
@@ -1086,7 +1084,7 @@ function buildCommentsSlide(
     const textH = cardH - 0.08 - (hasDemos ? demoRowH + 0.06 : 0) - 0.24
     slide.addText(trunc(c.text, 340), {
       x: cx + 0.14, y: cy + 0.24, w: cardW - 0.22, h: textH,
-      fontSize: 11, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
+      fontSize: 12, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
     })
 
     // Annotation pills pinned to bottom of card
@@ -1126,11 +1124,11 @@ function buildCommentsSlide(
     }
   })
 
-  footer(slide, datasetName, pageNum)
+  footer(slide, datasetName)
 }
 
-function buildSectionDivider(title: string, subtitle: string, fieldCount: number, pageNum: number) {
-  const slide = pptx.addSlide()
+function buildSectionDivider(title: string, subtitle: string, fieldCount: number) {
+  const slide = pptx.addSlide('NUMBERED')
 
   solidRect(slide, 0, 0, W, H, DN.navy)
   solidRect(slide, 0, 0, W, 0.07, DN.gold)
@@ -1180,11 +1178,10 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
   solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText('datanautix.com', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
-  slide.addText(String(pageNum), { x: W - PAD - 0.5, y: H - 0.4, w: 0.5, h: 0.34, fontSize: 8.5, color: DN.slate, align: 'right', valign: 'middle' })
 }
 
-function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, pageNum: number) {
-  const slide = pptx.addSlide()
+function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
+  const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, f.label, DN.navy,
     (f.section ? f.section.charAt(0).toUpperCase() + f.section.slice(1) + ' · ' : '') +
