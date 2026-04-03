@@ -1,6 +1,6 @@
 // app/api/admin/questions/route.ts
-// GET  — list all questions from JSON libraries (psychographic, structured, open-ended)
-// POST — admin-only: create a custom question (future: writes to Supabase)
+// GET  — list all questions from JSON libraries + org custom questions
+// POST — admin-only: create a custom demo or psychographic question
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -11,16 +11,26 @@ import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 export const dynamic = 'force-dynamic'
 
-// Map JSON industry labels to internal keys
 const LABEL_TO_KEY: Record<string, string> = {}
 for (const [key, label] of Object.entries(INDUSTRY_LABELS)) {
   LABEL_TO_KEY[label] = key
 }
-// Also map the universal entry
 LABEL_TO_KEY['Universal / Cross-Industry'] = 'universal'
 
 function mapIndustryLabel(label: string): string {
   return LABEL_TO_KEY[label] || label.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+}
+
+async function getOrgAndCustomQ(supabase: any, userId: string) {
+  const { data: userData } = await supabase
+    .from('users').select('org_id').eq('id', userId).single()
+  const orgId = userData?.org_id
+  if (!orgId) return { orgId: null, customQ: { demo: [], psycho: [] }, features: {} }
+  const { data: orgData } = await supabase
+    .from('organizations').select('id, features, is_admin_org').eq('id', orgId).single()
+  const features = orgData?.features || {}
+  const customQ = features.custom_questions || { demo: [], psycho: [] }
+  return { orgId, customQ, features, isAdmin: !!orgData?.is_admin_org }
 }
 
 export async function GET(req: NextRequest) {
@@ -29,65 +39,76 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const url = new URL(req.url)
-  const typeFilter = url.searchParams.get('type') // psychographic | structured | open_ended
-  const industryFilter = url.searchParams.get('industry') // industry key
+  const typeFilter = url.searchParams.get('type')
+  const industryFilter = url.searchParams.get('industry')
 
-  const result: {
-    psychographic: any[]
-    structured: any[]
-    openEnded: any[]
-  } = { psychographic: [], structured: [], openEnded: [] }
+  const result: { psychographic: any[]; structured: any[]; openEnded: any[]; customDemo: any[]; customPsycho: any[] } =
+    { psychographic: [], structured: [], openEnded: [], customDemo: [], customPsycho: [] }
 
-  // ── Psychographic questions ──
+  // ── Psychographic (JSON library) ──
   if (!typeFilter || typeFilter === 'psychographic') {
     for (const ind of psychographicData.psychographic_profiling) {
       const industryKey = mapIndustryLabel(ind.industry)
       if (industryFilter && industryKey !== industryFilter && industryKey !== 'universal') continue
-
       for (const q of ind.questions) {
-        result.psychographic.push({
-          industry: industryKey,
-          industryLabel: ind.industry,
-          prompt: q.prompt,
-          responses: q.responses,
-        })
+        result.psychographic.push({ industry: industryKey, industryLabel: ind.industry, prompt: q.prompt, responses: q.responses })
       }
     }
   }
 
-  // ── Structured industry questions ──
+  // ── Structured industry questions (JSON) ──
   if (!typeFilter || typeFilter === 'structured') {
     for (const ind of industryQuestionsData.industries) {
       if (industryFilter && ind.industry !== industryFilter) continue
-
       for (const q of ind.questions) {
-        result.structured.push({
-          industry: ind.industry,
-          industryLabel: INDUSTRY_LABELS[ind.industry as Industry] || ind.industry,
-          ...q,
-        })
+        result.structured.push({ industry: ind.industry, industryLabel: INDUSTRY_LABELS[ind.industry as Industry] || ind.industry, ...q })
       }
     }
   }
 
-  // ── Open-ended questions with keyword triggers ──
+  // ── Open-ended + keyword triggers (JSON) ──
   if (!typeFilter || typeFilter === 'open_ended') {
     for (const ind of (openEndedData as any).industries) {
       const industryKey = mapIndustryLabel(ind.industry)
       if (industryFilter && industryKey !== industryFilter) continue
-
       for (const oe of ind.open_ends) {
-        result.openEnded.push({
-          industry: industryKey,
-          industryLabel: ind.industry,
-          prompt: oe.prompt,
-          triggerType: oe.trigger_type,
-          keywordTriggers: oe.keyword_triggers,
-          defaultFollowOn: oe.default_follow_on,
-        })
+        result.openEnded.push({ industry: industryKey, industryLabel: ind.industry, prompt: oe.prompt, triggerType: oe.trigger_type, keywordTriggers: oe.keyword_triggers, defaultFollowOn: oe.default_follow_on })
       }
     }
   }
 
+  // ── Custom questions from org features ──
+  const { customQ } = await getOrgAndCustomQ(supabase, user.id)
+  result.customDemo = customQ.demo || []
+  result.customPsycho = customQ.psycho || []
+
   return NextResponse.json(result)
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { orgId, customQ, features, isAdmin } = await getOrgAndCustomQ(supabase, user.id)
+  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 400 })
+
+  const body = await req.json()
+  const { type, data: qData } = body  // type: 'demo' | 'psycho'
+  if (type !== 'demo' && type !== 'psycho') return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
+
+  const newId = crypto.randomUUID()
+  const entry = { ...qData, id: newId }
+
+  const updated = { ...customQ }
+  if (type === 'demo') updated.demo = [...(customQ.demo || []), entry]
+  else updated.psycho = [...(customQ.psycho || []), entry]
+
+  const { error } = await supabase.from('organizations')
+    .update({ features: { ...features, custom_questions: updated } })
+    .eq('id', orgId)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ id: newId, ...entry })
 }

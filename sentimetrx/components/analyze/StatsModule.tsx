@@ -684,6 +684,7 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
   var [aiLoading, setAiLoading] = useState(false)
   var [apiKey, setApiKey] = useState('')
   var [aiEnabled, setAiEnabled] = useState(false)
+  var [summaryCopied, setSummaryCopied] = useState(false)
 
   useEffect(function() {
     try {
@@ -820,18 +821,17 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
     setAiLoading(false)
   }
 
-  // ── Deterministic plain-English summary (no AI needed) ───────────────────
-  var buildSummary = function(fs: AutoFinding[]): string {
-    if (!fs.length) return 'No statistically significant relationships were found in the current data.'
+  // ── Deterministic plain-English summary (no AI needed) — returns bullet array ─
+  var buildSummary = function(fs: AutoFinding[]): string[] {
+    if (!fs.length) return ['No statistically significant relationships were found in the current data.']
     var corrs = fs.filter(function(f) { return f.type === 'correlation' })
     var grps = fs.filter(function(f) { return f.type === 'group_effect' })
     var dists = fs.filter(function(f) { return f.type === 'distribution' })
-    var sentences: string[] = []
+    var bullets: string[] = []
 
     // Opening
     var total = corrs.length + grps.length
-    if (total === 1) sentences.push('The analysis found one statistically significant pattern in your data.')
-    else sentences.push('The analysis found ' + total + ' statistically significant pattern' + (total !== 1 ? 's' : '') + ' in your data.')
+    bullets.push('The analysis found ' + (total === 1 ? 'one' : total) + ' statistically significant pattern' + (total !== 1 ? 's' : '') + ' in your data.')
 
     // Top correlations (up to 3)
     corrs.slice(0, 3).forEach(function(f, i) {
@@ -841,8 +841,8 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
       var r = rMatch ? parseFloat(rMatch[1]) : 0
       var strength = Math.abs(r) > 0.7 ? 'strongly' : Math.abs(r) > 0.4 ? 'moderately' : 'weakly'
       var direction = r > 0 ? 'higher ' + a + ' is associated with higher ' + b : 'higher ' + a + ' is associated with lower ' + b
-      if (i === 0) sentences.push(a + ' and ' + b + ' are ' + strength + ' correlated (r\u202f=\u202f' + r.toFixed(2) + ') \u2014 ' + direction + '.')
-      else sentences.push('Similarly, ' + a + ' and ' + b + ' show a ' + (Math.abs(r) > 0.4 ? 'meaningful' : 'weaker') + ' relationship (r\u202f=\u202f' + r.toFixed(2) + ').')
+      if (i === 0) bullets.push(a + ' and ' + b + ' are ' + strength + ' correlated (r\u202f=\u202f' + r.toFixed(2) + ') \u2014 ' + direction + '.')
+      else bullets.push(a + ' and ' + b + ' show a ' + (Math.abs(r) > 0.4 ? 'meaningful' : 'weaker') + ' relationship (r\u202f=\u202f' + r.toFixed(2) + ').')
     })
 
     // Top group effects (up to 3)
@@ -850,26 +850,24 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
       var parts = f.title.split(' \u2192 ')
       var cat = parts[0] || '', num = parts[1] || ''
       var effStr = f.magnitude > 0.14 ? 'a large difference' : f.magnitude > 0.06 ? 'a meaningful difference' : 'a small but significant difference'
-      // Extract highest/lowest group names from detail if available
       var hiMatch = f.detail.match(/highest:\s*([^,()]+)/)
       var loMatch = f.detail.match(/lowest:\s*([^,()]+)/)
       if (hiMatch && loMatch) {
-        sentences.push(cat + ' is associated with ' + effStr + ' in ' + num + ' \u2014 ' + hiMatch[1].trim() + ' scores highest while ' + loMatch[1].trim() + ' scores lowest.')
+        bullets.push(cat + ' is associated with ' + effStr + ' in ' + num + ' \u2014 ' + hiMatch[1].trim() + ' scores highest while ' + loMatch[1].trim() + ' scores lowest.')
       } else {
-        sentences.push(cat + ' groups show ' + effStr + ' in ' + num + '.')
+        bullets.push(cat + ' groups show ' + effStr + ' in ' + num + '.')
       }
     })
 
     // Distribution flags
     if (dists.length) {
       var distNames = dists.map(function(f) { return f.title.replace(' is heavily right-skewed', '').replace(' is heavily left-skewed', '') })
-      sentences.push((dists.length === 1 ? distNames[0] + ' has' : distNames.slice(0, 2).join(' and ') + ' have') + ' a skewed distribution, which may affect regression results \u2014 consider log-transforming before modeling.')
+      bullets.push((dists.length === 1 ? distNames[0] + ' has' : distNames.slice(0, 2).join(' and ') + ' have') + ' a skewed distribution, which may affect regression results \u2014 consider log-transforming before modeling.')
     }
 
-    // Closing if many findings were trimmed
-    if (corrs.length + grps.length > 6) sentences.push('Additional significant relationships exist \u2014 see the full findings list above.')
+    if (corrs.length + grps.length > 6) bullets.push('Additional significant relationships exist \u2014 see the full findings list below.')
 
-    return sentences.join(' ')
+    return bullets
   }
 
   var typeLabel: Record<AutoFinding['type'], string> = { correlation: 'Correlation', group_effect: 'Group Effect', distribution: 'Distribution' }
@@ -908,12 +906,36 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
       )}
 
       {/* Plain-English Summary (no AI required) */}
-      {!running && findings !== null && (
-        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 20px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Summary</div>
-          <p style={{ fontSize: 13, color: T.textMid, lineHeight: 1.8, margin: 0 }}>{buildSummary(findings)}</p>
-        </div>
-      )}
+      {!running && findings !== null && (function() {
+        var bullets = buildSummary(findings)
+        var copySummary = function() {
+          var text = bullets.map(function(b) { return '\u2022 ' + b }).join('\n')
+          navigator.clipboard.writeText(text).then(function() {
+            setSummaryCopied(true); setTimeout(function() { setSummaryCopied(false) }, 2000)
+          }).catch(function() {})
+        }
+        return (
+          <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>Summary</div>
+              <button onClick={copySummary}
+                style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, border: '1px solid ' + T.border, background: summaryCopied ? T.greenBg : T.bg, color: summaryCopied ? T.green : T.textMid, cursor: 'pointer', transition: 'all .15s' }}>
+                {summaryCopied ? '\u2713 Copied' : '\u29C9 Copy'}
+              </button>
+            </div>
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {bullets.map(function(b, i) {
+                return (
+                  <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: T.textMid, lineHeight: 1.6 }}>
+                    <span style={{ flexShrink: 0, width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 6 }} />
+                    {b}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )
+      })()}
 
       {/* Findings list */}
       {!running && findings !== null && findings.length > 0 && (
