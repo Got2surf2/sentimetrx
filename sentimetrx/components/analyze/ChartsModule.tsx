@@ -131,17 +131,18 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
   var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
 
-  var catFields = coreFields.filter(function(f) { return f.type === 'categorical' })
-  var numFields = coreFields.filter(function(f) { return f.type === 'numeric' })
-  var dateFields = coreFields.filter(function(f) { return f.type === 'date' })
-  var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' })
+  var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
+  var numFields  = coreFields.filter(function(f) { return f.type === 'numeric' }).sort(asc2)
+  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' }).sort(asc2)
+  var dateFields = coreFields.filter(function(f) { return f.type === 'date' }).sort(asc2)
+  var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc2)
 
   return (
     <>
-      <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} currentConfig={currentConfig} />
     </>

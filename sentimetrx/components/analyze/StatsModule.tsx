@@ -202,11 +202,30 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card style={{ padding: '14px 16px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Distribution</div>
-              <PlotlyChart
-                data={[{ x: stats.vals, type: 'histogram', marker: { color: T.accent, opacity: 0.8, line: { color: T.accentMid, width: 1 } }, nbinsx: Math.min(50, Math.ceil(Math.sqrt(stats.n))) }]}
-                layout={{ xaxis: { title: { text: selLabel, font: { size: 11 } } }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.04, showlegend: false, margin: { t: 10, r: 16, b: 44, l: 48 } }}
-                style={{ height: 220, width: '100%' }}
-              />
+              {(function() {
+                var nbins = Math.min(40, Math.max(10, Math.ceil(Math.sqrt(stats.n))))
+                var binW  = stats.range / nbins
+                // Normal curve scaled to histogram counts
+                var curveX: number[] = [], curveY: number[] = []
+                var lo = stats.mn - 4 * stats.sd, hi = stats.mn + 4 * stats.sd
+                for (var i = 0; i <= 120; i++) {
+                  var xv = lo + (hi - lo) * i / 120
+                  var z  = (xv - stats.mn) / stats.sd
+                  var py = (1 / (stats.sd * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * z * z)
+                  curveX.push(xv)
+                  curveY.push(py * stats.n * (binW > 0 ? binW : 1))
+                }
+                return (
+                  <PlotlyChart
+                    data={[
+                      { x: stats.vals, type: 'histogram', name: 'Count', nbinsx: nbins, marker: { color: T.accent, opacity: 0.75, line: { color: T.accentMid, width: 0.5 } }, hovertemplate: 'Count: %{y}<extra></extra>' },
+                      { x: curveX, y: curveY, type: 'scatter', mode: 'lines', name: 'Normal', line: { color: T.purple, width: 2, dash: 'solid' }, hovertemplate: 'Expected: %{y:.1f}<extra></extra>' },
+                    ]}
+                    layout={{ xaxis: { title: { text: selLabel, font: { size: 11 } } }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.02, showlegend: true, legend: { x: 0.75, y: 0.98, font: { size: 10 } }, margin: { t: 10, r: 16, b: 44, l: 48 } }}
+                    style={{ height: 220, width: '100%' }}
+                  />
+                )
+              })()}
             </Card>
             <Card style={{ padding: '14px 16px', background: T.bg }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
@@ -1251,8 +1270,8 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned }: {
     <>
       <CollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} T={T} fl={flFn} />
       <CollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} T={T} fl={flFn} />
-      <CollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} T={T} fl={flFn} />
       <CollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} T={T} fl={flFn} />
       <CollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} T={T} fl={flFn} />
       <CollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} T={T} fl={flFn} />
     </>
