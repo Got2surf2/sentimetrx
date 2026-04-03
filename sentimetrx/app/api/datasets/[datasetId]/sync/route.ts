@@ -53,7 +53,16 @@ export async function POST(_req: Request, { params }: Params) {
     .eq('study_id', dataset.study_id)
 
   if (newResponses.length === 0) {
-    return NextResponse.json({ synced: 0, total: totalCount || dataset.row_count, dataset_id: dataset.id })
+    return NextResponse.json({
+      synced: 0,
+      total: totalCount || dataset.row_count,
+      dataset_id: dataset.id,
+      debug: {
+        study_id: dataset.study_id,
+        last_synced_at: dataset.last_synced_at,
+        total_responses_found: totalCount,
+      }
+    })
   }
 
   const rows = formatResponsesAsRows(newResponses as Parameters<typeof formatResponsesAsRows>[0], study as Parameters<typeof formatResponsesAsRows>[1])
