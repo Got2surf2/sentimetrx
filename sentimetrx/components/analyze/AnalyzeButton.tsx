@@ -36,7 +36,12 @@ export default function AnalyzeButton({ studyId }: Props) {
         // Dataset exists — sync new responses and navigate
         setStatus('Syncing new responses...')
         var syncRes = await fetch('/api/datasets/' + existing.id + '/sync', { method: 'POST' })
-        var syncData = await syncRes.json()
+        var syncData = await syncRes.json().catch(function() { return {} as any })
+
+        if (!syncRes.ok) {
+          var detail = syncData.detail ? ' — ' + syncData.detail : ''
+          throw new Error((syncData.error || 'Sync failed') + detail)
+        }
 
         if (syncData.synced > 0) {
           window.location.href = '/analyze/' + existing.id + '/textmine?synced=' + syncData.synced
