@@ -51,6 +51,17 @@
   animation: pulse-dot 2s infinite; display: inline-block;
 }
 
+/* LottieLoader spinner */
+@keyframes lspin {
+  to { transform: rotate(360deg); }
+}
+.lottie-spinner {
+  border-radius: 50%;
+  border: 3px solid rgba(232,98,42,0.18);
+  border-top-color: #e8622a;
+  animation: lspin 0.75s linear infinite;
+}
+
 /* ── Mobile: prevent horizontal overflow ── */
 html {
 }
