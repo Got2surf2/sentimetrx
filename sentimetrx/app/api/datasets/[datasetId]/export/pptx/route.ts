@@ -1127,6 +1127,110 @@ function buildCommentsSlide(
   footer(slide, datasetName)
 }
 
+// Sentiment badge colors (matches TextMine sentBg/sentColor)
+function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s === 'negative' ? DN.redLight  : s === 'mixed' ? DN.amberLight : DN.slateLight }
+function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
+
+function buildThemeSlides(datasetName: string, themes: any[]) {
+  if (!themes || themes.length === 0) return
+
+  // Choose grid dimensions based on total theme count
+  function chooseGrid(n: number): { perPage: number; cols: number; rows: number } {
+    if (n <= 2) return { perPage: 2, cols: 2, rows: 1 }
+    if (n <= 4) return { perPage: 4, cols: 2, rows: 2 }
+    if (n <= 6) return { perPage: 6, cols: 3, rows: 2 }
+    return { perPage: 8, cols: 4, rows: 2 }
+  }
+  const { perPage, cols, rows } = chooseGrid(themes.length)
+
+  const gapX   = 0.16
+  const gapY   = 0.18
+  const cardW  = (W - PAD * 2 - gapX * (cols - 1)) / cols
+  const cardH  = (CH - gapY  * (rows  - 1)) / rows
+
+  const totalPages = Math.ceil(themes.length / perPage)
+  for (let pg = 0; pg < totalPages; pg++) {
+    const pageThemes = themes.slice(pg * perPage, (pg + 1) * perPage)
+    const slide = pptx.addSlide('NUMBERED')
+    bg(slide, pptx)
+    const pgTag = totalPages > 1 ? '  ·  ' + (pg + 1) + ' of ' + totalPages : ''
+    hdr(slide, pptx, 'Theme Analysis', DN.tealDark, 'AI-identified themes from verbatim responses' + pgTag)
+    logo(slide)
+
+    pageThemes.forEach(function(t: any, i: number) {
+      const col  = i % cols
+      const row  = Math.floor(i / cols)
+      const cx   = PAD + col * (cardW + gapX)
+      const cy   = CY  + row * (cardH + gapY)
+
+      // Card background + colored top border strip
+      const themeColor = (t.color || DN.teal).replace('#', '')
+      rect(slide, cx, cy, cardW, cardH, DN.white, 0.07, themeColor)
+      // Thick colored top accent strip
+      solidRect(slide, cx, cy, cardW, 0.07, themeColor)
+
+      // Sentiment badge (top right)
+      const sent = t.sentiment || ''
+      if (sent) {
+        const sentW = 0.8
+        rect(slide, cx + cardW - sentW - 0.08, cy + 0.12, sentW, 0.24, themeSentBg(sent), 0.5, themeSentFg(sent))
+        slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), {
+          x: cx + cardW - sentW - 0.08, y: cy + 0.12, w: sentW, h: 0.24,
+          fontSize: 8, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
+        })
+      }
+
+      // Theme name
+      const nameH = cardH <= 2.0 ? 0.32 : 0.42
+      slide.addText(t.name || '', {
+        x: cx + 0.14, y: cy + 0.14, w: cardW - (sent ? 1.05 : 0.28), h: nameH,
+        fontSize: cardH <= 2.0 ? 11 : 13, bold: true, color: DN.navy, valign: 'top', wrap: true,
+      })
+
+      // Description
+      const descY = cy + 0.14 + nameH + 0.04
+      const descH = cardH <= 2.0 ? 0.44 : 0.64
+      if (t.description) {
+        slide.addText(t.description, {
+          x: cx + 0.14, y: descY, w: cardW - 0.28, h: descH,
+          fontSize: cardH <= 2.0 ? 8 : 9, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
+        })
+      }
+
+      // Keywords pills (up to 4)
+      const keywords: string[] = (t.keywords || []).slice(0, 4)
+      const kwY = descY + descH + 0.06
+      let kwX = cx + 0.14
+      keywords.forEach(function(k: string) {
+        const kw = k.length * 0.057 + 0.18
+        if (kwX + kw > cx + cardW - 0.08) return
+        rect(slide, kwX, kwY, kw, 0.20, DN.slateLight, 0.5, DN.divider)
+        slide.addText(k, { x: kwX + 0.06, y: kwY, w: kw - 0.12, h: 0.20, fontSize: 7.5, color: DN.slateDark, valign: 'middle', wrap: false })
+        kwX += kw + 0.06
+      })
+
+      // Bottom divider + count/percentage + bar
+      const barY = cy + cardH - (cardH <= 2.0 ? 0.46 : 0.52)
+      solidRect(slide, cx + 0.10, barY - 0.06, cardW - 0.20, 0.010, DN.divider)
+      const pct = (t.percentage || t.count || 0)
+      const countStr = t.count ? t.count.toLocaleString() + ' responses' : ''
+      const pctStr   = pct ? Math.round(pct) + '%' : ''
+      if (countStr) {
+        slide.addText(countStr, { x: cx + 0.14, y: barY, w: cardW * 0.55, h: 0.24, fontSize: 8.5, color: DN.slateDark, valign: 'middle' })
+      }
+      if (pctStr) {
+        slide.addText(pctStr, { x: cx + cardW * 0.55, y: barY, w: cardW * 0.38, h: 0.24, fontSize: 13, bold: true, color: themeColor, align: 'right', valign: 'middle' })
+      }
+      // Mini progress bar
+      const barFill = Math.min(100, Math.round(pct)) / 100
+      solidRect(slide, cx + 0.14, cy + cardH - 0.16, cardW - 0.28, 0.06, DN.slateLight)
+      if (barFill > 0) solidRect(slide, cx + 0.14, cy + cardH - 0.16, (cardW - 0.28) * barFill, 0.06, themeColor)
+    })
+
+    footer(slide, datasetName)
+  }
+}
+
 function buildSectionDivider(title: string, subtitle: string, fieldCount: number) {
   const slide = pptx.addSlide('NUMBERED')
 
@@ -1316,11 +1420,11 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) 
     insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
   }
 
-  footer(slide, datasetName, pageNum)
+  footer(slide, datasetName)
 }
 
-function buildClosingSlide(datasetName: string, takeaways: string[], pageNum: number) {
-  const slide = pptx.addSlide()
+function buildClosingSlide(datasetName: string, takeaways: string[]) {
+  const slide = pptx.addSlide('NUMBERED')
 
   solidRect(slide, 0, 0, W, H, DN.navy)
   solidRect(slide, 0, 0, W, 0.07, DN.gold)
@@ -1384,7 +1488,6 @@ function buildClosingSlide(datasetName: string, takeaways: string[], pageNum: nu
     ],
     { x: PAD + 0.07, y: H - 0.4, w: 3.5, h: 0.34, fontSize: 13, valign: 'middle' }
   )
-  slide.addText(String(pageNum), { x: W - PAD - 0.5, y: H - 0.4, w: 0.5, h: 0.34, fontSize: 8.5, color: DN.slate, align: 'right', valign: 'middle' })
 }
 
 // ── Main route handler ────────────────────────────────────────────────────────
@@ -1402,6 +1505,8 @@ export async function POST(req: Request, { params }: Params) {
   const commentConfig: Record<string, { enabled: boolean; slides: number }> = body.commentConfig || {}
   const commentAnnotations: string[]  = body.commentAnnotations || []
   const commentColorField: string     = body.commentColorField  || ''
+  const includeThemeSlides: boolean   = body.includeThemeSlides !== false
+  const selectedThemeIds: string[]    = body.selectedThemeIds   || []
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -1419,7 +1524,10 @@ export async function POST(req: Request, { params }: Params) {
 
   const schema      = stateRow.schema_config
   const analytics   = stateRow.analytics
-  const themes      = (stateRow.theme_model as any)?.themes || []
+  const allThemes   = (stateRow.theme_model as any)?.themes || []
+  const themes      = selectedThemeIds.length > 0
+    ? allThemes.filter((t: any) => selectedThemeIds.includes(t.id))
+    : allThemes
   const datasetName = dataset.name
 
   if (!analytics?.fieldSummaries) {
@@ -1500,21 +1608,28 @@ export async function POST(req: Request, { params }: Params) {
     const pptxgen  = (await import('pptxgenjs')).default
     pptx           = new pptxgen()
     pptx.layout    = 'LAYOUT_WIDE'
+    pptx.defineSlideMaster({
+      title: 'NUMBERED',
+      slideNumber: { x: W - PAD - 0.5, y: FY, w: 0.5, h: 0.26, color: DN.slate, fontSize: 7.5, align: 'right' },
+    })
     pptx.author    = 'Datanautix'
     pptx.company   = 'Datanautix'
     pptx.subject   = datasetName + ' — Analysis Report'
     pptx.title     = datasetName
 
-    let page = 1
-
     // 1: Title
-    buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt, page++)
+    buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt)
 
     // 2: About this report
-    buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience, page++)
+    buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience)
 
     // 3: Executive Summary
-    buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], themes, selectedFields, page++)
+    buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], themes, selectedFields)
+
+    // 4: Theme slides (if enabled and themes exist)
+    if (includeThemeSlides && themes.length > 0) {
+      buildThemeSlides(datasetName, themes)
+    }
 
     // ── Group fields by section ───────────────────────────────────────────
     const coreFields   = selectedFields.filter(f => !f.section || f.section === 'core')
@@ -1524,7 +1639,7 @@ export async function POST(req: Request, { params }: Params) {
     const renderField = (f: SelectedField) => {
       const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
       if (f.type === 'open-ended') {
-        buildOpenEndedSlide(datasetName, f, ai, audience, themes, page++)
+        buildOpenEndedSlide(datasetName, f, ai, audience, themes)
         // Comment slides — use commentConfig from request; default enabled=true, slides=2
         const cfg         = commentConfig[f.field]
         const cmtEnabled  = cfg ? cfg.enabled : true
@@ -1538,7 +1653,7 @@ export async function POST(req: Request, { params }: Params) {
             : commentDemoFields
           const resolvedKey = rowKeyMap[normalize(f.field)] || f.field
           console.log('[pptx/comments] field:', f.field, '| resolved row key:', resolvedKey, '| sample value:', allRows.length > 0 ? String(allRows[0][resolvedKey] || '(empty)').slice(0, 80) : 'no rows')
-          const commentItems: CommentItem[] = allRows
+          const allCommentItems: CommentItem[] = allRows
             .map(function(row) {
               const text = rowVal(row, f.field)
               const demos = annotFields
@@ -1548,19 +1663,42 @@ export async function POST(req: Request, { params }: Params) {
               return { text, demos, colorValue }
             })
             .filter(function(c) { return c.text.length > 8 })
-            .slice(0, maxComments)
+
+          // Sample with colorValue diversity: round-robin across distinct color groups
+          const commentItems: CommentItem[] = (function() {
+            if (!commentColorField) return allCommentItems.slice(0, maxComments)
+            const groups: Record<string, CommentItem[]> = {}
+            allCommentItems.forEach(function(c) {
+              const key = c.colorValue || '__none__'
+              if (!groups[key]) groups[key] = []
+              groups[key].push(c)
+            })
+            const buckets = Object.values(groups)
+            const result: CommentItem[] = []
+            let i = 0
+            while (result.length < maxComments) {
+              let added = false
+              for (let b = 0; b < buckets.length && result.length < maxComments; b++) {
+                if (buckets[b][i]) { result.push(buckets[b][i]); added = true }
+              }
+              if (!added) break
+              i++
+            }
+            return result
+          })()
+
           console.log('[pptx/comments] field', f.field, '→', commentItems.length, 'comments extracted (from', allRows.length, 'rows)')
           if (commentItems.length > 0) {
             const numSlides = Math.ceil(commentItems.length / perSlide)
             for (let si = 0; si < numSlides; si++) {
-              buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides, page++)
+              buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides)
             }
           }
         }
       } else if (f.type === 'categorical') {
-        if (audience !== 'executive') buildPieSlide(datasetName, f, ai, page++)
+        if (audience !== 'executive') buildPieSlide(datasetName, f, ai)
       } else if (f.type === 'numeric') {
-        if (audience !== 'executive') buildNumericSlide(datasetName, f, ai, page++)
+        if (audience !== 'executive') buildNumericSlide(datasetName, f, ai)
       }
     }
 
@@ -1571,25 +1709,25 @@ export async function POST(req: Request, { params }: Params) {
       ...coreFields.filter(f => f.type === 'categorical'),
     ]
     if (coreOrdered.length > 0) {
-      buildSectionDivider('Core Study Questions', 'Primary research questions and measured outcomes', coreOrdered.length, page++)
+      buildSectionDivider('Core Study Questions', 'Primary research questions and measured outcomes', coreOrdered.length)
       coreOrdered.forEach(renderField)
     }
 
     // ── 5: Psychographic fields ───────────────────────────────────────────
     if (psychoFields.length > 0 && audience !== 'executive') {
-      buildSectionDivider('Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', psychoFields.length, page++)
+      buildSectionDivider('Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', psychoFields.length)
       psychoFields.forEach(renderField)
     }
 
     // ── 6: Demographic fields ─────────────────────────────────────────────
     if (demoFields.length > 0 && audience !== 'executive') {
-      buildSectionDivider('Demographic Breakdown', 'Audience composition and segment characteristics', demoFields.length, page++)
+      buildSectionDivider('Demographic Breakdown', 'Audience composition and segment characteristics', demoFields.length)
       demoFields.forEach(renderField)
     }
 
     // Closing slide
     if ((narratives.keyTakeaways || []).length > 0) {
-      buildClosingSlide(datasetName, narratives.keyTakeaways, page++)
+      buildClosingSlide(datasetName, narratives.keyTakeaways)
     }
 
     const buffer  = await pptx.write({ outputType: 'nodebuffer' }) as Buffer

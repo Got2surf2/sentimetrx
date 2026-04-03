@@ -67,6 +67,9 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   const [commentConfig,      setCommentConfig]      = useState<Record<string, { enabled: boolean; slides: number }>>({})
   const [commentAnnotations, setCommentAnnotations] = useState<string[]>([])
   const [commentColorField,  setCommentColorField]  = useState<string>('')
+  const [themes,             setThemes]             = useState<any[]>([])
+  const [includeThemeSlides, setIncludeThemeSlides] = useState(true)
+  const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
 
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
@@ -106,6 +109,10 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
         setCommentAnnotations(f.filter(function(fld: SchemaField) {
           return (fld.section === 'demographic' || fld.section === 'psychographic') && fieldHasData(fld)
         }).map(function(fld: SchemaField) { return fld.field }))
+        // Load themes from theme_model
+        const themeList: any[] = d.theme_model?.themes || []
+        setThemes(themeList)
+        setSelectedThemeIds(new Set(themeList.map(function(t: any) { return t.id })))
       })
       .catch(function() { setError('Could not load dataset fields') })
       .finally(function() { setLoading(false) })
@@ -154,7 +161,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     }, 3500)
 
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds) }
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
       const res = await fetch('/api/datasets/' + datasetId + '/export/pptx', {
         method: 'POST',
@@ -344,6 +351,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                 <>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
+                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
                   {error && <ErrorBox message={error} />}
                 </>
@@ -397,6 +405,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                     </div>
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   </div>
+                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
 
                   {error && <ErrorBox message={error} />}
@@ -670,6 +679,117 @@ function CommentConfig({
           </div>
           <div style={{ fontSize: 9, color: S.textFaint, marginTop: 4 }}>Each card's left accent strip is colored by the field value. Numeric fields use a green→red gradient.</div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Sentiment helpers (matches TextMine) ─────────────────────────────────────
+const SENT_BG:    Record<string, string> = { positive: '#f0fdf4', negative: '#fef2f2', mixed: '#fffbeb', neutral: '#f4f7f8' }
+const SENT_COLOR: Record<string, string> = { positive: '#059669', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280' }
+
+// Deterministic theme color palette (mirrors TextMine THEME_PALETTE borders)
+const THEME_COLORS = ['#0F7173','#E8B84B','#7C3AED','#059669','#E85A1A','#0891B2','#DB2777','#65A30D','#9333EA','#D97706']
+
+function ThemePicker({
+  themes, includeThemeSlides, setIncludeThemeSlides, selectedThemeIds, setSelectedThemeIds,
+}: {
+  themes: any[]
+  includeThemeSlides: boolean
+  setIncludeThemeSlides: (v: boolean) => void
+  selectedThemeIds: Set<string>
+  setSelectedThemeIds: (fn: (prev: Set<string>) => Set<string>) => void
+}) {
+  if (themes.length === 0) return null
+
+  function toggleTheme(id: string) {
+    setSelectedThemeIds(function(prev) {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div style={{ marginBottom: 14, border: '1.5px solid #0D2B4530', borderRadius: 10, padding: '14px 14px 12px', background: '#f8fafc' }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 14 }}>🎯</span>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0D2B45', flex: 1 }}>Theme Slides</div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={includeThemeSlides} onChange={function(e) { setIncludeThemeSlides(e.target.checked) }}
+            style={{ accentColor: HERMES, width: 13, height: 13 }} />
+          <span style={{ fontSize: 11, color: S.textMid, fontWeight: 600 }}>Include in deck</span>
+        </label>
+      </div>
+
+      {includeThemeSlides && (
+        <>
+          <div style={{ fontSize: 10, color: S.textFaint, marginBottom: 8 }}>
+            Select which themes to include — {selectedThemeIds.size} of {themes.length} selected
+          </div>
+          {/* Select all / none */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <button onClick={function() { setSelectedThemeIds(function() { return new Set(themes.map(function(t: any) { return t.id })) }) }}
+              style={{ fontSize: 10, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, padding: 0 }}>
+              All
+            </button>
+            <span style={{ fontSize: 10, color: S.textFaint }}>·</span>
+            <button onClick={function() { setSelectedThemeIds(function() { return new Set() }) }}
+              style={{ fontSize: 10, color: S.textFaint, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
+              None
+            </button>
+          </div>
+          {/* Theme cards grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+            {themes.map(function(t: any, idx: number) {
+              const color   = t.color || THEME_COLORS[idx % THEME_COLORS.length]
+              const checked = selectedThemeIds.has(t.id)
+              const sent    = t.sentiment || 'neutral'
+              return (
+                <div key={t.id} onClick={function() { toggleTheme(t.id) }}
+                  style={{ border: '2px solid ' + (checked ? color : S.border), borderRadius: 10, padding: '10px 12px', cursor: 'pointer', background: checked ? color + '0D' : S.white, transition: 'all .12s', position: 'relative' }}>
+                  {/* Checked indicator */}
+                  {checked && (
+                    <div style={{ position: 'absolute', top: 7, right: 8, width: 16, height: 16, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ color: 'white', fontSize: 9, fontWeight: 900 }}>✓</span>
+                    </div>
+                  )}
+                  {/* Color dot + sentiment */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 20, background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral, fontWeight: 700, textTransform: 'capitalize' as const }}>{sent}</span>
+                  </div>
+                  {/* Name */}
+                  <div style={{ fontSize: 12, fontWeight: 800, color: S.text, marginBottom: 3, lineHeight: 1.3 }}>{t.name}</div>
+                  {/* Description */}
+                  {t.description && (
+                    <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.4, marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+                      {t.description}
+                    </div>
+                  )}
+                  {/* Keywords */}
+                  {(t.keywords || []).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 3, marginBottom: 6 }}>
+                      {(t.keywords as string[]).slice(0, 3).map(function(k: string) {
+                        return <span key={k} style={{ fontSize: 9, padding: '1px 5px', background: S.bg, color: S.textFaint, borderRadius: 20, border: '1px solid ' + S.border }}>{k}</span>
+                      })}
+                    </div>
+                  )}
+                  {/* Count / % */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', borderTop: '1px solid ' + S.border, paddingTop: 6 }}>
+                    <span style={{ fontSize: 10, color: S.textFaint }}>n={t.count || 0}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: color }}>{Math.round(t.percentage || 0)}%</span>
+                  </div>
+                  {/* Mini bar */}
+                  <div style={{ height: 3, background: S.border, borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: Math.round(t.percentage || 0) + '%', background: color, borderRadius: 2 }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )
