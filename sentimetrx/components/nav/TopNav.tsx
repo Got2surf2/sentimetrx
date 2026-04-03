@@ -58,7 +58,7 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
   )
 }
 
-export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled, currentPage }: Props) {
+export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled = true, currentPage }: Props) {
 
   const navLink = (page: string, href: string, label: string) => {
     const active = currentPage === page

@@ -907,6 +907,14 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
         <div style={{ textAlign: 'center', padding: '40px 0', color: T.textFaint, fontSize: 13 }}>No significant relationships found (p &lt; 0.05) in the current data.</div>
       )}
 
+      {/* Plain-English Summary (no AI required) */}
+      {!running && findings !== null && (
+        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Summary</div>
+          <p style={{ fontSize: 13, color: T.textMid, lineHeight: 1.8, margin: 0 }}>{buildSummary(findings)}</p>
+        </div>
+      )}
+
       {/* Findings list */}
       {!running && findings !== null && findings.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -930,14 +938,6 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
               </div>
             )
           })}
-        </div>
-      )}
-
-      {/* Plain-English Summary (no AI required) */}
-      {!running && findings !== null && (
-        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 20px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Summary</div>
-          <p style={{ fontSize: 13, color: T.textMid, lineHeight: 1.8, margin: 0 }}>{buildSummary(findings)}</p>
         </div>
       )}
 
