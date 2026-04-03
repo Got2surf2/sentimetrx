@@ -506,6 +506,7 @@ var MAX_PREDICTORS = 12
 function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
   var [outcome, setOutcome] = useState(numFields[0]?.field || '')
   var [predictors, setPredictors] = useState<Set<string>>(new Set())
+  var [outcomeOpen, setOutcomeOpen] = useState(true)
 
   useEffect(function() { if (!outcome && numFields.length) setOutcome(numFields[0].field) }, [numFields.length])
 
@@ -533,20 +534,28 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
   return (
     <div>
       <PanelHeader icon={'\u27CB'} title="OLS Linear Regression" desc="Ordinary least squares regression with coefficient table, fit statistics, and residual diagnostics." />
-      {result && <BottomLine text={regrBL(result, aliases[outcome] || outcome)} naiveText={regrBL_naive(result, aliases[outcome] || outcome)} />}
+      {result && <BottomLine text={regrBL(result, aliases[outcome] || outcome, aliases)} naiveText={regrBL_naive(result, aliases[outcome] || outcome, aliases)} />}
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, marginBottom: 20 }}>
         <Card style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Outcome</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 18 }}>
-            {numFields.map(function(f) {
-              return (
-                <button key={f.field} onClick={function() { setOutcome(f.field); setPredictors(function(p) { var n = new Set(p); n.delete(f.field); return n }) }}
-                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: outcome === f.field ? 700 : 400, background: outcome === f.field ? T.accentBg : 'transparent', border: '1px solid ' + (outcome === f.field ? T.accent : T.border), color: outcome === f.field ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer' }}>
-                  {f.label || f.field}
-                </button>
-              )
-            })}
-          </div>
+          <button onClick={function() { setOutcomeOpen(function(v) { return !v }) }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: outcomeOpen ? 8 : 14 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>Outcome</span>
+            <span style={{ fontSize: 11, color: outcomeOpen ? T.textFaint : T.accent, fontWeight: 600 }}>
+              {outcomeOpen ? '\u25BE' : (aliases[outcome] || outcome).slice(0, 16) + (outcome ? ' \u25B8' : '\u25B8')}
+            </span>
+          </button>
+          {outcomeOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 18 }}>
+              {numFields.map(function(f) {
+                return (
+                  <button key={f.field} onClick={function() { setOutcome(f.field); setPredictors(function(p) { var n = new Set(p); n.delete(f.field); return n }); setOutcomeOpen(false) }}
+                    style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: outcome === f.field ? 700 : 400, background: outcome === f.field ? T.accentBg : 'transparent', border: '1px solid ' + (outcome === f.field ? T.accent : T.border), color: outcome === f.field ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer' }}>
+                    {aliases[f.field] || f.label || f.field}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Predictors ({predictors.size}/{MAX_PREDICTORS})</div>
           {predictors.size >= MAX_PREDICTORS && (
             <div style={{ fontSize: 10, color: T.amber, marginBottom: 6 }}>Max {MAX_PREDICTORS} predictors reached. Deselect one to add another.</div>

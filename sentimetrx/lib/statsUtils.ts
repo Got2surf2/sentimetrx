@@ -263,13 +263,14 @@ export function chiBL(res: any, rf: string, cf: string): string {
   return 'Significant association between ' + rf + ' and ' + cf + ' (\u03C7\u00B2=' + fmt2(res.chi2) + ', df=' + res.df + ', ' + fmtP(res.p) + ', N=' + res.N + '). The association is ' + assoc + " (Cram\u00E9r\u2019s V=" + fmt2(res.V) + ').'
 }
 
-export function regrBL(res: any, out: string): string {
+export function regrBL(res: any, out: string, aliases?: Record<string, string>): string {
   if (!res) return ''
   var r2 = Math.round(res.R2 * 100)
   var sig = res.coefs.slice(1).filter(function(c: any) { return c.p < 0.05 })
   var s = sigLabel(res.Fp)
+  var label = function(name: string) { return (aliases && aliases[name]) || name }
   if (s.label === 'not significant') return 'The model is not significant (F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '), explaining only ' + r2 + '% of variance in ' + out + '.'
-  var sigStr = sig.length ? ' Significant predictors: ' + sig.map(function(c: any) { return c.name + ' (\u03B2=' + fmt2(c.beta) + ', ' + fmtP(c.p) + ')' }).join(', ') + '.' : 'No individual predictors reached significance.'
+  var sigStr = sig.length ? ' Significant predictors: ' + sig.map(function(c: any) { return label(c.name) + ' (\u03B2=' + fmt2(c.beta) + ', ' + fmtP(c.p) + ')' }).join(', ') + '.' : 'No individual predictors reached significance.'
   return 'The model explains ' + r2 + '% of variance in ' + out + ' (R\u00B2=' + fmt2(res.R2) + ', adj.R\u00B2=' + fmt2(res.R2adj) + ', F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '). ' + sigStr
 }
 
@@ -312,12 +313,13 @@ export function chiBL_naive(res: any, rf: string, cf: string): string {
   return rf + ' and ' + cf + ' are ' + assoc + ' to each other. How people answer one question tends to go with how they answer the other. This is not just coincidence (based on ' + res.N + ' people).'
 }
 
-export function regrBL_naive(res: any, out: string): string {
+export function regrBL_naive(res: any, out: string, aliases?: Record<string, string>): string {
   if (!res) return ''
   var r2 = Math.round(res.R2 * 100)
   var sig = res.coefs.slice(1).filter(function(c: any) { return c.p < 0.05 })
+  var label = function(name: string) { return (aliases && aliases[name]) || name }
   if (res.Fp >= 0.05) return "We tried to predict " + out + " using the other factors. The model isn't reliable \u2014 it doesn't do meaningfully better than just guessing the average."
   var r2str = r2 < 10 ? 'only a small slice' : r2 < 30 ? 'a fair amount' : r2 < 60 ? 'a lot' : 'most'
-  var sigStr = sig.length ? ' The factors that matter most are: ' + sig.map(function(c: any) { return c.name }).join(', ') + '.' : ''
+  var sigStr = sig.length ? ' The factors that matter most are: ' + sig.map(function(c: any) { return label(c.name) }).join(', ') + '.' : ''
   return 'Our factors explain ' + r2str + ' of why ' + out + ' varies across people (' + r2 + '% of the variation).' + sigStr
 }
