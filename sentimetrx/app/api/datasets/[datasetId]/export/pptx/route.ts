@@ -1119,10 +1119,10 @@ function buildCommentsSlide(
       const maxRight = cx + cardW - 0.12
 
       // Pill style by section
-      const pillStyle = (section?: string): { bg: string; border: string; text: string } => {
-        if (section === 'demographic')   return { bg: 'FEF0E8', border: DN.orange, text: DN.orange }
-        if (section === 'psychographic') return { bg: 'E0F2F1', border: DN.teal,   text: DN.teal   }
-        return { bg: DN.slateLight, border: DN.divider, text: DN.slateDark }
+      const pillStyle = (section?: string): { bg: string; text: string } => {
+        if (section === 'demographic')   return { bg: 'FEF0E8', text: DN.orange }
+        if (section === 'psychographic') return { bg: 'E0F2F1', text: DN.teal   }
+        return { bg: DN.slateLight, text: DN.slateDark }
       }
 
       // First pass: compute widths so we know which pills actually fit
@@ -1133,8 +1133,8 @@ function buildCommentsSlide(
         const pillW = d.value.length * 0.062 + pillPadX * 2
         if (tagX + pillW > maxRight) return
         const style = pillStyle(d.section)
-        // Pill shape — high radius gives full pill look
-        rect(slide, tagX, pillY, pillW, pillH, style.bg, 0.5, style.border)
+        // Pill shape — no border, high radius for smooth pills
+        slide.addShape(pptx.ShapeType.rect, { x: tagX, y: pillY, w: pillW, h: pillH, fill: { color: style.bg }, line: { width: 0 }, rectRadius: 0.5 })
         slide.addText(d.value, {
           x: tagX + pillPadX, y: pillY, w: pillW - pillPadX * 2, h: pillH,
           fontSize: 7.5, bold: true, color: style.text, valign: 'middle', wrap: false,
