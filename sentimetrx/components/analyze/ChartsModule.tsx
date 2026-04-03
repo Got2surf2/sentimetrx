@@ -61,7 +61,7 @@ var CHART_SLOTS: Record<string, SlotDef[]> = {
   bullet:       [{ key: 'field', label: 'Measure', accepts: ['numeric'], required: true }, { key: 'splitBy', label: 'Split by', accepts: ['categorical'], required: false }],
   funnel:       [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }],
   gantt:        [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'range', label: 'Range Field', accepts: ['numeric', 'date'], required: true }],
-  driver:       [{ key: 'score', label: 'Score Field', accepts: ['numeric'], required: true }],
+  driver:       [{ key: 'score', label: 'Score Field', accepts: ['numeric'], required: true }, { key: 'groupBy', label: 'Group by', accepts: ['categorical'], required: false }],
   table:        [],
 }
 
@@ -329,7 +329,10 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     return <GanttInner analytics={analytics} schema={schema} datasetId={datasetId} catField={gCat} rangeField={gRange} />
   }
 
-  if (chartType === 'driver') return <EmptyChart msg="Score Driver requires a theme model and a scored field. Coming soon." />
+  if (chartType === 'driver') {
+    var dScoreF = config.score; if (!dScoreF) return <EmptyChart msg="Assign a numeric score field above." />
+    return <ScoreDriverInner datasetId={datasetId} scoreField={dScoreF} schema={schema} groupByField={config.groupBy || ''} />
+  }
 
   if (chartType === 'table') return <TableInner analytics={analytics} schema={schema} datasetId={datasetId} />
 
@@ -578,6 +581,134 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
       {stats.map(function(s) {
         return <GaugeCard key={s.label} label={s.label} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} />
       })}
+    </div>
+  )
+}
+
+function ScoreDriverInner({ datasetId, scoreField, schema, groupByField }: { datasetId: string; scoreField: string; schema: SchemaField[]; groupByField: string }) {
+  var { rows, loaded } = useRows(datasetId)
+  var [minN, setMinN] = useState(3)
+  var [sortBy, setSortBy] = useState<'delta' | 'count'>('delta')
+
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+
+  var themeModel = _enrichCtx.themeModel
+  var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+  var groupField = groupByField || (hasThemes ? '__themes__' : '')
+
+  if (!groupField) return <EmptyChart msg="Add themes in TextMine, or assign a categorical 'Group by' field to see score drivers." />
+
+  var groups: Record<string, number[]> = {}
+  var allScores: number[] = []
+
+  rows.forEach(function(r) {
+    var score = parseFloat(String(r[scoreField] || '').replace(/,/g, ''))
+    if (isNaN(score)) return
+    allScores.push(score)
+    var grp = String(r[groupField] || '').trim()
+    if (!grp || grp === 'Unclassified') return
+    if (!groups[grp]) groups[grp] = []
+    groups[grp].push(score)
+  })
+
+  if (!allScores.length) return <EmptyChart msg="No numeric data in the selected score field." />
+
+  var overallAvg = allScores.reduce(function(a, b) { return a + b }, 0) / allScores.length
+  var scoreLabel = schema.find(function(f) { return f.field === scoreField })?.label || scoreField
+
+  var stats = Object.entries(groups)
+    .map(function(entry) {
+      var name = entry[0], scores = entry[1]
+      var avg = scores.reduce(function(a, b) { return a + b }, 0) / scores.length
+      var sorted = scores.slice().sort(function(a, b) { return a - b })
+      var median = sorted[Math.floor(sorted.length / 2)]
+      // Compute color theme hint if available
+      var themeObj = hasThemes ? themeModel.themes.find(function(t: any) { return t.name === name }) : null
+      return { name: name, avg: avg, median: median, n: scores.length, delta: avg - overallAvg, themeColor: themeObj?.color }
+    })
+    .filter(function(s) { return s.n >= minN })
+
+  if (!stats.length) return <EmptyChart msg={'No groups with ' + minN + '+ responses. Lower the min filter.'} />
+
+  if (sortBy === 'delta') stats.sort(function(a, b) { return a.delta - b.delta })
+  else stats.sort(function(a, b) { return a.n - b.n })
+
+  var maxAbs = stats.reduce(function(m, s) { return Math.max(m, Math.abs(s.delta)) }, 0) || 1
+
+  var names = stats.map(function(s) { return s.name })
+  var deltas = stats.map(function(s) { return parseFloat(s.delta.toFixed(3)) })
+  var colors = stats.map(function(s) {
+    var intensity = Math.min(1, 0.45 + (Math.abs(s.delta) / maxAbs) * 0.55)
+    return s.delta >= 0
+      ? 'rgba(22,163,74,' + intensity + ')'
+      : 'rgba(220,38,38,' + intensity + ')'
+  })
+
+  var traces = [{
+    type: 'bar' as const,
+    y: names,
+    x: deltas,
+    orientation: 'h' as const,
+    marker: { color: colors, line: { width: 0 } },
+    text: stats.map(function(s) { return (s.delta >= 0 ? '+' : '') + s.delta.toFixed(2) + '  n=' + s.n }),
+    textposition: 'outside' as const,
+    textfont: { size: 10 },
+    customdata: stats.map(function(s) { return [s.avg.toFixed(2), s.n] }),
+    hovertemplate: '<b>%{y}</b><br>Avg ' + scoreLabel + ': %{customdata[0]}<br>Delta vs overall: %{x:+.2f}<br>n=%{customdata[1]}<extra></extra>',
+  }]
+
+  var xPad = maxAbs * 0.35
+  var layout = {
+    xaxis: {
+      title: '\u0394 vs overall avg (' + overallAvg.toFixed(1) + ')',
+      range: [-(maxAbs + xPad), maxAbs + xPad],
+      zeroline: true, zerolinewidth: 2, zerolinecolor: T.textMid,
+      tickformat: '+.2f',
+    },
+    yaxis: { automargin: true },
+    margin: { t: 20, r: 100, b: 60, l: 20 },
+    shapes: [{
+      type: 'line' as const,
+      x0: 0, x1: 0, y0: -0.5, y1: stats.length - 0.5,
+      line: { color: T.textMid, width: 1.5, dash: 'dash' as const },
+    }],
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Min responses:</span>
+          {[1, 3, 5, 10].map(function(v) {
+            return <button key={v} onClick={function() { setMinN(v) }}
+              style={{ padding: '2px 9px', fontSize: 11, borderRadius: 20, border: '1px solid ' + (minN === v ? T.accent : T.border), background: minN === v ? T.accentBg : 'transparent', color: minN === v ? T.accent : T.textMid, cursor: 'pointer', fontWeight: minN === v ? 700 : 400 }}>
+              {v}+
+            </button>
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Sort:</span>
+          {([['delta', 'By impact'], ['count', 'By volume']] as [string, string][]).map(function(pair) {
+            return <button key={pair[0]} onClick={function() { setSortBy(pair[0] as 'delta' | 'count') }}
+              style={{ padding: '2px 9px', fontSize: 11, borderRadius: 20, border: '1px solid ' + (sortBy === pair[0] ? T.accent : T.border), background: sortBy === pair[0] ? T.accentBg : 'transparent', color: sortBy === pair[0] ? T.accent : T.textMid, cursor: 'pointer', fontWeight: sortBy === pair[0] ? 700 : 400 }}>
+              {pair[1]}
+            </button>
+          })}
+        </div>
+        <span style={{ fontSize: 11, color: T.textFaint, marginLeft: 'auto' }}>
+          {stats.length} group{stats.length !== 1 ? 's' : ''} \u00B7 {allScores.length.toLocaleString()} responses \u00B7 overall avg {overallAvg.toFixed(1)}
+        </span>
+      </div>
+      <PlotlyChart
+        traces={traces}
+        layout={layout}
+        style={{ height: Math.max(320, stats.length * 38 + 110), width: '100%' }}
+      />
+      <div style={{ display: 'flex', gap: 20, justifyContent: 'center', fontSize: 10, color: T.textMute, marginTop: 6 }}>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(22,163,74,.8)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Drives score up</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(220,38,38,.8)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Drives score down</span>
+        <span>Dashed line = overall avg ({overallAvg.toFixed(1)})</span>
+      </div>
     </div>
   )
 }
