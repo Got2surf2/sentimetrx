@@ -405,13 +405,28 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
     kpiCard(slide, PAD + i * (kpiW + 0.1), CY, kpiW, 0.9, k.v, k.l, undefined, k.bg, k.vc)
   })
 
-  // Key findings bullets
+  // Key findings bullets — or auto-generated snapshot if no AI
   lbl(slide, 'KEY FINDINGS', PAD, CY + 1.05, leftW)
-  const bulletItems = bullets.slice(0, 5).map(function(b) {
-    return { text: b, options: { bullet: { indent: 14 }, fontSize: 12, color: DN.inkSoft, paraSpaceAfter: 6, lineSpacingMultiple: 1.25 } }
-  })
-  if (bulletItems.length) {
-    slide.addText(bulletItems, { x: PAD, y: CY + 1.28, w: leftW, h: CH - 1.28, fontSize: 12, valign: 'top' })
+  const realBullets = bullets.filter(b => b && b.length > 10)
+  if (realBullets.length > 0) {
+    const bulletItems = realBullets.slice(0, 5).map(function(b) {
+      return { text: b, options: { bullet: { indent: 14 }, fontSize: 11.5, color: DN.inkSoft, paraSpaceAfter: 7, lineSpacingMultiple: 1.3 } }
+    })
+    slide.addText(bulletItems, { x: PAD, y: CY + 1.28, w: leftW, h: CH - 1.28, fontSize: 11.5, valign: 'top' })
+  } else {
+    // Auto-generate snapshot from field data
+    const snapFields = fields.filter(f => f.type === 'categorical' && f.summary?.counts)
+    const snapY = CY + 1.28
+    snapFields.slice(0, 5).forEach(function(f, i) {
+      const counts  = f.summary.counts as Record<string, number>
+      const total_  = Object.values(counts).reduce((s: number, v: any) => s + v, 0)
+      const topKey  = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || ''
+      const topPct_ = total_ > 0 ? Math.round(counts[topKey] / total_ * 100) : 0
+      const fy      = snapY + i * 0.82
+      solidRect(slide, PAD, fy + 0.18, 0.06, 0.42, DN.teal)
+      slide.addText(trunc(f.label || f.field, 20), { x: PAD + 0.13, y: fy, w: leftW - 1.0, h: 0.28, fontSize: 9, bold: true, color: DN.warmMid })
+      slide.addText(topPct_ + '% ' + trunc(topKey, 22), { x: PAD + 0.13, y: fy + 0.28, w: leftW - 0.5, h: 0.3, fontSize: 11.5, bold: true, color: DN.ink })
+    })
   }
 
   // ── Right: Top themes + takeaways ──
@@ -449,85 +464,180 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   footer(slide, datasetName, pageNum)
 }
 
+// ── Bar color for ordinal distribution (best→worst order) ────────────────────
+function barColor(i: number, n: number, isOrdinal: boolean): string {
+  if (!isOrdinal || n < 3) return DN.teal
+  const frac = n <= 1 ? 0 : i / (n - 1)
+  if (frac < 0.15) return '059669'
+  if (frac < 0.38) return '34D399'
+  if (frac < 0.62) return '94A3B8'
+  if (frac < 0.82) return 'F97316'
+  return 'DC2626'
+}
+
+// ── Auto-generate insight text when AI is unavailable ────────────────────────
+function autoInsight(label: string, orderedKeys: string[], counts: Record<string, number>, total: number, isOrdinal: boolean, top2: number, bot2: number): string {
+  if (!orderedKeys.length || total === 0) return 'No data available for this field.'
+  const topKey  = orderedKeys[0]
+  const topPct  = pct(counts[topKey] || 0, total)
+  if (isOrdinal) {
+    const lines: string[] = []
+    if (top2 >= 75)      lines.push(top2 + '% of respondents rated ' + label + ' positively — a strong result.')
+    else if (top2 >= 55) lines.push('A majority (' + top2 + '%) gave ' + label + ' a positive rating.')
+    else                 lines.push('Only ' + top2 + '% gave ' + label + ' a positive rating — below expectations.')
+    lines.push(topPct + '% selected "' + topKey + '" as their response.')
+    if (bot2 > 5) lines.push(bot2 + '% expressed dissatisfaction — an area to monitor.')
+    return lines.join(' ')
+  }
+  const secondKey = orderedKeys[1]
+  if (!secondKey) return '"' + topKey + '" was selected by all ' + total.toLocaleString() + ' respondents.'
+  const secondPct = pct(counts[secondKey] || 0, total)
+  return '"' + topKey + '" is the most common response (' + topPct + '%), followed by "' + secondKey + '" (' + secondPct + '%). Together they account for ' + (topPct + secondPct) + '% of all responses.'
+}
+
 function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldInsight, pageNum: number) {
   const slide = pptx.addSlide()
   bg(slide, pptx)
-  hdr(slide, pptx, f.label, DN.teal, 'Distribution of responses')
+  hdr(slide, pptx, f.label, DN.teal, 'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
   logo(slide)
 
-  const s = f.summary
-  const rawCounts = (s?.counts || {}) as Record<string, number>
-  const allKeys = Object.keys(rawCounts)
-  // For ordinal/ranked scales, order bars by scale position; otherwise by count desc
-  const useOrdinalOrder = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
-  const chartKeys = (useOrdinalOrder
-    ? smartOrder(allKeys, f.remapping)
-    : allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
-  ).slice(0, 10)
-  const entries = chartKeys.map(k => [k, rawCounts[k] || 0] as [string, number])
-  const total = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
-  // Top response callout always shows the most common value (count-based)
-  const topByCount = allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
+  const s          = f.summary
+  const rawCounts  = (s?.counts || {}) as Record<string, number>
+  const allKeys    = Object.keys(rawCounts)
+  const total      = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
+  const isOrdinal  = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
 
-  const chartW = W * 0.56 - PAD
-  const rightX = W * 0.56 + 0.1
-  const rightW = W - rightX - PAD * 0.5
+  // Ordinal → show best-first (reverse scale order); nominal → count desc
+  let orderedKeys: string[]
+  if (isOrdinal) {
+    orderedKeys = smartOrder(allKeys, f.remapping).slice().reverse()
+  } else {
+    orderedKeys = allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
+  }
+  orderedKeys = orderedKeys.filter(k => (rawCounts[k] || 0) > 0).slice(0, 8)
 
-  if (entries.length > 0) {
-    const CHART_COLORS = [
-      DN.teal, DN.tealLight, '4BA89A', '5CB3A6', '3D9E91',
-      '2E7A6F', DN.orange, DN.orangeLight, 'F58A5C', 'E87A4A',
-    ]
-    slide.addChart('bar', [{ name: f.label, labels: entries.map(([k]) => trunc(k, 26)), values: entries.map(([, v]) => v as number) }], {
-      x: PAD, y: CY + 0.05, w: chartW, h: CH - 0.1,
-      barDir: 'bar',
-      chartColors: CHART_COLORS,
-      showLegend: false,
-      showValue: true,
-      dataLabelColor: DN.white,
-      dataLabelFontSize: 9,
-      valAxisLabelColor: DN.warmLight,
-      catAxisLabelColor: DN.inkSoft,
-      catAxisLabelFontSize: 9.5,
+  // Metrics
+  const top2Keys  = isOrdinal ? orderedKeys.slice(0, 2) : []
+  const top2      = pct(top2Keys.reduce((s, k) => s + (rawCounts[k] || 0), 0), total)
+  const bot2Keys  = isOrdinal && orderedKeys.length >= 4 ? orderedKeys.slice(-2) : []
+  const bot2      = pct(bot2Keys.reduce((s, k) => s + (rawCounts[k] || 0), 0), total)
+
+  let avgScore: number | null = null
+  let maxScore = 5
+  if (f.remapping && Object.keys(f.remapping).length > 0) {
+    maxScore    = Math.max(...Object.values(f.remapping))
+    const wsum  = allKeys.reduce((s, k) => s + (rawCounts[k] || 0) * (f.remapping![k] || 0), 0)
+    avgScore    = total > 0 ? Math.round(wsum / total * 10) / 10 : null
+  }
+
+  // ── Layout constants ─────────────────────────────────────────────────────────
+  const leftW   = 2.9
+  const chartX  = PAD + leftW + 0.38
+  const labelW  = 2.5
+  const barMaxW = W - chartX - labelW - 0.15 - 0.62 - 1.1 - PAD * 0.5
+  const barX    = chartX + labelW + 0.15
+  const pctX    = barX + barMaxW + 0.12
+  const cntX    = pctX + 0.62
+
+  // ── Left panel ───────────────────────────────────────────────────────────────
+  kpiCard(slide, PAD, CY, leftW, 0.88, total.toLocaleString(), 'Total Responses', (s?.uniqueCount || allKeys.length) + ' unique values', DN.tealPale, DN.teal)
+
+  let leftY = CY + 1.01
+
+  if (isOrdinal) {
+    const t2Color = top2 >= 70 ? DN.green : top2 >= 50 ? DN.amber : DN.red
+    const t2Bg    = top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight
+    kpiCard(slide, PAD, leftY, leftW, 0.88, top2 + '%', 'Top-2 Positive', top2Keys.slice(0, 2).map(k => trunc(k, 14)).join(' + '), t2Bg, t2Color)
+    leftY += 1.01
+
+    if (avgScore !== null) {
+      const aFrac  = maxScore > 0 ? avgScore / maxScore : 0.5
+      const aColor = aFrac >= 0.65 ? DN.green : aFrac >= 0.4 ? DN.amber : DN.red
+      kpiCard(slide, PAD, leftY, leftW, 0.88, avgScore.toFixed(1) + ' / ' + maxScore, 'Average Score', undefined, DN.cream, aColor)
+      leftY += 1.01
+    }
+
+    if (bot2 > 4 && bot2Keys.length > 0) {
+      solidRect(slide, PAD, leftY, leftW, 0.72, 'FEE2E2')
+      solidRect(slide, PAD, leftY, 0.06, 0.72, DN.red)
+      slide.addText(bot2 + '%', { x: PAD + 0.14, y: leftY + 0.05, w: 0.75, h: 0.34, fontSize: 22, bold: true, color: DN.red, valign: 'middle' })
+      slide.addText('expressed concern', { x: PAD + 0.93, y: leftY + 0.05, w: leftW - 1.05, h: 0.3, fontSize: 9, bold: true, color: DN.red, valign: 'middle' })
+      slide.addText(bot2Keys.map(k => trunc(k, 14)).join(' or '), { x: PAD + 0.14, y: leftY + 0.42, w: leftW - 0.2, h: 0.24, fontSize: 8, color: DN.warmMid })
+      leftY += 0.85
+    }
+  }
+
+  // Insight text — AI if good, else auto-computed
+  const hasRealAI = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
+  const insightText = hasRealAI
+    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
+    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, bot2)
+
+  const insightH = Math.max(0.5, H - leftY - 0.55)
+  insightBox(slide, PAD, leftY + 0.1, leftW, insightH, insightText, DN.teal, DN.tealPale)
+
+  // Implication strip
+  if (hasRealAI && ai.implication) {
+    solidRect(slide, PAD, H - 0.72, leftW, 0.44, DN.orangePale)
+    solidRect(slide, PAD, H - 0.72, 0.06, 0.44, DN.orange)
+    slide.addText('→ ' + ai.implication, { x: PAD + 0.13, y: H - 0.72 + 0.04, w: leftW - 0.18, h: 0.36, fontSize: 8.5, color: DN.inkSoft, italic: true, valign: 'middle', wrap: true })
+  }
+
+  // Vertical divider
+  solidRect(slide, PAD + leftW + 0.18, CY + 0.06, 0.012, CH - 0.12, DN.divider)
+
+  // ── Right panel: custom horizontal bar chart ──────────────────────────────
+  const n     = orderedKeys.length
+  const rowGap = 0.09
+  const rowH  = Math.min(0.58, (CH - rowGap * (n - 1)) / Math.max(n, 1))
+  const maxVal = Math.max(...orderedKeys.map(k => rawCounts[k] || 0), 1)
+
+  // Column headers
+  slide.addText('Response', { x: chartX, y: CY, w: labelW, h: 0.28, fontSize: 8.5, bold: true, color: DN.warmMid, valign: 'middle' })
+  slide.addText('Distribution', { x: barX, y: CY, w: barMaxW, h: 0.28, fontSize: 8.5, bold: true, color: DN.warmMid, valign: 'middle' })
+  slide.addText('%', { x: pctX, y: CY, w: 0.6, h: 0.28, fontSize: 8.5, bold: true, color: DN.warmMid, valign: 'middle' })
+  slide.addText('n', { x: cntX, y: CY, w: 1.0, h: 0.28, fontSize: 8.5, bold: true, color: DN.warmMid, valign: 'middle' })
+  solidRect(slide, chartX, CY + 0.3, W - chartX - PAD * 0.5, 0.012, DN.divider)
+
+  const rowStart = CY + 0.42
+  orderedKeys.forEach(function(key, i) {
+    const count   = rawCounts[key] || 0
+    const pctVal  = pct(count, total)
+    const barW    = barMaxW * count / maxVal
+    const ry      = rowStart + i * (rowH + rowGap)
+    const col     = barColor(i, n, isOrdinal)
+    const isTop   = i === 0
+
+    // Subtle row tint
+    if (i % 2 === 0) solidRect(slide, chartX, ry, W - chartX - PAD * 0.4, rowH, 'F8F9FA')
+
+    // Label
+    slide.addText(trunc(key, 30), {
+      x: chartX, y: ry, w: labelW, h: rowH,
+      fontSize: isTop ? 11 : 10.5, bold: isTop,
+      color: isTop ? DN.ink : DN.inkSoft, valign: 'middle',
     })
-  }
 
-  // Right panel
-  // Summary stats
-  kpiCard(slide, rightX, CY, rightW, 0.78, (s?.nonNull || 0).toLocaleString(), 'Responses', s?.uniqueCount + ' unique values', DN.tealPale, DN.teal)
+    // Bar track
+    const trackY = ry + rowH * 0.22
+    const trackH = rowH * 0.55
+    solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
 
-  // Top response callout — always most common by count
-  if (topByCount.length > 0) {
-    const topK = topByCount[0]
-    const topV = rawCounts[topK] || 0
-    const topPct = pct(topV, total)
-    lbl(slide, 'TOP RESPONSE', rightX, CY + 0.9, rightW)
-    rect(slide, rightX, CY + 1.12, rightW, 0.68, DN.orangePale, 0.08, DN.orangePale2)
-    solidRect(slide, rightX, CY + 1.12, 0.07, 0.68, DN.orange)
-    slide.addText(trunc(topK, 28), { x: rightX + 0.16, y: CY + 1.16, w: rightW - 0.45, h: 0.34, fontSize: 12, bold: true, color: DN.inkSoft, valign: 'middle', wrap: true })
-    slide.addText(topPct + '%', { x: rightX + rightW - 0.45, y: CY + 1.16, w: 0.42, h: 0.34, fontSize: 18, bold: true, color: DN.orange, align: 'right', valign: 'middle' })
-    slide.addText(topV.toLocaleString() + ' responses', { x: rightX + 0.16, y: CY + 1.52, w: rightW - 0.24, h: 0.22, fontSize: 8.5, color: DN.warmMid })
-  }
+    // Bar fill
+    if (barW > 0.05) solidRect(slide, barX, trackY, barW, trackH, col)
 
-  // Key finding
-  if (ai.keyFinding) {
-    lbl(slide, 'KEY FINDING', rightX, CY + 1.95, rightW)
-    slide.addText(ai.keyFinding, { x: rightX, y: CY + 2.17, w: rightW, h: 0.44, fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2 })
-  }
+    // Percentage
+    slide.addText(pctVal + '%', {
+      x: pctX, y: ry, w: 0.6, h: rowH,
+      fontSize: isTop ? 13 : 11, bold: true, color: col, valign: 'middle',
+    })
 
-  // Narrative
-  if (ai.narrative) {
-    const narY = CY + (ai.keyFinding ? 2.68 : 1.95)
-    insightBox(slide, rightX, narY, rightW, Math.min(1.1, H - narY - 0.82), ai.narrative, DN.teal, DN.tealPale)
-  }
-
-  // Implication
-  if (ai.implication) {
-    const impY = H - 1.02
-    solidRect(slide, rightX, impY, rightW, 0.68, DN.orangePale)
-    solidRect(slide, rightX, impY, 0.07, 0.68, DN.orange)
-    slide.addText('→ ' + ai.implication, { x: rightX + 0.14, y: impY + 0.06, w: rightW - 0.2, h: 0.56, fontSize: 9.5, color: DN.inkSoft, italic: true, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2 })
-  }
+    // Count
+    slide.addText(count.toLocaleString(), {
+      x: cntX, y: ry, w: 1.1, h: rowH,
+      fontSize: 9.5, color: DN.warmMid, valign: 'middle',
+    })
+  })
 
   footer(slide, datasetName, pageNum)
 }
@@ -535,84 +645,119 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
 function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsight, pageNum: number) {
   const slide = pptx.addSlide()
   bg(slide, pptx)
-  hdr(slide, pptx, f.label, DN.teal, 'Numeric distribution analysis')
+  hdr(slide, pptx, f.label, DN.teal, 'Numeric distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
   logo(slide)
 
-  const s = f.summary
-  const range = (s?.max ?? 0) - (s?.min ?? 0)
+  const s          = f.summary
+  const range      = (s?.max ?? 0) - (s?.min ?? 0)
   const posInRange = range > 0 ? (s?.avg - s?.min) / range : 0.5
-  const perfColor = posInRange >= 0.65 ? DN.green : posInRange <= 0.35 ? DN.red : DN.amber
-  const perfBg    = posInRange >= 0.65 ? DN.greenLight : posInRange <= 0.35 ? DN.redLight : DN.amberLight
+  const perfColor  = posInRange >= 0.65 ? DN.green : posInRange <= 0.35 ? DN.red : DN.amber
+  const perfBg     = posInRange >= 0.65 ? DN.greenLight : posInRange <= 0.35 ? DN.redLight : DN.amberLight
 
-  // Stats row — 5 cards full width
-  const stats = [
-    { k: 'Average',    v: s?.avg?.toFixed?.(2) ?? '—',    bg: perfBg,   vc: perfColor },
-    { k: 'Median',     v: s?.median?.toFixed?.(2) ?? '—', bg: DN.cream, vc: DN.inkSoft },
-    { k: 'Std Dev',    v: s?.std?.toFixed?.(2) ?? '—',    bg: DN.cream, vc: DN.inkSoft },
-    { k: 'Min → Max',  v: (s?.min ?? '—') + ' – ' + (s?.max ?? '—'), bg: DN.cream, vc: DN.inkSoft },
-    { k: 'Responses',  v: (s?.nonNull || 0).toLocaleString(), bg: DN.tealPale, vc: DN.teal },
+  // ── Stats row (top strip) ────────────────────────────────────────────────────
+  const statsData = [
+    { k: 'Average',   v: s?.avg?.toFixed?.(2) ?? '—',  bg: perfBg,       vc: perfColor },
+    { k: 'Median',    v: s?.median?.toFixed?.(2) ?? '—', bg: DN.cream,   vc: DN.inkSoft },
+    { k: 'Std Dev',   v: s?.std?.toFixed?.(2) ?? '—',  bg: DN.cream,     vc: DN.inkSoft },
+    { k: 'Min → Max', v: (s?.min ?? '—') + ' – ' + (s?.max ?? '—'), bg: DN.cream, vc: DN.inkSoft },
+    { k: 'n',         v: (s?.nonNull || 0).toLocaleString(), bg: DN.tealPale, vc: DN.teal },
   ]
-  const sw = (W - PAD * 2 - 0.16) / stats.length
-  stats.forEach(function(st, i) {
+  const sw = (W - PAD * 2 - 0.16) / statsData.length
+  statsData.forEach(function(st, i) {
     kpiCard(slide, PAD + i * (sw + 0.04), CY, sw, 0.82, st.v, st.k, undefined, st.bg, st.vc)
   })
 
-  const chartH = CH - 0.95
-  const chartW = W * 0.52 - PAD
-
-  // Histogram
+  // ── Left: custom histogram ───────────────────────────────────────────────────
+  const chartX  = PAD
+  const chartW2 = W * 0.55 - PAD
+  const chartY  = CY + 0.95
+  const chartH2 = CH - 1.05
   const histBuckets: any[] = s?.histogram || []
+
+  lbl(slide, 'DISTRIBUTION', chartX, chartY - 0.22, chartW2)
+  solidRect(slide, chartX, chartY - 0.02, chartW2, 0.012, DN.divider)
+
   if (histBuckets.length > 0) {
-    slide.addChart('bar', [{
-      name: f.label,
-      labels: histBuckets.map((b: any) => Number(b.min.toFixed(1)) + '–' + Number(b.max.toFixed(1))),
-      values: histBuckets.map((b: any) => b.count),
-    }], {
-      x: PAD, y: CY + 0.95, w: chartW, h: chartH,
-      barDir: 'col',
-      chartColors: [DN.teal],
-      showLegend: false,
-      showValue: false,
-      valAxisLabelColor: DN.warmLight,
-      catAxisLabelColor: DN.warmMid,
-      catAxisLabelFontSize: 7.5,
+    const maxCount  = Math.max(...histBuckets.map((b: any) => b.count), 1)
+    const bw        = chartW2 / histBuckets.length
+    histBuckets.forEach(function(b: any, i: number) {
+      const bh   = chartH2 * 0.88 * (b.count / maxCount)
+      const bx   = chartX + i * bw
+      const by   = chartY + chartH2 * 0.88 - bh
+      const frac = i / Math.max(histBuckets.length - 1, 1)
+      const col  = posInRange >= 0.65 ? DN.teal : posInRange <= 0.35 ? 'F97316' : DN.teal
+      solidRect(slide, bx + 0.02, by, bw - 0.04, bh, col)
     })
-    lbl(slide, 'RESPONSE DISTRIBUTION', PAD, CY + 0.94, chartW)
+    // X-axis labels (show ~5 evenly spaced)
+    const step = Math.ceil(histBuckets.length / 5)
+    histBuckets.forEach(function(b: any, i: number) {
+      if (i % step !== 0 && i !== histBuckets.length - 1) return
+      const bx = chartX + i * (chartW2 / histBuckets.length)
+      slide.addText(String(Number(b.min.toFixed(1))), {
+        x: bx, y: chartY + chartH2 * 0.9, w: chartW2 / histBuckets.length * step, h: 0.22,
+        fontSize: 7.5, color: DN.warmMid, valign: 'top',
+      })
+    })
+    // Mean line
+    if (s?.avg != null && range > 0) {
+      const meanX = chartX + ((s.avg - s.min) / range) * chartW2
+      solidRect(slide, meanX - 0.01, chartY, 0.02, chartH2 * 0.88, DN.orange)
+      slide.addText('avg ' + s.avg.toFixed(1), {
+        x: Math.min(meanX - 0.3, chartX + chartW2 - 0.65), y: chartY + 0.04,
+        w: 0.65, h: 0.22, fontSize: 8, bold: true, color: DN.orange, align: 'center',
+      })
+    }
+  } else {
+    slide.addText('No histogram data available.', {
+      x: chartX, y: chartY + 1.0, w: chartW2, h: 0.4,
+      fontSize: 11, color: DN.warmLight, italic: true, align: 'center',
+    })
   }
 
-  // Right panel
-  const rightX = W * 0.52 + 0.15
+  // ── Right panel ──────────────────────────────────────────────────────────────
+  const rightX = W * 0.55 + 0.2
   const rightW = W - rightX - PAD * 0.5
 
-  // Scale position visual
-  lbl(slide, 'PERFORMANCE INDICATOR', rightX, CY + 0.94, rightW)
-  const barY = CY + 1.16
-  rect(slide, rightX, barY, rightW, 0.3, DN.parchment, 0.06, DN.divider)
-  const fillW = Math.max(0.1, rightW * posInRange)
-  solidRect(slide, rightX, barY, fillW, 0.3, perfColor + '80')
-  solidRect(slide, rightX + fillW - 0.04, barY - 0.04, 0.08, 0.38, perfColor)
-  slide.addText(s?.min ?? '0', { x: rightX, y: barY + 0.3, w: 0.5, h: 0.22, fontSize: 8, color: DN.warmMid, valign: 'top' })
-  slide.addText(s?.max ?? '—', { x: rightX + rightW - 0.5, y: barY + 0.3, w: 0.5, h: 0.22, fontSize: 8, color: DN.warmMid, align: 'right', valign: 'top' })
-  slide.addText('avg ' + (s?.avg?.toFixed(1) ?? '—'), { x: rightX + fillW - 0.45, y: barY - 0.28, w: 0.9, h: 0.22, fontSize: 8.5, bold: true, color: perfColor, align: 'center' })
+  // Performance gauge bar
+  lbl(slide, 'PERFORMANCE WITHIN RANGE', rightX, chartY - 0.22, rightW)
+  solidRect(slide, rightX, chartY - 0.02, rightW, 0.012, DN.divider)
+  const gaugeY = chartY + 0.1
+  rect(slide, rightX, gaugeY, rightW, 0.32, DN.parchment, 0.06, DN.divider)
+  const fillW = Math.max(0.12, rightW * posInRange)
+  solidRect(slide, rightX, gaugeY, fillW, 0.32, perfColor + '99')
+  solidRect(slide, rightX + fillW - 0.05, gaugeY - 0.05, 0.1, 0.42, perfColor)
+  slide.addText(String(s?.min ?? '0'), { x: rightX, y: gaugeY + 0.34, w: 0.6, h: 0.2, fontSize: 7.5, color: DN.warmMid })
+  slide.addText(String(s?.max ?? '—'), { x: rightX + rightW - 0.6, y: gaugeY + 0.34, w: 0.6, h: 0.2, fontSize: 7.5, color: DN.warmMid, align: 'right' })
+  slide.addText('avg ' + (s?.avg?.toFixed(1) ?? '—'), {
+    x: rightX + Math.max(0, fillW - 0.5), y: gaugeY - 0.28,
+    w: 0.95, h: 0.22, fontSize: 9, bold: true, color: perfColor, align: 'center',
+  })
 
-  // Key finding
-  if (ai.keyFinding) {
-    lbl(slide, 'KEY FINDING', rightX, CY + 1.72, rightW)
-    slide.addText(ai.keyFinding, { x: rightX, y: CY + 1.94, w: rightW, h: 0.44, fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2 })
+  // Key finding / narrative
+  const narY = gaugeY + 0.72
+  const hasRealAI = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
+  if (hasRealAI) {
+    slide.addText(ai.keyFinding, {
+      x: rightX, y: narY, w: rightW, h: 0.46,
+      fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2,
+    })
+    if (ai.narrative) {
+      insightBox(slide, rightX, narY + 0.54, rightW, Math.min(1.3, H - narY - 1.4), ai.narrative, DN.teal, DN.tealPale)
+    }
+  } else {
+    // Auto insight for numeric
+    const autoText = posInRange >= 0.65
+      ? 'Average of ' + (s?.avg?.toFixed(1) ?? '—') + ' sits in the upper range — strong performance.'
+      : posInRange <= 0.35
+        ? 'Average of ' + (s?.avg?.toFixed(1) ?? '—') + ' sits in the lower range — opportunity for improvement.'
+        : 'Average of ' + (s?.avg?.toFixed(1) ?? '—') + ' sits in the mid range.'
+    insightBox(slide, rightX, narY, rightW, Math.min(1.2, H - narY - 0.4), autoText, DN.teal, DN.tealPale)
   }
 
-  // Narrative
-  if (ai.narrative) {
-    const narY = CY + (ai.keyFinding ? 2.45 : 1.72)
-    const narH = Math.min(1.2, H - narY - (ai.implication ? 0.9 : 0.4))
-    insightBox(slide, rightX, narY, rightW, narH, ai.narrative, DN.teal, DN.tealPale)
-  }
-
-  // Implication
-  if (ai.implication) {
-    solidRect(slide, rightX, H - 0.78, rightW, 0.48, DN.orangePale)
-    solidRect(slide, rightX, H - 0.78, 0.07, 0.48, DN.orange)
-    slide.addText('→ ' + ai.implication, { x: rightX + 0.14, y: H - 0.78 + 0.04, w: rightW - 0.2, h: 0.4, fontSize: 9.5, color: DN.inkSoft, italic: true, valign: 'middle', wrap: true })
+  if (ai.implication && hasRealAI) {
+    solidRect(slide, rightX, H - 0.72, rightW, 0.44, DN.orangePale)
+    solidRect(slide, rightX, H - 0.72, 0.06, 0.44, DN.orange)
+    slide.addText('→ ' + ai.implication, { x: rightX + 0.13, y: H - 0.72 + 0.04, w: rightW - 0.18, h: 0.36, fontSize: 8.5, color: DN.inkSoft, italic: true, valign: 'middle', wrap: true })
   }
 
   footer(slide, datasetName, pageNum)
