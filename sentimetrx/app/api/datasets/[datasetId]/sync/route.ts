@@ -35,12 +35,12 @@ export async function POST(_req: Request, { params }: Params) {
 
     let responsesQuery = service
       .from('responses')
-      .select('id, created_at, nps_score, experience_score, sentiment, duration_sec, payload')
+      .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload')
       .eq('study_id', dataset.study_id)
-      .order('created_at', { ascending: true })
+      .order('completed_at', { ascending: true })
 
     if (dataset.last_synced_at) {
-      responsesQuery = responsesQuery.gt('created_at', dataset.last_synced_at)
+      responsesQuery = responsesQuery.gt('completed_at', dataset.last_synced_at)
     }
 
     const { data: responses, error: respErr } = await responsesQuery

@@ -201,7 +201,7 @@ export function flattenDemographics(payload: SurveyPayload | null | undefined): 
 
 interface ResponseRow {
   id:               string
-  created_at:       string
+  completed_at:     string
   nps_score:        number | null
   experience_score: number | null
   sentiment:        string | null
@@ -221,7 +221,7 @@ export function formatResponsesAsRows(
   return responses.map(function(r) {
     return {
       response_id:      r.id,
-      submitted_at:     r.created_at,
+      submitted_at:     r.completed_at,
       nps_score:        r.nps_score        ?? null,
       experience_score: r.experience_score ?? null,
       sentiment:        r.sentiment        ?? null,
