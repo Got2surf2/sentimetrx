@@ -254,18 +254,18 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
     for (const q of config.questions) {
       const col  = sanitizeColumnName(q.exportLabel || q.prompt || q.id)
       const type: AnaFieldType = (q.type === 'open' || q.type === 'numeric') ? 'open-ended' : 'categorical'
-      fields.push({ field: col, type, sqt: type === 'open-ended' ? 'open-text' : 'single-select' })
+      fields.push({ field: col, type, sqt: type === 'open-ended' ? 'open-text' : 'single-select', prompt: q.prompt })
     }
   }
   if (config.psychographicBank) {
     for (const pq of config.psychographicBank) {
-      fields.push({ field: 'psycho_' + sanitizeColumnName(pq.key), type: 'categorical', sqt: 'single-select', section: 'psychographic', label: pq.exportLabel || pq.q })
+      fields.push({ field: 'psycho_' + sanitizeColumnName(pq.key), type: 'categorical', sqt: 'single-select', section: 'psychographic', label: pq.exportLabel || pq.q, prompt: pq.q })
     }
   }
   if (config.demoFields) {
     for (const df of config.demoFields) {
       if (!df.enabled) continue
-      fields.push({ field: 'demo_' + sanitizeColumnName(df.key), type: 'categorical', sqt: df.type === 'text' ? 'open-text' : 'single-select', section: 'demographic', label: df.label })
+      fields.push({ field: 'demo_' + sanitizeColumnName(df.key), type: 'categorical', sqt: df.type === 'text' ? 'open-text' : 'single-select', section: 'demographic', label: df.label, prompt: df.label })
     }
   }
   return { fields, primaryTextField: 'q3_response', autoDetected: false, version: 1 }

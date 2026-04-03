@@ -163,7 +163,8 @@ function quoteCard(slide: any, x: number, y: number, w: number, h: number, text:
   rect(slide, x, y, w, h, DN.white, 0.07, DN.divider)
   solidRect(slide, x, y, 0.05, h, DN.teal)
   slide.addText('\u201C', { x: x + 0.10, y: y + 0.02, w: 0.28, h: 0.36, fontSize: 26, bold: true, color: DN.tealLight, valign: 'top' })
-  slide.addText(trunc(text, 220), { x: x + 0.12, y: y + 0.30, w: w - 0.22, h: h - 0.38, fontSize: 10, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.35 })
+  slide.addText(trunc(text, 220), { x: x + 0.12, y: y + 0.30, w: w - 0.40, h: h - 0.38, fontSize: 10, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.35 })
+  slide.addText('\u201D', { x: x + w - 0.28, y: y + h - 0.36, w: 0.28, h: 0.36, fontSize: 26, bold: true, color: DN.tealLight, valign: 'bottom', align: 'right' })
 }
 
 // ── AI narrative generation ───────────────────────────────────────────────────
@@ -287,6 +288,7 @@ interface SelectedField {
   summary:    any
   remapping?: Record<string, number>
   section?:   string   // 'psychographic' | 'demographic' | 'core' | undefined
+  prompt?:    string   // original survey question text
 }
 
 // Professional pie chart color palette
@@ -516,18 +518,18 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   if (themes.length > 0) {
     slide.addText('TOP THEMES', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
     solidRect(slide, rightX, colY + 0.24, rightW, 0.025, DN.gold, 62)
-    const maxThemes = Math.min(themes.length, 3)
+    const maxThemes = Math.min(themes.length, 5)
     const thH = 0.62
     themes.slice(0, maxThemes).forEach(function(t: any, i: number) {
       const ty = colY + 0.34 + i * (thH + 0.08)
       const hasData  = (t.count || 0) > 0
-      const hitPct   = hasData && totalRows > 0 ? Math.round(t.count / totalRows * 100) : 0
+      const hitPct   = Math.round((t.percentage || 0) * 10) / 10
       solidRect(slide, rightX, ty, rightW, thH, DN.navyMid)
       if (hasData) solidRect(slide, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal, 75)
       solidRect(slide, rightX, ty, 0.05, thH, hasData ? DN.teal : DN.slate)
-      slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.65, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle' })
+      slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.85, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle' })
       if (hasData) {
-        slide.addText(hitPct + '%', { x: rightX + rightW - 0.52, y: ty + 0.06, w: 0.46, h: thH - 0.12, fontSize: 12, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
+        slide.addText(hitPct + '%', { x: rightX + rightW - 0.72, y: ty + 0.06, w: 0.66, h: thH - 0.12, fontSize: 12, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
       } else {
         slide.addText('Insufficient data', { x: rightX + rightW - 1.1, y: ty + 0.06, w: 1.04, h: thH - 0.12, fontSize: 8, color: DN.slate, align: 'right', valign: 'middle', italic: true })
       }
@@ -535,7 +537,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   }
 
   if (takeaways.length > 0) {
-    const taY = themes.length > 0 ? colY + 0.34 + Math.min(themes.length, 3) * 0.7 + 0.2 : colY + 0.34
+    const taY = themes.length > 0 ? colY + 0.34 + Math.min(themes.length, 5) * 0.7 + 0.2 : colY + 0.34
     slide.addText('RECOMMENDED ACTIONS', { x: rightX, y: taY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
     solidRect(slide, rightX, taY + 0.24, rightW, 0.025, DN.gold, 62)
     takeaways.slice(0, 3).forEach(function(ta, i) {
@@ -594,7 +596,10 @@ function autoInsight(label: string, orderedKeys: string[], counts: Record<string
 function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
-  hdr(slide, pptx, f.label, DN.teal, 'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
+  const subtitle = (f.section === 'demographic' || f.section === 'psychographic') && f.prompt
+    ? f.prompt
+    : 'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses'
+  hdr(slide, pptx, f.label, DN.teal, subtitle)
   logo(slide)
 
   const s          = f.summary
@@ -741,7 +746,10 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
 function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
-  hdr(slide, pptx, f.label, DN.teal, 'Numeric distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
+  const subtitle = (f.section === 'demographic' || f.section === 'psychographic') && f.prompt
+    ? f.prompt
+    : 'Numeric distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses'
+  hdr(slide, pptx, f.label, DN.teal, subtitle)
   logo(slide)
 
   const s           = f.summary
@@ -1291,9 +1299,10 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
 function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
-  hdr(slide, pptx, f.label, DN.navy,
-    (f.section ? f.section.charAt(0).toUpperCase() + f.section.slice(1) + ' · ' : '') +
-    'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
+  const subtitle = (f.section === 'demographic' || f.section === 'psychographic') && f.prompt
+    ? f.prompt
+    : (f.section ? f.section.charAt(0).toUpperCase() + f.section.slice(1) + ' · ' : '') + 'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses'
+  hdr(slide, pptx, f.label, DN.navy, subtitle)
   logo(slide)
 
   const s         = f.summary
@@ -1548,7 +1557,7 @@ export async function POST(req: Request, { params }: Params) {
     .map(function(fieldName) {
       const schemaField = (schema?.fields || []).find((f: any) => f.field === fieldName)
       if (!schemaField) return null
-      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping, section: schemaField.section || undefined }
+      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping, section: schemaField.section || undefined, prompt: schemaField.prompt }
     })
     .filter(Boolean) as SelectedField[]
 
@@ -1638,7 +1647,20 @@ export async function POST(req: Request, { params }: Params) {
     // ── Group fields by section ───────────────────────────────────────────
     const coreFields   = selectedFields.filter(f => !f.section || f.section === 'core')
     const psychoFields = selectedFields.filter(f => f.section === 'psychographic')
-    const demoFields   = selectedFields.filter(f => f.section === 'demographic')
+    let demoFields   = selectedFields.filter(f => f.section === 'demographic')
+
+    // Reorder demographic fields: personal first (gender, age, race, household income), then address, then other
+    const personalDemoOrder = ['gender', 'age', 'race', 'household_income', 'household income', 'income']
+    const addressDemoFields = ['address', 'street', 'city', 'state', 'zip', 'postal_code', 'country']
+    const demoSortKey = (f: SelectedField): number => {
+      const fieldLower = f.field.toLowerCase().replace(/[_\s]/g, '_')
+      for (let i = 0; i < personalDemoOrder.length; i++) {
+        if (fieldLower.includes(personalDemoOrder[i].replace(/[_\s]/g, '_'))) return i
+      }
+      if (addressDemoFields.some(af => fieldLower.includes(af.replace(/[_\s]/g, '_')))) return 1000
+      return 2000
+    }
+    demoFields = demoFields.sort((a, b) => demoSortKey(a) - demoSortKey(b))
 
     const renderField = (f: SelectedField) => {
       const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }

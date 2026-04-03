@@ -21,6 +21,7 @@ export interface SchemaFieldConfig {
   sqt?:           AnaFieldSqt
   section?:       FieldSection    // grouping: psychographic, demographic, or core
   label?:         string
+  prompt?:        string          // original survey question text (full, untruncated)
   remapping?:     Record<string, number>
   valueAliases?:  Record<string, string>
   hidden?:        boolean
