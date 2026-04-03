@@ -70,9 +70,15 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
           .filter(function(f: SchemaField) { return EXPORTABLE_TYPES.has(f.type) && f.status !== 'ignored' })
         setFields(f)
         const pre = new Set<string>()
+        // Always include open-ended fields
+        f.forEach(function(fld) { if (fld.type === 'open-ended') pre.add(fld.field) })
+        // Always include psychographic + demographic fields (so they appear in the PPTX)
         f.forEach(function(fld) {
-          if (fld.type === 'open-ended') pre.add(fld.field)
-          if ((fld.type === 'categorical' || fld.type === 'numeric') && pre.size < 8) pre.add(fld.field)
+          if (fld.section === 'psychographic' || fld.section === 'demographic') pre.add(fld.field)
+        })
+        // Fill up to 10 with core categorical/numeric
+        f.forEach(function(fld) {
+          if ((fld.type === 'categorical' || fld.type === 'numeric') && !fld.section && pre.size < 10) pre.add(fld.field)
         })
         setSelected(pre)
       })

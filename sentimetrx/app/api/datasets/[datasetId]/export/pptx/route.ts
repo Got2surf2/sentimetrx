@@ -748,8 +748,8 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
   // ── Left: custom histogram ───────────────────────────────────────────────────
   const chartX  = PAD
   const chartW2 = W * 0.55 - PAD
-  const chartY  = CY + 0.95
-  const chartH2 = CH - 1.05
+  const chartY  = CY + 1.15   // pushed down so label doesn't overlap KPI row (cards end at CY+0.82)
+  const chartH2 = CH - 1.25
   const histBuckets: any[] = s?.histogram || []
 
   lbl(slide, 'DISTRIBUTION', chartX, chartY - 0.22, chartW2)
@@ -911,6 +911,80 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   footer(slide, datasetName, pageNum)
 }
 
+interface CommentItem { text: string; demos: Array<{ label: string; value: string }> }
+
+function buildCommentsSlide(
+  datasetName: string,
+  fieldLabel: string,
+  fieldSection: string | undefined,
+  comments: CommentItem[],
+  slideNum: number,
+  totalSlides: number,
+  pageNum: number
+) {
+  const slide = pptx.addSlide()
+  bg(slide, pptx)
+  const sectionTag = fieldSection ? fieldSection.charAt(0).toUpperCase() + fieldSection.slice(1) + ' · ' : ''
+  const slideTag = totalSlides > 1 ? '  ·  Slide ' + slideNum + ' of ' + totalSlides : ''
+  hdr(slide, pptx, fieldLabel, DN.tealDark, sectionTag + 'Verbatim responses' + slideTag)
+  logo(slide)
+
+  const cols    = 2
+  const rows    = 3
+  const gapX    = 0.22
+  const gapY    = 0.16
+  const cardW   = (W - PAD * 2 - gapX * (cols - 1)) / cols
+  const cardH   = (CH - gapY * (rows - 1)) / rows
+
+  comments.slice(0, cols * rows).forEach(function(c, i) {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const cx  = PAD + col * (cardW + gapX)
+    const cy  = CY + row * (cardH + gapY)
+
+    const hasDemos = c.demos.length > 0
+    const demoRowH = 0.28
+
+    // Card background + left teal strip
+    rect(slide, cx, cy, cardW, cardH, DN.white, 0.06, DN.divider)
+    solidRect(slide, cx, cy, 0.06, cardH, DN.teal)
+
+    // Opening curly-quote mark
+    slide.addText('\u201C', {
+      x: cx + 0.10, y: cy + 0.03, w: 0.24, h: 0.28,
+      fontSize: 20, bold: true, color: DN.tealLight + 'BB', valign: 'top',
+    })
+
+    // Comment text
+    const textH = cardH - 0.08 - (hasDemos ? demoRowH + 0.06 : 0) - 0.24
+    slide.addText(trunc(c.text, 340), {
+      x: cx + 0.14, y: cy + 0.24, w: cardW - 0.22, h: textH,
+      fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
+    })
+
+    // Demographics row pinned to bottom of card
+    if (hasDemos) {
+      const demoY = cy + cardH - demoRowH - 0.02
+      solidRect(slide, cx + 0.06, demoY - 0.03, cardW - 0.12, 0.012, DN.divider)
+      let tagX = cx + 0.14
+      c.demos.slice(0, 5).forEach(function(d) {
+        if (!d.value || tagX > cx + cardW - 0.18) return
+        const tagText = trunc(d.value, 20)
+        const tagW    = Math.min(1.5, Math.max(0.5, tagText.length * 0.057 + 0.2))
+        if (tagX + tagW > cx + cardW - 0.1) return
+        solidRect(slide, tagX, demoY + 0.04, tagW, 0.2, DN.slateLight)
+        slide.addText(tagText, {
+          x: tagX + 0.04, y: demoY + 0.04, w: tagW - 0.08, h: 0.2,
+          fontSize: 7, color: DN.slateDark, valign: 'middle',
+        })
+        tagX += tagW + 0.06
+      })
+    }
+  })
+
+  footer(slide, datasetName, pageNum)
+}
+
 function buildSectionDivider(title: string, subtitle: string, fieldCount: number, pageNum: number) {
   const slide = pptx.addSlide()
 
@@ -1052,6 +1126,14 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
   lbl(slide, 'RESPONSE BREAKDOWN', legX, chartY, legW)
   solidRect(slide, legX, chartY + 0.22, legW, 0.015, DN.divider)
 
+  // Legend layout constants — wider % column to prevent wrapping
+  const pctColW  = 0.42   // wide enough for "100%"
+  const barColW  = 0.44
+  const barGap   = 0.08
+  const legBx    = legX + legW - pctColW - barGap - barColW  // bar left edge
+  const legPctX  = legX + legW - pctColW                     // % text left edge
+  const legLblW  = legBx - 0.08 - (legX + 0.18)             // label available width
+
   orderedKeys.slice(0, visRows).forEach(function(key, i) {
     const ry      = legStart + i * rowH
     const count   = rawCounts[key] || 0
@@ -1061,21 +1143,20 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
     // Colour swatch
     solidRect(slide, legX, ry + rowH * 0.2, 0.12, rowH * 0.6, col)
 
-    // Label
-    slide.addText(trunc(key, 28), {
-      x: legX + 0.18, y: ry, w: legW - 0.82, h: rowH,
+    // Label — generous character limit based on actual pixel width
+    slide.addText(trunc(key, 52), {
+      x: legX + 0.18, y: ry, w: legLblW, h: rowH,
       fontSize: i === 0 ? 10.5 : 10, bold: i === 0,
       color: i === 0 ? DN.navy : DN.navyLight, valign: 'middle',
     })
 
     // Proportion bar track + fill
-    const bx = legX + legW - 0.72
-    solidRect(slide, bx, ry + rowH * 0.35, 0.44, rowH * 0.3, DN.slateLight)
-    solidRect(slide, bx, ry + rowH * 0.35, 0.44 * (count / Math.max(...pieValues, 1)), rowH * 0.3, col)
+    solidRect(slide, legBx, ry + rowH * 0.35, barColW, rowH * 0.3, DN.slateLight)
+    solidRect(slide, legBx, ry + rowH * 0.35, barColW * (count / Math.max(...pieValues, 1)), rowH * 0.3, col)
 
-    // Percentage
+    // Percentage — wider box, no wrapping
     slide.addText(pctVal + '%', {
-      x: legX + legW - 0.26, y: ry, w: 0.26, h: rowH,
+      x: legPctX, y: ry, w: pctColW, h: rowH,
       fontSize: 10, bold: true, color: col, align: 'right', valign: 'middle',
     })
   })
@@ -1216,6 +1297,17 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
   }
 
+  // Fetch raw rows for comment slides (first 3 batches, enough for 18+ verbatims per field)
+  const { data: rowBatches } = await service
+    .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(3)
+  const allRows: Record<string, any>[] = []
+  for (const batch of (rowBatches || [])) {
+    for (const row of (batch.rows || [])) allRows.push(row)
+  }
+
+  // Demo/psycho fields to annotate comments with
+  const commentDemoFields = selectedFields.filter(f => f.section === 'demographic' || f.section === 'psychographic').slice(0, 4)
+
   // AI narratives
   let narratives: Narratives = {
     reportTitle: '',
@@ -1259,6 +1351,25 @@ export async function POST(req: Request, { params }: Params) {
       const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
       if (f.type === 'open-ended') {
         buildOpenEndedSlide(datasetName, f, ai, audience, themes, page++)
+        // Comment slides — pull real rows, tag with demographics
+        const perSlide = 6
+        const maxComments = audience === 'full' ? 18 : audience === 'stakeholder' ? 12 : 6
+        const commentItems: CommentItem[] = allRows
+          .map(function(row) {
+            const text = String(row[f.field] || '').trim()
+            const demos = commentDemoFields
+              .map(function(df) { return { label: df.label, value: String(row[df.field] || '').trim() } })
+              .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
+            return { text, demos }
+          })
+          .filter(function(c) { return c.text.length > 20 })
+          .slice(0, maxComments)
+        if (commentItems.length > 0) {
+          const numSlides = Math.ceil(commentItems.length / perSlide)
+          for (let si = 0; si < numSlides; si++) {
+            buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides, page++)
+          }
+        }
       } else if (f.type === 'categorical') {
         if (audience !== 'executive') buildPieSlide(datasetName, f, ai, page++)
       } else if (f.type === 'numeric') {
