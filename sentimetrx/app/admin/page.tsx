@@ -27,16 +27,23 @@ export default async function AdminPage() {
     .select('id, name, slug, plan, is_admin_org, created_at')
     .order('created_at', { ascending: false })
 
-  const { data: userCounts }     = await service.from('users').select('org_id')
-  const { data: studyCounts }    = await service.from('studies').select('org_id')
-  const { data: responseCounts } = await service.from('responses').select('org_id')
+  const { data: userCounts }    = await service.from('users').select('org_id')
+  const { data: studiesData }   = await service.from('studies').select('id, org_id')
+  const { data: responseData }  = await service.from('responses').select('study_id')
 
-  const enriched = (orgs || []).map(org => ({
-    ...org,
-    user_count:     (userCounts     || []).filter((u: any) => u.org_id === org.id).length,
-    study_count:    (studyCounts    || []).filter((s: any) => s.org_id === org.id).length,
-    response_count: (responseCounts || []).filter((r: any) => r.org_id === org.id).length,
-  }))
+  // Build a study_id → org_id lookup so response counts flow through studies
+  const studyOrgMap: Record<string, string> = {}
+  ;(studiesData || []).forEach((s: any) => { studyOrgMap[s.id] = s.org_id })
+
+  const enriched = (orgs || []).map(org => {
+    const orgStudyIds = new Set((studiesData || []).filter((s: any) => s.org_id === org.id).map((s: any) => s.id))
+    return {
+      ...org,
+      user_count:     (userCounts   || []).filter((u: any) => u.org_id === org.id).length,
+      study_count:    orgStudyIds.size,
+      response_count: (responseData || []).filter((r: any) => orgStudyIds.has(r.study_id)).length,
+    }
+  })
 
   return (
     <AdminClient

@@ -455,7 +455,9 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
             <select value={industry} onChange={function(e) { setIndustry(e.target.value) }}
               className={inputCls + ' min-w-[220px]'}>
               <option value="">All industries</option>
+              <option disabled>──────────────────</option>
               <option value="universal">Universal / Cross-Industry</option>
+              <option disabled>──────────────────</option>
               {ALL_INDUSTRIES.map(function([k, v]) { return <option key={k} value={k}>{v}</option> })}
             </select>
           )}
