@@ -820,6 +820,58 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
     setAiLoading(false)
   }
 
+  // ── Deterministic plain-English summary (no AI needed) ───────────────────
+  var buildSummary = function(fs: AutoFinding[]): string {
+    if (!fs.length) return 'No statistically significant relationships were found in the current data.'
+    var corrs = fs.filter(function(f) { return f.type === 'correlation' })
+    var grps = fs.filter(function(f) { return f.type === 'group_effect' })
+    var dists = fs.filter(function(f) { return f.type === 'distribution' })
+    var sentences: string[] = []
+
+    // Opening
+    var total = corrs.length + grps.length
+    if (total === 1) sentences.push('The analysis found one statistically significant pattern in your data.')
+    else sentences.push('The analysis found ' + total + ' statistically significant pattern' + (total !== 1 ? 's' : '') + ' in your data.')
+
+    // Top correlations (up to 3)
+    corrs.slice(0, 3).forEach(function(f, i) {
+      var parts = f.title.split(' \u2194 ')
+      var a = parts[0] || '', b = parts[1] || ''
+      var rMatch = f.detail.match(/r\u202f=\u202f(-?[\d.]+)/)
+      var r = rMatch ? parseFloat(rMatch[1]) : 0
+      var strength = Math.abs(r) > 0.7 ? 'strongly' : Math.abs(r) > 0.4 ? 'moderately' : 'weakly'
+      var direction = r > 0 ? 'higher ' + a + ' is associated with higher ' + b : 'higher ' + a + ' is associated with lower ' + b
+      if (i === 0) sentences.push(a + ' and ' + b + ' are ' + strength + ' correlated (r\u202f=\u202f' + r.toFixed(2) + ') \u2014 ' + direction + '.')
+      else sentences.push('Similarly, ' + a + ' and ' + b + ' show a ' + (Math.abs(r) > 0.4 ? 'meaningful' : 'weaker') + ' relationship (r\u202f=\u202f' + r.toFixed(2) + ').')
+    })
+
+    // Top group effects (up to 3)
+    grps.slice(0, 3).forEach(function(f) {
+      var parts = f.title.split(' \u2192 ')
+      var cat = parts[0] || '', num = parts[1] || ''
+      var effStr = f.magnitude > 0.14 ? 'a large difference' : f.magnitude > 0.06 ? 'a meaningful difference' : 'a small but significant difference'
+      // Extract highest/lowest group names from detail if available
+      var hiMatch = f.detail.match(/highest:\s*([^,()]+)/)
+      var loMatch = f.detail.match(/lowest:\s*([^,()]+)/)
+      if (hiMatch && loMatch) {
+        sentences.push(cat + ' is associated with ' + effStr + ' in ' + num + ' \u2014 ' + hiMatch[1].trim() + ' scores highest while ' + loMatch[1].trim() + ' scores lowest.')
+      } else {
+        sentences.push(cat + ' groups show ' + effStr + ' in ' + num + '.')
+      }
+    })
+
+    // Distribution flags
+    if (dists.length) {
+      var distNames = dists.map(function(f) { return f.title.replace(' is heavily right-skewed', '').replace(' is heavily left-skewed', '') })
+      sentences.push((dists.length === 1 ? distNames[0] + ' has' : distNames.slice(0, 2).join(' and ') + ' have') + ' a skewed distribution, which may affect regression results \u2014 consider log-transforming before modeling.')
+    }
+
+    // Closing if many findings were trimmed
+    if (corrs.length + grps.length > 6) sentences.push('Additional significant relationships exist \u2014 see the full findings list above.')
+
+    return sentences.join(' ')
+  }
+
   var typeLabel: Record<AutoFinding['type'], string> = { correlation: 'Correlation', group_effect: 'Group Effect', distribution: 'Distribution' }
   var typeIcon: Record<AutoFinding['type'], string> = { correlation: '\u2295', group_effect: '\u2297', distribution: '\u223F' }
 
@@ -837,6 +889,13 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
           {running ? 'Scanning\u2026' : '\u21BA Re-run'}
         </button>
       </div>
+
+      {/* AI status banner — shown at top always */}
+      {!aiEnabled && (
+        <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{'\u26A0'}</span>{apiKey ? 'AI is turned off — enable it in the header to generate a narrative summary.' : 'Add an API key via the AI button in the header to unlock narrative summaries.'}
+        </div>
+      )}
 
       {/* Running spinner */}
       {running && (
@@ -874,14 +933,18 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
         </div>
       )}
 
+      {/* Plain-English Summary (no AI required) */}
+      {!running && findings !== null && (
+        <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Summary</div>
+          <p style={{ fontSize: 13, color: T.textMid, lineHeight: 1.8, margin: 0 }}>{buildSummary(findings)}</p>
+        </div>
+      )}
+
       {/* AI Narrative */}
       {!running && findings !== null && findings.length > 0 && (
         <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 18 }}>
-          {!aiEnabled && (
-            <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <span>{'\u26A0'}</span>{apiKey ? 'AI is turned off — enable it in the header to generate a narrative summary.' : 'Add an API key via the AI button in the header to unlock narrative summaries.'}
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 10 }}>Want a more polished narrative? Generate one with AI.</div>
           <button onClick={generateNarrative} disabled={aiLoading || !aiEnabled || !apiKey}
             style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (!aiEnabled || !apiKey || aiLoading) ? T.bg : T.accent, color: (!aiEnabled || !apiKey || aiLoading) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (!aiEnabled || !apiKey || aiLoading) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
             {aiLoading ? 'Writing summary\u2026' : '\u2726 Generate Narrative Summary'}
