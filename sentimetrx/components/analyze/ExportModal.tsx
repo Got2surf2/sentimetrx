@@ -199,41 +199,38 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   }
 
   // ── Done state ────────────────────────────────────────────────────────────
-  if (step === 'done') {
-    async function handleSaveFile() {
-      if (!blobUrl) return
-      const suggestedName = fileName
-
-      // Use native File System Access API when available (Chrome / Edge)
-      if (typeof (window as any).showSaveFilePicker === 'function') {
-        try {
-          const handle = await (window as any).showSaveFilePicker({
-            suggestedName,
-            types: [{
-              description: 'PowerPoint Presentation',
-              accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] },
-            }],
-          })
-          const response = await fetch(blobUrl)
-          const blob = await response.blob()
-          const writable = await handle.createWritable()
-          await writable.write(blob)
-          await writable.close()
-          return
-        } catch (err: any) {
-          // User cancelled the picker — do nothing
-          if (err.name === 'AbortError') return
-          // Any other error: fall through to anchor fallback
-        }
+  const handleSaveFile = async () => {
+    if (!blobUrl) return
+    const suggestedName = fileName
+    // Use native File System Access API when available (Chrome / Edge)
+    if (typeof (window as any).showSaveFilePicker === 'function') {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName,
+          types: [{
+            description: 'PowerPoint Presentation',
+            accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] },
+          }],
+        })
+        const response = await fetch(blobUrl)
+        const blob = await response.blob()
+        const writable = await handle.createWritable()
+        await writable.write(blob)
+        await writable.close()
+        return
+      } catch (err: any) {
+        if (err.name === 'AbortError') return
+        // fall through to anchor fallback
       }
-
-      // Fallback for browsers without showSaveFilePicker (Firefox, Safari)
-      const a = document.createElement('a')
-      a.href = blobUrl
-      a.download = suggestedName
-      a.click()
     }
+    // Fallback for Firefox / Safari
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = suggestedName
+    a.click()
+  }
 
+  if (step === 'done') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
         onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}>
