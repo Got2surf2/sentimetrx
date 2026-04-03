@@ -95,7 +95,7 @@ function logo(slide: any) {
 }
 
 function footer(slide: any, datasetName: string, pageNum: number) {
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.015, fill: { color: DN.teal + '60' }, line: { width: 0 } })
+  solidRect(slide, 0, FY - 0.02, W, 0.015, DN.teal, 62)
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: FY, w: W * 0.72, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
@@ -112,8 +112,8 @@ function rect(slide: any, x: number, y: number, w: number, h: number, fill: stri
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill }, line: { color: border, width: 1 }, rectRadius: radius })
 }
 
-function solidRect(slide: any, x: number, y: number, w: number, h: number, fill: string) {
-  slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill }, line: { width: 0 } })
+function solidRect(slide: any, x: number, y: number, w: number, h: number, fill: string, transparency = 0) {
+  slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill, transparency }, line: { width: 0 } })
 }
 
 function lbl(slide: any, text: string, x: number, y: number, w: number, color = DN.slate) {
@@ -153,7 +153,7 @@ function kpiCardDark(slide: any, x: number, y: number, w: number, h: number, val
 
 // Insight box with left accent stripe
 function insightBox(slide: any, x: number, y: number, w: number, h: number, text: string, accentColor = DN.teal, bgColor = DN.slateLight) {
-  rect(slide, x, y, w, h, bgColor, 0.07, accentColor + '60')
+  rect(slide, x, y, w, h, bgColor, 0.07, accentColor)
   solidRect(slide, x, y, 0.06, h, accentColor)
   slide.addText(text, { x: x + 0.16, y: y + 0.1, w: w - 0.24, h: h - 0.2, fontSize: 11.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
 }
@@ -312,19 +312,19 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
   // Right panel — slightly lighter navy for depth
   solidRect(slide, W - 3.2, 0.07, 3.2, H - 0.07, DN.navyMid)
 
-  // Decorative circle (right panel, like the inspiration deck)
+  // Decorative circles — use pptxgenjs transparency (0-100 scale, 100=fully transparent)
   slide.addShape(pptx.ShapeType.ellipse, {
     x: W - 3.0, y: 0.6, w: 3.8, h: 3.8,
-    fill: { color: DN.teal + '18' }, line: { color: DN.teal + '40', width: 1 }
+    fill: { color: DN.teal, transparency: 91 }, line: { color: DN.teal, transparency: 75, width: 1 }
   })
   slide.addShape(pptx.ShapeType.ellipse, {
     x: W - 2.4, y: 1.2, w: 2.6, h: 2.6,
-    fill: { color: DN.teal + '12' }, line: { color: DN.tealLight + '30', width: 1 }
+    fill: { color: DN.teal, transparency: 93 }, line: { color: DN.tealLight, transparency: 81, width: 1 }
   })
-  // "D" monogram in circle
+  // "D" monogram
   slide.addText('D', {
     x: W - 2.1, y: 1.5, w: 2.0, h: 2.0,
-    fontSize: 72, bold: true, italic: true, color: DN.tealLight + '50', align: 'center', valign: 'middle',
+    fontSize: 72, bold: true, italic: true, color: DN.tealLight, align: 'center', valign: 'middle',
   })
 
   // Logo — "datanautix" as one rich-text word
@@ -363,7 +363,7 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
 
   // Bottom footer strip
   solidRect(slide, 0, H - 0.48, W, 0.48, DN.navyMid)
-  solidRect(slide, 0, H - 0.48, W, 0.03, DN.gold + '80')
+  solidRect(slide, 0, H - 0.48, W, 0.03, DN.gold, 50)
   slide.addText('Confidential  ·  Prepared by Datanautix  ·  datanautix.com', {
     x: PAD + 0.18, y: H - 0.44, w: W - 1.0, h: 0.38,
     fontSize: 8.5, color: DN.slate, valign: 'middle',
@@ -491,7 +491,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
 
   // Left: key findings bullets
   slide.addText('KEY FINDINGS', { x: PAD, y: colY, w: leftW, h: 0.22, fontSize: 7.5, bold: true, color: DN.gold, charSpacing: 1.5 })
-  solidRect(slide, PAD, colY + 0.24, leftW, 0.025, DN.gold + '60')
+  solidRect(slide, PAD, colY + 0.24, leftW, 0.025, DN.gold, 62)
 
   const realBullets = bullets.filter(b => b && b.length > 10)
   if (realBullets.length > 0) {
@@ -518,7 +518,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   // Right: themes + takeaways
   if (themes.length > 0) {
     slide.addText('TOP THEMES', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 7.5, bold: true, color: DN.gold, charSpacing: 1.5 })
-    solidRect(slide, rightX, colY + 0.24, rightW, 0.025, DN.gold + '60')
+    solidRect(slide, rightX, colY + 0.24, rightW, 0.025, DN.gold, 62)
     const maxThemes = Math.min(themes.length, 3)
     const thH = 0.62
     themes.slice(0, maxThemes).forEach(function(t: any, i: number) {
@@ -526,7 +526,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
       const hasData  = (t.count || 0) > 0
       const hitPct   = hasData && totalRows > 0 ? Math.round(t.count / totalRows * 100) : 0
       solidRect(slide, rightX, ty, rightW, thH, DN.navyMid)
-      if (hasData) solidRect(slide, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal + '40')
+      if (hasData) solidRect(slide, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal, 75)
       solidRect(slide, rightX, ty, 0.05, thH, hasData ? DN.teal : DN.slate)
       slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.65, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle' })
       if (hasData) {
@@ -540,7 +540,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   if (takeaways.length > 0) {
     const taY = themes.length > 0 ? colY + 0.34 + Math.min(themes.length, 3) * 0.7 + 0.2 : colY + 0.34
     slide.addText('RECOMMENDED ACTIONS', { x: rightX, y: taY, w: rightW, h: 0.22, fontSize: 7.5, bold: true, color: DN.gold, charSpacing: 1.5 })
-    solidRect(slide, rightX, taY + 0.24, rightW, 0.025, DN.gold + '60')
+    solidRect(slide, rightX, taY + 0.24, rightW, 0.025, DN.gold, 62)
     takeaways.slice(0, 3).forEach(function(ta, i) {
       const ty = taY + 0.34 + i * 0.68
       solidRect(slide, rightX, ty, rightW, 0.58, DN.navyMid)
@@ -554,7 +554,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
 
   // Bottom footer
   solidRect(slide, 0, H - 0.38, W, 0.38, DN.navyMid)
-  solidRect(slide, 0, H - 0.38, W, 0.02, DN.gold + '60')
+  solidRect(slide, 0, H - 0.38, W, 0.02, DN.gold, 62)
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: H - 0.34, w: W * 0.72, h: 0.28, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
@@ -632,7 +632,7 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
   // ── Layout constants ─────────────────────────────────────────────────────────
   const leftW   = 2.9
   const chartX  = PAD + leftW + 0.38
-  const labelW  = 2.5
+  const labelW  = 3.2   // wider label column so long responses fit on one line
   const barMaxW = W - chartX - labelW - 0.15 - 0.62 - 1.1 - PAD * 0.5
   const barX    = chartX + labelW + 0.15
   const pctX    = barX + barMaxW + 0.12
@@ -711,10 +711,10 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     if (i % 2 === 0) solidRect(slide, chartX, ry, W - chartX - PAD * 0.4, rowH, 'F8F9FA')
 
     // Label
-    slide.addText(trunc(key, 30), {
+    slide.addText(trunc(key, 48), {
       x: chartX, y: ry, w: labelW, h: rowH,
       fontSize: isTop ? 12.5 : 12, bold: isTop,
-      color: isTop ? DN.navy : DN.navyLight, valign: 'middle',
+      color: isTop ? DN.navy : DN.navyLight, valign: 'middle', wrap: true,
     })
 
     // Bar track
@@ -1059,7 +1059,7 @@ function buildCommentsSlide(
     // Opening curly-quote mark
     slide.addText('\u201C', {
       x: cx + 0.10, y: cy + 0.03, w: 0.24, h: 0.28,
-      fontSize: 20, bold: true, color: DN.tealLight + 'BB', valign: 'top',
+      fontSize: 20, bold: true, color: DN.tealLight, valign: 'top',
     })
 
     // Comment text
@@ -1101,18 +1101,18 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   solidRect(slide, W - 3.0, 0.07, 3.0, H - 0.07, DN.navyMid)
 
   // Decorative circles
-  slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.8, y: 0.8, w: 3.6, h: 3.6, fill: { color: DN.teal + '15' }, line: { color: DN.teal + '35', width: 1 } })
-  slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.1, y: 1.5, w: 2.2, h: 2.2, fill: { color: DN.teal + '0A' }, line: { color: DN.tealLight + '25', width: 1 } })
+  slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.8, y: 0.8, w: 3.6, h: 3.6, fill: { color: DN.teal, transparency: 92 }, line: { color: DN.teal, transparency: 79, width: 1 } })
+  slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.1, y: 1.5, w: 2.2, h: 2.2, fill: { color: DN.teal, transparency: 96 }, line: { color: DN.tealLight, transparency: 85, width: 1 } })
 
   // Icon initial
   const initials: Record<string, string> = { 'Psychographic Profile': 'P', 'Demographic Breakdown': 'D', 'Core Study Questions': 'Q' }
   slide.addText(initials[title] || title[0], {
     x: W - 2.0, y: 1.7, w: 2.0, h: 2.0,
-    fontSize: 88, bold: true, italic: true, color: DN.tealLight + '45', align: 'center', valign: 'middle',
+    fontSize: 88, bold: true, italic: true, color: DN.tealLight, align: 'center', valign: 'middle',
   })
 
   // Section label chip
-  solidRect(slide, PAD + 0.18, 1.6, 2.0, 0.34, DN.teal + '30')
+  solidRect(slide, PAD + 0.18, 1.6, 2.0, 0.34, DN.teal, 81)
   slide.addText(title.toUpperCase(), {
     x: PAD + 0.24, y: 1.6, w: 1.94, h: 0.34,
     fontSize: 8, bold: true, color: DN.tealLight, charSpacing: 1.5, valign: 'middle',
@@ -1141,7 +1141,7 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
 
   // Bottom footer
   solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
-  solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold + '70')
+  solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText('datanautix.com', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
   slide.addText(String(pageNum), { x: W - PAD - 0.5, y: H - 0.4, w: 0.5, h: 0.34, fontSize: 8.5, color: DN.slate, align: 'right', valign: 'middle' })
 }
@@ -1296,11 +1296,11 @@ function buildClosingSlide(datasetName: string, takeaways: string[], pageNum: nu
   solidRect(slide, W - 3.0, 0.07, 3.0, H - 0.07, DN.navyMid)
   slide.addShape(pptx.ShapeType.ellipse, {
     x: W - 2.8, y: 1.0, w: 3.4, h: 3.4,
-    fill: { color: DN.teal + '12' }, line: { color: DN.teal + '35', width: 1 }
+    fill: { color: DN.teal, transparency: 93 }, line: { color: DN.teal, transparency: 79, width: 1 }
   })
   slide.addShape(pptx.ShapeType.ellipse, {
     x: W - 2.2, y: 1.6, w: 2.2, h: 2.2,
-    fill: { color: DN.teal + '08' }, line: { color: DN.tealLight + '25', width: 1 }
+    fill: { color: DN.teal, transparency: 97 }, line: { color: DN.tealLight, transparency: 85, width: 1 }
   })
 
   // Header text
@@ -1341,7 +1341,7 @@ function buildClosingSlide(datasetName: string, takeaways: string[], pageNum: nu
 
   // Footer
   solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
-  solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold + '70')
+  solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText(
     [
       { text: 'data',             options: { color: DN.orangeLight, bold: true, italic: true } },
