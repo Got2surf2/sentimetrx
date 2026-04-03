@@ -85,6 +85,12 @@ var CHART_TYPE_DEFS = [
 
 function fl(f: SchemaField): string { return f.label && f.label !== f.field ? f.label : f.field }
 
+// Returns true when a numeric axis represents small-range integer data (e.g. NPS 0-10, rating 1-5)
+function isSmallIntRange(min?: number, max?: number): boolean {
+  if (min == null || max == null) return false
+  return Number.isInteger(min) && Number.isInteger(max) && (max - min) >= 0 && (max - min) <= 20
+}
+
 // ── Collapsible sidebar field group (Charts) ──────────────────
 function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
   label: string; icon: string; color: string; fields: SchemaField[]; currentConfig: Record<string, string>
@@ -220,7 +226,8 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = displayVals }
 
-    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : yTitle }, barcornerradius: 4 }} />
+    var isCount = opts?.barMode !== 'percent'
+    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0, ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
   }
 
   if (chartType === 'distribution') {
@@ -232,10 +239,26 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var sum = fs[field]; if (!sum) return <EmptyChart msg="No data." />
     var fieldAlias = flByName(field, schema)
     if (sum.histogram) {
-      var hx = sum.histogram.map(function(b) { return (b.min + b.max) / 2 }); var hy = sum.histogram.map(function(b) { return b.count })
-      return <PlotlyChart traces={[{ type: 'bar', x: hx, y: hy, marker: { color: T.purple, opacity: 0.8, line: { color: T.purple + '60', width: 1 } } }]} layout={{ xaxis: { title: fieldAlias }, yaxis: { title: 'Count of ' + fieldAlias }, bargap: 0.04, barcornerradius: 3 }} />
+      var hx = sum.histogram.map(function(b) { return (b.min + b.max) / 2 })
+      var hy = sum.histogram.map(function(b) { return b.count })
+      var intX = isSmallIntRange(sum.min, sum.max)
+      var maxY = Math.max.apply(null, hy)
+      var distShapes: any[] = []
+      var distAnnotations: any[] = []
+      if (sum.avg != null) {
+        distShapes.push({ type: 'line', x0: sum.avg, x1: sum.avg, y0: 0, y1: 1, yref: 'paper', line: { color: T.accent, width: 2, dash: 'dash' } })
+        distAnnotations.push({ x: sum.avg, y: 0.98, yref: 'paper', text: 'Mean ' + sum.avg.toFixed(1), showarrow: false, font: { size: 11, color: T.accent }, xanchor: sum.avg > (sum.max || 0) * 0.7 ? 'right' : 'left', yanchor: 'top', xshift: sum.avg > (sum.max || 0) * 0.7 ? -4 : 4 })
+      }
+      if (sum.median != null) {
+        distShapes.push({ type: 'line', x0: sum.median, x1: sum.median, y0: 0, y1: 1, yref: 'paper', line: { color: T.blue, width: 2, dash: 'dot' } })
+        distAnnotations.push({ x: sum.median, y: 0.82, yref: 'paper', text: 'Median ' + sum.median.toFixed(1), showarrow: false, font: { size: 11, color: T.blue }, xanchor: sum.median > (sum.max || 0) * 0.7 ? 'right' : 'left', yanchor: 'top', xshift: sum.median > (sum.max || 0) * 0.7 ? -4 : 4 })
+      }
+      return <PlotlyChart
+        traces={[{ type: 'bar', x: hx, y: hy, marker: { color: primaryColor, opacity: 0.8, line: { color: primaryColor + '60', width: 1 } }, hovertemplate: '%{x}: %{y}<extra></extra>' }]}
+        layout={{ xaxis: { title: fieldAlias, ...(intX ? { dtick: 1, tick0: sum.min } : {}) }, yaxis: { title: 'Count', tickformat: ',d' }, bargap: 0.04, barcornerradius: 3, shapes: distShapes, annotations: distAnnotations }}
+      />
     }
-    return <PlotlyChart traces={[{ type: 'box', y: [sum.min, sum.avg, sum.median, sum.max].filter(function(v) { return v != null }), boxpoints: 'all', marker: { color: T.purple }, name: fieldAlias }]} layout={{ yaxis: { title: fieldAlias } }} />
+    return <PlotlyChart traces={[{ type: 'box', y: [sum.min, sum.avg, sum.median, sum.max].filter(function(v) { return v != null }), boxpoints: 'all', marker: { color: primaryColor }, name: fieldAlias }]} layout={{ yaxis: { title: fieldAlias, ...(isSmallIntRange(sum.min, sum.max) ? { dtick: 1 } : {}) } }} />
   }
 
   if (chartType === 'scatter') {
@@ -433,7 +456,8 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
 
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0 }, yaxis: { title: isH ? catLabel : valLabel }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  var isStackedCount = barMode !== 'percent'
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0, ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
