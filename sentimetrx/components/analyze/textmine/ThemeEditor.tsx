@@ -214,7 +214,7 @@ export default function ThemeEditor({ onApply, onClose, initialData, industryThe
                 {step === 'pick' ? 'Industry Theme Libraries' : step === 'json' ? 'Paste JSON Themes' : 'Edit Theme Library'}
               </h2>
               <p style={{ fontSize: 12, color: T.textMute, margin: 0 }}>
-                {step === 'pick' ? 'Select one or more industry libraries. Apply directly or customise first.'
+                {step === 'pick' ? 'Select one or more industry libraries. Apply directly or customize first.'
                   : step === 'json' ? 'Paste a JSON array of theme objects or keyword groups.'
                   : 'Add, remove, or edit themes and keywords.'}
               </p>
@@ -247,7 +247,7 @@ export default function ThemeEditor({ onApply, onClose, initialData, industryThe
               </span>
               <button onClick={loadCheckedIntoEditor}
                 style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, background: 'transparent', border: '1px dashed ' + T.accent, borderRadius: 7, color: T.accent, cursor: 'pointer' }}>
-                {'\u270E'} Customise...
+                {'\u270E'} Customize...
               </button>
               <button onClick={quickApplyChecked}
                 style={{ padding: '5px 14px', fontSize: 11, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 7, cursor: 'pointer' }}>

@@ -108,7 +108,7 @@ export async function GET(req: Request, { params }: Params) {
     })
   }
 
-  // ── PAGINATED MODE (original behaviour) ─────────────────────────────────
+  // ── PAGINATED MODE (original behavior) ─────────────────────────────────
   var totalPages = Math.ceil(totalRows / pageSize)
   var skip       = (page - 1) * pageSize
 

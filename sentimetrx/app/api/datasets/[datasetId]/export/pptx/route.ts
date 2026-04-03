@@ -396,7 +396,7 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
 
   const scopeCards = [
     { v: totalRows.toLocaleString(), l: 'Total Responses', sub: 'in this analysis', bg: DN.tealPale, vc: DN.teal },
-    { v: fields.length.toString(),   l: 'Fields Analysed',  sub: `${openCount} open · ${catCount} cat · ${numCount} num`, bg: DN.slateLight, vc: DN.navy },
+    { v: fields.length.toString(),   l: 'Fields Analyzed',  sub: `${openCount} open · ${catCount} cat · ${numCount} num`, bg: DN.slateLight, vc: DN.navy },
     { v: dateStr, l: 'Report Generated', sub: audience + ' edition', bg: DN.slateCard, vc: DN.teal },
   ]
   scopeCards.forEach(function(sc, i) {
@@ -434,7 +434,7 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
   // Methodology note
   const noteY = H - 0.9
   solidRect(slide, PAD, noteY, W - PAD * 2, 0.52, DN.slateLight)
-  slide.addText('Methodology: Responses were collected and analysed using Sarina (AI-assisted survey platform). Statistical significance not assumed unless stated. Open-ended responses are verbatim samples.', {
+  slide.addText('Methodology: Responses were collected and analyzed using Sarina (AI-assisted survey platform). Statistical significance not assumed unless stated. Open-ended responses are verbatim samples.', {
     x: PAD + 0.12, y: noteY + 0.08, w: W - PAD * 2 - 0.24, h: 0.36,
     fontSize: 8.5, color: DN.slateDark, italic: true, wrap: true,
   })
@@ -816,7 +816,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       const pctVal = total_ > 0 ? Math.round(count / total_ * 100) : 0
       const bw     = barMaxW * count / maxVal
       const ry     = rowStart + i * (rowH + rowGap)
-      // Colour by actual numeric value: high = green, low = red
+      // Color by actual numeric value: high = green, low = red
       const numFrac = numMax > numMin ? (Number(key) - numMin) / (numMax - numMin) : 0.5
       const col     = numFrac >= 0.75 ? '059669' : numFrac >= 0.55 ? '34D399' : numFrac >= 0.45 ? '94A3B8' : numFrac >= 0.25 ? 'F97316' : 'DC2626'
 
@@ -1275,7 +1275,7 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
     solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
     if (bw > 0.04) solidRect(slide, barX, trackY, bw, trackH, col)
 
-    // Percentage — right-aligned, bold, coloured
+    // Percentage — right-aligned, bold, colored
     slide.addText(pctVal + '%', {
       x: pctX, y: ry, w: pctW, h: rowH,
       fontSize: isTop ? 13 : 11, bold: true, color: col, align: 'right', valign: 'middle',

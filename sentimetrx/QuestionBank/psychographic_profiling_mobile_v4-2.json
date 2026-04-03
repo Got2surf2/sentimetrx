@@ -449,7 +449,7 @@
           "responses": [
             "⏱️ Speed — I need food quickly",
             "💰 Price — it consistently fits my budget",
-            "🔁 Habit — I have favourite orders I return to",
+            "🔁 Habit — I have favorite orders I return to",
             "🚗 Convenience — drive-through & location fit my routine"
           ]
         },
@@ -489,7 +489,7 @@
           "responses": [
             "🥗 I actively look for healthier menu options",
             "😐 Aware of the nutrition info — doesn't change my order",
-            "🍟 I don't prioritise health here — it's an indulgence",
+            "🍟 I don't prioritize health here — it's an indulgence",
             "🚫 I avoid fast food primarily for health reasons"
           ]
         },
@@ -555,7 +555,7 @@
             "🧍 Solo — I travel alone by choice",
             "👫 Partner or close friend",
             "👨‍👩‍👧 Family, including children",
-            "👥 Friend groups or organised tours"
+            "👥 Friend groups or organized tours"
           ]
         },
         {
@@ -602,7 +602,7 @@
           "key": "p_tr_budget",
           "prompt": "How do you approach travel budgeting?",
           "responses": [
-            "💰 Strict budget — optimise every decision",
+            "💰 Strict budget — optimize every decision",
             "💳 General range, flexible for special experiences",
             "💎 I invest heavily and rarely compromise on quality",
             "🎟️ Points, miles & deals to travel more for less"
@@ -678,9 +678,9 @@
           "prompt": "How would you place yourself politically?",
           "responses": [
             "🔵 Consistently left / progressive",
-            "🟣 Centre-left / moderate liberal",
+            "🟣 Center-left / moderate liberal",
             "⚪ Centrist / independent",
-            "🔴 Centre-right to conservative"
+            "🔴 Center-right to conservative"
           ]
         },
         {
@@ -688,7 +688,7 @@
           "prompt": "What's your main form of participation?",
           "responses": [
             "🗳️ Voting in all elections including local",
-            "💸 Donating to candidates, causes or organisations",
+            "💸 Donating to candidates, causes or organizations",
             "📣 Volunteering, canvassing or attending rallies",
             "📱 Online advocacy — posting, sharing, engaging"
           ]
@@ -844,7 +844,7 @@
           "responses": [
             "😵 Overwhelmed — finding quality feels exhausting",
             "🤩 Excited — there's always something great to discover",
-            "😢 Nostalgic — the golden era of my favourite content has passed",
+            "😢 Nostalgic — the golden era of my favorite content has passed",
             "🎯 Selective — I have clear filters and don't feel the volume"
           ]
         }
@@ -937,7 +937,7 @@
           "key": "p_pa_advocacy",
           "prompt": "How do you engage beyond attending performances?",
           "responses": [
-            "💛 I donate or financially support arts organisations",
+            "💛 I donate or financially support arts organizations",
             "📱 I share content and recommend performances actively",
             "🎓 I attend pre/post-show events, talks & educational programming",
             "🎭 My engagement is limited to attending — nothing beyond that"
@@ -950,7 +950,7 @@
       "questions": [
         {
           "key": "p_sw_org_size",
-          "prompt": "How large is your organisation?",
+          "prompt": "How large is your organization?",
           "responses": [
             "🌱 Startup or SMB (under 100 employees)",
             "🏢 Mid-market (100–1,000 employees)",

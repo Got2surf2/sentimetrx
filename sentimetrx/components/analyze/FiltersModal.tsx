@@ -336,13 +336,13 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>{lbl}</div>
                     </div>
-                    {/* Selected range — grey, above slider */}
+                    {/* Selected range — gray, above slider */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textMid, marginBottom: 6, fontWeight: 600 }}>
                       <span>{fmtD(curMinTs)}</span><span>{fmtD(curMaxTs)}</span>
                     </div>
                     {/* Slider track with draggable thumbs */}
                     <div style={{ position: 'relative', height: 28, marginBottom: 6, userSelect: 'none' }}>
-                      {/* Grey track */}
+                      {/* Gray track */}
                       <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: T.border, borderRadius: 2, transform: 'translateY(-50%)' }} />
                       {/* Orange active range */}
                       <div style={{ position: 'absolute', top: '50%', left: dtPctLeft + '%', right: dtPctRight + '%', height: 4, background: T.accent, borderRadius: 2, transform: 'translateY(-50%)' }} />

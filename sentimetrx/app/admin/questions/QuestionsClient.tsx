@@ -248,7 +248,7 @@ function IndustrySection({ label, count, onAdd, addLabel, children }: {
   )
 }
 
-// ── Open-ended card (read-only, existing behaviour) ───────────────────────────
+// ── Open-ended card (read-only, existing behavior) ───────────────────────────
 function OpenEndedCard({ q }: { q: OpenEndedQ }) {
   var [expanded, setExpanded] = useState(false)
   return (

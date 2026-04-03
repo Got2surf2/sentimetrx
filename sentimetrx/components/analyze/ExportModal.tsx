@@ -358,7 +358,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                       onBlur={function(e) { e.target.style.borderColor = S.border }}
                     />
                     <div style={{ fontSize: 10, color: S.textFaint, marginTop: 4 }}>
-                      AI will use your instructions to shape the narrative, slide order, and what to emphasise.
+                      AI will use your instructions to shape the narrative, slide order, and what to emphasize.
                     </div>
                   </div>
 
