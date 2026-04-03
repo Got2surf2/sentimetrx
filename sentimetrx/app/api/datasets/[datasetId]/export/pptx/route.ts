@@ -1010,9 +1010,27 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
 
 interface CommentItem { text: string; demos: Array<{ label: string; value: string }>; colorValue?: string }
 
-// Deterministic hue from a string value → hex color for card accent strip
-function valueToColor(val: string): string {
-  // Cycle through a set of pleasant accent colors
+// Map a field value to a card accent strip color
+// Numeric: green→red gradient based on relative value
+// Categorical: deterministic palette color per unique value
+const _colorCache: Record<string, Record<string, string>> = {}
+function valueToColor(val: string, allValsForField?: string[]): string {
+  // Try numeric interpretation first
+  const num = parseFloat(val)
+  if (!isNaN(num) && val.trim() !== '') {
+    // Need context of min/max; if allValsForField provided, compute gradient
+    if (allValsForField && allValsForField.length > 1) {
+      const nums = allValsForField.map(Number).filter(n => !isNaN(n))
+      const lo = Math.min(...nums), hi = Math.max(...nums)
+      const frac = hi > lo ? (num - lo) / (hi - lo) : 0.5
+      if (frac >= 0.75) return '059669'
+      if (frac >= 0.55) return '34D399'
+      if (frac >= 0.45) return '94A3B8'
+      if (frac >= 0.25) return 'F97316'
+      return 'DC2626'
+    }
+  }
+  // Categorical: deterministic palette color
   const palette = [DN.teal, DN.gold, '7C3AED', DN.green, 'E85A1A', DN.navyLight, '0891B2', 'DB2777', '65A30D', '9333EA']
   let hash = 0
   for (let i = 0; i < val.length; i++) hash = (hash * 31 + val.charCodeAt(i)) & 0xffff
@@ -1052,7 +1070,8 @@ function buildCommentsSlide(
     const demoRowH = 0.28
 
     // Card background + left accent strip (color from colorValue if present)
-    const stripColor = c.colorValue ? valueToColor(c.colorValue) : DN.teal
+    const allColorVals = comments.map(function(x) { return x.colorValue || '' }).filter(Boolean)
+    const stripColor = c.colorValue ? valueToColor(c.colorValue, allColorVals) : DN.teal
     rect(slide, cx, cy, cardW, cardH, DN.white, 0.06, DN.divider)
     solidRect(slide, cx, cy, 0.06, cardH, stripColor)
 
@@ -1418,6 +1437,21 @@ export async function POST(req: Request, { params }: Params) {
     for (const row of (batch.rows || [])) allRows.push(row)
   }
 
+  // Build a normalized key map so we can find columns regardless of case/spaces
+  // e.g. schema field "general_experience_comments" matches row key "General Experience Comments"
+  function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') }
+  const rowKeyMap: Record<string, string> = {}  // normalizedKey → actualKey in first row
+  if (allRows.length > 0) {
+    for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
+  }
+  function rowVal(row: Record<string, any>, fieldKey: string): string {
+    // Direct match first, then normalized fallback
+    if (row[fieldKey] !== undefined && row[fieldKey] !== null) return String(row[fieldKey]).trim()
+    const actual = rowKeyMap[normalize(fieldKey)]
+    if (actual && row[actual] !== undefined && row[actual] !== null) return String(row[actual]).trim()
+    return ''
+  }
+
   // Demo/psycho fields to annotate comments with
   const commentDemoFields = selectedFields.filter(f => f.section === 'demographic' || f.section === 'psychographic').slice(0, 4)
 
@@ -1477,11 +1511,11 @@ export async function POST(req: Request, { params }: Params) {
             : commentDemoFields
           const commentItems: CommentItem[] = allRows
             .map(function(row) {
-              const text = String(row[f.field] || '').trim()
+              const text = rowVal(row, f.field)
               const demos = annotFields
-                .map(function(df) { return { label: df.label, value: String(row[df.field] || '').trim() } })
+                .map(function(df) { return { label: df.label, value: rowVal(row, df.field) } })
                 .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
-              const colorValue = commentColorField ? String(row[commentColorField] || '').trim() : undefined
+              const colorValue = commentColorField ? rowVal(row, commentColorField) : undefined
               return { text, demos, colorValue }
             })
             .filter(function(c) { return c.text.length > 8 })

@@ -55,12 +55,15 @@ interface Props { datasetId: string; datasetName: string; onClose: () => void }
 export default function ExportModal({ datasetId, datasetName, onClose }: Props) {
   const [step,         setStep]         = useState<Step>('mode')
   const [fields,       setFields]       = useState<SchemaField[]>([])
+  const [fieldCounts,  setFieldCounts]  = useState<Record<string, number>>({})
   const [selected,     setSelected]     = useState<Set<string>>(new Set())
   const [audience,     setAudience]     = useState('stakeholder')
   const [instructions, setInstructions] = useState('')
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState('')
   const [fileName,     setFileName]     = useState('')
+  const [blobUrl,      setBlobUrl]      = useState('')
+  const [progressMsg,  setProgressMsg]  = useState('Building your PowerPoint…')
   const [commentConfig,      setCommentConfig]      = useState<Record<string, { enabled: boolean; slides: number }>>({})
   const [commentAnnotations, setCommentAnnotations] = useState<string[]>([])
   const [commentColorField,  setCommentColorField]  = useState<string>('')
@@ -72,25 +75,29 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
         const f: SchemaField[] = (d.schema_config?.fields || [])
           .filter(function(f: SchemaField) { return EXPORTABLE_TYPES.has(f.type) && f.status !== 'ignored' })
         setFields(f)
+        // Extract nonNull counts from analytics fieldSummaries for open-ended fields
+        const counts: Record<string, number> = {}
+        const summaries = d.analytics?.fieldSummaries || {}
+        f.forEach(function(fld: SchemaField) {
+          if (fld.type === 'open-ended' && summaries[fld.field]) {
+            counts[fld.field] = summaries[fld.field].nonNull || 0
+          }
+        })
+        setFieldCounts(counts)
         const pre = new Set<string>()
-        // Always include open-ended fields
         f.forEach(function(fld) { if (fld.type === 'open-ended') pre.add(fld.field) })
-        // Always include psychographic + demographic fields (so they appear in the PPTX)
         f.forEach(function(fld) {
           if (fld.section === 'psychographic' || fld.section === 'demographic') pre.add(fld.field)
         })
-        // Fill up to 10 with core categorical/numeric
         f.forEach(function(fld) {
           if ((fld.type === 'categorical' || fld.type === 'numeric') && !fld.section && pre.size < 10) pre.add(fld.field)
         })
         setSelected(pre)
-        // Default comment config: all open-ended enabled, 2 slides each
         const defCmt: Record<string, { enabled: boolean; slides: number }> = {}
         f.filter(function(fld: SchemaField) { return fld.type === 'open-ended' }).forEach(function(fld: SchemaField) {
           defCmt[fld.field] = { enabled: true, slides: 2 }
         })
         setCommentConfig(defCmt)
-        // Default annotations: all demo/psycho fields
         setCommentAnnotations(f.filter(function(fld: SchemaField) { return fld.section === 'demographic' || fld.section === 'psychographic' }).map(function(fld: SchemaField) { return fld.field }))
       })
       .catch(function() { setError('Could not load dataset fields') })
@@ -115,9 +122,30 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     const fieldsToSend = Array.from(selected)
     if (fieldsToSend.length === 0 && mode === 'quick') { setError('Select at least one field.'); return }
     setError('')
+    setBlobUrl('')
     setStep('generating')
     const name = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_report.pptx'
     setFileName(name)
+
+    // Cycle progress messages while waiting
+    const fieldLabels = fieldsToSend.map(function(fk) {
+      const f = fields.find(function(f) { return f.field === fk })
+      return f?.label || fk
+    })
+    const msgs = [
+      'Generating Executive Summary…',
+      'Running AI analysis…',
+      ...fieldLabels.map(function(l, i) { return 'Building slide ' + (i + 3) + ' — ' + l.slice(0, 40) + '…' }),
+      'Compiling comment slides…',
+      'Finalising PowerPoint…',
+    ]
+    let msgIdx = 0
+    setProgressMsg(msgs[0])
+    const msgInterval = setInterval(function() {
+      msgIdx = Math.min(msgIdx + 1, msgs.length - 1)
+      setProgressMsg(msgs[msgIdx])
+    }, 3500)
+
     try {
       const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField }
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
@@ -132,15 +160,18 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
       }
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
+      setBlobUrl(url)
       const a    = document.createElement('a')
       a.href     = url
       a.download = name
       a.click()
-      URL.revokeObjectURL(url)
+      // Don't revoke yet — keep url alive for the "Open file" link in done modal
       setStep('done')
     } catch (e: any) {
       setError(e.message || 'Export failed — try again')
       setStep(mode)
+    } finally {
+      clearInterval(msgInterval)
     }
   }
 
@@ -154,10 +185,11 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   if (step === 'generating') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: S.white, borderRadius: 16, padding: '48px 56px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 300 }}>
-          <LottieLoader size={96} message="Building your PowerPoint…" />
-          <p style={{ fontSize: 12, color: S.textFaint, margin: '8px 0 0', textAlign: 'center' }}>
-            This can take 20–40 seconds while AI generates insights
+        <div style={{ background: S.white, borderRadius: 16, padding: '48px 56px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 340, maxWidth: 420 }}>
+          <LottieLoader size={96} message="" />
+          <div style={{ fontSize: 13, fontWeight: 600, color: S.textMid, textAlign: 'center', minHeight: 20 }}>{progressMsg}</div>
+          <p style={{ fontSize: 11, color: S.textFaint, margin: '4px 0 0', textAlign: 'center', lineHeight: 1.5 }}>
+            AI is writing insights for each field.<br />This takes 20–60 seconds.
           </p>
         </div>
       </div>
@@ -168,8 +200,8 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   if (step === 'done') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        onClick={onClose}>
-        <div style={{ background: S.white, borderRadius: 16, padding: '48px 56px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 300, maxWidth: 400 }}
+        onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}>
+        <div style={{ background: S.white, borderRadius: 16, padding: '40px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 300, maxWidth: 420 }}
           onClick={function(e) { e.stopPropagation() }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: S.greenBg, border: '2px solid ' + S.greenBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
             ✓
@@ -180,7 +212,13 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
               <strong style={{ color: S.textMid }}>{fileName}</strong> has downloaded to your device.
             </div>
           </div>
-          <button onClick={onClose}
+          {blobUrl && (
+            <a href={blobUrl} download={fileName}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 16px', fontSize: 13, fontWeight: 700, color: HERMES, background: '#fff4ef', border: '1.5px solid #fcd5c0', borderRadius: 8, textDecoration: 'none', justifyContent: 'center' }}>
+              <span style={{ fontSize: 16 }}>📂</span> Open / save file
+            </a>
+          )}
+          <button onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}
             style={{ width: '100%', padding: '11px 0', fontSize: 13, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
             Done
           </button>
@@ -275,7 +313,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                 <>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
-                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
+                  <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
                   {error && <ErrorBox message={error} />}
                 </>
               )}
@@ -328,7 +366,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                     </div>
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
                   </div>
-                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
+                  <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
 
                   {error && <ErrorBox message={error} />}
                 </>
@@ -469,6 +507,7 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
 
 function CommentConfig({
   fields,
+  fieldCounts,
   commentConfig,
   setCommentConfig,
   commentAnnotations,
@@ -477,6 +516,7 @@ function CommentConfig({
   setCommentColorField,
 }: {
   fields: SchemaField[]
+  fieldCounts: Record<string, number>
   commentConfig: Record<string, { enabled: boolean; slides: number }>
   setCommentConfig: (fn: (prev: Record<string, { enabled: boolean; slides: number }>) => Record<string, { enabled: boolean; slides: number }>) => void
   commentAnnotations: string[]
@@ -485,7 +525,9 @@ function CommentConfig({
   setCommentColorField: (v: string) => void
 }) {
   const openFields  = fields.filter(function(f) { return f.type === 'open-ended' })
+  // Annotation fields: demo/psycho/categorical for tags; numeric also allowed for color coding
   const annotFields = fields.filter(function(f) { return f.section === 'demographic' || f.section === 'psychographic' || (f.type === 'categorical' && !f.section) })
+  const colorFields = fields.filter(function(f) { return f.section === 'demographic' || f.section === 'psychographic' || f.type === 'categorical' || f.type === 'numeric' })
 
   if (openFields.length === 0) return null
 
@@ -502,6 +544,7 @@ function CommentConfig({
       {/* Open-ended fields — enabled + slide count */}
       {openFields.map(function(f) {
         const cfg = commentConfig[f.field] || { enabled: true, slides: 2 }
+        const cnt = fieldCounts[f.field]
         return (
           <div key={f.field} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 6, border: '1px solid ' + S.border, background: cfg.enabled ? S.accentBg : S.bg }}>
             <input type="checkbox" checked={cfg.enabled} onChange={function() {
@@ -510,6 +553,11 @@ function CommentConfig({
             <span style={{ fontSize: 11, color: cfg.enabled ? HERMES : S.textMute, flex: 1, fontWeight: cfg.enabled ? 600 : 400 }}>
               {f.label || f.field}
             </span>
+            {cnt !== undefined && (
+              <span style={{ fontSize: 10, color: S.textFaint, background: S.bg, border: '1px solid ' + S.border, borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>
+                {cnt} {cnt === 1 ? 'response' : 'responses'}
+              </span>
+            )}
             {cfg.enabled && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: 10, color: S.textFaint }}>slides:</span>
@@ -548,7 +596,7 @@ function CommentConfig({
       )}
 
       {/* Color-code cards by field value */}
-      {anyEnabled && annotFields.length > 0 && (
+      {anyEnabled && colorFields.length > 0 && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 9, color: S.textMute, fontWeight: 600, marginBottom: 5 }}>Color-code cards by:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 5 }}>
@@ -557,17 +605,18 @@ function CommentConfig({
               style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (commentColorField === '' ? HERMES : S.border), background: commentColorField === '' ? S.accentBg : S.white, color: commentColorField === '' ? HERMES : S.textMute, fontSize: 10, fontWeight: commentColorField === '' ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
               None
             </button>
-            {annotFields.slice(0, 8).map(function(f) {
+            {colorFields.slice(0, 10).map(function(f) {
               const active = commentColorField === f.field
+              const isNum  = f.type === 'numeric'
               return (
                 <button key={f.field} onClick={function() { setCommentColorField(active ? '' : f.field) }}
                   style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (active ? '#0F7173' : S.border), background: active ? '#e0f2f1' : S.white, color: active ? '#0F7173' : S.textMute, fontSize: 10, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {f.label || f.field}
+                  {f.label || f.field}{isNum ? ' 🔢' : ''}
                 </button>
               )
             })}
           </div>
-          <div style={{ fontSize: 9, color: S.textFaint, marginTop: 4 }}>Each card's left accent strip will be colored by the selected field's value.</div>
+          <div style={{ fontSize: 9, color: S.textFaint, marginTop: 4 }}>Each card's left accent strip is colored by the field value. Numeric fields use a green→red gradient.</div>
         </div>
       )}
     </div>
