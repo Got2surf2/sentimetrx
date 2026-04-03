@@ -128,13 +128,14 @@ function pct(v: number, total: number) { return total > 0 ? Math.round(v / total
 function kpiCard(slide: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string, bg_ = DN.slateLight, valColor = DN.navy) {
   rect(slide, x, y, w, h, bg_, 0.08, DN.divider)
   const hasSub  = !!sub
-  const valH    = h * (hasSub ? 0.44 : 0.58)
+  const valH    = h * (hasSub ? 0.42 : 0.58)
   const metaTop = y + valH + 0.06
-  const lblH    = Math.min(0.22, (y + h - metaTop) * (hasSub ? 0.54 : 1.0))
-  const subH    = hasSub ? Math.max(0, Math.min(0.18, y + h - metaTop - lblH - 0.02)) : 0
+  const lblH    = Math.min(0.22, (y + h - metaTop) * (hasSub ? 0.40 : 1.0))
+  // Give sub all remaining space so long responses aren't clipped
+  const subH    = hasSub ? Math.max(0, y + h - metaTop - lblH - 0.04) : 0
   slide.addText(value, { x: x + 0.14, y: y + 0.06, w: w - 0.28, h: valH, fontSize: Math.min(26, Math.max(16, 26 - value.length * 1.2)), bold: true, color: valColor, valign: 'middle' })
   slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 9.5, bold: true, color: DN.slateDark, wrap: true })
-  if (sub && subH > 0.08) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH, fontSize: 8.5, color: DN.slate })
+  if (sub && subH > 0.06) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH, fontSize: 8.5, color: DN.slate, wrap: true, lineSpacingMultiple: 1.2 })
 }
 
 // KPI card on dark (navy) background
@@ -510,8 +511,8 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
       const topPct_ = total_ > 0 ? Math.round(counts[topKey] / total_ * 100) : 0
       const fy = colY + 0.34 + i * 0.74
       solidRect(slide, PAD, fy + 0.12, 0.05, 0.05, DN.gold)
-      slide.addText(trunc(f.label || f.field, 36), { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.28, fontSize: 10, bold: true, color: DN.slate })
-      slide.addText(topPct_ + '% ' + trunc(topKey, 38), { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.36, fontSize: 13, bold: true, color: DN.white, wrap: true })
+      slide.addText(f.label || f.field, { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.28, fontSize: 10, bold: true, color: DN.slate })
+      slide.addText(topPct_ + '% ' + topKey, { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.44, fontSize: 12, bold: true, color: DN.white, wrap: true, lineSpacingMultiple: 1.2 })
     })
   }
 
@@ -1195,7 +1196,7 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
   // ── KPI row ───────────────────────────────────────────────────────────────
   const kw = (W - PAD * 2 - 0.2) / 3
   kpiCard(slide, PAD,                CY, kw, 0.78, total.toLocaleString(), 'Respondents', undefined, DN.slateLight, DN.navy)
-  kpiCard(slide, PAD + kw + 0.1,    CY, kw, 0.78, topPct_ + '%', 'Top Response', trunc(topKey, 38),
+  kpiCard(slide, PAD + kw + 0.1,    CY, kw, 0.78, topPct_ + '%', 'Top Response', topKey,
     isOrdinal ? (top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight) : DN.slateLight,
     isOrdinal ? (top2 >= 70 ? DN.green      : top2 >= 50 ? DN.amber      : DN.red)      : DN.navy)
   kpiCard(slide, PAD + kw * 2 + 0.2, CY, kw, 0.78,
