@@ -87,7 +87,7 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
               ↺ Use suggested
             </button>
             <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
-              ⚠ Required — greyed text is a suggestion only
+              ⚠ Required — grayed text is a suggestion only
             </span>
           </div>
         )}

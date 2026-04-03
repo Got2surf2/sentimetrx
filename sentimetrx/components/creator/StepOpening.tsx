@@ -206,7 +206,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
       </div>
 
       {/* Greeting */}
-      <Section title="Greeting message" description="The very first thing the bot says. This field must be filled — the greyed-out text is a suggestion only and won't appear automatically.">
+      <Section title="Greeting message" description="The very first thing the bot says. This field must be filled — the grayed-out text is a suggestion only and won't appear automatically.">
         <div className="flex flex-col gap-2">
           <div className="relative">
             <Input
@@ -235,7 +235,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
             )}
             {!c.greeting && (
               <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
-                ⚠ Required — greyed text is a suggestion only, not saved
+                ⚠ Required — grayed text is a suggestion only, not saved
               </span>
             )}
           </div>

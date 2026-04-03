@@ -24,7 +24,7 @@ export default function LottieLoader({ size = 120, message, className }: Props) 
         renderer:   'svg',
         loop:       true,
         autoplay:   true,
-        path:       '/loading-spinner.json',
+        path:       '/morphing-particle-loader.json',
       })
     })
     return function() { if (anim) anim.destroy() }

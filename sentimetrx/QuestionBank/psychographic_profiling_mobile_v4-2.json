@@ -1214,7 +1214,7 @@
           "responses": [
             "🔧 A useful tool — leverage is part of building wealth",
             "⚖️ Acceptable for big purchases, managed carefully",
-            "🚫 Something to minimise and eliminate as fast as possible",
+            "🚫 Something to minimize and eliminate as fast as possible",
             "😬 A source of anxiety I try not to think about"
           ]
         },
@@ -1232,7 +1232,7 @@
           "key": "p_fs_insurance",
           "prompt": "How do you approach insurance coverage?",
           "responses": [
-            "🛡️ Proactive — I review and optimise my coverage regularly",
+            "🛡️ Proactive — I review and optimize my coverage regularly",
             "📋 Reactive — I have it but rarely think about it",
             "💰 Minimal — I carry only what's legally required",
             "🤷 Uncertain — I don't feel confident about my current coverage"
@@ -1252,7 +1252,7 @@
           "key": "p_fs_risk",
           "prompt": "What's your investment risk tolerance?",
           "responses": [
-            "🚀 Aggressive — I prioritise maximum growth and accept volatility",
+            "🚀 Aggressive — I prioritize maximum growth and accept volatility",
             "⚖️ Moderate — growth with reasonable downside protection",
             "🛡️ Conservative — capital preservation over high returns",
             "🤷 Unclear — I act inconsistently and haven't defined this"
@@ -1337,9 +1337,9 @@
           "key": "p_ed_technology",
           "prompt": "How do you view technology in the K-12 classroom?",
           "responses": [
-            "🚀 Essential — a transformative enabler of personalised learning",
+            "🚀 Essential — a transformative enabler of personalized learning",
             "⚖️ Beneficial but needs careful, deliberate guardrails",
-            "⚠️ Overemphasised — screen time is displacing foundational learning",
+            "⚠️ Overemphasized — screen time is displacing foundational learning",
             "🔄 Mixed — depends on the tool, age group and implementation quality"
           ]
         },
@@ -1375,7 +1375,7 @@
         },
         {
           "key": "p_ed_testing",
-          "prompt": "How do you feel about standardised testing?",
+          "prompt": "How do you feel about standardized testing?",
           "responses": [
             "📊 Essential — objective data drives accountability",
             "⚖️ Useful but significantly over-relied upon",
@@ -1454,7 +1454,7 @@
           "responses": [
             "⭐⭐⭐ Very — prestige signals quality and opens career doors",
             "⭐⭐ Moderate — outcomes and campus culture matter more",
-            "⭐ Minimal — I focus on programme quality, not the name",
+            "⭐ Minimal — I focus on program quality, not the name",
             "🚫 Not important — over-credentialism based on prestige is harmful"
           ]
         },
@@ -1462,7 +1462,7 @@
           "key": "p_he_online",
           "prompt": "How do you feel about online and hybrid higher education?",
           "responses": [
-            "🌐🌐 Very positive — it democratises access and improves flexibility",
+            "🌐🌐 Very positive — it democratizes access and improves flexibility",
             "🌐 Positive with caveats — quality and employer perception vary",
             "😐 Skeptical — in-person experiences offer irreplaceable development",
             "🚫 Online should supplement residential education, not replace it"
@@ -1483,7 +1483,7 @@
           "prompt": "Your view on DEI initiatives in higher education?",
           "responses": [
             "🌍 Essential — campuses must actively reflect and serve diverse populations",
-            "📊 Important but outcomes-focused — programmes should show demonstrable results",
+            "📊 Important but outcomes-focused — programs should show demonstrable results",
             "⚖️ Merit-based admissions and hiring should guide decisions",
             "🤔 Current approaches risk compromising academic standards or free inquiry"
           ]
@@ -1508,9 +1508,9 @@
           "prompt": "How would you describe your org's approach to employee experience?",
           "responses": [
             "🌟 Highly intentional — EX is a strategic priority",
-            "📈 Improving — we've recognised it and are actively building",
+            "📈 Improving — we've recognized it and are actively building",
             "⚠️ Inconsistent — efforts vary widely across teams",
-            "😔 Underdeveloped — acknowledged but rarely prioritised"
+            "😔 Underdeveloped — acknowledged but rarely prioritized"
           ]
         },
         {
@@ -1535,19 +1535,19 @@
         },
         {
           "key": "p_hr_ai",
-          "prompt": "How is your organisation using AI in HR?",
+          "prompt": "How is your organization using AI in HR?",
           "responses": [
             "🚀 Actively — AI is in our recruiting, analytics and HR workflows",
             "🔬 Piloting — testing specific use cases carefully",
             "🤔 Exploring — interested but not yet deployed",
-            "🚫 Not yet — concerns about bias, privacy or organisational readiness"
+            "🚫 Not yet — concerns about bias, privacy or organizational readiness"
           ]
         },
         {
           "key": "p_hr_pay_transparency",
           "prompt": "What's your stance on pay transparency?",
           "responses": [
-            "✅ Fully in favour — transparency builds trust and equity",
+            "✅ Fully in favor — transparency builds trust and equity",
             "⚖️ Supportive in principle but complex to execute in practice",
             "😐 Neutral — we follow legal requirements and go no further",
             "😟 Concerned — it creates more internal problems than it solves"
@@ -1565,7 +1565,7 @@
         },
         {
           "key": "p_hr_remote",
-          "prompt": "How does your organisation approach flexible and remote work?",
+          "prompt": "How does your organization approach flexible and remote work?",
           "responses": [
             "🏡 Fully flexible — employees choose when and where they work",
             "🔄 Hybrid — set office days with flexibility built in",
@@ -1589,8 +1589,8 @@
           "responses": [
             "🌟 A strategic priority — heavy investment in training and coaching",
             "📋 Covered in onboarding but not sustained consistently",
-            "🌱 Organic — managers develop through experience, not programmes",
-            "😔 Underfunded — we know it matters but haven't prioritised it"
+            "🌱 Organic — managers develop through experience, not programs",
+            "😔 Underfunded — we know it matters but haven't prioritized it"
           ]
         },
         {
@@ -1758,7 +1758,7 @@
           "prompt": "What most motivates you to support a specific cause?",
           "responses": [
             "❤️ Personal connection — it's directly affected me or someone I love",
-            "📊 Demonstrated impact — I trust the organisation delivers measurable results",
+            "📊 Demonstrated impact — I trust the organization delivers measurable results",
             "🏘️ Community need — it addresses something I see in my local context",
             "🌍 Values alignment — the cause reflects my broader worldview"
           ]
@@ -1777,7 +1777,7 @@
           "key": "p_np_overhead",
           "prompt": "How do you feel about overhead and administrative costs?",
           "responses": [
-            "💰 Low overhead is essential — maximise direct mission spend",
+            "💰 Low overhead is essential — maximize direct mission spend",
             "💡 Evolved view — effective orgs must invest in infrastructure",
             "📊 Outcomes, not overhead ratios, are the true measure",
             "🤷 I'm genuinely uncertain and haven't formed a clear view"
@@ -1815,7 +1815,7 @@
         },
         {
           "key": "p_np_churn",
-          "prompt": "What would cause you to stop giving to an organisation?",
+          "prompt": "What would cause you to stop giving to an organization?",
           "responses": [
             "📉 Loss of trust — a scandal, misuse of funds or poor transparency",
             "😶 Donor neglect — I stopped hearing from them or feeling valued",
@@ -1934,7 +1934,7 @@
           "responses": [
             "💰💰 Very — I always compare quotes before committing",
             "💰 Moderate — price matters but I'll pay more for trusted quality",
-            "😌 Not very — I prioritise reliability and convenience over cost",
+            "😌 Not very — I prioritize reliability and convenience over cost",
             "🔄 Depends — major work gets compared, minor work does not"
           ]
         },
@@ -1960,7 +1960,7 @@
         },
         {
           "key": "p_ar_shop_type",
-          "prompt": "Independent repair shop or dealership service centre?",
+          "prompt": "Independent repair shop or dealership service center?",
           "responses": [
             "🏪 Strongly prefer independent — better value and more personal service",
             "🏭 Prefer dealership — factory-trained technicians and OEM parts matter",

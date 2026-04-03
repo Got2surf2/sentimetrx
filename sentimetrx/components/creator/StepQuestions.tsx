@@ -726,7 +726,7 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
 
       {open && (
         <div className="px-4 pb-4 flex flex-col gap-3">
-          <p className="text-xs text-gray-400 px-1">Drag ⠿ to reorder within a group. Greyed-out items are disabled.</p>
+          <p className="text-xs text-gray-400 px-1">Drag ⠿ to reorder within a group. Grayed-out items are disabled.</p>
 
           {/* Core */}
           <div>
