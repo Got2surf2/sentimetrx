@@ -1009,7 +1009,7 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   footer(slide, datasetName, pageNum)
 }
 
-interface CommentItem { text: string; demos: Array<{ label: string; value: string }>; colorValue?: string }
+interface CommentItem { text: string; demos: Array<{ label: string; value: string; section?: string }>; colorValue?: string }
 
 // Map a field value to a card accent strip color
 // Numeric: green→red gradient based on relative value
@@ -1089,22 +1089,39 @@ function buildCommentsSlide(
       fontSize: 11, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
     })
 
-    // Demographics row pinned to bottom of card
+    // Annotation pills pinned to bottom of card
+    // Demo = Sarina palette (orange), Psycho = Ana palette (teal)
     if (hasDemos) {
       const demoY = cy + cardH - demoRowH - 0.02
-      solidRect(slide, cx + 0.06, demoY - 0.03, cardW - 0.12, 0.012, DN.divider)
-      let tagX = cx + 0.14
-      c.demos.slice(0, 5).forEach(function(d) {
-        if (!d.value || tagX > cx + cardW - 0.18) return
-        const tagText = trunc(d.value, 20)
-        const tagW    = Math.min(1.5, Math.max(0.5, tagText.length * 0.057 + 0.2))
-        if (tagX + tagW > cx + cardW - 0.1) return
-        solidRect(slide, tagX, demoY + 0.04, tagW, 0.2, DN.slateLight)
-        slide.addText(tagText, {
-          x: tagX + 0.04, y: demoY + 0.04, w: tagW - 0.08, h: 0.2,
-          fontSize: 7, color: DN.slateDark, valign: 'middle',
+      solidRect(slide, cx + 0.06, demoY - 0.03, cardW - 0.12, 0.010, DN.divider)
+      const pillH    = 0.22
+      const pillPadX = 0.10   // horizontal text padding inside pill
+      const pillGap  = 0.07
+      const pillY    = demoY + 0.03
+      const maxRight = cx + cardW - 0.12
+
+      // Pill style by section
+      function pillStyle(section?: string): { bg: string; border: string; text: string } {
+        if (section === 'demographic')   return { bg: 'FEF0E8', border: DN.orange, text: DN.orange }
+        if (section === 'psychographic') return { bg: 'E0F2F1', border: DN.teal,   text: DN.teal   }
+        return { bg: DN.slateLight, border: DN.divider, text: DN.slateDark }
+      }
+
+      // First pass: compute widths so we know which pills actually fit
+      // character width at fontSize 7.5 ≈ 0.062" per char; add 2× horizontal padding
+      let tagX = cx + 0.12
+      c.demos.slice(0, 6).forEach(function(d) {
+        if (!d.value) return
+        const pillW = d.value.length * 0.062 + pillPadX * 2
+        if (tagX + pillW > maxRight) return
+        const style = pillStyle(d.section)
+        // Pill shape — high radius gives full pill look
+        rect(slide, tagX, pillY, pillW, pillH, style.bg, 0.5, style.border)
+        slide.addText(d.value, {
+          x: tagX + pillPadX, y: pillY, w: pillW - pillPadX * 2, h: pillH,
+          fontSize: 7.5, bold: true, color: style.text, valign: 'middle', wrap: false,
         })
-        tagX += tagW + 0.06
+        tagX += pillW + pillGap
       })
     }
   })
@@ -1528,7 +1545,7 @@ export async function POST(req: Request, { params }: Params) {
             .map(function(row) {
               const text = rowVal(row, f.field)
               const demos = annotFields
-                .map(function(df) { return { label: df.label, value: rowVal(row, df.field) } })
+                .map(function(df) { return { label: df.label, value: rowVal(row, df.field), section: df.section } })
                 .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
               const colorValue = commentColorField ? rowVal(row, commentColorField) : undefined
               return { text, demos, colorValue }
