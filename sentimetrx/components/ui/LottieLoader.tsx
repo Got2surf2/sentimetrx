@@ -2,45 +2,59 @@
 
 // components/ui/LottieLoader.tsx
 // Lightweight Lottie animation loader using lottie-web (no React wrapper needed).
-// Usage: <LottieLoader size={120} />
-// The animation JSON is loaded from /loading-animation.json in the public folder.
+// Uses animationData (inline JSON) instead of path to avoid XHR issues.
 
 import { useEffect, useRef } from 'react'
 
 interface Props {
-  size?:      number      // px, default 120
-  message?:   string      // optional text below animation
+  size?:      number
+  message?:   string
   className?: string
 }
 
+const SPINNER_CSS = `
+  @keyframes _lottie_spin { to { transform: rotate(360deg) } }
+`
+
+function cssSpinner(container: HTMLDivElement, size: number) {
+  const s = Math.round(size * 0.4)
+  container.innerHTML =
+    '<style>' + SPINNER_CSS + '</style>' +
+    '<div style="width:' + s + 'px;height:' + s + 'px;border:3px solid rgba(232,98,42,0.2);border-top-color:#e8622a;border-radius:50%;animation:_lottie_spin 0.8s linear infinite"></div>'
+}
+
 export default function LottieLoader({ size = 120, message, className }: Props) {
-  var containerRef = useRef<HTMLDivElement>(null)
-  var animRef      = useRef<any>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const animRef      = useRef<any>(null)
 
   useEffect(function() {
-    if (!containerRef.current) return
-    var cancelled = false
+    const container = containerRef.current
+    if (!container) return
+    let cancelled = false
 
-    import('lottie-web').then(function(lottie) {
-      if (cancelled || !containerRef.current) return
-      animRef.current = lottie.default.loadAnimation({
-        container:     containerRef.current,
+    Promise.all([
+      import('lottie-web'),
+      fetch('/loading-animation.json').then(function(r) {
+        if (!r.ok) throw new Error('fetch failed')
+        return r.json()
+      }),
+    ]).then(function([lottieModule, animationData]) {
+      if (cancelled || !container) return
+      animRef.current = lottieModule.default.loadAnimation({
+        container,
         renderer:      'svg',
         loop:          true,
         autoplay:      true,
-        path:          '/loading-animation.json',
+        animationData,
       })
     }).catch(function() {
-      // Fallback: if lottie-web not installed, show CSS spinner
-      if (containerRef.current && !cancelled) {
-        containerRef.current.innerHTML = '<div style="width:' + (size * 0.4) + 'px;height:' + (size * 0.4) + 'px;border:3px solid rgba(232,98,42,0.2);border-top-color:#e8622a;border-radius:50%;animation:spin 0.8s linear infinite"></div>'
-      }
+      if (!cancelled && container) cssSpinner(container, size)
     })
 
     return function() {
       cancelled = true
       if (animRef.current) {
-        try { animRef.current.destroy() } catch (e) {}
+        try { animRef.current.destroy() } catch (_) {}
         animRef.current = null
       }
     }
