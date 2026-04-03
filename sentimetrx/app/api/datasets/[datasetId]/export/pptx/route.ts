@@ -1042,7 +1042,9 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
 function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, pageNum: number) {
   const slide = pptx.addSlide()
   bg(slide, pptx)
-  hdr(slide, pptx, f.label, DN.navy, (f.section ? f.section.charAt(0).toUpperCase() + f.section.slice(1) + ' · ' : '') + 'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
+  hdr(slide, pptx, f.label, DN.navy,
+    (f.section ? f.section.charAt(0).toUpperCase() + f.section.slice(1) + ' · ' : '') +
+    'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
   logo(slide)
 
   const s         = f.summary
@@ -1050,7 +1052,6 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
   const allKeys   = Object.keys(rawCounts)
   const total     = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
 
-  // Order: ordinal best-first, nominal count-desc
   const isOrdinal = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
   let orderedKeys: string[]
   if (isOrdinal) {
@@ -1058,9 +1059,8 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
   } else {
     orderedKeys = allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
   }
-  orderedKeys = orderedKeys.filter(k => (rawCounts[k] || 0) > 0).slice(0, 10)
+  orderedKeys = orderedKeys.filter(k => (rawCounts[k] || 0) > 0).slice(0, 8)
 
-  // Metrics
   const top2Keys = isOrdinal ? orderedKeys.slice(0, 2) : []
   const top2     = pct(top2Keys.reduce((s, k) => s + (rawCounts[k] || 0), 0), total)
   const topKey   = orderedKeys[0] || ''
@@ -1068,108 +1068,111 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
 
   // ── KPI row ───────────────────────────────────────────────────────────────
   const kw = (W - PAD * 2 - 0.2) / 3
-  const kpiY = CY
-  const kpiBg = DN.slateLight
-  kpiCard(slide, PAD,              kpiY, kw, 0.78, total.toLocaleString(), 'Respondents', undefined, kpiBg, DN.navy)
-  kpiCard(slide, PAD + kw + 0.1,  kpiY, kw, 0.78, topPct_ + '%', trunc(topKey, 20), 'top response', isOrdinal ? (top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight) : kpiBg, isOrdinal ? (top2 >= 70 ? DN.green : top2 >= 50 ? DN.amber : DN.red) : DN.navy)
-  kpiCard(slide, PAD + kw * 2 + 0.2, kpiY, kw, 0.78, isOrdinal ? top2 + '%' : String(orderedKeys.length), isOrdinal ? 'Top-2 Positive' : 'Unique Values', undefined, kpiBg, isOrdinal ? (top2 >= 70 ? DN.green : top2 >= 50 ? DN.amber : DN.red) : DN.teal)
+  kpiCard(slide, PAD,                CY, kw, 0.78, total.toLocaleString(), 'Respondents', undefined, DN.slateLight, DN.navy)
+  kpiCard(slide, PAD + kw + 0.1,    CY, kw, 0.78, topPct_ + '%', trunc(topKey, 24), 'top response',
+    isOrdinal ? (top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight) : DN.slateLight,
+    isOrdinal ? (top2 >= 70 ? DN.green      : top2 >= 50 ? DN.amber      : DN.red)      : DN.navy)
+  kpiCard(slide, PAD + kw * 2 + 0.2, CY, kw, 0.78,
+    isOrdinal ? top2 + '%' : String(orderedKeys.length),
+    isOrdinal ? 'Top-2 Positive' : 'Unique Values', undefined,
+    DN.slateLight,
+    isOrdinal ? (top2 >= 70 ? DN.green : top2 >= 50 ? DN.amber : DN.red) : DN.teal)
 
-  // ── Pie chart (left) ──────────────────────────────────────────────────────
-  const chartY = kpiY + 0.92
-  const chartH = CH - 0.92
-  const chartW = W * 0.55 - PAD
-
-  const pieLabels  = orderedKeys
-  const pieValues  = orderedKeys.map(k => rawCounts[k] || 0)
-  const pieColors  = orderedKeys.map((_, i) => PIE_COLORS[i % PIE_COLORS.length])
-
-  slide.addChart(pptx.ChartType.pie,
-    [{ name: f.label, labels: pieLabels, values: pieValues }],
-    {
-      x: PAD, y: chartY, w: chartW, h: chartH,
-      showLegend: false,
-      showTitle: false,
-      dataLabelFontSize: 9,
-      dataLabelColor: 'FFFFFF',
-      dataLabelPosition: 'inEnd',
-      dataLabelFormatCode: '0"%"',
-      chartColors: pieColors,
-      border: { type: 'none' },
-      plotAreaBorderType: 'none',
-    } as any
-  )
-
-  // ── Insight / implication dimensions (computed first to cap legend) ───────
+  // ── Compute insight geometry first so bars know available height ──────────
   const hasRealAI   = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
   const insightText = hasRealAI
     ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
-    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total))
+    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2,
+        pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total))
+  const withImpl  = hasRealAI && !!ai.implication
+  const insH      = 0.78
+  const implH     = 0.44
+  const insightY  = FY - 0.12 - (withImpl ? insH + 0.08 + implH : insH)
 
-  const insH       = 0.72
-  const implH      = 0.44
-  const implGap    = 0.08
-  const withImpl   = hasRealAI && !!ai.implication
-  const totalInsH  = withImpl ? insH + implGap + implH : insH
-  // Anchor insight block to just above the footer line
-  const insightStartY = FY - 0.12 - totalInsH
+  // ── Full-width horizontal bar chart ───────────────────────────────────────
+  const headerY   = CY + 0.90      // column header row
+  const rowStart  = headerY + 0.32
+  const n         = orderedKeys.length
+  const barAvail  = insightY - rowStart - 0.08
+  const rowH      = Math.min(0.60, barAvail / Math.max(n, 1))
+  const rowGap    = Math.min(0.08, (barAvail - rowH * n) / Math.max(n - 1, 1))
 
-  // ── Legend table (right) ──────────────────────────────────────────────────
-  const legX   = PAD + chartW + 0.2
-  const legW   = W - legX - PAD * 0.5
-  const legStart = chartY + 0.3
-  // Cap rows so they end at least 0.1" above the insight block
-  const legAvail = insightStartY - legStart - 0.1
-  const maxLeg   = Math.min(orderedKeys.length, 9)
-  const rowH     = Math.min(0.5, legAvail / Math.max(maxLeg, 1))
-  const visRows  = Math.min(maxLeg, Math.floor(legAvail / Math.max(rowH, 0.01)))
+  // Column widths — bar dominates the full slide width
+  const swatchW  = 0.10
+  const labelW   = 2.80
+  const pctW     = 0.52     // wide enough for "100%"
+  const cntW     = 0.72
+  const gapS     = 0.08     // swatch→label
+  const gapLB    = 0.18     // label→bar
+  const gapBP    = 0.14     // bar→%
+  const gapPC    = 0.10     // %→count
+  const barMaxW  = W - PAD * 2 - swatchW - gapS - labelW - gapLB - gapBP - pctW - gapPC - cntW
+  const swatchX  = PAD
+  const labelX   = swatchX + swatchW + gapS
+  const barX     = labelX + labelW + gapLB
+  const pctX     = barX + barMaxW + gapBP
+  const cntX     = pctX + pctW + gapPC
 
-  lbl(slide, 'RESPONSE BREAKDOWN', legX, chartY, legW)
-  solidRect(slide, legX, chartY + 0.22, legW, 0.015, DN.divider)
+  // Column headers
+  slide.addText('Response',     { x: labelX, y: headerY, w: labelW,  h: 0.26, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('Distribution', { x: barX,   y: headerY, w: barMaxW, h: 0.26, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('%',            { x: pctX,   y: headerY, w: pctW,    h: 0.26, fontSize: 8.5, bold: true, color: DN.slateDark, align: 'right', valign: 'middle' })
+  slide.addText('n',            { x: cntX,   y: headerY, w: cntW,    h: 0.26, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
+  solidRect(slide, PAD, headerY + 0.28, W - PAD * 2, 0.012, DN.divider)
 
-  // Legend layout constants — wider % column to prevent wrapping
-  const pctColW  = 0.42   // wide enough for "100%"
-  const barColW  = 0.44
-  const barGap   = 0.08
-  const legBx    = legX + legW - pctColW - barGap - barColW  // bar left edge
-  const legPctX  = legX + legW - pctColW                     // % text left edge
-  const legLblW  = legBx - 0.08 - (legX + 0.18)             // label available width
+  const maxVal = Math.max(...orderedKeys.map(k => rawCounts[k] || 0), 1)
 
-  orderedKeys.slice(0, visRows).forEach(function(key, i) {
-    const ry      = legStart + i * rowH
-    const count   = rawCounts[key] || 0
-    const pctVal  = pct(count, total)
-    const col     = PIE_COLORS[i % PIE_COLORS.length]
+  orderedKeys.forEach(function(key, i) {
+    const count  = rawCounts[key] || 0
+    const pctVal = pct(count, total)
+    const bw     = barMaxW * count / maxVal
+    const ry     = rowStart + i * (rowH + rowGap)
+    const col    = barColor(i, n, isOrdinal)
+    const isTop  = i === 0
 
-    // Colour swatch
-    solidRect(slide, legX, ry + rowH * 0.2, 0.12, rowH * 0.6, col)
+    // Alternating row tint
+    if (i % 2 === 0) solidRect(slide, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
 
-    // Label — generous character limit based on actual pixel width
-    slide.addText(trunc(key, 52), {
-      x: legX + 0.18, y: ry, w: legLblW, h: rowH,
-      fontSize: i === 0 ? 10.5 : 10, bold: i === 0,
-      color: i === 0 ? DN.navy : DN.navyLight, valign: 'middle',
+    // Color swatch
+    solidRect(slide, swatchX, ry + rowH * 0.18, swatchW, rowH * 0.64, col)
+
+    // Label — no excessive truncation; label column is 2.8" wide
+    slide.addText(trunc(key, 44), {
+      x: labelX, y: ry, w: labelW, h: rowH,
+      fontSize: isTop ? 11 : 10, bold: isTop, color: isTop ? DN.navy : DN.navyLight, valign: 'middle',
     })
 
-    // Proportion bar track + fill
-    solidRect(slide, legBx, ry + rowH * 0.35, barColW, rowH * 0.3, DN.slateLight)
-    solidRect(slide, legBx, ry + rowH * 0.35, barColW * (count / Math.max(...pieValues, 1)), rowH * 0.3, col)
+    // Bar track + fill — tall, prominent
+    const trackH = rowH * 0.52
+    const trackY = ry + (rowH - trackH) / 2
+    solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
+    if (bw > 0.04) solidRect(slide, barX, trackY, bw, trackH, col)
 
-    // Percentage — wider box, no wrapping
+    // Percentage — right-aligned, bold, coloured
     slide.addText(pctVal + '%', {
-      x: legPctX, y: ry, w: pctColW, h: rowH,
-      fontSize: 10, bold: true, color: col, align: 'right', valign: 'middle',
+      x: pctX, y: ry, w: pctW, h: rowH,
+      fontSize: isTop ? 13 : 11, bold: true, color: col, align: 'right', valign: 'middle',
+    })
+
+    // Count
+    slide.addText(count.toLocaleString(), {
+      x: cntX, y: ry, w: cntW, h: rowH,
+      fontSize: 9.5, color: DN.slateDark, valign: 'middle',
     })
   })
 
-  // ── Insight box (anchored above footer) ───────────────────────────────────
+  // ── Insight + optional implication, full width, anchored above footer ─────
   if (withImpl) {
-    insightBox(slide, legX, insightStartY, legW, insH, insightText, DN.teal, DN.tealPale)
-    const implY = insightStartY + insH + implGap
-    solidRect(slide, legX, implY, legW, implH, DN.goldPale)
-    solidRect(slide, legX, implY, 0.05, implH, DN.gold)
-    slide.addText('→ ' + ai.implication, { x: legX + 0.12, y: implY + 0.04, w: legW - 0.18, h: implH - 0.08, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
+    const implY = insightY + insH + 0.08
+    solidRect(slide, PAD, implY, W - PAD * 2, implH, DN.goldPale)
+    solidRect(slide, PAD, implY, 0.05, implH, DN.gold)
+    slide.addText('→ ' + ai.implication, {
+      x: PAD + 0.12, y: implY + 0.04, w: W - PAD * 2 - 0.18, h: implH - 0.08,
+      fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true,
+    })
   } else {
-    insightBox(slide, legX, insightStartY, legW, insH, insightText, DN.teal, DN.tealPale)
+    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
   }
 
   footer(slide, datasetName, pageNum)
