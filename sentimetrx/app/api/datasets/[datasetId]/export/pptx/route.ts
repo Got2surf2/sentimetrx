@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -219,11 +220,14 @@ ${fields.map(f => `    "${f.field}": {
   }
 }`
 
+  const controller = new AbortController()
+  const aiTimeout  = setTimeout(() => controller.abort(), 38000)  // 38s cap — leave room for PPTX build
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3500, messages: [{ role: 'user', content: prompt }] }),
-  })
+    signal: controller.signal,
+  }).finally(() => clearTimeout(aiTimeout))
 
   if (!res.ok) throw new Error('AI call failed: ' + res.status)
   const data = await res.json()
@@ -244,10 +248,11 @@ ${fields.map(f => `    "${f.field}": {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SelectedField {
-  field:   string
-  label:   string
-  type:    string
-  summary: any
+  field:      string
+  label:      string
+  type:       string
+  summary:    any
+  remapping?: Record<string, number>
 }
 
 // ── Slide builders ────────────────────────────────────────────────────────────
@@ -272,11 +277,8 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
     fontSize: 52, bold: true, italic: true, color: DN.tealLight, valign: 'middle',
   })
 
-  // Thin divider line
-  slide.addShape(pptx.ShapeType.line, {
-    x: PAD + 0.2, y: 2.15, w: 5.5, h: 0,
-    line: { color: DN.warmLight, width: 0.75 },
-  })
+  // Thin divider line (use a slim rect — ShapeType.line not reliable in pptxgenjs v4)
+  solidRect(slide, PAD + 0.2, 2.15, 5.5, 0.015, DN.warmLight)
 
   // Dataset name (main title)
   slide.addText(datasetName, {
@@ -454,10 +456,18 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
   logo(slide)
 
   const s = f.summary
-  const entries = Object.entries(s?.counts || {} as Record<string, number>)
-    .sort((a, b) => (b[1] as number) - (a[1] as number))
-    .slice(0, 10)
-  const total = entries.reduce((sum, [, v]) => sum + (v as number), 0)
+  const rawCounts = (s?.counts || {}) as Record<string, number>
+  const allKeys = Object.keys(rawCounts)
+  // For ordinal/ranked scales, order bars by scale position; otherwise by count desc
+  const useOrdinalOrder = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
+  const chartKeys = (useOrdinalOrder
+    ? smartOrder(allKeys, f.remapping)
+    : allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
+  ).slice(0, 10)
+  const entries = chartKeys.map(k => [k, rawCounts[k] || 0] as [string, number])
+  const total = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
+  // Top response callout always shows the most common value (count-based)
+  const topByCount = allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
 
   const chartW = W * 0.56 - PAD
   const rightX = W * 0.56 + 0.1
@@ -474,15 +484,11 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
       chartColors: CHART_COLORS,
       showLegend: false,
       showValue: true,
-      dataLabelFormatCode: '0',
       dataLabelColor: DN.white,
       dataLabelFontSize: 9,
-      dataLabelPosition: 'inEnd',
       valAxisLabelColor: DN.warmLight,
       catAxisLabelColor: DN.inkSoft,
       catAxisLabelFontSize: 9.5,
-      valAxisLineShow: false,
-      catGridLine: { style: 'none' },
     })
   }
 
@@ -490,16 +496,17 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
   // Summary stats
   kpiCard(slide, rightX, CY, rightW, 0.78, (s?.nonNull || 0).toLocaleString(), 'Responses', s?.uniqueCount + ' unique values', DN.tealPale, DN.teal)
 
-  // Top response callout
-  if (entries.length > 0) {
-    const [topK, topV] = entries[0]
-    const topPct = pct(topV as number, total)
+  // Top response callout — always most common by count
+  if (topByCount.length > 0) {
+    const topK = topByCount[0]
+    const topV = rawCounts[topK] || 0
+    const topPct = pct(topV, total)
     lbl(slide, 'TOP RESPONSE', rightX, CY + 0.9, rightW)
     rect(slide, rightX, CY + 1.12, rightW, 0.68, DN.orangePale, 0.08, DN.orangePale2)
     solidRect(slide, rightX, CY + 1.12, 0.07, 0.68, DN.orange)
     slide.addText(trunc(topK, 28), { x: rightX + 0.16, y: CY + 1.16, w: rightW - 0.45, h: 0.34, fontSize: 12, bold: true, color: DN.inkSoft, valign: 'middle', wrap: true })
     slide.addText(topPct + '%', { x: rightX + rightW - 0.45, y: CY + 1.16, w: 0.42, h: 0.34, fontSize: 18, bold: true, color: DN.orange, align: 'right', valign: 'middle' })
-    slide.addText((topV as number).toLocaleString() + ' responses', { x: rightX + 0.16, y: CY + 1.52, w: rightW - 0.24, h: 0.22, fontSize: 8.5, color: DN.warmMid })
+    slide.addText(topV.toLocaleString() + ' responses', { x: rightX + 0.16, y: CY + 1.52, w: rightW - 0.24, h: 0.22, fontSize: 8.5, color: DN.warmMid })
   }
 
   // Key finding
@@ -569,9 +576,6 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       valAxisLabelColor: DN.warmLight,
       catAxisLabelColor: DN.warmMid,
       catAxisLabelFontSize: 7.5,
-      valAxisLineShow: false,
-      catGridLine: { style: 'none' },
-      barGapWidthPct: 20,
     })
     lbl(slide, 'RESPONSE DISTRIBUTION', PAD, CY + 0.94, chartW)
   }
@@ -693,7 +697,7 @@ function buildClosingSlide(datasetName: string, takeaways: string[], pageNum: nu
   solidRect(slide, W - 2.0, 0, 2.0, H, DN.tealDark + '40')
 
   slide.addText('Key Takeaways', { x: PAD + 0.2, y: 0.7, w: W - 3.0, h: 0.7, fontSize: 32, bold: true, color: DN.white })
-  slide.addShape(pptx.ShapeType.line, { x: PAD + 0.2, y: 1.55, w: 4.5, h: 0, line: { color: DN.orange, width: 2 } })
+  solidRect(slide, PAD + 0.2, 1.55, 4.5, 0.03, DN.orange)
 
   takeaways.slice(0, 3).forEach(function(ta, i) {
     const ty = 1.85 + i * 1.2
@@ -746,7 +750,7 @@ export async function POST(req: Request, { params }: Params) {
     .map(function(fieldName) {
       const schemaField = (schema?.fields || []).find((f: any) => f.field === fieldName)
       if (!schemaField) return null
-      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null }
+      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping }
     })
     .filter(Boolean) as SelectedField[]
 
@@ -768,58 +772,63 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   // ── Build PPTX ─────────────────────────────────────────────────────────────
-  const pptxgen  = (await import('pptxgenjs')).default
-  pptx           = new pptxgen()
-  pptx.layout    = 'LAYOUT_WIDE'
-  pptx.author    = 'Datanautix'
-  pptx.company   = 'Datanautix'
-  pptx.subject   = datasetName + ' — Analysis Report'
-  pptx.title     = datasetName
+  try {
+    const pptxgen  = (await import('pptxgenjs')).default
+    pptx           = new pptxgen()
+    pptx.layout    = 'LAYOUT_WIDE'
+    pptx.author    = 'Datanautix'
+    pptx.company   = 'Datanautix'
+    pptx.subject   = datasetName + ' — Analysis Report'
+    pptx.title     = datasetName
 
-  let page = 1
+    let page = 1
 
-  // 1: Title
-  buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt, page++)
+    // 1: Title
+    buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt, page++)
 
-  // 2: About this report
-  buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience, page++)
+    // 2: About this report
+    buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience, page++)
 
-  // 3: Executive Summary
-  buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], themes, selectedFields, page++)
+    // 3: Executive Summary
+    buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], themes, selectedFields, page++)
 
-  // Field slides — open-ended first, then categorical, then numeric
-  const ordered = [
-    ...selectedFields.filter(f => f.type === 'open-ended'),
-    ...selectedFields.filter(f => f.type === 'categorical'),
-    ...selectedFields.filter(f => f.type === 'numeric'),
-  ]
+    // Field slides — open-ended first, then categorical, then numeric
+    const ordered = [
+      ...selectedFields.filter(f => f.type === 'open-ended'),
+      ...selectedFields.filter(f => f.type === 'categorical'),
+      ...selectedFields.filter(f => f.type === 'numeric'),
+    ]
 
-  for (const f of ordered) {
-    const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-    if (f.type === 'open-ended') {
-      buildOpenEndedSlide(datasetName, f, ai, audience, themes, page++)
-    } else if (f.type === 'categorical') {
-      if (audience !== 'executive') buildCategoricalSlide(datasetName, f, ai, page++)
-    } else if (f.type === 'numeric') {
-      if (audience !== 'executive') buildNumericSlide(datasetName, f, ai, page++)
+    for (const f of ordered) {
+      const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+      if (f.type === 'open-ended') {
+        buildOpenEndedSlide(datasetName, f, ai, audience, themes, page++)
+      } else if (f.type === 'categorical') {
+        if (audience !== 'executive') buildCategoricalSlide(datasetName, f, ai, page++)
+      } else if (f.type === 'numeric') {
+        if (audience !== 'executive') buildNumericSlide(datasetName, f, ai, page++)
+      }
     }
+
+    // Closing slide
+    if ((narratives.keyTakeaways || []).length > 0) {
+      buildClosingSlide(datasetName, narratives.keyTakeaways, page++)
+    }
+
+    const buffer  = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
+    const safeName = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40)
+    const filename = safeName + '_report_' + new Date().toISOString().slice(0, 10) + '.pptx'
+
+    return new Response(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'Content-Disposition': 'attachment; filename="' + filename + '"',
+        'Content-Length': String(buffer.length),
+      },
+    })
+  } catch (buildErr: any) {
+    console.error('[export/pptx] Build error:', buildErr)
+    return NextResponse.json({ error: 'PPTX build failed: ' + (buildErr?.message || String(buildErr)) }, { status: 500 })
   }
-
-  // Closing slide
-  if ((narratives.keyTakeaways || []).length > 0) {
-    buildClosingSlide(datasetName, narratives.keyTakeaways, page++)
-  }
-
-  const buffer  = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
-  const safeName = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40)
-  const filename = safeName + '_report_' + new Date().toISOString().slice(0, 10) + '.pptx'
-
-  return new Response(new Uint8Array(buffer), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': 'attachment; filename="' + filename + '"',
-      'Content-Length': String(buffer.length),
-    },
-  })
 }

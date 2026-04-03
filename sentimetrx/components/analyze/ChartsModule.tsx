@@ -288,7 +288,9 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'bubbles') {
     var catF3 = config.category; if (!catF3) return <EmptyChart msg="Assign a category field above." />
     var s3 = fs[catF3]; if (!s3 || !s3.counts) return <EmptyChart msg="No data." />
-    var e3 = Object.entries(s3.counts).sort(function(a, b) { return a[0].localeCompare(b[0]) }).slice(0, 20)
+    var f3Obj = schema.find(function(f) { return f.field === catF3 })
+    var e3Keys = smartOrder(Object.keys(s3.counts), f3Obj?.remapping).slice(0, 20)
+    var e3 = e3Keys.map(function(k) { return [k, s3.counts![k] || 0] as [string, number] })
     return <PlotlyChart traces={[{ x: e3.map(function(e, i) { return (i % 5) * 2 }), y: e3.map(function(e, i) { return Math.floor(i / 5) * 2 }), mode: 'markers+text', marker: { size: e3.map(function(e) { return Math.max(20, Math.sqrt(e[1]) * 4) }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.8, line: { color: e3.map(function(_, i) { return pal[i % pal.length] + '40' }), width: 1 } }, text: e3.map(function(e) { return e[0] + '\n' + e[1] }), textposition: 'center', textfont: { size: 10 } }]} layout={{ showlegend: false, xaxis: { visible: false }, yaxis: { visible: false }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
 
@@ -321,7 +323,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'funnel') {
     var catF5 = config.category; if (!catF5) return <EmptyChart msg="Assign a category field above." />
     var s5 = fs[catF5]; if (!s5 || !s5.counts) return <EmptyChart msg="No data." />
-    var e5 = (function() { var raw = Object.entries(s5.counts); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] })) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 12).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
+    var e5 = (function() { var raw = Object.entries(s5.counts); var f5Obj = schema.find(function(f) { return f.field === catF5 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f5Obj?.remapping) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 12).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
     return <PlotlyChart traces={[{ type: 'funnel', y: e5.map(function(e) { return e[0] }), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ margin: { t: 8, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
@@ -435,7 +437,12 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
       var extras = Object.keys(grid).filter(function(v) { return !orderedVals!.includes(v) }).sort()
       cats = cats.concat(extras)
     } else {
-      cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+      var smartCats = smartOrder(cats)
+      if (smartCats.join(',') !== cats.slice().sort().join(',')) {
+        cats = smartCats.filter(function(v) { return grid[v] })
+      } else {
+        cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+      }
     }
   } else {
     cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
@@ -570,7 +577,7 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
     var extrasSplit2 = Object.keys(groups).filter(function(k) { return !splitFieldObj!.values!.includes(k) }).sort()
     keys = keys.concat(extrasSplit2)
   } else {
-    keys = Object.keys(groups).sort()
+    keys = smartOrder(Object.keys(groups))
   }
   if (!keys.length) return <EmptyChart msg="No data for this split." />
   // Integer-range ticks on Y-axis when numeric field is a small int range (e.g. NPS 0-10, rating 1-5)
@@ -595,7 +602,8 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
     groups[grp].push(val)
   })
 
-  var groupKeys = Object.keys(groups).sort()
+  var splitFieldObjB = schema.find(function(f) { return f.field === splitByField })
+  var groupKeys = smartOrder(Object.keys(groups), splitFieldObjB?.remapping)
   if (!groupKeys.length) return <EmptyChart msg="No data for this combination." />
 
   // Overall stats for vs comparison
@@ -764,7 +772,10 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
   rows.forEach(function(r) { var rv = String(r[rowField] || '').trim(), cv = String(r[colField] || '').trim(); if (!rv || !cv) return; rSet.add(rv); cSet.add(cv); if (!grid[rv]) grid[rv] = {}; grid[rv][cv] = (grid[rv][cv] || 0) + 1 })
-  var rArr = Array.from(rSet).sort(), cArr = Array.from(cSet).sort()
+  var rowFieldObj = schema.find(function(f) { return f.field === rowField })
+  var colFieldObj = schema.find(function(f) { return f.field === colField })
+  var rArr = smartOrder(Array.from(rSet), rowFieldObj?.remapping)
+  var cArr = smartOrder(Array.from(cSet), colFieldObj?.remapping)
   var z = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
   return <PlotlyChart traces={[{ type: 'heatmap', x: cArr, y: rArr, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
 }
@@ -784,7 +795,8 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
-  var catArr = Object.keys(groups).sort(); var mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); var ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
+  var ganttFieldObj = schema.find(function(f) { return f.field === catField })
+  var catArr = smartOrder(Object.keys(groups), ganttFieldObj?.remapping); var mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); var ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
   return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ barmode: 'stack', yaxis: { title: flByName(catField, schema) }, xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
 }
 

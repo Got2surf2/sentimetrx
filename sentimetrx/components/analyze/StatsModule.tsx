@@ -39,6 +39,7 @@ import {
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
+import { smartOrder } from '@/lib/scaleUtils'
 
 var T = {
   bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
@@ -501,10 +502,15 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
         <Card style={{ padding: '14px 16px', marginTop: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Group Distributions</div>
           <PlotlyChart
-            data={Object.entries(result.groups as Record<string, number[]>).slice(0, 10).map(function(entry, i) {
-              var pal = [T.accent, T.blue, T.green, T.purple, T.amber, T.red]
-              return { y: entry[1], type: 'box', name: entry[0].slice(0, 20), marker: { color: pal[i % pal.length] }, boxpoints: 'outliers', jitter: 0.3, pointpos: -1.8 }
-            })}
+            data={(function() {
+              var grps = result.groups as Record<string, number[]>
+              var catFieldObj = catFields.find(function(f) { return f.field === catF })
+              var orderedKeys = smartOrder(Object.keys(grps), catFieldObj?.remapping).slice(0, 10)
+              return orderedKeys.map(function(key, i) {
+                var pal = [T.accent, T.blue, T.green, T.purple, T.amber, T.red]
+                return { y: grps[key], type: 'box', name: key.slice(0, 20), marker: { color: pal[i % pal.length] }, boxpoints: 'outliers', jitter: 0.3, pointpos: -1.8 }
+              })
+            })()}
             layout={{ yaxis: { title: { text: numF, font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 40, l: 50 } }}
             style={{ height: 280, width: '100%' }}
           />
