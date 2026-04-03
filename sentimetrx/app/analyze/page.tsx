@@ -1,7 +1,7 @@
 // app/analyze/page.tsx
 // Server component -- analyze gate + datasets list
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
 import AnalyzeClient from './AnalyzeClient'
@@ -25,6 +25,19 @@ export default async function AnalyzePage() {
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   const orgId = userData?.org_id
+  const isAdmin = !!orgData?.is_admin_org
+
+  // Fetch active/trial orgs for admin transfer
+  let allOrgs: { id: string; name: string }[] = []
+  if (isAdmin) {
+    const service = createServiceRoleClient()
+    const { data: orgs } = await service
+      .from('organizations')
+      .select('id, name, plan')
+      .neq('plan', 'suspended')
+      .order('name')
+    allOrgs = (orgs || []).filter((o: any) => o.id !== orgId).map((o: any) => ({ id: o.id, name: o.name }))
+  }
 
   const { data: rawDatasets, error: dsErr } = await supabase
     .from('datasets')
@@ -52,8 +65,8 @@ export default async function AnalyzePage() {
     const state = Array.isArray(stateArr) ? stateArr[0] : stateArr
     const tm = state?.theme_model || null
     const themeCount = tm?.themes?.length || 0
-    const themeSource = tm?.themeSource || null
-    const themeLibName = tm?.themeLibName || null
+    const themeSource = tm?.source || tm?.themeSource || null
+    const themeLibName = tm?.libName || tm?.themeLibName || d.ana_library || null
     const { studies: _s, dataset_state: _ds, ...rest } = d
     return { ...rest, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName }
   })
@@ -70,7 +83,7 @@ export default async function AnalyzePage() {
         currentPage="analyze"
       />
       <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">
-        <AnalyzeClient initialDatasets={datasets} />
+        <AnalyzeClient initialDatasets={datasets} isAdmin={isAdmin} allOrgs={allOrgs} />
       </main>
     </div>
   )

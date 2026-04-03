@@ -2,6 +2,7 @@ import type { StudyConfig } from './types'
 import type { Industry } from './industryDefaults'
 
 export interface StudyDraft {
+  id?:            string           // set when editing an existing study
   name:           string
   bot_name:       string
   bot_emoji:      string

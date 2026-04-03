@@ -9,7 +9,12 @@ import DatasetCard from '@/components/analyze/DatasetCard'
 import DatasetFilterBar from '@/components/analyze/DatasetFilterBar'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
 
-interface Props { initialDatasets: DatasetWithState[] }
+interface OrgOption { id: string; name: string }
+interface Props {
+  initialDatasets: DatasetWithState[]
+  isAdmin?:        boolean
+  allOrgs?:        OrgOption[]
+}
 
 interface Filters {
   source:     'all' | 'study' | 'upload'
@@ -19,7 +24,7 @@ interface Filters {
 
 const HERMES = '#e8622a'
 
-export default function AnalyzeClient({ initialDatasets }: Props) {
+export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrgs = [] }: Props) {
   const router = useRouter()
   const [datasets, setDatasets] = useState<DatasetWithState[]>(initialDatasets)
   const [filters,  setFilters]  = useState<Filters>({ source: 'all', visibility: 'all', status: 'all' })
@@ -57,6 +62,23 @@ export default function AnalyzeClient({ initialDatasets }: Props) {
   async function handleToggleArchive(id: string, status: 'active' | 'archived') {
     const ok = await patch(id, { status })
     if (ok) setDatasets(function(prev) { return prev.map(function(d) { return d.id === id ? { ...d, status } : d }) })
+  }
+
+  async function handleTransfer(datasetId: string, studyId: string | null, orgId: string) {
+    // Transfer dataset
+    await fetch('/api/datasets/' + datasetId, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId }),
+    })
+    // Transfer linked study too if it exists
+    if (studyId) {
+      await fetch('/api/studies/' + studyId, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId }),
+      })
+    }
+    // Remove from current view (it now belongs to another org)
+    setDatasets(function(prev) { return prev.filter(function(d) { return d.id !== datasetId }) })
   }
 
   const activeCount   = datasets.filter(function(d) { return d.status === 'active' }).length
@@ -119,6 +141,9 @@ export default function AnalyzeClient({ initialDatasets }: Props) {
                 onRename={handleRename}
                 onToggleVisibility={handleToggleVisibility}
                 onToggleArchive={handleToggleArchive}
+                isAdmin={isAdmin}
+                allOrgs={allOrgs}
+                onTransfer={handleTransfer}
               />
             )
           })}

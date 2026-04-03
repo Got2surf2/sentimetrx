@@ -28,9 +28,11 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const [draft,  setDraft]  = useState<StudyDraft>({
+    id:        study.id,
     name:      study.name,
     bot_name:  study.bot_name,
     bot_emoji: study.bot_emoji,
+    slug:      study.slug || undefined,
     config:    study.config,
   })
   const [saving,  setSaving]  = useState(false)

@@ -195,7 +195,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
     setSlugStatus('checking')
     slugTimer.current = setTimeout(async () => {
       try {
-        const studyId = (draft as any).id || ''
+        const studyId = draft.id || ''
         const res = await fetch(`/api/studies/check-slug?slug=${encodeURIComponent(clean)}&exclude=${studyId}`)
         const data = await res.json()
         setSlugStatus(data.available ? 'available' : 'taken')
