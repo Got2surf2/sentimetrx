@@ -1134,6 +1134,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
                 var opts = allFields.filter(function(f) {
                   return slot.accepts.includes(f.type) || slot.accepts.includes('any')
                 }).map(function(f) { return { v: f.field, l: fl(f) } })
+                  .sort(function(a, b) { return a.l.localeCompare(b.l) })
                 return <ChartSelect key={slot.key} label={slot.label} value={currentConfig[slot.key] || ''} required={slot.required}
                   onChange={function(v) { setChartConfigs(function(prev) { var u = Object.assign({}, prev); var cfg = Object.assign({}, u[activeChart] || {}); cfg[slot.key] = v; u[activeChart] = cfg; return u }) }}
                   options={opts} />

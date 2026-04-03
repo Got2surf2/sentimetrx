@@ -1077,7 +1077,7 @@ function OutlierAnalysisPanel({ numFields, catFields, data }: {
 
   return (
     <div>
-      <PanelHeader icon='\u25CE' title='Outlier Analysis' desc='Identify groups that are statistically above or below the overall mean.' />
+      <PanelHeader icon={'\u25CE'} title="Outlier Analysis" desc="Identify groups that are statistically above or below the overall mean." />
 
       {/* Controls */}
       <Card style={{ padding: '14px 16px', marginBottom: 16 }}>
@@ -1333,10 +1333,11 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
     allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
   })
 
-  var numFields = allFields.filter(function(f) { return f.type === 'numeric' })
-  var catFields = allFields.filter(function(f) { return f.type === 'categorical' })
-  var dateFields = allFields.filter(function(f) { return f.type === 'date' })
-  var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
+  var asc = function(a: SchemaFieldConfig, b: SchemaFieldConfig) { return fl(a).localeCompare(fl(b)) }
+  var numFields  = allFields.filter(function(f) { return f.type === 'numeric' }).sort(asc)
+  var catFields  = allFields.filter(function(f) { return f.type === 'categorical' }).sort(asc)
+  var dateFields = allFields.filter(function(f) { return f.type === 'date' }).sort(asc)
+  var openFields = allFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc)
   var aliases: Record<string, string> = {}
   schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
   if (hasThemes) aliases['__themes__'] = 'Themes'
@@ -1355,8 +1356,8 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
             {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
           </div>
 
-          {/* Field groups */}
-          <FieldSidebarGroups fields={allFields} T={T} fl={fl} />
+          {/* Field groups — sorted: numeric, categorical, open-ended, date (each alpha within group) */}
+          <FieldSidebarGroups fields={[...numFields, ...catFields, ...openFields, ...dateFields]} T={T} fl={fl} />
         </div>
 
         {/* ─── Main content ─────────────────────────────────── */}
