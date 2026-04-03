@@ -1101,6 +1101,12 @@ function buildCommentsSlide(
       fontSize: 12, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
     })
 
+    // Closing curly-quote mark
+    slide.addText('\u201D', {
+      x: cx + cardW - 0.28, y: cy + cardH - 0.24 - (hasDemos ? demoRowH + 0.06 : 0), w: 0.24, h: 0.24,
+      fontSize: 20, bold: true, color: DN.tealLight, valign: 'bottom', align: 'right',
+    })
+
     // Annotation pills pinned to bottom of card
     // Demo = Sarina palette (orange), Psycho = Ana palette (teal)
     if (hasDemos) {
@@ -1260,12 +1266,27 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   // Logo
   logo(slide)
 
-  // Section emoji icon or placeholder
-  const sectionEmoji: Record<string, string> = { 'Psychographic Profile': '[Image #2]', 'Demographic Breakdown': '\uD83D\uDC65', 'Core Study Questions': '\uD83D\uDCCB' }
-  slide.addText(sectionEmoji[title] || title[0], {
-    x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
-    fontSize: title === 'Psychographic Profile' ? 20 : 72, bold: title === 'Psychographic Profile', color: DN.tealLight, align: 'center', valign: 'middle',
-  })
+  // Section emoji icon or image for psychographic
+  if (title === 'Psychographic Profile') {
+    try {
+      slide.addImage({
+        path: 'https://www.dropbox.com/scl/fi/u5jd9xnffkfmm5qkdd5uy/psychographics.png?rlkey=31664sgb2kkanwe2kshbdp0zp&dl=1',
+        x: W - 2.8, y: 0.9, w: 2.4, h: 2.4, rasterize: true,
+      })
+    } catch (e) {
+      // Fallback if image fails to load
+      slide.addText('\uD83E\uDDE0', {
+        x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
+        fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
+      })
+    }
+  } else {
+    const sectionEmoji: Record<string, string> = { 'Demographic Breakdown': '\uD83D\uDC65', 'Core Study Questions': '\uD83D\uDCCB' }
+    slide.addText(sectionEmoji[title] || title[0], {
+      x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
+      fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
+    })
+  }
 
   // Section label chip
   solidRect(slide, PAD + 0.18, 1.6, 2.0, 0.34, DN.teal, 81)
