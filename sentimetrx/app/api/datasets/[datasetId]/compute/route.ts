@@ -43,6 +43,36 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Schema is empty — configure fields before computing' }, { status: 400 })
   }
 
+  // Auto-detect demo_* / psycho_* columns in row data that are missing from schema.
+  // Handles studies where demoFields weren't in config at auto-setup time, or where
+  // the survey engine used hardcoded default demographics (age, gender, zip).
+  try {
+    const { data: sampleBatch } = await service
+      .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(1).single()
+    const sampleRow: Record<string, unknown> = (sampleBatch?.rows as any[])?.[0] || {}
+    const existingCols = new Set(schema.fields.map((f: any) => f.field as string))
+    const newFields: any[] = []
+    for (const col of Object.keys(sampleRow)) {
+      if (existingCols.has(col)) continue
+      const colLower = col.toLowerCase()
+      if (colLower.startsWith('demo_') || colLower.startsWith('psycho_')) {
+        const prefix  = colLower.startsWith('demo_') ? 'demo_' : 'psycho_'
+        const section = prefix === 'demo_' ? 'demographic' : 'psychographic'
+        const rawKey  = col.slice(prefix.length)
+        const label   = rawKey.charAt(0).toUpperCase() + rawKey.slice(1).replace(/_/g, ' ')
+        newFields.push({ field: col, type: 'categorical', section, label })
+      }
+    }
+    if (newFields.length > 0) {
+      schema.fields = [...schema.fields, ...newFields]
+      await service.from('dataset_state')
+        .update({ schema_config: schema })
+        .eq('dataset_id', params.datasetId)
+    }
+  } catch (_e) {
+    // Non-fatal: if sample fetch fails, proceed with existing schema
+  }
+
   // Stream through all batches and compute
   let analytics
   try {
