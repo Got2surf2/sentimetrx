@@ -61,6 +61,8 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState('')
   const [fileName,     setFileName]     = useState('')
+  const [commentConfig,      setCommentConfig]      = useState<Record<string, { enabled: boolean; slides: number }>>({})
+  const [commentAnnotations, setCommentAnnotations] = useState<string[]>([])
 
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
@@ -81,6 +83,14 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
           if ((fld.type === 'categorical' || fld.type === 'numeric') && !fld.section && pre.size < 10) pre.add(fld.field)
         })
         setSelected(pre)
+        // Default comment config: all open-ended enabled, 2 slides each
+        const defCmt: Record<string, { enabled: boolean; slides: number }> = {}
+        f.filter(function(fld: SchemaField) { return fld.type === 'open-ended' }).forEach(function(fld: SchemaField) {
+          defCmt[fld.field] = { enabled: true, slides: 2 }
+        })
+        setCommentConfig(defCmt)
+        // Default annotations: all demo/psycho fields
+        setCommentAnnotations(f.filter(function(fld: SchemaField) { return fld.section === 'demographic' || fld.section === 'psychographic' }).map(function(fld: SchemaField) { return fld.field }))
       })
       .catch(function() { setError('Could not load dataset fields') })
       .finally(function() { setLoading(false) })
@@ -108,7 +118,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     const name = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_report.pptx'
     setFileName(name)
     try {
-      const body: any = { fields: fieldsToSend, audience, mode }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations }
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
       const res = await fetch('/api/datasets/' + datasetId + '/export/pptx', {
         method: 'POST',
@@ -264,6 +274,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                 <>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
+                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} />
                   {error && <ErrorBox message={error} />}
                 </>
               )}
@@ -316,6 +327,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                     </div>
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} />
                   </div>
+                  <CommentConfig fields={fields} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} />
 
                   {error && <ErrorBox message={error} />}
                 </>
@@ -450,6 +462,81 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function CommentConfig({
+  fields,
+  commentConfig,
+  setCommentConfig,
+  commentAnnotations,
+  setCommentAnnotations,
+}: {
+  fields: SchemaField[]
+  commentConfig: Record<string, { enabled: boolean; slides: number }>
+  setCommentConfig: (fn: (prev: Record<string, { enabled: boolean; slides: number }>) => Record<string, { enabled: boolean; slides: number }>) => void
+  commentAnnotations: string[]
+  setCommentAnnotations: (v: string[]) => void
+}) {
+  const openFields = fields.filter(function(f) { return f.type === 'open-ended' })
+  const annotFields = fields.filter(function(f) { return f.section === 'demographic' || f.section === 'psychographic' || (f.type === 'categorical' && !f.section) })
+
+  if (openFields.length === 0) return null
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: S.textFaint, textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 }}>
+        Comment Slides
+      </div>
+
+      {/* Open-ended fields — enabled + slide count */}
+      {openFields.map(function(f) {
+        const cfg = commentConfig[f.field] || { enabled: true, slides: 2 }
+        return (
+          <div key={f.field} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 6, border: '1px solid ' + S.border, background: cfg.enabled ? S.accentBg : S.bg }}>
+            <input type="checkbox" checked={cfg.enabled} onChange={function() {
+              setCommentConfig(function(prev) { return { ...prev, [f.field]: { ...cfg, enabled: !cfg.enabled } } })
+            }} style={{ accentColor: HERMES, width: 13, height: 13, flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: cfg.enabled ? HERMES : S.textMute, flex: 1, fontWeight: cfg.enabled ? 600 : 400 }}>
+              {f.label || f.field}
+            </span>
+            {cfg.enabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 10, color: S.textFaint }}>slides:</span>
+                {[1, 2, 3].map(function(n) {
+                  return (
+                    <button key={n} onClick={function() { setCommentConfig(function(prev) { return { ...prev, [f.field]: { ...cfg, slides: n } } }) }}
+                      style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid ' + (cfg.slides === n ? HERMES : S.border), background: cfg.slides === n ? HERMES : S.white, color: cfg.slides === n ? 'white' : S.textMid, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {n}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Annotation fields for comment cards */}
+      {annotFields.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 9, color: S.textFaint, marginBottom: 5 }}>Show on each comment card:</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 5 }}>
+            {annotFields.slice(0, 12).map(function(f) {
+              const active = commentAnnotations.includes(f.field)
+              return (
+                <button key={f.field} onClick={function() {
+                  setCommentAnnotations(active ? commentAnnotations.filter(function(x) { return x !== f.field }) : [...commentAnnotations, f.field])
+                }}
+                  style={{ padding: '3px 8px', borderRadius: 10, border: '1px solid ' + (active ? HERMES : S.border), background: active ? S.accentBg : S.white, color: active ? HERMES : S.textMute, fontSize: 10, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {f.label || f.field}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

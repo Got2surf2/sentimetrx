@@ -124,12 +124,17 @@ function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0
 
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
 
-// KPI card: big number + label, optional sub
+// KPI card: big number + label, optional sub — all elements bounded within h
 function kpiCard(slide: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string, bg_ = DN.slateLight, valColor = DN.navy) {
   rect(slide, x, y, w, h, bg_, 0.08, DN.divider)
-  slide.addText(value, { x: x + 0.14, y: y + 0.08, w: w - 0.28, h: h * 0.6, fontSize: Math.min(26, Math.max(18, 26 - value.length * 1.2)), bold: true, color: valColor, valign: 'middle' })
-  slide.addText(label, { x: x + 0.14, y: y + h * 0.64, w: w - 0.28, h: 0.22, fontSize: 8.5, bold: true, color: DN.slateDark })
-  if (sub) slide.addText(sub, { x: x + 0.14, y: y + h * 0.64 + 0.22, w: w - 0.28, h: 0.18, fontSize: 7.5, color: DN.slate })
+  const hasSub  = !!sub
+  const valH    = h * (hasSub ? 0.44 : 0.58)
+  const metaTop = y + valH + 0.06
+  const lblH    = Math.min(0.22, (y + h - metaTop) * (hasSub ? 0.54 : 1.0))
+  const subH    = hasSub ? Math.max(0, Math.min(0.18, y + h - metaTop - lblH - 0.02)) : 0
+  slide.addText(value, { x: x + 0.14, y: y + 0.06, w: w - 0.28, h: valH, fontSize: Math.min(26, Math.max(16, 26 - value.length * 1.2)), bold: true, color: valColor, valign: 'middle' })
+  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 8.5, bold: true, color: DN.slateDark, wrap: true })
+  if (sub && subH > 0.08) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH, fontSize: 7.5, color: DN.slate })
 }
 
 // KPI card on dark (navy) background
@@ -406,7 +411,7 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
   function fieldRow(f: SelectedField, x: number, y: number) {
     const tc = typeColor[f.type] || DN.slateDark
     solidRect(slide, x, y + 0.06, 0.07, 0.16, tc)
-    slide.addText(trunc(f.label || f.field, 36), { x: x + 0.14, y, w: colW2 - 0.55, h: 0.28, fontSize: 10.5, color: DN.navyLight, bold: false, valign: 'middle' })
+    slide.addText(f.label || f.field, { x: x + 0.14, y, w: colW2 - 0.55, h: 0.28, fontSize: 10.5, color: DN.navyLight, bold: false, valign: 'middle' })
     slide.addText(f.type, { x: x + colW2 - 0.45, y, w: 0.45, h: 0.28, fontSize: 8, color: tc, bold: true, align: 'right', valign: 'middle' })
   }
 
@@ -726,116 +731,189 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
   hdr(slide, pptx, f.label, DN.teal, 'Numeric distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
   logo(slide)
 
-  const s          = f.summary
-  const range      = (s?.max ?? 0) - (s?.min ?? 0)
-  const posInRange = range > 0 ? (s?.avg - s?.min) / range : 0.5
-  const perfColor  = posInRange >= 0.65 ? DN.green : posInRange <= 0.35 ? DN.red : DN.amber
-  const perfBg     = posInRange >= 0.65 ? DN.greenLight : posInRange <= 0.35 ? DN.redLight : DN.amberLight
+  const s           = f.summary
+  const isDiscrete  = !!(s?.isDiscrete && s?.valueCounts && Object.keys(s.valueCounts || {}).length > 0)
+  const range       = (s?.max ?? 0) - (s?.min ?? 0)
+  const posInRange  = range > 0 ? (s?.avg - s?.min) / range : 0.5
+  const perfColor   = posInRange >= 0.65 ? DN.green : posInRange <= 0.35 ? DN.red : DN.amber
+  const perfBg      = posInRange >= 0.65 ? DN.greenLight : posInRange <= 0.35 ? DN.redLight : DN.amberLight
 
-  // ── Stats row (top strip) ────────────────────────────────────────────────────
+  // ── Stats row ─────────────────────────────────────────────────────────────────
   const statsData = [
-    { k: 'Average',   v: s?.avg?.toFixed?.(2) ?? '—',  bg: perfBg,       vc: perfColor },
-    { k: 'Median',    v: s?.median?.toFixed?.(2) ?? '—', bg: DN.slateCard,   vc: DN.navyLight },
-    { k: 'Std Dev',   v: s?.std?.toFixed?.(2) ?? '—',  bg: DN.slateCard,     vc: DN.navyLight },
-    { k: 'Min → Max', v: (s?.min ?? '—') + ' – ' + (s?.max ?? '—'), bg: DN.slateCard, vc: DN.navyLight },
-    { k: 'n',         v: (s?.nonNull || 0).toLocaleString(), bg: DN.tealPale, vc: DN.teal },
+    { k: 'Average',   v: isDiscrete ? String(s?.avg?.toFixed?.(1) ?? '—') : (s?.avg?.toFixed?.(2) ?? '—'),  bg: perfBg,       vc: perfColor },
+    { k: 'Median',    v: isDiscrete ? String(s?.median ?? '—') : (s?.median?.toFixed?.(2) ?? '—'),           bg: DN.slateCard, vc: DN.navyLight },
+    { k: 'Std Dev',   v: s?.std?.toFixed?.(2) ?? '—',                                                        bg: DN.slateCard, vc: DN.navyLight },
+    { k: 'Min → Max', v: (s?.min ?? '—') + ' – ' + (s?.max ?? '—'),                                         bg: DN.slateCard, vc: DN.navyLight },
+    { k: 'n',         v: (s?.nonNull || 0).toLocaleString(),                                                  bg: DN.tealPale,  vc: DN.teal },
   ]
   const sw = (W - PAD * 2 - 0.16) / statsData.length
   statsData.forEach(function(st, i) {
     kpiCard(slide, PAD + i * (sw + 0.04), CY, sw, 0.82, st.v, st.k, undefined, st.bg, st.vc)
   })
 
-  // ── Left: custom histogram ───────────────────────────────────────────────────
-  const chartX  = PAD
-  const chartW2 = W * 0.55 - PAD
-  const chartY  = CY + 1.15   // pushed down so label doesn't overlap KPI row (cards end at CY+0.82)
-  const chartH2 = CH - 1.25
-  const histBuckets: any[] = s?.histogram || []
+  // ── Insight text (needed for both branches to anchor insight Y) ───────────────
+  const hasRealAI   = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
+  const insightText = hasRealAI
+    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
+    : (posInRange >= 0.65
+        ? 'Average of ' + (s?.avg?.toFixed?.(1) ?? '—') + ' sits in the upper range — strong performance.'
+        : posInRange <= 0.35
+          ? 'Average of ' + (s?.avg?.toFixed?.(1) ?? '—') + ' sits in the lower range — opportunity for improvement.'
+          : 'Average of ' + (s?.avg?.toFixed?.(1) ?? '—') + ' sits in the mid range.')
+  const withImpl  = hasRealAI && !!ai.implication
+  const insH      = 0.78
+  const implH     = 0.44
+  const insightY  = FY - 0.12 - (withImpl ? insH + 0.08 + implH : insH)
 
-  lbl(slide, 'DISTRIBUTION', chartX, chartY - 0.22, chartW2)
-  solidRect(slide, chartX, chartY - 0.02, chartW2, 0.012, DN.divider)
+  if (isDiscrete) {
+    // ── Discrete integer: full-width horizontal bar chart (same layout as categorical) ──
+    const rawCounts   = s.valueCounts as Record<string, number>
+    const orderedKeys = Object.keys(rawCounts).sort((a, b) => Number(a) - Number(b))
+    const total_      = orderedKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
+    const maxVal      = Math.max(...orderedKeys.map(k => rawCounts[k] || 0), 1)
+    const n           = orderedKeys.length
 
-  if (histBuckets.length > 0) {
-    const maxCount  = Math.max(...histBuckets.map((b: any) => b.count), 1)
-    const bw        = chartW2 / histBuckets.length
-    histBuckets.forEach(function(b: any, i: number) {
-      const bh   = chartH2 * 0.88 * (b.count / maxCount)
-      const bx   = chartX + i * bw
-      const by   = chartY + chartH2 * 0.88 - bh
-      const frac = i / Math.max(histBuckets.length - 1, 1)
-      const col  = posInRange >= 0.65 ? DN.teal : posInRange <= 0.35 ? 'F97316' : DN.teal
-      solidRect(slide, bx + 0.02, by, bw - 0.04, bh, col)
-    })
-    // X-axis labels (show ~5 evenly spaced)
-    const step = Math.ceil(histBuckets.length / 5)
-    histBuckets.forEach(function(b: any, i: number) {
-      if (i % step !== 0 && i !== histBuckets.length - 1) return
-      const bx = chartX + i * (chartW2 / histBuckets.length)
-      slide.addText(String(Number(b.min.toFixed(1))), {
-        x: bx, y: chartY + chartH2 * 0.9, w: chartW2 / histBuckets.length * step, h: 0.22,
-        fontSize: 7.5, color: DN.slateDark, valign: 'top',
+    const headerY  = CY + 1.05
+    const rowStart = headerY + 0.32
+    const barAvail = insightY - rowStart - 0.08
+    const rowH     = Math.min(0.58, barAvail / Math.max(n, 1))
+    const rowGap   = Math.min(0.08, (barAvail - rowH * n) / Math.max(n - 1, 1))
+
+    const swatchW = 0.10; const labelW = 1.4; const pctW = 0.52; const cntW = 0.72
+    const gapS = 0.08; const gapLB = 0.14; const gapBP = 0.14; const gapPC = 0.10
+    const barMaxW = W - PAD * 2 - swatchW - gapS - labelW - gapLB - gapBP - pctW - gapPC - cntW
+    const swatchX = PAD; const labelX = swatchX + swatchW + gapS
+    const barX = labelX + labelW + gapLB; const pctX = barX + barMaxW + gapBP; const cntX = pctX + pctW + gapPC
+
+    slide.addText('Value',        { x: labelX, y: headerY, w: labelW,  h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle', align: 'center' })
+    slide.addText('Distribution', { x: barX,   y: headerY, w: barMaxW, h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
+    slide.addText('%',            { x: pctX,   y: headerY, w: pctW,    h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, align: 'right', valign: 'middle' })
+    slide.addText('n',            { x: cntX,   y: headerY, w: cntW,    h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
+    solidRect(slide, PAD, headerY + 0.28, W - PAD * 2, 0.012, DN.divider)
+
+    orderedKeys.forEach(function(key, i) {
+      const count  = rawCounts[key] || 0
+      const pctVal = total_ > 0 ? Math.round(count / total_ * 100) : 0
+      const bw     = barMaxW * count / maxVal
+      const ry     = rowStart + i * (rowH + rowGap)
+      // Colour: green→red gradient for ordinal integer scale
+      const frac   = n <= 1 ? 0.5 : i / (n - 1)
+      const col    = frac < 0.25 ? '059669' : frac < 0.45 ? '34D399' : frac < 0.55 ? '94A3B8' : frac < 0.75 ? 'F97316' : 'DC2626'
+
+      if (i % 2 === 0) solidRect(slide, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
+      solidRect(slide, swatchX, ry + rowH * 0.18, swatchW, rowH * 0.64, col)
+
+      // Integer key — centered, larger font
+      slide.addText(key, {
+        x: labelX, y: ry, w: labelW, h: rowH,
+        fontSize: 12, bold: true, color: DN.navy, valign: 'middle', align: 'center',
       })
+
+      const trackH = rowH * 0.52; const trackY = ry + (rowH - trackH) / 2
+      solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
+      if (bw > 0.04) solidRect(slide, barX, trackY, bw, trackH, col)
+
+      slide.addText(pctVal + '%', { x: pctX, y: ry, w: pctW, h: rowH, fontSize: 12, bold: true, color: col, align: 'right', valign: 'middle' })
+      slide.addText(count.toLocaleString(), { x: cntX, y: ry, w: cntW, h: rowH, fontSize: 10, color: DN.slateDark, valign: 'middle' })
     })
-    // Mean line
-    if (s?.avg != null && range > 0) {
-      const meanX = chartX + ((s.avg - s.min) / range) * chartW2
-      solidRect(slide, meanX - 0.01, chartY, 0.02, chartH2 * 0.88, DN.orange)
-      slide.addText('avg ' + s.avg.toFixed(1), {
-        x: Math.min(meanX - 0.3, chartX + chartW2 - 0.65), y: chartY + 0.04,
-        w: 0.65, h: 0.22, fontSize: 8, bold: true, color: DN.orange, align: 'center',
+
+  } else {
+    // ── Continuous: histogram (left) + gauge/narrative (right) ───────────────────
+    const chartX  = PAD
+    const chartW2 = W * 0.55 - PAD
+    const chartY  = CY + 1.15
+    const chartH2 = insightY - chartY - 0.18
+    const histBuckets: any[] = s?.histogram || []
+
+    lbl(slide, 'DISTRIBUTION', chartX, chartY - 0.24, chartW2)
+    solidRect(slide, chartX, chartY - 0.02, chartW2, 0.012, DN.divider)
+
+    if (histBuckets.length > 0) {
+      const maxCount = Math.max(...histBuckets.map((b: any) => b.count), 1)
+      const bw       = chartW2 / histBuckets.length
+      histBuckets.forEach(function(b: any, i: number) {
+        const bh  = chartH2 * 0.84 * (b.count / maxCount)
+        const bx  = chartX + i * bw
+        const by  = chartY + chartH2 * 0.84 - bh
+        const col = posInRange >= 0.65 ? DN.teal : posInRange <= 0.35 ? 'F97316' : DN.teal
+        solidRect(slide, bx + 0.02, by, bw - 0.04, bh, col)
+      })
+      // X-axis labels — every bar, larger font, centered under bar
+      const allIntegers = histBuckets.every((b: any) => Number.isInteger(b.min) && Number.isInteger(b.max))
+      const step = Math.ceil(histBuckets.length / 8)
+      histBuckets.forEach(function(b: any, i: number) {
+        if (i % step !== 0 && i !== histBuckets.length - 1) return
+        const bx    = chartX + i * bw
+        const label = allIntegers ? String(Math.round(b.min)) : String(Number(b.min.toFixed(1)))
+        slide.addText(label, {
+          x: bx, y: chartY + chartH2 * 0.86, w: bw * step, h: 0.26,
+          fontSize: 10, color: DN.slateDark, valign: 'top', align: 'center',
+        })
+      })
+      // Mean line
+      if (s?.avg != null && range > 0) {
+        const meanX = chartX + ((s.avg - s.min) / range) * chartW2
+        solidRect(slide, meanX - 0.01, chartY, 0.02, chartH2 * 0.84, DN.orange)
+        const avgLabel = allIntegers ? 'avg ' + Math.round(s.avg) : 'avg ' + s.avg.toFixed(1)
+        slide.addText(avgLabel, {
+          x: Math.min(meanX - 0.35, chartX + chartW2 - 0.72), y: chartY + 0.04,
+          w: 0.72, h: 0.24, fontSize: 9, bold: true, color: DN.orange, align: 'center',
+        })
+      }
+    } else {
+      slide.addText('No histogram data available.', {
+        x: chartX, y: chartY + 1.0, w: chartW2, h: 0.4,
+        fontSize: 11, color: DN.slate, italic: true, align: 'center',
       })
     }
-  } else {
-    slide.addText('No histogram data available.', {
-      x: chartX, y: chartY + 1.0, w: chartW2, h: 0.4,
-      fontSize: 11, color: DN.slate, italic: true, align: 'center',
+
+    // ── Right panel ──────────────────────────────────────────────────────────────
+    const rightX = W * 0.55 + 0.2
+    const rightW = W - rightX - PAD * 0.5
+
+    lbl(slide, 'PERFORMANCE WITHIN RANGE', rightX, chartY - 0.24, rightW)
+    solidRect(slide, rightX, chartY - 0.02, rightW, 0.012, DN.divider)
+    const gaugeY = chartY + 0.1
+    rect(slide, rightX, gaugeY, rightW, 0.32, DN.slateLight, 0.06, DN.divider)
+    const fillW = Math.max(0.12, rightW * posInRange)
+    solidRect(slide, rightX, gaugeY, fillW, 0.32, perfColor + '99')
+    solidRect(slide, rightX + fillW - 0.05, gaugeY - 0.05, 0.1, 0.42, perfColor)
+    slide.addText(String(s?.min ?? '0'), { x: rightX, y: gaugeY + 0.34, w: 0.6, h: 0.22, fontSize: 9, color: DN.slateDark })
+    slide.addText(String(s?.max ?? '—'), { x: rightX + rightW - 0.6, y: gaugeY + 0.34, w: 0.6, h: 0.22, fontSize: 9, color: DN.slateDark, align: 'right' })
+    slide.addText('avg ' + (s?.avg?.toFixed(1) ?? '—'), {
+      x: rightX + Math.max(0, fillW - 0.5), y: gaugeY - 0.28,
+      w: 0.95, h: 0.22, fontSize: 10, bold: true, color: perfColor, align: 'center',
     })
-  }
 
-  // ── Right panel ──────────────────────────────────────────────────────────────
-  const rightX = W * 0.55 + 0.2
-  const rightW = W - rightX - PAD * 0.5
-
-  // Performance gauge bar
-  lbl(slide, 'PERFORMANCE WITHIN RANGE', rightX, chartY - 0.22, rightW)
-  solidRect(slide, rightX, chartY - 0.02, rightW, 0.012, DN.divider)
-  const gaugeY = chartY + 0.1
-  rect(slide, rightX, gaugeY, rightW, 0.32, DN.slateLight, 0.06, DN.divider)
-  const fillW = Math.max(0.12, rightW * posInRange)
-  solidRect(slide, rightX, gaugeY, fillW, 0.32, perfColor + '99')
-  solidRect(slide, rightX + fillW - 0.05, gaugeY - 0.05, 0.1, 0.42, perfColor)
-  slide.addText(String(s?.min ?? '0'), { x: rightX, y: gaugeY + 0.34, w: 0.6, h: 0.2, fontSize: 7.5, color: DN.slateDark })
-  slide.addText(String(s?.max ?? '—'), { x: rightX + rightW - 0.6, y: gaugeY + 0.34, w: 0.6, h: 0.2, fontSize: 7.5, color: DN.slateDark, align: 'right' })
-  slide.addText('avg ' + (s?.avg?.toFixed(1) ?? '—'), {
-    x: rightX + Math.max(0, fillW - 0.5), y: gaugeY - 0.28,
-    w: 0.95, h: 0.22, fontSize: 9, bold: true, color: perfColor, align: 'center',
-  })
-
-  // Key finding / narrative
-  const narY = gaugeY + 0.72
-  const hasRealAI = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
-  if (hasRealAI) {
-    slide.addText(ai.keyFinding, {
-      x: rightX, y: narY, w: rightW, h: 0.46,
-      fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2,
-    })
-    if (ai.narrative) {
-      insightBox(slide, rightX, narY + 0.54, rightW, Math.min(1.3, H - narY - 1.4), ai.narrative, DN.teal, DN.tealPale)
+    const narY = gaugeY + 0.72
+    if (hasRealAI) {
+      slide.addText(ai.keyFinding, {
+        x: rightX, y: narY, w: rightW, h: 0.46,
+        fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2,
+      })
+      if (ai.narrative) {
+        insightBox(slide, rightX, narY + 0.54, rightW, Math.min(1.3, insightY - narY - 1.1), ai.narrative, DN.teal, DN.tealPale)
+      }
+    } else {
+      insightBox(slide, rightX, narY, rightW, Math.min(1.2, insightY - narY - 0.1), insightText, DN.teal, DN.tealPale)
     }
-  } else {
-    // Auto insight for numeric
-    const autoText = posInRange >= 0.65
-      ? 'Average of ' + (s?.avg?.toFixed(1) ?? '—') + ' sits in the upper range — strong performance.'
-      : posInRange <= 0.35
-        ? 'Average of ' + (s?.avg?.toFixed(1) ?? '—') + ' sits in the lower range — opportunity for improvement.'
-        : 'Average of ' + (s?.avg?.toFixed(1) ?? '—') + ' sits in the mid range.'
-    insightBox(slide, rightX, narY, rightW, Math.min(1.2, H - narY - 0.4), autoText, DN.teal, DN.tealPale)
+
+    if (hasRealAI && ai.implication) {
+      solidRect(slide, rightX, insightY - 0.56, rightW, 0.44, DN.orangePale)
+      solidRect(slide, rightX, insightY - 0.56, 0.06, 0.44, DN.orange)
+      slide.addText('→ ' + ai.implication, { x: rightX + 0.13, y: insightY - 0.52, w: rightW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+    }
   }
 
-  if (ai.implication && hasRealAI) {
-    solidRect(slide, rightX, H - 0.72, rightW, 0.44, DN.orangePale)
-    solidRect(slide, rightX, H - 0.72, 0.06, 0.44, DN.orange)
-    slide.addText('→ ' + ai.implication, { x: rightX + 0.13, y: H - 0.72 + 0.04, w: rightW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+  // ── Insight box — full width, anchored above footer ───────────────────────────
+  if (withImpl) {
+    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
+    const implY = insightY + insH + 0.08
+    solidRect(slide, PAD, implY, W - PAD * 2, implH, DN.goldPale)
+    solidRect(slide, PAD, implY, 0.05, implH, DN.gold)
+    slide.addText('→ ' + ai.implication, { x: PAD + 0.12, y: implY + 0.04, w: W - PAD * 2 - 0.18, h: implH - 0.08, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+  } else {
+    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
   }
 
   footer(slide, datasetName, pageNum)
@@ -1069,7 +1147,7 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
   // ── KPI row ───────────────────────────────────────────────────────────────
   const kw = (W - PAD * 2 - 0.2) / 3
   kpiCard(slide, PAD,                CY, kw, 0.78, total.toLocaleString(), 'Respondents', undefined, DN.slateLight, DN.navy)
-  kpiCard(slide, PAD + kw + 0.1,    CY, kw, 0.78, topPct_ + '%', trunc(topKey, 24), 'top response',
+  kpiCard(slide, PAD + kw + 0.1,    CY, kw, 0.78, topPct_ + '%', 'Top Response', trunc(topKey, 38),
     isOrdinal ? (top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight) : DN.slateLight,
     isOrdinal ? (top2 >= 70 ? DN.green      : top2 >= 50 ? DN.amber      : DN.red)      : DN.navy)
   kpiCard(slide, PAD + kw * 2 + 0.2, CY, kw, 0.78,
@@ -1258,6 +1336,8 @@ export async function POST(req: Request, { params }: Params) {
   const audience: string             = body.audience || 'stakeholder'
   const mode: string                 = body.mode || 'quick'
   const instructions: string         = body.instructions || ''
+  const commentConfig: Record<string, { enabled: boolean; slides: number }> = body.commentConfig || {}
+  const commentAnnotations: string[] = body.commentAnnotations || []
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -1354,23 +1434,32 @@ export async function POST(req: Request, { params }: Params) {
       const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
       if (f.type === 'open-ended') {
         buildOpenEndedSlide(datasetName, f, ai, audience, themes, page++)
-        // Comment slides — pull real rows, tag with demographics
-        const perSlide = 6
-        const maxComments = audience === 'full' ? 18 : audience === 'stakeholder' ? 12 : 6
-        const commentItems: CommentItem[] = allRows
-          .map(function(row) {
-            const text = String(row[f.field] || '').trim()
-            const demos = commentDemoFields
-              .map(function(df) { return { label: df.label, value: String(row[df.field] || '').trim() } })
-              .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
-            return { text, demos }
-          })
-          .filter(function(c) { return c.text.length > 20 })
-          .slice(0, maxComments)
-        if (commentItems.length > 0) {
-          const numSlides = Math.ceil(commentItems.length / perSlide)
-          for (let si = 0; si < numSlides; si++) {
-            buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides, page++)
+        // Comment slides — use commentConfig from request; default enabled=true, slides=2
+        const cfg         = commentConfig[f.field]
+        const cmtEnabled  = cfg ? cfg.enabled : true
+        const cmtSlides   = cfg ? Math.max(1, Math.min(3, cfg.slides)) : (audience === 'full' ? 3 : 2)
+        if (cmtEnabled) {
+          const perSlide    = 6
+          const maxComments = cmtSlides * perSlide
+          // Use commentAnnotations if provided, else fall back to all demo/psycho fields
+          const annotFields = commentAnnotations.length > 0
+            ? selectedFields.filter(sf => commentAnnotations.includes(sf.field))
+            : commentDemoFields
+          const commentItems: CommentItem[] = allRows
+            .map(function(row) {
+              const text = String(row[f.field] || '').trim()
+              const demos = annotFields
+                .map(function(df) { return { label: df.label, value: String(row[df.field] || '').trim() } })
+                .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
+              return { text, demos }
+            })
+            .filter(function(c) { return c.text.length > 20 })
+            .slice(0, maxComments)
+          if (commentItems.length > 0) {
+            const numSlides = Math.ceil(commentItems.length / perSlide)
+            for (let si = 0; si < numSlides; si++) {
+              buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides, page++)
+            }
           }
         }
       } else if (f.type === 'categorical') {
