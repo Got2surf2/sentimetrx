@@ -161,6 +161,29 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
         </div>
       </div>
 
+      {/* Score mapping — enable/disable row, shown before value pills */}
+      {canMap && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '7px 10px', borderRadius: 8, background: hasRemapping ? '#f0fdf4' : P.bg, border: '1px solid ' + (hasRemapping ? '#bbf7d0' : P.border) }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: hasRemapping ? '#16a34a' : P.textFaint, textTransform: 'uppercase' as const, letterSpacing: '.06em', flex: 1 }}>
+            {hasRemapping ? '\u2713 Score mapping active' : 'Score Mapping'}
+          </span>
+          {!hasRemapping ? (
+            <button onClick={function() {
+              var suggested = suggestMappingForField(vals)
+              onRemappingChange(f.field, suggested || {})
+            }}
+              style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 12, cursor: 'pointer', background: P.white, color: P.textMid, border: '1px solid ' + P.borderMid, fontFamily: 'inherit' }}>
+              {'\u21C4'} Enable mapping
+            </button>
+          ) : (
+            <button onClick={function() { onRemappingChange(f.field, undefined) }}
+              style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 12, cursor: 'pointer', background: 'transparent', color: '#dc2626', border: '1px solid #dc262630', fontFamily: 'inherit' }}>
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Data preview */}
       {(f.type === 'id' || f.type === 'ignore') && (
         <p style={{ fontSize: 11, color: P.textFaint, fontStyle: 'italic', margin: '4px 0 0' }}>
@@ -226,61 +249,40 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
         </div>
       )}
 
-      {/* ── Numeric Score Mapping (categorical → numeric) ────────────────── */}
-      {canMap && (
+      {/* ── Numeric Score Mapping inputs (shown when mapping is active) ───── */}
+      {canMap && hasRemapping && (
         <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid ' + P.border }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: P.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' as const }}>
-              Numeric Score Mapping <span style={{ fontWeight: 400 }}>(map categories to numbers)</span>
-            </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {hasRemapping && <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>{'\u2713'} mapped</span>}
-              {!hasRemapping ? (
-                <button onClick={function() {
-                  var suggested = suggestMappingForField(vals)
-                  onRemappingChange(f.field, suggested || {})
-                }}
-                  style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 12, cursor: 'pointer', background: P.bg, color: P.textMid, border: '1px solid ' + P.borderMid }}>
-                  {'\u21C4'} Enable mapping
-                </button>
-              ) : (
-                <button onClick={function() { onRemappingChange(f.field, undefined) }}
-                  style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 12, cursor: 'pointer', background: 'transparent', color: P.textFaint, border: '1px solid ' + P.border }}>
-                  Clear
-                </button>
-              )}
-            </div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: P.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' as const, marginBottom: 10 }}>
+            Score Values
           </div>
-          {hasRemapping && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: 11, color: P.textMute, marginBottom: 4, lineHeight: 1.5 }}>
-                Assign a number to each value. The mapped field appears as numeric in Charts and Statistics.
-              </div>
-              {vals.map(function(v) {
-                var cur = f.remapping && f.remapping[v] != null ? f.remapping[v] : ''
-                return (
-                  <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ flex: 1, fontSize: 12, color: P.textMid, wordBreak: 'break-word' as const, minWidth: 0 }}>{v}</span>
-                    <span style={{ fontSize: 12, color: P.textFaint }}>{'\u2192'}</span>
-                    <input type="number" value={cur} placeholder="#"
-                      onChange={function(e) {
-                        var next = Object.assign({}, f.remapping || {})
-                        if (e.target.value === '') { delete next[v] } else { next[v] = parseFloat(e.target.value) }
-                        onRemappingChange(f.field, Object.keys(next).length > 0 ? next : undefined)
-                      }}
-                      style={{ width: 72, padding: '4px 8px', fontSize: 12, border: '1px solid ' + (cur !== '' ? P.accent : P.border), borderRadius: 6, background: cur !== '' ? P.accentBg : P.bg, color: P.text, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }} />
-                  </div>
-                )
-              })}
-              {(function() {
-                var allMapped = vals.length > 0 && vals.every(function(v) { return f.remapping && f.remapping[v] != null })
-                if (!allMapped) return null
-                return <p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: '8px 0 0' }}>
-                  {'\u2713'} Fully mapped {'\u2014'} this field can now be used as numeric in Statistics
-                </p>
-              })()}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 11, color: P.textMute, marginBottom: 4, lineHeight: 1.5 }}>
+              Assign a number to each value. The mapped field appears as numeric in Charts and Statistics.
             </div>
-          )}
+            {vals.map(function(v) {
+              var cur = f.remapping && f.remapping[v] != null ? f.remapping[v] : ''
+              return (
+                <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ flex: 1, fontSize: 12, color: P.textMid, wordBreak: 'break-word' as const, minWidth: 0 }}>{v}</span>
+                  <span style={{ fontSize: 12, color: P.textFaint }}>{'\u2192'}</span>
+                  <input type="number" value={cur} placeholder="#"
+                    onChange={function(e) {
+                      var next = Object.assign({}, f.remapping || {})
+                      if (e.target.value === '') { delete next[v] } else { next[v] = parseFloat(e.target.value) }
+                      onRemappingChange(f.field, Object.keys(next).length > 0 ? next : undefined)
+                    }}
+                    style={{ width: 72, padding: '4px 8px', fontSize: 12, border: '1px solid ' + (cur !== '' ? P.accent : P.border), borderRadius: 6, background: cur !== '' ? P.accentBg : P.bg, color: P.text, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }} />
+                </div>
+              )
+            })}
+            {(function() {
+              var allMapped = vals.length > 0 && vals.every(function(v) { return f.remapping && f.remapping[v] != null })
+              if (!allMapped) return null
+              return <p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: '8px 0 0' }}>
+                {'\u2713'} Fully mapped {'\u2014'} this field can now be used as numeric in Statistics
+              </p>
+            })()}
+          </div>
         </div>
       )}
     </div>
@@ -414,6 +416,13 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
         )}
         {!f.values && !f.nonNullCount && <div style={{ flex: 1 }} />}
 
+        {/* Mapped pill */}
+        {f.remapping && Object.keys(f.remapping).length > 0 && (
+          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', whiteSpace: 'nowrap', flexShrink: 0, marginRight: 4 }}>
+            Mapped
+          </span>
+        )}
+
         {/* Scoring flag toggle */}
         {!readOnly && !isIgnored && (f.type === 'numeric' || f.type === 'categorical') && (
           <button
@@ -469,16 +478,18 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
     {expanded && !readOnly && (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         onClick={function() { setExpanded(false) }}>
-        <div style={{ background: P.white, borderRadius: 16, width: 480, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.25)', border: '2px solid ' + ut.color + '40' }}
+        <div style={{ background: P.white, borderRadius: 16, width: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.25)', border: '2px solid ' + ut.color + '40' }}
           onClick={function(e) { e.stopPropagation() }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid ' + P.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Fixed header */}
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid ' + P.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, borderRadius: '16px 16px 0 0' }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: P.text }}>{f.label && f.label !== f.field ? f.label : f.field}</div>
               {f.label && f.label !== f.field && <div style={{ fontSize: 11, color: P.textFaint }}>{f.field}</div>}
             </div>
             <button onClick={function() { setExpanded(false) }} style={{ background: 'transparent', border: 'none', fontSize: 18, color: P.textMute, cursor: 'pointer' }}>{'\u00D7'}</button>
           </div>
-          <div style={{ padding: '16px 20px' }}>
+          {/* Scrollable body */}
+          <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
             <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} />
           </div>
         </div>

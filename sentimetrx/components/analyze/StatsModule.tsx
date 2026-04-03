@@ -982,6 +982,212 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
   )
 }
 
+// ─── Outlier Analysis Panel ───────────────────────────────────────────────────
+
+interface OutlierRow {
+  key: string; n: number; grpMean: number; grpStd: number
+  delta: number; pct: number; p: number; d: number
+  isOutlier: boolean; direction: 'positive' | 'negative'
+}
+
+function OutlierAnalysisPanel({ numFields, catFields, data }: {
+  numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]
+}) {
+  var [quantField, setQuantField] = useState(numFields[0]?.field || '')
+  var [catField,   setCatField]   = useState(catFields[0]?.field  || '')
+  var [showAll,    setShowAll]    = useState(false)
+  var [threshold,  setThreshold]  = useState(0.05)
+  var [copied,     setCopied]     = useState(false)
+
+  useEffect(function() { if (!quantField && numFields.length) setQuantField(numFields[0].field) }, [numFields.length])
+  useEffect(function() { if (!catField   && catFields.length)  setCatField(catFields[0].field)   }, [catFields.length])
+
+  var results = useMemo(function() {
+    if (!quantField || !catField || !data.length) return null
+
+    var groups: Record<string, number[]> = {}
+    data.forEach(function(row) {
+      var cat = String(row[catField] ?? '').trim()
+      if (!cat) return
+      var num = getNum(quantField, [row])
+      if (!num.length) return
+      if (!groups[cat]) groups[cat] = []
+      groups[cat].push(num[0])
+    })
+
+    var groupKeys = Object.keys(groups).filter(function(k) { return groups[k].length >= 3 })
+    if (groupKeys.length < 2) return null
+
+    var allVals = groupKeys.flatMap(function(k) { return groups[k] })
+    var overallMean = mean(allVals)
+
+    var rows: OutlierRow[] = groupKeys.map(function(key) {
+      var vals = groups[key]
+      var grpMean = mean(vals)
+      var grpStd  = std(vals)
+      var otherVals = groupKeys.filter(function(k) { return k !== key }).flatMap(function(k) { return groups[k] })
+      var test = welchTTest(vals, otherVals)
+      var delta = grpMean - overallMean
+      var pct   = overallMean !== 0 ? (delta / Math.abs(overallMean)) * 100 : 0
+      return {
+        key, n: vals.length, grpMean, grpStd,
+        delta, pct,
+        p:   test ? test.p : 1,
+        d:   test ? Math.abs(test.d) : 0,
+        isOutlier: !!(test && test.p < threshold),
+        direction: delta >= 0 ? 'positive' : 'negative',
+      }
+    })
+
+    rows.sort(function(a, b) { return b.grpMean - a.grpMean })
+
+    var outlierCount = rows.filter(function(r) { return r.isOutlier }).length
+    return { rows, overallMean, totalN: allVals.length, outlierCount }
+  }, [quantField, catField, data, threshold])
+
+  var displayed = results
+    ? (showAll ? results.rows : results.rows.filter(function(r) { return r.isOutlier }))
+    : []
+
+  function handleCopy() {
+    if (!results) return
+    var qLabel = numFields.find(function(f) { return f.field === quantField })?.label || quantField
+    var cLabel = catFields.find(function(f) { return f.field === catField  })?.label || catField
+    var header = 'Outlier Analysis\n' + qLabel + ' by ' + cLabel + '\nOverall mean: ' + fmt2(results.overallMean) + '  |  N = ' + results.totalN + '\nThreshold: p < ' + threshold + '\n\n'
+    var colH = 'Group'.padEnd(30) + 'N'.padStart(6) + 'Mean'.padStart(10) + 'vs Avg'.padStart(10) + '%'.padStart(8) + 'p-value'.padStart(10) + '  Flag\n'
+    var sep  = '-'.repeat(76) + '\n'
+    var body = (showAll ? results.rows : results.rows.filter(function(r) { return r.isOutlier }))
+      .map(function(r) {
+        var flag = r.isOutlier ? (r.direction === 'positive' ? '▲ HIGH' : '▼ LOW') : ''
+        return r.key.slice(0, 29).padEnd(30)
+          + String(r.n).padStart(6)
+          + fmt2(r.grpMean).padStart(10)
+          + (r.delta >= 0 ? '+' : '') + fmt2(r.delta).padStart(9)
+          + (r.pct   >= 0 ? '+' : '') + r.pct.toFixed(1).padStart(6) + '%'
+          + fmtP(r.p).padStart(10)
+          + '  ' + flag
+      }).join('\n')
+    navigator.clipboard.writeText(header + colH + sep + body).then(function() {
+      setCopied(true); setTimeout(function() { setCopied(false) }, 2000)
+    })
+  }
+
+  var qOpts = numFields.map(function(f) { return { v: f.field, l: f.label || f.field } })
+  var cOpts = catFields.map(function(f) { return { v: f.field, l: f.label || f.field } })
+
+  return (
+    <div>
+      <PanelHeader icon='\u25CE' title='Outlier Analysis' desc='Identify groups that are statistically above or below the overall mean.' />
+
+      {/* Controls */}
+      <Card style={{ padding: '14px 16px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+          <DSSelect label='Quantitative Variable' value={quantField} onChange={setQuantField} options={qOpts} />
+          <DSSelect label='Group By'              value={catField}   onChange={setCatField}   options={cOpts} />
+          <div style={{ flex: '0 0 auto' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 5 }}>Threshold</div>
+            <select value={threshold} onChange={function(e) { setThreshold(parseFloat(e.target.value)) }}
+              style={{ padding: '7px 10px', fontSize: 13, border: '1px solid ' + T.border, borderRadius: 7, background: T.bgCard, color: T.text, outline: 'none', cursor: 'pointer' }}>
+              <option value={0.1}>p &lt; 0.10</option>
+              <option value={0.05}>p &lt; 0.05</option>
+              <option value={0.01}>p &lt; 0.01</option>
+              <option value={0.001}>p &lt; 0.001</option>
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      {/* Results */}
+      {!results ? (
+        <StatsEmpty icon='\u25CE' msg='Select a numeric and a categorical field' sub='Groups with fewer than 3 responses are excluded.' />
+      ) : displayed.length === 0 && !showAll ? (
+        <Card style={{ padding: '40px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>\u2714</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.textMid, marginBottom: 6 }}>No significant outliers at p &lt; {threshold}</div>
+          <div style={{ fontSize: 13, color: T.textMute, marginBottom: 16 }}>All groups are statistically similar to the overall mean.</div>
+          <button onClick={function() { setShowAll(true) }} style={{ padding: '7px 18px', fontSize: 13, fontWeight: 600, border: '1px solid ' + T.border, borderRadius: 8, background: T.bg, color: T.textMid, cursor: 'pointer' }}>
+            Show all groups
+          </button>
+        </Card>
+      ) : (
+        <Card>
+          {/* Table header */}
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 12, color: T.textMute }}>
+                Overall mean: <strong style={{ color: T.text }}>{fmt2(results.overallMean)}</strong>
+                <span style={{ margin: '0 8px', color: T.border }}>|</span>
+                N = <strong style={{ color: T.text }}>{results.totalN.toLocaleString()}</strong>
+                <span style={{ margin: '0 8px', color: T.border }}>|</span>
+                {results.outlierCount} outlier{results.outlierCount !== 1 ? 's' : ''} found
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: T.textMid, cursor: 'pointer', userSelect: 'none' }}>
+                <input type='checkbox' checked={showAll} onChange={function(e) { setShowAll(e.target.checked) }} style={{ accentColor: T.accent }} />
+                Show all groups
+              </label>
+              <button onClick={handleCopy}
+                style={{ padding: '5px 12px', fontSize: 11, fontWeight: 700, border: '1px solid ' + (copied ? T.green : T.border), borderRadius: 7, background: copied ? T.greenBg : T.bg, color: copied ? T.green : T.textMid, cursor: 'pointer', transition: 'all .15s' }}>
+                {copied ? '\u2713 Copied' : '\uD83D\uDCCB Copy'}
+              </button>
+            </div>
+          </div>
+
+          {/* Column headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 90px 90px 72px 80px', gap: 0, padding: '7px 16px', background: T.bg, borderBottom: '1px solid ' + T.border, fontSize: 10, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            <div>Group</div>
+            <div style={{ textAlign: 'right' }}>N</div>
+            <div style={{ textAlign: 'right' }}>Mean</div>
+            <div style={{ textAlign: 'right' }}>vs Avg</div>
+            <div style={{ textAlign: 'right' }}>p-value</div>
+            <div style={{ textAlign: 'center' }}>Status</div>
+          </div>
+
+          {/* Rows */}
+          {displayed.map(function(r, i) {
+            var isPos = r.direction === 'positive'
+            var rowBg = !r.isOutlier ? 'transparent'
+              : isPos ? 'rgba(22,163,74,.06)' : 'rgba(220,38,38,.05)'
+            var flagColor = isPos ? T.green : T.red
+            var flagBg    = isPos ? T.greenBg : T.redBg
+            var flagBorder= isPos ? T.greenMid : '#fecaca'
+            return (
+              <div key={r.key} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 90px 90px 72px 80px', gap: 0, padding: '9px 16px', background: rowBg, borderBottom: i < displayed.length - 1 ? '1px solid ' + T.border : 'none', alignItems: 'center', transition: 'background .1s' }}>
+                {/* Group name */}
+                <div style={{ fontSize: 13, fontWeight: r.isOutlier ? 700 : 400, color: r.isOutlier ? (isPos ? T.green : T.red) : T.textMid, wordBreak: 'break-word', paddingRight: 8 }}>{r.key}</div>
+                {/* N */}
+                <div style={{ textAlign: 'right', fontSize: 12, color: T.textMute, fontFamily: 'monospace' }}>{r.n}</div>
+                {/* Mean */}
+                <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: T.text, fontFamily: 'monospace' }}>{fmt2(r.grpMean)}</div>
+                {/* Delta */}
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: r.delta > 0 ? T.green : r.delta < 0 ? T.red : T.textMute }}>
+                  {r.delta >= 0 ? '+' : ''}{fmt2(r.delta)}
+                  <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 2 }}>({r.pct >= 0 ? '+' : ''}{r.pct.toFixed(1)}%)</span>
+                </div>
+                {/* p-value */}
+                <div style={{ textAlign: 'right' }}>
+                  <SigBadge p={r.p} />
+                </div>
+                {/* Status badge */}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  {r.isOutlier ? (
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 20, background: flagBg, color: flagColor, border: '1px solid ' + flagBorder, whiteSpace: 'nowrap' }}>
+                      {isPos ? '\u25B2 HIGH' : '\u25BC LOW'}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 10, color: T.textFaint }}>—</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </Card>
+      )}
+    </div>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN STATS MODULE — left sidebar (fields), right sidebar (analysis types)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -992,6 +1198,7 @@ var ANALYSIS_TYPES = [
   { id: 'grouptests', label: 'Group Tests', icon: '\u2297', color: '#16a34a', tip: 't-test, ANOVA, Mann-Whitney, Chi-square.' },
   { id: 'regression', label: 'Regression', icon: '\u27CB', color: '#7c3aed', tip: 'OLS linear regression modeling.' },
   { id: 'insights', label: '\u2726 Auto-Insights', icon: '\u2726', color: '#e8622a', tip: 'Auto-scan for significant correlations, group effects, and distribution flags.' },
+  { id: 'outliers', label: 'Outlier Analysis', icon: '\u25CE', color: '#0891b2', tip: 'Flag groups that are statistically above or below the overall mean.' },
 ]
 
 function fl(f: SchemaFieldConfig): string { return f.label && f.label !== f.field ? f.label : f.field }
@@ -1123,7 +1330,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var allFields = allSchemaFields.slice()
   if (hasThemes) allFields = allFields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as any])
   mappedFields.forEach(function(f) {
-    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (mapped)' } as any])
+    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
   })
 
   var numFields = allFields.filter(function(f) { return f.type === 'numeric' })
@@ -1133,7 +1340,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var aliases: Record<string, string> = {}
   schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
   if (hasThemes) aliases['__themes__'] = 'Themes'
-  mappedFields.forEach(function(f) { aliases['__mapped_' + f.field + '__'] = (f.label || f.field) + ' (mapped)' })
+  mappedFields.forEach(function(f) { aliases['__mapped_' + f.field + '__'] = (f.label || f.field) })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -1166,6 +1373,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
               {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
               {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'insights' && <AutoInsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
+              {activePanel === 'outliers' && <OutlierAnalysisPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
             </>
           )}
         </div>

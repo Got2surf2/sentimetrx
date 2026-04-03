@@ -311,9 +311,9 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                       ts = Math.round(ts / stepMs) * stepMs
                       ts = Math.max(absMinTs, Math.min(absMaxTs, ts))
                       if (side === 'left') {
-                        setDateRange(Math.min(ts, curMaxTs - stepMs), curMaxTs)
+                        setDateRange(Math.min(ts, curMaxTs), curMaxTs)
                       } else {
-                        setDateRange(curMinTs, Math.max(ts, curMinTs + stepMs))
+                        setDateRange(curMinTs, Math.max(ts, curMinTs))
                       }
                     }
                     var onUp = function() {

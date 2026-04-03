@@ -34,10 +34,17 @@ var SCALES: { name: string; points: { canonical: string; aliases: string[] }[] }
     { canonical: 'Often', aliases: ['often', 'frequently', 'most of the time'] },
     { canonical: 'Always', aliases: ['always', 'all the time', 'every time'] },
   ]},
+  { name: 'quality-perf-5', points: [
+    { canonical: 'Poor',      aliases: ['poor', 'bad'] },
+    { canonical: 'Fair',      aliases: ['fair'] },
+    { canonical: 'Average',   aliases: ['average', 'okay', 'ok', 'adequate'] },
+    { canonical: 'Good',      aliases: ['good', 'above average'] },
+    { canonical: 'Excellent', aliases: ['excellent', 'outstanding', 'exceptional', 'very good', 'great', 'superb'] },
+  ]},
   { name: 'quality-5', points: [
     { canonical: 'Very Poor', aliases: ['very poor', 'terrible', 'awful'] },
     { canonical: 'Poor', aliases: ['poor', 'bad'] },
-    { canonical: 'Fair', aliases: ['fair', 'average', 'okay', 'ok', 'adequate'] },
+    { canonical: 'Fair', aliases: ['fair', 'okay', 'ok', 'adequate'] },
     { canonical: 'Good', aliases: ['good', 'above average'] },
     { canonical: 'Excellent', aliases: ['excellent', 'outstanding', 'exceptional', 'very good', 'great', 'superb'] },
   ]},

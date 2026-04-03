@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
+import ExportModal from '@/components/analyze/ExportModal'
 
 interface DatasetMeta {
   id: string; name: string; source: 'upload' | 'study'; visibility: 'private' | 'public'
@@ -36,8 +37,9 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var router = useRouter()
   var pathname = usePathname()
 
-  var [apiKey, setApiKey] = useState('')
-  var [aiEnabled, setAiEnabled] = useState(false)
+  var [apiKey,      setApiKey]      = useState('')
+  var [aiEnabled,   setAiEnabled]   = useState(false)
+  var [showExport,  setShowExport]  = useState(false)
 
   useEffect(function() {
     try {
@@ -60,6 +62,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
 
   return (
     <div>
+      {showExport && (
+        <ExportModal
+          datasetId={dataset.id}
+          datasetName={dataset.name}
+          onClose={function() { setShowExport(false) }}
+        />
+      )}
       <div style={{ background: HERMES, padding: '0 0 0 20px', height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
 
         {/* Back + Brand */}
@@ -101,6 +110,17 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             }}>
             {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
             Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
+          </button>
+
+          {/* Export button */}
+          <button onClick={function() { setShowExport(true) }}
+            style={{
+              padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.6)',
+              background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+              cursor: 'pointer', flexShrink: 0,
+            }}>
+            {'\uD83D\uDCCA'} Export
           </button>
 
           {/* Save Session button */}

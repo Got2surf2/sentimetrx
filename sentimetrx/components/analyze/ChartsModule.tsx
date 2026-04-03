@@ -799,7 +799,7 @@ function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; sc
   if (_enrichCtx.themeModel?.themes?.length) virtualFields.push({ field: '__themes__', type: 'categorical', label: 'Themes' })
   ;(_enrichCtx.schema?.fields || []).forEach(function(f) {
     if (f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0) {
-      virtualFields.push({ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (mapped)' })
+      virtualFields.push({ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) })
     }
   })
   var cols = schema.filter(function(f) { return f.type !== 'ignore' }).concat(virtualFields)
@@ -854,7 +854,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   // Inject virtual mapped numeric fields for categoricals with remapping
   var mappedFields = fields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
   mappedFields.forEach(function(f) {
-    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (mapped)' } as any])
+    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
   })
 
   // Build theme counts for the virtual field
