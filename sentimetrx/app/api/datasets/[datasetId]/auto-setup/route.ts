@@ -37,6 +37,28 @@ export async function POST(_req: Request, { params }: Params) {
   // Build schema from study config
   var schema = buildStudySchema(study.config)
 
+  // Ensure all fields have prompt populated (for PPTX subtitles)
+  if (study.config.questions) {
+    study.config.questions.forEach(function(q: any) {
+      var col = q.exportLabel || q.prompt || q.id
+      var field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
+      if (field && !field.prompt) field.prompt = q.prompt
+    })
+  }
+  if (study.config.psychographicBank) {
+    study.config.psychographicBank.forEach(function(pq: any) {
+      var field = schema.fields.find(function(f: any) { return f.field === 'psycho_' + (pq.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_') })
+      if (field && !field.prompt) field.prompt = pq.q
+    })
+  }
+  if (study.config.demoFields) {
+    study.config.demoFields.forEach(function(df: any) {
+      if (!df.enabled) return
+      var field = schema.fields.find(function(f: any) { return f.field === 'demo_' + (df.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_') })
+      if (field && !field.prompt) field.prompt = df.label
+    })
+  }
+
   // Apply question text as field labels (aliases)
   if (study.config.questions) {
     study.config.questions.forEach(function(q: any) {

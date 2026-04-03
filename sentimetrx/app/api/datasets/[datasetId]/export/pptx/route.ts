@@ -1549,7 +1549,7 @@ export async function POST(req: Request, { params }: Params) {
   const service = createServiceRoleClient()
 
   const { data: dataset } = await service
-    .from('datasets').select('id, name, row_count, ana_library').eq('id', params.datasetId).single()
+    .from('datasets').select('id, name, row_count, ana_library, study_id, studies(id, name, config)').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const { data: stateRow } = await service
@@ -1559,6 +1559,38 @@ export async function POST(req: Request, { params }: Params) {
   const schema      = stateRow.schema_config
   const analytics   = stateRow.analytics
   const allThemes   = (stateRow.theme_model as any)?.themes || []
+
+  // Backfill missing prompts from study config (for PPTX subtitles)
+  const studyConfig = (dataset as any).studies?.config
+  if (studyConfig && schema?.fields) {
+    schema.fields.forEach(function(f: any) {
+      if (f.prompt) return  // Already has prompt
+      // Try to find matching question in study config
+      if (studyConfig.questions) {
+        const q = studyConfig.questions.find((qq: any) => {
+          const col = qq.exportLabel || qq.prompt || qq.id
+          return f.field === col || f.field.includes(col)
+        })
+        if (q?.prompt) f.prompt = q.prompt
+      }
+      // Try psychographic bank
+      if (!f.prompt && f.field.startsWith('psycho_') && studyConfig.psychographicBank) {
+        const pq = studyConfig.psychographicBank.find((pp: any) => {
+          const key = 'psycho_' + (pp.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_')
+          return f.field === key
+        })
+        if (pq?.q) f.prompt = pq.q
+      }
+      // Try demo fields
+      if (!f.prompt && f.field.startsWith('demo_') && studyConfig.demoFields) {
+        const df = studyConfig.demoFields.find((dd: any) => {
+          const key = 'demo_' + (dd.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_')
+          return f.field === key
+        })
+        if (df?.label) f.prompt = df.label
+      }
+    })
+  }
   const themes      = selectedThemeIds.length > 0
     ? allThemes.filter((t: any) => selectedThemeIds.includes(t.id))
     : allThemes
