@@ -4,6 +4,7 @@
 // Loads raw rows from the API, applies filters, runs all computations client-side.
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 // Dynamic Plotly import — avoids SSR crash
 var PlotlyRef: any = null
@@ -922,7 +923,9 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
 
       {/* Running spinner */}
       {running && (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: T.textFaint, fontSize: 13 }}>Scanning {numFields.length} numeric \u00D7 {catFields.length} categorical fields\u2026</div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
+          <LottieLoader size={80} message={'Scanning ' + numFields.length + ' numeric \u00D7 ' + catFields.length + ' categorical fields\u2026'} />
+        </div>
       )}
 
       {/* No findings */}
@@ -1377,7 +1380,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
           {/* Status */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
-            {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
+            {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
             {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
           </div>
 
@@ -1388,9 +1391,8 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
         {/* ─── Main content ─────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {!rowsLoaded ? (
-            <div style={{ textAlign: 'center', padding: 60, color: T.textMute, fontSize: 13 }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '3px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite', margin: '0 auto 12px' }} />
-              Loading data for statistical analysis...
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
+              <LottieLoader size={80} message="Loading data for statistical analysis..." />
             </div>
           ) : (
             <>

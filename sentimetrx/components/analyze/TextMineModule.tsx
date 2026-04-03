@@ -1094,7 +1094,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
-              {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', border: '2px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> Loading...</span>}
+              {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
               {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
                   {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}
@@ -1129,17 +1129,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {subTab === 'themes' && (
               <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
 
-                {/* Loading spinner — Ana style */}
+                {/* Loading spinner */}
                 {loading && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, paddingTop: 80, paddingBottom: 80 }}>
-                    <div style={{ width: 52, height: 52, borderRadius: '50%', border: '3px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite' }} />
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 6 }}>Analyzing your responses</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                        {[0, 1, 2, 3].map(function(i) { return <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: T.accent, display: 'inline-block', animation: 'blink 1.4s ease infinite', animationDelay: (i * 0.2) + 's' }} /> })}
-                      </div>
-                      <div style={{ fontSize: 12, color: T.textMute, marginTop: 8 }}>Claude is reading and grouping themes...</div>
-                    </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingBottom: 80 }}>
+                    <LottieLoader size={96} message="Analyzing your responses…" />
+                    <div style={{ fontSize: 12, color: T.textMute, marginTop: 8 }}>Claude is reading and grouping themes...</div>
                   </div>
                 )}
 
@@ -1516,8 +1510,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           onClick={function() { setShowThemeEditor(false) }}>
           <div style={{ background: T.bgCard, borderRadius: 16, padding: '40px 32px', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,.28)' }}
             onClick={function(e) { e.stopPropagation() }}>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid ' + T.accentMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite', margin: '0 auto 16px' }} />
-            <div style={{ fontSize: 13, color: T.textMute }}>Loading industry theme libraries...</div>
+            <LottieLoader size={80} message="Loading industry theme libraries..." />
           </div>
         </div>
       )}
