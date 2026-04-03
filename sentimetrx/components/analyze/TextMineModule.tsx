@@ -709,8 +709,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [rowsError, setRowsError] = useState<string | null>(null)
 
   const [themes, setThemes] = useState<ThemeModel | null>(savedThemeModel || null)
-  const [themeSource, setThemeSource] = useState<string | null>(savedThemeModel?.themeSource || null)
-  const [themeLibName, setThemeLibName] = useState<string | null>(savedThemeModel?.themeLibName || null)
+  const [themeSource, setThemeSource] = useState<string | null>((savedThemeModel as any)?.themeSource || (savedThemeModel as any)?.source || null)
+  const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
 
   const [activeField, setActiveField] = useState<string | null>(null)

@@ -99,8 +99,8 @@ export async function POST(_req: Request, { params }: Params) {
       aiGenerated: false,
       version: 1,
       fieldName: schema.primaryTextField || 'q3_response',
-      libName: anaLibrary,
-      source: 'industry',
+      themeLibName: anaLibrary,
+      themeSource: 'industry',
     }
   }
 

@@ -154,7 +154,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             <div style={{ position: 'absolute', right: 0, top: 32, background: 'white', border: '1px solid #e8e8ec', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.10)', zIndex: 20, minWidth: 168, padding: '4px 0', overflow: 'hidden' }}>
               {[
                 { label: 'Rename', action: function() { setRenaming(true); setMenuOpen(false) } },
-                { label: 'Edit themes', action: function() { router.push('/analyze/' + dataset.id + '/textmine'); setMenuOpen(false) } },
+                { label: 'Edit themes', action: function() { router.push('/analyze/' + dataset.id + '/textmine?editThemes=1'); setMenuOpen(false) } },
                 { label: dataset.visibility === 'private' ? 'Make public' : 'Make private', action: function() { onToggleVisibility(dataset.id, dataset.visibility === 'private' ? 'public' : 'private'); setMenuOpen(false) } },
                 { label: isArchived ? 'Unarchive' : 'Archive', action: function() { onToggleArchive(dataset.id, isArchived ? 'active' : 'archived'); setMenuOpen(false) } },
               ].map(function(item) {

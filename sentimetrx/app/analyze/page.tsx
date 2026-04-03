@@ -65,8 +65,8 @@ export default async function AnalyzePage() {
     const state = Array.isArray(stateArr) ? stateArr[0] : stateArr
     const tm = state?.theme_model || null
     const themeCount = tm?.themes?.length || 0
-    const themeSource = tm?.source || tm?.themeSource || null
-    const themeLibName = tm?.libName || tm?.themeLibName || d.ana_library || null
+    const themeSource = tm?.themeSource || tm?.source || null
+    const themeLibName = tm?.themeLibName || tm?.libName || d.ana_library || null
     const { studies: _s, dataset_state: _ds, ...rest } = d
     return { ...rest, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName }
   })
