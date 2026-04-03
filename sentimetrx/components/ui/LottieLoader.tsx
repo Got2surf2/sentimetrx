@@ -1,7 +1,9 @@
 'use client'
 
 // components/ui/LottieLoader.tsx
-// Orange spinning loader — uses a global CSS class (.lottie-spinner) defined in globals.css.
+// Plays the Lottie animation from /public/loading-spinner.json using lottie-web.
+
+import { useEffect, useRef } from 'react'
 
 interface Props {
   size?:      number
@@ -10,16 +12,27 @@ interface Props {
 }
 
 export default function LottieLoader({ size = 120, message, className }: Props) {
-  const spinnerSize = Math.round(size * 0.38)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function() {
+    if (!containerRef.current) return
+    var anim: any = null
+    import('lottie-web').then(function(mod) {
+      var lottie = mod.default || mod
+      anim = lottie.loadAnimation({
+        container:  containerRef.current!,
+        renderer:   'svg',
+        loop:       true,
+        autoplay:   true,
+        path:       '/loading-spinner.json',
+      })
+    })
+    return function() { if (anim) anim.destroy() }
+  }, [])
 
   return (
     <div className={className || ''} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-      <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div
-          className="lottie-spinner"
-          style={{ width: spinnerSize, height: spinnerSize }}
-        />
-      </div>
+      <div ref={containerRef} style={{ width: size, height: size }} />
       {message && (
         <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 500, textAlign: 'center' }}>{message}</div>
       )}
