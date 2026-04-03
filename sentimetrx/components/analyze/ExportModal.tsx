@@ -207,17 +207,19 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
             ✓
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 6 }}>Your PowerPoint is ready</div>
-            <div style={{ fontSize: 12, color: S.textMute, lineHeight: 1.5 }}>
-              <strong style={{ color: S.textMid }}>{fileName}</strong> has downloaded to your device.
+            <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 10 }}>Your PowerPoint is ready</div>
+            <div style={{ fontSize: 12, color: S.textMute, lineHeight: 1.6 }}>
+              Saved to your Downloads folder:
             </div>
+            {blobUrl ? (
+              <a href={blobUrl} download={fileName}
+                style={{ fontSize: 12, color: HERMES, fontWeight: 600, wordBreak: 'break-all', textDecoration: 'underline', cursor: 'pointer', lineHeight: 1.6 }}>
+                ~/Downloads/{fileName}
+              </a>
+            ) : (
+              <div style={{ fontSize: 12, color: S.textMid, fontWeight: 600 }}>~/Downloads/{fileName}</div>
+            )}
           </div>
-          {blobUrl && (
-            <a href={blobUrl} download={fileName}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 16px', fontSize: 13, fontWeight: 700, color: HERMES, background: '#fff4ef', border: '1.5px solid #fcd5c0', borderRadius: 8, textDecoration: 'none', justifyContent: 'center' }}>
-              <span style={{ fontSize: 16 }}>📂</span> Open / save file
-            </a>
-          )}
           <button onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}
             style={{ width: '100%', padding: '11px 0', fontSize: 13, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
             Done
