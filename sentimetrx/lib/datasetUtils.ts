@@ -167,11 +167,11 @@ export function enrichSchemaWithStats(
 }
 
 export function flattenCustomQuestions(
-  payload: SurveyPayload,
+  payload: SurveyPayload | null | undefined,
   config: StudyConfig
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  if (!payload.customAnswers || !config.questions) return out
+  if (!payload || !payload.customAnswers || !config.questions) return out
   for (const question of config.questions) {
     const raw = payload.customAnswers[question.id]
     if (raw == null) continue
@@ -181,18 +181,18 @@ export function flattenCustomQuestions(
   return out
 }
 
-export function flattenPsychographics(payload: SurveyPayload): Record<string, unknown> {
+export function flattenPsychographics(payload: SurveyPayload | null | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  if (!payload.psychographics) return out
+  if (!payload || !payload.psychographics) return out
   for (const [key, val] of Object.entries(payload.psychographics)) {
     out['psycho_' + sanitizeColumnName(key)] = val
   }
   return out
 }
 
-export function flattenDemographics(payload: SurveyPayload): Record<string, unknown> {
+export function flattenDemographics(payload: SurveyPayload | null | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  if (!payload.demographics) return out
+  if (!payload || !payload.demographics) return out
   for (const [key, val] of Object.entries(payload.demographics)) {
     out['demo_' + sanitizeColumnName(key)] = val
   }
