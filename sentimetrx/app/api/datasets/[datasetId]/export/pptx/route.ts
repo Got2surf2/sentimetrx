@@ -1101,7 +1101,7 @@ function buildCommentsSlide(
       const maxRight = cx + cardW - 0.12
 
       // Pill style by section
-      function pillStyle(section?: string): { bg: string; border: string; text: string } {
+      const pillStyle = (section?: string): { bg: string; border: string; text: string } => {
         if (section === 'demographic')   return { bg: 'FEF0E8', border: DN.orange, text: DN.orange }
         if (section === 'psychographic') return { bg: 'E0F2F1', border: DN.teal,   text: DN.teal   }
         return { bg: DN.slateLight, border: DN.divider, text: DN.slateDark }

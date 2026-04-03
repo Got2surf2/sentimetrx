@@ -168,11 +168,6 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
       setBlobUrl(url)
-      const a    = document.createElement('a')
-      a.href     = url
-      a.download = name
-      a.click()
-      // Don't revoke yet — keep url alive for the "Open file" link in done modal
       setStep('done')
     } catch (e: any) {
       setError(e.message || 'Export failed — try again')
@@ -205,30 +200,60 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
 
   // ── Done state ────────────────────────────────────────────────────────────
   if (step === 'done') {
+    async function handleSaveFile() {
+      if (!blobUrl) return
+      const suggestedName = fileName
+
+      // Use native File System Access API when available (Chrome / Edge)
+      if (typeof (window as any).showSaveFilePicker === 'function') {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName,
+            types: [{
+              description: 'PowerPoint Presentation',
+              accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] },
+            }],
+          })
+          const response = await fetch(blobUrl)
+          const blob = await response.blob()
+          const writable = await handle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+          return
+        } catch (err: any) {
+          // User cancelled the picker — do nothing
+          if (err.name === 'AbortError') return
+          // Any other error: fall through to anchor fallback
+        }
+      }
+
+      // Fallback for browsers without showSaveFilePicker (Firefox, Safari)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = suggestedName
+      a.click()
+    }
+
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
         onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}>
-        <div style={{ background: S.white, borderRadius: 16, padding: '40px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 300, maxWidth: 420 }}
+        <div style={{ background: S.white, borderRadius: 16, padding: '40px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 320, maxWidth: 420 }}
           onClick={function(e) { e.stopPropagation() }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: S.greenBg, border: '2px solid ' + S.greenBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
             ✓
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 10 }}>Your PowerPoint is ready</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 6 }}>Your PowerPoint is ready</div>
             <div style={{ fontSize: 12, color: S.textMute, lineHeight: 1.6 }}>
-              Saved to your Downloads folder:
+              Click below to choose where to save it.
             </div>
-            {blobUrl ? (
-              <a href={blobUrl} download={fileName}
-                style={{ fontSize: 12, color: HERMES, fontWeight: 600, wordBreak: 'break-all', textDecoration: 'underline', cursor: 'pointer', lineHeight: 1.6 }}>
-                ~/Downloads/{fileName}
-              </a>
-            ) : (
-              <div style={{ fontSize: 12, color: S.textMid, fontWeight: 600 }}>~/Downloads/{fileName}</div>
-            )}
           </div>
+          <button onClick={handleSaveFile}
+            style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>💾</span> Save file…
+          </button>
           <button onClick={function() { if (blobUrl) URL.revokeObjectURL(blobUrl); onClose() }}
-            style={{ width: '100%', padding: '11px 0', fontSize: 13, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600, color: S.textMid, background: S.bg, border: '1.5px solid ' + S.border, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
             Done
           </button>
           <button onClick={function() { setStep('mode'); setError('') }}
