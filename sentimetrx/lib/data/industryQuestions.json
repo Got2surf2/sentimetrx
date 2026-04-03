@@ -15,7 +15,7 @@
       "questions": [
         { "key": "i_ho_purpose",    "prompt": "What is the primary purpose of your stay?",                      "exportLabel": "Stay Purpose",         "type": "radio", "options": ["Leisure / vacation", "Business", "Event or celebration", "Family visit", "Other"] },
         { "key": "i_ho_booking",    "prompt": "How did you book your stay?",                                    "exportLabel": "Booking Channel",      "type": "radio", "options": ["Direct — hotel website", "Booking.com", "Expedia", "Hotels.com", "Travel agent", "Phone or walk-in"] },
-        { "key": "i_ho_amenities",  "prompt": "Which amenities are most important to you when choosing a hotel?","exportLabel": "Key Amenity",           "type": "radio", "options": ["Location", "Price", "Room quality", "Breakfast included", "Pool or gym", "Free parking", "Pet-friendly"] },
+        { "key": "i_ho_amenities",  "prompt": "Which amenities matter most when choosing a hotel?","exportLabel": "Key Amenity",           "type": "radio", "options": ["Location", "Price", "Room quality", "Breakfast included", "Pool or gym", "Free parking", "Pet-friendly"] },
         { "key": "i_ho_loyalty",    "prompt": "Are you a member of a hotel loyalty programme?",                 "exportLabel": "Loyalty Programme",     "type": "radio", "options": ["Yes — this hotel chain", "Yes — a competitor", "No but I am interested", "No and not interested"] }
       ]
     },
@@ -34,7 +34,7 @@
         { "key": "i_rs_occasion",   "prompt": "What best describes the occasion for your visit this evening?",  "exportLabel": "Dining Occasion",      "type": "radio", "options": ["Romantic dinner", "Business dinner", "Special celebration", "Anniversary or birthday", "Personal treat"] },
         { "key": "i_rs_group",      "prompt": "How large was your dining party this evening?",                  "exportLabel": "Party Size",           "type": "radio", "options": ["Just me", "2 people", "3–4 people", "5 or more people"] },
         { "key": "i_fd_wine",       "prompt": "Did you take advantage of our wine or beverage programme?",      "exportLabel": "Beverage Engagement",  "type": "radio", "options": ["Yes — wine pairing", "Yes — selected from the list", "Yes — cocktails", "No — water or soft drinks only"] },
-        { "key": "i_rs_diet",       "prompt": "Do you have any dietary requirements we should know about for future visits?", "exportLabel": "Dietary Requirement", "type": "radio", "options": ["None", "Vegetarian", "Vegan", "Gluten-free", "Allergen-related", "Other"] }
+        { "key": "i_rs_diet",       "prompt": "Any dietary requirements for future visits?", "exportLabel": "Dietary Requirement", "type": "radio", "options": ["None", "Vegetarian", "Vegan", "Gluten-free", "Allergen-related", "Other"] }
       ]
     },
     {

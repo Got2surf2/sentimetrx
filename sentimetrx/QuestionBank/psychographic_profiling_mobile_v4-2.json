@@ -321,7 +321,7 @@
             "❤️ Yes — I track chefs and follow them to new places",
             "👀 Somewhat — a few names I actively seek out",
             "📰 I follow recommendations, not specific chefs",
-            "🚫 No — I discover based on occasion & occasion"
+            "🚫 No — occasion and mood guide where I go"
           ]
         },
         {
@@ -438,10 +438,10 @@
           ]
         },
         {
-          "prompt": "How do you feel about the healthfulness of fast food?",
+          "prompt": "How health-conscious are you about fast food?",
           "responses": [
             "🥗 I actively look for healthier menu options",
-            "😐 I'm aware of the nutritional content but it doesn't change my order",
+            "😐 Aware of the nutrition info — doesn't change my order",
             "🍟 I don't prioritise health here — it's an indulgence",
             "🚫 I avoid fast food primarily for health reasons"
           ]
@@ -666,7 +666,7 @@
         {
           "prompt": "What role does identity play in your politics?",
           "responses": [
-            "🌟 Central — my lived experience directly shapes what I fight for",
+            "🌟 Central — lived experience shapes what I fight for",
             "⚖️ Significant but one of several lenses",
             "🧠 Minor — I reason from broad principles, not group identity",
             "🏛️ None — politics should be driven by shared civic values"
@@ -1037,28 +1037,28 @@
         {
           "prompt": "How much do returns and customer service affect your loyalty?",
           "responses": [
-            "⭐⭐⭐ Significantly — a poor returns experience loses me as a customer",
+            "⭐⭐⭐ Big impact — one bad return loses me as a customer",
             "⭐⭐ Moderately — it influences repeat purchases",
             "⭐ Mildly — I rarely return items so it doesn't weigh heavily",
-            "🚫 Not at all — I decide on the front end and rarely think about returns"
+            "🚫 Not at all — I rarely need to return anything"
           ]
         },
         {
-          "prompt": "Do loyalty programs and personalisation change your behaviour?",
+          "prompt": "Do loyalty programs affect how you shop?",
           "responses": [
-            "🏆 Significantly — I choose retailers based on earning rewards",
-            "😌 Moderately — I participate but it's not the primary driver",
-            "👍 I appreciate genuinely relevant personalised recommendations",
-            "🚫 I find loyalty programs and personalisation intrusive or gimmicky"
+            "🏆 A lot — I choose retailers to earn rewards",
+            "😌 Somewhat — I participate but it's not the main driver",
+            "👍 I like relevant recommendations, but rewards aren't everything",
+            "🚫 I find loyalty programs and personalisation annoying"
           ]
         },
         {
           "prompt": "What's your relationship with impulse purchasing?",
           "responses": [
-            "😅 Prone — promotions and discovery frequently lead to unplanned buys",
-            "⚖️ Occasional but I have reasonable control over it",
+            "😅 Prone — promos and browsing often lead to unplanned buys",
+            "⚖️ Occasional — I have reasonable control",
             "🎯 Deliberate — I research before buying and rarely deviate",
-            "🚫 I actively work to reduce consumption and resist impulse triggers"
+            "🚫 I actively resist impulse buying"
           ]
         }
       ]
@@ -1218,10 +1218,10 @@
         {
           "prompt": "How actively engaged are you in a child's academic progress?",
           "responses": [
-            "🔍 Highly — I monitor grades, communicate with teachers & supplement at home",
-            "📋 Moderately — I stay informed but give my child real independence",
-            "🤝 Minimally — I trust the school and step in only when there's a problem",
-            "😔 Barriers (time, work, language) limit my involvement despite wanting more"
+            "🔍 Highly — monitor grades, talk to teachers & supplement at home",
+            "📋 Moderately — stay informed but give real independence",
+            "🤝 Minimally — I trust the school and step in when needed",
+            "😔 Barriers (time, work, language) limit me though I want more"
           ]
         },
         {
@@ -1279,7 +1279,7 @@
           "responses": [
             "⭐⭐⭐ High — it remains one of the best long-term investments",
             "⭐⭐ Conditional — depends heavily on institution, major & career path",
-            "⭐ Declining — alternatives like bootcamps and certifications are increasingly competitive",
+            "⭐ Declining — bootcamps and certs are increasingly competitive",
             "🚫 Poor value — the cost-to-benefit ratio no longer justifies it for most"
           ]
         },
@@ -1361,12 +1361,12 @@
       "industry": "HR / Employee Experience",
       "questions": [
         {
-          "prompt": "How would you describe your organisation's current EX approach?",
+          "prompt": "How would you describe your org's approach to employee experience?",
           "responses": [
-            "🌟 Highly intentional — EX is a strategic priority with dedicated resources",
-            "📈 Improving — we've recognised its importance and are actively building",
-            "⚠️ Inconsistent — efforts exist but vary widely across teams and leaders",
-            "😔 Underdeveloped — EX is acknowledged but rarely prioritised over ops"
+            "🌟 Highly intentional — EX is a strategic priority",
+            "📈 Improving — we've recognised it and are actively building",
+            "⚠️ Inconsistent — efforts vary widely across teams",
+            "😔 Underdeveloped — acknowledged but rarely prioritised"
           ]
         },
         {
@@ -1408,46 +1408,46 @@
         {
           "prompt": "How do you currently gather employee feedback?",
           "responses": [
-            "📊 Regular pulse surveys with structured action-planning tied to results",
-            "📋 Annual engagement surveys — we review but act inconsistently",
-            "💬 Informal channels — manager conversations and open-door policies",
-            "🚫 We don't have a structured approach to gathering feedback"
+            "📊 Regular pulse surveys with structured action-planning",
+            "📋 Annual surveys — we review but act inconsistently",
+            "💬 Informal — manager conversations and open-door policies",
+            "🚫 No structured approach to gathering feedback"
           ]
         },
         {
           "prompt": "How does your organisation approach flexible and remote work?",
           "responses": [
-            "🏡 Fully flexible — employees have significant autonomy over when and where",
-            "🔄 Hybrid structured — defined in-office expectations with flexibility built in",
-            "🏢 Return to office — in-person is largely the default",
-            "🧩 Context-dependent — policies vary by role, team and function"
+            "🏡 Fully flexible — employees choose when and where they work",
+            "🔄 Hybrid — set office days with flexibility built in",
+            "🏢 Return to office — in-person is the default",
+            "🧩 Context-dependent — varies by role, team and function"
           ]
         },
         {
           "prompt": "How aligned are HR and executive leadership on people strategy?",
           "responses": [
-            "💚 Highly aligned — HR has a seat at the table and drives strategic decisions",
-            "🟡 Mostly aligned — HR is respected but sometimes treated as a support function",
-            "🟠 Partially aligned — tension exists between people priorities and business pressure",
-            "🔴 Poorly aligned — HR is seen primarily as administrative, not strategic"
+            "💚 Highly aligned — HR drives strategic decisions",
+            "🟡 Mostly aligned — respected but sometimes treated as support",
+            "🟠 Partial tension — people priorities vs. business pressure",
+            "🔴 Poorly aligned — HR is seen as administrative, not strategic"
           ]
         },
         {
-          "prompt": "How does your organisation think about manager development?",
+          "prompt": "How does your org invest in manager development?",
           "responses": [
-            "🌟 A strategic priority — we invest heavily in training and coaching",
-            "📋 Addressed through onboarding but not sustained consistently",
-            "🌱 Organic — managers develop through experience rather than formal programmes",
-            "😔 Underfunded — we know it matters but haven't dedicated real resources"
+            "🌟 A strategic priority — heavy investment in training and coaching",
+            "📋 Covered in onboarding but not sustained consistently",
+            "🌱 Organic — managers develop through experience, not programmes",
+            "😔 Underfunded — we know it matters but haven't prioritised it"
           ]
         },
         {
           "prompt": "How do you approach DEI within your talent strategy?",
           "responses": [
-            "🌍 Fully integrated — embedded in recruiting, development & leadership accountability",
-            "📈 Actively building — we have programmes and goals but face execution gaps",
-            "📋 Compliance-focused — we meet legal requirements but haven't gone further",
-            "🤔 Uncertain — leadership hasn't aligned on how to approach DEI effectively"
+            "🌍 Fully integrated — across hiring, development & leadership",
+            "📈 Actively building — have goals but face execution gaps",
+            "📋 Compliance-focused — meet legal requirements, no further",
+            "🤔 Uncertain — leadership hasn't aligned on DEI approach"
           ]
         }
       ]
@@ -1625,10 +1625,10 @@
         {
           "prompt": "How do you feel about business & non-profit collaboration?",
           "responses": [
-            "💚 Very positive — business tools and market mechanisms amplify social impact",
-            "⚖️ Cautiously optimistic — collaboration is valuable but mission must stay primary",
-            "😒 Skeptical — CSR is often performative and dilutes genuine charitable work",
-            "🚫 Opposed — market logic and non-profit values are fundamentally in tension"
+            "💚 Very positive — market tools can amplify social impact",
+            "⚖️ Cautiously optimistic — valuable, but mission must come first",
+            "😒 Skeptical — CSR is often performative and dilutes charity work",
+            "🚫 Opposed — market logic and non-profit values don't mix"
           ]
         },
         {
