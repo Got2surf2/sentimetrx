@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES     = '#E8632A'
 const CHUNK_SIZE = 50                   // rows per POST
@@ -489,12 +490,15 @@ export default function UploadClient() {
           </div>
 
           {creating && (
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>{uploadMsg}</span><span>{uploadPct}%</span>
-              </div>
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-300" style={{ width: uploadPct + '%', background: HERMES }} />
+            <div className="flex flex-col gap-3 items-center py-2">
+              <LottieLoader size={64} message={uploadMsg || 'Uploading...'} />
+              <div className="w-full flex flex-col gap-1">
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>{uploadPct}% complete</span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-300" style={{ width: uploadPct + '%', background: HERMES }} />
+                </div>
               </div>
             </div>
           )}

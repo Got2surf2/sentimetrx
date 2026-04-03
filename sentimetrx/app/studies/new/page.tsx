@@ -2,6 +2,7 @@
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import CreatorNav from '@/components/creator/CreatorNav'
+import StudyStartModal from '@/components/creator/StudyStartModal'
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -54,6 +55,7 @@ export default function NewStudyPage() {
   const [saving,         setSaving]         = useState(false)
   const [error,          setError]          = useState<string | null>(null)
   const [savedGuid,      setSavedGuid]      = useState<string | null>(null)
+  const [showModal,      setShowModal]      = useState(true)
   const router = useRouter()
 
   const update = useCallback((partial: Partial<StudyDraft>) => {
@@ -99,10 +101,26 @@ export default function NewStudyPage() {
     goTo(6)
   }
 
+  function handleModalApply(partial: Partial<StudyDraft>) {
+    setDraft(prev => ({
+      ...prev,
+      ...partial,
+      config: { ...prev.config, ...(partial.config || {}) },
+    }))
+    setShowModal(false)
+  }
+
   const stepProps = { draft, update, updateConfig }
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {showModal && (
+        <StudyStartModal
+          onApply={handleModalApply}
+          onSkip={function() { setShowModal(false) }}
+        />
+      )}
 
       <TopNav currentPage="new" />
       <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'New Study' }]} />

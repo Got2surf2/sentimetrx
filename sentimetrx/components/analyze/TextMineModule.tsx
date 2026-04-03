@@ -18,6 +18,7 @@ import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 const T = {
   bg: '#f4f5f7', bgCard: '#ffffff', bgSidebar: '#ffffff',
@@ -1133,9 +1134,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                 {/* Rows still loading */}
                 {!rowsLoaded && !loading && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, paddingTop: 80 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid ' + T.borderMid, borderTopColor: T.accent, animation: 'spin 0.9s linear infinite' }} />
-                    <div style={{ fontSize: 13, color: T.textMute }}>Loading dataset rows...</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
+                    <LottieLoader size={80} message="Loading dataset rows..." />
                   </div>
                 )}
 

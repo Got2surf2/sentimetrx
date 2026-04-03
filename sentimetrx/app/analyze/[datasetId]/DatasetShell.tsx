@@ -8,6 +8,7 @@ import { filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
 import DatasetHeader from './DatasetHeader'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
   id: string; name: string; source: 'upload' | 'study'; visibility: 'private' | 'public'
@@ -172,8 +173,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
             onClick={function() { setShowFilters(false) }}>
             <div style={{ background: 'white', borderRadius: 16, padding: '40px 32px', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,.28)' }}
               onClick={function(e) { e.stopPropagation() }}>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #fbd5c2', borderTopColor: '#e8622a', animation: 'spin 0.9s linear infinite', margin: '0 auto 16px' }} />
-              <div style={{ fontSize: 13, color: '#6b7280' }}>Loading data for filters...</div>
+              <LottieLoader size={72} message="Loading data for filters..." />
             </div>
           </div>
         )
