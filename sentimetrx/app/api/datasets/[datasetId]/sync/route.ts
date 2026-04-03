@@ -12,13 +12,17 @@ export const maxDuration = 30
 
 interface Params { params: { datasetId: string } }
 
-export async function POST(_req: Request, { params }: Params) {
+export async function POST(req: Request, { params }: Params) {
   try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const service = createServiceRoleClient()
+
+    // ?full=true clears all existing rows and re-imports from scratch
+    const url     = new URL(req.url)
+    const fullSync = url.searchParams.get('full') === 'true'
 
     const { data: dataset, error: dsErr } = await service
       .from('datasets').select('*').eq('id', params.datasetId).single()
@@ -33,10 +37,20 @@ export async function POST(_req: Request, { params }: Params) {
 
     if (studyErr || !study) return NextResponse.json({ error: 'Linked study not found', detail: studyErr?.message }, { status: 404 })
 
+    // Full resync: delete existing rows so we start clean
+    if (fullSync) {
+      await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
+      await service.from('datasets').update({ row_count: 0, last_synced_at: null }).eq('id', params.datasetId)
+      // Reload dataset with cleared values
+      const { data: refreshed } = await service.from('datasets').select('*').eq('id', params.datasetId).single()
+      if (refreshed) Object.assign(dataset, refreshed)
+    }
+
     let responsesQuery = service
       .from('responses')
       .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload')
       .eq('study_id', dataset.study_id)
+      .not('completed_at', 'is', null)   // exclude partial/incomplete responses
       .order('completed_at', { ascending: true })
 
     if (dataset.last_synced_at) {

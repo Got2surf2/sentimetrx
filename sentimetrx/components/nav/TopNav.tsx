@@ -11,14 +11,14 @@ interface Props {
   fullName?:       string
   crumbs?:         any
   analyzeEnabled?: boolean   // NEW -- true if org has features.analyze
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze'
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze'
 }
 
 const HERMES = '#E8632A'
 
 function CogMenu({ currentPage }: { currentPage?: string }) {
   var [open, setOpen] = useState(false)
-  var isActive = currentPage === 'team' || currentPage === 'admin'
+  var isActive = currentPage === 'team' || currentPage === 'admin' || currentPage === 'questions'
   return (
     <div style={{ position: 'relative' }}>
       <button
@@ -46,7 +46,7 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               {'\uD83D\uDD27'} Admin Panel
             </Link>
             <Link href="/admin/questions" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'questions' ? 700 : 500, color: currentPage === 'questions' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83D\uDCCB'} Question Library

@@ -1,10 +1,8 @@
 'use client'
 
 // components/ui/LottieLoader.tsx
-// Lightweight Lottie animation loader using lottie-web (no React wrapper needed).
-// Uses animationData (inline JSON) instead of path to avoid XHR issues.
-
-import { useEffect, useRef } from 'react'
+// Reliable orange CSS spinner — shown immediately, always visible.
+// (Lottie animation has transparent/light colors that render invisible on white.)
 
 interface Props {
   size?:      number
@@ -12,60 +10,25 @@ interface Props {
   className?: string
 }
 
-const SPINNER_CSS = `
-  @keyframes _lottie_spin { to { transform: rotate(360deg) } }
-`
-
-function cssSpinner(container: HTMLDivElement, size: number) {
-  const s = Math.round(size * 0.4)
-  container.innerHTML =
-    '<style>' + SPINNER_CSS + '</style>' +
-    '<div style="width:' + s + 'px;height:' + s + 'px;border:3px solid rgba(232,98,42,0.2);border-top-color:#e8622a;border-radius:50%;animation:_lottie_spin 0.8s linear infinite"></div>'
-}
-
 export default function LottieLoader({ size = 120, message, className }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const animRef      = useRef<any>(null)
-
-  useEffect(function() {
-    const container = containerRef.current
-    if (!container) return
-    let cancelled = false
-
-    Promise.all([
-      import('lottie-web'),
-      fetch('/loading-animation.json').then(function(r) {
-        if (!r.ok) throw new Error('fetch failed')
-        return r.json()
-      }),
-    ]).then(function([lottieModule, animationData]) {
-      if (cancelled || !container) return
-      animRef.current = lottieModule.default.loadAnimation({
-        container,
-        renderer:      'svg',
-        loop:          true,
-        autoplay:      true,
-        animationData,
-      })
-    }).catch(function() {
-      if (!cancelled && container) cssSpinner(container, size)
-    })
-
-    return function() {
-      cancelled = true
-      if (animRef.current) {
-        try { animRef.current.destroy() } catch (_) {}
-        animRef.current = null
-      }
-    }
-  }, [size])
+  const spinnerSize = Math.round(size * 0.38)
 
   return (
     <div className={className || ''} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-      <div ref={containerRef} style={{ width: size, height: size }} />
+      <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{
+          width:          spinnerSize,
+          height:         spinnerSize,
+          border:         '3px solid rgba(232,98,42,0.18)',
+          borderTopColor: '#e8622a',
+          borderRadius:   '50%',
+          animation:      '_lspin 0.75s linear infinite',
+        }} />
+      </div>
       {message && (
         <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 500, textAlign: 'center' }}>{message}</div>
       )}
+      <style>{`@keyframes _lspin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }
