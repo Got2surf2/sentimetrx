@@ -13,12 +13,17 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
 
+interface OrgOption { id: string; name: string }
+
 interface Props {
   dataset:             DatasetWithState
   onDelete:            (id: string) => void
   onRename:            (id: string, name: string) => void
   onToggleVisibility:  (id: string, v: 'private' | 'public') => void
   onToggleArchive:     (id: string, s: 'active' | 'archived') => void
+  isAdmin?:            boolean
+  allOrgs?:            OrgOption[]
+  onTransfer?:         (datasetId: string, studyId: string | null, orgId: string) => Promise<void>
 }
 
 const HERMES = '#e8622a'
@@ -46,19 +51,30 @@ function Badge({ label, color, bg, border }: { label: string, color: string, bg:
   )
 }
 
-export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive }: Props) {
+export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer }: Props) {
   const router = useRouter()
-  const [menuOpen,   setMenuOpen]   = useState(false)
-  const [renaming,   setRenaming]   = useState(false)
-  const [renameVal,  setRenameVal]  = useState(dataset.name)
-  const [confirmDel, setConfirmDel] = useState(false)
-  const [syncing,    setSyncing]    = useState(false)
+  const [menuOpen,      setMenuOpen]      = useState(false)
+  const [renaming,      setRenaming]      = useState(false)
+  const [renameVal,     setRenameVal]     = useState(dataset.name)
+  const [confirmDel,    setConfirmDel]    = useState(false)
+  const [syncing,       setSyncing]       = useState(false)
+  const [showTransfer,  setShowTransfer]  = useState(false)
+  const [transferOrgId, setTransferOrgId] = useState('')
+  const [transferring,  setTransferring]  = useState(false)
 
   const isStudy    = dataset.source === 'study'
   const isArchived = dataset.status === 'archived'
   const fieldCount = dataset.state?.schema_config?.fields?.filter(function(f: { type: string }) {
     return f.type !== 'ignore'
   }).length ?? null
+
+  async function handleTransferConfirm() {
+    if (!transferOrgId || !onTransfer) return
+    setTransferring(true)
+    await onTransfer(dataset.id, dataset.study_id, transferOrgId)
+    setTransferring(false)
+    setShowTransfer(false)
+  }
 
   async function handleSync() {
     setSyncing(true); setMenuOpen(false)
@@ -152,6 +168,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 <button onClick={handleSync}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   {syncing ? 'Syncing...' : 'Sync responses'}
+                </button>
+              )}
+              {isAdmin && allOrgs.length > 0 && (
+                <button onClick={function() { setShowTransfer(true); setMenuOpen(false) }}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Move to org
                 </button>
               )}
               <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
