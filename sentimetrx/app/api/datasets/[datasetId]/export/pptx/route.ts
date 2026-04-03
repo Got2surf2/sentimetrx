@@ -84,17 +84,14 @@ function hdr(slide: any, pptx: any, title: string, _color = DN.navy, subtitle?: 
 }
 
 function logo(slide: any) {
-  // "data" in orange, "nautix" in teal — all lowercase, right side of header
-  slide.addText('data', {
-    x: W - 2.3, y: 0.1, w: 1.0, h: HH - 0.18,
-    fontSize: 15, bold: true, italic: true, color: DN.orangeLight,
-    valign: 'middle', align: 'right',
-  })
-  slide.addText('nautix', {
-    x: W - 1.3, y: 0.1, w: 1.1, h: HH - 0.18,
-    fontSize: 15, bold: true, italic: true, color: DN.tealLight,
-    valign: 'middle', align: 'left',
-  })
+  // "datanautix" as one rich-text word — orange + teal, right side of header
+  slide.addText(
+    [
+      { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: 'nautix', options: { color: DN.tealLight,   bold: true, italic: true } },
+    ],
+    { x: W - 2.3, y: 0.1, w: 2.1, h: HH - 0.18, fontSize: 15, valign: 'middle', align: 'right' }
+  )
 }
 
 function footer(slide: any, datasetName: string, pageNum: number) {
@@ -320,15 +317,14 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
     fontSize: 72, bold: true, italic: true, color: DN.tealLight + '50', align: 'center', valign: 'middle',
   })
 
-  // Logo — "data" orange, "nautix" teal
-  slide.addText('data', {
-    x: PAD + 0.18, y: 0.75, w: 2.0, h: 0.9,
-    fontSize: 42, bold: true, italic: true, color: DN.orangeLight, valign: 'middle',
-  })
-  slide.addText('nautix', {
-    x: PAD + 2.1, y: 0.75, w: 2.6, h: 0.9,
-    fontSize: 42, bold: true, italic: true, color: DN.tealLight, valign: 'middle',
-  })
+  // Logo — "datanautix" as one rich-text word
+  slide.addText(
+    [
+      { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: 'nautix', options: { color: DN.tealLight,   bold: true, italic: true } },
+    ],
+    { x: PAD + 0.18, y: 0.75, w: 4.8, h: 0.9, fontSize: 42, valign: 'middle' }
+  )
 
   // Gold divider line
   solidRect(slide, PAD + 0.18, 1.82, 6.0, 0.04, DN.gold)
@@ -443,9 +439,14 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
     x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18,
     fontSize: 20, bold: true, color: DN.white, valign: 'middle',
   })
-  // logo right side of header
-  slide.addText('data', { x: W - 2.3, y: 0.1, w: 1.0, h: HH - 0.18, fontSize: 15, bold: true, italic: true, color: DN.orangeLight, valign: 'middle', align: 'right' })
-  slide.addText('nautix', { x: W - 1.3, y: 0.1, w: 1.1, h: HH - 0.18, fontSize: 15, bold: true, italic: true, color: DN.tealLight, valign: 'middle', align: 'left' })
+  // logo right side of header — "datanautix" as one rich-text word
+  slide.addText(
+    [
+      { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: 'nautix', options: { color: DN.tealLight,   bold: true, italic: true } },
+    ],
+    { x: W - 2.3, y: 0.1, w: 2.1, h: HH - 0.18, fontSize: 15, valign: 'middle', align: 'right' }
+  )
 
   const numericField = fields.find(f => f.type === 'numeric')
   const openField    = fields.find(f => f.type === 'open-ended')
@@ -1024,21 +1025,38 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
     } as any
   )
 
+  // ── Insight / implication dimensions (computed first to cap legend) ───────
+  const hasRealAI   = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
+  const insightText = hasRealAI
+    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
+    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total))
+
+  const insH       = 0.72
+  const implH      = 0.44
+  const implGap    = 0.08
+  const withImpl   = hasRealAI && !!ai.implication
+  const totalInsH  = withImpl ? insH + implGap + implH : insH
+  // Anchor insight block to just above the footer line
+  const insightStartY = FY - 0.12 - totalInsH
+
   // ── Legend table (right) ──────────────────────────────────────────────────
-  const legX  = PAD + chartW + 0.2
-  const legW  = W - legX - PAD * 0.5
-  const maxLeg = Math.min(orderedKeys.length, 9)
-  const rowH  = Math.min(0.5, (chartH - 0.05) / Math.max(maxLeg, 1))
+  const legX   = PAD + chartW + 0.2
+  const legW   = W - legX - PAD * 0.5
+  const legStart = chartY + 0.3
+  // Cap rows so they end at least 0.1" above the insight block
+  const legAvail = insightStartY - legStart - 0.1
+  const maxLeg   = Math.min(orderedKeys.length, 9)
+  const rowH     = Math.min(0.5, legAvail / Math.max(maxLeg, 1))
+  const visRows  = Math.min(maxLeg, Math.floor(legAvail / Math.max(rowH, 0.01)))
 
   lbl(slide, 'RESPONSE BREAKDOWN', legX, chartY, legW)
   solidRect(slide, legX, chartY + 0.22, legW, 0.015, DN.divider)
 
-  orderedKeys.slice(0, maxLeg).forEach(function(key, i) {
-    const ry      = chartY + 0.3 + i * rowH
+  orderedKeys.slice(0, visRows).forEach(function(key, i) {
+    const ry      = legStart + i * rowH
     const count   = rawCounts[key] || 0
     const pctVal  = pct(count, total)
     const col     = PIE_COLORS[i % PIE_COLORS.length]
-    const barFill = legW * 0.7 * (count / Math.max(...pieValues, 1))
 
     // Colour swatch
     solidRect(slide, legX, ry + rowH * 0.2, 0.12, rowH * 0.6, col)
@@ -1053,7 +1071,7 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
     // Proportion bar track + fill
     const bx = legX + legW - 0.72
     solidRect(slide, bx, ry + rowH * 0.35, 0.44, rowH * 0.3, DN.slateLight)
-    if (barFill > 0.02) solidRect(slide, bx, ry + rowH * 0.35, 0.44 * (count / Math.max(...pieValues, 1)), rowH * 0.3, col)
+    solidRect(slide, bx, ry + rowH * 0.35, 0.44 * (count / Math.max(...pieValues, 1)), rowH * 0.3, col)
 
     // Percentage
     slide.addText(pctVal + '%', {
@@ -1062,20 +1080,15 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, 
     })
   })
 
-  // ── Insight box ───────────────────────────────────────────────────────────
-  const hasRealAI = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
-  const insightText = hasRealAI
-    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
-    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total))
-
-  const insY = chartY + chartH - 0.05
-  if (hasRealAI && ai.implication) {
-    insightBox(slide, legX, insY - 1.05, legW, 0.72, insightText, DN.teal, DN.tealPale)
-    solidRect(slide, legX, insY - 0.26, legW, 0.44, DN.goldPale)
-    solidRect(slide, legX, insY - 0.26, 0.05, 0.44, DN.gold)
-    slide.addText('→ ' + ai.implication, { x: legX + 0.12, y: insY - 0.26 + 0.04, w: legW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+  // ── Insight box (anchored above footer) ───────────────────────────────────
+  if (withImpl) {
+    insightBox(slide, legX, insightStartY, legW, insH, insightText, DN.teal, DN.tealPale)
+    const implY = insightStartY + insH + implGap
+    solidRect(slide, legX, implY, legW, implH, DN.goldPale)
+    solidRect(slide, legX, implY, 0.05, implH, DN.gold)
+    slide.addText('→ ' + ai.implication, { x: legX + 0.12, y: implY + 0.04, w: legW - 0.18, h: implH - 0.08, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
   } else {
-    insightBox(slide, legX, insY - 0.72, legW, 0.72, insightText, DN.teal, DN.tealPale)
+    insightBox(slide, legX, insightStartY, legW, insH, insightText, DN.teal, DN.tealPale)
   }
 
   footer(slide, datasetName, pageNum)
@@ -1138,9 +1151,14 @@ function buildClosingSlide(datasetName: string, takeaways: string[], pageNum: nu
   // Footer
   solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
   solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold + '70')
-  slide.addText('data', { x: PAD + 0.07, y: H - 0.4, w: 0.85, h: 0.34, fontSize: 13, bold: true, italic: true, color: DN.orangeLight, valign: 'middle', align: 'right' })
-  slide.addText('nautix', { x: PAD + 0.93, y: H - 0.4, w: 1.0, h: 0.34, fontSize: 13, bold: true, italic: true, color: DN.tealLight, valign: 'middle', align: 'left' })
-  slide.addText('  ·  datanautix.com', { x: PAD + 1.95, y: H - 0.4, w: 2.0, h: 0.34, fontSize: 13, color: DN.slate, valign: 'middle' })
+  slide.addText(
+    [
+      { text: 'data',             options: { color: DN.orangeLight, bold: true, italic: true } },
+      { text: 'nautix',           options: { color: DN.tealLight,   bold: true, italic: true } },
+      { text: '  ·  datanautix.com', options: { color: DN.slate,   bold: false, italic: false } },
+    ],
+    { x: PAD + 0.07, y: H - 0.4, w: 3.5, h: 0.34, fontSize: 13, valign: 'middle' }
+  )
   slide.addText(String(pageNum), { x: W - PAD - 0.5, y: H - 0.4, w: 0.5, h: 0.34, fontSize: 8.5, color: DN.slate, align: 'right', valign: 'middle' })
 }
 
@@ -1237,7 +1255,7 @@ export async function POST(req: Request, { params }: Params) {
     const psychoFields = selectedFields.filter(f => f.section === 'psychographic')
     const demoFields   = selectedFields.filter(f => f.section === 'demographic')
 
-    function renderField(f: SelectedField) {
+    const renderField = (f: SelectedField) => {
       const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
       if (f.type === 'open-ended') {
         buildOpenEndedSlide(datasetName, f, ai, audience, themes, page++)
