@@ -185,10 +185,10 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   if (step === 'generating') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: S.white, borderRadius: 16, padding: '48px 56px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, boxShadow: '0 24px 64px rgba(0,0,0,.25)', minWidth: 340, maxWidth: 420 }}>
+        <div style={{ background: S.white, borderRadius: 16, padding: '48px 56px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, boxShadow: '0 24px 64px rgba(0,0,0,.25)', width: 400, height: 280 }}>
           <LottieLoader size={96} message="" />
-          <div style={{ fontSize: 13, fontWeight: 600, color: S.textMid, textAlign: 'center', minHeight: 20 }}>{progressMsg}</div>
-          <p style={{ fontSize: 11, color: S.textFaint, margin: '4px 0 0', textAlign: 'center', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: S.textMid, textAlign: 'center', width: '100%', height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>{progressMsg}</div>
+          <p style={{ fontSize: 11, color: S.textFaint, margin: 0, textAlign: 'center', lineHeight: 1.5 }}>
             AI is writing insights for each field.<br />This takes 20–60 seconds.
           </p>
         </div>
