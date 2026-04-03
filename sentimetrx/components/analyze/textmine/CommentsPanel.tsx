@@ -358,14 +358,6 @@ export default function CommentsPanel({
         })
       } else {
         var text = fields.map(function(f) { return String(r[f] || '') }).join(' ').trim()
-        // If the specified field has no data, try all string-valued keys in showAllMode
-        if (!text && showAllMode) {
-          var fallback = Object.keys(r).find(function(k) {
-            var v = String(r[k] || '').trim()
-            return v.length > 20 && !metaCols.includes(k)
-          })
-          if (fallback) text = String(r[fallback] || '').trim()
-        }
         if (!text) return
         var meta: Record<string, string> = {}
         metaCols.forEach(function(mc) { meta[mc] = String(r[mc] ?? '') })
@@ -373,7 +365,7 @@ export default function CommentsPanel({
       }
     })
     return results
-  }, [parsedData, fields, metaCols, showAllMode])
+  }, [parsedData, fields, metaCols])
 
   const matched = useMemo(function() {
     var raw = showAllMode ? allRows : allRows.filter(function(r) {
