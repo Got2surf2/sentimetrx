@@ -550,7 +550,7 @@ export async function POST(req: Request, { params }: Params) {
   const safeName = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40)
   const filename = safeName + '_report_' + new Date().toISOString().slice(0, 10) + '.pptx'
 
-  return new Response(buffer, {
+  return new Response(new Uint8Array(buffer), {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',

@@ -957,6 +957,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setLastRunPct(null)
     setShowThemeEditor(false)
     setSubTab('themes')
+    // Auto-save immediately so the user doesn't need a separate Save press
+    setSaving(true)
+    fetch('/api/datasets/' + datasetId + '/state', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme_model: tm }),
+    }).then(function() {
+      setSaved(true)
+      setIsDirty(false)
+      setTimeout(function() { setSaved(false) }, 3000)
+    }).catch(function() {}).finally(function() { setSaving(false) })
   }
 
   async function saveThemeModel() {
