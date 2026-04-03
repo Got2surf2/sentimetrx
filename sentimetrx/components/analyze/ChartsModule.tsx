@@ -805,16 +805,80 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   var dateFields = allFields.filter(function(f) { return f.type === 'date' })
   var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
 
-  // Download PNG
+  // Download PNG (or CSV for table)
   var chartBodyRef = useRef<HTMLDivElement>(null)
+
+  var downloadCSV = function() {
+    fetch('/api/datasets/' + datasetId + '/rows?all=true')
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        var allRows: Record<string, unknown>[] = data.rows || []
+        if (!allRows.length) return
+        var cols = Object.keys(allRows[0])
+        var lines = [cols.join(',')]
+        allRows.forEach(function(row) {
+          lines.push(cols.map(function(c) {
+            var v = String(row[c] ?? '')
+            return v.includes(',') || v.includes('"') || v.includes('\n') ? '"' + v.replace(/"/g, '""') + '"' : v
+          }).join(','))
+        })
+        var blob = new Blob([lines.join('\n')], { type: 'text/csv' })
+        var url = URL.createObjectURL(blob)
+        var a = document.createElement('a'); a.download = 'dataset.csv'; a.href = url
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      })
+  }
+
+  var downloadSVGasPNG = function() {
+    if (!chartBodyRef.current) return
+    var svgEls = Array.from(chartBodyRef.current.querySelectorAll('svg')) as SVGElement[]
+    if (!svgEls.length) return
+    // Combine all SVGs horizontally onto one canvas
+    var rects = svgEls.map(function(s) { return s.getBoundingClientRect() })
+    var totalW = rects.reduce(function(sum, r) { return sum + r.width }, 0)
+    var maxH = rects.reduce(function(max, r) { return Math.max(max, r.height) }, 0)
+    var scale = 2
+    var canvas = document.createElement('canvas')
+    canvas.width = totalW * scale; canvas.height = maxH * scale
+    var ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+    var pending = svgEls.length, offsetX = 0
+    svgEls.forEach(function(svgEl, idx) {
+      var w = rects[idx].width, h = rects[idx].height
+      var clone = svgEl.cloneNode(true) as SVGElement
+      clone.setAttribute('width', String(w)); clone.setAttribute('height', String(h))
+      var svgStr = new XMLSerializer().serializeToString(clone)
+      var blob = new Blob([svgStr], { type: 'image/svg+xml' })
+      var url = URL.createObjectURL(blob)
+      var img = new window.Image()
+      var capturedX = offsetX
+      img.onload = function() {
+        ctx.drawImage(img, capturedX * scale, 0, w * scale, h * scale)
+        URL.revokeObjectURL(url)
+        pending--
+        if (pending === 0) {
+          var a = document.createElement('a'); a.download = activeChart + '_chart.png'; a.href = canvas.toDataURL('image/png')
+          document.body.appendChild(a); a.click(); document.body.removeChild(a)
+        }
+      }
+      img.src = url
+      offsetX += w
+    })
+  }
+
   var downloadPNG = function() {
     if (!chartBodyRef.current) return
+    if (activeChart === 'table') { downloadCSV(); return }
     var plotDiv = chartBodyRef.current.querySelector('.js-plotly-plot') as HTMLElement
     if (plotDiv) {
       getPlotly().then(function(Plotly) {
         Plotly.downloadImage(plotDiv, { format: 'png', width: 1200, height: 700, filename: activeChart + '_chart' })
       })
+      return
     }
+    // Fallback for SVG-based charts (bullet/KPI gauges)
+    downloadSVGasPNG()
   }
 
   return (
@@ -944,7 +1008,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
                   </button>
                   <button onClick={downloadPNG}
                     style={{ padding: '5px 14px', fontSize: 11, fontWeight: 600, background: T.bg, border: '1px solid ' + T.border, borderRadius: 20, color: T.textMid, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {'\u2B07'} PNG
+                    {'\u2B07'} {activeChart === 'table' ? 'CSV' : 'PNG'}
                   </button>
                   <div style={{ position: 'relative' }}>
                     <button onClick={function() { setShowPalettePicker(function(v) { return !v }) }}
