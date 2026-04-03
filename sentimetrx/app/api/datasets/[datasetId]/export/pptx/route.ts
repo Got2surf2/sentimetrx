@@ -96,11 +96,11 @@ function logo(slide: any) {
 
 function footer(slide: any, datasetName: string) {
   solidRect(slide, 0, FY - 0.02, W, 0.015, DN.teal, 62)
-  slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
-    x: PAD, y: FY, w: W * 0.72, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle',
+  slide.addText('datanautix.com  ·  ' + datasetName, {
+    x: PAD, y: FY, w: W * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', wrap: false,
   })
   slide.addText('Proprietary and Confidential', {
-    x: W * 0.72, y: FY, w: W * 0.28 - PAD * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', align: 'right',
+    x: W * 0.35, y: FY, w: W * 0.3, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', align: 'center',
   })
 }
 
@@ -1260,11 +1260,11 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   // Logo
   logo(slide)
 
-  // Section emoji icon
-  const sectionEmoji: Record<string, string> = { 'Psychographic Profile': '\uD83E\uDDE0', 'Demographic Breakdown': '\uD83D\uDC65', 'Core Study Questions': '\uD83D\uDCCB' }
+  // Section emoji icon or placeholder
+  const sectionEmoji: Record<string, string> = { 'Psychographic Profile': '[Image #2]', 'Demographic Breakdown': '\uD83D\uDC65', 'Core Study Questions': '\uD83D\uDCCB' }
   slide.addText(sectionEmoji[title] || title[0], {
     x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
-    fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
+    fontSize: title === 'Psychographic Profile' ? 20 : 72, bold: title === 'Psychographic Profile', color: DN.tealLight, align: 'center', valign: 'middle',
   })
 
   // Section label chip
