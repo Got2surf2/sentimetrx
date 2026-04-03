@@ -1133,8 +1133,8 @@ function buildCommentsSlide(
         const pillW = d.value.length * 0.062 + pillPadX * 2
         if (tagX + pillW > maxRight) return
         const style = pillStyle(d.section)
-        // Pill shape — no border, high radius for smooth pills
-        slide.addShape(pptx.ShapeType.rect, { x: tagX, y: pillY, w: pillW, h: pillH, fill: { color: style.bg }, line: { width: 0 }, rectRadius: 0.5 })
+        // Pill shape — no border, max radius for full pill look
+        slide.addShape(pptx.ShapeType.rect, { x: tagX, y: pillY, w: pillW, h: pillH, fill: { color: style.bg }, line: { width: 0 }, rectRadius: 0.9 })
         slide.addText(d.value, {
           x: tagX + pillPadX, y: pillY, w: pillW - pillPadX * 2, h: pillH,
           fontSize: 7.5, bold: true, color: style.text, valign: 'middle', wrap: false,
@@ -1587,7 +1587,9 @@ export async function POST(req: Request, { params }: Params) {
           const key = 'demo_' + (dd.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_')
           return f.field === key
         })
-        if (df?.label) f.prompt = df.label
+        if (df) {
+          f.prompt = df.label || df.key || ''
+        }
       }
     })
   }
@@ -1689,12 +1691,15 @@ export async function POST(req: Request, { params }: Params) {
     // 2: About this report
     buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience)
 
+    // Sort themes by frequency (count descending)
+    const sortedThemes = [...themes].sort(function(a: any, b: any) { return (b.count || 0) - (a.count || 0) })
+
     // 3: Executive Summary
-    buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], themes, selectedFields)
+    buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields)
 
     // 4: Theme slides (if enabled and themes exist)
-    if (includeThemeSlides && themes.length > 0) {
-      buildThemeSlides(datasetName, themes)
+    if (includeThemeSlides && sortedThemes.length > 0) {
+      buildThemeSlides(datasetName, sortedThemes)
     }
 
     // ── Group fields by section ───────────────────────────────────────────
