@@ -279,7 +279,14 @@ interface SelectedField {
   type:       string
   summary:    any
   remapping?: Record<string, number>
+  section?:   string   // 'psychographic' | 'demographic' | 'core' | undefined
 }
+
+// Professional pie chart color palette
+const PIE_COLORS = [
+  '0F7173', 'E8B84B', '1DA39A', '0D2B45', '8FA3AE',
+  '4A6572', 'A8C8D8', '1A5070', 'B8D4E0', 'D4DDE2',
+]
 
 // ── Slide builders ────────────────────────────────────────────────────────────
 
@@ -903,6 +910,177 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   footer(slide, datasetName, pageNum)
 }
 
+function buildSectionDivider(title: string, subtitle: string, fieldCount: number, pageNum: number) {
+  const slide = pptx.addSlide()
+
+  solidRect(slide, 0, 0, W, H, DN.navy)
+  solidRect(slide, 0, 0, W, 0.07, DN.gold)
+  solidRect(slide, 0, 0.07, 0.18, H - 0.07, DN.teal)
+  solidRect(slide, W - 3.0, 0.07, 3.0, H - 0.07, DN.navyMid)
+
+  // Decorative circles
+  slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.8, y: 0.8, w: 3.6, h: 3.6, fill: { color: DN.teal + '15' }, line: { color: DN.teal + '35', width: 1 } })
+  slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.1, y: 1.5, w: 2.2, h: 2.2, fill: { color: DN.teal + '0A' }, line: { color: DN.tealLight + '25', width: 1 } })
+
+  // Icon initial
+  const initials: Record<string, string> = { 'Psychographic Profile': 'P', 'Demographic Breakdown': 'D', 'Core Study Questions': 'Q' }
+  slide.addText(initials[title] || title[0], {
+    x: W - 2.0, y: 1.7, w: 2.0, h: 2.0,
+    fontSize: 88, bold: true, italic: true, color: DN.tealLight + '45', align: 'center', valign: 'middle',
+  })
+
+  // Section label chip
+  solidRect(slide, PAD + 0.18, 1.6, 2.0, 0.34, DN.teal + '30')
+  slide.addText(title.toUpperCase(), {
+    x: PAD + 0.24, y: 1.6, w: 1.94, h: 0.34,
+    fontSize: 8, bold: true, color: DN.tealLight, charSpacing: 1.5, valign: 'middle',
+  })
+
+  // Title
+  slide.addText(title, {
+    x: PAD + 0.18, y: 2.05, w: W - 4.0, h: 1.1,
+    fontSize: 36, bold: true, color: DN.white, wrap: true,
+  })
+
+  // Gold divider
+  solidRect(slide, PAD + 0.18, 3.25, 4.5, 0.04, DN.gold)
+
+  // Subtitle
+  slide.addText(subtitle, {
+    x: PAD + 0.18, y: 3.4, w: W - 4.0, h: 0.6,
+    fontSize: 14, color: DN.tealLight, italic: true, wrap: true,
+  })
+
+  // Field count badge
+  slide.addText(String(fieldCount) + ' field' + (fieldCount !== 1 ? 's' : ''), {
+    x: PAD + 0.18, y: 4.15, w: 1.4, h: 0.36,
+    fontSize: 11, color: DN.slate, valign: 'middle',
+  })
+
+  // Bottom footer
+  solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
+  solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold + '70')
+  slide.addText('datanautix.com', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
+  slide.addText(String(pageNum), { x: W - PAD - 0.5, y: H - 0.4, w: 0.5, h: 0.34, fontSize: 8.5, color: DN.slate, align: 'right', valign: 'middle' })
+}
+
+function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight, pageNum: number) {
+  const slide = pptx.addSlide()
+  bg(slide, pptx)
+  hdr(slide, pptx, f.label, DN.navy, (f.section ? f.section.charAt(0).toUpperCase() + f.section.slice(1) + ' · ' : '') + 'Response distribution · ' + (f.summary?.nonNull || 0).toLocaleString() + ' responses')
+  logo(slide)
+
+  const s         = f.summary
+  const rawCounts = (s?.counts || {}) as Record<string, number>
+  const allKeys   = Object.keys(rawCounts)
+  const total     = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
+
+  // Order: ordinal best-first, nominal count-desc
+  const isOrdinal = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
+  let orderedKeys: string[]
+  if (isOrdinal) {
+    orderedKeys = smartOrder(allKeys, f.remapping).slice().reverse()
+  } else {
+    orderedKeys = allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
+  }
+  orderedKeys = orderedKeys.filter(k => (rawCounts[k] || 0) > 0).slice(0, 10)
+
+  // Metrics
+  const top2Keys = isOrdinal ? orderedKeys.slice(0, 2) : []
+  const top2     = pct(top2Keys.reduce((s, k) => s + (rawCounts[k] || 0), 0), total)
+  const topKey   = orderedKeys[0] || ''
+  const topPct_  = pct(rawCounts[topKey] || 0, total)
+
+  // ── KPI row ───────────────────────────────────────────────────────────────
+  const kw = (W - PAD * 2 - 0.2) / 3
+  const kpiY = CY
+  const kpiBg = DN.slateLight
+  kpiCard(slide, PAD,              kpiY, kw, 0.78, total.toLocaleString(), 'Respondents', undefined, kpiBg, DN.navy)
+  kpiCard(slide, PAD + kw + 0.1,  kpiY, kw, 0.78, topPct_ + '%', trunc(topKey, 20), 'top response', isOrdinal ? (top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight) : kpiBg, isOrdinal ? (top2 >= 70 ? DN.green : top2 >= 50 ? DN.amber : DN.red) : DN.navy)
+  kpiCard(slide, PAD + kw * 2 + 0.2, kpiY, kw, 0.78, isOrdinal ? top2 + '%' : String(orderedKeys.length), isOrdinal ? 'Top-2 Positive' : 'Unique Values', undefined, kpiBg, isOrdinal ? (top2 >= 70 ? DN.green : top2 >= 50 ? DN.amber : DN.red) : DN.teal)
+
+  // ── Pie chart (left) ──────────────────────────────────────────────────────
+  const chartY = kpiY + 0.92
+  const chartH = CH - 0.92
+  const chartW = W * 0.55 - PAD
+
+  const pieLabels  = orderedKeys
+  const pieValues  = orderedKeys.map(k => rawCounts[k] || 0)
+  const pieColors  = orderedKeys.map((_, i) => PIE_COLORS[i % PIE_COLORS.length])
+
+  slide.addChart(pptx.ChartType.pie,
+    [{ name: f.label, labels: pieLabels, values: pieValues }],
+    {
+      x: PAD, y: chartY, w: chartW, h: chartH,
+      showLegend: false,
+      showTitle: false,
+      dataLabelFontSize: 9,
+      dataLabelColor: 'FFFFFF',
+      dataLabelPosition: 'inEnd',
+      dataLabelFormatCode: '0"%"',
+      chartColors: pieColors,
+      border: { type: 'none' },
+      plotAreaBorderType: 'none',
+    } as any
+  )
+
+  // ── Legend table (right) ──────────────────────────────────────────────────
+  const legX  = PAD + chartW + 0.2
+  const legW  = W - legX - PAD * 0.5
+  const maxLeg = Math.min(orderedKeys.length, 9)
+  const rowH  = Math.min(0.5, (chartH - 0.05) / Math.max(maxLeg, 1))
+
+  lbl(slide, 'RESPONSE BREAKDOWN', legX, chartY, legW)
+  solidRect(slide, legX, chartY + 0.22, legW, 0.015, DN.divider)
+
+  orderedKeys.slice(0, maxLeg).forEach(function(key, i) {
+    const ry      = chartY + 0.3 + i * rowH
+    const count   = rawCounts[key] || 0
+    const pctVal  = pct(count, total)
+    const col     = PIE_COLORS[i % PIE_COLORS.length]
+    const barFill = legW * 0.7 * (count / Math.max(...pieValues, 1))
+
+    // Colour swatch
+    solidRect(slide, legX, ry + rowH * 0.2, 0.12, rowH * 0.6, col)
+
+    // Label
+    slide.addText(trunc(key, 28), {
+      x: legX + 0.18, y: ry, w: legW - 0.82, h: rowH,
+      fontSize: i === 0 ? 10.5 : 10, bold: i === 0,
+      color: i === 0 ? DN.navy : DN.navyLight, valign: 'middle',
+    })
+
+    // Proportion bar track + fill
+    const bx = legX + legW - 0.72
+    solidRect(slide, bx, ry + rowH * 0.35, 0.44, rowH * 0.3, DN.slateLight)
+    if (barFill > 0.02) solidRect(slide, bx, ry + rowH * 0.35, 0.44 * (count / Math.max(...pieValues, 1)), rowH * 0.3, col)
+
+    // Percentage
+    slide.addText(pctVal + '%', {
+      x: legX + legW - 0.26, y: ry, w: 0.26, h: rowH,
+      fontSize: 10, bold: true, color: col, align: 'right', valign: 'middle',
+    })
+  })
+
+  // ── Insight box ───────────────────────────────────────────────────────────
+  const hasRealAI = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
+  const insightText = hasRealAI
+    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
+    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total))
+
+  const insY = chartY + chartH - 0.05
+  if (hasRealAI && ai.implication) {
+    insightBox(slide, legX, insY - 1.05, legW, 0.72, insightText, DN.teal, DN.tealPale)
+    solidRect(slide, legX, insY - 0.26, legW, 0.44, DN.goldPale)
+    solidRect(slide, legX, insY - 0.26, 0.05, 0.44, DN.gold)
+    slide.addText('→ ' + ai.implication, { x: legX + 0.12, y: insY - 0.26 + 0.04, w: legW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+  } else {
+    insightBox(slide, legX, insY - 0.72, legW, 0.72, insightText, DN.teal, DN.tealPale)
+  }
+
+  footer(slide, datasetName, pageNum)
+}
+
 function buildClosingSlide(datasetName: string, takeaways: string[], pageNum: number) {
   const slide = pptx.addSlide()
 
@@ -1012,7 +1190,7 @@ export async function POST(req: Request, { params }: Params) {
     .map(function(fieldName) {
       const schemaField = (schema?.fields || []).find((f: any) => f.field === fieldName)
       if (!schemaField) return null
-      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping }
+      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping, section: schemaField.section || undefined }
     })
     .filter(Boolean) as SelectedField[]
 
@@ -1054,22 +1232,43 @@ export async function POST(req: Request, { params }: Params) {
     // 3: Executive Summary
     buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], themes, selectedFields, page++)
 
-    // Field slides — open-ended first, then categorical, then numeric
-    const ordered = [
-      ...selectedFields.filter(f => f.type === 'open-ended'),
-      ...selectedFields.filter(f => f.type === 'categorical'),
-      ...selectedFields.filter(f => f.type === 'numeric'),
-    ]
+    // ── Group fields by section ───────────────────────────────────────────
+    const coreFields   = selectedFields.filter(f => !f.section || f.section === 'core')
+    const psychoFields = selectedFields.filter(f => f.section === 'psychographic')
+    const demoFields   = selectedFields.filter(f => f.section === 'demographic')
 
-    for (const f of ordered) {
+    function renderField(f: SelectedField) {
       const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
       if (f.type === 'open-ended') {
         buildOpenEndedSlide(datasetName, f, ai, audience, themes, page++)
       } else if (f.type === 'categorical') {
-        if (audience !== 'executive') buildCategoricalSlide(datasetName, f, ai, page++)
+        if (audience !== 'executive') buildPieSlide(datasetName, f, ai, page++)
       } else if (f.type === 'numeric') {
         if (audience !== 'executive') buildNumericSlide(datasetName, f, ai, page++)
       }
+    }
+
+    // ── 4: Core study questions (open-ended first, then numeric) ─────────
+    const coreOrdered = [
+      ...coreFields.filter(f => f.type === 'open-ended'),
+      ...coreFields.filter(f => f.type === 'numeric'),
+      ...coreFields.filter(f => f.type === 'categorical'),
+    ]
+    if (coreOrdered.length > 0) {
+      buildSectionDivider('Core Study Questions', 'Primary research questions and measured outcomes', coreOrdered.length, page++)
+      coreOrdered.forEach(renderField)
+    }
+
+    // ── 5: Psychographic fields ───────────────────────────────────────────
+    if (psychoFields.length > 0 && audience !== 'executive') {
+      buildSectionDivider('Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', psychoFields.length, page++)
+      psychoFields.forEach(renderField)
+    }
+
+    // ── 6: Demographic fields ─────────────────────────────────────────────
+    if (demoFields.length > 0 && audience !== 'executive') {
+      buildSectionDivider('Demographic Breakdown', 'Audience composition and segment characteristics', demoFields.length, page++)
+      demoFields.forEach(renderField)
     }
 
     // Closing slide

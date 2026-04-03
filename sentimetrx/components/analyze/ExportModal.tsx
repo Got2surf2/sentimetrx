@@ -49,7 +49,7 @@ const EXPORTABLE_TYPES = new Set(['open-ended', 'categorical', 'numeric', 'date'
 
 type Step = 'mode' | 'quick' | 'builder' | 'generating' | 'done'
 
-interface SchemaField { field: string; type: string; label?: string; status?: string }
+interface SchemaField { field: string; type: string; label?: string; status?: string; section?: string }
 interface Props { datasetId: string; datasetName: string; onClose: () => void }
 
 export default function ExportModal({ datasetId, datasetName, onClose }: Props) {
@@ -359,7 +359,22 @@ interface FieldPickerProps {
   setSelected: (fn: (prev: Set<string>) => Set<string>) => void
 }
 
+const SECTION_META: Record<string, { label: string; color: string; desc: string }> = {
+  core:           { label: 'Core Questions',        color: '#0F7173', desc: 'Primary research questions' },
+  psychographic:  { label: 'Psychographic Profile', color: '#0D2B45', desc: 'Attitudes, values & lifestyle' },
+  demographic:    { label: 'Demographics',           color: '#4A6572', desc: 'Audience composition' },
+}
+
 function FieldPicker({ byType, selected, toggleField, selectAllType, fields, setSelected }: FieldPickerProps) {
+  // Group by section first, then by type within each section
+  const bySection: Record<string, any[]> = { core: [], psychographic: [], demographic: [] }
+  fields.forEach(function(f: any) {
+    const sec = (f.section === 'psychographic' || f.section === 'demographic') ? f.section : 'core'
+    bySection[sec].push(f)
+  })
+
+  const sectionOrder = ['core', 'psychographic', 'demographic'].filter(s => bySection[s].length > 0)
+
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -377,35 +392,55 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
         </button>
       </div>
 
-      {TYPE_ORDER.filter(t => byType[t]?.length > 0).map(function(type) {
-        const tc = TYPE_COLOR[type]
+      {sectionOrder.map(function(section) {
+        const secFields = bySection[section]
+        const meta = SECTION_META[section]
         return (
-          <div key={type} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, paddingBottom: 4, borderBottom: '1px solid ' + S.border }}>
-              <span style={{ fontSize: 9.5, fontWeight: 700, color: tc, textTransform: 'uppercase', letterSpacing: '.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: tc, display: 'inline-block' }} />
-                {TYPE_LABELS[type]}
-              </span>
-              <button onClick={function() { selectAllType(type) }}
+          <div key={section} style={{ marginBottom: 14 }}>
+            {/* Section header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5, paddingBottom: 5, borderBottom: '1.5px solid ' + S.border }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: meta.color, display: 'inline-block' }} />
+                <span style={{ fontSize: 10, fontWeight: 700, color: meta.color, textTransform: 'uppercase', letterSpacing: '.06em' }}>{meta.label}</span>
+                <span style={{ fontSize: 10, color: S.textFaint }}>· {meta.desc}</span>
+              </div>
+              <button onClick={function() { setSelected(function(prev) { const next = new Set(prev); secFields.forEach(function(f: any) { next.add(f.field) }); return next }) }}
                 style={{ fontSize: 10, color: S.textFaint, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                 All
               </button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {byType[type].map(function(f: any) {
-                const checked = selected.has(f.field)
-                return (
-                  <label key={f.field}
-                    style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 10px', borderRadius: 6, border: '1px solid ' + (checked ? HERMES : S.border), background: checked ? S.accentBg : S.white, cursor: 'pointer', transition: 'all .1s' }}>
-                    <input type="checkbox" checked={checked} onChange={function() { toggleField(f.field) }}
-                      style={{ accentColor: HERMES, width: 13, height: 13, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, fontWeight: checked ? 600 : 400, color: checked ? HERMES : S.textMid, flex: 1 }}>
-                      {f.label || f.field}
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
+            {/* Fields within this section, sub-grouped by type */}
+            {TYPE_ORDER.filter(t => secFields.some((f: any) => f.type === t)).map(function(type) {
+              const tc = TYPE_COLOR[type]
+              const typeFields = secFields.filter((f: any) => f.type === type)
+              return (
+                <div key={type} style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 9, color: tc, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3, paddingLeft: 2 }}>
+                    {TYPE_LABELS[type]}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {typeFields.map(function(f: any) {
+                      const checked = selected.has(f.field)
+                      return (
+                        <label key={f.field}
+                          style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 10px', borderRadius: 6, border: '1px solid ' + (checked ? HERMES : S.border), background: checked ? S.accentBg : S.white, cursor: 'pointer', transition: 'all .1s' }}>
+                          <input type="checkbox" checked={checked} onChange={function() { toggleField(f.field) }}
+                            style={{ accentColor: HERMES, width: 13, height: 13, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, fontWeight: checked ? 600 : 400, color: checked ? HERMES : S.textMid, flex: 1 }}>
+                            {f.label || f.field}
+                          </span>
+                          {f.section && f.section !== 'core' && (
+                            <span style={{ fontSize: 9, color: meta.color, background: meta.color + '18', padding: '1px 5px', borderRadius: 8, fontWeight: 600 }}>
+                              {f.section === 'psychographic' ? 'psycho' : 'demo'}
+                            </span>
+                          )}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )
       })}
