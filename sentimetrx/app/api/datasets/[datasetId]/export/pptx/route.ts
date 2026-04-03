@@ -133,24 +133,29 @@ function kpiCard(slide: any, x: number, y: number, w: number, h: number, value: 
   const lblH    = Math.min(0.22, (y + h - metaTop) * (hasSub ? 0.54 : 1.0))
   const subH    = hasSub ? Math.max(0, Math.min(0.18, y + h - metaTop - lblH - 0.02)) : 0
   slide.addText(value, { x: x + 0.14, y: y + 0.06, w: w - 0.28, h: valH, fontSize: Math.min(26, Math.max(16, 26 - value.length * 1.2)), bold: true, color: valColor, valign: 'middle' })
-  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 8.5, bold: true, color: DN.slateDark, wrap: true })
-  if (sub && subH > 0.08) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH, fontSize: 7.5, color: DN.slate })
+  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 9.5, bold: true, color: DN.slateDark, wrap: true })
+  if (sub && subH > 0.08) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH, fontSize: 8.5, color: DN.slate })
 }
 
 // KPI card on dark (navy) background
 function kpiCardDark(slide: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: DN.navyMid }, line: { color: DN.navyLight, width: 1 } })
   solidRect(slide, x, y, w, 0.04, DN.gold)
-  slide.addText(value, { x: x + 0.14, y: y + 0.12, w: w - 0.28, h: h * 0.55, fontSize: Math.min(28, Math.max(18, 28 - value.length * 1.2)), bold: true, color: DN.gold, valign: 'middle' })
-  slide.addText(label, { x: x + 0.14, y: y + h * 0.65, w: w - 0.28, h: 0.22, fontSize: 8.5, bold: true, color: 'A8C8D8' })
-  if (sub) slide.addText(sub, { x: x + 0.14, y: y + h * 0.65 + 0.22, w: w - 0.28, h: 0.18, fontSize: 7.5, color: DN.slate })
+  const hasSub   = !!sub
+  const valH     = h * (hasSub ? 0.44 : 0.56)
+  const metaTop  = y + valH + 0.08
+  const lblH     = Math.min(0.24, (y + h - metaTop) * (hasSub ? 0.55 : 1.0))
+  const subH_    = hasSub ? Math.max(0, Math.min(0.20, y + h - metaTop - lblH - 0.02)) : 0
+  slide.addText(value, { x: x + 0.14, y: y + 0.08, w: w - 0.28, h: valH, fontSize: Math.min(28, Math.max(18, 28 - value.length * 1.2)), bold: true, color: DN.gold, valign: 'middle' })
+  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 9.5, bold: true, color: 'A8C8D8', wrap: true })
+  if (sub && subH_ > 0.08) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH_, fontSize: 8.5, color: DN.slate })
 }
 
 // Insight box with left accent stripe
 function insightBox(slide: any, x: number, y: number, w: number, h: number, text: string, accentColor = DN.teal, bgColor = DN.slateLight) {
   rect(slide, x, y, w, h, bgColor, 0.07, accentColor + '60')
   solidRect(slide, x, y, 0.06, h, accentColor)
-  slide.addText(text, { x: x + 0.16, y: y + 0.1, w: w - 0.24, h: h - 0.2, fontSize: 10.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
+  slide.addText(text, { x: x + 0.16, y: y + 0.1, w: w - 0.24, h: h - 0.2, fontSize: 11.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
 }
 
 // Quote card
@@ -407,17 +412,23 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
   const listY = y0 + cardH + 0.48
   const colW2 = (W - PAD * 2 - 0.4) / 2
   const typeColor: Record<string, string> = { 'open-ended': DN.teal, 'categorical': DN.navyLight, 'numeric': DN.green, 'date': DN.slateDark }
+  const sectionColor: Record<string, string> = { 'demographic': '4A6572', 'psychographic': DN.navy }
+  const badgeW = 1.1  // wider badge to avoid wrapping
 
   function fieldRow(f: SelectedField, x: number, y: number) {
-    const tc = typeColor[f.type] || DN.slateDark
-    solidRect(slide, x, y + 0.06, 0.07, 0.16, tc)
-    slide.addText(f.label || f.field, { x: x + 0.14, y, w: colW2 - 0.55, h: 0.28, fontSize: 10.5, color: DN.navyLight, bold: false, valign: 'middle' })
-    slide.addText(f.type, { x: x + colW2 - 0.45, y, w: 0.45, h: 0.28, fontSize: 8, color: tc, bold: true, align: 'right', valign: 'middle' })
+    const sec = f.section === 'demographic' ? 'demographic' : f.section === 'psychographic' ? 'psychographic' : null
+    const tc  = sec ? sectionColor[sec] : (typeColor[f.type] || DN.slateDark)
+    const badgeLabel = sec ? sec : f.type
+    solidRect(slide, x, y + 0.07, 0.07, 0.20, tc)
+    // Label — leave room for the badge
+    slide.addText(f.label || f.field, { x: x + 0.16, y, w: colW2 - badgeW - 0.26, h: 0.34, fontSize: 12, color: DN.navyLight, bold: false, valign: 'middle' })
+    // Section/type badge — right-aligned, no-wrap
+    slide.addText(badgeLabel, { x: x + colW2 - badgeW, y, w: badgeW - 0.06, h: 0.34, fontSize: 9.5, color: tc, bold: true, align: 'right', valign: 'middle' })
   }
 
   const maxRows = Math.min(8, col1.length)
-  col1.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD, listY + i * 0.3) })
-  col2.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD + colW2 + 0.4, listY + i * 0.3) })
+  col1.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD, listY + i * 0.36) })
+  col2.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD + colW2 + 0.4, listY + i * 0.36) })
 
   // Methodology note
   const noteY = H - 0.9
@@ -499,8 +510,8 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
       const topPct_ = total_ > 0 ? Math.round(counts[topKey] / total_ * 100) : 0
       const fy = colY + 0.34 + i * 0.74
       solidRect(slide, PAD, fy + 0.12, 0.05, 0.05, DN.gold)
-      slide.addText(trunc(f.label || f.field, 22), { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.26, fontSize: 9, bold: true, color: DN.slate })
-      slide.addText(topPct_ + '% ' + trunc(topKey, 24), { x: PAD + 0.12, y: fy + 0.26, w: leftW - 0.14, h: 0.34, fontSize: 12, bold: true, color: DN.white })
+      slide.addText(trunc(f.label || f.field, 36), { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.28, fontSize: 10, bold: true, color: DN.slate })
+      slide.addText(topPct_ + '% ' + trunc(topKey, 38), { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.36, fontSize: 13, bold: true, color: DN.white, wrap: true })
     })
   }
 
@@ -681,10 +692,10 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
   const maxVal = Math.max(...orderedKeys.map(k => rawCounts[k] || 0), 1)
 
   // Column headers
-  slide.addText('Response', { x: chartX, y: CY, w: labelW, h: 0.28, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
-  slide.addText('Distribution', { x: barX, y: CY, w: barMaxW, h: 0.28, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
-  slide.addText('%', { x: pctX, y: CY, w: 0.6, h: 0.28, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
-  slide.addText('n', { x: cntX, y: CY, w: 1.0, h: 0.28, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('Response', { x: chartX, y: CY, w: labelW, h: 0.28, fontSize: 10, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('Distribution', { x: barX, y: CY, w: barMaxW, h: 0.28, fontSize: 10, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('%', { x: pctX, y: CY, w: 0.6, h: 0.28, fontSize: 10, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('n', { x: cntX, y: CY, w: 1.0, h: 0.28, fontSize: 10, bold: true, color: DN.slateDark, valign: 'middle' })
   solidRect(slide, chartX, CY + 0.3, W - chartX - PAD * 0.5, 0.012, DN.divider)
 
   const rowStart = CY + 0.42
@@ -702,7 +713,7 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     // Label
     slide.addText(trunc(key, 30), {
       x: chartX, y: ry, w: labelW, h: rowH,
-      fontSize: isTop ? 11 : 10.5, bold: isTop,
+      fontSize: isTop ? 12.5 : 12, bold: isTop,
       color: isTop ? DN.navy : DN.navyLight, valign: 'middle',
     })
 
@@ -717,13 +728,13 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     // Percentage
     slide.addText(pctVal + '%', {
       x: pctX, y: ry, w: 0.6, h: rowH,
-      fontSize: isTop ? 13 : 11, bold: true, color: col, valign: 'middle',
+      fontSize: isTop ? 14 : 12, bold: true, color: col, valign: 'middle',
     })
 
     // Count
     slide.addText(count.toLocaleString(), {
       x: cntX, y: ry, w: 1.1, h: rowH,
-      fontSize: 9.5, color: DN.slateDark, valign: 'middle',
+      fontSize: 10.5, color: DN.slateDark, valign: 'middle',
     })
   })
 
@@ -773,10 +784,13 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
   if (isDiscrete) {
     // ── Discrete integer: full-width horizontal bar chart (same layout as categorical) ──
     const rawCounts   = s.valueCounts as Record<string, number>
-    const orderedKeys = Object.keys(rawCounts).sort((a, b) => Number(a) - Number(b))
+    // Sort DESCENDING so highest value (best score) appears at top
+    const orderedKeys = Object.keys(rawCounts).sort((a, b) => Number(b) - Number(a))
     const total_      = orderedKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
     const maxVal      = Math.max(...orderedKeys.map(k => rawCounts[k] || 0), 1)
     const n           = orderedKeys.length
+    const numMin      = Math.min(...orderedKeys.map(Number))
+    const numMax      = Math.max(...orderedKeys.map(Number))
 
     const headerY  = CY + 1.05
     const rowStart = headerY + 0.32
@@ -801,9 +815,9 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       const pctVal = total_ > 0 ? Math.round(count / total_ * 100) : 0
       const bw     = barMaxW * count / maxVal
       const ry     = rowStart + i * (rowH + rowGap)
-      // Colour: green→red gradient for ordinal integer scale
-      const frac   = n <= 1 ? 0.5 : i / (n - 1)
-      const col    = frac < 0.25 ? '059669' : frac < 0.45 ? '34D399' : frac < 0.55 ? '94A3B8' : frac < 0.75 ? 'F97316' : 'DC2626'
+      // Colour by actual numeric value: high = green, low = red
+      const numFrac = numMax > numMin ? (Number(key) - numMin) / (numMax - numMin) : 0.5
+      const col     = numFrac >= 0.75 ? '059669' : numFrac >= 0.55 ? '34D399' : numFrac >= 0.45 ? '94A3B8' : numFrac >= 0.25 ? 'F97316' : 'DC2626'
 
       if (i % 2 === 0) solidRect(slide, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
       solidRect(slide, swatchX, ry + rowH * 0.18, swatchW, rowH * 0.64, col)
@@ -818,8 +832,8 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
       if (bw > 0.04) solidRect(slide, barX, trackY, bw, trackH, col)
 
-      slide.addText(pctVal + '%', { x: pctX, y: ry, w: pctW, h: rowH, fontSize: 12, bold: true, color: col, align: 'right', valign: 'middle' })
-      slide.addText(count.toLocaleString(), { x: cntX, y: ry, w: cntW, h: rowH, fontSize: 10, color: DN.slateDark, valign: 'middle' })
+      slide.addText(pctVal + '%', { x: pctX, y: ry, w: pctW, h: rowH, fontSize: 13, bold: true, color: col, align: 'right', valign: 'middle' })
+      slide.addText(count.toLocaleString(), { x: cntX, y: ry, w: cntW, h: rowH, fontSize: 11, color: DN.slateDark, valign: 'middle' })
     })
 
   } else {
@@ -1052,7 +1066,7 @@ function buildCommentsSlide(
     const textH = cardH - 0.08 - (hasDemos ? demoRowH + 0.06 : 0) - 0.24
     slide.addText(trunc(c.text, 340), {
       x: cx + 0.14, y: cy + 0.24, w: cardW - 0.22, h: textH,
-      fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
+      fontSize: 11, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
     })
 
     // Demographics row pinned to bottom of card
@@ -1396,9 +1410,9 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
   }
 
-  // Fetch raw rows for comment slides (first 3 batches, enough for 18+ verbatims per field)
+  // Fetch raw rows for comment slides (up to 10 batches)
   const { data: rowBatches } = await service
-    .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(3)
+    .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(10)
   const allRows: Record<string, any>[] = []
   for (const batch of (rowBatches || [])) {
     for (const row of (batch.rows || [])) allRows.push(row)
@@ -1470,7 +1484,7 @@ export async function POST(req: Request, { params }: Params) {
               const colorValue = commentColorField ? String(row[commentColorField] || '').trim() : undefined
               return { text, demos, colorValue }
             })
-            .filter(function(c) { return c.text.length > 20 })
+            .filter(function(c) { return c.text.length > 8 })
             .slice(0, maxComments)
           if (commentItems.length > 0) {
             const numSlides = Math.ceil(commentItems.length / perSlide)
