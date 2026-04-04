@@ -84,6 +84,8 @@ export interface SurveyQuestion {
   ratingMin?:   number                // default 1
   ratingMax?:   number                // default 5
   // numeric input -- no extra fields needed; stores raw number as string
+  // flow placement
+  conversationPosition?: boolean      // if true, show after Q4 in conversation phase, not custom-Q phase
 }
 
 // -- Psychographics -------------------------------------------
@@ -108,6 +110,18 @@ export interface StudyTheme {
 export interface StudyClarifiers {
   [keyword: string]: string
   default: string
+}
+
+// -- Opening flow ---------------------------------------------
+
+export interface OpeningFlowItem {
+  id:           string
+  type:         'experience_rating' | 'nps' | 'open_end'
+  // open_end only:
+  prompt?:      string
+  exportLabel?: string
+  clarify?:     boolean
+  useAI?:       boolean
 }
 
 // -- Study config ---------------------------------------------
@@ -147,6 +161,9 @@ export interface StudyConfig {
   q4ExportLabel?:     string
   q4Clarify?:         boolean   // enable clarifier follow-up for Q4
   q4Enabled?:         boolean   // default true — set false to skip Q4 entirely
+
+  // Opening flow (drag-ordered): absent = legacy npsEnabled/experienceEnabled cascade
+  openingFlow?:       OpeningFlowItem[]
 
   // Custom questions (drag-ordered)
   questions?:         SurveyQuestion[]

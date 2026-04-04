@@ -3,7 +3,7 @@
 // Uses survey blueprints to configure opening patterns (rating-first vs open-first)
 
 import type { StudyDraft } from './studyDraft'
-import type { StudyConfig, SurveyQuestion, LikertScaleOption } from './types'
+import type { StudyConfig, SurveyQuestion, LikertScaleOption, OpeningFlowItem } from './types'
 import type { Industry } from './industryDefaults'
 import type { StudyType } from './surveyBlueprints'
 import { INDUSTRY_DEFAULTS, INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS } from './industryDefaults'
@@ -275,6 +275,29 @@ export function generateStudyDraft(answers: WizardAnswers): StudyDraft {
   config.npsEnabled = blueprint.enableNPS
   config.studyType = answers.studyType
   config.templateLabel = blueprint.templateLabel
+
+  // Build openingFlow from blueprint
+  const openingFlow: OpeningFlowItem[] = []
+  if (blueprint.enableNPS) {
+    openingFlow.push({ id: 'nps', type: 'nps' })
+  }
+  if (blueprint.enableExperienceRating) {
+    openingFlow.push({ id: 'experience_rating', type: 'experience_rating' })
+  }
+  if (!blueprint.enableNPS && !blueprint.enableExperienceRating) {
+    // Awareness/perception/journey studies — open-end first, then experience rating
+    openingFlow.push({
+      id: 'opening_oe',
+      type: 'open_end',
+      prompt: (config as any).ratingPrompt || 'In your own words, tell us about your experience.',
+      exportLabel: 'Opening Response',
+      clarify: true,
+    })
+    openingFlow.push({ id: 'experience_rating', type: 'experience_rating' })
+    // Turn experience rating back on so the engine has a fallback
+    config.experienceEnabled = true
+  }
+  config.openingFlow = openingFlow
 
   // Get suggested questions for this industry (up to 2)
   const suggestedQuestions = answers.industry === 'other'

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import type { Study, StudyConfig, Sentiment, SurveyPayload } from '@/lib/types'
+import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem } from '@/lib/types'
 
 // ============================================================
 // useSurveyEngine
@@ -32,6 +32,7 @@ interface State {
   psychoAnswers:   Record<string, string>
   demographics:    Record<string, string>
   startTime:       number
+  openingAnswers:  Record<string, string>
 }
 
 export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Props) {
@@ -46,6 +47,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     psychoQuestions: [], psychoIdx: 0, psychoAnswers: {},
     demographics: {},
     startTime: Date.now(),
+    openingAnswers: {},
   })
 
   // ── Session ID — persists for this browser tab, new on new visit ──────────
@@ -98,6 +100,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
       if (s.rating != null) partialPayload.experienceRating = { score: s.rating, label: s.ratingLabel || '', sentiment: s.sentiment || 'neutral' }
       if (s.answers.q1 || s.answers.q2 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
+      if (Object.keys(s.openingAnswers).length) partialPayload.openingAnswers = s.openingAnswers
       if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
       if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
       if (Object.values(s.demographics).some(function(v) { return !!v })) partialPayload.demographics = s.demographics
@@ -531,7 +534,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
   const stepCustomQuestions = useCallback(async () => {
-    const allQuestions = config.questions ?? []
+    const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition)
     if (allQuestions.length === 0) { await stepPsychoIntro(); return }
 
     // Randomly sample customQCount questions if set, otherwise show all
@@ -861,6 +864,137 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     await stepPsychoIntro()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, stepPsychoIntro])
 
+  // Run conversation-position extras (questions shown after Q4, before custom-Q phase)
+  const stepConversationExtras = useCallback(async () => {
+    const extras = (config.questions ?? []).filter(q => q.conversationPosition)
+    if (extras.length === 0) { await stepCustomQuestions(); return }
+
+    const customAnswers: Record<string, string | string[]> = { ...state.current.customAnswers }
+
+    for (const q of extras) {
+      clearInput()
+      await showTyping(800)
+      addMsg('bot', q.prompt)
+      state.current.currentQuestion = q.prompt
+
+      await new Promise<void>(resolve => {
+        if (!inputRef.current) { resolve(); return }
+
+        if (q.type === 'open') {
+          const wrap = document.createElement('div')
+          wrap.className = 'flex flex-col gap-2 mt-1.5'
+          const row = document.createElement('div')
+          row.className = 'flex gap-2 items-end w-full'
+          const ta = document.createElement('textarea')
+          ta.cols = 1
+          ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+          ta.rows = 1
+          ta.placeholder = 'Share your thoughts...'
+          ta.style.cssText = `background:rgba(255,255,255,0.06);border:1.5px solid ${config.theme.primaryColor}28;color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;`
+          ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
+          ta.onblur  = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
+          ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px' }
+          const sendBtn = document.createElement('button')
+          sendBtn.textContent = '→'
+          sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+          sendBtn.style.cssText = `background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;`
+          ta.oninput = () => {
+            ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
+            sendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+            sendBtn.style.color      = ta.value.trim() ? '#fff' : 'rgba(255,255,255,0.4)'
+          }
+          ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
+          sendBtn.onclick = () => {
+            const v = ta.value.trim()
+            if (!v && q.required) return
+            wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            if (v) addMsg('user', v)
+            customAnswers[q.id] = v
+            clearInput(); resolve()
+          }
+          row.append(ta, sendBtn)
+          wrap.appendChild(row)
+          if (!q.required) {
+            const skipBtn = document.createElement('button')
+            skipBtn.textContent = 'Skip'
+            skipBtn.className = 'text-xs self-start px-2 py-1'
+            skipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-family:inherit;'
+            skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
+            wrap.appendChild(skipBtn)
+          }
+          clearInput()
+          inputRef.current.appendChild(wrap)
+          setTimeout(() => ta.focus(), 100)
+          scrollBottom()
+
+        } else if (q.type === 'radio') {
+          const opts = q.options ?? []
+          const col = document.createElement('div')
+          col.className = 'flex flex-col gap-1.5 mt-1.5'
+          opts.forEach(opt => {
+            const btn = document.createElement('button')
+            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
+            btn.style.cssText = 'background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.82);cursor:pointer;font-family:inherit;'
+            btn.textContent = opt
+            btn.onmouseenter = () => { btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '18' }
+            btn.onmouseleave = () => { btn.style.borderColor = 'rgba(255,255,255,0.12)'; btn.style.background = 'rgba(255,255,255,0.05)' }
+            btn.onclick = () => {
+              col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '20'
+              addMsg('user', opt); customAnswers[q.id] = opt; clearInput(); resolve()
+            }
+            col.appendChild(btn)
+          })
+          clearInput()
+          inputRef.current.appendChild(col)
+          scrollBottom()
+
+        } else if (q.type === 'checkbox') {
+          const opts = q.options ?? []
+          const selected = new Set<string>()
+          const wrap = document.createElement('div')
+          wrap.className = 'flex flex-col gap-1.5 mt-1.5'
+          opts.forEach(opt => {
+            const btn = document.createElement('button')
+            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
+            btn.style.cssText = 'background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.82);cursor:pointer;font-family:inherit;'
+            btn.textContent = opt
+            btn.onclick = () => {
+              if (selected.has(opt)) { selected.delete(opt); btn.style.borderColor = 'rgba(255,255,255,0.12)'; btn.style.background = 'rgba(255,255,255,0.05)' }
+              else { selected.add(opt); btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '20' }
+              doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+              doneBtn.style.color      = selected.size > 0 ? '#fff' : 'rgba(255,255,255,0.4)'
+            }
+            wrap.appendChild(btn)
+          })
+          const doneBtn = document.createElement('button')
+          doneBtn.textContent = q.required ? 'Select at least one' : 'Done / Skip'
+          doneBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
+          doneBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;'
+          doneBtn.onclick = () => {
+            if (selected.size === 0 && q.required) return
+            wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            const arr = Array.from(selected)
+            if (arr.length > 0) addMsg('user', arr.join(', '))
+            customAnswers[q.id] = arr; clearInput(); resolve()
+          }
+          wrap.appendChild(doneBtn)
+          clearInput()
+          inputRef.current.appendChild(wrap)
+          scrollBottom()
+        } else {
+          resolve()
+        }
+      })
+    }
+
+    state.current.customAnswers = { ...state.current.customAnswers, ...customAnswers }
+    savePartial()
+    await stepCustomQuestions()
+  }, [addMsg, clearInput, config, inputRef, savePartial, scrollBottom, showTyping, state, stepCustomQuestions])
+
+  const stepConversationExtrasRef = useRef(stepConversationExtras)
+  stepConversationExtrasRef.current = stepConversationExtras
 
   const progressFlow = useCallback(async (qKey: 'q3' | 'q4') => {
     if (qKey === 'q3') {
@@ -868,7 +1002,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
       if (config.q4Enabled === false) {
         await showTyping(700)
         addMsg('bot', 'Got it -- that\'s genuinely helpful.')
-        await stepCustomQuestions()
+        await stepConversationExtras()
         return
       }
       await showTyping(700)
@@ -887,9 +1021,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
         await showTyping(700)
         addMsg('bot', 'Thank you -- we\'ll make sure that gets to the right people.')
       }
-      await stepCustomQuestions()
+      await stepConversationExtras()
     }
-  }, [addMsg, config, showTyping, stepCustomQuestions])
+  }, [addMsg, config, showTyping, stepConversationExtras])
 
   const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
@@ -1157,12 +1291,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           showLikertFollowUpInput(next, storageKey)
         }
 
-        const npsEnabled        = config.npsEnabled !== false
-        const experienceEnabled = config.experienceEnabled !== false
-
-        // Jump straight to Q3 after scores are captured
+        // Jump straight to Q3 after opening flow is complete
         const stepQ3 = async () => {
-          // Skip Q3 entirely if disabled
           if (config.q3Enabled === false) {
             await progressFlowRef.current('q3')
             return
@@ -1178,9 +1308,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           }
         }
 
-        // Experience rating step
-        const doExperienceRating = async () => {
-          if (!experienceEnabled) { await stepQ3(); return }
+        // Parameterized experience rating — calls next() when done
+        const doExperienceRating = async (next: () => Promise<void>) => {
           clearInput()
           await showTyping(900)
           addMsg('bot', config.ratingPrompt)
@@ -1201,7 +1330,6 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
               rb.style.background  = config.theme.primaryColor + '20'
               state.current.rating      = r.score
               state.current.ratingLabel = r.label
-              // Derive sentiment: top-2-box positive, bottom-2-box negative, middle neutral
               var maxScore = Math.max.apply(null, config.ratingScale.map(function(x: any) { return x.score }))
               var minScore = Math.min.apply(null, config.ratingScale.map(function(x: any) { return x.score }))
               var range = maxScore - minScore || 1
@@ -1209,7 +1337,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
               state.current.sentiment = pct >= 0.6 ? 'positive' : pct <= 0.4 ? 'negative' : 'neutral'
               savePartial()
               addMsg('user', r.emoji + ' ' + r.label)
-              await showLikertFollowUp(config.experienceFollowUp, r.score, stepQ3, 'q2')
+              await showLikertFollowUp(config.experienceFollowUp, r.score, next, 'q2')
             }
             ratingRow.appendChild(rb)
           })
@@ -1217,50 +1345,130 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
           scrollBottom()
         }
 
-        // NPS step (or skip)
-        if (!npsEnabled) {
-          await doExperienceRating()
+        // Parameterized NPS — calls next() when done
+        const doNPS = async (next: () => Promise<void>) => {
+          clearInput()
+          await showTyping(1000)
+          const npsPrompt = config.npsPrompt || 'How likely are you to recommend us to a friend or someone you know?'
+          addMsg('bot', npsPrompt)
+          await showTyping(300)
+          if (!inputRef.current) return
+          const stars = [
+            { stars: '⭐',         label: '1 - No',         score: 1 },
+            { stars: '⭐⭐',       label: '2 - Unlikely',   score: 2 },
+            { stars: '⭐⭐⭐',     label: '3 - Maybe',      score: 3 },
+            { stars: '⭐⭐⭐⭐',   label: '4 - Likely',     score: 4 },
+            { stars: '⭐⭐⭐⭐⭐', label: '5 - Definitely!', score: 5 },
+          ]
+          const npsRow = document.createElement('div')
+          npsRow.className = 'flex gap-1 mt-1.5 flex-wrap'
+          stars.forEach(s => {
+            const sb = document.createElement('button')
+            sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
+            sb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
+            sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
+            sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '18' }
+            sb.onmouseleave = () => { sb.style.borderColor = 'rgba(255,255,255,0.1)'; sb.style.background = 'rgba(255,255,255,0.05)' }
+            sb.onclick = async () => {
+              npsRow.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              sb.style.borderColor = config.theme.primaryColor
+              sb.style.background  = config.theme.primaryColor + '20'
+              state.current.npsScore = s.score
+              state.current.npsLabel = s.label
+              state.current.sentiment = s.score >= 4 ? 'positive' : s.score >= 3 ? 'neutral' : 'negative'
+              savePartial()
+              addMsg('user', s.stars + ' ' + s.label)
+              await showLikertFollowUp(config.npsFollowUp, s.score, next, 'q1')
+            }
+            npsRow.appendChild(sb)
+          })
+          inputRef.current.appendChild(npsRow)
+          scrollBottom()
+        }
+
+        // Opening open-end — calls next() when done
+        const doOpeningOpenEnd = async (item: OpeningFlowItem, next: () => Promise<void>) => {
+          clearInput()
+          await showTyping(900)
+          const prompt = item.prompt || 'In your own words, tell us about your experience.'
+          addMsg('bot', prompt)
+          if (!inputRef.current) return
+          const oeWrap = document.createElement('div')
+          oeWrap.className = 'flex flex-col gap-2 mt-1.5'
+          const oeRow = document.createElement('div')
+          oeRow.className = 'flex gap-2 items-end w-full'
+          const ta = document.createElement('textarea')
+          ta.cols = 1
+          ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+          ta.rows = 1
+          ta.placeholder = 'Share your thoughts...'
+          ta.style.cssText = `background:rgba(255,255,255,0.06);border:1.5px solid ${config.theme.primaryColor}28;color:rgba(255,255,255,0.9);outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;`
+          ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
+          ta.onblur  = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
+          const oeSendBtn = document.createElement('button')
+          oeSendBtn.textContent = '→'
+          oeSendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+          oeSendBtn.style.cssText = `background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:inherit;`
+          ta.oninput = () => {
+            ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
+            oeSendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : 'rgba(255,255,255,0.15)'
+            oeSendBtn.style.color      = ta.value.trim() ? '#fff' : 'rgba(255,255,255,0.4)'
+          }
+          ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); oeSendBtn.click() } }
+          oeSendBtn.onclick = async () => {
+            const v = ta.value.trim()
+            oeWrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            if (v) { addMsg('user', v); state.current.openingAnswers[item.id] = v }
+            savePartial()
+            clearInput()
+            await next()
+          }
+          oeRow.append(ta, oeSendBtn)
+          oeWrap.appendChild(oeRow)
+          const oeSkipBtn = document.createElement('button')
+          oeSkipBtn.textContent = 'Skip'
+          oeSkipBtn.className = 'text-xs self-start px-2 py-1'
+          oeSkipBtn.style.cssText = 'color:rgba(255,255,255,0.3);background:none;border:none;cursor:pointer;font-family:inherit;'
+          oeSkipBtn.onmouseenter = () => { oeSkipBtn.style.color = 'rgba(255,255,255,0.6)' }
+          oeSkipBtn.onmouseleave = () => { oeSkipBtn.style.color = 'rgba(255,255,255,0.3)' }
+          oeSkipBtn.onclick = async () => {
+            oeWrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
+            clearInput(); await next()
+          }
+          oeWrap.appendChild(oeSkipBtn)
+          clearInput()
+          inputRef.current.appendChild(oeWrap)
+          setTimeout(() => ta.focus(), 100)
+          scrollBottom()
+        }
+
+        // Build opening flow — respects config.openingFlow; falls back to legacy flags
+        const openingFlow: OpeningFlowItem[] | undefined = config.openingFlow
+        if (!openingFlow || openingFlow.length === 0) {
+          const npsEnabledLegacy        = config.npsEnabled !== false
+          const experienceEnabledLegacy = config.experienceEnabled !== false
+          if (!npsEnabledLegacy && !experienceEnabledLegacy) { await stepQ3(); return }
+          if (!npsEnabledLegacy) { await doExperienceRating(stepQ3); return }
+          if (!experienceEnabledLegacy) { await doNPS(stepQ3); return }
+          await doNPS(async () => doExperienceRating(stepQ3))
           return
         }
 
-        clearInput()
-        await showTyping(1000)
-        const npsPrompt = config.npsPrompt || 'How likely are you to recommend us to a friend or someone you know?'
-        addMsg('bot', npsPrompt)
-        await showTyping(300)
-
-        if (!inputRef.current) return
-        const stars = [
-          { stars: '⭐',         label: '1 - No',         score: 1 },
-          { stars: '⭐⭐',       label: '2 - Unlikely',   score: 2 },
-          { stars: '⭐⭐⭐',     label: '3 - Maybe',      score: 3 },
-          { stars: '⭐⭐⭐⭐',   label: '4 - Likely',     score: 4 },
-          { stars: '⭐⭐⭐⭐⭐', label: '5 - Definitely!', score: 5 },
-        ]
-        const npsRow = document.createElement('div')
-        npsRow.className = 'flex gap-1 mt-1.5 flex-wrap'
-        stars.forEach(s => {
-          const sb = document.createElement('button')
-          sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
-          sb.style.cssText = 'background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);cursor:pointer;font-family:inherit;'
-          sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:rgba(255,255,255,0.4);text-align:center">' + s.label + '</span>'
-          sb.onmouseenter = () => { sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '18' }
-          sb.onmouseleave = () => { sb.style.borderColor = 'rgba(255,255,255,0.1)'; sb.style.background = 'rgba(255,255,255,0.05)' }
-          sb.onclick = async () => {
-            npsRow.querySelectorAll('button').forEach((b: any) => b.disabled = true)
-            sb.style.borderColor = config.theme.primaryColor
-            sb.style.background  = config.theme.primaryColor + '20'
-            state.current.npsScore = s.score
-            state.current.npsLabel = s.label
-            state.current.sentiment = s.score >= 4 ? 'positive' : s.score >= 3 ? 'neutral' : 'negative'
-            savePartial()
-            addMsg('user', s.stars + ' ' + s.label)
-            await showLikertFollowUp(config.npsFollowUp, s.score, doExperienceRating, 'q1')
+        // Build chain right-to-left so each item wraps its successor
+        let openingNext: () => Promise<void> = stepQ3
+        for (let oi = openingFlow.length - 1; oi >= 0; oi--) {
+          const item = openingFlow[oi]
+          const capturedNext = openingNext
+          if (item.type === 'nps') {
+            openingNext = async () => doNPS(capturedNext)
+          } else if (item.type === 'experience_rating') {
+            openingNext = async () => doExperienceRating(capturedNext)
+          } else if (item.type === 'open_end') {
+            const capturedItem = item
+            openingNext = async () => doOpeningOpenEnd(capturedItem, capturedNext)
           }
-          npsRow.appendChild(sb)
-        })
-        inputRef.current.appendChild(npsRow)
-        scrollBottom()
+        }
+        await openingNext()
       }
       row.appendChild(btn)
     })
