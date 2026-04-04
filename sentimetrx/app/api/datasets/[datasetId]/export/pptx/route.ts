@@ -1270,7 +1270,7 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   if (title === 'Psychographic Profile') {
     try {
       slide.addImage({
-        path: 'https://www.dropbox.com/scl/fi/u5jd9xnffkfmm5qkdd5uy/psychographics.png?rlkey=31664sgb2kkanwe2kshbdp0zp&dl=1',
+        path: '/Users/sanjaypatel/Downloads/psychographics.jpg',
         x: W - 2.8, y: 0.9, w: 2.4, h: 2.4, rasterize: true,
       })
     } catch (e) {
@@ -1573,22 +1573,20 @@ export async function POST(req: Request, { params }: Params) {
         })
         if (q?.prompt) f.prompt = q.prompt
       }
-      // Try psychographic bank
+      // Try psychographic bank — match exactly how sanitizeColumnName works
       if (!f.prompt && f.field.startsWith('psycho_') && studyConfig.psychographicBank) {
-        const pq = studyConfig.psychographicBank.find((pp: any) => {
-          const key = 'psycho_' + (pp.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_')
-          return f.field === key
-        })
+        const sanitize = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+        const fieldKey = f.field.replace('psycho_', '')
+        const pq = studyConfig.psychographicBank.find((pp: any) => sanitize(pp.key) === fieldKey)
         if (pq?.q) f.prompt = pq.q
       }
-      // Try demo fields
+      // Try demo fields — match exactly how sanitizeColumnName works
       if (!f.prompt && f.field.startsWith('demo_') && studyConfig.demoFields) {
-        const df = studyConfig.demoFields.find((dd: any) => {
-          const key = 'demo_' + (dd.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_')
-          return f.field === key
-        })
+        const sanitize = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+        const fieldKey = f.field.replace('demo_', '')
+        const df = studyConfig.demoFields.find((dd: any) => sanitize(dd.key) === fieldKey)
         if (df) {
-          f.prompt = df.label || df.key || ''
+          f.prompt = df.label
         }
       }
     })

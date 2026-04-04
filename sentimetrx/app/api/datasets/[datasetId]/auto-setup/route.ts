@@ -47,14 +47,16 @@ export async function POST(_req: Request, { params }: Params) {
   }
   if (study.config.psychographicBank) {
     study.config.psychographicBank.forEach(function(pq: any) {
-      var field = schema.fields.find(function(f: any) { return f.field === 'psycho_' + (pq.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_') })
+      var sanitized = (pq.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      var field = schema.fields.find(function(f: any) { return f.field === 'psycho_' + sanitized })
       if (field && !field.prompt) field.prompt = pq.q
     })
   }
   if (study.config.demoFields) {
     study.config.demoFields.forEach(function(df: any) {
       if (!df.enabled) return
-      var field = schema.fields.find(function(f: any) { return f.field === 'demo_' + (df.key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_') })
+      var sanitized = (df.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      var field = schema.fields.find(function(f: any) { return f.field === 'demo_' + sanitized })
       if (field && !field.prompt) field.prompt = df.label
     })
   }
