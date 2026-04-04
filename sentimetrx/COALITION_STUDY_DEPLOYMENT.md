@@ -92,6 +92,7 @@ Randomly shows 2 questions per session:
 // In your study creation route or admin panel:
 import { coalitionDonorStudyConfig, coalitionStudyMetadata } from '@/lib/coalitionStudyTemplate'
 import { createClient } from '@/lib/supabase/server'
+import { v4 as uuidv4 } from 'uuid'
 
 const supabase = createClient()
 
@@ -123,6 +124,8 @@ return study
 ```typescript
 // Create a seeding script at scripts/seed-coalition-study.ts
 import { coalitionDonorStudyConfig, coalitionStudyMetadata } from '@/lib/coalitionStudyTemplate'
+import { v4 as uuidv4 } from 'uuid'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export async function seedCoalitionStudy(supabase: SupabaseClient, orgId: string, userId: string) {
   return supabase.from('studies').insert({

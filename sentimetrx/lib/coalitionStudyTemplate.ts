@@ -5,7 +5,12 @@
 // Liza Coburn (TRUIST), Jim Schreiber (Attorney)
 
 import { StudyConfig } from '@/lib/types'
-import { v4 as uuidv4 } from 'uuid'
+
+// Simple ID generator for survey questions
+const generateId = (function() {
+  let counter = 0
+  return function() { return 'q_' + (++counter) }
+})()
 
 /**
  * COALITION FOR THE HOMELESS — DONOR INSIGHT STUDY
@@ -66,7 +71,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
   questions: [
     // ─── SECTION 1: GIVING PROFILE & MINDSET (3Q) ───
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "Do you feel homelessness presents a critical problem in Central Florida?",
       exportLabel: "Problem Perception",
@@ -81,7 +86,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "Who do you believe should primarily be responsible for solving homelessness in our community?",
       exportLabel: "Responsibility View",
@@ -96,7 +101,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "How do you typically approach charitable donations?",
       exportLabel: "Giving Pattern",
@@ -112,7 +117,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
 
     // ─── SECTION 2: MOTIVATION & VALUES (3Q) ───
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "What is the primary reason you donate to organizations like the Coalition?",
       exportLabel: "Why You Give",
@@ -128,7 +133,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'likert',
       prompt: "How important is evidence of impact tied to specific programs or individuals when deciding to give or increase your donation?",
       exportLabel: "Impact Importance",
@@ -142,7 +147,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "Which best describes your giving capacity and interest in the Coalition?",
       exportLabel: "Donor Capacity",
@@ -158,7 +163,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
 
     // ─── SECTION 3: COMMUNICATION & RECOGNITION (3Q) ───
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'checkbox',
       prompt: "What is your preferred method for receiving updates from the Coalition? (Select all that apply)",
       exportLabel: "Communication Methods",
@@ -174,7 +179,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "How often would you like to hear from the Coalition?",
       exportLabel: "Communication Frequency",
@@ -189,7 +194,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "When you give to an organization, what form of recognition matters most to you?",
       exportLabel: "Recognition Preference",
@@ -206,7 +211,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
 
     // ─── SECTION 4: ENGAGEMENT & INVOLVEMENT (2Q) ───
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "Are you interested in volunteering for the Coalition in addition to your financial support?",
       exportLabel: "Volunteer Interest",
@@ -220,7 +225,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "Which aspect of the Coalition's work is MOST compelling to you?",
       exportLabel: "Compelling Programs",
@@ -239,7 +244,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
 
     // ─── SECTION 5: RETENTION & GROWTH (2Q) ───
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'checkbox',
       prompt: "What would cause you to stop donating to the Coalition? (Select all that apply)",
       exportLabel: "Churn Reasons",
@@ -258,7 +263,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'checkbox',
       prompt: "What would motivate you to increase your monthly, quarterly, or yearly donation? (Select all that apply)",
       exportLabel: "Growth Triggers",
@@ -278,7 +283,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
 
     // ─── SECTION 6: LEGACY & STRATEGIC GIVING (2Q) ───
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "If you have a will or plan to make one, would you consider a bequest to the Coalition?",
       exportLabel: "Bequest Interest",
@@ -293,7 +298,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'radio',
       prompt: "Which type of giving is most attractive to you?",
       exportLabel: "Preferred Giving Vehicle",
@@ -311,7 +316,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
 
     // ─── SECTION 7: OPEN-ENDED INSIGHTS (2Q) ───
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'open',
       prompt: "Are there any misconceptions about the Coalition's work that, if addressed directly, would improve your confidence and increase your generosity?",
       exportLabel: "Misconceptions & Barriers",
@@ -320,7 +325,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       useAI: false,
     },
     {
-      id: uuidv4(),
+      id: generateId(),
       type: 'open',
       prompt: "In your view, what distinguishes donors who become long-term supporters and advocates from those who give once and stop?",
       exportLabel: "Multi-Year Supporter Factors",
