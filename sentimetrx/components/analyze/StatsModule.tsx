@@ -1149,10 +1149,13 @@ function OutlierAnalysisPanel({ numFields, catFields, data }: {
         <Card style={{ padding: '40px 24px', textAlign: 'center' }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>\u2714</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: T.textMid, marginBottom: 6 }}>No significant outliers at p &lt; {threshold}</div>
-          <div style={{ fontSize: 13, color: T.textMute, marginBottom: 16 }}>All groups are statistically similar to the overall mean.</div>
-          <button onClick={function() { setShowAll(true) }} style={{ padding: '7px 18px', fontSize: 13, fontWeight: 600, border: '1px solid ' + T.border, borderRadius: 8, background: T.bg, color: T.textMid, cursor: 'pointer' }}>
-            Show all groups
-          </button>
+          <div style={{ fontSize: 13, color: T.textMute, marginBottom: 16 }}>All groups are statistically similar to the overall mean at this threshold.</div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={function() { setShowAll(true) }} style={{ padding: '7px 18px', fontSize: 13, fontWeight: 600, border: '1px solid ' + T.accent, borderRadius: 8, background: T.accentBg, color: T.accent, cursor: 'pointer' }}>
+              View all groups
+            </button>
+            <span style={{ fontSize: 12, color: T.textMute, alignSelf: 'center' }}>or try a looser threshold (0.10) above</span>
+          </div>
         </Card>
       ) : (
         <Card>
