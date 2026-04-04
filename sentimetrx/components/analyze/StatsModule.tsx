@@ -1317,14 +1317,13 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [samplingMeta, setSamplingMeta] = useState<{ sampled: boolean; sampleSize: number; totalRows: number } | null>(null)
   var { filters } = useFilters()
 
-  // Max rows to load into the browser. Datasets larger than this are systematically
-  // sampled server-side so the analysis remains fast and memory-safe.
-  // Set to 0 to bypass sampling (triggered by "Load full dataset").
-  var [sampleCap, setSampleCap] = useState<number>(10_000)
+  // null = user hasn't picked yet (nothing loads until they choose).
+  // 0 = load all rows (no cap). Any positive number = systematic sample cap.
+  var [sampleCap, setSampleCap] = useState<number | null>(null)
 
-  // Load rows — requests a sample cap so large datasets don't time out.
-  // When sampleCap === 0, loads all rows (user explicitly bypassed sampling).
+  // Load rows — only fires after the user picks a sample size.
   useEffect(function() {
+    if (sampleCap === null) return          // waiting for user to choose
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     var cancelled = false
@@ -1351,21 +1350,24 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [mcResults, setMcResults] = useState<Record<string, MCResult>>({})
   var [mcRunning, setMcRunning] = useState(false)
 
-  var filteredData = applyFilters(rows, filters)
+  var allSchemaFields = useMemo(function() {
+    return schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
+  }, [schema.fields])
 
-  var allSchemaFields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
+  var hasThemes = !!(themeModel && themeModel.themes && themeModel.themes.length > 0)
 
-  var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+  var filteredData = useMemo(function() {
+    return applyFilters(rows, filters)
+  }, [rows, filters])
 
-  // Inject __themes__ column into each row — assign primary (best-matching) theme name
-  // Also inject __mapped_Field__ columns for categoricals with numeric remapping
-  var mappedFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
-  var enrichedData = filteredData
-  if ((hasThemes || mappedFields.length > 0) && filteredData.length > 0) {
+  // Inject __themes__ and remapped-numeric columns — memoised so stable refs don't re-trigger effects
+  var enrichedData = useMemo(function() {
+    var mappedFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
+    if (!hasThemes && mappedFields.length === 0) return filteredData
+    if (filteredData.length === 0) return filteredData
     var openField = hasThemes ? (themeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
-    enrichedData = filteredData.map(function(row) {
+    return filteredData.map(function(row) {
       var enriched = Object.assign({}, row)
-      // Themes
       if (hasThemes && openField) {
         var text = String(row[openField] || '').toLowerCase()
         if (!text.trim()) {
@@ -1382,7 +1384,6 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           enriched['__themes__'] = bestTheme || 'Unclassified'
         }
       }
-      // Mapped numeric values
       mappedFields.forEach(function(f) {
         var catVal = String(row[f.field] || '')
         var numVal = f.remapping![catVal]
@@ -1390,26 +1391,36 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
       })
       return enriched
     })
-  }
+  }, [filteredData, hasThemes, allSchemaFields, themeModel])
 
-  // Add virtual fields to schema
-  var allFields = allSchemaFields.slice()
-  if (hasThemes) allFields = allFields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as any])
-  mappedFields.forEach(function(f) {
-    allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
-  })
+  var mappedFields = useMemo(function() {
+    return allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
+  }, [allSchemaFields])
 
-  var asc = function(a: SchemaFieldConfig, b: SchemaFieldConfig) { return fl(a).localeCompare(fl(b)) }
-  var numFields  = allFields.filter(function(f) { return f.type === 'numeric' }).sort(asc)
-  var catFields  = allFields.filter(function(f) { return f.type === 'categorical' }).sort(asc)
-  var dateFields = allFields.filter(function(f) { return f.type === 'date' }).sort(asc)
-  var openFields = allFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc)
-  var aliases: Record<string, string> = {}
-  schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
-  if (hasThemes) aliases['__themes__'] = 'Themes'
-  mappedFields.forEach(function(f) { aliases['__mapped_' + f.field + '__'] = (f.label || f.field) })
+  var allFields = useMemo(function() {
+    var af = allSchemaFields.slice()
+    if (hasThemes) af = af.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as any])
+    mappedFields.forEach(function(f) {
+      af = af.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as any])
+    })
+    return af
+  }, [allSchemaFields, hasThemes, mappedFields])
 
-  // Compute bootstrap CIs after enrichedData is ready
+  var asc = useCallback(function(a: SchemaFieldConfig, b: SchemaFieldConfig) { return fl(a).localeCompare(fl(b)) }, [])
+  var numFields  = useMemo(function() { return allFields.filter(function(f) { return f.type === 'numeric' }).sort(asc) }, [allFields, asc])
+  var catFields  = useMemo(function() { return allFields.filter(function(f) { return f.type === 'categorical' }).sort(asc) }, [allFields, asc])
+  var dateFields = useMemo(function() { return allFields.filter(function(f) { return f.type === 'date' }).sort(asc) }, [allFields, asc])
+  var openFields = useMemo(function() { return allFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc) }, [allFields, asc])
+
+  var aliases = useMemo(function() {
+    var out: Record<string, string> = {}
+    schema.fields.forEach(function(f) { if (f.label && f.label !== f.field) out[f.field] = f.label })
+    if (hasThemes) out['__themes__'] = 'Themes'
+    mappedFields.forEach(function(f) { out['__mapped_' + f.field + '__'] = (f.label || f.field) })
+    return out
+  }, [schema.fields, hasThemes, mappedFields])
+
+  // Compute bootstrap CIs after enrichedData is ready — stable deps prevent re-trigger loops
   useEffect(function() {
     if (!enrichedData.length) return
     setMcRunning(true)
@@ -1431,8 +1442,26 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
   var refreshRows = function() {
     setRowsLoaded(false)
+    setRowsLoading(false)
+    setSamplingMeta(null)
     setRows([])
+    setSampleCap(null)   // return to picker
   }
+
+  // ── Confidence / MOE helpers (used in both picker and right sidebar) ──────
+  var Z_TABLE: Record<number, number> = {
+    90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808,
+    95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758,
+  }
+  var z        = Z_TABLE[confidenceLevel] ?? 1.96
+  var reqN     = Math.ceil(z * z * 100)   // min n for ±5% MOE
+  // Use actual sample size when loaded
+  var analysisN = samplingMeta ? samplingMeta.sampleSize : rows.length
+  var moePct   = analysisN > 0 ? (z * Math.sqrt(0.25 / analysisN) * 100).toFixed(1) : null
+  var meetsReq = analysisN >= reqN
+
+  // Preset sample sizes shown in the picker
+  var SAMPLE_PRESETS = [500, 1_000, 5_000, 10_000, 25_000, 50_000]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -1444,8 +1473,9 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           {/* Status */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
             {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
+            {!rowsLoading && sampleCap === null && <span style={{ fontSize: 11, color: T.textFaint }}>No data loaded</span>}
             {rowsLoaded && samplingMeta && !samplingMeta.sampled && (
-              <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>
+              <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {samplingMeta.sampleSize.toLocaleString()} rows</span>
             )}
             {rowsLoaded && samplingMeta?.sampled && (
               <span style={{ fontSize: 11, color: T.textMute }}>
@@ -1460,38 +1490,94 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
         {/* ─── Main content ─────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-          {/* Sampling notice — shown when the dataset exceeds SAMPLE_MAX */}
-          {rowsLoaded && samplingMeta?.sampled && (() => {
-            var n   = samplingMeta.sampleSize
-            var tot = samplingMeta.totalRows
-            // Worst-case margin of error for a proportion at 95% CI: 1.96 * sqrt(0.25/n)
-            var moe = (1.96 * Math.sqrt(0.25 / n) * 100).toFixed(1)
-            return (
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                background: '#eff6ff', border: '1px solid #bfdbfe',
-                borderRadius: 10, padding: '10px 14px', marginBottom: 20,
-                fontSize: 12, color: '#1e40af', lineHeight: 1.5,
-              }}>
-                <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>📊</span>
-                <div>
-                  <strong>Sampled dataset</strong> — analysis is based on {n.toLocaleString()} systematically-sampled rows from {tot.toLocaleString()} total responses.
-                  {' '}Results are statistically representative (worst-case ±{moe}% at 95% CI for any proportion).
-                  <span
-                    style={{ marginLeft: 8, color: '#2563eb', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}
-                    onClick={function() { setSampleCap(0); setSamplingMeta(null); setRowsLoaded(false); setRows([]) }}
-                  >
-                    Load full dataset
-                  </span>
+
+          {/* ── Sample-size picker — shown before any data is loaded ── */}
+          {sampleCap === null && !rowsLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+              <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 16, padding: '32px 36px', maxWidth: 500, width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,.07)' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 6 }}>Choose sample size</div>
+                <div style={{ fontSize: 13, color: T.textMute, marginBottom: 20, lineHeight: 1.6 }}>
+                  Statistical analysis runs in your browser on the loaded rows.
+                  Pick a sample size — larger samples are more precise but take longer to load.
                 </div>
+
+                {/* Confidence slider */}
+                <div style={{ background: T.bg, borderRadius: 10, padding: '14px 16px', marginBottom: 20, border: '1px solid ' + T.border }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>Confidence level</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: T.accent }}>{confidenceLevel}%</span>
+                  </div>
+                  <input type="range" min={90} max={99} step={1} value={confidenceLevel}
+                    onChange={function(e) { setConfidenceLevel(parseInt(e.target.value)) }}
+                    style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4, marginBottom: 4 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textFaint }}>
+                    <span>90%</span><span>99%</span>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 11, color: T.textMute }}>
+                    Min. sample for ±5% MOE: <strong style={{ color: T.textMid }}>{reqN.toLocaleString()}</strong>
+                  </div>
+                </div>
+
+                {/* Preset buttons */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+                  {SAMPLE_PRESETS.map(function(n) {
+                    var moe = (z * Math.sqrt(0.25 / n) * 100).toFixed(1)
+                    var ok  = n >= reqN
+                    return (
+                      <button key={n} onClick={function() { setSampleCap(n) }}
+                        style={{
+                          padding: '10px 6px', borderRadius: 9, cursor: 'pointer',
+                          border: '1px solid ' + (ok ? T.greenMid : T.border),
+                          background: ok ? T.greenBg : T.bg,
+                          color: ok ? T.green : T.textMid, fontWeight: 700,
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                        }}>
+                        <span style={{ fontSize: 13 }}>{n >= 1000 ? (n / 1000) + 'k' : n}</span>
+                        <span style={{ fontSize: 10, fontWeight: 400, color: ok ? T.green : T.textFaint }}>±{moe}%</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <button onClick={function() { setSampleCap(0) }}
+                  style={{ width: '100%', padding: '10px', borderRadius: 9, cursor: 'pointer', border: '1px solid ' + T.border, background: T.bg, color: T.textMid, fontWeight: 600, fontSize: 13 }}>
+                  Full dataset (no limit)
+                </button>
               </div>
-            )
-          })()}
-          {!rowsLoaded ? (
+            </div>
+          )}
+
+          {/* ── Loading spinner ── */}
+          {rowsLoading && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
               <LottieLoader size={80} message="Loading data for statistical analysis..." />
             </div>
-          ) : (
+          )}
+
+          {/* ── Sampled-dataset notice ── */}
+          {rowsLoaded && samplingMeta?.sampled && (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              background: '#eff6ff', border: '1px solid #bfdbfe',
+              borderRadius: 10, padding: '10px 14px', marginBottom: 20,
+              fontSize: 12, color: '#1e40af', lineHeight: 1.5,
+            }}>
+              <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>📊</span>
+              <div>
+                <strong>Sampled dataset</strong> — analysis is based on {samplingMeta.sampleSize.toLocaleString()} systematically-sampled rows from {samplingMeta.totalRows.toLocaleString()} total responses.
+                {' '}Worst-case ±{moePct}% at {confidenceLevel}% CI.
+                <span
+                  style={{ marginLeft: 8, color: '#2563eb', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}
+                  onClick={refreshRows}
+                >
+                  Change sample
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* ── Analysis panels ── */}
+          {rowsLoaded && (
             <>
               {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} />}
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
@@ -1507,76 +1593,58 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
         <div style={{ width: 200, flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
 
           {/* Statistical Validity panel */}
-          {(() => {
-            // z-scores for 90–99 % confidence levels
-            var Z: Record<number, number> = {
-              90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808,
-              95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758,
-            }
-            var z       = Z[confidenceLevel] ?? 1.96
-            // Minimum n to achieve ±5 % MOE: n = z² × 0.25 / 0.05²
-            var reqN    = Math.ceil(z * z * 100)
-            // MOE for current analysis set (use loaded rows count)
-            var analysisN = rows.length
-            var moePct  = analysisN > 0
-              ? (z * Math.sqrt(0.25 / analysisN) * 100).toFixed(1)
-              : null
-            var meetsReq  = analysisN >= reqN
-            var pctFill   = ((confidenceLevel - 90) / 9 * 100).toFixed(0) + '%'
-            return (
-              <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
-                  Statistical Validity
-                </div>
+          <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
+              Statistical Validity
+            </div>
 
-                {/* Slider */}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, color: T.textMute }}>Confidence</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{confidenceLevel}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={90} max={99} step={1}
-                    value={confidenceLevel}
-                    onChange={function(e) { setConfidenceLevel(parseInt(e.target.value)) }}
-                    style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4 }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textFaint, marginTop: 2 }}>
-                    <span>90%</span><span>99%</span>
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Min. sample (±5%)</span>
-                    <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
-                  </div>
-                  {analysisN > 0 && (
-                    <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Your dataset</span>
-                      <span style={{ fontWeight: 700, color: meetsReq ? T.green : T.amber }}>
-                        ±{moePct}%
-                      </span>
-                    </div>
-                  )}
-                  {analysisN > 0 && (
-                    <div style={{
-                      marginTop: 2, fontSize: 10, padding: '4px 7px', borderRadius: 6,
-                      background: meetsReq ? T.greenBg : T.amberBg,
-                      color: meetsReq ? T.green : T.amber,
-                      border: '1px solid ' + (meetsReq ? T.greenMid : T.amberMid),
-                    }}>
-                      {meetsReq
-                        ? `\u2714 ${analysisN.toLocaleString()} rows — sufficient`
-                        : `\u26A0 Need ${(reqN - analysisN).toLocaleString()} more rows`}
-                    </div>
-                  )}
-                </div>
+            {/* Slider */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                <span style={{ fontSize: 10, color: T.textMute }}>Confidence</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{confidenceLevel}%</span>
               </div>
-            )
-          })()}
+              <input type="range" min={90} max={99} step={1} value={confidenceLevel}
+                onChange={function(e) { setConfidenceLevel(parseInt(e.target.value)) }}
+                style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4 }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textFaint, marginTop: 2 }}>
+                <span>90%</span><span>99%</span>
+              </div>
+            </div>
+
+            {/* Stats — use hoisted analysisN / moePct / meetsReq */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Min. sample (±5%)</span>
+                <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
+              </div>
+              {analysisN > 0 && (
+                <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Sample size</span>
+                  <span style={{ fontWeight: 700, color: meetsReq ? T.green : T.amber }}>±{moePct}%</span>
+                </div>
+              )}
+              {analysisN > 0 && (
+                <div style={{
+                  marginTop: 2, fontSize: 10, padding: '4px 7px', borderRadius: 6,
+                  background: meetsReq ? T.greenBg : T.amberBg,
+                  color: meetsReq ? T.green : T.amber,
+                  border: '1px solid ' + (meetsReq ? T.greenMid : T.amberMid),
+                }}>
+                  {meetsReq
+                    ? `\u2714 ${analysisN.toLocaleString()} rows \u2014 sufficient`
+                    : `\u26A0 Need ${(reqN - analysisN).toLocaleString()} more rows`}
+                </div>
+              )}
+              {rowsLoaded && (
+                <button onClick={refreshRows}
+                  style={{ marginTop: 4, fontSize: 10, color: T.accent, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', textDecoration: 'underline' }}>
+                  Change sample
+                </button>
+              )}
+            </div>
+          </div>
 
           <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Analysis Type</div>
