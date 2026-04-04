@@ -4,7 +4,7 @@
 // Keyword highlights, meta fields, optional AI summary via user API key.
 // onBack navigates back to themes list.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Theme, THEME_PALETTE, commentMatchesTheme, highlightKeywords,
   evenSample, sentColor, sentBg,
@@ -477,6 +477,26 @@ export default function CommentsPanel({
     setSummaryLoading(false)
   }
 
+  // Sentinel element at the bottom of the list — IntersectionObserver loads more when visible
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(function() {
+    var el = sentinelRef.current
+    if (!el) return
+    var observer = new IntersectionObserver(
+      function(entries) {
+        if (entries[0].isIntersecting) {
+          setVisibleCount(function(n) { return n + 50 })
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(el)
+    return function() { observer.disconnect() }
+  }, [matched])   // re-attach whenever the matched list changes (sort / theme switch)
+
+  // Reset visible window when sort or matched set changes
+  useEffect(function() { setVisibleCount(50) }, [sortClauses, activeThemes, showAllMode])
+
   const total = parsedData.filter(function(r) {
     return fields.some(function(f) { return String(r[f] || '').trim().length > 0 })
   }).length
@@ -753,13 +773,13 @@ export default function CommentsPanel({
             />
           )
         })}
+        {/* Sentinel — triggers next page load when scrolled into view */}
         {hasMore && (
-          <button
-            onClick={function() { setVisibleCount(function(n) { return n + 50 }) }}
-            style={{ width: '100%', padding: '10px', fontSize: 12, fontWeight: 600, background: 'transparent', border: '1px solid ' + T.border, borderRadius: 9, color: T.textMute, cursor: 'pointer', marginTop: 4 }}
-          >
-            Show more ({matched.length - visibleCount} remaining)
-          </button>
+          <div ref={sentinelRef} style={{ padding: '10px 0', textAlign: 'center' }}>
+            <span style={{ fontSize: 11, color: T.textFaint }}>
+              Loading more… ({matched.length - visibleCount} remaining)
+            </span>
+          </div>
         )}
       </div>
     </div>
