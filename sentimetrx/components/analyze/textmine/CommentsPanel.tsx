@@ -329,7 +329,33 @@ export default function CommentsPanel({
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
-  const [sortBy, setSortBy] = useState<'relevance' | 'length-desc' | 'length-asc'>('relevance')
+
+  // ── Multi-field sort ──────────────────────────────────────────
+  type SortClause = { field: string; dir: 'asc' | 'desc' }
+  const [sortClauses, setSortClauses] = useState<SortClause[]>([])   // empty = random
+  const [showSortModal, setShowSortModal] = useState(false)
+  const [draftClauses, setDraftClauses] = useState<SortClause[]>([]) // edits in modal
+
+  function openSortModal() {
+    setDraftClauses(sortClauses.slice())
+    setShowSortModal(true)
+  }
+  function applySortModal() {
+    setSortClauses(draftClauses.filter(function(c) { return c.field !== '' }))
+    setShowSortModal(false)
+    setVisibleCount(50)
+  }
+  function addDraftClause() {
+    setDraftClauses(function(prev) { return prev.concat([{ field: '__relevance__', dir: 'desc' }]) })
+  }
+  function removeDraftClause(i: number) {
+    setDraftClauses(function(prev) { return prev.filter(function(_, j) { return j !== i }) })
+  }
+  function updateDraftClause(i: number, patch: Partial<SortClause>) {
+    setDraftClauses(function(prev) {
+      return prev.map(function(c, j) { return j === i ? { ...c, ...patch } : c })
+    })
+  }
 
   const fields = activeFields && activeFields.length ? activeFields : [activeField]
   const ignoredSet = new Set(ignoredFields)
@@ -371,27 +397,48 @@ export default function CommentsPanel({
     var raw = showAllMode ? allRows : allRows.filter(function(r) {
       return activeThemes.some(function(t) { return commentMatchesTheme(r.text, t) })
     })
-    // Score relevance = number of distinct keywords matched across all active themes
+
+    // sortClauses empty → keep natural (random-ish) order
+    if (sortClauses.length === 0) return raw
+
+    // Relevance scorer — used when field === '__relevance__'
     var allKws = activeThemes.reduce(function(acc, t) { return acc.concat(t.keywords || []) }, [] as string[])
     var relevanceScore = function(text: string): number {
-      var t = text.toLowerCase()
-      var hits = 0
+      var tl = text.toLowerCase(); var hits = 0
       allKws.forEach(function(kw) {
         var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        if (new RegExp('(?<![a-z])' + esc + '\\w*', 'i').test(t)) hits++
+        if (new RegExp('(?<![a-z])' + esc + '\\w*', 'i').test(tl)) hits++
       })
       return hits
     }
-    var sorted = raw.slice()
-    if (sortBy === 'relevance') {
-      sorted.sort(function(a, b) { return relevanceScore(b.text) - relevanceScore(a.text) })
-    } else if (sortBy === 'length-desc') {
-      sorted.sort(function(a, b) { return b.text.length - a.text.length })
-    } else if (sortBy === 'length-asc') {
-      sorted.sort(function(a, b) { return a.text.length - b.text.length })
+
+    var getSortValue = function(row: CommentRow, field: string): number | string {
+      if (field === '__relevance__') return relevanceScore(row.text)
+      if (field === '__length__')    return row.text.length
+      var val = row.meta[field]
+      if (val == null || val === '') return ''
+      var n = parseFloat(val)
+      return isNaN(n) ? val : n
     }
+
+    var sorted = raw.slice()
+    sorted.sort(function(a, b) {
+      for (var ci = 0; ci < sortClauses.length; ci++) {
+        var clause = sortClauses[ci]
+        var va = getSortValue(a, clause.field)
+        var vb = getSortValue(b, clause.field)
+        var cmp: number
+        if (typeof va === 'number' && typeof vb === 'number') {
+          cmp = va - vb
+        } else {
+          cmp = String(va).localeCompare(String(vb))
+        }
+        if (cmp !== 0) return clause.dir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
     return sorted
-  }, [allRows, activeThemes, sortBy, showAllMode])
+  }, [allRows, activeThemes, sortClauses, showAllMode])
 
   async function generateSummary() {
     if (!matched.length || !apiKey) return
@@ -469,15 +516,24 @@ export default function CommentsPanel({
           {matched.length.toLocaleString()} of {total.toLocaleString()} responses ({matchPct}%)
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <select
-            value={sortBy}
-            onChange={function(e) { setSortBy(e.target.value as typeof sortBy); setVisibleCount(50) }}
-            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid ' + T.border, background: T.bg, color: T.textMid, cursor: 'pointer' }}
+          <button
+            onClick={openSortModal}
+            style={{
+              fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+              border: '1px solid ' + (sortClauses.length > 0 ? T.accent : T.border),
+              background: sortClauses.length > 0 ? T.accentBg : T.bg,
+              color: sortClauses.length > 0 ? T.accent : T.textMid,
+              fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+            }}
           >
-            <option value="relevance">Sort: Relevance</option>
-            <option value="length-desc">Sort: Longest first</option>
-            <option value="length-asc">Sort: Shortest first</option>
-          </select>
+            <span style={{ fontSize: 12 }}>{'\u21C5'}</span>
+            Sort
+            {sortClauses.length > 0 && (
+              <span style={{ fontSize: 10, background: T.accent, color: '#fff', borderRadius: 10, padding: '0 5px', lineHeight: '16px' }}>
+                {sortClauses.length}
+              </span>
+            )}
+          </button>
           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: sentBg(theme.sentiment), color: sentColor(theme.sentiment), border: '1px solid ' + sentColor(theme.sentiment) + '30', fontWeight: 600 }}>
             {theme.sentiment}
           </span>
@@ -538,6 +594,138 @@ export default function CommentsPanel({
           </div>
         )}
       </div>
+
+      {/* ── Sort modal ─────────────────────────────────────── */}
+      {showSortModal && (() => {
+        // Build field options from schema meta columns + built-ins
+        var builtIns = [
+          { value: '__relevance__', label: 'Keyword relevance' },
+          { value: '__length__',    label: 'Response length' },
+        ]
+        var schemaOpts = (schema || [])
+          .filter(function(f) { return f.type !== 'open-ended' && f.type !== 'id' && f.type !== 'ignore' })
+          .map(function(f) {
+            var label = (columnAliases[f.field]) || (f.label && f.label !== f.field ? f.label : null) || f.field
+            return { value: f.field, label: label }
+          })
+        var allOpts = builtIns.concat(schemaOpts)
+
+        // Human-readable summary of active draft clauses for the header
+        var clauseLabel = function(c: { field: string; dir: string }): string {
+          var opt = allOpts.find(function(o) { return o.value === c.field })
+          return (opt ? opt.label : c.field) + ' (' + (c.dir === 'asc' ? 'A→Z' : 'Z→A') + ')'
+        }
+
+        return (
+          <div
+            onClick={function(e) { if (e.target === e.currentTarget) setShowSortModal(false) }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,.18)', width: 460, maxWidth: '95vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* Modal header */}
+              <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>Sort order</div>
+                  <div style={{ fontSize: 11, color: T.textMute, marginTop: 2 }}>
+                    {draftClauses.length === 0 ? 'Random order (default)' : draftClauses.map(clauseLabel).join(', then ')}
+                  </div>
+                </div>
+                <button onClick={function() { setShowSortModal(false) }} style={{ fontSize: 18, color: T.textFaint, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 4px' }}>×</button>
+              </div>
+
+              {/* Clause list */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {draftClauses.length === 0 && (
+                  <div style={{ fontSize: 12, color: T.textFaint, textAlign: 'center', padding: '20px 0' }}>
+                    No sort applied — comments shown in random order.
+                    <br />Click <strong>+ Add sort level</strong> below to sort by a field.
+                  </div>
+                )}
+                {draftClauses.map(function(clause, i) {
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.bg, border: '1px solid ' + T.border, borderRadius: 10, padding: '10px 12px' }}>
+                      {/* Level indicator */}
+                      <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, background: T.accentBg, color: T.accent, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {i + 1}
+                      </div>
+
+                      {/* Field picker */}
+                      <select
+                        value={clause.field}
+                        onChange={function(e) { updateDraftClause(i, { field: e.target.value }) }}
+                        style={{ flex: 1, fontSize: 12, padding: '5px 8px', borderRadius: 7, border: '1px solid ' + T.borderMid, background: '#fff', color: T.text, cursor: 'pointer' }}
+                      >
+                        <optgroup label="Built-in">
+                          {builtIns.map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option> })}
+                        </optgroup>
+                        {schemaOpts.length > 0 && (
+                          <optgroup label="Dataset fields">
+                            {schemaOpts.map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option> })}
+                          </optgroup>
+                        )}
+                      </select>
+
+                      {/* ASC / DESC toggle */}
+                      <div style={{ display: 'flex', borderRadius: 7, border: '1px solid ' + T.borderMid, overflow: 'hidden', flexShrink: 0 }}>
+                        {(['asc', 'desc'] as const).map(function(d) {
+                          var active = clause.dir === d
+                          return (
+                            <button
+                              key={d}
+                              onClick={function() { updateDraftClause(i, { dir: d }) }}
+                              style={{ fontSize: 11, fontWeight: 600, padding: '5px 9px', border: 'none', background: active ? T.accent : '#fff', color: active ? '#fff' : T.textMute, cursor: 'pointer' }}
+                            >
+                              {d === 'asc' ? 'A→Z' : 'Z→A'}
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      {/* Remove */}
+                      <button
+                        onClick={function() { removeDraftClause(i) }}
+                        style={{ flexShrink: 0, fontSize: 16, color: T.textFaint, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 4px' }}
+                      >×</button>
+                    </div>
+                  )
+                })}
+
+                {/* Add level */}
+                {draftClauses.length < 5 && (
+                  <button
+                    onClick={addDraftClause}
+                    style={{ fontSize: 12, fontWeight: 600, padding: '9px', borderRadius: 9, border: '1px dashed ' + T.borderMid, background: 'transparent', color: T.textMute, cursor: 'pointer', marginTop: 2 }}
+                  >
+                    + Add sort level
+                  </button>
+                )}
+              </div>
+
+              {/* Modal footer */}
+              <div style={{ padding: '12px 20px', borderTop: '1px solid ' + T.border, display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
+                <button
+                  onClick={function() { setDraftClauses([]); }}
+                  style={{ fontSize: 12, padding: '7px 14px', borderRadius: 8, border: '1px solid ' + T.border, background: T.bg, color: T.textMid, cursor: 'pointer', fontWeight: 500 }}
+                >
+                  Random (default)
+                </button>
+                <button
+                  onClick={function() { setShowSortModal(false) }}
+                  style={{ fontSize: 12, padding: '7px 14px', borderRadius: 8, border: '1px solid ' + T.border, background: '#fff', color: T.textMid, cursor: 'pointer', fontWeight: 500 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applySortModal}
+                  style={{ fontSize: 12, padding: '7px 14px', borderRadius: 8, border: 'none', background: T.accent, color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Comments list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>

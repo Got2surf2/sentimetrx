@@ -1310,6 +1310,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned }: {
 export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [activePanel, setActivePanel] = useState('descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
+  var [confidenceLevel, setConfidenceLevel] = useState(95)
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
@@ -1502,8 +1503,81 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           )}
         </div>
 
-        {/* ─── Right sidebar: Analysis types ────────────────── */}
+        {/* ─── Right sidebar: Validity + Analysis types ─────── */}
         <div style={{ width: 200, flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+
+          {/* Statistical Validity panel */}
+          {(() => {
+            // z-scores for 90–99 % confidence levels
+            var Z: Record<number, number> = {
+              90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808,
+              95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758,
+            }
+            var z       = Z[confidenceLevel] ?? 1.96
+            // Minimum n to achieve ±5 % MOE: n = z² × 0.25 / 0.05²
+            var reqN    = Math.ceil(z * z * 100)
+            // MOE for current analysis set (use loaded rows count)
+            var analysisN = rows.length
+            var moePct  = analysisN > 0
+              ? (z * Math.sqrt(0.25 / analysisN) * 100).toFixed(1)
+              : null
+            var meetsReq  = analysisN >= reqN
+            var pctFill   = ((confidenceLevel - 90) / 9 * 100).toFixed(0) + '%'
+            return (
+              <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
+                  Statistical Validity
+                </div>
+
+                {/* Slider */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, color: T.textMute }}>Confidence</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{confidenceLevel}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={90} max={99} step={1}
+                    value={confidenceLevel}
+                    onChange={function(e) { setConfidenceLevel(parseInt(e.target.value)) }}
+                    style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textFaint, marginTop: 2 }}>
+                    <span>90%</span><span>99%</span>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Min. sample (±5%)</span>
+                    <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
+                  </div>
+                  {analysisN > 0 && (
+                    <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Your dataset</span>
+                      <span style={{ fontWeight: 700, color: meetsReq ? T.green : T.amber }}>
+                        ±{moePct}%
+                      </span>
+                    </div>
+                  )}
+                  {analysisN > 0 && (
+                    <div style={{
+                      marginTop: 2, fontSize: 10, padding: '4px 7px', borderRadius: 6,
+                      background: meetsReq ? T.greenBg : T.amberBg,
+                      color: meetsReq ? T.green : T.amber,
+                      border: '1px solid ' + (meetsReq ? T.greenMid : T.amberMid),
+                    }}>
+                      {meetsReq
+                        ? `\u2714 ${analysisN.toLocaleString()} rows — sufficient`
+                        : `\u26A0 Need ${(reqN - analysisN).toLocaleString()} more rows`}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+
           <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Analysis Type</div>
           </div>
