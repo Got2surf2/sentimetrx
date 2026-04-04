@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -1272,8 +1272,11 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
     const imagePath = '/Users/sanjaypatel/Downloads/psychographics.jpg'
     if (existsSync(imagePath)) {
       try {
+        const imageBuffer = readFileSync(imagePath)
+        const base64 = imageBuffer.toString('base64')
+        const dataUrl = 'data:image/jpeg;base64,' + base64
         slide.addImage({
-          path: imagePath,
+          data: dataUrl,
           x: W - 2.8, y: 0.9, w: 2.4, h: 2.4, rasterize: true,
         })
       } catch (e) {
