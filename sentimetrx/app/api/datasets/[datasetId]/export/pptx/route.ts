@@ -1269,25 +1269,35 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
 
   // Section emoji icon or image for psychographic
   if (title === 'Psychographic Profile') {
-    const imagePath = process.cwd() + '/public/psychographics.jpg'
-    if (existsSync(imagePath)) {
+    // Prefer PNG (transparent background) over JPEG
+    const pngPath = process.cwd() + '/public/psychographics.png'
+    const jpgPath = process.cwd() + '/public/psychographics.jpg'
+    const imagePath = existsSync(pngPath) ? pngPath : (existsSync(jpgPath) ? jpgPath : null)
+    const mime      = imagePath?.endsWith('.png') ? 'image/png' : 'image/jpeg'
+
+    // Inner circle: x: W-2.1, y: 1.5, w: 2.2, h: 2.2  →  center: (W-1.0, 2.6)
+    // Image is 318×234 (landscape, aspect ≈ 1.359:1). Fill circle width; transparent bg blends with navy.
+    // w = 2.2" fills circle diameter, h = 2.2 * (234/318) ≈ 1.62"
+    const imgW = 2.2
+    const imgH = parseFloat((2.2 * (234 / 318)).toFixed(3))   // ≈ 1.617
+    const cx   = W - 1.0   // inner circle centre x
+    const cy2  = 2.6        // inner circle centre y
+    const imgX = cx - imgW / 2
+    const imgY = cy2 - imgH / 2
+
+    if (imagePath) {
       try {
         const imageBuffer = readFileSync(imagePath)
         const base64 = imageBuffer.toString('base64')
-        const dataUrl = 'data:image/jpeg;base64,' + base64
-        slide.addImage({
-          data: dataUrl,
-          x: W - 2.8, y: 0.9, w: 2.4, h: 2.4, rasterize: true,
-        })
+        const dataUrl = 'data:' + mime + ';base64,' + base64
+        slide.addImage({ data: dataUrl, x: imgX, y: imgY, w: imgW, h: imgH })
       } catch (e) {
-        // Fallback if image fails to load
         slide.addText('\uD83E\uDDE0', {
           x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
           fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
         })
       }
     } else {
-      // Fallback if file doesn't exist
       slide.addText('\uD83E\uDDE0', {
         x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
         fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
