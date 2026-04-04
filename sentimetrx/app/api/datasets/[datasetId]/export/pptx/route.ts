@@ -1269,7 +1269,7 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
 
   // Section emoji icon or image for psychographic
   if (title === 'Psychographic Profile') {
-    const imagePath = '/Users/sanjaypatel/Downloads/psychographics.jpg'
+    const imagePath = process.cwd() + '/public/psychographics.jpg'
     if (existsSync(imagePath)) {
       try {
         const imageBuffer = readFileSync(imagePath)
