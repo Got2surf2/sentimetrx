@@ -187,6 +187,50 @@ export function getNum(field: string, data: Record<string, unknown>[]): number[]
   return data.map(function(r) { return parseFloat(String(r[field] || '').replace(/,/g, '')) }).filter(function(v) { return !isNaN(v) })
 }
 
+// ─── Bootstrap Confidence Intervals (Monte Carlo) ─────────────────────────
+
+export interface MCResult {
+  n: number
+  meanCI: [number, number]
+  medianCI: [number, number]
+  stdCI: [number, number]
+  nIter: number
+  ciLevel: number
+}
+
+export function bootstrapCI(values: number[], nIter: number = 2000, ciLevel: number = 0.95): MCResult {
+  const n = values.length
+  if (n < 10) {
+    return { n: n, meanCI: [NaN, NaN], medianCI: [NaN, NaN], stdCI: [NaN, NaN], nIter: nIter, ciLevel: ciLevel }
+  }
+
+  const means: number[] = [], medians: number[] = [], stds: number[] = []
+  const lo = (1 - ciLevel) / 2, hi = 1 - lo
+
+  for (let i = 0; i < nIter; i++) {
+    const sample = Array.from({ length: n }, function() { return values[Math.floor(Math.random() * n)] })
+    const m = mean(sample)
+    means.push(m)
+    medians.push(median(sample))
+    const sampleVariance = sample.reduce(function(s, v) { return s + (v - m) ** 2 }, 0) / (n - 1)
+    stds.push(Math.sqrt(sampleVariance))
+  }
+
+  const percentile = function(arr: number[], p: number): number {
+    const sorted = [...arr].sort(function(a, b) { return a - b })
+    return sorted[Math.floor(p * sorted.length)]
+  }
+
+  return {
+    n: n,
+    nIter: nIter,
+    ciLevel: ciLevel,
+    meanCI: [percentile(means, lo), percentile(means, hi)],
+    medianCI: [percentile(medians, lo), percentile(medians, hi)],
+    stdCI: [percentile(stds, lo), percentile(stds, hi)],
+  }
+}
+
 // Formatting
 export function fmt2(v: number): string { return isNaN(v) || v == null ? '\u2014' : Number(v).toFixed(2) }
 export function fmt4(v: number): string { return isNaN(v) || v == null ? '\u2014' : Number(v).toFixed(4) }

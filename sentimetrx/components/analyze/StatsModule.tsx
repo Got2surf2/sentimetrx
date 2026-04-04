@@ -36,6 +36,7 @@ import {
   descBL, descBL_naive, corrBL, corrBL_naive,
   ttestBL, ttestBL_naive, anovaBL, anovaBL_naive,
   chiBL, chiBL_naive, regrBL, regrBL_naive,
+  bootstrapCI, type MCResult,
 } from '@/lib/statsUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
@@ -148,7 +149,7 @@ function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
 
 // ─── SUB-PANELS ───────────────────────────────────────────────────────────────
 
-function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[] }) {
+function DescriptivesPanel({ numFields, data, mcResults, mcRunning }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; mcResults: Record<string, MCResult>; mcRunning: boolean }) {
   var [sel, setSel] = useState(numFields[0]?.field || '')
   useEffect(function() { if (!sel && numFields.length) setSel(numFields[0].field) }, [numFields.length])
   var selLabel = (function() { var f = numFields.find(function(nf) { return nf.field === sel }); return f && f.label ? f.label : sel })()
@@ -177,8 +178,24 @@ function DescriptivesPanel({ numFields, data }: { numFields: SchemaFieldConfig[]
             <div style={{ padding: '12px 18px', borderBottom: '1px solid ' + T.border, fontSize: 13, fontWeight: 700, color: T.text }}>{selLabel} <span style={{ fontWeight: 400, color: T.textFaint, fontSize: 11 }}>{'\u2014'} {stats.n} observations</span></div>
             <div style={{ padding: '2px 16px 12px' }}>
               <StatRow label="Mean" value={fmtN(stats.mn)} />
+              {mcResults[sel] && !isNaN(mcResults[sel].meanCI[0]) && (
+                <div style={{ fontSize: 11, color: T.textFaint, paddingLeft: 0, paddingBottom: 8 }}>
+                  95% CI [{fmt2(mcResults[sel].meanCI[0])}, {fmt2(mcResults[sel].meanCI[1])}]
+                  {mcRunning && <span style={{ marginLeft: 6, color: T.textMute }}>(updating…)</span>}
+                </div>
+              )}
               <StatRow label="Median" value={fmtN(stats.med)} />
+              {mcResults[sel] && !isNaN(mcResults[sel].medianCI[0]) && (
+                <div style={{ fontSize: 11, color: T.textFaint, paddingLeft: 0, paddingBottom: 8 }}>
+                  95% CI [{fmt2(mcResults[sel].medianCI[0])}, {fmt2(mcResults[sel].medianCI[1])}]
+                </div>
+              )}
               <StatRow label="Std. Dev." value={fmtN(stats.sd)} />
+              {mcResults[sel] && !isNaN(mcResults[sel].stdCI[0]) && (
+                <div style={{ fontSize: 11, color: T.textFaint, paddingLeft: 0, paddingBottom: 8 }}>
+                  95% CI [{fmt2(mcResults[sel].stdCI[0])}, {fmt2(mcResults[sel].stdCI[1])}]
+                </div>
+              )}
               <StatRow label="Variance" value={fmtN(stats.sd ** 2)} />
               <StatRow label="Min" value={fmtN(stats.min)} />
               <StatRow label="Max" value={fmtN(stats.max)} />
@@ -1313,6 +1330,10 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
     return function() { cancelled = true }
   }, [datasetId])
 
+  // MC state
+  var [mcResults, setMcResults] = useState<Record<string, MCResult>>({})
+  var [mcRunning, setMcRunning] = useState(false)
+
   var filteredData = applyFilters(rows, filters)
 
   var allSchemaFields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
@@ -1371,6 +1392,31 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   if (hasThemes) aliases['__themes__'] = 'Themes'
   mappedFields.forEach(function(f) { aliases['__mapped_' + f.field + '__'] = (f.label || f.field) })
 
+  // Compute bootstrap CIs after enrichedData is ready
+  useEffect(function() {
+    if (!enrichedData.length) return
+    setMcRunning(true)
+    var tid = setTimeout(function() {
+      var results: Record<string, MCResult> = {}
+      numFields.forEach(function(f) {
+        var vals = enrichedData
+          .map(function(r) { return r[f.field] })
+          .filter(function(v) { return typeof v === 'number' && isFinite(v as number) }) as number[]
+        if (vals.length >= 10) {
+          results[f.field] = bootstrapCI(vals)
+        }
+      })
+      setMcResults(results)
+      setMcRunning(false)
+    }, 0)
+    return function() { clearTimeout(tid) }
+  }, [enrichedData, numFields])
+
+  var refreshRows = function() {
+    setRowsLoaded(false)
+    setRows([])
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
@@ -1396,7 +1442,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
             </div>
           ) : (
             <>
-              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} />}
+              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} />}
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
               {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
