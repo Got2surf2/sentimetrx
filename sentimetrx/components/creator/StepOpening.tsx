@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
 import type { RatingOption, LikertFollowUp, OpeningFlowItem, StudyConfig } from '@/lib/types'
+import EmojiPickerPopover, { RATING_SCALE_EMOJIS } from './EmojiPickerPopover'
 
-const EMOJI_OPTIONS = ['😞','😕','😐','😊','😍','🤷','👀','📖','👍','❤️','⭐','💔','😡','😢','😄','🎉','👎','👌','🙌','💪']
 
 const inputCls = 'w-full px-4 py-2.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
 const labelCls = 'block text-xs font-semibold text-gray-600 mb-1'
@@ -485,13 +485,12 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
                 {c.ratingScale.map((r, i) => (
                   <div key={i} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
                     <span className="text-gray-400 text-xs font-bold w-4 flex-shrink-0">{r.score}</span>
-                    <select
+                    <EmojiPickerPopover
                       value={r.emoji}
-                      onChange={e => updateScale(i, 'emoji', e.target.value)}
-                      className="bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-lg outline-none focus:border-orange-400 cursor-pointer flex-shrink-0"
-                    >
-                      {EMOJI_OPTIONS.map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
+                      onChange={v => updateScale(i, 'emoji', v)}
+                      curatedEmojis={RATING_SCALE_EMOJIS}
+                      size="sm"
+                    />
                     <input
                       type="text"
                       value={r.label}

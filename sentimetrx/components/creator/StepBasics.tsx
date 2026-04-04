@@ -4,31 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, type Industry } from '@/lib/industryDefaults'
+import EmojiPickerPopover from './EmojiPickerPopover'
 
-// ── Skin tone modifiers ───────────────────────────────────────
-const SKIN_TONES        = ['', '\u{1F3FB}', '\u{1F3FC}', '\u{1F3FD}', '\u{1F3FE}', '\u{1F3FF}']
-const SKIN_TONE_SAMPLES = ['🖐️','🖐🏻','🖐🏼','🖐🏽','🖐🏾','🖐🏿']
-const SKIN_TONE_LABELS  = ['Default','Light','Medium-light','Medium','Medium-dark','Dark']
-
-// Simple emojis that accept a Fitzpatrick skin tone modifier
-const SKIN_TONE_CAPABLE = new Set([
-  '👋','🤚','🖐️','✋','🖖','👌','✌️','🤞','👍','👎','✊','👊','👏','🙌',
-  '🙏','💪','💅','🤳','👶','🧒','👦','👧','🧑','👱','👨','🧔','👩','🧓',
-  '👴','👵','🙍','🙎','🙅','🙆','💁','🙋','🙇','🤦','🤷','👮','💂','👷',
-  '🕵️','🥷','👼','🎅','🤶','🦸','🦹','🧙','🧝','🧛','🧜','🧚','🤗','🫂',
-])
-
-function applyTone(emoji: string, tone: string): string {
-  if (!tone || !SKIN_TONE_CAPABLE.has(emoji)) return emoji
-  return emoji + tone
-}
-
-// ── Universal emojis ──────────────────────────────────────────
-const UNIVERSAL_EMOJIS = [
-  '🤝','👋','😊','🙏','💬','🗣️','👥','🫂','🤗','✌️','👏','🙌','💪',
-  '💼','📊','🎯','🏆','⭐','🌟','💡','📈','🏅','🔬',
-  '❤️','💚','💙','🧡','💜','🖤','🤍',
-]
+const HERMES = '#E8632A'
 
 // ── Industry emoji sets ───────────────────────────────────────
 const INDUSTRY_EMOJIS: Record<string, string[]> = {
@@ -63,107 +41,6 @@ const PRESETS = [
   { name: 'Gold',   primary: '#d97706', gradient: 'linear-gradient(135deg,#d97706,#92400e)', accent: '#fbbf24' },
 ]
 
-const HERMES = '#E8632A'
-
-// ── Emoji picker ──────────────────────────────────────────────
-function EmojiPicker({ currentEmoji, onSelect, onClose, industry }: { currentEmoji: string; onSelect: (e: string) => void; onClose: () => void; industry: string }) {
-  const [tone,      setTone]      = useState('')
-  const [filter,    setFilter]    = useState('all')
-  const [customVal, setCustomVal] = useState('')
-
-  const industrySet     = industry && industry !== 'other' ? (INDUSTRY_EMOJIS[industry] || []) : []
-  const hasIndustrySet  = industrySet.length > 0
-
-  const displayEmojis = filter === 'industry' && hasIndustrySet
-    ? industrySet
-    : hasIndustrySet
-      ? [...industrySet, ...UNIVERSAL_EMOJIS.filter(e => !industrySet.includes(e))]
-      : UNIVERSAL_EMOJIS
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
-
-      {/* Skin tone row */}
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Skin tone</span>
-        <div className="flex gap-1.5 flex-wrap">
-          {SKIN_TONES.map(function(t, ti) {
-            return (
-              <button
-                key={ti}
-                type="button"
-                onClick={() => setTone(t)}
-                title={SKIN_TONE_LABELS[ti]}
-                className={'text-xl px-2 py-1 rounded-lg border-2 transition-all ' + (tone === t ? 'border-orange-400 bg-orange-50' : 'border-transparent hover:border-gray-200')}
-              >
-                {SKIN_TONE_SAMPLES[ti]}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Filter tabs — only when industry set exists */}
-      {hasIndustrySet && (
-        <div className="flex gap-2 pb-2 border-b border-gray-100">
-          {['industry', 'all'].map(function(f) {
-            return (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={'px-3 py-1 rounded-full text-xs font-semibold transition-all ' + (filter === f ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
-              >
-                {f === 'industry' ? (INDUSTRY_LABELS[industry as Industry] + ' picks') : 'All emojis'}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Grid */}
-      <div className="grid grid-cols-8 gap-1 max-h-52 overflow-y-auto">
-        {displayEmojis.map(function(e) {
-          const rendered = applyTone(e, tone)
-          return (
-            <button
-              key={e}
-              type="button"
-              onClick={() => { onSelect(rendered); onClose() }}
-              title={e}
-              className={'text-2xl p-1.5 rounded-lg hover:bg-orange-50 transition-colors ' + (currentEmoji === rendered ? 'bg-orange-100 ring-2 ring-orange-400' : '')}
-            >
-              {rendered}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Custom input */}
-      <div className="flex gap-2 pt-2 border-t border-gray-100">
-        <input
-          type="text"
-          value={customVal}
-          onChange={e => setCustomVal(e.target.value)}
-          placeholder="Or type any emoji…"
-          className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-orange-400"
-          maxLength={8}
-        />
-        <button
-          type="button"
-          onClick={() => {
-            const val = customVal.trim()
-            if (val) { onSelect(val); onClose(); setCustomVal('') }
-          }}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium text-white"
-          style={{ background: HERMES }}
-        >
-          Use
-        </button>
-      </div>
-    </div>
-  )
-}
 
 // ── Main ──────────────────────────────────────────────────────
 interface Props extends StepProps { onNext: () => void }
@@ -176,7 +53,6 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
   const [otherIndustry, setOtherIndustry] = useState(draft.config.otherIndustry || (draft as any).otherIndustry || '')
   const [applied,       setApplied]       = useState(!!presetIndustry)
   const isEditing = !!presetIndustry   // true when editing an existing study
-  const [showPicker,    setShowPicker]    = useState(false)
 
   // ── Slug (custom URL) ──────────────────────────────────────
   const [slugInput,    setSlugInput]    = useState(draft.slug || '')
@@ -359,30 +235,17 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
 
       {/* Bot identity */}
       <Section title="Bot name & emoji">
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
           <Input value={draft.bot_name} onChange={handleBotNameChange} placeholder="e.g. Aria" className="flex-1" />
-          <button type="button" onClick={() => setShowPicker(v => !v)}
-            className="h-11 w-14 rounded-xl bg-white border border-gray-300 text-2xl flex items-center justify-center hover:border-orange-400 transition-colors flex-shrink-0"
-            title="Pick an emoji">
-            {draft.bot_emoji || '💬'}
-          </button>
-        </div>
-
-        {showPicker && (
-          <EmojiPicker
-            currentEmoji={draft.bot_emoji || ''}
-            onSelect={handleEmojiSelect}
-            onClose={() => setShowPicker(false)}
-            industry={industry}
+          <EmojiPickerPopover
+            value={draft.bot_emoji || '💬'}
+            onChange={handleEmojiSelect}
+            industryEmojis={industry && industry !== 'other' ? (INDUSTRY_EMOJIS[industry] || undefined) : undefined}
+            industryLabel={industry && industry !== 'other' ? (INDUSTRY_LABELS[industry as Industry] || undefined) : undefined}
+            size="md"
           />
-        )}
-
-        <p className="text-gray-400 text-xs">
-          The name and emoji respondents see in the chat.
-          {industry && industry !== 'other' && INDUSTRY_EMOJIS[industry] && (
-            <span className="text-orange-500"> Industry-specific emojis available — pick an industry then open the emoji picker.</span>
-          )}
-        </p>
+        </div>
+        <p className="text-gray-400 text-xs">The name and emoji respondents see in the chat.</p>
       </Section>
 
       {/* Color theme */}

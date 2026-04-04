@@ -9,6 +9,7 @@
 // Step 4: Length (quick/standard/comprehensive)
 
 import { useState } from 'react'
+import EmojiPickerPopover from './EmojiPickerPopover'
 import type { StudyDraft } from '@/lib/studyDraft'
 import { generateStudyDraft, type WizardAnswers } from '@/lib/smartStudyGenerator'
 import { STUDY_TYPE_BLUEPRINTS, STUDY_TYPE_LABELS, getBlueprintForStudyType, type StudyType } from '@/lib/surveyBlueprints'
@@ -306,22 +307,10 @@ export default function SmartStudyWizard({ onGenerated, onSkip, orgPrimaryIndust
                   outline: 'none',
                 }}
               />
-              <input
-                type="text"
+              <EmojiPickerPopover
                 value={botEmoji}
-                onChange={e => setBotEmoji(e.target.value.slice(0, 1))}
-                maxLength={1}
-                placeholder="😊"
-                style={{
-                  width: 50,
-                  padding: '10px 6px',
-                  fontSize: 20,
-                  border: '1px solid #d1d5db',
-                  borderRadius: 6,
-                  fontFamily: 'inherit',
-                  textAlign: 'center',
-                  outline: 'none',
-                }}
+                onChange={setBotEmoji}
+                size="md"
               />
             </div>
           </div>

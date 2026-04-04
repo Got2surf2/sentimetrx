@@ -5,6 +5,7 @@ import type { StepProps } from '@/lib/studyDraft'
 import type { SurveyQuestion, LikertFollowUp, QuestionType, KeywordTrigger } from '@/lib/types'
 import { Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
+import EmojiPickerPopover, { RATING_SCALE_EMOJIS } from './EmojiPickerPopover'
 
 // -- Helpers --------------------------------------------------
 
@@ -168,7 +169,6 @@ function OptionsEditor({ options, onChange }: { options: string[]; onChange: (op
 }
 
 // -- Likert scale editor --------------------------------------
-const LIKERT_EMOJIS = ['\uD83D\uDE1E','\uD83D\uDE15','\uD83D\uDE10','\uD83D\uDE0A','\uD83D\uDE0D','\u2B50','\uD83D\uDC4E','\uD83D\uDC4D','\uD83D\uDD34','\uD83D\uDFE1','\uD83D\uDFE2','1\uFE0F\u20E3','2\uFE0F\u20E3','3\uFE0F\u20E3','4\uFE0F\u20E3','5\uFE0F\u20E3']
 
 function LikertEditor({ scale, onChange }: {
   scale: { score: number; emoji?: string; label: string }[]
@@ -179,7 +179,7 @@ function LikertEditor({ scale, onChange }: {
   }
   const addPoint = () => {
     const nextScore = scale.length + 1
-    onChange([...scale, { score: nextScore, emoji: '\u2B50', label: 'Score ' + nextScore }])
+    onChange([...scale, { score: nextScore, emoji: '⭐', label: 'Score ' + nextScore }])
   }
   const remove = (i: number) => onChange(scale.filter((_, j) => j !== i).map((r, j) => ({ ...r, score: j + 1 })))
 
@@ -188,10 +188,12 @@ function LikertEditor({ scale, onChange }: {
       {scale.map((r, i) => (
         <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
           <span className="text-gray-400 text-xs font-bold w-4 flex-shrink-0">{r.score}</span>
-          <select value={r.emoji || '\u2B50'} onChange={e => update(i, { emoji: e.target.value })}
-            className="bg-white border border-gray-300 rounded-lg px-1.5 py-1 text-base outline-none focus:border-orange-400 cursor-pointer flex-shrink-0">
-            {LIKERT_EMOJIS.map(e => <option key={e} value={e}>{e}</option>)}
-          </select>
+          <EmojiPickerPopover
+            value={r.emoji || '⭐'}
+            onChange={v => update(i, { emoji: v })}
+            curatedEmojis={RATING_SCALE_EMOJIS}
+            size="sm"
+          />
           <input type="text" value={r.label} onChange={e => update(i, { label: e.target.value })}
             placeholder={'Score ' + r.score + ' label'}
             className="flex-1 bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none border-b border-gray-200 focus:border-orange-400 pb-0.5 transition-colors" />
