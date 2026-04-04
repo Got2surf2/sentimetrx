@@ -114,6 +114,19 @@ export interface StudyClarifiers {
   default: string
 }
 
+// -- Rating question type -------------------------------------
+// Controls default prompt, emoji scale, follow-up text and dashboard label
+// for the experience_rating opening item.
+export type RatingType =
+  | 'experience'   // overall experience (default)
+  | 'familiarity'  // brand / product familiarity
+  | 'satisfaction' // CSAT
+  | 'value'        // value for money / time
+  | 'quality'      // product / service quality
+  | 'ease'         // effort / ease (CES)
+  | 'intent'       // return / repurchase intent
+  | 'perception'   // brand impression / awareness
+
 // -- Opening flow ---------------------------------------------
 
 export interface OpeningFlowItem {
@@ -139,6 +152,7 @@ export interface StudyConfig {
 
   // Experience rating (shown after NPS Q1)
   experienceEnabled?: boolean          // default true
+  ratingType?:        RatingType       // controls default prompt/scale/follow-ups; default 'experience'
   experienceRatingLabel?: string       // alias shown in analytics + CSV header (default: 'Experience Rating')
   ratingPrompt:       string
   ratingScale:        RatingOption[]

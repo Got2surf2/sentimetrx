@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
-import type { RatingOption, LikertFollowUp, OpeningFlowItem, StudyConfig } from '@/lib/types'
+import type { RatingOption, LikertFollowUp, OpeningFlowItem, StudyConfig, RatingType } from '@/lib/types'
 import EmojiPickerPopover, { RATING_SCALE_EMOJIS } from './EmojiPickerPopover'
 
 
@@ -161,6 +161,184 @@ function RatingVariableOption({
   )
 }
 
+// ── Rating type presets ──────────────────────────────────────
+interface RatingTypePreset {
+  label:          string
+  icon:           string
+  description:    string
+  defaultPrompt:  string
+  dashboardLabel: string
+  scale: Array<{ emoji: string; label: string }>
+  followUpPrompts: Record<number, string>
+}
+
+const RATING_PRESETS: Record<RatingType, RatingTypePreset> = {
+  experience: {
+    label: 'Experience', icon: '⭐',
+    description: 'Overall experience after visiting, using, or attending',
+    defaultPrompt: 'How would you rate your overall experience today?',
+    dashboardLabel: 'Experience Rating',
+    scale: [
+      { emoji: '😞', label: 'Very poor' },
+      { emoji: '😕', label: 'Poor' },
+      { emoji: '😐', label: 'OK' },
+      { emoji: '🙂', label: 'Good' },
+      { emoji: '😍', label: 'Excellent' },
+    ],
+    followUpPrompts: {
+      1: "We're sorry to hear that. Can you tell us what went wrong so we can fix it?",
+      2: "Thanks for the feedback. What disappointed you most about your experience?",
+      3: "Appreciate your honesty. What would have made this a better experience for you?",
+      4: "Glad it was a good experience. What's one thing we could do even better?",
+      5: "Wonderful! What stood out most that made it such a great experience?",
+    },
+  },
+  familiarity: {
+    label: 'Familiarity', icon: '🔍',
+    description: 'How well respondents know your brand, product, or event',
+    defaultPrompt: 'How familiar are you with our brand and what we offer?',
+    dashboardLabel: 'Familiarity',
+    scale: [
+      { emoji: '🌱', label: 'Never heard of you' },
+      { emoji: '👂', label: 'Heard of you' },
+      { emoji: '🔍', label: 'Know a little' },
+      { emoji: '🎯', label: 'Know you well' },
+      { emoji: '🏆', label: 'Very familiar' },
+    ],
+    followUpPrompts: {
+      1: "What brought you here today for the very first time?",
+      2: "What have you heard about us so far? We'd love to know.",
+      3: "What are you most curious to discover about us?",
+      4: "What do you know us best for?",
+      5: "What made you such an expert? How long have you been following us?",
+    },
+  },
+  satisfaction: {
+    label: 'Satisfaction', icon: '😊',
+    description: 'CSAT — overall satisfaction with the service or interaction',
+    defaultPrompt: 'Overall, how satisfied are you with your experience today?',
+    dashboardLabel: 'Satisfaction',
+    scale: [
+      { emoji: '😤', label: 'Very dissatisfied' },
+      { emoji: '😞', label: 'Dissatisfied' },
+      { emoji: '😐', label: 'Neutral' },
+      { emoji: '😊', label: 'Satisfied' },
+      { emoji: '🤩', label: 'Very satisfied' },
+    ],
+    followUpPrompts: {
+      1: "We're sorry you felt that way. What let you down most today?",
+      2: "What would it take to improve your satisfaction?",
+      3: "What's been missing for you?",
+      4: "What are we doing right? What could push that to a 5?",
+      5: "Amazing! What made this experience so satisfying?",
+    },
+  },
+  value: {
+    label: 'Value', icon: '💎',
+    description: 'Perceived value for money, time, or effort invested',
+    defaultPrompt: 'How would you rate the value you received today?',
+    dashboardLabel: 'Value Rating',
+    scale: [
+      { emoji: '💸', label: 'Poor value' },
+      { emoji: '😕', label: 'Below average' },
+      { emoji: '🤔', label: 'Fair value' },
+      { emoji: '💡', label: 'Good value' },
+      { emoji: '💎', label: 'Exceptional value' },
+    ],
+    followUpPrompts: {
+      1: "What felt overpriced or didn't deliver on its promise?",
+      2: "What would better value look like to you?",
+      3: "What would tip this from fair to great value?",
+      4: "What gave you the best value today?",
+      5: "Brilliant! What made the value stand out?",
+    },
+  },
+  quality: {
+    label: 'Quality', icon: '🏅',
+    description: 'Quality of a product, service, content, or event',
+    defaultPrompt: 'How would you rate the quality of what you experienced today?',
+    dashboardLabel: 'Quality Rating',
+    scale: [
+      { emoji: '👎', label: 'Very poor' },
+      { emoji: '😕', label: 'Below standard' },
+      { emoji: '😐', label: 'Acceptable' },
+      { emoji: '👍', label: 'Good quality' },
+      { emoji: '🏆', label: 'Exceptional' },
+    ],
+    followUpPrompts: {
+      1: "What quality issues did you encounter?",
+      2: "What fell below the standard you expected?",
+      3: "What quality improvement would matter most to you?",
+      4: "What quality aspects stood out today?",
+      5: "What exceeded your quality expectations?",
+    },
+  },
+  ease: {
+    label: 'Ease', icon: '✨',
+    description: 'How easy or effortless the experience was (CES)',
+    defaultPrompt: 'How easy was it to accomplish what you came here to do?',
+    dashboardLabel: 'Ease of Experience',
+    scale: [
+      { emoji: '😤', label: 'Very difficult' },
+      { emoji: '😓', label: 'Difficult' },
+      { emoji: '😐', label: 'Neutral' },
+      { emoji: '🙂', label: 'Easy' },
+      { emoji: '✨', label: 'Effortless' },
+    ],
+    followUpPrompts: {
+      1: "What made it so difficult? Where did you get stuck?",
+      2: "What created the most friction? We want to make this smoother.",
+      3: "What would make this easier next time?",
+      4: "Glad it was easy! Anything that could be even smoother?",
+      5: "Fantastic! What made it feel so effortless?",
+    },
+  },
+  intent: {
+    label: 'Intent', icon: '🚀',
+    description: 'Likelihood to return, purchase again, or recommend',
+    defaultPrompt: 'How likely are you to come back or engage with us again?',
+    dashboardLabel: 'Return Intent',
+    scale: [
+      { emoji: '✋', label: 'Very unlikely' },
+      { emoji: '🤔', label: 'Unlikely' },
+      { emoji: '😐', label: 'Unsure' },
+      { emoji: '👍', label: 'Likely' },
+      { emoji: '🚀', label: 'Definitely' },
+    ],
+    followUpPrompts: {
+      1: "What would need to change for you to consider coming back?",
+      2: "What's holding you back?",
+      3: "What would move the needle for you?",
+      4: "What's most likely to bring you back?",
+      5: "Excellent! What's the biggest reason you'd return?",
+    },
+  },
+  perception: {
+    label: 'Perception', icon: '🌟',
+    description: 'Overall brand impression — great for awareness studies',
+    defaultPrompt: "What's your overall impression of our brand?",
+    dashboardLabel: 'Brand Perception',
+    scale: [
+      { emoji: '😟', label: 'Very negative' },
+      { emoji: '😕', label: 'Negative' },
+      { emoji: '😐', label: 'Neutral' },
+      { emoji: '😊', label: 'Positive' },
+      { emoji: '🌟', label: 'Very positive' },
+    ],
+    followUpPrompts: {
+      1: "What shaped that negative impression?",
+      2: "What could improve your perception of us?",
+      3: "What would shift your impression in a positive direction?",
+      4: "What's driving that positive impression?",
+      5: "We're glad to hear it! What stands out most about us?",
+    },
+  },
+}
+
+const RATING_TYPE_ORDER: RatingType[] = [
+  'experience', 'familiarity', 'satisfaction', 'value', 'quality', 'ease', 'intent', 'perception',
+]
+
 // ── Derive openingFlow from legacy flags (migration helper) ───
 function deriveOpeningFlow(c: StudyConfig): OpeningFlowItem[] {
   const items: OpeningFlowItem[] = []
@@ -245,12 +423,42 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
     4: "Great to hear! What one thing would tip you to a definite yes?",
     5: "That means a lot! What would you say to someone who asked why they should try us?",
   }
-  const experienceDefaultPrompts: Record<number, string> = {
-    1: "We're sorry to hear that. Can you tell us what went wrong so we can fix it?",
-    2: "Thanks for the feedback. What disappointed you most about your experience?",
-    3: "Appreciate your honesty. What would have made this a better experience for you?",
-    4: "Glad it was a good experience. What's one thing we could do even better?",
-    5: "Wonderful! What stood out most that made it such a great experience?",
+  const activeRatingType: RatingType = c.ratingType ?? 'experience'
+  const activePreset = RATING_PRESETS[activeRatingType]
+  const experienceDefaultPrompts: Record<number, string> = activePreset.followUpPrompts
+
+  function applyRatingType(type: RatingType) {
+    const preset = RATING_PRESETS[type]
+    const newScale = c.ratingScale.map((r, i) => ({
+      ...r,
+      emoji: preset.scale[i]?.emoji ?? r.emoji,
+      label: preset.scale[i]?.label ?? r.label,
+    }))
+    // Pre-populate per-response follow-up prompts from preset
+    const perResponse: Record<number, { prompt: string; clarify: boolean; useAI: boolean }> = {}
+    newScale.forEach((r, i) => {
+      const score = r.score
+      const existing = c.experienceFollowUp?.perResponse?.[score]
+      perResponse[score] = {
+        prompt:  existing?.prompt || preset.followUpPrompts[i + 1] || '',
+        clarify: existing?.clarify ?? false,
+        useAI:   existing?.useAI ?? false,
+      }
+    })
+    const newFollowUp: LikertFollowUp = {
+      ...(c.experienceFollowUp ?? { enabled: false, mode: 'per-response', sharedPrompt: '', shareClarify: false, shareAI: false }),
+      mode: 'per-response',
+      perResponse,
+    }
+    updateConfig({
+      ratingType:             type,
+      ratingPrompt:           preset.defaultPrompt,
+      ratingScale:            newScale,
+      experienceRatingLabel:  c.experienceRatingLabel && !Object.values(RATING_PRESETS).some(p => p.dashboardLabel === c.experienceRatingLabel)
+                                ? c.experienceRatingLabel  // user has a custom label — keep it
+                                : preset.dashboardLabel,
+      experienceFollowUp:     newFollowUp,
+    })
   }
 
   return (
@@ -452,17 +660,43 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
       {/* Experience rating */}
       {experienceEnabled && (
         <Section
-          title="Experience rating"
-          description="Emoji-based rating of the overall experience."
+          title="Rating question"
+          description="Select the question focus — prompt, emojis, labels, and follow-up text update automatically."
         >
           <div className="flex flex-col gap-4">
+            {/* Rating type picker */}
+            <div>
+              <label className={labelCls}>Question type</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {RATING_TYPE_ORDER.map(type => {
+                  const p = RATING_PRESETS[type]
+                  const active = activeRatingType === type
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => applyRatingType(type)}
+                      className={'flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl border-2 text-center transition-all ' +
+                        (active
+                          ? 'border-orange-400 bg-orange-50 shadow-sm'
+                          : 'border-gray-200 bg-white hover:border-orange-200 hover:bg-orange-50/40')}
+                    >
+                      <span className="text-xl leading-none">{p.icon}</span>
+                      <span className={'text-xs font-semibold ' + (active ? 'text-orange-600' : 'text-gray-600')}>{p.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5 px-0.5">{activePreset.description}</p>
+            </div>
+
             <div className="flex gap-3 items-start">
               <div className="flex-1">
                 <label className={labelCls}>Question prompt</label>
                 <Input
                   value={c.ratingPrompt}
                   onChange={v => updateConfig({ ratingPrompt: v })}
-                  placeholder="How would you rate your overall experience with us today?"
+                  placeholder={activePreset.defaultPrompt}
                   multiline rows={2}
                 />
               </div>
