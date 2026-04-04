@@ -217,6 +217,22 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
 
   var hasMore = overflowMeta.length > 0
 
+  // Format metadata values — dates shown as mm/dd/yy
+  var formatFieldValue = function(val: unknown, f: SchemaField): string {
+    var s = String(val ?? '').trim()
+    if (!s) return s
+    if (f.type === 'date') {
+      var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+      if (m) return m[2] + '/' + m[3] + '/' + m[1].slice(2)
+      var d = new Date(s)
+      if (!isNaN(d.getTime())) {
+        var mo = d.getMonth() + 1, day = d.getDate(), y = d.getFullYear() % 100
+        return (mo < 10 ? '0' + mo : '' + mo) + '/' + (day < 10 ? '0' + day : '' + day) + '/' + (y < 10 ? '0' + y : '' + y)
+      }
+    }
+    return s
+  }
+
   return (
     <div style={{
       background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10,
@@ -278,7 +294,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
             var color = isRating ? scoreColor(val, f) : null
             return (
               <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
-                <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span> {String(val)}
+                <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span> {formatFieldValue(val, f)}
               </span>
             )
           })}
@@ -301,7 +317,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
             return (
               <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
                 <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span>{' '}
-                <span style={{ fontWeight: 700 }}>{String(val)}</span>
+                <span style={{ fontWeight: 700 }}>{formatFieldValue(val, f)}</span>
               </span>
             )
           })}
@@ -329,6 +345,13 @@ export default function CommentsPanel({
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
+
+  // ── Shuffle (random re-order) ─────────────────────────────────
+  const [shuffleSeed, setShuffleSeed] = useState(0)
+  function shuffle() {
+    setShuffleSeed(function(s) { return s + 1 })
+    setVisibleCount(50)
+  }
 
   // ── Multi-field sort ──────────────────────────────────────────
   type SortClause = { field: string; dir: 'asc' | 'desc' }
@@ -398,8 +421,18 @@ export default function CommentsPanel({
       return activeThemes.some(function(t) { return commentMatchesTheme(r.text, t) })
     })
 
-    // sortClauses empty → keep natural (random-ish) order
-    if (sortClauses.length === 0) return raw
+    // sortClauses empty → Fisher-Yates shuffle keyed to shuffleSeed
+    if (sortClauses.length === 0) {
+      var arr = raw.slice()
+      // Simple seeded LCG for deterministic shuffle per seed value
+      var seed = shuffleSeed * 1013904223 + 1664525
+      var rng = function() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 }
+      for (var si = arr.length - 1; si > 0; si--) {
+        var sj = Math.floor(rng() * (si + 1))
+        var tmp = arr[si]; arr[si] = arr[sj]; arr[sj] = tmp
+      }
+      return arr
+    }
 
     // Relevance scorer — used when field === '__relevance__'
     var allKws = activeThemes.reduce(function(acc, t) { return acc.concat(t.keywords || []) }, [] as string[])
@@ -438,7 +471,7 @@ export default function CommentsPanel({
       return 0
     })
     return sorted
-  }, [allRows, activeThemes, sortClauses, showAllMode])
+  }, [allRows, activeThemes, sortClauses, showAllMode, shuffleSeed])
 
   async function generateSummary() {
     if (!matched.length || !apiKey) return
@@ -536,6 +569,19 @@ export default function CommentsPanel({
           {matched.length.toLocaleString()} of {total.toLocaleString()} responses ({matchPct}%)
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {sortClauses.length === 0 && (
+            <button
+              onClick={shuffle}
+              title="Re-shuffle comments"
+              style={{
+                fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                border: '1px solid ' + T.border, background: T.bg, color: T.textMid,
+                fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{'\u21BA'}</span> Shuffle
+            </button>
+          )}
           <button
             onClick={openSortModal}
             style={{
