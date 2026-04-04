@@ -76,13 +76,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
-  const { name, slug, plan, is_admin_org } = await req.json()
+  const { name, slug, plan, is_admin_org, primaryIndustries } = await req.json()
 
   if (!name || !slug) {
     return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 })
   }
 
   const service = createServiceRoleClient()
+
+  const features: any = {}
+  if (primaryIndustries && Array.isArray(primaryIndustries)) {
+    features.primaryIndustries = primaryIndustries
+  }
 
   const { data, error } = await service
     .from('organizations')
@@ -91,6 +96,7 @@ export async function POST(req: NextRequest) {
       slug:         slug.toLowerCase().replace(/\s+/g, '-'),
       plan:         plan || 'trial',
       is_admin_org: is_admin_org || false,
+      features:     Object.keys(features).length > 0 ? features : undefined,
     })
     .select('id, name, slug')
     .single()

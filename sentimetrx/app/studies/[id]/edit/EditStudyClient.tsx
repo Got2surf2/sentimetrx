@@ -10,6 +10,7 @@ import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepDemographics from '@/components/creator/StepDemographics'
 import StepReview from '@/components/creator/StepReview'
+import MigrationBanner from '@/components/creator/MigrationBanner'
 import type { StudyDraft } from '@/lib/studyDraft'
 import TopNav from '@/components/nav/TopNav'
 import CreatorNav from '@/components/creator/CreatorNav'
@@ -97,6 +98,14 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
             {error}
           </div>
         )}
+
+        {/* Migration banner for studies without a study type */}
+        <MigrationBanner
+          studyId={study.id}
+          currentConfig={draft.config}
+          onStudyTypeAdded={(updatedConfig) => updateConfig(updatedConfig)}
+        />
+
         {step === 0 && <StepBasics       {...stepProps} onNext={() => goTo(1)} />}
         {step === 1 && <StepOpening      {...stepProps} onNext={() => goTo(2)} onBack={() => goTo(0)} />}
         {step === 2 && <StepConversation {...stepProps} onNext={() => goTo(3)} onBack={() => goTo(1)} />}

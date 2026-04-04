@@ -2,8 +2,14 @@
 // SENTIMETRX -- Shared Types
 // ============================================================
 
+import type { StudyType } from './surveyBlueprints'
+import type { Industry } from './industryDefaults'
+
 export type ClientPlan = 'trial' | 'active' | 'suspended'
-export interface OrgFeatures { analyze?: boolean }
+export interface OrgFeatures {
+  analyze?: boolean
+  primaryIndustries?: Industry[]
+}
 // -- Likert / rating scale ------------------------------------
 
 export interface RatingOption {
@@ -158,6 +164,10 @@ export interface StudyConfig {
   customQCount?:      number           // how many custom questions to show per session (default: all)
   industry?:          string           // industry key -- stored in config so it persists via JSONB
   otherIndustry?:     string           // free-text when industry === 'other'
+
+  // Study type and blueprint metadata
+  studyType?:         StudyType        // e.g. 'satisfaction_experience', 'awareness_perception'
+  templateLabel?:     string           // attribution string: "Sentimetrx [Type] Template v1.0"
 
   theme:              StudyTheme
 

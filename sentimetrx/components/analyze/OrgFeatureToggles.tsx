@@ -1,21 +1,22 @@
 'use client'
 
 import { useState } from 'react'
+import type { Industry } from '@/lib/industryDefaults'
+import { INDUSTRY_LABELS } from '@/lib/industryDefaults'
 
 interface Props {
   orgId:           string
-  initialFeatures: { analyze?: boolean }
+  initialFeatures: { analyze?: boolean; primaryIndustries?: Industry[] }
 }
 
 export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
   const [features, setFeatures] = useState(initialFeatures)
+  const [primaryIndustries, setPrimaryIndustries] = useState<Industry[]>(initialFeatures.primaryIndustries || [])
   const [saving, setSaving]     = useState(false)
   const [status, setStatus]     = useState<'idle' | 'saved' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
-  async function toggle(key: 'analyze') {
-    const next = { ...features, [key]: !features[key] }
-    setFeatures(next)
+  async function saveFeatures(updated: any) {
     setSaving(true)
     setStatus('idle')
     setErrorMsg('')
@@ -24,7 +25,7 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
       const res = await fetch('/api/admin/orgs/' + orgId, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ features: next }),
+        body:    JSON.stringify({ features: updated }),
       })
 
       if (!res.ok) {
@@ -35,8 +36,6 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 2500)
     } catch (err: any) {
-      // Revert the optimistic update on failure
-      setFeatures(features)
       setStatus('error')
       setErrorMsg(err.message || 'Failed to save')
       setTimeout(() => setStatus('idle'), 4000)
@@ -45,9 +44,29 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
     }
   }
 
+  async function toggle(key: 'analyze') {
+    const next = { ...features, [key]: !features[key], primaryIndustries }
+    setFeatures(next)
+    await saveFeatures(next)
+  }
+
+  async function toggleIndustry(industry: Industry) {
+    const updated = primaryIndustries.includes(industry)
+      ? primaryIndustries.filter(i => i !== industry)
+      : [...primaryIndustries, industry]
+    setPrimaryIndustries(updated)
+    const next = { ...features, primaryIndustries: updated }
+    await saveFeatures(next)
+  }
+
+  const allIndustries = (Object.keys(INDUSTRY_LABELS) as Industry[]).sort((a, b) =>
+    INDUSTRY_LABELS[a].localeCompare(INDUSTRY_LABELS[b])
+  )
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between py-2">
+    <div className="flex flex-col gap-6">
+      {/* Analyze Module Toggle */}
+      <div className="flex items-center justify-between py-2 border-b border-gray-200 pb-4">
         <div>
           <p className="text-sm font-medium text-gray-800">Analyze Module</p>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -65,6 +84,31 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
             onToggle={() => toggle('analyze')}
             disabled={saving}
           />
+        </div>
+      </div>
+
+      {/* Primary Industries Multi-select */}
+      <div>
+        <p className="text-sm font-medium text-gray-800 mb-2">Primary Industries</p>
+        <p className="text-xs text-gray-500 mb-3">
+          These industries appear first in the Study Builder for users in this organization.
+        </p>
+        <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-3">
+          {allIndustries.map(industry => (
+            <label
+              key={industry}
+              className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded"
+            >
+              <input
+                type="checkbox"
+                checked={primaryIndustries.includes(industry)}
+                onChange={() => toggleIndustry(industry)}
+                disabled={saving}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700">{INDUSTRY_LABELS[industry]}</span>
+            </label>
+          ))}
         </div>
       </div>
     </div>

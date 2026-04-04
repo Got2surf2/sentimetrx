@@ -2,9 +2,10 @@
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import CreatorNav from '@/components/creator/CreatorNav'
-import StudyStartModal from '@/components/creator/StudyStartModal'
+import SmartStudyWizard from '@/components/creator/SmartStudyWizard'
+import type { Industry } from '@/lib/industryDefaults'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import StepBasics from '@/components/creator/StepBasics'
 import StepOpening from '@/components/creator/StepOpening'
@@ -56,7 +57,25 @@ export default function NewStudyPage() {
   const [error,          setError]          = useState<string | null>(null)
   const [savedGuid,      setSavedGuid]      = useState<string | null>(null)
   const [showModal,      setShowModal]      = useState(true)
+  const [orgPrimaryIndustries, setOrgPrimaryIndustries] = useState<Industry[]>([])
   const router = useRouter()
+
+  // Fetch org's primary industries on mount
+  useEffect(() => {
+    const fetchOrgSettings = async () => {
+      try {
+        const res = await fetch('/api/org/settings')
+        if (res.ok) {
+          const data = await res.json()
+          const primaryIndustries = data.features?.primaryIndustries || []
+          setOrgPrimaryIndustries(primaryIndustries)
+        }
+      } catch (e) {
+        console.error('Failed to fetch org settings:', e)
+      }
+    }
+    fetchOrgSettings()
+  }, [])
 
   const update = useCallback((partial: Partial<StudyDraft>) => {
     setDraft(prev => ({ ...prev, ...partial }))
@@ -101,13 +120,11 @@ export default function NewStudyPage() {
     goTo(6)
   }
 
-  function handleModalApply(partial: Partial<StudyDraft>) {
-    setDraft(prev => ({
-      ...prev,
-      ...partial,
-      config: { ...prev.config, ...(partial.config || {}) },
-    }))
+  function handleWizardGenerated(generated: StudyDraft) {
+    // Merge generated draft into state and jump to Review step
+    setDraft(generated)
     setShowModal(false)
+    goTo(6)
   }
 
   const stepProps = { draft, update, updateConfig }
@@ -116,9 +133,10 @@ export default function NewStudyPage() {
     <div className="min-h-screen bg-gray-50">
 
       {showModal && (
-        <StudyStartModal
-          onApply={handleModalApply}
+        <SmartStudyWizard
+          onGenerated={handleWizardGenerated}
           onSkip={function() { setShowModal(false) }}
+          orgPrimaryIndustries={orgPrimaryIndustries}
         />
       )}
 
