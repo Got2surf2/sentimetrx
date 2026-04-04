@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
+import { existsSync } from 'fs'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -1268,13 +1269,22 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
 
   // Section emoji icon or image for psychographic
   if (title === 'Psychographic Profile') {
-    try {
-      slide.addImage({
-        path: '/Users/sanjaypatel/Downloads/psychographics.jpg',
-        x: W - 2.8, y: 0.9, w: 2.4, h: 2.4, rasterize: true,
-      })
-    } catch (e) {
-      // Fallback if image fails to load
+    const imagePath = '/Users/sanjaypatel/Downloads/psychographics.jpg'
+    if (existsSync(imagePath)) {
+      try {
+        slide.addImage({
+          path: imagePath,
+          x: W - 2.8, y: 0.9, w: 2.4, h: 2.4, rasterize: true,
+        })
+      } catch (e) {
+        // Fallback if image fails to load
+        slide.addText('\uD83E\uDDE0', {
+          x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
+          fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
+        })
+      }
+    } else {
+      // Fallback if file doesn't exist
       slide.addText('\uD83E\uDDE0', {
         x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
         fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
