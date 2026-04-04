@@ -1147,7 +1147,7 @@ function OutlierAnalysisPanel({ numFields, catFields, data }: {
         <StatsEmpty icon='\u25CE' msg='Select a numeric and a categorical field' sub='Groups with fewer than 3 responses are excluded.' />
       ) : displayed.length === 0 && !showAll ? (
         <Card style={{ padding: '40px 24px', textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>\u2714</div>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: T.textMid, marginBottom: 6 }}>No significant outliers at p &lt; {threshold}</div>
           <div style={{ fontSize: 13, color: T.textMute, marginBottom: 16 }}>All groups are statistically similar to the overall mean at this threshold.</div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
