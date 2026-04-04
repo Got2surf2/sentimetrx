@@ -1276,10 +1276,10 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
     const mime      = imagePath?.endsWith('.png') ? 'image/png' : 'image/jpeg'
 
     // Inner circle: x: W-2.1, y: 1.5, w: 2.2, h: 2.2  →  center: (W-1.0, 2.6)
-    // Image is 318×234 (landscape, aspect ≈ 1.359:1). Fill circle width; transparent bg blends with navy.
-    // w = 2.2" fills circle diameter, h = 2.2 * (234/318) ≈ 1.62"
-    const imgW = 2.2
-    const imgH = parseFloat((2.2 * (234 / 318)).toFixed(3))   // ≈ 1.617
+    // Image is 318×234 (landscape, aspect ≈ 1.359:1). 15% smaller than circle diameter.
+    // w = 2.2 * 0.85 ≈ 1.87", h = 1.87 * (234/318) ≈ 1.375"
+    const imgW = parseFloat((2.2 * 0.85).toFixed(3))          // ≈ 1.870
+    const imgH = parseFloat((imgW * (234 / 318)).toFixed(3))   // ≈ 1.375
     const cx   = W - 1.0   // inner circle centre x
     const cy2  = 2.6        // inner circle centre y
     const imgX = cx - imgW / 2
