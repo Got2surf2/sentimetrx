@@ -288,7 +288,7 @@ function QuestionCard({
   const likertScaleOptions = (q.likertScale ?? defaultLikertScale).map(r => ({ score: r.score, label: r.label }))
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+    <div className={'bg-white border rounded-2xl overflow-hidden shadow-sm ' + (q.enabled === false ? 'border-gray-200 opacity-60' : 'border-gray-200')}>
       {/* Card header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200">
         {/* Drag grip + reorder */}
@@ -308,6 +308,22 @@ function QuestionCard({
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Radio ↔ Checkbox toggle */}
+          {(q.type === 'radio' || q.type === 'checkbox') && (
+            <button type="button"
+              onClick={() => set({ type: q.type === 'radio' ? 'checkbox' : 'radio' })}
+              title={q.type === 'radio' ? 'Switch to multi-select (checkboxes)' : 'Switch to single-select (radio)'}
+              className="text-xs text-gray-400 hover:text-orange-500 transition-colors px-2 py-1 rounded-lg hover:bg-orange-50 border border-transparent hover:border-orange-200">
+              {q.type === 'radio' ? '→ Multi' : '→ Single'}
+            </button>
+          )}
+          {/* Enabled/disabled toggle */}
+          <button type="button"
+            onClick={() => set({ enabled: q.enabled === false ? true : false })}
+            title={q.enabled === false ? 'Enable question' : 'Disable question'}
+            className={'text-xs px-2 py-1 rounded-lg transition-colors border ' + (q.enabled === false ? 'text-gray-400 border-gray-200 bg-gray-50' : 'text-green-600 border-green-200 bg-green-50 hover:bg-green-100')}>
+            {q.enabled === false ? 'Off' : 'On'}
+          </button>
           <button type="button" onClick={() => setExpanded(v => !v)}
             className="text-xs text-gray-400 hover:text-gray-600 transition-colors px-2 py-1 rounded-lg hover:bg-gray-100">
             {expanded ? 'Collapse' : 'Edit'}
@@ -540,10 +556,12 @@ function KeywordTriggersPreview({ triggers, defaultFollowOn }: { triggers: Keywo
 function OpenEndedBankPanel({
   industry,
   onAdd,
+  onRemove,
   existingPrompts,
 }: {
   industry: string
   onAdd: (q: SurveyQuestion) => void
+  onRemove: (prompt: string) => void
   existingPrompts: Set<string>
 }) {
   const [open, setOpen] = useState(false)
@@ -624,7 +642,7 @@ function OpenEndedBankPanel({
                   </div>
                   <div className="flex-shrink-0 text-xs font-semibold mt-0.5">
                     {alreadyAdded
-                      ? <span className="text-green-500">Added</span>
+                      ? <button type="button" onClick={e => { e.stopPropagation(); onRemove(bq.prompt) }} className="text-red-400 hover:text-red-600 transition-colors">Remove</button>
                       : <span className="text-purple-500">+ Add</span>}
                   </div>
                 </div>
@@ -854,7 +872,11 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
   const moveUp   = (i: number) => { if (i === 0) return; const qs = [...questions]; [qs[i-1], qs[i]] = [qs[i], qs[i-1]]; setQuestions(qs) }
   const moveDown = (i: number) => { if (i === questions.length - 1) return; const qs = [...questions]; [qs[i], qs[i+1]] = [qs[i+1], qs[i]]; setQuestions(qs) }
 
-  const existingIds = new Set(questions.map(q => q.id?.split('_')[0] ?? ''))
+  const existingIds = new Set(questions.map(q => {
+    const id = q.id ?? ''
+    const lastUnderscore = id.lastIndexOf('_')
+    return lastUnderscore > 0 ? id.slice(0, lastUnderscore) : id
+  }))
 
   return (
     <div className="flex flex-col gap-6">
@@ -881,6 +903,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
       <OpenEndedBankPanel
         industry={industry || ''}
         onAdd={addSuggestedQuestion}
+        onRemove={prompt => setQuestions(questions.filter(q => q.prompt !== prompt))}
         existingPrompts={new Set(questions.map(function(q) { return q.prompt }))}
       />
 

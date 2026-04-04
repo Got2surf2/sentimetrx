@@ -207,12 +207,17 @@ function IndustryPickerRow({
 }
 
 function IndustryQuestionPicker({
-  bank, onUpdateBank
+  bank, onUpdateBank, defaultIndustry
 }: {
   bank: PsychoQuestion[]
   onUpdateBank: (b: PsychoQuestion[]) => void
+  defaultIndustry?: string
 }) {
-  const [pickedIndustry, setPickedIndustry] = useState<IndustryPickerKey | ''>('')
+  const [pickedIndustry, setPickedIndustry] = useState<IndustryPickerKey | ''>(
+    defaultIndustry && defaultIndustry !== 'other' && defaultIndustry in INDUSTRY_DEFAULTS
+      ? defaultIndustry as IndustryPickerKey
+      : ''
+  )
   const selectedKeys = new Set(bank.map(q => q.key))
 
   const industryQs: PickerQuestion[] = pickedIndustry
@@ -403,6 +408,7 @@ export default function StepPsychographics({ draft, updateConfig, onNext, onBack
       <IndustryQuestionPicker
         bank={bank}
         onUpdateBank={b => updateConfig({ psychographicBank: b })}
+        defaultIndustry={draft.config.industry || draft.industry}
       />
 
       {/* How many to show per session */}

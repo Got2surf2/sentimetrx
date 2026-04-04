@@ -86,6 +86,8 @@ export interface SurveyQuestion {
   // numeric input -- no extra fields needed; stores raw number as string
   // flow placement
   conversationPosition?: boolean      // if true, show after Q4 in conversation phase, not custom-Q phase
+  // enabled/disabled
+  enabled?: boolean                   // if false, question is skipped in survey; default true
 }
 
 // -- Psychographics -------------------------------------------

@@ -534,7 +534,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
   const stepCustomQuestions = useCallback(async () => {
-    const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition)
+    const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition && q.enabled !== false)
     if (allQuestions.length === 0) { await stepPsychoIntro(); return }
 
     // Randomly sample customQCount questions if set, otherwise show all
@@ -866,7 +866,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
 
   // Run conversation-position extras (questions shown after Q4, before custom-Q phase)
   const stepConversationExtras = useCallback(async () => {
-    const extras = (config.questions ?? []).filter(q => q.conversationPosition)
+    const extras = (config.questions ?? []).filter(q => q.conversationPosition && q.enabled !== false)
     if (extras.length === 0) { await stepCustomQuestions(); return }
 
     const customAnswers: Record<string, string | string[]> = { ...state.current.customAnswers }
