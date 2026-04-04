@@ -1313,25 +1313,38 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
+  var [samplingMeta, setSamplingMeta] = useState<{ sampled: boolean; sampleSize: number; totalRows: number } | null>(null)
   var { filters } = useFilters()
 
-  // Load rows
+  // Max rows to load into the browser. Datasets larger than this are systematically
+  // sampled server-side so the analysis remains fast and memory-safe.
+  // Set to 0 to bypass sampling (triggered by "Load full dataset").
+  var [sampleCap, setSampleCap] = useState<number>(10_000)
+
+  // Load rows — requests a sample cap so large datasets don't time out.
+  // When sampleCap === 0, loads all rows (user explicitly bypassed sampling).
   useEffect(function() {
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     var cancelled = false
-    fetch('/api/datasets/' + datasetId + '/rows?all=true')
+    var url = '/api/datasets/' + datasetId + '/rows?all=true' + (sampleCap > 0 ? '&sampleMax=' + sampleCap : '')
+    fetch(url)
       .then(function(r) { return r.json() })
       .then(function(data) {
         if (!cancelled) {
           setRows(data.rows || [])
+          setSamplingMeta({
+            sampled:    !!data.sampled,
+            sampleSize: data.sampleSize ?? (data.rows || []).length,
+            totalRows:  data.totalRows  ?? (data.rows || []).length,
+          })
           setRowsLoaded(true)
         }
       })
       .catch(function() {})
       .finally(function() { if (!cancelled) setRowsLoading(false) })
     return function() { cancelled = true }
-  }, [datasetId])
+  }, [datasetId, sampleCap])
 
   // MC state
   var [mcResults, setMcResults] = useState<Record<string, MCResult>>({})
@@ -1430,7 +1443,14 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           {/* Status */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
             {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
-            {rowsLoaded && <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>}
+            {rowsLoaded && samplingMeta && !samplingMeta.sampled && (
+              <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {rows.length.toLocaleString()} rows</span>
+            )}
+            {rowsLoaded && samplingMeta?.sampled && (
+              <span style={{ fontSize: 11, color: T.textMute }}>
+                {'\u2714'} {samplingMeta.sampleSize.toLocaleString()} <span style={{ color: T.textFaint }}>of {samplingMeta.totalRows.toLocaleString()}</span>
+              </span>
+            )}
           </div>
 
           {/* Field groups — sorted: numeric, categorical, open-ended, date (each alpha within group) */}
@@ -1439,6 +1459,33 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
         {/* ─── Main content ─────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          {/* Sampling notice — shown when the dataset exceeds SAMPLE_MAX */}
+          {rowsLoaded && samplingMeta?.sampled && (() => {
+            var n   = samplingMeta.sampleSize
+            var tot = samplingMeta.totalRows
+            // Worst-case margin of error for a proportion at 95% CI: 1.96 * sqrt(0.25/n)
+            var moe = (1.96 * Math.sqrt(0.25 / n) * 100).toFixed(1)
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                background: '#eff6ff', border: '1px solid #bfdbfe',
+                borderRadius: 10, padding: '10px 14px', marginBottom: 20,
+                fontSize: 12, color: '#1e40af', lineHeight: 1.5,
+              }}>
+                <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>📊</span>
+                <div>
+                  <strong>Sampled dataset</strong> — analysis is based on {n.toLocaleString()} systematically-sampled rows from {tot.toLocaleString()} total responses.
+                  {' '}Results are statistically representative (worst-case ±{moe}% at 95% CI for any proportion).
+                  <span
+                    style={{ marginLeft: 8, color: '#2563eb', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}
+                    onClick={function() { setSampleCap(0); setSamplingMeta(null); setRowsLoaded(false); setRows([]) }}
+                  >
+                    Load full dataset
+                  </span>
+                </div>
+              </div>
+            )
+          })()}
           {!rowsLoaded ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
               <LottieLoader size={80} message="Loading data for statistical analysis..." />

@@ -8,6 +8,9 @@
 //   field      (optional)      — return only this single column
 //   fields     (optional)      — comma-separated column names to return
 //   all        (optional)      — if 'true', return ALL rows (ignores page/pageSize)
+//   sampleMax  (optional)      — when used with all=true, cap result to this many rows
+//                                using systematic sampling (every N-th row).
+//                                If totalRows <= sampleMax, all rows are returned unchanged.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -40,11 +43,13 @@ export async function GET(req: Request, { params }: Params) {
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var url      = new URL(req.url)
-  var allMode  = url.searchParams.get('all') === 'true'
-  var page     = Math.max(1, parseInt(url.searchParams.get('page') || '1'))
-  var pageSize = Math.min(5000, Math.max(1, parseInt(url.searchParams.get('pageSize') || '100')))
-  var field    = url.searchParams.get('field') || null
-  var fieldsP  = url.searchParams.get('fields') || null
+  var allMode    = url.searchParams.get('all') === 'true'
+  var page       = Math.max(1, parseInt(url.searchParams.get('page') || '1'))
+  var pageSize   = Math.min(5000, Math.max(1, parseInt(url.searchParams.get('pageSize') || '100')))
+  var field      = url.searchParams.get('field') || null
+  var fieldsP    = url.searchParams.get('fields') || null
+  var sampleMaxP = url.searchParams.get('sampleMax')
+  var sampleMax  = sampleMaxP ? Math.max(1, parseInt(sampleMaxP)) : null
 
   // Build field projection set
   var fieldSet: Set<string> | null = null
@@ -65,8 +70,17 @@ export async function GET(req: Request, { params }: Params) {
 
   var totalRows  = metaResult.data?.row_count || 0
 
-  // ── BULK MODE: return all rows in one response ──────────────────────────
+  // ── BULK MODE: return all rows (or a systematic sample) in one response ─
   if (allMode) {
+    // Systematic sampling: when sampleMax is set and the dataset exceeds it,
+    // include every step-th row so the result is evenly distributed over time.
+    // step = ceil(totalRows / sampleMax) — e.g. 50k rows, sampleMax 10k → step 5.
+    // We compute step from the stored row_count so we never need to materialise
+    // the full array; sampling happens during the streaming loop.
+    var doSample    = sampleMax !== null && totalRows > sampleMax
+    var sampleStep  = doSample ? Math.ceil(totalRows / sampleMax!) : 1
+    var globalIdx   = 0
+
     var allRows: Record<string, unknown>[] = []
     var bulkPage = 0
     var BULK_FETCH = 200  // fetch 200 batch records per DB call (~10K rows)
@@ -90,7 +104,10 @@ export async function GET(req: Request, { params }: Params) {
       for (var bi = 0; bi < batches.length; bi++) {
         var batchRows = batches[bi].rows || []
         for (var ri = 0; ri < batchRows.length; ri++) {
-          allRows.push(projectRow(batchRows[ri], fieldSet))
+          if (!doSample || globalIdx % sampleStep === 0) {
+            allRows.push(projectRow(batchRows[ri], fieldSet))
+          }
+          globalIdx++
         }
       }
 
@@ -102,9 +119,13 @@ export async function GET(req: Request, { params }: Params) {
       rows:       allRows,
       page:       1,
       pageSize:   allRows.length,
-      totalRows:  totalRows,
+      totalRows,
       totalPages: 1,
       field:      field || undefined,
+      // Sampling metadata — consumed by StatsModule to show a banner
+      sampled:    doSample,
+      sampleSize: doSample ? allRows.length : totalRows,
+      sampleRate: doSample ? parseFloat((allRows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
     })
   }
 

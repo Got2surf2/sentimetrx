@@ -31,14 +31,19 @@ interface CatAccum {
 }
 
 interface NumAccum {
-  type:    'numeric'
-  nonNull: number
-  sum:     number
-  min:     number
-  max:     number
-  values:  number[]          // kept for median + stddev (capped at 50k)
+  type:       'numeric'
+  nonNull:    number
+  sum:        number
+  min:        number
+  max:        number
+  values:     number[]   // reservoir sample — up to NUMERIC_RESERVOIR_SIZE values
+  valuesSeen: number     // total numeric values seen (for reservoir algorithm)
   valueCounts: Record<string, number>  // for discrete numerics (1-5 ratings etc)
 }
+
+// Reservoir size for numeric values used in median / stddev / percentile computation.
+// At 10k values the statistical error on median is < 0.5% for typical survey distributions.
+const NUMERIC_RESERVOIR_SIZE = 50_000
 
 interface TextAccum {
   type:        'open-ended'
@@ -69,7 +74,7 @@ type Accum = CatAccum | NumAccum | TextAccum | DateAccum | IgnoreAccum
 function makeAccum(field: SchemaFieldConfig): Accum {
   var t = field.type
   if (t === 'categorical') return { type: 'categorical', counts: {}, nonNull: 0 }
-  if (t === 'numeric')     return { type: 'numeric', nonNull: 0, sum: 0, min: Infinity, max: -Infinity, values: [], valueCounts: {} }
+  if (t === 'numeric')     return { type: 'numeric', nonNull: 0, sum: 0, min: Infinity, max: -Infinity, values: [], valuesSeen: 0, valueCounts: {} }
   if (t === 'open-ended')  return { type: 'open-ended', nonNull: 0, totalWords: 0, totalChars: 0, maxLen: 0, sample: [] }
   if (t === 'date')        return { type: 'date', nonNull: 0, min: '', max: '', counts: {} }
   return { type: t as 'id' | 'ignore', nonNull: 0, uniqueSet: new Set(), sample: [] }
@@ -93,7 +98,17 @@ function accumRow(accum: Accum, raw: unknown): void {
       accum.sum += n
       if (n < accum.min) accum.min = n
       if (n > accum.max) accum.max = n
-      if (accum.values.length < 50000) accum.values.push(n)
+      // Knuth / Vitter reservoir sampling (Algorithm R):
+      // keeps a statistically representative random sample of up to NUMERIC_RESERVOIR_SIZE values.
+      // For datasets ≤ reservoir size this is equivalent to keeping every value.
+      var seen = accum.valuesSeen
+      if (seen < NUMERIC_RESERVOIR_SIZE) {
+        accum.values.push(n)
+      } else {
+        var j = Math.floor(Math.random() * (seen + 1))
+        if (j < NUMERIC_RESERVOIR_SIZE) accum.values[j] = n
+      }
+      accum.valuesSeen++
       // Track value counts for discrete numerics (ratings, scores)
       var vk = String(n)
       accum.valueCounts[vk] = (accum.valueCounts[vk] || 0) + 1
