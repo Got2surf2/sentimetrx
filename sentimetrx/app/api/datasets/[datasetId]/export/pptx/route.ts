@@ -1699,14 +1699,14 @@ export async function POST(req: Request, { params }: Params) {
     // 1: Title
     buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt)
 
-    // 2: About this report
-    buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience)
-
     // Sort themes by frequency (count descending)
     const sortedThemes = [...themes].sort(function(a: any, b: any) { return (b.count || 0) - (a.count || 0) })
 
-    // 3: Executive Summary
+    // 2: Executive Summary
     buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields)
+
+    // 3: About this report
+    buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience)
 
     // 4: Theme slides (if enabled and themes exist)
     if (includeThemeSlides && sortedThemes.length > 0) {
