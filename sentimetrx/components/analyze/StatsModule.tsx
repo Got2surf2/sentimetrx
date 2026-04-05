@@ -178,24 +178,8 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning }: { numField
             <div style={{ padding: '12px 18px', borderBottom: '1px solid ' + T.border, fontSize: 13, fontWeight: 700, color: T.text }}>{selLabel} <span style={{ fontWeight: 400, color: T.textFaint, fontSize: 11 }}>{'\u2014'} {stats.n} observations</span></div>
             <div style={{ padding: '2px 16px 12px' }}>
               <StatRow label="Mean" value={fmtN(stats.mn)} />
-              {mcResults[sel] && !isNaN(mcResults[sel].meanCI[0]) && (
-                <div style={{ fontSize: 11, color: T.textFaint, paddingLeft: 0, paddingBottom: 8 }}>
-                  95% CI [{fmt2(mcResults[sel].meanCI[0])}, {fmt2(mcResults[sel].meanCI[1])}]
-                  {mcRunning && <span style={{ marginLeft: 6, color: T.textMute }}>(updating…)</span>}
-                </div>
-              )}
               <StatRow label="Median" value={fmtN(stats.med)} />
-              {mcResults[sel] && !isNaN(mcResults[sel].medianCI[0]) && (
-                <div style={{ fontSize: 11, color: T.textFaint, paddingLeft: 0, paddingBottom: 8 }}>
-                  95% CI [{fmt2(mcResults[sel].medianCI[0])}, {fmt2(mcResults[sel].medianCI[1])}]
-                </div>
-              )}
               <StatRow label="Std. Dev." value={fmtN(stats.sd)} />
-              {mcResults[sel] && !isNaN(mcResults[sel].stdCI[0]) && (
-                <div style={{ fontSize: 11, color: T.textFaint, paddingLeft: 0, paddingBottom: 8 }}>
-                  95% CI [{fmt2(mcResults[sel].stdCI[0])}, {fmt2(mcResults[sel].stdCI[1])}]
-                </div>
-              )}
               <StatRow label="Variance" value={fmtN(stats.sd ** 2)} />
               <StatRow label="Min" value={fmtN(stats.min)} />
               <StatRow label="Max" value={fmtN(stats.max)} />
@@ -261,6 +245,41 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning }: { numField
                   )
                 })}
               </div>
+            </Card>
+
+            {/* Bootstrap CI card — Monte Carlo confidence intervals */}
+            <Card style={{ padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                  Bootstrap CI <span style={{ fontSize: 9, fontWeight: 400, marginLeft: 4 }}>(Monte Carlo, 95%)</span>
+                </div>
+                {mcRunning && <span style={{ fontSize: 10, color: T.textMute }}>Computing…</span>}
+              </div>
+              {mcResults[sel] && !isNaN(mcResults[sel].meanCI[0]) ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {([
+                    { label: 'Mean CI', lo: mcResults[sel].meanCI[0], hi: mcResults[sel].meanCI[1] },
+                    { label: 'Median CI', lo: mcResults[sel].medianCI[0], hi: mcResults[sel].medianCI[1] },
+                    { label: 'Std Dev CI', lo: mcResults[sel].stdCI[0], hi: mcResults[sel].stdCI[1] },
+                  ] as { label: string; lo: number; hi: number }[]).map(function(ci) {
+                    return (
+                      <div key={ci.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid ' + T.border }}>
+                        <span style={{ color: T.textMute }}>{ci.label}</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: T.text }}>
+                          [{fmt2(ci.lo)}, {fmt2(ci.hi)}]
+                        </span>
+                      </div>
+                    )
+                  })}
+                  <div style={{ fontSize: 10, color: T.textFaint, marginTop: 2 }}>
+                    2,000 bootstrap resamples · percentile method
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: T.textFaint, fontStyle: 'italic' }}>
+                  {mcRunning ? 'Computing bootstrap CIs…' : 'n < 10 or no data'}
+                </div>
+              )}
             </Card>
           </div>
         </div>
@@ -608,6 +627,24 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
   var outcomeFields = numFields.filter(function(f) { return !predictors.has(f.field) })
   var predictorFields = numFields.filter(function(f) { return !outcomes.has(f.field) })
 
+  // Per-field diagnostics — used for warning icons on problem fields
+  var fieldDiag = useMemo(function() {
+    var diag: Record<string, string> = {}
+    numFields.forEach(function(f) {
+      var vals = getNum(f.field, data)
+      if (vals.length < 3) {
+        diag[f.field] = 'Only ' + vals.length + ' valid numeric value(s) — insufficient for regression'
+      } else if (vals.length < data.length * 0.1) {
+        diag[f.field] = Math.round(vals.length / Math.max(data.length, 1) * 100) + '% of rows have valid values (' + vals.length + ' of ' + data.length + ')'
+      } else {
+        var mn = vals.reduce(function(s, v) { return s + v }, 0) / vals.length
+        var vr = vals.reduce(function(s, v) { return s + (v - mn) ** 2 }, 0) / vals.length
+        if (vr === 0) diag[f.field] = 'Zero variance — all values are identical (' + vals[0] + ')'
+      }
+    })
+    return diag
+  }, [numFields, data])
+
   if (numFields.length < 2) return <StatsEmpty icon={'\u27CB'} msg="Need at least 2 numeric fields" sub="Activate more numeric fields or map categorical values to numbers." />
 
   return (
@@ -632,11 +669,13 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
               {outcomeFields.map(function(f) {
                 var sel = outcomes.has(f.field)
+                var warn = fieldDiag[f.field]
                 return (
                   <button key={f.field} onClick={function() { toggleOutcome(f.field) }}
-                    style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : warn ? T.amber : T.border), color: sel ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.accent : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
                     {fl2(f)}
+                    {warn && <span title={warn} style={{ fontSize: 11, color: T.amber, marginLeft: 'auto' }}>⚠</span>}
                   </button>
                 )
               })}
@@ -653,12 +692,14 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {predictorFields.map(function(f) {
               var sel = predictors.has(f.field), atLimit = !sel && predictors.size >= MAX_PREDICTORS
+              var warn = fieldDiag[f.field]
               return (
                 <button key={f.field} onClick={function() { toggleP(f.field) }}
                   title={atLimit ? 'Max ' + MAX_PREDICTORS + ' predictors. Deselect one first.' : undefined}
-                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.greenBg : 'transparent', border: '1px solid ' + (sel ? T.green : T.border), color: atLimit ? T.textFaint : sel ? T.green : T.textMid, borderRadius: 7, cursor: atLimit ? 'not-allowed' : 'pointer', opacity: atLimit ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.greenBg : 'transparent', border: '1px solid ' + (sel ? T.green : warn ? T.amber : T.border), color: atLimit ? T.textFaint : sel ? T.green : T.textMid, borderRadius: 7, cursor: atLimit ? 'not-allowed' : 'pointer', opacity: atLimit ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.green : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
                   {fl2(f)}
+                  {warn && <span title={warn} style={{ fontSize: 11, color: T.amber, marginLeft: 'auto' }}>⚠</span>}
                 </button>
               )
             })}
@@ -1395,20 +1436,19 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [activePanel, setActivePanel] = useState('descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
   var [confidenceLevel, setConfidenceLevel] = useState(95)
-  var [pickerSize, setPickerSize] = useState('')   // string input in the sample picker
+  var [pendingCap, setPendingCap] = useState(10_000)
+  var [pendingConfidence, setPendingConfidence] = useState(95)
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
   var [samplingMeta, setSamplingMeta] = useState<{ sampled: boolean; sampleSize: number; totalRows: number } | null>(null)
   var { filters } = useFilters()
 
-  // null = user hasn't picked yet (nothing loads until they choose).
   // 0 = load all rows (no cap). Any positive number = systematic sample cap.
-  var [sampleCap, setSampleCap] = useState<number | null>(null)
+  var [sampleCap, setSampleCap] = useState(10_000)
 
-  // Load rows — only fires after the user picks a sample size.
+  // Load rows whenever sampleCap changes and no data is loaded yet.
   useEffect(function() {
-    if (sampleCap === null) return          // waiting for user to choose
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     var cancelled = false
@@ -1525,28 +1565,30 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
     return function() { clearTimeout(tid) }
   }, [enrichedData, numFields])
 
-  var refreshRows = function() {
-    setRowsLoaded(false)
-    setRowsLoading(false)
-    setSamplingMeta(null)
-    setRows([])
-    setSampleCap(null)   // return to picker
+  // Apply pending settings — reloads data only if cap changed
+  var isDirty = pendingConfidence !== confidenceLevel || pendingCap !== sampleCap
+  var applySettings = function() {
+    setConfidenceLevel(pendingConfidence)
+    if (pendingCap !== sampleCap) {
+      setRows([]); setSamplingMeta(null); setRowsLoaded(false); setRowsLoading(false)
+      setSampleCap(pendingCap)
+    }
   }
 
-  // ── Confidence / MOE helpers (used in both picker and right sidebar) ──────
+  // ── Confidence / MOE helpers ──────────────────────────────────────────────
   var Z_TABLE: Record<number, number> = {
     90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808,
     95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758,
   }
   var z        = Z_TABLE[confidenceLevel] ?? 1.96
-  var reqN     = Math.ceil(z * z * 100)   // min n for ±5% MOE
-  // Use actual sample size when loaded
+  var zPending = Z_TABLE[pendingConfidence] ?? 1.96
+  var reqN     = Math.ceil(z * z * 100)    // min n for ±5% MOE at applied confidence
   var analysisN = samplingMeta ? samplingMeta.sampleSize : rows.length
   var moePct   = analysisN > 0 ? (z * Math.sqrt(0.25 / analysisN) * 100).toFixed(1) : null
   var meetsReq = analysisN >= reqN
-
-  // Preset sample sizes shown in the picker
-  var SAMPLE_PRESETS = [500, 1_000, 5_000, 10_000, 25_000, 50_000]
+  // Pending MOE preview (what it will be after Apply)
+  var pendingMoe = pendingCap > 0 ? (zPending * Math.sqrt(0.25 / pendingCap) * 100).toFixed(1) : '0.0'
+  var perfWarning = pendingCap === 0 || pendingCap > 50_000
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -1558,7 +1600,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           {/* Status */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid ' + T.border }}>
             {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
-            {!rowsLoading && sampleCap === null && <span style={{ fontSize: 11, color: T.textFaint }}>No data loaded</span>}
+            {!rowsLoading && !rowsLoaded && <span style={{ fontSize: 11, color: T.textFaint }}>No data loaded</span>}
             {rowsLoaded && samplingMeta && !samplingMeta.sampled && (
               <span style={{ fontSize: 11, color: T.green }}>{'\u2714'} {samplingMeta.sampleSize.toLocaleString()} rows</span>
             )}
@@ -1576,82 +1618,6 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
         {/* ─── Main content ─────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
 
-          {/* ── Sample-size picker — shown before any data is loaded ── */}
-          {sampleCap === null && !rowsLoading && (function() {
-            var parsed  = parseInt(pickerSize.replace(/,/g, ''))
-            var validN  = !isNaN(parsed) && parsed > 0
-            var loadMoe = validN ? (z * Math.sqrt(0.25 / parsed) * 100).toFixed(1) : null
-            return (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
-                <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 16, padding: '32px 36px', maxWidth: 480, width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,.07)' }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 4 }}>Choose sample size</div>
-                  <div style={{ fontSize: 13, color: T.textMute, marginBottom: 24, lineHeight: 1.6 }}>
-                    Analysis runs in your browser. Larger samples are more precise but take longer to load.
-                    Set your confidence level in the right panel, then pick or enter a sample size.
-                  </div>
-
-                  {/* Preset quick-select buttons — fill the input, don't load yet */}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Quick select</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
-                    {SAMPLE_PRESETS.map(function(n) {
-                      var moe    = (z * Math.sqrt(0.25 / n) * 100).toFixed(1)
-                      var ok     = n >= reqN
-                      var active = pickerSize === String(n)
-                      return (
-                        <button key={n}
-                          onClick={function() { setPickerSize(String(n)) }}
-                          style={{
-                            padding: '10px 6px', borderRadius: 9, cursor: 'pointer',
-                            border: '2px solid ' + (active ? T.accent : ok ? T.greenMid : T.border),
-                            background: active ? T.accentBg : ok ? T.greenBg : T.bg,
-                            color: active ? T.accent : ok ? T.green : T.textMid, fontWeight: 700,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                          }}>
-                          <span style={{ fontSize: 13 }}>{n >= 1000 ? (n / 1000) + 'k' : n}</span>
-                          <span style={{ fontSize: 10, fontWeight: 400, color: active ? T.accent : ok ? T.green : T.textFaint }}>±{moe}%</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* Custom input */}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Custom size</div>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                    <input
-                      type="number" min={1} placeholder="e.g. 15000"
-                      value={pickerSize}
-                      onChange={function(e) { setPickerSize(e.target.value) }}
-                      onKeyDown={function(e) { if (e.key === 'Enter' && validN) setSampleCap(parsed) }}
-                      style={{ flex: 1, padding: '9px 12px', fontSize: 14, border: '1px solid ' + (validN ? T.accent : T.border), borderRadius: 8, outline: 'none', color: T.text, background: T.bgCard }}
-                    />
-                    <button
-                      disabled={!validN}
-                      onClick={function() { if (validN) setSampleCap(parsed) }}
-                      style={{
-                        padding: '9px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: validN ? 'pointer' : 'not-allowed',
-                        background: validN ? T.accent : T.border, color: 'white', border: 'none',
-                        opacity: validN ? 1 : 0.5,
-                      }}>
-                      Load
-                    </button>
-                  </div>
-                  {validN && loadMoe && (
-                    <div style={{ fontSize: 11, color: parsed >= reqN ? T.green : T.amber, marginBottom: 16 }}>
-                      {parsed >= reqN ? '\u2714' : '\u26A0'} {parsed.toLocaleString()} rows — ±{loadMoe}% MOE at {confidenceLevel}% CI
-                      {parsed < reqN && <span style={{ color: T.textFaint }}> (need {reqN.toLocaleString()} for ±5%)</span>}
-                    </div>
-                  )}
-
-                  <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 14 }}>
-                    <button onClick={function() { setSampleCap(0) }}
-                      style={{ width: '100%', padding: '9px', borderRadius: 8, cursor: 'pointer', border: '1px solid ' + T.border, background: T.bg, color: T.textMid, fontWeight: 600, fontSize: 13 }}>
-                      Full dataset — no limit
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
 
           {/* ── Loading spinner ── */}
           {rowsLoading && (
@@ -1698,20 +1664,20 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
         {/* ─── Right sidebar: Validity + Analysis types ─────── */}
         <div style={{ width: 200, flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
 
-          {/* Statistical Validity panel */}
+          {/* Statistical Validity + Sample Settings */}
           <div style={{ padding: '14px 14px 14px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
               Statistical Validity
             </div>
 
-            {/* Confidence level — always visible, drives both reqN and the picker presets */}
+            {/* Confidence level slider — pending value */}
             <div style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                <span style={{ fontSize: 10, color: T.textMute }}>Confidence level</span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{confidenceLevel}%</span>
+                <span style={{ fontSize: 10, color: T.textMute }}>Confidence</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{pendingConfidence}%</span>
               </div>
-              <input type="range" min={90} max={99} step={1} value={confidenceLevel}
-                onChange={function(e) { setConfidenceLevel(parseInt(e.target.value)) }}
+              <input type="range" min={90} max={99} step={1} value={pendingConfidence}
+                onChange={function(e) { setPendingConfidence(parseInt(e.target.value)) }}
                 style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4 }}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textFaint, marginTop: 2 }}>
@@ -1719,41 +1685,62 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
               </div>
             </div>
 
-            {/* Min sample target — always visible */}
-            <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span>Min. for ±5% MOE</span>
-              <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
+            {/* Sample size input */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: T.textMute, marginBottom: 4 }}>Sample size (0 = full dataset)</div>
+              <input
+                type="number" min={0} value={pendingCap}
+                onChange={function(e) { setPendingCap(Math.max(0, parseInt(e.target.value) || 0)) }}
+                style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 6, outline: 'none', color: T.text, background: T.bgCard, boxSizing: 'border-box' as any }}
+              />
+              {/* MOE preview */}
+              <div style={{ fontSize: 10, color: T.textFaint, marginTop: 3 }}>
+                Preview: ±{pendingMoe}% MOE
+              </div>
             </div>
 
-            {/* Loaded sample stats — only when data is present */}
-            {analysisN > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Loaded sample</span>
+            {/* Performance warning */}
+            {perfWarning && (
+              <div style={{ fontSize: 10, background: T.amberBg, color: T.amber, border: '1px solid ' + T.amberMid, borderRadius: 6, padding: '5px 7px', marginBottom: 8, lineHeight: 1.45 }}>
+                {'\u26A0'} {pendingCap === 0 ? 'Full dataset' : pendingCap.toLocaleString() + ' rows'} may slow down correlation and bootstrap calculations in your browser.
+              </div>
+            )}
+
+            {/* Apply button */}
+            <button
+              onClick={applySettings}
+              disabled={!isDirty}
+              style={{
+                width: '100%', padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: 12, cursor: isDirty ? 'pointer' : 'default',
+                background: isDirty ? T.accent : T.border, color: isDirty ? 'white' : T.textFaint,
+                border: 'none', opacity: isDirty ? 1 : 0.5, transition: 'all .15s',
+              }}>
+              {isDirty ? 'Apply' : '\u2714 Applied'}
+            </button>
+
+            {/* Loaded sample readout */}
+            {analysisN > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 10, paddingTop: 10, borderTop: '1px solid ' + T.border }}>
+                <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Loaded</span>
                   <span style={{ fontWeight: 700, color: T.textMid }}>{analysisN.toLocaleString()}</span>
                 </div>
-                <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
                   <span>Actual MOE</span>
                   <span style={{ fontWeight: 700, color: meetsReq ? T.green : T.amber }}>±{moePct}%</span>
                 </div>
+                <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Min. for ±5%</span>
+                  <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
+                </div>
                 <div style={{
-                  marginTop: 2, fontSize: 10, padding: '4px 7px', borderRadius: 6,
+                  fontSize: 10, padding: '3px 6px', borderRadius: 5,
                   background: meetsReq ? T.greenBg : T.amberBg,
                   color: meetsReq ? T.green : T.amber,
                   border: '1px solid ' + (meetsReq ? T.greenMid : T.amberMid),
                 }}>
-                  {meetsReq
-                    ? `\u2714 Sufficient for ${confidenceLevel}% CI`
-                    : `\u26A0 Need ${(reqN - analysisN).toLocaleString()} more rows`}
+                  {meetsReq ? '\u2714 Sufficient' : '\u26A0 Need ' + (reqN - analysisN).toLocaleString() + ' more'}
                 </div>
-                <button onClick={refreshRows}
-                  style={{ marginTop: 2, fontSize: 10, color: T.accent, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', textDecoration: 'underline' }}>
-                  Change sample size
-                </button>
-              </div>
-            ) : (
-              <div style={{ fontSize: 11, color: T.textFaint, fontStyle: 'italic', lineHeight: 1.5 }}>
-                Choose a sample size to begin. The slider above sets your target confidence level and updates the preset buttons in the picker.
               </div>
             )}
           </div>
