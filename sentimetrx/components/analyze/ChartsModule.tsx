@@ -470,14 +470,17 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   // Build crosstab: category × colorBy
   var grid: Record<string, Record<string, number>> = {}
   var colorVals = new Set<string>()
+  var colorTotals: Record<string, number> = {}
   rows.forEach(function(r) {
     var cat = String(r[catField] || '').trim()
     var col = String(r[colorByField] || '').trim()
     if (!cat || !col) return
     colorVals.add(col)
+    colorTotals[col] = (colorTotals[col] || 0) + 1
     if (!grid[cat]) grid[cat] = {}
     grid[cat][col] = (grid[cat][col] || 0) + 1
   })
+  var colorGrandTotal = Object.values(colorTotals).reduce(function(a, b) { return a + b }, 0)
 
   // Smart axes ordering
   var cats = Object.keys(grid)
@@ -515,7 +518,8 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
         return total > 0 ? Math.round((grid[cat] ? (grid[cat][col] || 0) : 0) / total * 1000) / 10 : 0
       })
     }
-    var trace: any = { type: 'bar', name: col, marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' }
+    var colPct = colorGrandTotal > 0 ? Math.round((colorTotals[col] || 0) / colorGrandTotal * 100) : 0
+    var trace: any = { type: 'bar', name: col + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' }
     if (isH) { trace.y = cats; trace.x = ys; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = ys }
     return trace
@@ -639,8 +643,10 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
   // Integer-range ticks on Y-axis when numeric field is a small int range (e.g. NPS 0-10, rating 1-5)
   var numSum = analytics.fieldSummaries[numField]
   var intY = isSmallIntRange(numSum?.min, numSum?.max)
+  var totalND = Object.values(groups).reduce(function(a, arr) { return a + arr.length }, 0)
   var traces = keys.map(function(k, i) {
-    return { type: 'box' as const, y: groups[k], name: k, marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
+    var pct = totalND > 0 ? Math.round(groups[k].length / totalND * 100) : 0
+    return { type: 'box' as const, y: groups[k], name: k + ' (' + pct + '%)', marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
   })
   return <PlotlyChart traces={traces} layout={{ yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
 }
@@ -672,11 +678,13 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
     var med = vs[Math.floor(vs.length / 2)]
     return { label: grp, avg: avg, median: med, min: vs[0], max: vs[vs.length - 1], n: vs.length }
   })
+  var totalNB = stats.reduce(function(t, s) { return t + s.n }, 0)
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
       {stats.map(function(s) {
-        return <GaugeCard key={s.label} label={s.label} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} />
+        var pctB = totalNB > 0 ? Math.round(s.n / totalNB * 100) : 0
+        return <GaugeCard key={s.label} label={s.label + ' (' + pctB + '%)'} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} />
       })}
     </div>
   )
@@ -1190,8 +1198,14 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
             <div style={{ fontSize: 10, color: T.textFaint, fontStyle: 'italic', marginTop: 2 }}>Drag to slot or use dropdown below</div>
           </div>
 
-          {/* Field groups — reference only */}
-          <ChartFieldGroups fields={allFields} currentConfig={currentConfig} />
+          {/* Field groups — filtered to types accepted by the current chart's slots */}
+          {(function() {
+            var slots = CHART_SLOTS[activeChart] || []
+            if (slots.length === 0) return <ChartFieldGroups fields={allFields} currentConfig={currentConfig} />
+            var accepted = new Set(slots.flatMap(function(s) { return s.accepts }))
+            var visible = accepted.has('any') ? allFields : allFields.filter(function(f) { return accepted.has(f.type) })
+            return <ChartFieldGroups fields={visible} currentConfig={currentConfig} />
+          })()}
         </div>
 
         {/* ─── Chart body ──────────────────────────────────── */}

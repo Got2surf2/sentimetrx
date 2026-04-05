@@ -241,7 +241,7 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
                       { x: stats.vals, type: 'histogram', name: 'Count', nbinsx: nbins, marker: { color: T.accent, opacity: 0.75, line: { color: T.accentMid, width: 0.5 } }, hovertemplate: 'Count: %{y}<extra></extra>' },
                       { x: curveX, y: curveY, type: 'scatter', mode: 'lines', name: 'Normal', line: { color: T.purple, width: 2, dash: 'solid' }, hovertemplate: 'Expected: %{y:.1f}<extra></extra>' },
                     ]}
-                    layout={{ xaxis: { title: { text: selLabel, font: { size: 11 } }, range: [lo, hi] }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.02, showlegend: true, legend: { x: 0.75, y: 0.98, font: { size: 10 } }, margin: { t: 10, r: 16, b: 44, l: 48 } }}
+                    layout={{ xaxis: { title: { text: selLabel, font: { size: 11 } }, range: [lo - 1, hi + 1] }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.02, showlegend: true, legend: { x: 0.75, y: 0.98, font: { size: 10 } }, margin: { t: 10, r: 16, b: 44, l: 48 } }}
                     style={{ height: 220, width: '100%' }}
                   />
                 )
@@ -1704,8 +1704,12 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
             )}
           </div>
 
-          {/* Field groups — sorted: numeric, categorical, open-ended, date (each alpha within group) */}
-          <FieldSidebarGroups fields={[...numFields, ...catFields, ...openFields, ...dateFields]} T={T} fl={fl} diag={sidebarDiag} />
+          {/* Field groups — filtered to types relevant for the active panel */}
+          {(function() {
+            var needsNum = true
+            var needsCat = activePanel === 'grouptests' || activePanel === 'insights' || activePanel === 'outliers'
+            return <FieldSidebarGroups fields={[...(needsNum ? numFields : []), ...(needsCat ? catFields : [])]} T={T} fl={fl} diag={sidebarDiag} />
+          })()}
         </div>
 
         {/* ─── Main content ─────────────────────────────────── */}
