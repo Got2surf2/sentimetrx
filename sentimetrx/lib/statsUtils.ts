@@ -7,8 +7,20 @@ export function variance(a: number[], ddof: number = 1): number { if (a.length <
 export function std(a: number[], ddof: number = 1): number { return Math.sqrt(variance(a, ddof)) }
 export function median(a: number[]): number { var s = a.slice().sort(function(x, y) { return x - y }); var m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 export function quantile(a: number[], q: number): number { var s = a.slice().sort(function(x, y) { return x - y }); var p = (s.length - 1) * q; var lo = Math.floor(p); var hi = Math.ceil(p); return s[lo] + (s[hi] - s[lo]) * (p - lo) }
-export function skewness(a: number[]): number { var n = a.length, m = mean(a), s = std(a, 1); return s ? a.reduce(function(x, v) { return x + ((v - m) / s) ** 3 }, 0) / n : 0 }
-export function kurtosis(a: number[]): number { var n = a.length, m = mean(a), s = std(a, 1); return s ? a.reduce(function(x, v) { return x + ((v - m) / s) ** 4 }, 0) / n - 3 : 0 }
+// Unbiased Fisher-Pearson skewness G1 — matches Excel SKEW(), SPSS, SAS
+export function skewness(a: number[]): number {
+  var n = a.length; if (n < 3) return 0
+  var m = mean(a), s = std(a, 1); if (!s) return 0
+  var sum3 = a.reduce(function(x, v) { return x + ((v - m) / s) ** 3 }, 0)
+  return (n / ((n - 1) * (n - 2))) * sum3
+}
+// Unbiased excess kurtosis G2 — matches Excel KURT(), SPSS
+export function kurtosis(a: number[]): number {
+  var n = a.length; if (n < 4) return 0
+  var m = mean(a), s = std(a, 1); if (!s) return 0
+  var sum4 = a.reduce(function(x, v) { return x + ((v - m) / s) ** 4 }, 0)
+  return (n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3)) * sum4 - 3 * (n - 1) ** 2 / ((n - 2) * (n - 3))
+}
 
 function logGamma(x: number): number {
   if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - logGamma(1 - x)
@@ -115,7 +127,15 @@ export function mannWhitneyU(a: number[], b: number[]): { U: number; z: number; 
   var ranks_ = new Array(comb.length); var i = 0
   while (i < comb.length) { var j = i; while (j < comb.length && comb[j].v === comb[i].v) j++; var r = (i + j + 1) / 2; for (var k = i; k < j; k++) ranks_[k] = r; i = j }
   var U1 = 0; comb.forEach(function(c, idx) { if (c.g === 0) U1 += ranks_[idx] }); U1 -= na * (na + 1) / 2
-  var U2 = na * nb - U1, U = Math.min(U1, U2), z = (U - na * nb / 2) / Math.sqrt(na * nb * (na + nb + 1) / 12)
+  var U2 = na * nb - U1, U = Math.min(U1, U2)
+  // Tie-corrected variance: Var(U) = na*nb/12 * [N+1 - Σt(t²-1)/(N(N-1))]
+  var Ntot = na + nb, tieSum = 0, ti2 = 0
+  while (ti2 < comb.length) {
+    var tj2 = ti2; while (tj2 < comb.length && comb[tj2].v === comb[ti2].v) tj2++
+    var tsize = tj2 - ti2; if (tsize > 1) tieSum += tsize * (tsize * tsize - 1); ti2 = tj2
+  }
+  var varU = na * nb / 12 * (Ntot + 1 - tieSum / (Ntot * (Ntot - 1)))
+  var z = varU > 0 ? (U - na * nb / 2) / Math.sqrt(varU) : 0
   return { U: U, z: z, p: 2 * (1 - normCDF(Math.abs(z))), na: na, nb: nb }
 }
 
@@ -216,9 +236,12 @@ export function bootstrapCI(values: number[], nIter: number = 2000, ciLevel: num
     stds.push(Math.sqrt(sampleVariance))
   }
 
+  // Type-7 quantile (linear interpolation) — avoids floor-only discretisation
   const percentile = function(arr: number[], p: number): number {
     const sorted = [...arr].sort(function(a, b) { return a - b })
-    return sorted[Math.floor(p * sorted.length)]
+    const pos = p * (sorted.length - 1)
+    const lo = Math.floor(pos), hi = Math.ceil(pos)
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo)
   }
 
   return {

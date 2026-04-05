@@ -547,11 +547,21 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
 var MAX_PREDICTORS = 12
 
 function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
-  var [outcome, setOutcome] = useState(numFields[0]?.field || '')
+  var [outcomes, setOutcomes] = useState<Set<string>>(new Set())
   var [predictors, setPredictors] = useState<Set<string>>(new Set())
-  var [outcomeOpen, setOutcomeOpen] = useState(true)
+  var [activeOutcome, setActiveOutcome] = useState<string>('')
 
-  useEffect(function() { if (!outcome && numFields.length) setOutcome(numFields[0].field) }, [numFields.length])
+  var fl2 = function(f: SchemaFieldConfig) { return aliases[f.field] || f.label || f.field }
+
+  var toggleOutcome = function(f: string) {
+    setOutcomes(function(prev) {
+      var n = new Set(prev)
+      if (n.has(f)) { n.delete(f); if (activeOutcome === f) setActiveOutcome(Array.from(n)[0] || '') }
+      else { n.add(f); if (!activeOutcome) setActiveOutcome(f) }
+      return n
+    })
+    setPredictors(function(prev) { var n = new Set(prev); n.delete(f); return n })
+  }
 
   var toggleP = function(f: string) {
     setPredictors(function(prev) {
@@ -562,124 +572,182 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
     })
   }
 
-  var result = useMemo(function() {
-    if (!outcome || !predictors.size) return null
-    var preds = Array.from(predictors).filter(function(p) { return p !== outcome }); if (!preds.length) return null
-    var rows = data.filter(function(r) { return !isNaN(parseFloat(String(r[outcome] || '').replace(/,/g, ''))) && preds.every(function(p) { return !isNaN(parseFloat(String(r[p] || '').replace(/,/g, ''))) }) })
-    if (rows.length < preds.length + 2) return null
-    var y = rows.map(function(r) { return parseFloat(String(r[outcome]).replace(/,/g, '')) })
-    var X = rows.map(function(r) { return preds.map(function(p) { return parseFloat(String(r[p]).replace(/,/g, '')) }) })
-    return olsRegression(y, X, preds)
-  }, [outcome, predictors, data])
+  var results = useMemo(function() {
+    var out: Record<string, any> = {}
+    if (!outcomes.size || !predictors.size) return out
+    outcomes.forEach(function(oc) {
+      var preds = Array.from(predictors).filter(function(p) { return p !== oc })
+      if (!preds.length) return
+      var filtered = data.filter(function(r) {
+        return !isNaN(parseFloat(String(r[oc] || '').replace(/,/g, ''))) &&
+          preds.every(function(p) { return !isNaN(parseFloat(String(r[p] || '').replace(/,/g, ''))) })
+      })
+      if (filtered.length < preds.length + 2) return
+      var y = filtered.map(function(r) { return parseFloat(String(r[oc]).replace(/,/g, '')) })
+      var X = filtered.map(function(r) { return preds.map(function(p) { return parseFloat(String(r[p]).replace(/,/g, '')) }) })
+      var res = olsRegression(y, X, preds)
+      if (res) out[oc] = res
+    })
+    return out
+  }, [outcomes, predictors, data])
+
+  // Keep activeOutcome in sync if its result was removed
+  useEffect(function() {
+    var keys = Object.keys(results)
+    if (keys.length && (!activeOutcome || !results[activeOutcome])) setActiveOutcome(keys[0])
+  }, [results])
+
+  var activeResult = results[activeOutcome] || null
+  var outcomeFields = numFields.filter(function(f) { return !predictors.has(f.field) })
+  var predictorFields = numFields.filter(function(f) { return !outcomes.has(f.field) })
 
   if (numFields.length < 2) return <StatsEmpty icon={'\u27CB'} msg="Need at least 2 numeric fields" sub="Activate more numeric fields or map categorical values to numbers." />
 
   return (
     <div>
-      <PanelHeader icon={'\u27CB'} title="OLS Linear Regression" desc="Ordinary least squares regression with coefficient table, fit statistics, and residual diagnostics." />
-      {result && <BottomLine text={regrBL(result, aliases[outcome] || outcome, aliases)} naiveText={regrBL_naive(result, aliases[outcome] || outcome, aliases)} />}
+      <PanelHeader icon={'\u27CB'} title="OLS Linear Regression" desc="Ordinary least squares regression. Select one or more outcome variables and any number of predictors — a separate model is fitted for each outcome." />
+
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, marginBottom: 20 }}>
+        {/* ── Variable selector ── */}
         <Card style={{ padding: 16 }}>
-          <button onClick={function() { setOutcomeOpen(function(v) { return !v }) }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: outcomeOpen ? 8 : 14 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>Outcome</span>
-            <span style={{ fontSize: 11, color: outcomeOpen ? T.textFaint : T.accent, fontWeight: 600 }}>
-              {outcomeOpen ? '\u25BE' : (aliases[outcome] || outcome).slice(0, 16) + (outcome ? ' \u25B8' : '\u25B8')}
-            </span>
-          </button>
-          {outcomeOpen && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 18 }}>
-              {numFields.map(function(f) {
-                return (
-                  <button key={f.field} onClick={function() { setOutcome(f.field); setPredictors(function(p) { var n = new Set(p); n.delete(f.field); return n }); setOutcomeOpen(false) }}
-                    style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: outcome === f.field ? 700 : 400, background: outcome === f.field ? T.accentBg : 'transparent', border: '1px solid ' + (outcome === f.field ? T.accent : T.border), color: outcome === f.field ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer' }}>
-                    {aliases[f.field] || f.label || f.field}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>Predictors ({predictors.size}/{MAX_PREDICTORS})</div>
+          {/* Outcomes */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+            Outcomes ({outcomes.size})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
+            {outcomeFields.map(function(f) {
+              var sel = outcomes.has(f.field)
+              return (
+                <button key={f.field} onClick={function() { toggleOutcome(f.field) }}
+                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.accent : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
+                  {fl2(f)}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Predictors */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+            Predictors ({predictors.size}/{MAX_PREDICTORS})
+          </div>
           {predictors.size >= MAX_PREDICTORS && (
-            <div style={{ fontSize: 10, color: T.amber, marginBottom: 6 }}>Max {MAX_PREDICTORS} predictors reached. Deselect one to add another.</div>
+            <div style={{ fontSize: 10, color: T.amber, marginBottom: 6 }}>Max {MAX_PREDICTORS} reached. Deselect one to add another.</div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {numFields.filter(function(f) { return f.field !== outcome }).map(function(f) {
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {predictorFields.map(function(f) {
               var sel = predictors.has(f.field), atLimit = !sel && predictors.size >= MAX_PREDICTORS
               return (
                 <button key={f.field} onClick={function() { toggleP(f.field) }}
                   title={atLimit ? 'Max ' + MAX_PREDICTORS + ' predictors. Deselect one first.' : undefined}
                   style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.greenBg : 'transparent', border: '1px solid ' + (sel ? T.green : T.border), color: atLimit ? T.textFaint : sel ? T.green : T.textMid, borderRadius: 7, cursor: atLimit ? 'not-allowed' : 'pointer', opacity: atLimit ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.green : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
-                  {aliases[f.field] || f.label || f.field}
+                  {fl2(f)}
                 </button>
               )
             })}
           </div>
         </Card>
-        {result ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <Card style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit {'\u2014'} {aliases[outcome] || outcome}</span>
-                <SigBadge p={result.Fp} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
-                {[
-                  { l: 'R\u00B2', v: fmt2(result.R2), c: result.R2 > 0.5 ? T.green : result.R2 > 0.25 ? T.amber : T.textMid },
-                  { l: 'Adj. R\u00B2', v: fmt2(result.R2adj), c: T.textMid },
-                  { l: 'F stat', v: fmtN(result.F), c: T.textMid },
-                  { l: 'p-value', v: fmtP(result.Fp).replace('p = ', '').replace('p < ', '<'), c: result.Fp < 0.001 ? T.green : result.Fp < 0.05 ? T.amber : T.red },
-                  { l: 'n', v: String(result.n), c: T.textMid },
-                ].map(function(s, i) {
-                  return (
-                    <div key={i} style={{ padding: '14px 12px', borderRight: i < 4 ? '1px solid ' + T.border : 'none', textAlign: 'center' }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: s.c || T.textMid, fontFamily: 'monospace' }}>{s.v}</div>
-                      <div style={{ fontSize: 10, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginTop: 3 }}>{s.l}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            </Card>
-            <Card style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border }}><span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Coefficients</span></div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead><tr>
-                  {['Variable', '\u03B2', 'Std Err', 't', 'p', '95% CI', ''].map(function(h) {
-                    return <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: T.textFaint, background: T.bg, borderBottom: '1px solid ' + T.border }}>{h}</th>
+
+        {/* ── Results area ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {outcomes.size === 0 || predictors.size === 0 ? (
+            <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40 }}>
+              Select at least one outcome and one predictor to run regression.
+            </div>
+          ) : (
+            <>
+              {/* Outcome tabs — shown only when >1 outcome selected */}
+              {outcomes.size > 1 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {Array.from(outcomes).map(function(oc) {
+                    var res = results[oc]
+                    var isActive = activeOutcome === oc
+                    return (
+                      <button key={oc} onClick={function() { setActiveOutcome(oc) }}
+                        style={{ padding: '5px 14px', fontSize: 12, fontWeight: isActive ? 700 : 500, borderRadius: 20, cursor: 'pointer', border: '1px solid ' + (isActive ? T.accent : T.border), background: isActive ? T.accentBg : T.bg, color: isActive ? T.accent : T.textMid, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {aliases[oc] || oc}
+                        {res ? (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: res.R2 > 0.5 ? T.green : res.R2 > 0.25 ? T.amber : T.textFaint }}>
+                            R²={fmt2(res.R2)}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 10, color: T.red }}>✗</span>
+                        )}
+                      </button>
+                    )
                   })}
-                </tr></thead>
-                <tbody>{result.coefs.map(function(c: any, i: number) {
-                  return (
-                    <tr key={i} style={{ background: c.p < 0.05 ? T.greenBg + '80' : 'transparent' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 600, color: T.text, borderBottom: '1px solid ' + T.border, fontSize: 13 }}>{aliases[c.name] || c.name}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtN(c.beta)}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtN(c.se)}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmt2(c.t)}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtP(c.p).replace('p ', '')}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 11, color: T.textFaint, borderBottom: '1px solid ' + T.border }}>[{fmtN(c.ci[0])}, {fmtN(c.ci[1])}]</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid ' + T.border }}><SigBadge p={c.p} /></td>
-                    </tr>
-                  )
-                })}</tbody>
-              </table>
-            </Card>
-          </div>
-        ) : (
-          <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40 }}>
-            Select an outcome and at least one predictor to run regression.
-          </div>
-        )}
+                </div>
+              )}
+
+              {activeResult ? (
+                <>
+                  {<BottomLine text={regrBL(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} naiveText={regrBL_naive(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} />}
+                  <Card style={{ padding: 0, overflow: 'hidden' }}>
+                    <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit — {aliases[activeOutcome] || activeOutcome}</span>
+                      <SigBadge p={activeResult.Fp} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                      {[
+                        { l: 'R\u00B2', v: fmt2(activeResult.R2), c: activeResult.R2 > 0.5 ? T.green : activeResult.R2 > 0.25 ? T.amber : T.textMid },
+                        { l: 'Adj. R\u00B2', v: fmt2(activeResult.R2adj), c: T.textMid },
+                        { l: 'F stat', v: fmtN(activeResult.F), c: T.textMid },
+                        { l: 'p-value', v: fmtP(activeResult.Fp).replace('p = ', '').replace('p < ', '<'), c: activeResult.Fp < 0.001 ? T.green : activeResult.Fp < 0.05 ? T.amber : T.red },
+                        { l: 'n', v: String(activeResult.n), c: T.textMid },
+                      ].map(function(s, i) {
+                        return (
+                          <div key={i} style={{ padding: '14px 12px', borderRight: i < 4 ? '1px solid ' + T.border : 'none', textAlign: 'center' }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: s.c || T.textMid, fontFamily: 'monospace' }}>{s.v}</div>
+                            <div style={{ fontSize: 10, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginTop: 3 }}>{s.l}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </Card>
+                  <Card style={{ padding: 0, overflow: 'hidden' }}>
+                    <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border }}><span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Coefficients</span></div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead><tr>
+                        {['Variable', '\u03B2', 'Std Err', 't', 'p', '95% CI', ''].map(function(h) {
+                          return <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: T.textFaint, background: T.bg, borderBottom: '1px solid ' + T.border }}>{h}</th>
+                        })}
+                      </tr></thead>
+                      <tbody>{activeResult.coefs.map(function(c: any, i: number) {
+                        return (
+                          <tr key={i} style={{ background: c.p < 0.05 ? T.greenBg + '80' : 'transparent' }}>
+                            <td style={{ padding: '8px 12px', fontWeight: 600, color: T.text, borderBottom: '1px solid ' + T.border, fontSize: 13 }}>{aliases[c.name] || c.name}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtN(c.beta)}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtN(c.se)}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmt2(c.t)}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtP(c.p).replace('p ', '')}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 11, color: T.textFaint, borderBottom: '1px solid ' + T.border }}>[{fmtN(c.ci[0])}, {fmtN(c.ci[1])}]</td>
+                            <td style={{ padding: '8px 10px', borderBottom: '1px solid ' + T.border }}><SigBadge p={c.p} /></td>
+                          </tr>
+                        )
+                      })}</tbody>
+                    </table>
+                  </Card>
+                </>
+              ) : (
+                <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40 }}>
+                  Insufficient data for this outcome/predictor combination.
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
-      {/* Residual diagnostic plots — full-width stacked under the grid */}
-      {result && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+
+      {/* Residual diagnostic plots */}
+      {activeResult && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 4 }}>
           <Card style={{ padding: '14px 16px' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Residuals vs. Fitted</div>
             <PlotlyChart
               data={[
-                { x: result.yhat, y: result.resid, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 5, opacity: 0.5 } },
-                { x: [Math.min.apply(null, result.yhat), Math.max.apply(null, result.yhat)], y: [0, 0], mode: 'lines', line: { color: T.red, width: 1.5, dash: 'dash' }, showlegend: false },
+                { x: activeResult.yhat, y: activeResult.resid, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 5, opacity: 0.5 } },
+                { x: [Math.min.apply(null, activeResult.yhat), Math.max.apply(null, activeResult.yhat)], y: [0, 0], mode: 'lines', line: { color: T.red, width: 1.5, dash: 'dash' }, showlegend: false },
               ]}
               layout={{ xaxis: { title: { text: 'Fitted', font: { size: 11 } } }, yaxis: { title: { text: 'Residuals', font: { size: 11 } } }, showlegend: false, margin: { t: 8, r: 12, b: 44, l: 50 } }}
               style={{ height: 280, width: '100%' }}
@@ -688,7 +756,7 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
           <Card style={{ padding: '14px 16px' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Q-Q Plot (Residuals)</div>
             {(function() {
-              var sr = result.resid.slice().sort(function(a: number, b: number) { return a - b })
+              var sr = activeResult.resid.slice().sort(function(a: number, b: number) { return a - b })
               var n = sr.length, th = sr.map(function(_: number, i: number) { return probit((i + 1 - 0.375) / (n + 0.25)) })
               var sm = mean(sr), ss = std(sr)
               return (
