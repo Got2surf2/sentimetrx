@@ -434,21 +434,24 @@ const CSS = `
 
   /* ── Navigator ─────────────────────────────────────────────────────────── */
   #nav-toggle {
-    position:fixed;top:14px;right:14px;z-index:10000;
-    width:38px;height:38px;
-    background:rgba(13,43,69,.90);border:1.5px solid rgba(232,184,75,.5);border-radius:8px;
-    color:${DN.gold};cursor:pointer;display:flex;align-items:center;justify-content:center;
-    backdrop-filter:blur(6px);transition:background .15s,border-color .15s;
+    position:fixed!important;top:14px!important;right:14px!important;
+    z-index:2147483647!important;
+    width:42px;height:42px;
+    background:${DN.navy};border:2px solid ${DN.gold};border-radius:8px;
+    color:${DN.gold};cursor:pointer;display:flex!important;align-items:center;justify-content:center;
+    transition:background .15s,border-color .15s;
+    font-size:20px;line-height:1;
   }
-  #nav-toggle:hover { background:${DN.navyMid};border-color:${DN.gold} }
+  #nav-toggle:hover { background:${DN.navyMid} }
 
   #nav-panel {
-    position:fixed;top:0;right:0;bottom:0;width:288px;
+    position:fixed!important;top:0!important;right:0!important;bottom:0!important;
+    width:288px;
     background:${DN.navy};border-left:2px solid ${DN.gold};
-    z-index:9999;
+    z-index:2147483646!important;
     transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
-    display:flex;flex-direction:column;overflow:hidden;
-    box-shadow:-8px 0 32px rgba(0,0,0,.45);
+    display:flex!important;flex-direction:column;overflow:hidden;
+    box-shadow:-8px 0 32px rgba(0,0,0,.55);
   }
   .nav-header {
     display:flex;align-items:center;justify-content:space-between;
@@ -526,7 +529,13 @@ function buildHTML(datasetName: string, slides: string[], chartsJson: string, na
 </head>
 <body>
 
-<!-- ── Slide navigator (outside Reveal) ───────────────────────────────────── -->
+<div class="reveal">
+<div class="slides">
+${slides.join('\n')}
+</div>
+</div>
+
+<!-- ── Slide navigator (after Reveal — wins stacking order) ───────────────── -->
 <button id="nav-toggle" title="Slide menu (N)">
   <svg width="16" height="14" viewBox="0 0 16 14" fill="none"><rect y="0" width="16" height="2" rx="1" fill="currentColor"/><rect y="6" width="16" height="2" rx="1" fill="currentColor"/><rect y="12" width="16" height="2" rx="1" fill="currentColor"/></svg>
 </button>
@@ -540,12 +549,6 @@ function buildHTML(datasetName: string, slides: string[], chartsJson: string, na
     ${navItems}
   </div>
   <div class="nav-footer">Press <kbd>N</kbd> to toggle · <kbd>←</kbd><kbd>→</kbd> to navigate</div>
-</div>
-
-<div class="reveal">
-<div class="slides">
-${slides.join('\n')}
-</div>
 </div>
 <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
@@ -568,12 +571,16 @@ function tryRender(section) {
     }
   });
 }
-Reveal.on('ready', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
-Reveal.on('slidechanged', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
-
 // ── Slide navigator ──────────────────────────────────────────────────────
+// Re-append nav elements to body so they're always the last (topmost) nodes,
+// defeating any stacking context that Reveal.js may create.
 var navPanel  = document.getElementById('nav-panel');
 var navToggle = document.getElementById('nav-toggle');
+document.body.appendChild(navToggle);
+document.body.appendChild(navPanel);
+
+Reveal.on('ready', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
+Reveal.on('slidechanged', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
 var navOpen   = false;
 
 function updateNav(activeIdx) {
