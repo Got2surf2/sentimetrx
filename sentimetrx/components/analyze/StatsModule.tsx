@@ -115,13 +115,30 @@ function StatsEmpty({ icon, msg, sub }: { icon: string; msg: string; sub?: strin
   )
 }
 
-function DSSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { v: string; l: string }[] }) {
+function DSSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { v: string; l: string; s?: string }[] }) {
+  var [dragOver, setDragOver] = useState(false)
+  var coreOpts   = options.filter(function(o) { return !o.s || o.s === 'core' })
+  var psychoOpts = options.filter(function(o) { return o.s === 'psychographic' })
+  var demoOpts   = options.filter(function(o) { return o.s === 'demographic' })
+  var hasGroups  = psychoOpts.length > 0 || demoOpts.length > 0
   return (
-    <div style={{ flex: 1, minWidth: 150 }}>
+    <div style={{ flex: 1, minWidth: 150 }}
+      onDragOver={function(e) { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setDragOver(false) }}
+      onDrop={function(e) {
+        e.preventDefault(); setDragOver(false)
+        try {
+          var payload = JSON.parse(e.dataTransfer.getData('text/field'))
+          if (options.some(function(o) { return o.v === payload.field })) onChange(payload.field)
+        } catch {}
+      }}
+    >
       {label && <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 5 }}>{label}</div>}
       <select value={value} onChange={function(e) { onChange(e.target.value) }}
-        style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid ' + T.border, borderRadius: 7, background: T.bgCard, color: T.text, outline: 'none', cursor: 'pointer' }}>
-        {options.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}
+        style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1.5px solid ' + (dragOver ? T.accent : T.border), borderRadius: 7, background: dragOver ? T.accentBg : T.bgCard, color: T.text, outline: 'none', cursor: 'pointer', transition: 'border-color .1s, background .1s' }}>
+        {coreOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}
+        {hasGroups && psychoOpts.length > 0 && <optgroup label="Psychographic">{psychoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
+        {hasGroups && demoOpts.length > 0 && <optgroup label="Demographic">{demoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
       </select>
     </div>
   )
@@ -475,13 +492,13 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {testType !== 'chisq' ? (
             <>
-              <DSSelect label="Outcome (numeric)" value={numF} onChange={setNumF} options={numFields.map(function(f) { return { v: f.field, l: f.label || f.field } })} />
-              <DSSelect label="Group by (categorical)" value={catF} onChange={setCatF} options={catFields.map(function(f) { return { v: f.field, l: f.label || f.field } })} />
+              <DSSelect label="Outcome (numeric)" value={numF} onChange={setNumF} options={numFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })} />
+              <DSSelect label="Group by (categorical)" value={catF} onChange={setCatF} options={catFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })} />
             </>
           ) : (
             <>
-              <DSSelect label="Row variable" value={catF} onChange={setCatF} options={catFields.map(function(f) { return { v: f.field, l: f.label || f.field } })} />
-              <DSSelect label="Column variable" value={catF2} onChange={setCatF2} options={catFields.map(function(f) { return { v: f.field, l: f.label || f.field } })} />
+              <DSSelect label="Row variable" value={catF} onChange={setCatF} options={catFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })} />
+              <DSSelect label="Column variable" value={catF2} onChange={setCatF2} options={catFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })} />
             </>
           )}
         </div>
@@ -1272,8 +1289,8 @@ function OutlierAnalysisPanel({ numFields, catFields, data }: {
     })
   }
 
-  var qOpts = numFields.map(function(f) { return { v: f.field, l: f.label || f.field } })
-  var cOpts = catFields.map(function(f) { return { v: f.field, l: f.label || f.field } })
+  var qOpts = numFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })
+  var cOpts = catFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })
 
   return (
     <div>
@@ -1432,7 +1449,13 @@ function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen
         <div style={{ padding: '0 12px 8px' }}>
           {goodFields.map(function(f) {
             return (
-              <div key={f.field} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={flFn(f)}>
+              <div key={f.field}
+                draggable={true}
+                onDragStart={function(e) {
+                  e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: flFn(f), section: f.section || 'core' }))
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+                style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, cursor: 'grab', userSelect: 'none' }} title={flFn(f)}>
                 {flFn(f)}
               </div>
             )

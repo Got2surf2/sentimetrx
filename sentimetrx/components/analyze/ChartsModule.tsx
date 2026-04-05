@@ -114,7 +114,12 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
             var isAssigned = Object.values(currentConfig).includes(f.field)
             return (
               <div key={f.field}
-                style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s' }}
+                draggable={true}
+                onDragStart={function(e) {
+                  e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: fl(f), section: f.section || 'core' }))
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+                style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s', cursor: 'grab', userSelect: 'none' }}
                 title={fl(f)}>
                 {isAssigned && '\u2713 '}{fl(f)}
               </div>
@@ -183,23 +188,62 @@ function EmptyChart({ msg }: { msg: string }) {
   return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 40px', color: T.textFaint }}><div style={{ fontSize: 40, marginBottom: 12 }}>{'\uD83D\uDCCA'}</div><div style={{ fontSize: 14, fontWeight: 600, color: T.textMid }}>{msg}</div></div>
 }
 
-// ─── Drop Zone component ──────────────────────────────────────────────────
+// ─── Chart Slot — grouped dropdown + drag-drop target ────────────────────
 
-function ChartSelect({ label, value, onChange, options, required }: {
+function ChartSlot({ label, value, onChange, options, required, accepts }: {
   label: string; value: string; onChange: (v: string) => void
-  options: { v: string; l: string }[]; required?: boolean
+  options: { v: string; l: string; section?: string }[]; required?: boolean; accepts?: string[]
 }) {
+  var [dragOver, setDragOver] = useState(false)
+  var coreOpts  = options.filter(function(o) { return !o.section || o.section === 'core' })
+  var psychoOpts = options.filter(function(o) { return o.section === 'psychographic' })
+  var demoOpts  = options.filter(function(o) { return o.section === 'demographic' })
+  var hasGroups = psychoOpts.length > 0 || demoOpts.length > 0
+
   return (
-    <div style={{ minWidth: 140 }}>
+    <div style={{ minWidth: 140 }}
+      onDragOver={function(e) { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setDragOver(false) }}
+      onDrop={function(e) {
+        e.preventDefault(); setDragOver(false)
+        try {
+          var payload = JSON.parse(e.dataTransfer.getData('text/field'))
+          if (accepts && !accepts.includes(payload.type) && !accepts.includes('any')) return
+          onChange(payload.field)
+        } catch {}
+      }}
+    >
       <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 4 }}>
         {label}{!required && ' (optional)'}
       </div>
-      <select value={value || ''} onChange={function(e) { onChange(e.target.value) }}
-        style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid ' + T.border, borderRadius: 7, background: T.bgCard, color: value ? T.text : T.textMute, outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        {!required && <option value="">None</option>}
-        {required && !value && <option value="">Select...</option>}
-        {options.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}
-      </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <select
+          value={value || ''}
+          onChange={function(e) { onChange(e.target.value) }}
+          style={{
+            flex: 1, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit',
+            border: '1.5px solid ' + (dragOver ? T.accent : value ? T.accent : T.border),
+            borderRadius: 7,
+            background: dragOver ? T.accentBg : value ? T.accentBg : T.bgCard,
+            color: value ? T.accent : T.textMute,
+            fontWeight: value ? 700 : 400,
+            outline: 'none', cursor: 'pointer',
+            transition: 'border-color .12s, background .12s',
+          }}
+        >
+          {!required && <option value="">None — or drag</option>}
+          {required && !value && <option value="">Select or drag…</option>}
+          {coreOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}
+          {hasGroups && psychoOpts.length > 0 && <optgroup label="Psychographic">{psychoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
+          {hasGroups && demoOpts.length > 0 && <optgroup label="Demographic">{demoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
+        </select>
+        {value && !required && (
+          <button onClick={function() { onChange('') }} title="Clear"
+            style={{ flexShrink: 0, width: 20, height: 20, borderRadius: '50%', background: T.accent + '22', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: T.accent, fontWeight: 700, padding: 0, lineHeight: 1 }}>
+            ×
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -1143,7 +1187,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
           {/* Fields header */}
           <div style={{ padding: '10px 14px 4px' }}>
             <div style={{ fontSize: 10, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Fields</div>
-            <div style={{ fontSize: 10, color: T.textFaint, fontStyle: 'italic', marginTop: 2 }}>Fields available for this chart type</div>
+            <div style={{ fontSize: 10, color: T.textFaint, fontStyle: 'italic', marginTop: 2 }}>Drag to slot or use dropdown below</div>
           </div>
 
           {/* Field groups — reference only */}
@@ -1158,9 +1202,10 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
               {currentSlots.map(function(slot) {
                 var opts = allFields.filter(function(f) {
                   return slot.accepts.includes(f.type) || slot.accepts.includes('any')
-                }).map(function(f) { return { v: f.field, l: fl(f) } })
+                }).map(function(f) { return { v: f.field, l: fl(f), section: f.section || 'core' } })
                   .sort(function(a, b) { return a.l.localeCompare(b.l) })
-                return <ChartSelect key={slot.key} label={slot.label} value={currentConfig[slot.key] || ''} required={slot.required}
+                return <ChartSlot key={slot.key} label={slot.label} value={currentConfig[slot.key] || ''} required={slot.required}
+                  accepts={slot.accepts}
                   onChange={function(v) { setChartConfigs(function(prev) { var u = Object.assign({}, prev); var cfg = Object.assign({}, u[activeChart] || {}); cfg[slot.key] = v; u[activeChart] = cfg; return u }) }}
                   options={opts} />
               })}
