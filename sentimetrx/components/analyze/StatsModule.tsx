@@ -645,6 +645,29 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
     return diag
   }, [numFields, data])
 
+  // Pearson r between each predictor and the selected outcome(s) — used for correlation signal badges
+  var corrMap = useMemo(function() {
+    var map: Record<string, { r: number; n: number }> = {}
+    if (!outcomes.size) return map
+    var ocArr = Array.from(outcomes)
+    predictorFields.forEach(function(f) {
+      var bestR = 0, bestN = 0
+      ocArr.forEach(function(oc) {
+        var xs: number[] = [], ys: number[] = []
+        data.forEach(function(r) {
+          var x = parseFloat(String(r[f.field] || '').replace(/,/g, ''))
+          var y = parseFloat(String(r[oc] || '').replace(/,/g, ''))
+          if (!isNaN(x) && !isNaN(y)) { xs.push(x); ys.push(y) }
+        })
+        if (xs.length < 3) return
+        var res = pearsonR(xs, ys)
+        if (!isNaN(res.r) && Math.abs(res.r) > Math.abs(bestR)) { bestR = res.r; bestN = res.n }
+      })
+      if (bestN >= 3) map[f.field] = { r: bestR, n: bestN }
+    })
+    return map
+  }, [outcomes, predictorFields, data])
+
   if (numFields.length < 2) return <StatsEmpty icon={'\u27CB'} msg="Need at least 2 numeric fields" sub="Activate more numeric fields or map categorical values to numbers." />
 
   return (
@@ -671,11 +694,11 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
                 var sel = outcomes.has(f.field)
                 var warn = fieldDiag[f.field]
                 return (
-                  <button key={f.field} onClick={function() { toggleOutcome(f.field) }}
-                    style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : warn ? T.amber : T.border), color: sel ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.accent : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
+                  <button key={f.field} onClick={warn ? undefined : function() { toggleOutcome(f.field) }}
+                    title={warn || undefined}
+                    style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (warn ? T.amber : sel ? T.accent : T.border), color: warn ? T.textFaint : sel ? T.accent : T.textMid, borderRadius: 7, cursor: warn ? 'not-allowed' : 'pointer', opacity: warn ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 3, background: warn ? T.amber : sel ? T.accent : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{warn ? '⚠' : sel ? '\u2713' : ''}</span>
                     {fl2(f)}
-                    {warn && <span title={warn} style={{ fontSize: 11, color: T.amber, marginLeft: 'auto' }}>⚠</span>}
                   </button>
                 )
               })}
@@ -693,13 +716,20 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
             {predictorFields.map(function(f) {
               var sel = predictors.has(f.field), atLimit = !sel && predictors.size >= MAX_PREDICTORS
               var warn = fieldDiag[f.field]
+              var corr = !warn && outcomes.size > 0 ? corrMap[f.field] : undefined
+              var corrColor = corr ? (Math.abs(corr.r) >= 0.4 ? T.green : Math.abs(corr.r) >= 0.2 ? T.amber : T.textFaint) : T.textFaint
+              var disabled = warn || atLimit
               return (
-                <button key={f.field} onClick={function() { toggleP(f.field) }}
-                  title={atLimit ? 'Max ' + MAX_PREDICTORS + ' predictors. Deselect one first.' : undefined}
-                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.greenBg : 'transparent', border: '1px solid ' + (sel ? T.green : warn ? T.amber : T.border), color: atLimit ? T.textFaint : sel ? T.green : T.textMid, borderRadius: 7, cursor: atLimit ? 'not-allowed' : 'pointer', opacity: atLimit ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.green : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
+                <button key={f.field} onClick={disabled ? undefined : function() { toggleP(f.field) }}
+                  title={warn || (atLimit ? 'Max ' + MAX_PREDICTORS + ' predictors. Deselect one first.' : undefined)}
+                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.greenBg : 'transparent', border: '1px solid ' + (warn ? T.amber : sel ? T.green : T.border), color: disabled ? T.textFaint : sel ? T.green : T.textMid, borderRadius: 7, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 3, background: warn ? T.amber : sel ? T.green : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{warn ? '⚠' : sel ? '\u2713' : ''}</span>
                   {fl2(f)}
-                  {warn && <span title={warn} style={{ fontSize: 11, color: T.amber, marginLeft: 'auto' }}>⚠</span>}
+                  {corr && (
+                    <span title={'Pearson r = ' + corr.r.toFixed(3) + ' (n=' + corr.n + ')'} style={{ fontSize: 10, fontWeight: 700, color: corrColor, marginLeft: 'auto', fontFamily: 'monospace' }}>
+                      r{corr.r >= 0 ? '+' : ''}{corr.r.toFixed(2)}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -1677,7 +1707,14 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
                 <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{pendingConfidence}%</span>
               </div>
               <input type="range" min={90} max={99} step={1} value={pendingConfidence}
-                onChange={function(e) { setPendingConfidence(parseInt(e.target.value)) }}
+                onChange={function(e) {
+                  var newConf = parseInt(e.target.value)
+                  setPendingConfidence(newConf)
+                  // Auto-set sample size to minimum needed for ±5% MOE at new confidence
+                  var zz: Record<number, number> = { 90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808, 95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758 }
+                  var nz = zz[newConf] ?? 1.96
+                  setPendingCap(Math.ceil(nz * nz * 100))
+                }}
                 style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4 }}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textFaint, marginTop: 2 }}>
