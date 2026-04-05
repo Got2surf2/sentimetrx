@@ -47,13 +47,15 @@ const AUDIENCE_OPTIONS = [
 
 const EXPORTABLE_TYPES = new Set(['open-ended', 'categorical', 'numeric', 'date'])
 
-type Step = 'mode' | 'quick' | 'builder' | 'generating' | 'done'
+type Step   = 'mode' | 'quick' | 'builder' | 'generating' | 'done'
+type Format = 'pptx' | 'html'
 
 interface SchemaField { field: string; type: string; label?: string; status?: string; section?: string }
 interface Props { datasetId: string; datasetName: string; onClose: () => void }
 
 export default function ExportModal({ datasetId, datasetName, onClose }: Props) {
   const [step,         setStep]         = useState<Step>('mode')
+  const [format,       setFormat]       = useState<Format>('pptx')
   const [fields,       setFields]       = useState<SchemaField[]>([])
   const [fieldCounts,  setFieldCounts]  = useState<Record<string, number>>({})
   const [selected,     setSelected]     = useState<Set<string>>(new Set())
@@ -138,7 +140,8 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     setError('')
     setBlobUrl('')
     setStep('generating')
-    const name = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_report.pptx'
+    const ext  = format === 'html' ? '.html' : '.pptx'
+    const name = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_report' + ext
     setFileName(name)
 
     // Cycle progress messages while waiting
@@ -163,7 +166,8 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     try {
       const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds) }
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
-      const res = await fetch('/api/datasets/' + datasetId + '/export/pptx', {
+      const endpoint = format === 'html' ? '/api/datasets/' + datasetId + '/export/html' : '/api/datasets/' + datasetId + '/export/pptx'
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -212,12 +216,12 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     // Use native File System Access API when available (Chrome / Edge)
     if (typeof (window as any).showSaveFilePicker === 'function') {
       try {
+        const fileTypes = format === 'html'
+          ? [{ description: 'HTML Presentation', accept: { 'text/html': ['.html'] } }]
+          : [{ description: 'PowerPoint Presentation', accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] } }]
         const handle = await (window as any).showSaveFilePicker({
           suggestedName,
-          types: [{
-            description: 'PowerPoint Presentation',
-            accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] },
-          }],
+          types: fileTypes,
         })
         const response = await fetch(blobUrl)
         const blob = await response.blob()
@@ -251,7 +255,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
             ✓
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 6 }}>Your PowerPoint is ready</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 6 }}>{format === 'html' ? 'Your HTML presentation is ready' : 'Your PowerPoint is ready'}</div>
             <div style={{ fontSize: 12, color: S.textMute, lineHeight: 1.6 }}>
               Click below to choose where to save it.
             </div>
@@ -296,7 +300,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
             <span style={{ fontSize: 16 }}>📊</span>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.1px' }}>
-                {step === 'mode' ? 'Generate PowerPoint' : step === 'quick' ? 'Quick Export' : 'Custom Builder'}
+                {step === 'mode' ? (format === 'html' ? 'Generate HTML Presentation' : 'Generate PowerPoint') : step === 'quick' ? 'Quick Export' : 'Custom Builder'}
               </div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,.65)', marginTop: 1 }}>{datasetName}</div>
             </div>
@@ -310,8 +314,27 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
         {/* ── Mode Selection ─────────────────────────────────────────────────── */}
         {step === 'mode' && (
           <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* Format toggle */}
+            <div style={{ display: 'flex', gap: 0, border: '1.5px solid ' + S.border, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+              {(['pptx', 'html'] as Format[]).map(function(f) {
+                const active = format === f
+                return (
+                  <button key={f} onClick={function() { setFormat(f) }}
+                    style={{ flex: 1, padding: '9px 0', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: active ? HERMES : S.white, color: active ? 'white' : S.textMute, transition: 'all .12s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    {f === 'pptx' ? '📊 PowerPoint (.pptx)' : '🌐 HTML Presentation (.html)'}
+                  </button>
+                )
+              })}
+            </div>
+            {format === 'html' && (
+              <div style={{ fontSize: 11, color: S.textMute, background: S.bg, border: '1px solid ' + S.border, borderRadius: 6, padding: '7px 10px', lineHeight: 1.5 }}>
+                Interactive Reveal.js slides with live Plotly charts. Open in any browser — no software needed. Requires internet to load slide framework.
+              </div>
+            )}
+
             <p style={{ fontSize: 13, color: S.textMute, margin: 0 }}>
-              Choose how you'd like to build your PowerPoint deck.
+              Choose how you'd like to build your {format === 'html' ? 'HTML presentation' : 'PowerPoint deck'}.
             </p>
 
             {/* Quick Export card */}
@@ -368,7 +391,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
             </div>
             <ModalFooter
               disabled={loading || selected.size === 0}
-              label={'📊 Generate PowerPoint (' + selected.size + ' fields)'}
+              label={(format === 'html' ? '🌐 Generate HTML Presentation' : '📊 Generate PowerPoint') + ' (' + selected.size + ' fields)'}
               onGenerate={function() { handleGenerate('quick') }}
               onCancel={onClose}
             />
@@ -423,7 +446,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
             </div>
             <ModalFooter
               disabled={loading}
-              label="🎯 Build Custom PowerPoint"
+              label={format === 'html' ? '🌐 Build Custom HTML Presentation' : '🎯 Build Custom PowerPoint'}
               onGenerate={function() { handleGenerate('builder') }}
               onCancel={onClose}
             />

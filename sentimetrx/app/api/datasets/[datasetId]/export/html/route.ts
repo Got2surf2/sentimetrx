@@ -1,0 +1,613 @@
+// app/api/datasets/[datasetId]/export/html/route.ts
+// POST — generate a Reveal.js HTML presentation from dataset analytics.
+// Same request body as /export/pptx — returns text/html file download.
+
+import { NextResponse } from 'next/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60
+
+interface Params { params: { datasetId: string } }
+
+// ── Brand palette ─────────────────────────────────────────────────────────────
+const DN = {
+  navy:      '#0D2B45', navyMid:  '#0F3A54', navyLight: '#1A5070',
+  teal:      '#0F7173', tealLight:'#1DA39A', tealPale:  '#E0F2F1',
+  gold:      '#E8B84B', goldPale: '#FFF8E1',
+  orange:    '#E85A1A', orangeLt: '#F07040',
+  slate:     '#8FA3AE', slateDk:  '#4A6572', slateCard: '#F4F7F8',
+  white:     '#FFFFFF', divider:  '#D4DDE2',
+  green:     '#059669', amber:    '#D97706', red: '#DC2626',
+}
+
+// ── Shared types / helpers ────────────────────────────────────────────────────
+interface FieldInsight { keyFinding: string; narrative: string; implication: string; watchout?: string }
+interface Narratives {
+  reportTitle: string; executiveSummary: string[]; keyTakeaways: string[]
+  fieldInsights: Record<string, FieldInsight>
+}
+interface SelectedField {
+  field: string; label: string; type: string; summary: any
+  remapping?: Record<string, number>; section?: string; prompt?: string
+}
+
+function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
+function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s }
+function esc(s: string) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') }
+
+// ── AI narratives (shared logic with pptx route) ──────────────────────────────
+async function generateNarratives(
+  apiKey: string, datasetName: string, totalRows: number,
+  audience: string, fields: SelectedField[], instructions?: string
+): Promise<Narratives> {
+  const audienceNote: Record<string, string> = {
+    executive:   'C-suite audience. Lead with so-what, not data.',
+    stakeholder: 'Manager/analyst audience. Include percentages and averages.',
+    full:        'Full team audience. Include nuance, caveats, and context.',
+  }
+  const fieldBlocks = fields.map(f => {
+    const s = f.summary
+    if (!s) return `${f.label} (${f.type}): no data`
+    if (s.type === 'categorical') {
+      const top5 = Object.entries(s.counts || {}).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5)
+        .map(([k, v]: any) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
+      return `${f.label} (categorical, n=${s.nonNull}): top — ${top5}`
+    }
+    if (s.type === 'numeric') return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}`
+    if (s.type === 'open-ended') return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words | samples: ${(s.sample||[]).slice(0,3).map((t: string)=>'"'+t.slice(0,80)+'"').join(' | ')}`
+    return `${f.label}: no data`
+  }).join('\n\n')
+
+  const prompt = `You are a senior consultant preparing a data readout. Dataset: "${datasetName}" — ${totalRows.toLocaleString()} responses. Audience: ${audience}. ${audienceNote[audience]||''}${instructions ? '\n\nCLIENT INSTRUCTIONS: '+instructions : ''}
+
+FIELD DATA:
+${fieldBlocks}
+
+Return ONLY valid JSON. No markdown fences:
+{
+  "reportTitle": "short punchy subtitle (8 words max)",
+  "executiveSummary": ["Bullet 1 with a specific number","Bullet 2","Bullet 3","Bullet 4","Bullet 5"],
+  "keyTakeaways": ["Actionable recommendation 1","Actionable recommendation 2","Actionable recommendation 3"],
+  "fieldInsights": {
+${fields.map(f => `    "${f.field}": {"keyFinding":"one strong statement (max 12 words)","narrative":"2-3 sentences with specific data.","implication":"1-2 sentences. So what?","watchout":"1 sentence caveat (optional, omit if nothing meaningful)"}`).join(',\n')}
+  }
+}`
+
+  const controller = new AbortController()
+  const t = setTimeout(() => controller.abort(), 45000)
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3500, messages: [{ role: 'user', content: prompt }] }),
+    signal: controller.signal,
+  }).finally(() => clearTimeout(t))
+  if (!res.ok) throw new Error('AI call failed: ' + res.status)
+  const data = await res.json()
+  const raw  = (data.content?.[0]?.text || '').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'')
+  try { return JSON.parse(raw) }
+  catch { return { reportTitle: '', executiveSummary: [], keyTakeaways: [], fieldInsights: Object.fromEntries(fields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])) } }
+}
+
+// ── HTML slide builders ───────────────────────────────────────────────────────
+
+let chartIndex = 0
+const charts: Record<string, { data: any[]; layout: any }> = {}
+
+function chartId() { return 'chart-' + (chartIndex++) }
+
+function slideHeader(title: string, subtitle?: string, dark = false): string {
+  const bg = dark ? DN.navy : DN.slateCard
+  const tc = dark ? DN.white : DN.navy
+  const sc = dark ? DN.tealLight : DN.slateDk
+  return `<div class="slide-hdr" style="background:${bg};border-bottom:3px solid ${DN.gold}">
+    <div class="slide-hdr-accent"></div>
+    <div style="flex:1;min-width:0">
+      <div class="slide-title-text" style="color:${tc}">${esc(title)}</div>
+      ${subtitle ? `<div class="slide-sub-text" style="color:${sc}">${esc(subtitle)}</div>` : ''}
+    </div>
+    <div class="dn-logo"><span style="color:${DN.orangeLt}">data</span><span style="color:${DN.tealLight}">nautix</span></div>
+  </div>`
+}
+
+function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: number, computedAt: string|null): string {
+  const dateStr = computedAt ? new Date(computedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : ''
+  return `<section class="slide-title" style="background:${DN.navy}">
+    <div class="title-left-bar"></div>
+    <div class="title-gold-bar"></div>
+    <div class="title-deco-circle title-deco-1"></div>
+    <div class="title-deco-circle title-deco-2"></div>
+    <div class="title-content">
+      <div class="dn-logo-large"><span style="color:${DN.orangeLt}">data</span><span style="color:${DN.tealLight}">nautix</span></div>
+      <div class="title-divider"></div>
+      <h1 class="title-dataset">${esc(datasetName)}</h1>
+      ${reportTitle ? `<p class="title-subtitle">${esc(reportTitle)}</p>` : ''}
+      <div class="title-meta">
+        ${dateStr ? `<span>${esc(dateStr)}</span> &nbsp;·&nbsp; ` : ''}<span>${totalRows.toLocaleString()} responses</span>
+      </div>
+      <div class="title-footer">Prepared by Datanautix &nbsp;·&nbsp; Proprietary and Confidential</div>
+    </div>
+  </section>`
+}
+
+function buildSummarySlide(totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]): string {
+  const kpis: { v: string; l: string }[] = [{ v: totalRows.toLocaleString(), l: 'Total Responses' }]
+  const numF = fields.find(f => f.type === 'numeric')
+  if (numF?.summary?.avg != null) kpis.push({ v: numF.summary.avg.toFixed(1), l: trunc(numF.label, 20) })
+  if (themes.length > 0) kpis.push({ v: String(themes.length), l: 'Themes Identified' })
+  const oeF = fields.find(f => f.type === 'open-ended')
+  if (oeF?.summary?.avgWordCount) kpis.push({ v: String(oeF.summary.avgWordCount), l: 'Avg Words / Response' })
+
+  const bulletsHtml = bullets.filter(b => b?.length > 5).slice(0, 5).map(b =>
+    `<li><span class="bullet-dot"></span>${esc(b)}</li>`).join('')
+
+  const themesHtml = themes.slice(0, 5).map(t => {
+    const hitPct = Math.round(t.percentage || 0)
+    return `<div class="theme-row">
+      <div class="theme-bar-bg"><div class="theme-bar-fill" style="width:${Math.min(hitPct,100)}%"></div></div>
+      <span class="theme-name">${esc(trunc(t.name||t.label,32))}</span>
+      <span class="theme-pct">${hitPct}%</span>
+    </div>`}).join('')
+
+  const taHtml = takeaways.slice(0, 3).map((ta, i) =>
+    `<div class="takeaway-row"><span class="ta-num">${i+1}</span>${esc(ta)}</div>`).join('')
+
+  return `<section style="background:${DN.navy};color:${DN.white}">
+    ${slideHeader('Executive Summary', undefined, true)}
+    <div class="slide-body" style="display:flex;flex-direction:column;gap:12px;padding:12px 28px 8px">
+      <div class="kpi-row">${kpis.slice(0,4).map(k => `<div class="kpi-card"><div class="kpi-val">${esc(k.v)}</div><div class="kpi-lbl">${esc(k.l)}</div></div>`).join('')}</div>
+      <div style="display:flex;gap:20px;flex:1;min-height:0">
+        <div style="flex:1.1;display:flex;flex-direction:column;gap:6px">
+          <div class="section-label">KEY FINDINGS</div>
+          <ul class="bullets-list">${bulletsHtml}</ul>
+        </div>
+        <div style="flex:0.9;display:flex;flex-direction:column;gap:6px">
+          ${themes.length>0 ? `<div class="section-label">TOP THEMES</div><div class="themes-list">${themesHtml}</div>` : ''}
+          ${takeaways.length>0 ? `<div class="section-label" style="margin-top:8px">RECOMMENDED ACTIONS</div><div class="takeaways-list">${taHtml}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  </section>`
+}
+
+function buildCategoricalSlide(f: SelectedField, ai: FieldInsight): string {
+  const counts = f.summary?.counts as Record<string, number> || {}
+  const total  = Object.values(counts).reduce((s: number, v: any) => s + Number(v), 0) || 1
+  const sorted = Object.entries(counts).sort(([,a],[,b]) => Number(b)-Number(a)).slice(0, 15)
+  const remapping = f.remapping || {}
+
+  const labels  = sorted.map(([k]) => remapping[k] !== undefined ? String(remapping[k]) : k)
+  const values  = sorted.map(([,v]) => Math.round(Number(v) / total * 1000) / 10)
+  const rawCts  = sorted.map(([,v]) => Number(v))
+
+  const cid = chartId()
+  charts[cid] = {
+    data: [{
+      type: 'bar', orientation: 'h',
+      y: labels.slice().reverse(),
+      x: values.slice().reverse(),
+      customdata: rawCts.slice().reverse(),
+      text: values.slice().reverse().map(v => v + '%'),
+      textposition: 'outside',
+      marker: { color: DN.teal },
+      hovertemplate: '<b>%{y}</b><br>%{x:.1f}% (%{customdata} responses)<extra></extra>',
+    }],
+    layout: {
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      margin: { l: 16, r: 60, t: 8, b: 30 },
+      xaxis: { showgrid: true, gridcolor: DN.divider, zeroline: false, ticksuffix: '%', color: DN.slateDk, tickfont: { size: 10 } },
+      yaxis: { tickfont: { size: 11 }, color: DN.navy, automargin: true },
+      font: { family: 'Inter, system-ui, sans-serif', color: DN.navy },
+      bargap: 0.25,
+    },
+  }
+
+  const subtitle = f.prompt || (f.section ? f.section.charAt(0).toUpperCase()+f.section.slice(1)+' · ' : '') +
+    'Categorical · ' + (f.summary?.nonNull||0).toLocaleString() + ' responses'
+
+  return `<section style="background:${DN.slateCard}">
+    ${slideHeader(f.label, subtitle)}
+    <div class="slide-body two-col">
+      <div class="chart-col" id="${cid}" data-chart-id="${cid}" style="min-height:320px"></div>
+      <div class="insight-col">
+        ${ai.keyFinding ? `<div class="key-finding">${esc(ai.keyFinding)}</div>` : ''}
+        ${ai.narrative ? `<p class="narrative">${esc(ai.narrative)}</p>` : ''}
+        ${ai.implication ? `<div class="implication"><span class="imp-arrow">→</span> ${esc(ai.implication)}</div>` : ''}
+        ${ai.watchout ? `<div class="watchout">⚠ ${esc(ai.watchout)}</div>` : ''}
+        <div class="resp-count">n = ${(f.summary?.nonNull||0).toLocaleString()} responses</div>
+      </div>
+    </div>
+  </section>`
+}
+
+function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<string,any>[], rowKeyMap: Record<string,string>): string {
+  const s = f.summary || {}
+  const subtitle = f.prompt || 'Numeric · ' + (s.nonNull||0).toLocaleString() + ' responses'
+
+  // Extract raw values from rows for histogram
+  function rowVal(row: Record<string,any>, key: string): string {
+    if (row[key] != null) return String(row[key]).trim()
+    const actual = rowKeyMap[normalize(key)]
+    if (actual && row[actual] != null) return String(row[actual]).trim()
+    return ''
+  }
+  const rawVals = allRows.map(r => parseFloat(rowVal(r, f.field))).filter(v => !isNaN(v))
+
+  const cid = chartId()
+  if (rawVals.length > 5) {
+    charts[cid] = {
+      data: [{
+        type: 'histogram', x: rawVals, nbinsx: 20,
+        marker: { color: DN.teal, line: { color: DN.tealLight, width: 1 } },
+        hovertemplate: 'Value: %{x}<br>Count: %{y}<extra></extra>',
+      }],
+      layout: {
+        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 16, r: 16, t: 8, b: 30 },
+        xaxis: { gridcolor: DN.divider, color: DN.slateDk, tickfont: { size: 10 } },
+        yaxis: { gridcolor: DN.divider, color: DN.slateDk, tickfont: { size: 10 }, title: { text: 'Count', font: { size: 10 } } },
+        font: { family: 'Inter, system-ui, sans-serif', color: DN.navy },
+        bargap: 0.05,
+        shapes: s.avg != null ? [{ type: 'line', x0: s.avg, x1: s.avg, y0: 0, y1: 1, yref: 'paper', line: { color: DN.gold, width: 2, dash: 'dot' } }] : [],
+        annotations: s.avg != null ? [{ x: s.avg, y: 1, yref: 'paper', text: 'avg', showarrow: false, font: { color: DN.gold, size: 10 }, yanchor: 'bottom' }] : [],
+      },
+    }
+  }
+
+  const kpis = [
+    s.avg    != null ? { v: s.avg.toFixed(2),    l: 'Average'  } : null,
+    s.median != null ? { v: s.median.toFixed(2),  l: 'Median'   } : null,
+    s.min    != null ? { v: String(s.min),         l: 'Min'      } : null,
+    s.max    != null ? { v: String(s.max),         l: 'Max'      } : null,
+  ].filter(Boolean) as { v: string; l: string }[]
+
+  const kpiHtml = kpis.map(k =>
+    `<div class="kpi-card-sm"><div class="kpi-val-sm" style="color:${DN.teal}">${esc(k.v)}</div><div class="kpi-lbl-sm">${esc(k.l)}</div></div>`).join('')
+
+  return `<section style="background:${DN.slateCard}">
+    ${slideHeader(f.label, subtitle)}
+    <div class="slide-body" style="display:flex;flex-direction:column;gap:10px;padding:10px 28px 8px">
+      <div class="kpi-row-sm">${kpiHtml}</div>
+      ${rawVals.length > 5 ? `<div id="${cid}" data-chart-id="${cid}" style="flex:1;min-height:240px"></div>` : '<div style="color:'+DN.slateDk+';font-size:13px;padding:20px 0">Distribution chart requires row-level data</div>'}
+      <div class="insight-box">
+        ${ai.keyFinding ? `<div class="key-finding" style="margin-bottom:6px">${esc(ai.keyFinding)}</div>` : ''}
+        ${ai.narrative ? `<p class="narrative" style="margin:0">${esc(ai.narrative)}</p>` : ''}
+        ${ai.implication ? `<div class="implication" style="margin-top:6px"><span class="imp-arrow">→</span> ${esc(ai.implication)}</div>` : ''}
+      </div>
+    </div>
+  </section>`
+}
+
+function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]): string {
+  const subtitle = f.prompt || 'Open-ended · ' + (f.summary?.nonNull||0).toLocaleString() + ' responses'
+  const quotes   = (f.summary?.sample || []).slice(0, 6) as string[]
+  const fieldThemes = themes.slice(0, 8)
+
+  let chartHtml = ''
+  if (fieldThemes.length > 0) {
+    const cid = chartId()
+    const labels = fieldThemes.map((t: any) => trunc(t.name||t.label, 30))
+    const vals   = fieldThemes.map((t: any) => t.percentage || 0)
+    charts[cid] = {
+      data: [{
+        type: 'bar', orientation: 'h',
+        y: labels.slice().reverse(),
+        x: vals.slice().reverse(),
+        text: vals.slice().reverse().map((v: number) => v + '%'),
+        textposition: 'outside',
+        marker: { color: fieldThemes.slice().reverse().map((_: any, i: number) =>
+          i === fieldThemes.length - 1 ? DN.teal : i === fieldThemes.length - 2 ? DN.tealLight : DN.navyLight) },
+        hovertemplate: '<b>%{y}</b>: %{x:.1f}%<extra></extra>',
+      }],
+      layout: {
+        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 16, r: 50, t: 8, b: 20 },
+        xaxis: { showgrid: true, gridcolor: DN.divider, zeroline: false, ticksuffix: '%', tickfont: { size: 10 }, color: DN.slateDk },
+        yaxis: { tickfont: { size: 11 }, color: DN.navy, automargin: true },
+        font: { family: 'Inter, system-ui, sans-serif', color: DN.navy },
+        bargap: 0.3,
+      },
+    }
+    chartHtml = `<div id="${cid}" data-chart-id="${cid}" style="min-height:240px;flex:1"></div>`
+  }
+
+  const quotesHtml = quotes.map(q =>
+    `<blockquote class="quote-card">${esc(trunc(q, 220))}</blockquote>`).join('')
+
+  return `<section style="background:${DN.slateCard}">
+    ${slideHeader(f.label, subtitle)}
+    <div class="slide-body two-col">
+      <div style="flex:1.1;display:flex;flex-direction:column;gap:8px;padding:10px 12px 8px 28px">
+        ${fieldThemes.length > 0 ? `<div class="section-label" style="color:${DN.slateDk}">AI-IDENTIFIED THEMES</div>${chartHtml}` : ''}
+        ${ai.narrative ? `<div class="insight-box">${esc(ai.narrative)}</div>` : ''}
+      </div>
+      <div style="flex:0.9;display:flex;flex-direction:column;gap:6px;padding:10px 28px 8px 8px;overflow:hidden">
+        <div class="section-label" style="color:${DN.slateDk}">VERBATIM RESPONSES</div>
+        <div style="overflow-y:auto;flex:1">${quotesHtml}</div>
+      </div>
+    </div>
+  </section>`
+}
+
+function buildClosingSlide(datasetName: string, takeaways: string[]): string {
+  const taHtml = takeaways.slice(0, 3).map((ta, i) =>
+    `<div class="closing-ta"><div class="closing-ta-num">${i+1}</div><div>${esc(ta)}</div></div>`).join('')
+  return `<section style="background:${DN.navy};color:${DN.white}">
+    <div class="title-gold-bar"></div>
+    <div class="title-left-bar"></div>
+    <div class="title-content" style="justify-content:center">
+      <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:${DN.tealLight};margin-bottom:16px">KEY TAKEAWAYS</div>
+      <div class="closing-tas">${taHtml}</div>
+      <div style="margin-top:32px;font-size:11px;color:${DN.slate}">
+        datanautix.com &nbsp;·&nbsp; ${esc(trunc(datasetName, 60))} &nbsp;·&nbsp; Proprietary and Confidential
+      </div>
+    </div>
+  </section>`
+}
+
+// ── CSS ───────────────────────────────────────────────────────────────────────
+const CSS = `
+  :root { --dn-navy:${DN.navy};--dn-teal:${DN.teal};--dn-gold:${DN.gold};--dn-white:${DN.white} }
+  .reveal .slides section { text-align:left; font-family:'Inter',system-ui,sans-serif; padding:0; box-sizing:border-box }
+  .reveal .slides { height:100%!important }
+  .reveal .slides > section { height:100%!important; display:flex!important; flex-direction:column!important }
+
+  /* Header */
+  .slide-hdr { display:flex;align-items:center;gap:12px;padding:8px 16px 8px 0;flex-shrink:0;position:relative;min-height:56px }
+  .slide-hdr-accent { width:6px;align-self:stretch;background:${DN.teal};flex-shrink:0;margin-right:10px }
+  .slide-title-text { font-size:18px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .slide-sub-text { font-size:10px;margin-top:2px;font-style:italic }
+  .dn-logo { font-size:13px;font-weight:700;font-style:italic;white-space:nowrap;margin-left:auto;padding-right:12px }
+
+  /* Slide body */
+  .slide-body { flex:1;overflow:hidden;display:flex }
+  .slide-body.two-col { flex-direction:row }
+  .chart-col { flex:1.2;padding:10px 12px 8px 28px;min-width:0 }
+  .insight-col { flex:0.85;padding:14px 24px 10px 12px;display:flex;flex-direction:column;gap:10px;border-left:1px solid ${DN.divider} }
+
+  /* Insights */
+  .key-finding { font-size:14px;font-weight:700;color:${DN.navy};line-height:1.3;padding:8px 10px;background:${DN.tealPale};border-left:4px solid ${DN.teal};border-radius:2px }
+  .narrative { font-size:11.5px;color:${DN.navyLight};line-height:1.55;margin:0 }
+  .implication { font-size:11px;color:${DN.teal};font-weight:600;padding-top:4px }
+  .imp-arrow { font-size:13px;margin-right:4px }
+  .watchout { font-size:10.5px;color:${DN.amber};background:${DN.goldPale};padding:5px 8px;border-radius:3px }
+  .resp-count { font-size:9.5px;color:${DN.slate};margin-top:auto;padding-top:6px }
+  .insight-box { background:${DN.white};border:1px solid ${DN.divider};border-radius:6px;padding:10px 12px;flex-shrink:0 }
+
+  /* KPI rows */
+  .kpi-row { display:flex;gap:8px;flex-shrink:0 }
+  .kpi-card { flex:1;background:${DN.navyMid};border:1px solid ${DN.navyLight};border-top:3px solid ${DN.gold};border-radius:4px;padding:8px 10px }
+  .kpi-val { font-size:24px;font-weight:700;color:${DN.gold};line-height:1.1 }
+  .kpi-lbl { font-size:9.5px;color:#A8C8D8;margin-top:3px;font-weight:600 }
+  .kpi-row-sm { display:flex;gap:8px;flex-shrink:0 }
+  .kpi-card-sm { flex:1;background:${DN.white};border:1px solid ${DN.divider};border-top:3px solid ${DN.teal};border-radius:4px;padding:6px 10px }
+  .kpi-val-sm { font-size:20px;font-weight:700;line-height:1.1 }
+  .kpi-lbl-sm { font-size:9px;color:${DN.slate};margin-top:2px;font-weight:600 }
+
+  /* Summary bullets */
+  .section-label { font-size:9px;font-weight:700;letter-spacing:1.5px;color:${DN.gold};padding-bottom:4px;border-bottom:1px solid ${DN.gold} }
+  .bullets-list { list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px }
+  .bullets-list li { display:flex;align-items:flex-start;gap:8px;font-size:11px;color:${DN.white};line-height:1.4 }
+  .bullet-dot { width:6px;height:6px;background:${DN.teal};border-radius:50%;margin-top:4px;flex-shrink:0 }
+
+  /* Theme rows */
+  .themes-list { display:flex;flex-direction:column;gap:5px }
+  .theme-row { display:flex;align-items:center;gap:8px;font-size:11px }
+  .theme-bar-bg { flex:1;height:8px;background:${DN.navyMid};border-radius:4px;overflow:hidden }
+  .theme-bar-fill { height:100%;background:${DN.teal};border-radius:4px;transition:width .3s }
+  .theme-name { color:${DN.white};min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .theme-pct { color:${DN.gold};font-weight:700;min-width:32px;text-align:right }
+  .takeaways-list { display:flex;flex-direction:column;gap:6px }
+  .takeaway-row { display:flex;align-items:flex-start;gap:8px;font-size:11px;color:${DN.white};background:${DN.navyMid};padding:6px 8px;border-radius:3px }
+  .ta-num { width:20px;height:20px;background:${DN.teal};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${DN.white};flex-shrink:0 }
+
+  /* Quotes */
+  .quote-card { margin:0 0 6px;padding:8px 10px 8px 14px;background:${DN.white};border-left:4px solid ${DN.teal};border-radius:2px;font-size:10.5px;color:${DN.navyLight};font-style:italic;line-height:1.45 }
+
+  /* Title slide */
+  .slide-title { position:relative;overflow:hidden }
+  .title-left-bar { position:absolute;top:0;left:0;width:16px;height:100%;background:${DN.teal};z-index:1 }
+  .title-gold-bar { position:absolute;top:0;left:0;right:0;height:6px;background:${DN.gold};z-index:2 }
+  .title-deco-circle { position:absolute;border-radius:50%;z-index:0 }
+  .title-deco-1 { width:320px;height:320px;right:-80px;top:-60px;background:${DN.teal};opacity:.07 }
+  .title-deco-2 { width:200px;height:200px;right:-20px;top:40px;background:${DN.teal};opacity:.05 }
+  .title-content { position:relative;z-index:3;padding:40px 48px 40px 56px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;box-sizing:border-box }
+  .dn-logo-large { font-size:28px;font-weight:700;font-style:italic;margin-bottom:16px }
+  .title-divider { width:220px;height:3px;background:${DN.gold};margin-bottom:18px }
+  .title-dataset { font-size:30px;font-weight:700;color:${DN.white};line-height:1.2;margin:0 0 8px;max-width:600px }
+  .title-subtitle { font-size:15px;color:${DN.tealLight};font-style:italic;margin:0 0 14px }
+  .title-meta { font-size:12px;color:${DN.slate};margin-bottom:8px }
+  .title-footer { font-size:9px;color:${DN.slate};margin-top:auto }
+
+  /* Closing slide */
+  .closing-tas { display:flex;flex-direction:column;gap:12px;max-width:660px }
+  .closing-ta { display:flex;align-items:flex-start;gap:14px;font-size:13px;color:${DN.white};line-height:1.5 }
+  .closing-ta-num { width:28px;height:28px;background:${DN.teal};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${DN.white};flex-shrink:0;margin-top:1px }
+`
+
+// ── HTML template ─────────────────────────────────────────────────────────────
+function buildHTML(datasetName: string, slides: string[], chartsJson: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(datasetName)} — StoryTime Report</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#0D2B45}
+  ${CSS}
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+${slides.join('\n')}
+</div>
+</div>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+const CHARTS = ${chartsJson};
+Reveal.initialize({
+  hash:true, transition:'fade', width:1280, height:720,
+  slideNumber:'c/t', controls:true, progress:true, center:false,
+  margin:0, minScale:0.1, maxScale:2.0,
+});
+function tryRender(section) {
+  if (!section) return;
+  section.querySelectorAll('[data-chart-id]').forEach(function(el) {
+    if (el.dataset.rendered) return;
+    var id = el.dataset.chartId;
+    if (CHARTS[id]) {
+      var cfg = CHARTS[id];
+      Plotly.newPlot(el, cfg.data, cfg.layout, {responsive:true,displayModeBar:false});
+      el.dataset.rendered = '1';
+    }
+  });
+}
+Reveal.on('ready', function(e) { tryRender(e.currentSlide); });
+Reveal.on('slidechanged', function(e) { tryRender(e.currentSlide); });
+</script>
+</body>
+</html>`
+}
+
+// ── POST handler ──────────────────────────────────────────────────────────────
+export async function POST(req: Request, { params }: Params) {
+  const body = await req.json().catch(() => ({}))
+  const selectedFieldNames: string[] = body.fields || []
+  const audience:            string   = body.audience || 'stakeholder'
+  const instructions:        string   = body.instructions || ''
+  const includeThemeSlides:  boolean  = body.includeThemeSlides !== false
+  const selectedThemeIds:    string[] = body.selectedThemeIds || []
+
+  if (selectedFieldNames.length === 0) {
+    return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
+  }
+
+  const service = createServiceRoleClient()
+
+  const { data: dataset } = await service
+    .from('datasets').select('id, name, row_count, study_id, studies(id, name, config)').eq('id', params.datasetId).single()
+  if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+
+  const { data: stateRow } = await service
+    .from('dataset_state').select('schema_config, analytics, theme_model').eq('dataset_id', params.datasetId).single()
+  if (!stateRow) return NextResponse.json({ error: 'Dataset state not found' }, { status: 404 })
+
+  const schema    = stateRow.schema_config
+  const analytics = stateRow.analytics
+  const allThemes = (stateRow.theme_model as any)?.themes || []
+
+  // Backfill prompts from study config
+  const studyConfig = (dataset as any).studies?.config
+  if (studyConfig && schema?.fields) {
+    schema.fields.forEach(function(f: any) {
+      if (f.prompt) return
+      if (studyConfig.questions) {
+        const q = studyConfig.questions.find((qq: any) => {
+          const col = qq.exportLabel || qq.prompt || qq.id
+          return f.field === col || f.field.includes(col)
+        })
+        if (q?.prompt) f.prompt = q.prompt
+      }
+      if (!f.prompt && f.field.startsWith('psycho_') && studyConfig.psychographicBank) {
+        const san = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')
+        const pq = studyConfig.psychographicBank.find((pp: any) => san(pp.key) === f.field.replace('psycho_',''))
+        if (pq?.q) f.prompt = pq.q
+      }
+      if (!f.prompt && f.field.startsWith('demo_') && studyConfig.demoFields) {
+        const san = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')
+        const df = studyConfig.demoFields.find((dd: any) => san(dd.key) === f.field.replace('demo_',''))
+        if (df) f.prompt = df.label
+      }
+    })
+  }
+
+  const themes      = selectedThemeIds.length > 0 ? allThemes.filter((t: any) => selectedThemeIds.includes(t.id)) : allThemes
+  const sortedThemes = [...themes].sort((a: any, b: any) => (b.count||0) - (a.count||0))
+  const datasetName  = dataset.name
+
+  if (!analytics?.fieldSummaries) {
+    return NextResponse.json({ error: 'Analytics not yet computed' }, { status: 400 })
+  }
+
+  const selectedFields: SelectedField[] = selectedFieldNames
+    .map(fieldName => {
+      const sf = (schema?.fields || []).find((f: any) => f.field === fieldName)
+      if (!sf) return null
+      return { field: fieldName, label: sf.label || fieldName, type: sf.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: sf.remapping, section: sf.section || undefined, prompt: sf.prompt }
+    }).filter(Boolean) as SelectedField[]
+
+  if (selectedFields.length === 0) {
+    return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
+  }
+
+  // Fetch raw rows for numeric histograms
+  const { data: rowBatches } = await service
+    .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(10)
+  const allRows: Record<string,any>[] = []
+  for (const batch of (rowBatches || [])) for (const row of (batch.rows || [])) allRows.push(row)
+
+  const rowKeyMap: Record<string,string> = {}
+  if (allRows.length > 0) for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
+
+  // AI narratives
+  let narratives: Narratives = {
+    reportTitle: '', executiveSummary: [], keyTakeaways: [],
+    fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])),
+  }
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (apiKey) {
+    try { narratives = await generateNarratives(apiKey, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
+    catch (e) { console.error('[export/html] AI error:', e) }
+  }
+
+  // Reset chart state for this request
+  chartIndex = 0
+  Object.keys(charts).forEach(k => delete charts[k])
+
+  // Build slides
+  const slides: string[] = []
+  slides.push(buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt))
+  slides.push(buildSummarySlide(analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields))
+
+  const coreFields   = selectedFields.filter(f => !f.section || f.section === 'core')
+  const psychoFields = selectedFields.filter(f => f.section === 'psychographic')
+  const demoFields   = selectedFields.filter(f => f.section === 'demographic')
+
+  function renderField(f: SelectedField) {
+    const ai = narratives.fieldInsights[f.field] || { keyFinding: f.label, narrative: '', implication: '' }
+    if (f.type === 'categorical') return buildCategoricalSlide(f, ai)
+    if (f.type === 'numeric')     return buildNumericSlide(f, ai, allRows, rowKeyMap)
+    if (f.type === 'open-ended') {
+      const fieldThemes = includeThemeSlides && sortedThemes.length > 0
+        ? sortedThemes.slice(0, 8)
+        : []
+      return buildOpenEndedSlide(f, ai, fieldThemes)
+    }
+    return ''
+  }
+
+  coreFields.forEach(f => { const s = renderField(f); if (s) slides.push(s) })
+  if (psychoFields.length > 0) psychoFields.forEach(f => { const s = renderField(f); if (s) slides.push(s) })
+  if (demoFields.length > 0) demoFields.forEach(f => { const s = renderField(f); if (s) slides.push(s) })
+
+  if (narratives.keyTakeaways?.length > 0) {
+    slides.push(buildClosingSlide(datasetName, narratives.keyTakeaways))
+  }
+
+  const html     = buildHTML(datasetName, slides, JSON.stringify(charts))
+  const safeName = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40)
+  const filename = safeName + '_report.html'
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      'Content-Type':        'text/html; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  })
+}

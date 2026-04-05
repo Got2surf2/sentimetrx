@@ -1270,41 +1270,24 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   // Logo
   logo(slide)
 
-  // Section emoji icon or image for psychographic
+  // Section image / emoji
   if (title === 'Psychographic Profile') {
-    // Prefer PNG (transparent background) over JPEG
-    const pngPath = process.cwd() + '/public/psychographics.png'
-    const jpgPath = process.cwd() + '/public/psychographics.jpg'
-    const imagePath = existsSync(pngPath) ? pngPath : (existsSync(jpgPath) ? jpgPath : null)
-    const mime      = imagePath?.endsWith('.png') ? 'image/png' : 'image/jpeg'
-
-    // Inner circle: x: W-2.1, y: 1.5, w: 2.2, h: 2.2  →  center: (W-1.0, 2.6)
-    // Image is 318×234 (landscape, aspect ≈ 1.359:1). 15% smaller than circle diameter.
-    // w = 2.2 * 0.85 ≈ 1.87", h = 1.87 * (234/318) ≈ 1.375"
-    const imgW = parseFloat((2.2 * 0.85).toFixed(3))          // ≈ 1.870
-    const imgH = parseFloat((imgW * (234 / 318)).toFixed(3))   // ≈ 1.375
+    const imgPath = process.cwd() + '/public/psych_divider.png'
+    // Image is 1020×1020 (square). Fit inside the inner circle (2.2" diameter) at 85%.
+    const imgW = parseFloat((2.2 * 0.85).toFixed(3))   // ≈ 1.870"
+    const imgH = imgW                                    // square aspect ratio
     const cx   = W - 1.0   // inner circle centre x
     const cy2  = 2.6        // inner circle centre y
-    const imgX = cx - imgW / 2
-    const imgY = cy2 - imgH / 2
-
-    if (imagePath) {
+    if (existsSync(imgPath)) {
       try {
-        const imageBuffer = readFileSync(imagePath)
-        const base64 = imageBuffer.toString('base64')
-        const dataUrl = 'data:' + mime + ';base64,' + base64
-        slide.addImage({ data: dataUrl, x: imgX, y: imgY, w: imgW, h: imgH })
-      } catch (e) {
-        slide.addText('\uD83E\uDDE0', {
-          x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
-          fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
-        })
+        const base64  = readFileSync(imgPath).toString('base64')
+        const dataUrl = 'data:image/png;base64,' + base64
+        slide.addImage({ data: dataUrl, x: cx - imgW / 2, y: cy2 - imgH / 2, w: imgW, h: imgH })
+      } catch (_) {
+        slide.addText('\uD83E\uDDE0', { x: W - 2.1, y: 1.6, w: 2.0, h: 2.0, fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle' })
       }
     } else {
-      slide.addText('\uD83E\uDDE0', {
-        x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
-        fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
-      })
+      slide.addText('\uD83E\uDDE0', { x: W - 2.1, y: 1.6, w: 2.0, h: 2.0, fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle' })
     }
   } else {
     const sectionEmoji: Record<string, string> = { 'Demographic Breakdown': '\uD83D\uDC65', 'Core Study Questions': '\uD83D\uDCCB' }
