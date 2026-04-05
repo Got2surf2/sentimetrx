@@ -434,24 +434,28 @@ const CSS = `
 
   /* ── Navigator ─────────────────────────────────────────────────────────── */
   #nav-toggle {
-    position:fixed!important;top:14px!important;right:14px!important;
+    position:fixed!important;top:14px!important;left:14px!important;
     z-index:2147483647!important;
-    width:42px;height:42px;
+    width:48px;height:48px;
     background:${DN.navy};border:2px solid ${DN.gold};border-radius:8px;
-    color:${DN.gold};cursor:pointer;display:flex!important;align-items:center;justify-content:center;
+    color:${DN.gold};cursor:pointer;
+    display:flex!important;align-items:center;justify-content:center;
+    pointer-events:all!important;
     transition:background .15s,border-color .15s;
     font-size:20px;line-height:1;
+    -webkit-tap-highlight-color:transparent;
   }
   #nav-toggle:hover { background:${DN.navyMid} }
+  #nav-toggle.nav-open { left:302px!important;border-color:${DN.tealLight};background:${DN.navyMid} }
 
   #nav-panel {
-    position:fixed!important;top:0!important;right:0!important;bottom:0!important;
+    position:fixed!important;top:0!important;left:0!important;bottom:0!important;
     width:288px;
-    background:${DN.navy};border-left:2px solid ${DN.gold};
+    background:${DN.navy};border-right:2px solid ${DN.gold};
     z-index:2147483646!important;
-    transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+    transform:translateX(-100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
     display:flex!important;flex-direction:column;overflow:hidden;
-    box-shadow:-8px 0 32px rgba(0,0,0,.55);
+    box-shadow:8px 0 32px rgba(0,0,0,.55);
   }
   .nav-header {
     display:flex;align-items:center;justify-content:space-between;
@@ -596,7 +600,8 @@ function updateNav(activeIdx) {
 
 function setNavOpen(open) {
   navOpen = open;
-  navPanel.style.transform = open ? 'translateX(0)' : 'translateX(100%)';
+  navPanel.style.transform = open ? 'translateX(0)' : 'translateX(-100%)';
+  navToggle.classList.toggle('nav-open', open);
   navToggle.innerHTML = open
     ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
     : '<svg width="16" height="14" viewBox="0 0 16 14" fill="none"><rect y="0" width="16" height="2" rx="1" fill="currentColor"/><rect y="6" width="16" height="2" rx="1" fill="currentColor"/><rect y="12" width="16" height="2" rx="1" fill="currentColor"/></svg>';
