@@ -208,13 +208,13 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
               {(function() {
                 var nbins = Math.min(40, Math.max(10, Math.ceil(Math.sqrt(stats.n))))
                 var binW  = stats.range / nbins
-                // Normal curve scaled to histogram counts
+                // Normal curve clamped to actual data range — no phantom values beyond observed min/max
                 var curveX: number[] = [], curveY: number[] = []
-                var lo = stats.mn - 4 * stats.sd, hi = stats.mn + 4 * stats.sd
+                var lo = stats.min, hi = stats.max
                 for (var i = 0; i <= 120; i++) {
                   var xv = lo + (hi - lo) * i / 120
-                  var z  = (xv - stats.mn) / stats.sd
-                  var py = (1 / (stats.sd * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * z * z)
+                  var z  = (xv - stats.mn) / (stats.sd || 1)
+                  var py = (1 / ((stats.sd || 1) * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * z * z)
                   curveX.push(xv)
                   curveY.push(py * stats.n * (binW > 0 ? binW : 1))
                 }
@@ -224,7 +224,7 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
                       { x: stats.vals, type: 'histogram', name: 'Count', nbinsx: nbins, marker: { color: T.accent, opacity: 0.75, line: { color: T.accentMid, width: 0.5 } }, hovertemplate: 'Count: %{y}<extra></extra>' },
                       { x: curveX, y: curveY, type: 'scatter', mode: 'lines', name: 'Normal', line: { color: T.purple, width: 2, dash: 'solid' }, hovertemplate: 'Expected: %{y:.1f}<extra></extra>' },
                     ]}
-                    layout={{ xaxis: { title: { text: selLabel, font: { size: 11 } } }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.02, showlegend: true, legend: { x: 0.75, y: 0.98, font: { size: 10 } }, margin: { t: 10, r: 16, b: 44, l: 48 } }}
+                    layout={{ xaxis: { title: { text: selLabel, font: { size: 11 } }, range: [lo, hi] }, yaxis: { title: { text: 'Count', font: { size: 11 } } }, bargap: 0.02, showlegend: true, legend: { x: 0.75, y: 0.98, font: { size: 10 } }, margin: { t: 10, r: 16, b: 44, l: 48 } }}
                     style={{ height: 220, width: '100%' }}
                   />
                 )
@@ -1407,11 +1407,13 @@ var ANALYSIS_TYPES = [
 function fl(f: SchemaFieldConfig): string { return f.label && f.label !== f.field ? f.label : f.field }
 
 // ── Collapsible sidebar field group ────────────────────────────
-function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen }: {
-  label: string; icon: string; color: string; fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; defaultOpen?: boolean
+function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen, diag }: {
+  label: string; icon: string; color: string; fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; defaultOpen?: boolean; diag?: Record<string, string>
 }) {
   var [open, setOpen] = useState(defaultOpen !== false)
   if (fields.length === 0) return null
+  var goodFields = fields.filter(function(f) { return !diag || !diag[f.field] })
+  var weakFields = fields.filter(function(f) { return diag && diag[f.field] })
   return (
     <div style={{ borderBottom: '1px solid ' + T.border }}>
       <button
@@ -1421,14 +1423,30 @@ function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen
         <div style={{ fontSize: 10, fontWeight: 700, color: color, letterSpacing: '.07em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
           <span>{icon}</span> {label}
         </div>
-        <span style={{ fontSize: 10, color: T.textFaint }}>{open ? '\u25BE' : '\u25B8'} {fields.length}</span>
+        <span style={{ fontSize: 10, color: T.textFaint, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {weakFields.length > 0 && <span style={{ color: T.textFaint, opacity: 0.6 }}>{weakFields.length} weak</span>}
+          {open ? '\u25BE' : '\u25B8'} {fields.length}
+        </span>
       </button>
       {open && (
         <div style={{ padding: '0 12px 8px' }}>
-          {fields.map(function(f) {
+          {goodFields.map(function(f) {
             return (
               <div key={f.field} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1 }} title={flFn(f)}>
                 {flFn(f)}
+              </div>
+            )
+          })}
+          {weakFields.length > 0 && goodFields.length > 0 && (
+            <div style={{ height: 1, background: T.border, margin: '4px 0 5px' }} />
+          )}
+          {weakFields.map(function(f) {
+            var reason = diag![f.field]
+            return (
+              <div key={f.field} title={reason}
+                style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textFaint, fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, opacity: 0.55, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ flexShrink: 0, fontSize: 9 }}>⚠</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{flFn(f)}</span>
               </div>
             )
           })}
@@ -1438,8 +1456,8 @@ function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen
   )
 }
 
-function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned }: {
-  fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; isAssigned?: (f: SchemaFieldConfig) => boolean
+function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
+  fields: SchemaFieldConfig[]; T: any; fl: (f: SchemaFieldConfig) => string; isAssigned?: (f: SchemaFieldConfig) => boolean; diag?: Record<string, string>
 }) {
   var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
@@ -1452,12 +1470,12 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned }: {
 
   return (
     <>
-      <CollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} T={T} fl={flFn} />
-      <CollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} T={T} fl={flFn} diag={diag} />
+      <CollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} T={T} fl={flFn} diag={diag} />
       <CollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} T={T} fl={flFn} />
       <CollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} T={T} fl={flFn} />
-      <CollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} T={T} fl={flFn} />
-      <CollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} T={T} fl={flFn} diag={diag} />
+      <CollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} T={T} fl={flFn} diag={diag} />
     </>
   )
 }
@@ -1576,6 +1594,27 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
     return out
   }, [schema.fields, hasThemes, mappedFields])
 
+  // Per-field quality flags for the left sidebar — dims fields with no analytical value
+  var sidebarDiag = useMemo(function() {
+    var diag: Record<string, string> = {}
+    if (!enrichedData.length) return diag
+    numFields.forEach(function(f) {
+      var vals = enrichedData.map(function(r) { return parseFloat(String(r[f.field] ?? '').replace(/,/g, '')) }).filter(function(v) { return !isNaN(v) })
+      if (vals.length < 3) { diag[f.field] = 'Only ' + vals.length + ' valid value(s)'; return }
+      if (vals.length < enrichedData.length * 0.1) { diag[f.field] = Math.round(vals.length / enrichedData.length * 100) + '% coverage (' + vals.length + ' rows)'; return }
+      var mn = vals.reduce(function(s, v) { return s + v }, 0) / vals.length
+      var vr = vals.reduce(function(s, v) { return s + (v - mn) ** 2 }, 0) / vals.length
+      if (vr === 0) diag[f.field] = 'Zero variance — all values identical'
+    })
+    catFields.forEach(function(f) {
+      var vals = enrichedData.map(function(r) { return String(r[f.field] ?? '').trim() }).filter(function(v) { return v !== '' })
+      var unique = new Set(vals)
+      if (unique.size === 0) diag[f.field] = 'No values'
+      else if (unique.size === 1) diag[f.field] = 'Only 1 category — no variation'
+    })
+    return diag
+  }, [enrichedData, numFields, catFields])
+
   // Compute bootstrap CIs after enrichedData is ready — stable deps prevent re-trigger loops
   useEffect(function() {
     if (!enrichedData.length) return
@@ -1643,7 +1682,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           </div>
 
           {/* Field groups — sorted: numeric, categorical, open-ended, date (each alpha within group) */}
-          <FieldSidebarGroups fields={[...numFields, ...catFields, ...openFields, ...dateFields]} T={T} fl={fl} />
+          <FieldSidebarGroups fields={[...numFields, ...catFields, ...openFields, ...dateFields]} T={T} fl={fl} diag={sidebarDiag} />
         </div>
 
         {/* ─── Main content ─────────────────────────────────── */}
