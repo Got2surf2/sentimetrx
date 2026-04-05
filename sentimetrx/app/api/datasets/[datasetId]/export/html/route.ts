@@ -34,6 +34,14 @@ interface SelectedField {
 
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
 function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s }
+function trimNatural(s: string, max: number): string {
+  if (!s) return s
+  const candidate = s.length > max ? s.slice(0, max) : s
+  const lastEnd = Math.max(candidate.lastIndexOf('.'), candidate.lastIndexOf('!'), candidate.lastIndexOf('?'))
+  if (lastEnd >= 1) return candidate.slice(0, lastEnd + 1)
+  const lastSpace = candidate.lastIndexOf(' ')
+  return (lastSpace > 0 ? candidate.slice(0, lastSpace) : candidate) + '…'
+}
 function esc(s: string) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') }
 
@@ -57,7 +65,7 @@ async function generateNarratives(
     }
     if (s.type === 'numeric') return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}`
     if (s.type === 'open-ended') {
-      const allSamples = (s.sample||[]).slice(0,20).map((t: string, i: number) => `[${i}] "${t.slice(0,200)}"`).join('\n')
+      const allSamples = (s.sample||[]).slice(0,20).map((t: string, i: number) => `[${i}] "${t.slice(0,500)}"`).join('\n')
       return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words\nCANDIDATE QUOTES (indexed 0–${Math.min(19,(s.sample||[]).length-1)}):\n${allSamples}`
     }
     return `${f.label}: no data`
@@ -296,9 +304,10 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
   // Prefer AI-curated quotes (≤140 chars each); fall back to raw sample
   const allSamples = (f.summary?.sample || []) as string[]
   const longSamples = allSamples.filter(q => q && q.trim().length >= 200)
-  const rawFallback = (longSamples.length >= 2 ? longSamples : allSamples.filter(q => q && q.trim().length > 50)).slice(0, 6)
+  const rawFallback = (longSamples.length >= 2 ? longSamples : allSamples.filter(q => q && q.trim().length > 50))
+    .slice(0, 6).map(q => trimNatural(q, 400))
   const quotes = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
-    ? ai.pickedQuotes.slice(0, 6)
+    ? ai.pickedQuotes.slice(0, 6).map(q => trimNatural(q, 400))
     : rawFallback
   const fieldThemes = themes.slice(0, 8)
 

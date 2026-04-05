@@ -122,14 +122,20 @@ function lbl(slide: any, text: string, x: number, y: number, w: number, color = 
 
 function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s }
 
-// Trim to a natural sentence/word boundary rather than slicing mid-word
+// Trim to a sentence boundary. Always enforced — even if text is shorter than max.
 function trimNatural(s: string, max: number): string {
-  if (!s || s.length <= max) return s
-  const cut = s.slice(0, max)
-  const lastEnd = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'), cut.lastIndexOf(';'))
-  if (lastEnd > max * 0.55) return cut.slice(0, lastEnd + 1)
-  const lastSpace = cut.lastIndexOf(' ')
-  return (lastSpace > max * 0.4 ? cut.slice(0, lastSpace) : cut) + '…'
+  if (!s) return s
+  const candidate = s.length > max ? s.slice(0, max) : s
+  // Find the last sentence-ending punctuation
+  const lastEnd = Math.max(
+    candidate.lastIndexOf('.'),
+    candidate.lastIndexOf('!'),
+    candidate.lastIndexOf('?'),
+  )
+  if (lastEnd >= 1) return candidate.slice(0, lastEnd + 1)
+  // No sentence end — trim to last word boundary and add ellipsis
+  const lastSpace = candidate.lastIndexOf(' ')
+  return (lastSpace > 0 ? candidate.slice(0, lastSpace) : candidate) + '…'
 }
 
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
@@ -225,7 +231,7 @@ async function generateNarratives(
       const posInRange = range > 0 ? ((s.avg - s.min) / range * 100).toFixed(0) : '50'
       return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}, std=${s.std?.toFixed(2)} | avg sits at ${posInRange}% of possible range`
     } else if (s.type === 'open-ended') {
-      const allSamples = (s.sample || []).slice(0, 20).map((t: string, i: number) => `[${i}] "${t.slice(0, 200)}"`).join('\n')
+      const allSamples = (s.sample || []).slice(0, 20).map((t: string, i: number) => `[${i}] "${t.slice(0, 500)}"`).join('\n')
       return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words per response\nCANDIDATE QUOTES (indexed 0–${Math.min(19, (s.sample||[]).length-1)}):\n${allSamples}`
     } else if (s.type === 'date') {
       return `${f.label} (date): ${s.min} to ${s.max}, n=${s.nonNull}`
@@ -972,9 +978,10 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   // Prefer AI-curated quotes; fall back to raw sample filtered by length
   // Prefer substantive quotes ≥200 chars; fall back to shorter ones if not enough
   const longSamples = (s?.sample || []).filter((q: string) => q && q.trim().length >= 200)
-  const rawFallback = (longSamples.length >= 2 ? longSamples : (s?.sample || []).filter((q: string) => q && q.trim().length > 50)).slice(0, maxQuotes)
+  const rawFallback = (longSamples.length >= 2 ? longSamples : (s?.sample || []).filter((q: string) => q && q.trim().length > 50))
+    .slice(0, maxQuotes).map((q: string) => trimNatural(q, 400))
   const quotes: string[] = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
-    ? ai.pickedQuotes.slice(0, maxQuotes)
+    ? ai.pickedQuotes.slice(0, maxQuotes).map((q: string) => trimNatural(q, 400))
     : rawFallback
 
   const leftW  = W * 0.44 - PAD
