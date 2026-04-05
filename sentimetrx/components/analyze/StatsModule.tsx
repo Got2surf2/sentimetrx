@@ -550,14 +550,21 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
   var [outcomes, setOutcomes] = useState<Set<string>>(new Set())
   var [predictors, setPredictors] = useState<Set<string>>(new Set())
   var [activeOutcome, setActiveOutcome] = useState<string>('')
+  var [outcomesOpen, setOutcomesOpen] = useState(true)
 
   var fl2 = function(f: SchemaFieldConfig) { return aliases[f.field] || f.label || f.field }
 
   var toggleOutcome = function(f: string) {
     setOutcomes(function(prev) {
       var n = new Set(prev)
-      if (n.has(f)) { n.delete(f); if (activeOutcome === f) setActiveOutcome(Array.from(n)[0] || '') }
-      else { n.add(f); if (!activeOutcome) setActiveOutcome(f) }
+      if (n.has(f)) {
+        n.delete(f)
+        if (activeOutcome === f) setActiveOutcome(Array.from(n)[0] || '')
+      } else {
+        n.add(f)
+        if (!activeOutcome) setActiveOutcome(f)
+        setOutcomesOpen(false)  // collapse after first pick
+      }
       return n
     })
     setPredictors(function(prev) { var n = new Set(prev); n.delete(f); return n })
@@ -611,21 +618,30 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
         {/* ── Variable selector ── */}
         <Card style={{ padding: 16 }}>
           {/* Outcomes */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-            Outcomes ({outcomes.size})
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
-            {outcomeFields.map(function(f) {
-              var sel = outcomes.has(f.field)
-              return (
-                <button key={f.field} onClick={function() { toggleOutcome(f.field) }}
-                  style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.accent : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
-                  {fl2(f)}
-                </button>
-              )
-            })}
-          </div>
+          <button
+            onClick={function() { setOutcomesOpen(function(v) { return !v }) }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: outcomesOpen ? 6 : 14 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+              Outcomes {outcomes.size > 0 ? '(' + outcomes.size + ')' : ''}
+            </span>
+            <span style={{ fontSize: 11, color: outcomesOpen ? T.textFaint : T.accent, fontWeight: 600 }}>
+              {outcomesOpen ? '\u25BE' : (outcomes.size > 0 ? Array.from(outcomes).map(function(oc) { return (aliases[oc] || oc).slice(0, 12) }).join(', ') + ' \u25B8' : '\u25B8')}
+            </span>
+          </button>
+          {outcomesOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
+              {outcomeFields.map(function(f) {
+                var sel = outcomes.has(f.field)
+                return (
+                  <button key={f.field} onClick={function() { toggleOutcome(f.field) }}
+                    style={{ padding: '6px 10px', fontSize: 12, textAlign: 'left', fontWeight: sel ? 700 : 400, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 3, background: sel ? T.accent : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '\u2713' : ''}</span>
+                    {fl2(f)}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {/* Predictors */}
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>
@@ -1379,6 +1395,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [activePanel, setActivePanel] = useState('descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
   var [confidenceLevel, setConfidenceLevel] = useState(95)
+  var [pickerSize, setPickerSize] = useState('')   // string input in the sample picker
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
@@ -1560,60 +1577,81 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
 
           {/* ── Sample-size picker — shown before any data is loaded ── */}
-          {sampleCap === null && !rowsLoading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
-              <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 16, padding: '32px 36px', maxWidth: 500, width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,.07)' }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 6 }}>Choose sample size</div>
-                <div style={{ fontSize: 13, color: T.textMute, marginBottom: 20, lineHeight: 1.6 }}>
-                  Statistical analysis runs in your browser on the loaded rows.
-                  Pick a sample size — larger samples are more precise but take longer to load.
-                </div>
+          {sampleCap === null && !rowsLoading && (function() {
+            var parsed  = parseInt(pickerSize.replace(/,/g, ''))
+            var validN  = !isNaN(parsed) && parsed > 0
+            var loadMoe = validN ? (z * Math.sqrt(0.25 / parsed) * 100).toFixed(1) : null
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+                <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 16, padding: '32px 36px', maxWidth: 480, width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,.07)' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 4 }}>Choose sample size</div>
+                  <div style={{ fontSize: 13, color: T.textMute, marginBottom: 24, lineHeight: 1.6 }}>
+                    Analysis runs in your browser. Larger samples are more precise but take longer to load.
+                    Set your confidence level in the right panel, then pick or enter a sample size.
+                  </div>
 
-                {/* Confidence slider */}
-                <div style={{ background: T.bg, borderRadius: 10, padding: '14px 16px', marginBottom: 20, border: '1px solid ' + T.border }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>Confidence level</span>
-                    <span style={{ fontSize: 16, fontWeight: 800, color: T.accent }}>{confidenceLevel}%</span>
+                  {/* Preset quick-select buttons — fill the input, don't load yet */}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Quick select</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
+                    {SAMPLE_PRESETS.map(function(n) {
+                      var moe    = (z * Math.sqrt(0.25 / n) * 100).toFixed(1)
+                      var ok     = n >= reqN
+                      var active = pickerSize === String(n)
+                      return (
+                        <button key={n}
+                          onClick={function() { setPickerSize(String(n)) }}
+                          style={{
+                            padding: '10px 6px', borderRadius: 9, cursor: 'pointer',
+                            border: '2px solid ' + (active ? T.accent : ok ? T.greenMid : T.border),
+                            background: active ? T.accentBg : ok ? T.greenBg : T.bg,
+                            color: active ? T.accent : ok ? T.green : T.textMid, fontWeight: 700,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                          }}>
+                          <span style={{ fontSize: 13 }}>{n >= 1000 ? (n / 1000) + 'k' : n}</span>
+                          <span style={{ fontSize: 10, fontWeight: 400, color: active ? T.accent : ok ? T.green : T.textFaint }}>±{moe}%</span>
+                        </button>
+                      )
+                    })}
                   </div>
-                  <input type="range" min={90} max={99} step={1} value={confidenceLevel}
-                    onChange={function(e) { setConfidenceLevel(parseInt(e.target.value)) }}
-                    style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4, marginBottom: 4 }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textFaint }}>
-                    <span>90%</span><span>99%</span>
-                  </div>
-                  <div style={{ marginTop: 8, fontSize: 11, color: T.textMute }}>
-                    Min. sample for ±5% MOE: <strong style={{ color: T.textMid }}>{reqN.toLocaleString()}</strong>
-                  </div>
-                </div>
 
-                {/* Preset buttons */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
-                  {SAMPLE_PRESETS.map(function(n) {
-                    var moe = (z * Math.sqrt(0.25 / n) * 100).toFixed(1)
-                    var ok  = n >= reqN
-                    return (
-                      <button key={n} onClick={function() { setSampleCap(n) }}
-                        style={{
-                          padding: '10px 6px', borderRadius: 9, cursor: 'pointer',
-                          border: '1px solid ' + (ok ? T.greenMid : T.border),
-                          background: ok ? T.greenBg : T.bg,
-                          color: ok ? T.green : T.textMid, fontWeight: 700,
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                        }}>
-                        <span style={{ fontSize: 13 }}>{n >= 1000 ? (n / 1000) + 'k' : n}</span>
-                        <span style={{ fontSize: 10, fontWeight: 400, color: ok ? T.green : T.textFaint }}>±{moe}%</span>
-                      </button>
-                    )
-                  })}
+                  {/* Custom input */}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Custom size</div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="number" min={1} placeholder="e.g. 15000"
+                      value={pickerSize}
+                      onChange={function(e) { setPickerSize(e.target.value) }}
+                      onKeyDown={function(e) { if (e.key === 'Enter' && validN) setSampleCap(parsed) }}
+                      style={{ flex: 1, padding: '9px 12px', fontSize: 14, border: '1px solid ' + (validN ? T.accent : T.border), borderRadius: 8, outline: 'none', color: T.text, background: T.bgCard }}
+                    />
+                    <button
+                      disabled={!validN}
+                      onClick={function() { if (validN) setSampleCap(parsed) }}
+                      style={{
+                        padding: '9px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: validN ? 'pointer' : 'not-allowed',
+                        background: validN ? T.accent : T.border, color: 'white', border: 'none',
+                        opacity: validN ? 1 : 0.5,
+                      }}>
+                      Load
+                    </button>
+                  </div>
+                  {validN && loadMoe && (
+                    <div style={{ fontSize: 11, color: parsed >= reqN ? T.green : T.amber, marginBottom: 16 }}>
+                      {parsed >= reqN ? '\u2714' : '\u26A0'} {parsed.toLocaleString()} rows — ±{loadMoe}% MOE at {confidenceLevel}% CI
+                      {parsed < reqN && <span style={{ color: T.textFaint }}> (need {reqN.toLocaleString()} for ±5%)</span>}
+                    </div>
+                  )}
+
+                  <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 14 }}>
+                    <button onClick={function() { setSampleCap(0) }}
+                      style={{ width: '100%', padding: '9px', borderRadius: 8, cursor: 'pointer', border: '1px solid ' + T.border, background: T.bg, color: T.textMid, fontWeight: 600, fontSize: 13 }}>
+                      Full dataset — no limit
+                    </button>
+                  </div>
                 </div>
-                <button onClick={function() { setSampleCap(0) }}
-                  style={{ width: '100%', padding: '10px', borderRadius: 9, cursor: 'pointer', border: '1px solid ' + T.border, background: T.bg, color: T.textMid, fontWeight: 600, fontSize: 13 }}>
-                  Full dataset (no limit)
-                </button>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* ── Loading spinner ── */}
           {rowsLoading && (
@@ -1661,15 +1699,15 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
         <div style={{ width: 200, flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
 
           {/* Statistical Validity panel */}
-          <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+          <div style={{ padding: '14px 14px 14px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
               Statistical Validity
             </div>
 
-            {/* Slider */}
-            <div style={{ marginBottom: 8 }}>
+            {/* Confidence level — always visible, drives both reqN and the picker presets */}
+            <div style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                <span style={{ fontSize: 10, color: T.textMute }}>Confidence</span>
+                <span style={{ fontSize: 10, color: T.textMute }}>Confidence level</span>
                 <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{confidenceLevel}%</span>
               </div>
               <input type="range" min={90} max={99} step={1} value={confidenceLevel}
@@ -1681,19 +1719,23 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
               </div>
             </div>
 
-            {/* Stats — use hoisted analysisN / moePct / meetsReq */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Min. sample (±5%)</span>
-                <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
-              </div>
-              {analysisN > 0 && (
+            {/* Min sample target — always visible */}
+            <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span>Min. for ±5% MOE</span>
+              <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
+            </div>
+
+            {/* Loaded sample stats — only when data is present */}
+            {analysisN > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Sample size</span>
+                  <span>Loaded sample</span>
+                  <span style={{ fontWeight: 700, color: T.textMid }}>{analysisN.toLocaleString()}</span>
+                </div>
+                <div style={{ fontSize: 11, color: T.textMute, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Actual MOE</span>
                   <span style={{ fontWeight: 700, color: meetsReq ? T.green : T.amber }}>±{moePct}%</span>
                 </div>
-              )}
-              {analysisN > 0 && (
                 <div style={{
                   marginTop: 2, fontSize: 10, padding: '4px 7px', borderRadius: 6,
                   background: meetsReq ? T.greenBg : T.amberBg,
@@ -1701,17 +1743,19 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
                   border: '1px solid ' + (meetsReq ? T.greenMid : T.amberMid),
                 }}>
                   {meetsReq
-                    ? `\u2714 ${analysisN.toLocaleString()} rows \u2014 sufficient`
+                    ? `\u2714 Sufficient for ${confidenceLevel}% CI`
                     : `\u26A0 Need ${(reqN - analysisN).toLocaleString()} more rows`}
                 </div>
-              )}
-              {rowsLoaded && (
                 <button onClick={refreshRows}
-                  style={{ marginTop: 4, fontSize: 10, color: T.accent, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', textDecoration: 'underline' }}>
-                  Change sample
+                  style={{ marginTop: 2, fontSize: 10, color: T.accent, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', textDecoration: 'underline' }}>
+                  Change sample size
                 </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: T.textFaint, fontStyle: 'italic', lineHeight: 1.5 }}>
+                Choose a sample size to begin. The slider above sets your target confidence level and updates the preset buttons in the picker.
+              </div>
+            )}
           </div>
 
           <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
