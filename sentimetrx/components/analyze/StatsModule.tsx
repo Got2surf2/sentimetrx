@@ -1735,12 +1735,6 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
               <div>
                 <strong>Sampled dataset</strong> — analysis is based on {samplingMeta.sampleSize.toLocaleString()} systematically-sampled rows from {samplingMeta.totalRows.toLocaleString()} total responses.
                 {' '}Worst-case ±{moePct}% at {confidenceLevel}% CI.
-                <span
-                  style={{ marginLeft: 8, color: '#2563eb', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}
-                  onClick={function() { window.scrollTo({ top: 0, behavior: 'smooth' }) }}
-                >
-                  Change sample
-                </span>
               </div>
             </div>
           )}
