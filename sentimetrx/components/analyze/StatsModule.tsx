@@ -43,6 +43,9 @@ import { useFilters } from '@/components/analyze/FilterContext'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { smartOrder } from '@/lib/scaleUtils'
 
+// Module-level drag tracker — allows dragOver handlers to preview the drop target without dataTransfer
+var _statsDrag: { field: string; type: string; label: string } | null = null
+
 var T = {
   bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
   text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
@@ -126,7 +129,7 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
       onDragOver={function(e) { e.preventDefault(); setDragOver(true) }}
       onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setDragOver(false) }}
       onDrop={function(e) {
-        e.preventDefault(); setDragOver(false)
+        e.preventDefault(); e.stopPropagation(); setDragOver(false)
         try {
           var payload = JSON.parse(e.dataTransfer.getData('text/field'))
           if (options.some(function(o) { return o.v === payload.field })) onChange(payload.field)
@@ -451,6 +454,7 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
   var [numF, setNumF] = useState(numFields[0]?.field || '')
   var [catF, setCatF] = useState(catFields[0]?.field || '')
   var [catF2, setCatF2] = useState(catFields[1]?.field || catFields[0]?.field || '')
+  var [panelDragOver, setPanelDragOver] = useState(false)
 
   useEffect(function() { if (!numF && numFields.length) setNumF(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catF && catFields.length) setCatF(catFields[0].field) }, [catFields.length])
@@ -476,8 +480,38 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
   if (!catFields.length) return <StatsEmpty icon={'\u2297'} msg="No categorical fields active" />
   if (!numFields.length && testType !== 'chisq') return <StatsEmpty icon={'\u2297'} msg="No numeric fields active" sub="Select Chi-square to compare two categorical fields." />
 
+  var handlePanelDrop = function(e: React.DragEvent) {
+    e.preventDefault(); setPanelDragOver(false)
+    try {
+      var payload = JSON.parse(e.dataTransfer.getData('text/field'))
+      if (payload.type === 'numeric' && numFields.some(function(f) { return f.field === payload.field })) {
+        setNumF(payload.field)
+      } else if (payload.type === 'categorical' && catFields.some(function(f) { return f.field === payload.field })) {
+        if (testType === 'chisq') setCatF(payload.field)
+        else setCatF(payload.field)
+      }
+    } catch {}
+    _statsDrag = null
+  }
+
   return (
-    <div>
+    <div
+      onDragOver={function(e) { e.preventDefault(); if (!panelDragOver) setPanelDragOver(true) }}
+      onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setPanelDragOver(false) }}
+      onDrop={handlePanelDrop}
+    >
+      {panelDragOver && _statsDrag && (function() {
+        var drag = _statsDrag!
+        var canAccept = (drag.type === 'numeric' && numFields.some(function(f) { return f.field === drag.field }))
+                     || (drag.type === 'categorical' && catFields.some(function(f) { return f.field === drag.field }))
+        var slotName = drag.type === 'numeric' ? 'Outcome' : 'Group by'
+        return (
+          <div style={{ marginBottom: 14, padding: '8px 14px', background: canAccept ? T.accentBg : '#fef2f2', border: '1.5px dashed ' + (canAccept ? T.accent : '#fca5a5'), borderRadius: 8, fontSize: 12, color: canAccept ? T.accent : '#991b1b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 15 }}>{canAccept ? '↓' : '✕'}</span>
+            <span>{canAccept ? <><strong>{drag.label}</strong> → <strong>{slotName}</strong> — release to assign</> : <>No slot accepts <strong>{drag.type}</strong> fields here</>}</span>
+          </div>
+        )
+      })()}
       <PanelHeader icon={'\u2297'} title="Group Tests" desc={"Compare distributions across groups: Welch\u2019s t-test, one-way ANOVA, Mann-Whitney U, and Chi-square."} />
       {result && result.res && <BottomLine
         text={result.type === 'ttest' ? ttestBL(result.res, numF) : result.type === 'anova' ? anovaBL(result.res, numF) : result.type === 'chisq' ? chiBL(result.res, catF, catF2) : ''}
@@ -1210,11 +1244,12 @@ interface OutlierRow {
 function OutlierAnalysisPanel({ numFields, catFields, data }: {
   numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]
 }) {
-  var [quantField, setQuantField] = useState(numFields[0]?.field || '')
-  var [catField,   setCatField]   = useState(catFields[0]?.field  || '')
-  var [showAll,    setShowAll]    = useState(false)
-  var [threshold,  setThreshold]  = useState(0.05)
-  var [copied,     setCopied]     = useState(false)
+  var [quantField, setQuantField]       = useState(numFields[0]?.field || '')
+  var [catField,   setCatField]         = useState(catFields[0]?.field  || '')
+  var [showAll,    setShowAll]          = useState(false)
+  var [threshold,  setThreshold]        = useState(0.05)
+  var [copied,     setCopied]           = useState(false)
+  var [outlierDragOver, setOutlierDragOver] = useState(false)
 
   useEffect(function() { if (!quantField && numFields.length) setQuantField(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catField   && catFields.length)  setCatField(catFields[0].field)   }, [catFields.length])
@@ -1292,8 +1327,34 @@ function OutlierAnalysisPanel({ numFields, catFields, data }: {
   var qOpts = numFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })
   var cOpts = catFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: f.section || 'core' } })
 
+  var handleOutlierDrop = function(e: React.DragEvent) {
+    e.preventDefault(); setOutlierDragOver(false)
+    try {
+      var payload = JSON.parse(e.dataTransfer.getData('text/field'))
+      if (payload.type === 'numeric' && numFields.some(function(f) { return f.field === payload.field })) setQuantField(payload.field)
+      else if (payload.type === 'categorical' && catFields.some(function(f) { return f.field === payload.field })) setCatField(payload.field)
+    } catch {}
+    _statsDrag = null
+  }
+
   return (
-    <div>
+    <div
+      onDragOver={function(e) { e.preventDefault(); if (!outlierDragOver) setOutlierDragOver(true) }}
+      onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setOutlierDragOver(false) }}
+      onDrop={handleOutlierDrop}
+    >
+      {outlierDragOver && _statsDrag && (function() {
+        var drag = _statsDrag!
+        var canAccept = (drag.type === 'numeric' && numFields.some(function(f) { return f.field === drag.field }))
+                     || (drag.type === 'categorical' && catFields.some(function(f) { return f.field === drag.field }))
+        var slotName = drag.type === 'numeric' ? 'Quantitative Variable' : 'Group By'
+        return (
+          <div style={{ marginBottom: 14, padding: '8px 14px', background: canAccept ? T.accentBg : '#fef2f2', border: '1.5px dashed ' + (canAccept ? T.accent : '#fca5a5'), borderRadius: 8, fontSize: 12, color: canAccept ? T.accent : '#991b1b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 15 }}>{canAccept ? '↓' : '✕'}</span>
+            <span>{canAccept ? <><strong>{drag.label}</strong> → <strong>{slotName}</strong> — release to assign</> : <>No slot accepts <strong>{drag.type}</strong> fields here</>}</span>
+          </div>
+        )
+      })()}
       <PanelHeader icon={'\u25CE'} title="Outlier Analysis" desc="Identify groups that are statistically above or below the overall mean." />
 
       {/* Controls */}
@@ -1452,9 +1513,11 @@ function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen
               <div key={f.field}
                 draggable={true}
                 onDragStart={function(e) {
+                  _statsDrag = { field: f.field, type: f.type, label: flFn(f) }
                   e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: flFn(f), section: f.section || 'core' }))
                   e.dataTransfer.effectAllowed = 'copy'
                 }}
+                onDragEnd={function() { _statsDrag = null }}
                 style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, cursor: 'grab', userSelect: 'none' }} title={flFn(f)}>
                 {flFn(f)}
               </div>

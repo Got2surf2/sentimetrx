@@ -91,6 +91,19 @@ function isSmallIntRange(min?: number, max?: number): boolean {
   return Number.isInteger(min) && Number.isInteger(max) && (max - min) >= 0 && (max - min) <= 20
 }
 
+// Module-level drag tracker — stores what's being dragged so dragOver handlers can preview the target
+var _chartDrag: { field: string; type: string; label: string } | null = null
+
+// Find the best slot for a dropped field: prefers empty required > empty optional > replace required > replace any
+function getSmartSlot(type: string, slots: SlotDef[], config: Record<string, string>): SlotDef | null {
+  var match = function(s: SlotDef) { return s.accepts.includes(type) || s.accepts.includes('any') }
+  return slots.find(function(s) { return s.required && !config[s.key] && match(s) })
+      || slots.find(function(s) { return !config[s.key] && match(s) })
+      || slots.find(function(s) { return s.required && match(s) })
+      || slots.find(match)
+      || null
+}
+
 // ── Collapsible sidebar field group (Charts) ──────────────────
 function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
   label: string; icon: string; color: string; fields: SchemaField[]; currentConfig: Record<string, string>
@@ -116,9 +129,11 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
               <div key={f.field}
                 draggable={true}
                 onDragStart={function(e) {
+                  _chartDrag = { field: f.field, type: f.type, label: fl(f) }
                   e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: fl(f), section: f.section || 'core' }))
                   e.dataTransfer.effectAllowed = 'copy'
                 }}
+                onDragEnd={function() { _chartDrag = null }}
                 style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s', cursor: 'grab', userSelect: 'none' }}
                 title={fl(f)}>
                 {isAssigned && '\u2713 '}{fl(f)}
@@ -205,7 +220,7 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
       onDragOver={function(e) { e.preventDefault(); setDragOver(true) }}
       onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setDragOver(false) }}
       onDrop={function(e) {
-        e.preventDefault(); setDragOver(false)
+        e.preventDefault(); e.stopPropagation(); setDragOver(false)
         try {
           var payload = JSON.parse(e.dataTransfer.getData('text/field'))
           if (accepts && !accepts.includes(payload.type) && !accepts.includes('any')) return
@@ -1049,6 +1064,27 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   var dateFields = allFields.filter(function(f) { return f.type === 'date' })
   var openFields = allFields.filter(function(f) { return f.type === 'open-ended' })
 
+  // Smart-drop state for the chart body area
+  var [bodyDragOver, setBodyDragOver] = useState(false)
+
+  var handleBodyDrop = function(e: React.DragEvent) {
+    e.preventDefault()
+    setBodyDragOver(false)
+    try {
+      var payload = JSON.parse(e.dataTransfer.getData('text/field'))
+      var target = getSmartSlot(payload.type, currentSlots, currentConfig)
+      if (!target) return
+      setChartConfigs(function(prev) {
+        var u = Object.assign({}, prev)
+        var cfg = Object.assign({}, u[activeChart] || {})
+        cfg[target!.key] = payload.field
+        u[activeChart] = cfg
+        return u
+      })
+    } catch {}
+    _chartDrag = null
+  }
+
   // Download PNG (or CSV for table)
   var chartBodyRef = useRef<HTMLDivElement>(null)
 
@@ -1209,7 +1245,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
         </div>
 
         {/* ─── Chart body ──────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}
+          onDragOver={function(e) { e.preventDefault(); if (!bodyDragOver) setBodyDragOver(true) }}
+          onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setBodyDragOver(false) }}
+          onDrop={handleBodyDrop}
+        >
           {/* Inline field selectors — dropdowns per slot */}
           {currentSlots.length > 0 && (
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -1225,6 +1265,30 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
               })}
             </div>
           )}
+
+          {/* Smart-drop hint banner — shown while dragging over chart body */}
+          {bodyDragOver && currentSlots.length > 0 && (function() {
+            var drag = _chartDrag
+            if (!drag) return null
+            var target = getSmartSlot(drag.type, currentSlots, currentConfig)
+            if (!target) return (
+              <div style={{ marginBottom: 12, padding: '8px 14px', background: '#fef2f2', border: '1.5px dashed #fca5a5', borderRadius: 8, fontSize: 12, color: '#991b1b', fontWeight: 600 }}>
+                No slot accepts <strong>{drag.type}</strong> fields for this chart type
+              </div>
+            )
+            var isReplace = !!currentConfig[target.key]
+            return (
+              <div style={{ marginBottom: 12, padding: '8px 14px', background: T.accentBg, border: '1.5px dashed ' + T.accent, borderRadius: 8, fontSize: 12, color: T.accent, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>↓</span>
+                <span>
+                  <strong>{drag.label}</strong>
+                  {' '}{isReplace ? 'will replace' : 'will be assigned to'}{' '}
+                  <strong>{target.label}</strong>
+                  <span style={{ fontWeight: 400, color: T.textMute }}> — release to drop</span>
+                </span>
+              </div>
+            )
+          })()}
 
           {/* Smart Axes toggle — visible when any categorical slot is filled */}
           {hasData && currentSlots.some(function(s) { return s.accepts.includes('categorical') && currentConfig[s.key] }) && (
