@@ -22,7 +22,7 @@ const DN = {
 }
 
 // ── Shared types / helpers ────────────────────────────────────────────────────
-interface FieldInsight { keyFinding: string; narrative: string; implication: string; watchout?: string }
+interface FieldInsight { keyFinding: string; narrative: string; implication: string; watchout?: string; pickedQuotes?: string[] }
 interface Narratives {
   reportTitle: string; executiveSummary: string[]; keyTakeaways: string[]
   fieldInsights: Record<string, FieldInsight>
@@ -56,7 +56,10 @@ async function generateNarratives(
       return `${f.label} (categorical, n=${s.nonNull}): top — ${top5}`
     }
     if (s.type === 'numeric') return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}`
-    if (s.type === 'open-ended') return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words | samples: ${(s.sample||[]).slice(0,3).map((t: string)=>'"'+t.slice(0,80)+'"').join(' | ')}`
+    if (s.type === 'open-ended') {
+      const allSamples = (s.sample||[]).slice(0,20).map((t: string, i: number) => `[${i}] "${t.slice(0,200)}"`).join('\n')
+      return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words\nCANDIDATE QUOTES (indexed 0–${Math.min(19,(s.sample||[]).length-1)}):\n${allSamples}`
+    }
     return `${f.label}: no data`
   }).join('\n\n')
 
@@ -71,7 +74,10 @@ Return ONLY valid JSON. No markdown fences:
   "executiveSummary": ["Bullet 1 with a specific number","Bullet 2","Bullet 3","Bullet 4","Bullet 5"],
   "keyTakeaways": ["Actionable recommendation 1","Actionable recommendation 2","Actionable recommendation 3"],
   "fieldInsights": {
-${fields.map(f => `    "${f.field}": {"keyFinding":"one strong statement (max 12 words)","narrative":"2-3 sentences with specific data.","implication":"1-2 sentences. So what?","watchout":"1 sentence caveat (optional, omit if nothing meaningful)"}`).join(',\n')}
+${fields.map(f => {
+  const isOE = f.type === 'open-ended'
+  return `    "${f.field}": {"keyFinding":"one strong statement (max 12 words)","narrative":"2-3 sentences with specific data.","implication":"1-2 sentences. So what?","watchout":"1 sentence caveat (optional, omit if nothing meaningful)"${isOE ? `,"pickedQuotes":["pick 3-5 of the most insightful, distinct, representative quotes from CANDIDATE QUOTES above. Each ≤140 chars. Trim at a natural sentence break if needed. Exact text only — no paraphrasing."]` : ''}}`
+}).join(',\n')}
   }
 }`
 
@@ -137,7 +143,7 @@ function buildSummarySlide(totalRows: number, bullets: string[], takeaways: stri
   manifest.push({ title: 'Executive Summary', icon: '📋' })
   const kpis: { v: string; l: string }[] = [{ v: totalRows.toLocaleString(), l: 'Total Responses' }]
   const numF = fields.find(f => f.type === 'numeric')
-  if (numF?.summary?.avg != null) kpis.push({ v: numF.summary.avg.toFixed(1), l: trunc(numF.label, 20) })
+  if (numF?.summary?.avg != null) kpis.push({ v: String(Math.round(numF.summary.avg)), l: trunc(numF.label, 20) })
   if (themes.length > 0) kpis.push({ v: String(themes.length), l: 'Themes Identified' })
   const oeF = fields.find(f => f.type === 'open-ended')
   if (oeF?.summary?.avgWordCount) kpis.push({ v: String(oeF.summary.avgWordCount), l: 'Avg Words / Response' })
@@ -261,8 +267,8 @@ function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<s
   }
 
   const kpis = [
-    s.avg    != null ? { v: s.avg.toFixed(2),    l: 'Average'  } : null,
-    s.median != null ? { v: s.median.toFixed(2),  l: 'Median'   } : null,
+    s.avg    != null ? { v: String(Math.round(s.avg)),    l: 'Average'  } : null,
+    s.median != null ? { v: String(Math.round(s.median)), l: 'Median'   } : null,
     s.min    != null ? { v: String(s.min),         l: 'Min'      } : null,
     s.max    != null ? { v: String(s.max),         l: 'Max'      } : null,
   ].filter(Boolean) as { v: string; l: string }[]
@@ -287,7 +293,12 @@ function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<s
 function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]): string {
   manifest.push({ title: f.label, icon: '💬', section: f.section })
   const subtitle = f.prompt || 'Open-ended · ' + (f.summary?.nonNull||0).toLocaleString() + ' responses'
-  const quotes   = (f.summary?.sample || []).slice(0, 6) as string[]
+  // Prefer AI-curated quotes (≤140 chars each); fall back to raw sample
+  const rawFallback = ((f.summary?.sample || []) as string[])
+    .filter(q => q && q.trim().length > 20).slice(0, 6)
+  const quotes = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
+    ? ai.pickedQuotes.slice(0, 6).map(q => q.slice(0, 160))
+    : rawFallback
   const fieldThemes = themes.slice(0, 8)
 
   let chartHtml = ''
@@ -334,6 +345,87 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
       </div>
     </div>
   </section>`
+}
+
+function buildThemeDetailSlides(
+  themes: any[], fieldLabel: string,
+  allRows: Record<string,any>[], rowKeyMap: Record<string,string>, fieldKeys: string[]
+): string[] {
+  if (!themes?.length) return []
+
+  function matchesTheme(text: string, keywords: string[]): boolean {
+    if (!keywords?.length) return false
+    const lower = text.toLowerCase()
+    return keywords.some(kw => {
+      const esc2 = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp('(?<![a-z])' + esc2 + '\\w*', 'i').test(lower)
+    })
+  }
+
+  function getComments(t: any): string[] {
+    if (!allRows?.length) return []
+    const keys = fieldKeys.map(fk => {
+      const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      return rowKeyMap[norm] || fk
+    })
+    const matched: string[] = []
+    for (const row of allRows) {
+      const text = keys.map(k => String(row[k] || '')).join(' ').trim()
+      if (text.length < 15) continue
+      if (matchesTheme(text, t.keywords || [])) matched.push(text)
+    }
+    const n = Math.min(6, matched.length)
+    if (n === 0) return []
+    const step = matched.length / n
+    return Array.from({ length: n }, (_, i) => matched[Math.floor(i * step)])
+      .filter(Boolean).map(s => s.slice(0, 160))
+  }
+
+  const total = themes.length
+  return themes.map((t: any, tidx: number) => {
+    manifest.push({ title: t.name || 'Theme', icon: '🏷️', section: fieldLabel })
+    const themeColor = t.color || DN.teal
+    const sent       = t.sentiment || ''
+    const pctVal     = Math.round(t.percentage || 0)
+    const comments   = getComments(t)
+
+    const sentBadge = sent
+      ? `<span style="display:inline-block;padding:2px 10px;border-radius:4px;font-size:10px;font-weight:700;background:${sent==='positive'?'#f0fdf4':sent==='negative'?'#fef2f2':sent==='mixed'?'#fffbeb':'#f4f7f8'};color:${sent==='positive'?'#15803d':sent==='negative'?'#b91c1c':sent==='mixed'?'#92400e':DN.slateDk};border:1px solid currentColor;margin-left:10px">${sent.charAt(0).toUpperCase()+sent.slice(1)}</span>`
+      : ''
+
+    const kwHtml = (t.keywords||[]).slice(0,6).map((k: string) =>
+      `<span style="display:inline-block;padding:2px 8px;margin:0 4px 4px 0;background:${DN.slateCard};border:1px solid ${DN.divider};border-radius:3px;font-size:9px;color:${DN.slateDk}">${esc(k)}</span>`).join('')
+
+    const quotesHtml = comments.length > 0
+      ? comments.map(q => `<blockquote class="quote-card">${esc(q)}</blockquote>`).join('')
+      : `<p style="font-size:11px;color:${DN.slate};font-style:italic;padding:8px 0">No verbatim responses matched this theme.</p>`
+
+    const subtitle = `AI-identified theme  ·  ${tidx+1} of ${total}  ·  from: ${fieldLabel}`
+    return `<section>
+      <div style="position:absolute;top:0;left:0;right:0;height:5px;background:${themeColor}"></div>
+      ${slideHeader(t.name || 'Theme', subtitle)}
+      <div class="slide-body two-col">
+        <div style="flex:0.85;display:flex;flex-direction:column;gap:10px;padding:8px 16px 8px 28px;border-right:1px solid ${DN.divider}">
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+            ${sentBadge}
+          </div>
+          ${t.description ? `<p style="font-size:11px;color:${DN.slateDk};font-style:italic;margin:0;line-height:1.5">${esc(t.description)}</p>` : ''}
+          <div style="flex-wrap:wrap">${kwHtml}</div>
+          <div style="margin-top:auto;border-top:1px solid ${DN.divider};padding-top:10px">
+            <div style="font-size:24px;font-weight:700;color:${themeColor}">${pctVal}%</div>
+            <div style="font-size:10px;color:${DN.slateDk}">${t.count ? t.count.toLocaleString() + ' responses' : ''}</div>
+            <div style="height:6px;background:${DN.slateCard};border-radius:3px;margin-top:6px;overflow:hidden">
+              <div style="height:100%;width:${pctVal}%;background:${themeColor};border-radius:3px"></div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1.15;display:flex;flex-direction:column;gap:6px;padding:8px 24px 8px 14px;overflow:hidden">
+          <div class="section-label" style="color:${DN.slateDk}">VOICES FROM THIS THEME</div>
+          <div style="overflow-y:auto;flex:1">${quotesHtml}</div>
+        </div>
+      </div>
+    </section>`
+  })
 }
 
 function buildClosingSlide(datasetName: string, takeaways: string[]): string {
@@ -737,6 +829,9 @@ export async function POST(req: Request, { params }: Params) {
   const psychoFields = selectedFields.filter(f => f.section === 'psychographic')
   const demoFields   = selectedFields.filter(f => f.section === 'demographic')
 
+  const openEndedFields = selectedFields.filter(f => f.type === 'open-ended')
+  const multiOE = openEndedFields.length > 1
+
   function renderField(f: SelectedField) {
     const ai = narratives.fieldInsights[f.field] || { keyFinding: f.label, narrative: '', implication: '' }
     if (f.type === 'categorical') return buildCategoricalSlide(f, ai)
@@ -750,9 +845,32 @@ export async function POST(req: Request, { params }: Params) {
     return ''
   }
 
-  coreFields.forEach(f => { const s = renderField(f); if (s) slides.push(s) })
-  if (psychoFields.length > 0) psychoFields.forEach(f => { const s = renderField(f); if (s) slides.push(s) })
-  if (demoFields.length > 0) demoFields.forEach(f => { const s = renderField(f); if (s) slides.push(s) })
+  function renderFieldWithThemes(f: SelectedField) {
+    const s = renderField(f)
+    if (s) slides.push(s)
+    // After each open-ended slide, add per-theme detail slides
+    if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
+      const themes = multiOE
+        ? sortedThemes.filter((t: any) => {
+            const norm = f.field.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')
+            const key  = rowKeyMap[norm] || f.field
+            return allRows.some(row => {
+              const text = String(row[key]||'').trim()
+              if (!text || text.length < 5) return false
+              return (t.keywords||[]).some((kw: string) => {
+                const esc2 = kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+                return new RegExp('(?<![a-z])'+esc2+'\\w*','i').test(text.toLowerCase())
+              })
+            })
+          })
+        : sortedThemes
+      buildThemeDetailSlides(themes, f.label, allRows, rowKeyMap, [f.field]).forEach(ts => slides.push(ts))
+    }
+  }
+
+  coreFields.forEach(renderFieldWithThemes)
+  if (psychoFields.length > 0) psychoFields.forEach(renderFieldWithThemes)
+  if (demoFields.length > 0) demoFields.forEach(renderFieldWithThemes)
 
   if (narratives.keyTakeaways?.length > 0) {
     slides.push(buildClosingSlide(datasetName, narratives.keyTakeaways))

@@ -172,9 +172,10 @@ function quoteCard(slide: any, x: number, y: number, w: number, h: number, text:
 
 interface FieldInsight {
   keyFinding: string
-  narrative:  string
-  implication: string
-  watchout?:  string
+  narrative:    string
+  implication:  string
+  watchout?:    string
+  pickedQuotes?: string[]
 }
 
 interface Narratives {
@@ -212,8 +213,8 @@ async function generateNarratives(
       const posInRange = range > 0 ? ((s.avg - s.min) / range * 100).toFixed(0) : '50'
       return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}, std=${s.std?.toFixed(2)} | avg sits at ${posInRange}% of possible range`
     } else if (s.type === 'open-ended') {
-      const sample = (s.sample || []).slice(0, 5).map((t: string) => `"${t.slice(0, 100)}"`).join(' | ')
-      return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words per response | samples: ${sample}`
+      const allSamples = (s.sample || []).slice(0, 20).map((t: string, i: number) => `[${i}] "${t.slice(0, 200)}"`).join('\n')
+      return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words per response\nCANDIDATE QUOTES (indexed 0–${Math.min(19, (s.sample||[]).length-1)}):\n${allSamples}`
     } else if (s.type === 'date') {
       return `${f.label} (date): ${s.min} to ${s.max}, n=${s.nonNull}`
     }
@@ -246,12 +247,16 @@ Return ONLY valid JSON. No markdown fences. No extra text. This exact structure:
     "Takeaway 3 — what to watch or measure next"
   ],
   "fieldInsights": {
-${fields.map(f => `    "${f.field}": {
+${fields.map(f => {
+  const isOE = f.type === 'open-ended'
+  return `    "${f.field}": {
       "keyFinding": "one strong punchy statement about this field (max 12 words)",
       "narrative": "2-3 sentences. Specific data references. What the distribution reveals. What drives it.",
       "implication": "1-2 sentences. So what? What should be done or watched as a result?",
-      "watchout": "1 sentence caveat, limitation or counter-reading (optional, omit if nothing meaningful)"
-    }`).join(',\n')}
+      "watchout": "1 sentence caveat, limitation or counter-reading (optional, omit if nothing meaningful)"${isOE ? `,
+      "pickedQuotes": ["pick 3-5 of the most insightful, distinct, and representative quotes from CANDIDATE QUOTES above. Each quote must be ≤140 characters. Trim naturally at a sentence break if needed. No paraphrasing — use exact text from the candidates."]` : ''}
+    }`
+}).join(',\n')}
   }
 }`
 
@@ -472,7 +477,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
     { v: totalRows.toLocaleString(), l: 'Total Responses', s: 'in this analysis' },
   ]
   if (numericField?.summary?.avg != null) {
-    kpis.push({ v: numericField.summary.avg.toFixed(1), l: trunc(numericField.label || numericField.field, 18) })
+    kpis.push({ v: String(Math.round(numericField.summary.avg)), l: trunc(numericField.label || numericField.field, 18) })
   }
   if (themes.length > 0) kpis.push({ v: String(themes.length), l: 'Themes Identified' })
   if (openField?.summary?.avgWordCount) kpis.push({ v: String(openField.summary.avgWordCount), l: 'Avg Words / Response' })
@@ -655,7 +660,7 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     if (avgScore !== null) {
       const aFrac  = maxScore > 0 ? avgScore / maxScore : 0.5
       const aColor = aFrac >= 0.65 ? DN.green : aFrac >= 0.4 ? DN.amber : DN.red
-      kpiCard(slide, PAD, leftY, leftW, 0.88, avgScore.toFixed(1) + ' / ' + maxScore, 'Average Score', undefined, DN.slateLight, aColor)
+      kpiCard(slide, PAD, leftY, leftW, 0.88, Math.round(avgScore) + ' / ' + maxScore, 'Average Score', undefined, DN.slateLight, aColor)
       leftY += 1.01
     }
 
@@ -762,9 +767,9 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
 
   // ── Stats row ─────────────────────────────────────────────────────────────────
   const statsData = [
-    { k: 'Average',   v: isDiscrete ? String(s?.avg?.toFixed?.(1) ?? '—') : (s?.avg?.toFixed?.(2) ?? '—'),  bg: perfBg,       vc: perfColor },
-    { k: 'Median',    v: isDiscrete ? String(s?.median ?? '—') : (s?.median?.toFixed?.(2) ?? '—'),           bg: DN.slateCard, vc: DN.navyLight },
-    { k: 'Std Dev',   v: s?.std?.toFixed?.(2) ?? '—',                                                        bg: DN.slateCard, vc: DN.navyLight },
+    { k: 'Average',   v: s?.avg   != null ? String(Math.round(s.avg))    : '—', bg: perfBg,       vc: perfColor },
+    { k: 'Median',    v: s?.median != null ? String(Math.round(s.median)) : '—', bg: DN.slateCard, vc: DN.navyLight },
+    { k: 'Std Dev',   v: s?.std   != null ? String(Math.round(s.std))    : '—', bg: DN.slateCard, vc: DN.navyLight },
     { k: 'Min → Max', v: (s?.min ?? '—') + ' – ' + (s?.max ?? '—'),                                         bg: DN.slateCard, vc: DN.navyLight },
     { k: 'n',         v: (s?.nonNull || 0).toLocaleString(),                                                  bg: DN.tealPale,  vc: DN.teal },
   ]
@@ -778,10 +783,10 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
   const insightText = hasRealAI
     ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
     : (posInRange >= 0.65
-        ? 'Average of ' + (s?.avg?.toFixed?.(1) ?? '—') + ' sits in the upper range — strong performance.'
+        ? 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the upper range — strong performance.'
         : posInRange <= 0.35
-          ? 'Average of ' + (s?.avg?.toFixed?.(1) ?? '—') + ' sits in the lower range — opportunity for improvement.'
-          : 'Average of ' + (s?.avg?.toFixed?.(1) ?? '—') + ' sits in the mid range.')
+          ? 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the lower range — opportunity for improvement.'
+          : 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the mid range.')
   const withImpl  = hasRealAI && !!ai.implication
   const insH      = 0.78
   const implH     = 0.44
@@ -869,7 +874,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       histBuckets.forEach(function(b: any, i: number) {
         if (i % step !== 0 && i !== histBuckets.length - 1) return
         const bx    = chartX + i * bw
-        const label = allIntegers ? String(Math.round(b.min)) : String(Number(b.min.toFixed(1)))
+        const label = String(Math.round(b.min))
         slide.addText(label, {
           x: bx, y: chartY + chartH2 * 0.86, w: bw * step, h: 0.26,
           fontSize: 10, color: DN.slateDark, valign: 'top', align: 'center',
@@ -879,7 +884,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       if (s?.avg != null && range > 0) {
         const meanX = chartX + ((s.avg - s.min) / range) * chartW2
         solidRect(slide, meanX - 0.01, chartY, 0.02, chartH2 * 0.84, DN.orange)
-        const avgLabel = allIntegers ? 'avg ' + Math.round(s.avg) : 'avg ' + s.avg.toFixed(1)
+        const avgLabel = 'avg ' + Math.round(s.avg)
         slide.addText(avgLabel, {
           x: Math.min(meanX - 0.35, chartX + chartW2 - 0.72), y: chartY + 0.04,
           w: 0.72, h: 0.24, fontSize: 9, bold: true, color: DN.orange, align: 'center',
@@ -905,7 +910,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
     solidRect(slide, rightX + fillW - 0.05, gaugeY - 0.05, 0.1, 0.42, perfColor)
     slide.addText(String(s?.min ?? '0'), { x: rightX, y: gaugeY + 0.34, w: 0.6, h: 0.22, fontSize: 9, color: DN.slateDark })
     slide.addText(String(s?.max ?? '—'), { x: rightX + rightW - 0.6, y: gaugeY + 0.34, w: 0.6, h: 0.22, fontSize: 9, color: DN.slateDark, align: 'right' })
-    slide.addText('avg ' + (s?.avg?.toFixed(1) ?? '—'), {
+    slide.addText('avg ' + (s?.avg != null ? Math.round(s.avg) : '—'), {
       x: rightX + Math.max(0, fillW - 0.5), y: gaugeY - 0.28,
       w: 0.95, h: 0.22, fontSize: 10, bold: true, color: perfColor, align: 'center',
     })
@@ -951,8 +956,12 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   logo(slide)
 
   const s = f.summary
-  const maxQuotes = audience === 'full' ? 6 : audience === 'stakeholder' ? 4 : 3
-  const quotes: string[] = (s?.sample || []).filter((q: string) => q && q.trim().length > 15).slice(0, maxQuotes)
+  const maxQuotes = audience === 'full' ? 5 : audience === 'stakeholder' ? 4 : 3
+  // Prefer AI-curated quotes; fall back to raw sample filtered by length
+  const rawFallback = (s?.sample || []).filter((q: string) => q && q.trim().length > 20).slice(0, maxQuotes)
+  const quotes: string[] = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
+    ? ai.pickedQuotes.slice(0, maxQuotes).map((q: string) => q.slice(0, 140))
+    : rawFallback
 
   const leftW  = W * 0.44 - PAD
   const rightX = W * 0.44 + 0.1
@@ -1152,107 +1161,142 @@ function buildCommentsSlide(
 function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s === 'negative' ? DN.redLight  : s === 'mixed' ? DN.amberLight : DN.slateLight }
 function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
 
-function buildThemeSlides(datasetName: string, themes: any[], fieldLabel?: string) {
+function buildThemeSlides(
+  datasetName: string, themes: any[], fieldLabel?: string,
+  allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[]
+) {
   if (!themes || themes.length === 0) return
 
-  // Choose grid dimensions based on total theme count
-  function chooseGrid(n: number): { perPage: number; cols: number; rows: number } {
-    if (n <= 2) return { perPage: 2, cols: 2, rows: 1 }
-    if (n <= 4) return { perPage: 4, cols: 2, rows: 2 }
-    if (n <= 6) return { perPage: 6, cols: 3, rows: 2 }
-    return { perPage: 8, cols: 4, rows: 2 }
+  // Keyword matcher (inline, mirrors themeUtils.commentMatchesTheme)
+  function matchesTheme(text: string, keywords: string[]): boolean {
+    if (!keywords?.length) return false
+    const lower = text.toLowerCase()
+    return keywords.some(function(kw) {
+      const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp('(?<![a-z])' + esc + '\\w*', 'i').test(lower)
+    })
   }
-  const { perPage, cols, rows } = chooseGrid(themes.length)
 
-  const gapX   = 0.16
-  const gapY   = 0.18
-  const cardW  = (W - PAD * 2 - gapX * (cols - 1)) / cols
-  const cardH  = (CH - gapY  * (rows  - 1)) / rows
+  // Get up to 6 evenly-spread matched responses for this theme
+  function getMatchedComments(t: any): string[] {
+    if (!allRows?.length || !rowKeyMap || !fieldKeys?.length) return []
+    const keys = fieldKeys.map(fk => {
+      const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      return rowKeyMap[norm] || fk
+    })
+    const matched: string[] = []
+    for (const row of allRows) {
+      const text = keys.map(k => String(row[k] || '')).join(' ').trim()
+      if (text.length < 15) continue
+      if (matchesTheme(text, t.keywords || [])) matched.push(text)
+    }
+    if (matched.length === 0) return []
+    // Pick 6 evenly-spread entries for variety
+    const n = Math.min(6, matched.length)
+    const step = matched.length / n
+    return Array.from({ length: n }, (_, i) => matched[Math.floor(i * step)])
+      .filter(Boolean)
+      .map(s => s.slice(0, 160))  // cap each at 160 chars
+  }
 
-  const totalPages = Math.ceil(themes.length / perPage)
-  for (let pg = 0; pg < totalPages; pg++) {
-    const pageThemes = themes.slice(pg * perPage, (pg + 1) * perPage)
+  const totalThemes = themes.length
+  themes.forEach(function(t: any, tidx: number) {
     const slide = pptx.addSlide('NUMBERED')
     bg(slide, pptx)
-    const pgTag = totalPages > 1 ? '  ·  ' + (pg + 1) + ' of ' + totalPages : ''
     const themeSubtitle = fieldLabel
-      ? 'AI-identified themes from: ' + fieldLabel + pgTag
-      : 'AI-identified themes from verbatim responses' + pgTag
+      ? 'AI-identified themes from: ' + fieldLabel + '  ·  ' + (tidx + 1) + ' of ' + totalThemes
+      : 'AI-identified themes from verbatim responses  ·  ' + (tidx + 1) + ' of ' + totalThemes
     hdr(slide, pptx, 'Theme Analysis', DN.tealDark, themeSubtitle)
     logo(slide)
 
-    pageThemes.forEach(function(t: any, i: number) {
-      const col  = i % cols
-      const row  = Math.floor(i / cols)
-      const cx   = PAD + col * (cardW + gapX)
-      const cy   = CY  + row * (cardH + gapY)
+    const themeColor  = (t.color || DN.teal).replace('#', '')
+    const leftW  = W * 0.40 - PAD - 0.1
+    const rightX = PAD + leftW + 0.28
+    const rightW = W - rightX - PAD * 0.5
 
-      // Card background + colored top border strip
-      const themeColor = (t.color || DN.teal).replace('#', '')
-      rect(slide, cx, cy, cardW, cardH, DN.white, 0.07, themeColor)
-      // Thick colored top accent strip
-      solidRect(slide, cx, cy, cardW, 0.07, themeColor)
+    // ── LEFT PANEL: theme metadata ───────────────────────────────────────────
+    const lx = PAD
+    const ly = CY
 
-      // Sentiment badge (top right)
-      const sent = t.sentiment || ''
-      if (sent) {
-        const sentW = 0.8
-        rect(slide, cx + cardW - sentW - 0.08, cy + 0.12, sentW, 0.24, themeSentBg(sent), 0.5, themeSentFg(sent))
-        slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), {
-          x: cx + cardW - sentW - 0.08, y: cy + 0.12, w: sentW, h: 0.24,
-          fontSize: 8, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
-        })
-      }
+    // Colored accent bar top of left panel
+    solidRect(slide, lx, ly, leftW, 0.06, themeColor)
 
-      // Theme name
-      const nameH = cardH <= 2.0 ? 0.32 : 0.42
-      slide.addText(t.name || '', {
-        x: cx + 0.14, y: cy + 0.14, w: cardW - (sent ? 1.05 : 0.28), h: nameH,
-        fontSize: cardH <= 2.0 ? 11 : 13, bold: true, color: DN.navy, valign: 'top', wrap: true,
-      })
-
-      // Description
-      const descY = cy + 0.14 + nameH + 0.04
-      const descH = cardH <= 2.0 ? 0.44 : 0.64
-      if (t.description) {
-        slide.addText(t.description, {
-          x: cx + 0.14, y: descY, w: cardW - 0.28, h: descH,
-          fontSize: cardH <= 2.0 ? 8 : 9, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
-        })
-      }
-
-      // Keywords pills (up to 4)
-      const keywords: string[] = (t.keywords || []).slice(0, 4)
-      const kwY = descY + descH + 0.06
-      let kwX = cx + 0.14
-      keywords.forEach(function(k: string) {
-        const kw = k.length * 0.057 + 0.18
-        if (kwX + kw > cx + cardW - 0.08) return
-        rect(slide, kwX, kwY, kw, 0.20, DN.slateLight, 0.5, DN.divider)
-        slide.addText(k, { x: kwX + 0.06, y: kwY, w: kw - 0.12, h: 0.20, fontSize: 7.5, color: DN.slateDark, valign: 'middle', wrap: false })
-        kwX += kw + 0.06
-      })
-
-      // Bottom divider + count/percentage + bar
-      const barY = cy + cardH - (cardH <= 2.0 ? 0.46 : 0.52)
-      solidRect(slide, cx + 0.10, barY - 0.06, cardW - 0.20, 0.010, DN.divider)
-      const pct = (t.percentage || t.count || 0)
-      const countStr = t.count ? t.count.toLocaleString() + ' responses' : ''
-      const pctStr   = pct ? Math.round(pct) + '%' : ''
-      if (countStr) {
-        slide.addText(countStr, { x: cx + 0.14, y: barY, w: cardW * 0.55, h: 0.24, fontSize: 8.5, color: DN.slateDark, valign: 'middle' })
-      }
-      if (pctStr) {
-        slide.addText(pctStr, { x: cx + cardW * 0.55, y: barY, w: cardW * 0.38, h: 0.24, fontSize: 13, bold: true, color: themeColor, align: 'right', valign: 'middle' })
-      }
-      // Mini progress bar
-      const barFill = Math.min(100, Math.round(pct)) / 100
-      solidRect(slide, cx + 0.14, cy + cardH - 0.16, cardW - 0.28, 0.06, DN.slateLight)
-      if (barFill > 0) solidRect(slide, cx + 0.14, cy + cardH - 0.16, (cardW - 0.28) * barFill, 0.06, themeColor)
+    // Theme name
+    slide.addText(t.name || '', {
+      x: lx, y: ly + 0.10, w: leftW, h: 0.56,
+      fontSize: 18, bold: true, color: DN.navy, valign: 'top', wrap: true,
     })
 
+    // Sentiment badge
+    const sent = t.sentiment || ''
+    if (sent) {
+      const sentW = 1.0
+      rect(slide, lx, ly + 0.72, sentW, 0.26, themeSentBg(sent), 0.5, themeSentFg(sent))
+      slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), {
+        x: lx, y: ly + 0.72, w: sentW, h: 0.26,
+        fontSize: 9, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
+      })
+    }
+
+    // Description
+    if (t.description) {
+      slide.addText(t.description, {
+        x: lx, y: ly + 1.12, w: leftW, h: 1.0,
+        fontSize: 10, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.35,
+      })
+    }
+
+    // Keywords pills
+    const keywords: string[] = (t.keywords || []).slice(0, 6)
+    const kwStartY = ly + 2.22
+    let kwX = lx; let kwRow = 0
+    keywords.forEach(function(k: string) {
+      const kw = k.length * 0.058 + 0.20
+      if (kwX + kw > lx + leftW) { kwX = lx; kwRow++ }
+      if (kwRow > 1) return
+      rect(slide, kwX, kwStartY + kwRow * 0.28, kw, 0.22, DN.slateLight, 0.5, DN.divider)
+      slide.addText(k, { x: kwX + 0.07, y: kwStartY + kwRow * 0.28, w: kw - 0.14, h: 0.22, fontSize: 8, color: DN.slateDark, valign: 'middle', wrap: false })
+      kwX += kw + 0.07
+    })
+
+    // Divider line
+    solidRect(slide, lx, ly + 2.90, leftW, 0.012, DN.divider)
+
+    // Count + percentage
+    const pctVal = Math.round(t.percentage || 0)
+    const countStr = t.count ? t.count.toLocaleString() + ' responses' : ''
+    if (countStr) {
+      slide.addText(countStr, { x: lx, y: ly + 2.96, w: leftW * 0.6, h: 0.28, fontSize: 9.5, color: DN.slateDark, valign: 'middle' })
+    }
+    if (pctVal) {
+      slide.addText(pctVal + '%', { x: lx + leftW * 0.6, y: ly + 2.88, w: leftW * 0.38, h: 0.44, fontSize: 22, bold: true, color: themeColor, align: 'right', valign: 'middle' })
+    }
+    // Progress bar
+    const barFill = Math.min(1, pctVal / 100)
+    solidRect(slide, lx, ly + 3.34, leftW, 0.08, DN.slateLight)
+    if (barFill > 0) solidRect(slide, lx, ly + 3.34, leftW * barFill, 0.08, themeColor)
+
+    // ── RIGHT PANEL: verbatim comments ───────────────────────────────────────
+    lbl(slide, 'VOICES FROM THIS THEME', rightX, CY, rightW)
+    solidRect(slide, rightX, CY + 0.22, rightW, 0.012, DN.divider)
+
+    const comments = getMatchedComments(t)
+    if (comments.length > 0) {
+      const availH   = CH - 0.38
+      const qGap     = 0.09
+      const qh       = Math.min(0.72, (availH - qGap * (comments.length - 1)) / comments.length)
+      comments.forEach(function(q, i) {
+        quoteCard(slide, rightX, CY + 0.32 + i * (qh + qGap), rightW, qh, q)
+      })
+    } else {
+      slide.addText('No verbatim responses matched this theme.', {
+        x: rightX, y: CY + 0.6, w: rightW, h: 0.6,
+        fontSize: 11, color: DN.slate, italic: true, align: 'center', valign: 'middle',
+      })
+    }
+
     footer(slide, datasetName)
-  }
+  })
 }
 
 function buildSectionDivider(title: string, subtitle: string, fieldCount: number) {
@@ -1735,7 +1779,8 @@ export async function POST(req: Request, { params }: Params) {
     const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
     const multiOpenEnd = openEndedSelected.length > 1
     if (includeThemeSlides && sortedThemes.length > 0 && !multiOpenEnd) {
-      buildThemeSlides(datasetName, sortedThemes)
+      const oeKeys = openEndedSelected.map(f => f.field)
+      buildThemeSlides(datasetName, sortedThemes, undefined, allRows, rowKeyMap, oeKeys)
     }
 
     // ── Group fields by section ───────────────────────────────────────────
@@ -1818,7 +1863,7 @@ export async function POST(req: Request, { params }: Params) {
         // Per-field theme slide — only when multiple open-ended fields are selected
         if (includeThemeSlides && sortedThemes.length > 0 && multiOpenEnd) {
           const fieldThemes = computeFieldThemes(f.field, sortedThemes)
-          if (fieldThemes.length > 0) buildThemeSlides(datasetName, fieldThemes, f.label)
+          if (fieldThemes.length > 0) buildThemeSlides(datasetName, fieldThemes, f.label, allRows, rowKeyMap, [f.field])
         }
       } else if (f.type === 'categorical') {
         if (audience !== 'executive') buildPieSlide(datasetName, f, ai)
