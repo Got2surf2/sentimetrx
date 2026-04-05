@@ -94,6 +94,7 @@ ${fields.map(f => `    "${f.field}": {"keyFinding":"one strong statement (max 12
 
 let chartIndex = 0
 const charts: Record<string, { data: any[]; layout: any }> = {}
+const manifest: { title: string; icon: string; section?: string }[] = []
 
 function chartId() { return 'chart-' + (chartIndex++) }
 
@@ -112,6 +113,7 @@ function slideHeader(title: string, subtitle?: string, dark = false): string {
 }
 
 function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: number, computedAt: string|null): string {
+  manifest.push({ title: datasetName, icon: '🏠' })
   const dateStr = computedAt ? new Date(computedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : ''
   return `<section class="slide-title" style="background:${DN.navy}">
     <div class="title-left-bar"></div>
@@ -132,6 +134,7 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
 }
 
 function buildSummarySlide(totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]): string {
+  manifest.push({ title: 'Executive Summary', icon: '📋' })
   const kpis: { v: string; l: string }[] = [{ v: totalRows.toLocaleString(), l: 'Total Responses' }]
   const numF = fields.find(f => f.type === 'numeric')
   if (numF?.summary?.avg != null) kpis.push({ v: numF.summary.avg.toFixed(1), l: trunc(numF.label, 20) })
@@ -172,6 +175,7 @@ function buildSummarySlide(totalRows: number, bullets: string[], takeaways: stri
 }
 
 function buildCategoricalSlide(f: SelectedField, ai: FieldInsight): string {
+  manifest.push({ title: f.label, icon: '📊', section: f.section })
   const counts = f.summary?.counts as Record<string, number> || {}
   const total  = Object.values(counts).reduce((s: number, v: any) => s + Number(v), 0) || 1
   const sorted = Object.entries(counts).sort(([,a],[,b]) => Number(b)-Number(a)).slice(0, 15)
@@ -222,6 +226,7 @@ function buildCategoricalSlide(f: SelectedField, ai: FieldInsight): string {
 }
 
 function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<string,any>[], rowKeyMap: Record<string,string>): string {
+  manifest.push({ title: f.label, icon: '🔢', section: f.section })
   const s = f.summary || {}
   const subtitle = f.prompt || 'Numeric · ' + (s.nonNull||0).toLocaleString() + ' responses'
 
@@ -280,6 +285,7 @@ function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<s
 }
 
 function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]): string {
+  manifest.push({ title: f.label, icon: '💬', section: f.section })
   const subtitle = f.prompt || 'Open-ended · ' + (f.summary?.nonNull||0).toLocaleString() + ' responses'
   const quotes   = (f.summary?.sample || []).slice(0, 6) as string[]
   const fieldThemes = themes.slice(0, 8)
@@ -331,6 +337,7 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
 }
 
 function buildClosingSlide(datasetName: string, takeaways: string[]): string {
+  manifest.push({ title: 'Key Takeaways', icon: '✅' })
   const taHtml = takeaways.slice(0, 3).map((ta, i) =>
     `<div class="closing-ta"><div class="closing-ta-num">${i+1}</div><div>${esc(ta)}</div></div>`).join('')
   return `<section style="background:${DN.navy};color:${DN.white}">
@@ -424,10 +431,87 @@ const CSS = `
   .closing-tas { display:flex;flex-direction:column;gap:12px;max-width:660px }
   .closing-ta { display:flex;align-items:flex-start;gap:14px;font-size:13px;color:${DN.white};line-height:1.5 }
   .closing-ta-num { width:28px;height:28px;background:${DN.teal};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${DN.white};flex-shrink:0;margin-top:1px }
+
+  /* ── Navigator ─────────────────────────────────────────────────────────── */
+  #nav-toggle {
+    position:fixed;top:14px;right:14px;z-index:10000;
+    width:38px;height:38px;
+    background:rgba(13,43,69,.90);border:1.5px solid rgba(232,184,75,.5);border-radius:8px;
+    color:${DN.gold};cursor:pointer;display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(6px);transition:background .15s,border-color .15s;
+  }
+  #nav-toggle:hover { background:${DN.navyMid};border-color:${DN.gold} }
+
+  #nav-panel {
+    position:fixed;top:0;right:0;bottom:0;width:288px;
+    background:${DN.navy};border-left:2px solid ${DN.gold};
+    z-index:9999;
+    transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+    display:flex;flex-direction:column;overflow:hidden;
+    box-shadow:-8px 0 32px rgba(0,0,0,.45);
+  }
+  .nav-header {
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;border-bottom:1px solid ${DN.navyLight};flex-shrink:0;
+    background:${DN.navyMid};
+  }
+  .nav-header-brand { font-size:16px;font-weight:700;font-style:italic }
+  .nav-header-counter { font-size:11px;color:${DN.slate};font-weight:600 }
+  .nav-items {
+    flex:1;overflow-y:auto;padding:8px 0;
+    scrollbar-width:thin;scrollbar-color:${DN.navyLight} transparent;
+  }
+  .nav-items::-webkit-scrollbar { width:4px }
+  .nav-items::-webkit-scrollbar-thumb { background:${DN.navyLight};border-radius:2px }
+  .nav-section-hdr {
+    font-size:8.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    color:${DN.slate};padding:10px 16px 4px;
+  }
+  .nav-item {
+    display:flex;align-items:center;gap:10px;width:100%;
+    padding:9px 16px;background:none;border:none;cursor:pointer;
+    text-align:left;font-family:inherit;transition:background .12s;
+    border-left:3px solid transparent;
+  }
+  .nav-item:hover { background:${DN.navyMid} }
+  .nav-item-active {
+    background:${DN.navyMid}!important;border-left-color:${DN.teal}!important;
+  }
+  .nav-item-active .nav-item-label { color:${DN.white}!important;font-weight:600 }
+  .nav-item-icon { font-size:14px;flex-shrink:0;width:20px;text-align:center }
+  .nav-item-label { flex:1;font-size:11.5px;color:${DN.slate};line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .nav-item-num { font-size:10px;color:${DN.slateDk};flex-shrink:0;min-width:20px;text-align:right }
+  .nav-footer {
+    padding:10px 16px;border-top:1px solid ${DN.navyLight};
+    font-size:9.5px;color:${DN.slateDk};line-height:1.6;flex-shrink:0;
+  }
+  .nav-footer kbd {
+    background:${DN.navyMid};border:1px solid ${DN.navyLight};border-radius:3px;
+    padding:1px 4px;font-size:9px;color:${DN.slate};font-family:inherit;
+  }
 `
 
 // ── HTML template ─────────────────────────────────────────────────────────────
-function buildHTML(datasetName: string, slides: string[], chartsJson: string): string {
+function buildHTML(datasetName: string, slides: string[], chartsJson: string, nav: typeof manifest): string {
+  const sectionLabels: Record<string, string> = { demographic: 'Demographics', psychographic: 'Psychographics', core: 'Core Questions' }
+
+  // Group nav items — insert section headers when section changes
+  let lastSection: string | undefined = undefined
+  const navItems = nav.map((item, idx) => {
+    let headerHtml = ''
+    const sec = item.section || (idx <= 1 ? '' : 'core')
+    if (sec && sec !== lastSection && idx > 1) {
+      const label = sectionLabels[sec] || sec.charAt(0).toUpperCase() + sec.slice(1)
+      headerHtml = `<div class="nav-section-hdr">${esc(label)}</div>`
+      lastSection = sec
+    }
+    return `${headerHtml}<button class="nav-item" data-slide-idx="${idx}" title="${esc(item.title)}">
+      <span class="nav-item-icon">${item.icon}</span>
+      <span class="nav-item-label">${esc(trunc(item.title, 36))}</span>
+      <span class="nav-item-num">${idx + 1}</span>
+    </button>`
+  }).join('\n')
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -441,6 +525,23 @@ function buildHTML(datasetName: string, slides: string[], chartsJson: string): s
 </style>
 </head>
 <body>
+
+<!-- ── Slide navigator (outside Reveal) ───────────────────────────────────── -->
+<button id="nav-toggle" title="Slide menu (N)">
+  <svg width="16" height="14" viewBox="0 0 16 14" fill="none"><rect y="0" width="16" height="2" rx="1" fill="currentColor"/><rect y="6" width="16" height="2" rx="1" fill="currentColor"/><rect y="12" width="16" height="2" rx="1" fill="currentColor"/></svg>
+</button>
+
+<div id="nav-panel">
+  <div class="nav-header">
+    <div class="nav-header-brand"><span style="color:${DN.orangeLt}">data</span><span style="color:${DN.tealLight}">nautix</span></div>
+    <div id="nav-counter" class="nav-header-counter">1 / ${nav.length}</div>
+  </div>
+  <div class="nav-items">
+    ${navItems}
+  </div>
+  <div class="nav-footer">Press <kbd>N</kbd> to toggle · <kbd>←</kbd><kbd>→</kbd> to navigate</div>
+</div>
+
 <div class="reveal">
 <div class="slides">
 ${slides.join('\n')}
@@ -467,8 +568,53 @@ function tryRender(section) {
     }
   });
 }
-Reveal.on('ready', function(e) { tryRender(e.currentSlide); });
-Reveal.on('slidechanged', function(e) { tryRender(e.currentSlide); });
+Reveal.on('ready', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
+Reveal.on('slidechanged', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
+
+// ── Slide navigator ──────────────────────────────────────────────────────
+var navPanel  = document.getElementById('nav-panel');
+var navToggle = document.getElementById('nav-toggle');
+var navOpen   = false;
+
+function updateNav(activeIdx) {
+  document.querySelectorAll('.nav-item[data-slide-idx]').forEach(function(el) {
+    var isActive = parseInt(el.dataset.slideIdx) === activeIdx;
+    el.classList.toggle('nav-item-active', isActive);
+    if (isActive) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+  var total = document.querySelectorAll('.nav-item[data-slide-idx]').length;
+  var counter = document.getElementById('nav-counter');
+  if (counter) counter.textContent = (activeIdx + 1) + ' / ' + total;
+}
+
+function setNavOpen(open) {
+  navOpen = open;
+  navPanel.style.transform = open ? 'translateX(0)' : 'translateX(100%)';
+  navToggle.innerHTML = open
+    ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+    : '<svg width="16" height="14" viewBox="0 0 16 14" fill="none"><rect y="0" width="16" height="2" rx="1" fill="currentColor"/><rect y="6" width="16" height="2" rx="1" fill="currentColor"/><rect y="12" width="16" height="2" rx="1" fill="currentColor"/></svg>';
+}
+
+navToggle.addEventListener('click', function() { setNavOpen(!navOpen); });
+
+document.querySelectorAll('.nav-item[data-slide-idx]').forEach(function(el) {
+  el.addEventListener('click', function() {
+    Reveal.slide(parseInt(el.dataset.slideIdx));
+    setNavOpen(false);
+  });
+});
+
+// Close panel on click outside
+document.addEventListener('click', function(e) {
+  if (navOpen && !navPanel.contains(e.target) && !navToggle.contains(e.target)) {
+    setNavOpen(false);
+  }
+});
+
+// Keyboard shortcut: press 'N' to toggle nav
+document.addEventListener('keydown', function(e) {
+  if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) setNavOpen(!navOpen);
+});
 </script>
 </body>
 </html>`
@@ -565,9 +711,10 @@ export async function POST(req: Request, { params }: Params) {
     catch (e) { console.error('[export/html] AI error:', e) }
   }
 
-  // Reset chart state for this request
+  // Reset per-request state
   chartIndex = 0
   Object.keys(charts).forEach(k => delete charts[k])
+  manifest.length = 0
 
   // Build slides
   const slides: string[] = []
@@ -599,7 +746,7 @@ export async function POST(req: Request, { params }: Params) {
     slides.push(buildClosingSlide(datasetName, narratives.keyTakeaways))
   }
 
-  const html     = buildHTML(datasetName, slides, JSON.stringify(charts))
+  const html     = buildHTML(datasetName, slides, JSON.stringify(charts), [...manifest])
   const safeName = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40)
   const filename = safeName + '_report.html'
 
