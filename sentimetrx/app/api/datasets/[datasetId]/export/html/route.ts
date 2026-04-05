@@ -528,15 +528,18 @@ const CSS = `
   #nav-toggle {
     position:fixed!important;top:14px!important;left:14px!important;
     z-index:2147483647!important;
-    width:48px;height:48px;
+    width:48px!important;height:48px!important;
+    padding:0!important;
     background:${DN.navy};border:2px solid ${DN.gold};border-radius:8px;
-    color:${DN.gold};cursor:pointer;
+    color:${DN.gold};cursor:pointer!important;
     display:flex!important;align-items:center;justify-content:center;
     pointer-events:all!important;
     transition:background .15s,border-color .15s;
-    font-size:20px;line-height:1;
+    box-sizing:border-box!important;
     -webkit-tap-highlight-color:transparent;
+    outline:none;
   }
+  #nav-toggle svg { pointer-events:none; display:block }
   #nav-toggle:hover { background:${DN.navyMid} }
   #nav-toggle.nav-open { left:302px!important;border-color:${DN.tealLight};background:${DN.navyMid} }
 
@@ -619,7 +622,7 @@ function buildHTML(datasetName: string, slides: string[], chartsJson: string, na
 <title>${esc(datasetName)} — StoryTime Report</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
 <style>
-  html,body{margin:0;padding:0;height:100%;background:#0D2B45}
+  html,body{margin:0;padding:0;height:100%;background:#0D2B45;font-family:'Inter',system-ui,-apple-system,sans-serif}
   ${CSS}
 </style>
 </head>
@@ -669,15 +672,18 @@ function tryRender(section) {
 }
 // ── Slide navigator ──────────────────────────────────────────────────────
 // Re-append nav elements to body so they're always the last (topmost) nodes,
-// defeating any stacking context that Reveal.js may create.
+// Move nav elements to end of body inside 'ready' so they land after all Reveal DOM setup.
 var navPanel  = document.getElementById('nav-panel');
 var navToggle = document.getElementById('nav-toggle');
-document.body.appendChild(navToggle);
-document.body.appendChild(navPanel);
-
-Reveal.on('ready', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
-Reveal.on('slidechanged', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
 var navOpen   = false;
+
+Reveal.on('ready', function(e) {
+  document.body.appendChild(navToggle);
+  document.body.appendChild(navPanel);
+  tryRender(e.currentSlide);
+  updateNav(Reveal.getIndices().h);
+});
+Reveal.on('slidechanged', function(e) { tryRender(e.currentSlide); updateNav(Reveal.getIndices().h); });
 
 function updateNav(activeIdx) {
   document.querySelectorAll('.nav-item[data-slide-idx]').forEach(function(el) {
