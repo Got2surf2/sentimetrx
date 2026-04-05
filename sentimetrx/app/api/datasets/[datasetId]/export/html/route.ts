@@ -76,7 +76,7 @@ Return ONLY valid JSON. No markdown fences:
   "fieldInsights": {
 ${fields.map(f => {
   const isOE = f.type === 'open-ended'
-  return `    "${f.field}": {"keyFinding":"one strong statement (max 12 words)","narrative":"2-3 sentences with specific data.","implication":"1-2 sentences. So what?","watchout":"1 sentence caveat (optional, omit if nothing meaningful)"${isOE ? `,"pickedQuotes":["pick 3-5 of the most insightful, distinct, representative quotes from CANDIDATE QUOTES above. Each ≤140 chars. Trim at a natural sentence break if needed. Exact text only — no paraphrasing."]` : ''}}`
+  return `    "${f.field}": {"keyFinding":"one strong statement (max 12 words)","narrative":"2-3 sentences with specific data.","implication":"1-2 sentences. So what?","watchout":"1 sentence caveat (optional, omit if nothing meaningful)"${isOE ? `,"pickedQuotes":["pick 3-5 of the most insightful, distinct, representative quotes from CANDIDATE QUOTES above. Prefer quotes that are at least 200 characters and end at a natural sentence boundary. Do not truncate mid-sentence. Exact text only — no paraphrasing."]` : ''}}`
 }).join(',\n')}
   }
 }`
@@ -201,12 +201,12 @@ function buildCategoricalSlide(f: SelectedField, ai: FieldInsight): string {
       text: values.slice().reverse().map(v => v + '%'),
       textposition: 'outside',
       marker: { color: DN.teal },
-      hovertemplate: '<b>%{y}</b><br>%{x:.1f}% (%{customdata} responses)<extra></extra>',
+      hovertemplate: '<b>%{y}</b><br>%{x:.0f}% (%{customdata} responses)<extra></extra>',
     }],
     layout: {
       paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       margin: { l: 16, r: 60, t: 8, b: 30 },
-      xaxis: { showgrid: true, gridcolor: DN.divider, zeroline: false, ticksuffix: '%', color: DN.slateDk, tickfont: { size: 10 } },
+      xaxis: { showgrid: true, gridcolor: DN.divider, zeroline: false, ticksuffix: '%', tickformat: '.0f', color: DN.slateDk, tickfont: { size: 10 } },
       yaxis: { tickfont: { size: 11 }, color: DN.navy, automargin: true },
       font: { family: 'Inter, system-ui, sans-serif', color: DN.navy },
       bargap: 0.25,
@@ -256,8 +256,8 @@ function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<s
       layout: {
         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
         margin: { l: 16, r: 16, t: 8, b: 30 },
-        xaxis: { gridcolor: DN.divider, color: DN.slateDk, tickfont: { size: 10 } },
-        yaxis: { gridcolor: DN.divider, color: DN.slateDk, tickfont: { size: 10 }, title: { text: 'Count', font: { size: 10 } } },
+        xaxis: { gridcolor: DN.divider, color: DN.slateDk, tickfont: { size: 10 }, tickformat: rawVals.every(v => Number.isInteger(v)) ? 'd' : '.0f' },
+        yaxis: { gridcolor: DN.divider, color: DN.slateDk, tickfont: { size: 10 }, tickformat: 'd', title: { text: 'Count', font: { size: 10 } } },
         font: { family: 'Inter, system-ui, sans-serif', color: DN.navy },
         bargap: 0.05,
         shapes: s.avg != null ? [{ type: 'line', x0: s.avg, x1: s.avg, y0: 0, y1: 1, yref: 'paper', line: { color: DN.gold, width: 2, dash: 'dot' } }] : [],
@@ -294,10 +294,11 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
   manifest.push({ title: f.label, icon: '💬', section: f.section })
   const subtitle = f.prompt || 'Open-ended · ' + (f.summary?.nonNull||0).toLocaleString() + ' responses'
   // Prefer AI-curated quotes (≤140 chars each); fall back to raw sample
-  const rawFallback = ((f.summary?.sample || []) as string[])
-    .filter(q => q && q.trim().length > 20).slice(0, 6)
+  const allSamples = (f.summary?.sample || []) as string[]
+  const longSamples = allSamples.filter(q => q && q.trim().length >= 200)
+  const rawFallback = (longSamples.length >= 2 ? longSamples : allSamples.filter(q => q && q.trim().length > 50)).slice(0, 6)
   const quotes = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
-    ? ai.pickedQuotes.slice(0, 6).map(q => q.slice(0, 160))
+    ? ai.pickedQuotes.slice(0, 6)
     : rawFallback
   const fieldThemes = themes.slice(0, 8)
 
@@ -315,12 +316,12 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
         textposition: 'outside',
         marker: { color: fieldThemes.slice().reverse().map((_: any, i: number) =>
           i === fieldThemes.length - 1 ? DN.teal : i === fieldThemes.length - 2 ? DN.tealLight : DN.navyLight) },
-        hovertemplate: '<b>%{y}</b>: %{x:.1f}%<extra></extra>',
+        hovertemplate: '<b>%{y}</b>: %{x:.0f}%<extra></extra>',
       }],
       layout: {
         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
         margin: { l: 16, r: 50, t: 8, b: 20 },
-        xaxis: { showgrid: true, gridcolor: DN.divider, zeroline: false, ticksuffix: '%', tickfont: { size: 10 }, color: DN.slateDk },
+        xaxis: { showgrid: true, gridcolor: DN.divider, zeroline: false, ticksuffix: '%', tickformat: '.0f', tickfont: { size: 10 }, color: DN.slateDk },
         yaxis: { tickfont: { size: 11 }, color: DN.navy, automargin: true },
         font: { family: 'Inter, system-ui, sans-serif', color: DN.navy },
         bargap: 0.3,
@@ -330,7 +331,7 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
   }
 
   const quotesHtml = quotes.map(q =>
-    `<blockquote class="quote-card">${esc(trunc(q, 220))}</blockquote>`).join('')
+    `<blockquote class="quote-card">${esc(q)}</blockquote>`).join('')
 
   return `<section style="background:${DN.slateCard}">
     ${slideHeader(f.label, subtitle)}
@@ -347,81 +348,38 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
   </section>`
 }
 
-function buildThemeDetailSlides(
-  themes: any[], fieldLabel: string,
-  allRows: Record<string,any>[], rowKeyMap: Record<string,string>, fieldKeys: string[]
-): string[] {
+function buildThemeDetailSlides(themes: any[], fieldLabel: string): string[] {
   if (!themes?.length) return []
-
-  function matchesTheme(text: string, keywords: string[]): boolean {
-    if (!keywords?.length) return false
-    const lower = text.toLowerCase()
-    return keywords.some(kw => {
-      const esc2 = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      return new RegExp('(?<![a-z])' + esc2 + '\\w*', 'i').test(lower)
-    })
-  }
-
-  function getComments(t: any): string[] {
-    if (!allRows?.length) return []
-    const keys = fieldKeys.map(fk => {
-      const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      return rowKeyMap[norm] || fk
-    })
-    const matched: string[] = []
-    for (const row of allRows) {
-      const text = keys.map(k => String(row[k] || '')).join(' ').trim()
-      if (text.length < 15) continue
-      if (matchesTheme(text, t.keywords || [])) matched.push(text)
-    }
-    const n = Math.min(6, matched.length)
-    if (n === 0) return []
-    const step = matched.length / n
-    return Array.from({ length: n }, (_, i) => matched[Math.floor(i * step)])
-      .filter(Boolean).map(s => s.slice(0, 160))
-  }
-
   const total = themes.length
   return themes.map((t: any, tidx: number) => {
     manifest.push({ title: t.name || 'Theme', icon: '🏷️', section: fieldLabel })
     const themeColor = t.color || DN.teal
     const sent       = t.sentiment || ''
     const pctVal     = Math.round(t.percentage || 0)
-    const comments   = getComments(t)
 
     const sentBadge = sent
-      ? `<span style="display:inline-block;padding:2px 10px;border-radius:4px;font-size:10px;font-weight:700;background:${sent==='positive'?'#f0fdf4':sent==='negative'?'#fef2f2':sent==='mixed'?'#fffbeb':'#f4f7f8'};color:${sent==='positive'?'#15803d':sent==='negative'?'#b91c1c':sent==='mixed'?'#92400e':DN.slateDk};border:1px solid currentColor;margin-left:10px">${sent.charAt(0).toUpperCase()+sent.slice(1)}</span>`
+      ? `<span style="display:inline-block;padding:3px 12px;border-radius:4px;font-size:11px;font-weight:700;background:${sent==='positive'?'#f0fdf4':sent==='negative'?'#fef2f2':sent==='mixed'?'#fffbeb':'#f4f7f8'};color:${sent==='positive'?'#15803d':sent==='negative'?'#b91c1c':sent==='mixed'?'#92400e':DN.slateDk};border:1px solid currentColor">${sent.charAt(0).toUpperCase()+sent.slice(1)}</span>`
       : ''
 
-    const kwHtml = (t.keywords||[]).slice(0,6).map((k: string) =>
-      `<span style="display:inline-block;padding:2px 8px;margin:0 4px 4px 0;background:${DN.slateCard};border:1px solid ${DN.divider};border-radius:3px;font-size:9px;color:${DN.slateDk}">${esc(k)}</span>`).join('')
-
-    const quotesHtml = comments.length > 0
-      ? comments.map(q => `<blockquote class="quote-card">${esc(q)}</blockquote>`).join('')
-      : `<p style="font-size:11px;color:${DN.slate};font-style:italic;padding:8px 0">No verbatim responses matched this theme.</p>`
+    const kwHtml = (t.keywords||[]).slice(0,8).map((k: string) =>
+      `<span style="display:inline-block;padding:3px 10px;margin:0 5px 5px 0;background:${DN.slateCard};border:1px solid ${DN.divider};border-radius:3px;font-size:10px;color:${DN.slateDk}">${esc(k)}</span>`).join('')
 
     const subtitle = `AI-identified theme  ·  ${tidx+1} of ${total}  ·  from: ${fieldLabel}`
     return `<section>
       <div style="position:absolute;top:0;left:0;right:0;height:5px;background:${themeColor}"></div>
       ${slideHeader(t.name || 'Theme', subtitle)}
-      <div class="slide-body two-col">
-        <div style="flex:0.85;display:flex;flex-direction:column;gap:10px;padding:8px 16px 8px 28px;border-right:1px solid ${DN.divider}">
-          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
-            ${sentBadge}
+      <div class="slide-body" style="padding:16px 40px 16px 32px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:center;gap:12px">${sentBadge}</div>
+        ${t.description ? `<p style="font-size:13px;color:${DN.slateDk};font-style:italic;margin:0;line-height:1.6;max-width:720px">${esc(t.description)}</p>` : ''}
+        <div style="flex-wrap:wrap">${kwHtml}</div>
+        <div style="border-top:1px solid ${DN.divider};padding-top:14px;display:flex;align-items:flex-end;gap:24px">
+          <div>
+            <div style="font-size:32px;font-weight:700;color:${themeColor};line-height:1">${pctVal}%</div>
+            <div style="font-size:11px;color:${DN.slateDk};margin-top:4px">${t.count ? t.count.toLocaleString() + ' responses' : ''}</div>
           </div>
-          ${t.description ? `<p style="font-size:11px;color:${DN.slateDk};font-style:italic;margin:0;line-height:1.5">${esc(t.description)}</p>` : ''}
-          <div style="flex-wrap:wrap">${kwHtml}</div>
-          <div style="margin-top:auto;border-top:1px solid ${DN.divider};padding-top:10px">
-            <div style="font-size:24px;font-weight:700;color:${themeColor}">${pctVal}%</div>
-            <div style="font-size:10px;color:${DN.slateDk}">${t.count ? t.count.toLocaleString() + ' responses' : ''}</div>
-            <div style="height:6px;background:${DN.slateCard};border-radius:3px;margin-top:6px;overflow:hidden">
-              <div style="height:100%;width:${pctVal}%;background:${themeColor};border-radius:3px"></div>
-            </div>
+          <div style="flex:1;height:8px;background:${DN.slateCard};border-radius:4px;overflow:hidden;margin-bottom:4px">
+            <div style="height:100%;width:${pctVal}%;background:${themeColor};border-radius:4px"></div>
           </div>
-        </div>
-        <div style="flex:1.15;display:flex;flex-direction:column;gap:6px;padding:8px 24px 8px 14px;overflow:hidden">
-          <div class="section-label" style="color:${DN.slateDk}">VOICES FROM THIS THEME</div>
-          <div style="overflow-y:auto;flex:1">${quotesHtml}</div>
         </div>
       </div>
     </section>`
@@ -856,21 +814,7 @@ export async function POST(req: Request, { params }: Params) {
     if (s) slides.push(s)
     // After each open-ended slide, add per-theme detail slides
     if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
-      const themes = multiOE
-        ? sortedThemes.filter((t: any) => {
-            const norm = f.field.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')
-            const key  = rowKeyMap[norm] || f.field
-            return allRows.some(row => {
-              const text = String(row[key]||'').trim()
-              if (!text || text.length < 5) return false
-              return (t.keywords||[]).some((kw: string) => {
-                const esc2 = kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
-                return new RegExp('(?<![a-z])'+esc2+'\\w*','i').test(text.toLowerCase())
-              })
-            })
-          })
-        : sortedThemes
-      buildThemeDetailSlides(themes, f.label, allRows, rowKeyMap, [f.field]).forEach(ts => slides.push(ts))
+      buildThemeDetailSlides(sortedThemes, f.label).forEach(ts => slides.push(ts))
     }
   }
 

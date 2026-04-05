@@ -122,6 +122,16 @@ function lbl(slide: any, text: string, x: number, y: number, w: number, color = 
 
 function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s }
 
+// Trim to a natural sentence/word boundary rather than slicing mid-word
+function trimNatural(s: string, max: number): string {
+  if (!s || s.length <= max) return s
+  const cut = s.slice(0, max)
+  const lastEnd = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'), cut.lastIndexOf(';'))
+  if (lastEnd > max * 0.55) return cut.slice(0, lastEnd + 1)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > max * 0.4 ? cut.slice(0, lastSpace) : cut) + '…'
+}
+
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
 
 // KPI card: big number + label, optional sub — all elements bounded within h
@@ -159,13 +169,15 @@ function insightBox(slide: any, x: number, y: number, w: number, h: number, text
   slide.addText(text, { x: x + 0.16, y: y + 0.1, w: w - 0.24, h: h - 0.2, fontSize: 11.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
 }
 
-// Quote card
+// Quote card — opening " is inline with the first word of the comment
 function quoteCard(slide: any, x: number, y: number, w: number, h: number, text: string) {
   rect(slide, x, y, w, h, DN.white, 0.07, DN.divider)
   solidRect(slide, x, y, 0.05, h, DN.teal)
-  slide.addText('\u201C', { x: x + 0.10, y: y + 0.02, w: 0.28, h: 0.36, fontSize: 26, bold: true, color: DN.tealLight, valign: 'top' })
-  slide.addText(trunc(text, 220), { x: x + 0.12, y: y + 0.30, w: w - 0.40, h: h - 0.38, fontSize: 10, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.35 })
-  slide.addText('\u201D', { x: x + w - 0.28, y: y + h - 0.36, w: 0.28, h: 0.36, fontSize: 26, bold: true, color: DN.tealLight, valign: 'bottom', align: 'right' })
+  slide.addText([
+    { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
+    { text: trimNatural(text, 320), options: { fontSize: 10, color: DN.navyLight, italic: true } },
+    { text: '\u201D', options: { fontSize: 16, bold: true, color: DN.tealLight } },
+  ], { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4 })
 }
 
 // ── AI narrative generation ───────────────────────────────────────────────────
@@ -254,7 +266,7 @@ ${fields.map(f => {
       "narrative": "2-3 sentences. Specific data references. What the distribution reveals. What drives it.",
       "implication": "1-2 sentences. So what? What should be done or watched as a result?",
       "watchout": "1 sentence caveat, limitation or counter-reading (optional, omit if nothing meaningful)"${isOE ? `,
-      "pickedQuotes": ["pick 3-5 of the most insightful, distinct, and representative quotes from CANDIDATE QUOTES above. Each quote must be ≤140 characters. Trim naturally at a sentence break if needed. No paraphrasing — use exact text from the candidates."]` : ''}
+      "pickedQuotes": ["pick 3-5 of the most insightful, distinct, and representative quotes from CANDIDATE QUOTES above. Prefer quotes that are at least 200 characters and end at a natural sentence boundary. Do not truncate mid-sentence. No paraphrasing — use exact text from the candidates."]` : ''}
     }`
 }).join(',\n')}
   }
@@ -958,9 +970,11 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   const s = f.summary
   const maxQuotes = audience === 'full' ? 5 : audience === 'stakeholder' ? 4 : 3
   // Prefer AI-curated quotes; fall back to raw sample filtered by length
-  const rawFallback = (s?.sample || []).filter((q: string) => q && q.trim().length > 20).slice(0, maxQuotes)
+  // Prefer substantive quotes ≥200 chars; fall back to shorter ones if not enough
+  const longSamples = (s?.sample || []).filter((q: string) => q && q.trim().length >= 200)
+  const rawFallback = (longSamples.length >= 2 ? longSamples : (s?.sample || []).filter((q: string) => q && q.trim().length > 50)).slice(0, maxQuotes)
   const quotes: string[] = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
-    ? ai.pickedQuotes.slice(0, maxQuotes).map((q: string) => q.slice(0, 140))
+    ? ai.pickedQuotes.slice(0, maxQuotes)
     : rawFallback
 
   const leftW  = W * 0.44 - PAD
@@ -1161,43 +1175,8 @@ function buildCommentsSlide(
 function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s === 'negative' ? DN.redLight  : s === 'mixed' ? DN.amberLight : DN.slateLight }
 function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
 
-function buildThemeSlides(
-  datasetName: string, themes: any[], fieldLabel?: string,
-  allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[]
-) {
+function buildThemeSlides(datasetName: string, themes: any[], fieldLabel?: string) {
   if (!themes || themes.length === 0) return
-
-  // Keyword matcher (inline, mirrors themeUtils.commentMatchesTheme)
-  function matchesTheme(text: string, keywords: string[]): boolean {
-    if (!keywords?.length) return false
-    const lower = text.toLowerCase()
-    return keywords.some(function(kw) {
-      const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      return new RegExp('(?<![a-z])' + esc + '\\w*', 'i').test(lower)
-    })
-  }
-
-  // Get up to 6 evenly-spread matched responses for this theme
-  function getMatchedComments(t: any): string[] {
-    if (!allRows?.length || !rowKeyMap || !fieldKeys?.length) return []
-    const keys = fieldKeys.map(fk => {
-      const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      return rowKeyMap[norm] || fk
-    })
-    const matched: string[] = []
-    for (const row of allRows) {
-      const text = keys.map(k => String(row[k] || '')).join(' ').trim()
-      if (text.length < 15) continue
-      if (matchesTheme(text, t.keywords || [])) matched.push(text)
-    }
-    if (matched.length === 0) return []
-    // Pick 6 evenly-spread entries for variety
-    const n = Math.min(6, matched.length)
-    const step = matched.length / n
-    return Array.from({ length: n }, (_, i) => matched[Math.floor(i * step)])
-      .filter(Boolean)
-      .map(s => s.slice(0, 160))  // cap each at 160 chars
-  }
 
   const totalThemes = themes.length
   themes.forEach(function(t: any, tidx: number) {
@@ -1210,90 +1189,66 @@ function buildThemeSlides(
     logo(slide)
 
     const themeColor  = (t.color || DN.teal).replace('#', '')
-    const leftW  = W * 0.40 - PAD - 0.1
-    const rightX = PAD + leftW + 0.28
-    const rightW = W - rightX - PAD * 0.5
-
-    // ── LEFT PANEL: theme metadata ───────────────────────────────────────────
+    const fullW = W - PAD * 2
     const lx = PAD
     const ly = CY
 
-    // Colored accent bar top of left panel
-    solidRect(slide, lx, ly, leftW, 0.06, themeColor)
+    // Colored accent bar full width
+    solidRect(slide, lx, ly, fullW, 0.06, themeColor)
 
     // Theme name
     slide.addText(t.name || '', {
-      x: lx, y: ly + 0.10, w: leftW, h: 0.56,
-      fontSize: 18, bold: true, color: DN.navy, valign: 'top', wrap: true,
+      x: lx, y: ly + 0.12, w: fullW * 0.7, h: 0.52,
+      fontSize: 22, bold: true, color: DN.navy, valign: 'top', wrap: true,
     })
 
     // Sentiment badge
     const sent = t.sentiment || ''
     if (sent) {
-      const sentW = 1.0
-      rect(slide, lx, ly + 0.72, sentW, 0.26, themeSentBg(sent), 0.5, themeSentFg(sent))
+      const sentW = 1.1
+      rect(slide, lx + fullW - sentW, ly + 0.14, sentW, 0.28, themeSentBg(sent), 0.5, themeSentFg(sent))
       slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), {
-        x: lx, y: ly + 0.72, w: sentW, h: 0.26,
-        fontSize: 9, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
+        x: lx + fullW - sentW, y: ly + 0.14, w: sentW, h: 0.28,
+        fontSize: 10, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
       })
     }
 
-    // Description
+    // Description — wider area now
     if (t.description) {
       slide.addText(t.description, {
-        x: lx, y: ly + 1.12, w: leftW, h: 1.0,
-        fontSize: 10, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.35,
+        x: lx, y: ly + 0.78, w: fullW * 0.72, h: 1.1,
+        fontSize: 11, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.4,
       })
     }
 
-    // Keywords pills
-    const keywords: string[] = (t.keywords || []).slice(0, 6)
-    const kwStartY = ly + 2.22
+    // Keywords pills — up to 8 across full width
+    const keywords: string[] = (t.keywords || []).slice(0, 8)
+    const kwStartY = ly + 2.02
     let kwX = lx; let kwRow = 0
     keywords.forEach(function(k: string) {
-      const kw = k.length * 0.058 + 0.20
-      if (kwX + kw > lx + leftW) { kwX = lx; kwRow++ }
+      const kw = k.length * 0.060 + 0.22
+      if (kwX + kw > lx + fullW * 0.85) { kwX = lx; kwRow++ }
       if (kwRow > 1) return
-      rect(slide, kwX, kwStartY + kwRow * 0.28, kw, 0.22, DN.slateLight, 0.5, DN.divider)
-      slide.addText(k, { x: kwX + 0.07, y: kwStartY + kwRow * 0.28, w: kw - 0.14, h: 0.22, fontSize: 8, color: DN.slateDark, valign: 'middle', wrap: false })
-      kwX += kw + 0.07
+      rect(slide, kwX, kwStartY + kwRow * 0.30, kw, 0.24, DN.slateLight, 0.5, DN.divider)
+      slide.addText(k, { x: kwX + 0.08, y: kwStartY + kwRow * 0.30, w: kw - 0.16, h: 0.24, fontSize: 8.5, color: DN.slateDark, valign: 'middle', wrap: false })
+      kwX += kw + 0.08
     })
 
-    // Divider line
-    solidRect(slide, lx, ly + 2.90, leftW, 0.012, DN.divider)
+    // Divider + stats row
+    const statsY = ly + 2.76
+    solidRect(slide, lx, statsY, fullW, 0.012, DN.divider)
 
-    // Count + percentage
     const pctVal = Math.round(t.percentage || 0)
     const countStr = t.count ? t.count.toLocaleString() + ' responses' : ''
     if (countStr) {
-      slide.addText(countStr, { x: lx, y: ly + 2.96, w: leftW * 0.6, h: 0.28, fontSize: 9.5, color: DN.slateDark, valign: 'middle' })
+      slide.addText(countStr, { x: lx, y: statsY + 0.10, w: fullW * 0.55, h: 0.30, fontSize: 10, color: DN.slateDark, valign: 'middle' })
     }
     if (pctVal) {
-      slide.addText(pctVal + '%', { x: lx + leftW * 0.6, y: ly + 2.88, w: leftW * 0.38, h: 0.44, fontSize: 22, bold: true, color: themeColor, align: 'right', valign: 'middle' })
+      slide.addText(pctVal + '%', { x: lx + fullW * 0.55, y: statsY + 0.04, w: fullW * 0.44, h: 0.44, fontSize: 26, bold: true, color: themeColor, align: 'right', valign: 'middle' })
     }
-    // Progress bar
     const barFill = Math.min(1, pctVal / 100)
-    solidRect(slide, lx, ly + 3.34, leftW, 0.08, DN.slateLight)
-    if (barFill > 0) solidRect(slide, lx, ly + 3.34, leftW * barFill, 0.08, themeColor)
-
-    // ── RIGHT PANEL: verbatim comments ───────────────────────────────────────
-    lbl(slide, 'VOICES FROM THIS THEME', rightX, CY, rightW)
-    solidRect(slide, rightX, CY + 0.22, rightW, 0.012, DN.divider)
-
-    const comments = getMatchedComments(t)
-    if (comments.length > 0) {
-      const availH   = CH - 0.38
-      const qGap     = 0.09
-      const qh       = Math.min(0.72, (availH - qGap * (comments.length - 1)) / comments.length)
-      comments.forEach(function(q, i) {
-        quoteCard(slide, rightX, CY + 0.32 + i * (qh + qGap), rightW, qh, q)
-      })
-    } else {
-      slide.addText('No verbatim responses matched this theme.', {
-        x: rightX, y: CY + 0.6, w: rightW, h: 0.6,
-        fontSize: 11, color: DN.slate, italic: true, align: 'center', valign: 'middle',
-      })
-    }
+    solidRect(slide, lx, statsY + 0.54, fullW, 0.10, DN.slateLight)
+    if (barFill > 0) solidRect(slide, lx, statsY + 0.54, fullW * barFill, 0.10, themeColor)
 
     footer(slide, datasetName)
   })
@@ -1779,8 +1734,7 @@ export async function POST(req: Request, { params }: Params) {
     const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
     const multiOpenEnd = openEndedSelected.length > 1
     if (includeThemeSlides && sortedThemes.length > 0 && !multiOpenEnd) {
-      const oeKeys = openEndedSelected.map(f => f.field)
-      buildThemeSlides(datasetName, sortedThemes, undefined, allRows, rowKeyMap, oeKeys)
+      buildThemeSlides(datasetName, sortedThemes)
     }
 
     // ── Group fields by section ───────────────────────────────────────────
@@ -1863,7 +1817,7 @@ export async function POST(req: Request, { params }: Params) {
         // Per-field theme slide — only when multiple open-ended fields are selected
         if (includeThemeSlides && sortedThemes.length > 0 && multiOpenEnd) {
           const fieldThemes = computeFieldThemes(f.field, sortedThemes)
-          if (fieldThemes.length > 0) buildThemeSlides(datasetName, fieldThemes, f.label, allRows, rowKeyMap, [f.field])
+          if (fieldThemes.length > 0) buildThemeSlides(datasetName, fieldThemes, f.label)
         }
       } else if (f.type === 'categorical') {
         if (audience !== 'executive') buildPieSlide(datasetName, f, ai)
