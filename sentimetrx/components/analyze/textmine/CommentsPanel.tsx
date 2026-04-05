@@ -73,7 +73,26 @@ function Spinner() {
   )
 }
 
-function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFields: cardActiveFields, allThemes, themeColors, showAllMode, selectedThemes, hoveredThemeId }: {
+// Red → Amber → Green color ramp for a normalised value in [0,1]
+function rampColor(pct: number): string {
+  if (pct <= 0.5) {
+    var r = 220, g = Math.round(80 + pct * 2 * 120)
+    return 'rgb(' + r + ',' + g + ',40)'
+  }
+  var r2 = Math.round(220 - (pct - 0.5) * 2 * 180), g2 = Math.round(160 + (pct - 0.5) * 2 * 40)
+  return 'rgb(' + r2 + ',' + g2 + ',40)'
+}
+
+function fieldColorFor(val: unknown, f: SchemaField): string | null {
+  var n = parseFloat(String(val))
+  if (isNaN(n)) return null
+  var min = f.min != null ? f.min : 1
+  var max = f.max != null ? f.max : (f.sqt === 'nps' ? 10 : 5)
+  var pct = Math.max(0, Math.min(1, (n - min) / (max - min || 1)))
+  return rampColor(pct)
+}
+
+function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFields: cardActiveFields, allThemes, themeColors, showAllMode, selectedThemes, hoveredThemeId, colorByValue, colorByFieldSchema }: {
   row: CommentRow
   theme: Theme
   pal: typeof THEME_PALETTE[0]
@@ -86,6 +105,8 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   showAllMode?: boolean
   selectedThemes?: Theme[]
   hoveredThemeId?: string | null
+  colorByValue?: number | null
+  colorByFieldSchema?: SchemaField | null
 }) {
   var [expanded, setExpanded] = useState(false)
   var [localHover, setLocalHover] = useState<string | null>(null)
@@ -199,22 +220,6 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   var firstRowMeta = allMeta.slice(0, FIRST_ROW_MAX)
   var overflowMeta = allMeta.slice(FIRST_ROW_MAX)
 
-  // Red-green color scale for numeric scores
-  var scoreColor = function(val: unknown, f: SchemaField): string {
-    var n = parseFloat(String(val))
-    if (isNaN(n)) return T.textMid
-    var min = f.min != null ? f.min : 1
-    var max = f.max != null ? f.max : (f.sqt === 'nps' ? 10 : 5)
-    var pct = (n - min) / (max - min || 1)
-    // Red (0) → Amber (0.5) → Green (1)
-    if (pct <= 0.5) {
-      var r = 220, g = Math.round(80 + pct * 2 * 120)
-      return 'rgb(' + r + ',' + g + ',40)'
-    }
-    var r2 = Math.round(220 - (pct - 0.5) * 2 * 180), g2 = Math.round(160 + (pct - 0.5) * 2 * 40)
-    return 'rgb(' + r2 + ',' + g2 + ',40)'
-  }
-
   var hasMore = overflowMeta.length > 0
 
   // Format metadata values — dates shown as mm/dd/yy
@@ -233,10 +238,17 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
     return s
   }
 
+  var accentColor = (colorByValue != null && colorByFieldSchema)
+    ? (fieldColorFor(colorByValue, colorByFieldSchema) || pal.border)
+    : pal.border
+  var accentBg = (colorByValue != null && colorByFieldSchema && fieldColorFor(colorByValue, colorByFieldSchema))
+    ? fieldColorFor(colorByValue, colorByFieldSchema)! + '12'
+    : T.bgCard
+
   return (
     <div style={{
-      background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10,
-      padding: '12px 14px', marginBottom: 8, borderLeft: '3px solid ' + pal.border,
+      background: accentBg, border: '1px solid ' + T.border, borderRadius: 10,
+      padding: '12px 14px', borderLeft: '4px solid ' + accentColor,
       boxShadow: '0 1px 4px rgba(0,0,0,.04)',
     }}>
       {/* Theme badge(s) + field name */}
@@ -291,7 +303,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
           {firstRowMeta.map(function(f) {
             var val = row.meta[f.field]
             var isRating = f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
-            var color = isRating ? scoreColor(val, f) : null
+            var color = isRating ? (fieldColorFor(val, f) || T.textMid) : null
             return (
               <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
                 <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span> {formatFieldValue(val, f)}
@@ -313,7 +325,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
           {overflowMeta.map(function(f) {
             var val = row.meta[f.field]
             var isRating = f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
-            var color = isRating ? scoreColor(val, f) : null
+            var color = isRating ? (fieldColorFor(val, f) || T.textMid) : null
             return (
               <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
                 <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span>{' '}
@@ -346,6 +358,19 @@ export default function CommentsPanel({
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
+  const [colorField, setColorField] = useState('')
+  const [gridCols, setGridCols] = useState(2)
+
+  // Schema fields available for color-coding (numeric / rating types)
+  const colorableFields = useMemo(function() {
+    return (schema || []).filter(function(f) {
+      return f.type === 'numeric' || f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
+    })
+  }, [schema])
+
+  const colorFieldSchema = useMemo(function() {
+    return colorableFields.find(function(f) { return f.field === colorField }) || null
+  }, [colorableFields, colorField])
 
   // ── Shuffle (random re-order) ─────────────────────────────────
   const [shuffleSeed, setShuffleSeed] = useState(0)
@@ -606,6 +631,34 @@ export default function CommentsPanel({
           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: sentBg(theme.sentiment), color: sentColor(theme.sentiment), border: '1px solid ' + sentColor(theme.sentiment) + '30', fontWeight: 600 }}>
             {theme.sentiment}
           </span>
+          {/* Color-by field picker */}
+          {colorableFields.length > 0 && (
+            <select
+              value={colorField}
+              onChange={function(e) { setColorField(e.target.value) }}
+              style={{ fontSize: 11, padding: '3px 7px', borderRadius: 6, border: '1px solid ' + (colorField ? T.accent : T.border), background: colorField ? T.accentBg : T.bg, color: colorField ? T.accent : T.textMid, cursor: 'pointer', fontWeight: 600 }}
+              title="Color cards by a numeric field"
+            >
+              <option value=''>Color by…</option>
+              {colorableFields.map(function(f) {
+                var lbl = (columnAliases[f.field]) || (f.label && f.label !== f.field ? f.label : null) || f.field
+                return <option key={f.field} value={f.field}>{lbl}</option>
+              })}
+            </select>
+          )}
+          {/* Grid column picker */}
+          <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid ' + T.border }}>
+            {[1, 2, 3, 4].map(function(n) {
+              var active = gridCols === n
+              return (
+                <button key={n} onClick={function() { setGridCols(n) }}
+                  title={n + ' column' + (n > 1 ? 's' : '')}
+                  style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', borderRight: n < 4 ? '1px solid ' + T.border : 'none', background: active ? T.accent : T.bg, color: active ? '#fff' : T.textMid }}>
+                  {n}
+                </button>
+              )
+            })}
+          </div>
         </span>
       </div>
 
@@ -798,12 +851,25 @@ export default function CommentsPanel({
 
       {/* Comments list */}
       <div ref={scrollContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
+        {/* Color scale legend */}
+        {colorField && colorFieldSchema && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 11, color: T.textMute }}>
+            <span style={{ fontWeight: 600 }}>
+              {(columnAliases[colorFieldSchema.field]) || colorFieldSchema.label || colorFieldSchema.field}:
+            </span>
+            <span style={{ fontWeight: 600, color: rampColor(0) }}>{colorFieldSchema.min ?? 1} (low)</span>
+            <div style={{ flex: 1, maxWidth: 120, height: 6, borderRadius: 3, background: 'linear-gradient(to right, ' + rampColor(0) + ', ' + rampColor(0.5) + ', ' + rampColor(1) + ')' }} />
+            <span style={{ fontWeight: 600, color: rampColor(1) }}>{colorFieldSchema.max ?? (colorFieldSchema.sqt === 'nps' ? 10 : 5)} (high)</span>
+          </div>
+        )}
         {matched.length === 0 && (
           <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
             No responses matched this theme.
           </div>
         )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)', gap: 10, alignItems: 'start' }}>
         {visible.map(function(row, i) {
+          var cbv = (colorField && row.meta[colorField] != null) ? parseFloat(String(row.meta[colorField])) : null
           return (
             <CommentCard
               key={i}
@@ -819,9 +885,12 @@ export default function CommentsPanel({
               showAllMode={showAllMode}
               selectedThemes={activeThemes}
               hoveredThemeId={hoveredThemeId}
+              colorByValue={cbv !== null && !isNaN(cbv) ? cbv : null}
+              colorByFieldSchema={colorFieldSchema}
             />
           )
         })}
+        </div>
         {/* Sentinel — triggers next page load when scrolled into view */}
         {hasMore && (
           <div ref={sentinelRef} style={{ padding: '10px 0', textAlign: 'center' }}>

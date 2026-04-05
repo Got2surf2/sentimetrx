@@ -149,7 +149,7 @@ function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
 
 // ─── SUB-PANELS ───────────────────────────────────────────────────────────────
 
-function DescriptivesPanel({ numFields, data, mcResults, mcRunning }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; mcResults: Record<string, MCResult>; mcRunning: boolean }) {
+function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLevel }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; mcResults: Record<string, MCResult>; mcRunning: boolean; confidenceLevel: number }) {
   var [sel, setSel] = useState(numFields[0]?.field || '')
   useEffect(function() { if (!sel && numFields.length) setSel(numFields[0].field) }, [numFields.length])
   var selLabel = (function() { var f = numFields.find(function(nf) { return nf.field === sel }); return f && f.label ? f.label : sel })()
@@ -251,7 +251,7 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning }: { numField
             <Card style={{ padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-                  Bootstrap CI <span style={{ fontSize: 9, fontWeight: 400, marginLeft: 4 }}>(Monte Carlo, 95%)</span>
+                  Bootstrap CI <span style={{ fontSize: 9, fontWeight: 400, marginLeft: 4 }}>(Monte Carlo, {confidenceLevel}%)</span>
                 </div>
                 {mcRunning && <span style={{ fontSize: 10, color: T.textMute }}>Computing…</span>}
               </div>
@@ -1465,6 +1465,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned }: {
 export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [activePanel, setActivePanel] = useState('descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
+  var [validityOpen, setValidityOpen] = useState(false)
   var [confidenceLevel, setConfidenceLevel] = useState(95)
   var [pendingCap, setPendingCap] = useState(385)  // ceil(1.96² × 100) — min for ±5% MOE at 95% CI
   var [pendingConfidence, setPendingConfidence] = useState(95)
@@ -1681,7 +1682,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           {/* ── Analysis panels ── */}
           {rowsLoaded && (
             <>
-              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} />}
+              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} confidenceLevel={confidenceLevel} />}
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
               {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
@@ -1695,100 +1696,111 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
         <div style={{ width: 200, flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.bgCard, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
 
           {/* Statistical Validity + Sample Settings */}
-          <div style={{ padding: '14px 14px 14px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
-              Statistical Validity
-            </div>
-
-            {/* Confidence level slider — pending value */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                <span style={{ fontSize: 10, color: T.textMute }}>Confidence</span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{pendingConfidence}%</span>
-              </div>
-              <input type="range" min={90} max={99} step={1} value={pendingConfidence}
-                onChange={function(e) {
-                  var newConf = parseInt(e.target.value)
-                  setPendingConfidence(newConf)
-                  // Auto-set sample size to minimum needed for ±5% MOE at new confidence
-                  var zz: Record<number, number> = { 90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808, 95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758 }
-                  var nz = zz[newConf] ?? 1.96
-                  setPendingCap(Math.ceil(nz * nz * 100))
-                }}
-                style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4 }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textFaint, marginTop: 2 }}>
-                <span>90%</span><span>99%</span>
-              </div>
-            </div>
-
-            {/* Sample size input */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, color: T.textMute, marginBottom: 4 }}>Sample size (0 = full dataset)</div>
-              <input
-                type="number" min={0} value={pendingCap}
-                onChange={function(e) {
-                  var newCap = Math.max(0, parseInt(e.target.value) || 0)
-                  setPendingCap(newCap)
-                  if (newCap > 0) {
-                    // Back-compute nearest confidence level for ±5% MOE at this n
-                    var targetZ = 0.05 * Math.sqrt(newCap) / 0.5  // z = MOE * sqrt(n) / sqrt(p*q)
-                    var zMap: Record<number, number> = { 90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808, 95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758 }
-                    var best = 95, bestDiff = Infinity
-                    Object.entries(zMap).forEach(function([lv, zv]) { var d = Math.abs(zv - targetZ); if (d < bestDiff) { bestDiff = d; best = parseInt(lv) } })
-                    setPendingConfidence(best)
-                  }
-                }}
-                style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 6, outline: 'none', color: T.text, background: T.bgCard, boxSizing: 'border-box' as any }}
-              />
-              {/* MOE preview */}
-              <div style={{ fontSize: 10, color: T.textFaint, marginTop: 3 }}>
-                Preview: ±{pendingMoe}% MOE
-              </div>
-            </div>
-
-            {/* Performance warning */}
-            {perfWarning && (
-              <div style={{ fontSize: 10, background: T.amberBg, color: T.amber, border: '1px solid ' + T.amberMid, borderRadius: 6, padding: '5px 7px', marginBottom: 8, lineHeight: 1.45 }}>
-                {'\u26A0'} {pendingCap === 0 ? 'Full dataset' : pendingCap.toLocaleString() + ' rows'} may slow down correlation and bootstrap calculations in your browser.
-              </div>
-            )}
-
-            {/* Apply button */}
+          <div style={{ borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+            {/* Header row — always visible, click to expand/collapse */}
             <button
-              onClick={applySettings}
-              disabled={!isDirty}
-              style={{
-                width: '100%', padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: 12, cursor: isDirty ? 'pointer' : 'default',
-                background: isDirty ? T.accent : T.border, color: isDirty ? 'white' : T.textFaint,
-                border: 'none', opacity: isDirty ? 1 : 0.5, transition: 'all .15s',
-              }}>
-              {isDirty ? 'Apply' : '\u2714 Applied'}
+              onClick={function() { setValidityOpen(function(v) { return !v }) }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer' }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                Statistical Validity
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.accent }}>{confidenceLevel}%</span>
+                {analysisN > 0 && <span style={{ fontSize: 10, color: T.textMid }}>{analysisN.toLocaleString()}</span>}
+                <span style={{ fontSize: 10, color: T.textFaint }}>{validityOpen ? '\u25BE' : '\u25B8'}</span>
+              </span>
             </button>
 
-            {/* Loaded sample readout */}
-            {analysisN > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 10, paddingTop: 10, borderTop: '1px solid ' + T.border }}>
-                <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Loaded</span>
-                  <span style={{ fontWeight: 700, color: T.textMid }}>{analysisN.toLocaleString()}</span>
+            {validityOpen && (
+              <div style={{ padding: '0 14px 14px' }}>
+                {/* Confidence level slider — pending value */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, color: T.textMute }}>Confidence level</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>{pendingConfidence}%</span>
+                  </div>
+                  <input type="range" min={90} max={99} step={1} value={pendingConfidence}
+                    onChange={function(e) {
+                      var newConf = parseInt(e.target.value)
+                      setPendingConfidence(newConf)
+                      var zz: Record<number, number> = { 90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808, 95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758 }
+                      var nz = zz[newConf] ?? 1.96
+                      setPendingCap(Math.ceil(nz * nz * 100))
+                    }}
+                    style={{ width: '100%', accentColor: T.accent, cursor: 'pointer', height: 4 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textFaint, marginTop: 2 }}>
+                    <span>90%</span><span>99%</span>
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Actual MOE</span>
-                  <span style={{ fontWeight: 700, color: meetsReq ? T.green : T.amber }}>±{moePct}%</span>
+
+                {/* Sample size input */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 10, color: T.textMute, marginBottom: 4 }}>Rows to analyse</div>
+                  <input
+                    type="number" min={0} value={pendingCap}
+                    onChange={function(e) {
+                      var newCap = Math.max(0, parseInt(e.target.value) || 0)
+                      setPendingCap(newCap)
+                      if (newCap > 0) {
+                        var targetZ = 0.05 * Math.sqrt(newCap) / 0.5
+                        var zMap: Record<number, number> = { 90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808, 95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758 }
+                        var best = 95, bestDiff = Infinity
+                        Object.entries(zMap).forEach(function([lv, zv]) { var d = Math.abs(zv - targetZ); if (d < bestDiff) { bestDiff = d; best = parseInt(lv) } })
+                        setPendingConfidence(best)
+                      }
+                    }}
+                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 6, outline: 'none', color: T.text, background: T.bgCard, boxSizing: 'border-box' as any }}
+                  />
+                  <div style={{ fontSize: 10, color: T.textFaint, marginTop: 3 }}>
+                    {pendingCap === 0 ? 'All rows (may be slow on large datasets)' : 'Preview: ±' + pendingMoe + '% MOE'}
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Min. for ±5%</span>
-                  <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
-                </div>
-                <div style={{
-                  fontSize: 10, padding: '3px 6px', borderRadius: 5,
-                  background: meetsReq ? T.greenBg : T.amberBg,
-                  color: meetsReq ? T.green : T.amber,
-                  border: '1px solid ' + (meetsReq ? T.greenMid : T.amberMid),
-                }}>
-                  {meetsReq ? '\u2714 Sufficient' : '\u26A0 Need ' + (reqN - analysisN).toLocaleString() + ' more'}
-                </div>
+
+                {/* Performance warning */}
+                {perfWarning && (
+                  <div style={{ fontSize: 10, background: T.amberBg, color: T.amber, border: '1px solid ' + T.amberMid, borderRadius: 6, padding: '5px 7px', marginBottom: 8, lineHeight: 1.45 }}>
+                    {'\u26A0'} {pendingCap === 0 ? 'Full dataset' : pendingCap.toLocaleString() + ' rows'} may slow down correlation and bootstrap calculations in your browser.
+                  </div>
+                )}
+
+                {/* Apply button */}
+                <button
+                  onClick={applySettings}
+                  disabled={!isDirty}
+                  style={{
+                    width: '100%', padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: 12, cursor: isDirty ? 'pointer' : 'default',
+                    background: isDirty ? T.accent : T.border, color: isDirty ? 'white' : T.textFaint,
+                    border: 'none', opacity: isDirty ? 1 : 0.5, transition: 'all .15s',
+                  }}>
+                  {isDirty ? 'Apply' : '\u2714 Applied'}
+                </button>
+
+                {/* Loaded sample readout */}
+                {analysisN > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 10, paddingTop: 10, borderTop: '1px solid ' + T.border }}>
+                    <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Loaded</span>
+                      <span style={{ fontWeight: 700, color: T.textMid }}>{analysisN.toLocaleString()}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Actual MOE</span>
+                      <span style={{ fontWeight: 700, color: meetsReq ? T.green : T.amber }}>±{moePct}%</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textMute, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Min. for ±5%</span>
+                      <span style={{ fontWeight: 700, color: T.textMid }}>{reqN.toLocaleString()}</span>
+                    </div>
+                    <div style={{
+                      fontSize: 10, padding: '3px 6px', borderRadius: 5,
+                      background: meetsReq ? T.greenBg : T.amberBg,
+                      color: meetsReq ? T.green : T.amber,
+                      border: '1px solid ' + (meetsReq ? T.greenMid : T.amberMid),
+                    }}>
+                      {meetsReq ? '\u2714 Sufficient' : '\u26A0 Need ' + (reqN - analysisN).toLocaleString() + ' more'}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
