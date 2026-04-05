@@ -1152,7 +1152,7 @@ function buildCommentsSlide(
 function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s === 'negative' ? DN.redLight  : s === 'mixed' ? DN.amberLight : DN.slateLight }
 function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
 
-function buildThemeSlides(datasetName: string, themes: any[]) {
+function buildThemeSlides(datasetName: string, themes: any[], fieldLabel?: string) {
   if (!themes || themes.length === 0) return
 
   // Choose grid dimensions based on total theme count
@@ -1175,7 +1175,10 @@ function buildThemeSlides(datasetName: string, themes: any[]) {
     const slide = pptx.addSlide('NUMBERED')
     bg(slide, pptx)
     const pgTag = totalPages > 1 ? '  ·  ' + (pg + 1) + ' of ' + totalPages : ''
-    hdr(slide, pptx, 'Theme Analysis', DN.tealDark, 'AI-identified themes from verbatim responses' + pgTag)
+    const themeSubtitle = fieldLabel
+      ? 'AI-identified themes from: ' + fieldLabel + pgTag
+      : 'AI-identified themes from verbatim responses' + pgTag
+    hdr(slide, pptx, 'Theme Analysis', DN.tealDark, themeSubtitle)
     logo(slide)
 
     pageThemes.forEach(function(t: any, i: number) {
@@ -1676,6 +1679,32 @@ export async function POST(req: Request, { params }: Params) {
     return ''
   }
 
+  // Re-compute theme counts by keyword-matching allRows against a specific open-ended field
+  function computeFieldThemes(fieldKey: string, themeList: any[]): any[] {
+    if (!themeList.length || !allRows.length) return themeList
+    const counts: Record<string, number> = {}
+    allRows.forEach(function(row) {
+      const text = rowVal(row, fieldKey).toLowerCase()
+      if (!text.trim()) return
+      let bestTheme = '', bestHits = 0
+      themeList.forEach(function(t: any) {
+        let hits = 0
+        ;(t.keywords || []).forEach(function(kw: string) { if (text.includes(kw.toLowerCase())) hits++ })
+        if (hits > bestHits) { bestHits = hits; bestTheme = t.name || t.label }
+      })
+      if (bestTheme) counts[bestTheme] = (counts[bestTheme] || 0) + 1
+    })
+    const total = Object.values(counts).reduce(function(a: number, b: number) { return a + b }, 0) || 1
+    return themeList
+      .map(function(t: any) {
+        const name = t.name || t.label
+        const count = counts[name] || 0
+        return Object.assign({}, t, { count, percentage: Math.round(count / total * 100) })
+      })
+      .filter(function(t: any) { return t.count > 0 })
+      .sort(function(a: any, b: any) { return b.count - a.count })
+  }
+
   // Demo/psycho fields to annotate comments with
   const commentDemoFields = selectedFields.filter(f => f.section === 'demographic' || f.section === 'psychographic').slice(0, 4)
 
@@ -1718,8 +1747,11 @@ export async function POST(req: Request, { params }: Params) {
     // 3: About this report
     buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience)
 
-    // 4: Theme slides (if enabled and themes exist)
-    if (includeThemeSlides && sortedThemes.length > 0) {
+    // 4: Theme slides — global block only when there is a single open-ended field;
+    //    when multiple open-ends are selected each gets its own themes slide after its own field slides.
+    const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
+    const multiOpenEnd = openEndedSelected.length > 1
+    if (includeThemeSlides && sortedThemes.length > 0 && !multiOpenEnd) {
       buildThemeSlides(datasetName, sortedThemes)
     }
 
@@ -1799,6 +1831,11 @@ export async function POST(req: Request, { params }: Params) {
               buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides)
             }
           }
+        }
+        // Per-field theme slide — only when multiple open-ended fields are selected
+        if (includeThemeSlides && sortedThemes.length > 0 && multiOpenEnd) {
+          const fieldThemes = computeFieldThemes(f.field, sortedThemes)
+          if (fieldThemes.length > 0) buildThemeSlides(datasetName, fieldThemes, f.label)
         }
       } else if (f.type === 'categorical') {
         if (audience !== 'executive') buildPieSlide(datasetName, f, ai)
