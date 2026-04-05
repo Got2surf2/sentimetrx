@@ -53,8 +53,18 @@ function incompleteGamma(a: number, x: number): number {
   return sum * Math.exp(-x + a * Math.log(x) - logGamma(a))
 }
 
-export function tDist2p(t: number, df: number): number { return incompleteBeta(df / (df + t * t), df / 2, 0.5) }
-export function fDistP(F: number, df1: number, df2: number): number { return incompleteBeta(df2 / (df2 + df1 * F), df2 / 2, df1 / 2) }
+export function tDist2p(t: number, df: number): number {
+  // For df > 100 the t-distribution is indistinguishable from normal (< 0.02% error),
+  // and the incompleteBeta continued fraction loses precision for large df.
+  if (df > 100) return 2 * (1 - normCDF(Math.abs(t)))
+  return incompleteBeta(df / (df + t * t), df / 2, 0.5)
+}
+export function fDistP(F: number, df1: number, df2: number): number {
+  // For large df2, F(df1, df2) → chi-squared(df1)/df1, so df1*F → chi-sq(df1).
+  // The incompleteBeta CF is unreliable when df2 > 1000.
+  if (df2 > 1000) return chiSqP(df1 * F, df1)
+  return incompleteBeta(df2 / (df2 + df1 * F), df2 / 2, df1 / 2)
+}
 export function chiSqP(c: number, df: number): number { return c <= 0 ? 1 : 1 - incompleteGamma(df / 2, c / 2) }
 export function normCDF(z: number): number {
   var a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911

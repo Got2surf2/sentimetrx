@@ -1727,7 +1727,18 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
               <div style={{ fontSize: 10, color: T.textMute, marginBottom: 4 }}>Sample size (0 = full dataset)</div>
               <input
                 type="number" min={0} value={pendingCap}
-                onChange={function(e) { setPendingCap(Math.max(0, parseInt(e.target.value) || 0)) }}
+                onChange={function(e) {
+                  var newCap = Math.max(0, parseInt(e.target.value) || 0)
+                  setPendingCap(newCap)
+                  if (newCap > 0) {
+                    // Back-compute nearest confidence level for ±5% MOE at this n
+                    var targetZ = 0.05 * Math.sqrt(newCap) / 0.5  // z = MOE * sqrt(n) / sqrt(p*q)
+                    var zMap: Record<number, number> = { 90: 1.6449, 91: 1.6954, 92: 1.7507, 93: 1.8119, 94: 1.8808, 95: 1.9600, 96: 2.0537, 97: 2.1701, 98: 2.3263, 99: 2.5758 }
+                    var best = 95, bestDiff = Infinity
+                    Object.entries(zMap).forEach(function([lv, zv]) { var d = Math.abs(zv - targetZ); if (d < bestDiff) { bestDiff = d; best = parseInt(lv) } })
+                    setPendingConfidence(best)
+                  }
+                }}
                 style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 6, outline: 'none', color: T.text, background: T.bgCard, boxSizing: 'border-box' as any }}
               />
               {/* MOE preview */}
