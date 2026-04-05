@@ -331,7 +331,8 @@ export default function CommentsPanel({
   theme, allThemes, selectedThemes, parsedData, activeField, activeFields,
   catFields, themeColors, onBack, ignoredFields = [], schema, apiKey, columnAliases = {}, datasetId, showAllMode,
 }: Props) {
-  const activeThemes = selectedThemes && selectedThemes.length > 0 ? selectedThemes : [theme]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const activeThemes = useMemo(function() { return selectedThemes && selectedThemes.length > 0 ? selectedThemes : [theme] }, [selectedThemes, theme])
   const isMulti = activeThemes.length > 1 || showAllMode
   const themeIdx = allThemes.findIndex(function(t) { return t.id === activeThemes[0].id })
   const pal = themeColors[themeIdx] || THEME_PALETTE[0]
@@ -511,17 +512,19 @@ export default function CommentsPanel({
   }
 
   // Sentinel element at the bottom of the list — IntersectionObserver loads more when visible
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   useEffect(function() {
     var el = sentinelRef.current
-    if (!el) return
+    var root = scrollContainerRef.current
+    if (!el || !root) return
     var observer = new IntersectionObserver(
       function(entries) {
         if (entries[0].isIntersecting) {
           setVisibleCount(function(n) { return n + 50 })
         }
       },
-      { threshold: 0.1 }
+      { root: root, threshold: 0.1 }
     )
     observer.observe(el)
     return function() { observer.disconnect() }
@@ -794,7 +797,7 @@ export default function CommentsPanel({
       })()}
 
       {/* Comments list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
+      <div ref={scrollContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
         {matched.length === 0 && (
           <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
             No responses matched this theme.
