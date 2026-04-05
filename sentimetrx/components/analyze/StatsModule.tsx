@@ -1640,7 +1640,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
                 {' '}Worst-case ±{moePct}% at {confidenceLevel}% CI.
                 <span
                   style={{ marginLeft: 8, color: '#2563eb', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}
-                  onClick={refreshRows}
+                  onClick={function() { window.scrollTo({ top: 0, behavior: 'smooth' }) }}
                 >
                   Change sample
                 </span>
