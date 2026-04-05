@@ -1466,7 +1466,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [activePanel, setActivePanel] = useState('descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
   var [confidenceLevel, setConfidenceLevel] = useState(95)
-  var [pendingCap, setPendingCap] = useState(10_000)
+  var [pendingCap, setPendingCap] = useState(385)  // ceil(1.96² × 100) — min for ±5% MOE at 95% CI
   var [pendingConfidence, setPendingConfidence] = useState(95)
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
@@ -1475,7 +1475,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var { filters } = useFilters()
 
   // 0 = load all rows (no cap). Any positive number = systematic sample cap.
-  var [sampleCap, setSampleCap] = useState(10_000)
+  var [sampleCap, setSampleCap] = useState(385)
 
   // Load rows whenever sampleCap changes and no data is loaded yet.
   useEffect(function() {
