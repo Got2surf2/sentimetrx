@@ -150,6 +150,18 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
 }
 function flByName(name: string, schema: SchemaField[]): string { var f = schema.find(function(s) { return s.field === name }); return f ? fl(f) : name }
 
+// Returns xaxis overrides that prevent categorical label overlap on vertical bar / waterfall / crosstab.
+// Rotates -45° when label density warrants it; uses smaller font for dense charts.
+function catXAxis(cats: string[]): Record<string, any> {
+  var maxLen = cats.reduce(function(mx, c) { return Math.max(mx, String(c).length) }, 0)
+  var needsRotate = cats.length >= 5 || (cats.length >= 3 && maxLen > 10)
+  if (!needsRotate) return {}
+  return {
+    tickangle: maxLen > 18 ? -60 : -45,
+    tickfont: { size: cats.length > 10 ? 10 : 11 },
+  }
+}
+
 function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; style?: React.CSSProperties }) {
   var ref = useRef<HTMLDivElement>(null)
   useEffect(function() {
@@ -228,7 +240,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     else { trace.x = cats; trace.y = displayVals }
 
     var isCount = opts?.barMode !== 'percent'
-    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0, ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
+    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, ...(!isH ? catXAxis(cats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
   }
 
   if (chartType === 'distribution') {
@@ -303,7 +315,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
     var measures: string[] = wValues.map(function() { return 'relative' }).concat(['total'])
     wValues.push(total)
-    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: primaryColor } } }]} layout={{ margin: { t: 12, r: 16, b: 48, l: 56 }, showlegend: false }} />
+    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: primaryColor } } }]} layout={{ xaxis: { ...catXAxis(wLabels) }, margin: { t: 12, r: 16, b: 48, l: 56 }, showlegend: false }} />
   }
 
   if (chartType === 'bullet') {
@@ -468,7 +480,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
   var isStackedCount = barMode !== 'percent'
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, tickangle: !isH && cats.length > 8 ? -35 : 0, ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(cats) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
@@ -777,7 +789,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   var rArr = smartOrder(Array.from(rSet), rowFieldObj?.remapping)
   var cArr = smartOrder(Array.from(cSet), colFieldObj?.remapping)
   var z = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
-  return <PlotlyChart traces={[{ type: 'heatmap', x: cArr, y: rArr, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
+  return <PlotlyChart traces={[{ type: 'heatmap', x: cArr, y: rArr, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema), ...catXAxis(cArr) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
 }
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {
