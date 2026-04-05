@@ -1616,6 +1616,11 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
   var hasThemes = !!(themeModel && themeModel.themes && themeModel.themes.length > 0)
 
+  var schemaOpenFields = useMemo(function() { return schema.fields.filter(function(f) { return f.type === 'open-ended' }) }, [schema.fields])
+  var [themeSourceField, setThemeSourceField] = useState(function() { return (themeModel && themeModel.fieldName) || schema.fields.find(function(f) { return f.type === 'open-ended' })?.field || '' })
+  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(null)
+  var [themeEnrichKey, setThemeEnrichKey] = useState(0)
+
   var filteredData = useMemo(function() {
     return applyFilters(rows, filters)
   }, [rows, filters])
@@ -1625,7 +1630,8 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
     var mappedFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
     if (!hasThemes && mappedFields.length === 0) return filteredData
     if (filteredData.length === 0) return filteredData
-    var openField = hasThemes ? (themeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
+    var openField = hasThemes ? (themeSourceField || themeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
+    var activeThemes = hasThemes ? (activeThemeNames ? themeModel.themes.filter(function(t: any) { return (activeThemeNames as Set<string>).has(t.name || t.label) }) : themeModel.themes) : []
     return filteredData.map(function(row) {
       var enriched = Object.assign({}, row)
       if (hasThemes && openField) {
@@ -1634,14 +1640,14 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           enriched['__themes__'] = ''
         } else {
           var bestTheme = '', bestCount = 0
-          themeModel.themes.forEach(function(t: any) {
+          activeThemes.forEach(function(t: any) {
             var hits = 0
             ;(t.keywords || []).forEach(function(kw: string) {
               if (text.includes(kw.toLowerCase())) hits++
             })
             if (hits > bestCount) { bestCount = hits; bestTheme = t.name }
           })
-          enriched['__themes__'] = bestTheme || 'Unclassified'
+          enriched['__themes__'] = bestTheme  // '' when unclassified — excluded from groupings
         }
       }
       mappedFields.forEach(function(f) {
@@ -1651,7 +1657,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
       })
       return enriched
     })
-  }, [filteredData, hasThemes, allSchemaFields, themeModel])
+  }, [filteredData, hasThemes, allSchemaFields, themeModel, themeSourceField, activeThemeNames, themeEnrichKey])
 
   var mappedFields = useMemo(function() {
     return allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
@@ -1772,6 +1778,61 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
             var needsNum = true
             var needsCat = activePanel === 'grouptests' || activePanel === 'insights' || activePanel === 'outliers'
             return <FieldSidebarGroups fields={[...(needsNum ? numFields : []), ...(needsCat ? catFields : [])]} T={T} fl={fl} diag={sidebarDiag} />
+          })()}
+
+          {/* Themes section — source picker + toggle chips */}
+          {hasThemes && (function() {
+            var allThemesList: any[] = themeModel.themes || []
+            return (
+              <div style={{ borderTop: '1px solid ' + T.border }}>
+                <div style={{ padding: '8px 12px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.purple, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6 }}>
+                    {'\uD83C\uDFF7'} Themes
+                  </div>
+                  {schemaOpenFields.length > 1 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 3 }}>Source verbatim:</div>
+                      <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setThemeEnrichKey(function(k) { return k + 1 }) }}
+                        style={{ width: '100%', padding: '5px 8px', fontSize: 11, border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.textMid, outline: 'none', cursor: 'pointer' }}>
+                        {schemaOpenFields.map(function(f) { return <option key={f.field} value={f.field}>{f.label || f.field}</option> })}
+                      </select>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontSize: 10, color: T.textFaint }}>Filter themes:</span>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      <button onClick={function() { setActiveThemeNames(null); setThemeEnrichKey(function(k) { return k + 1 }) }}
+                        style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>All</button>
+                      <button onClick={function() { setActiveThemeNames(new Set()); setThemeEnrichKey(function(k) { return k + 1 }) }}
+                        style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>None</button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                    {allThemesList.map(function(t: any) {
+                      var name = t.name || t.label
+                      var isActive = !activeThemeNames || activeThemeNames.has(name)
+                      var color = t.color || T.accent
+                      return (
+                        <button key={name} onClick={function() {
+                          var next: Set<string>
+                          if (!activeThemeNames) {
+                            next = new Set(allThemesList.map(function(x: any) { return x.name || x.label }).filter(function(n: string) { return n !== name }))
+                          } else {
+                            next = new Set(activeThemeNames)
+                            if (next.has(name)) next.delete(name); else next.add(name)
+                          }
+                          setActiveThemeNames(next.size === allThemesList.length ? null : next)
+                          setThemeEnrichKey(function(k) { return k + 1 })
+                        }}
+                        style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, border: '1px solid ' + (isActive ? color : T.border), background: isActive ? color + '22' : 'transparent', color: isActive ? color : T.textFaint, cursor: 'pointer', fontWeight: isActive ? 600 : 400, transition: 'all .1s' }}>
+                          {name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )
           })()}
         </div>
 

@@ -415,40 +415,60 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
 
 // ─── Chart sub-components that need raw rows ──────────────────────────────
 
-// Module-level enrichment context — set by ChartsModule, read by useRows
-var _enrichCtx: { themeModel?: any; schema?: SchemaConfig } = {}
+// Module-level enrichment context — set by ChartsModule, read by useRows + enrichRows
+var _enrichCtx: {
+  themeModel?: any; schema?: SchemaConfig
+  enrichKey?: number           // incremented when source/filter changes → triggers re-enrichment
+  themeSourceOverride?: string // overrides themeModel.fieldName
+  activeThemeNames?: Set<string> | null  // null = all active
+} = {}
 
-function useRows(datasetId: string) {
+// Raw-row cache keyed by datasetId — survives re-renders so re-enrichment doesn't re-fetch
+var _rawRowsCache: Record<string, Record<string, unknown>[]> = {}
+
+function useRows(datasetId: string, enrichKey: number = 0) {
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [loaded, setLoaded] = useState(false)
   var [loading, setLoading] = useState(false)
   useEffect(function() {
-    if (loaded || loading) return; setLoading(true)
+    if (_rawRowsCache[datasetId]) {
+      // Already fetched — just re-enrich with updated context
+      setRows(enrichRows(_rawRowsCache[datasetId]))
+      setLoaded(true)
+      return
+    }
+    if (loading) return
+    setLoading(true)
     fetch('/api/datasets/' + datasetId + '/rows?all=true')
       .then(function(r) { return r.json() })
       .then(function(data) {
-        var allRows = data.rows || []
-        var enriched = enrichRows(allRows, _enrichCtx.themeModel, _enrichCtx.schema)
-        setRows(enriched); setLoaded(true); setLoading(false)
+        _rawRowsCache[datasetId] = data.rows || []
+        setRows(enrichRows(_rawRowsCache[datasetId]))
+        setLoaded(true); setLoading(false)
       }).catch(function() { setLoading(false) })
-  }, [datasetId])
+  }, [datasetId, enrichKey])
   return { rows: rows, loaded: loaded, loading: loading }
 }
 
-function enrichRows(rows: Record<string, unknown>[], themeModel?: any, schema?: SchemaConfig): Record<string, unknown>[] {
+// Reads source field, active themes, and mapped fields from _enrichCtx
+function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  var themeModel = _enrichCtx.themeModel
+  var schema = _enrichCtx.schema
   if (!rows.length) return rows
-  var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+  var hasThemes = !!(themeModel && themeModel.themes && themeModel.themes.length > 0)
   var mappedFields = (schema?.fields || []).filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
   if (!hasThemes && !mappedFields.length) return rows
 
-  // Build theme lookup
-  var themes = hasThemes ? themeModel.themes : []
-  var openField = hasThemes ? (themeModel.fieldName || (schema?.fields || []).find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
+  var allThemes: any[] = hasThemes ? themeModel.themes : []
+  var activeNames = _enrichCtx.activeThemeNames  // null = all themes shown
+  var themes = activeNames ? allThemes.filter(function(t: any) { return activeNames!.has(t.name || t.label) }) : allThemes
+  var openField = hasThemes
+    ? (_enrichCtx.themeSourceOverride || themeModel.fieldName || (schema?.fields || []).find(function(f: any) { return f.type === 'open-ended' })?.field || '')
+    : ''
 
   return rows.map(function(row) {
     var enriched = Object.assign({}, row)
 
-    // Inject __themes__ — primary matching theme
     if (hasThemes && openField) {
       var text = String(row[openField] || '').toLowerCase()
       if (!text.trim()) {
@@ -460,13 +480,12 @@ function enrichRows(rows: Record<string, unknown>[], themeModel?: any, schema?: 
           ;(t.keywords || []).forEach(function(kw: string) {
             if (text.includes(kw.toLowerCase())) hits++
           })
-          if (hits > bestCount) { bestCount = hits; bestTheme = t.name }
+          if (hits > bestCount) { bestCount = hits; bestTheme = t.name || t.label }
         })
-        enriched['__themes__'] = bestTheme || 'Unclassified'
+        enriched['__themes__'] = bestTheme  // '' when unclassified — excluded from groupings
       }
     }
 
-    // Inject __mapped_FieldName__ — numeric value from categorical remapping
     mappedFields.forEach(function(f) {
       var catVal = String(row[f.field] || '')
       var numVal = f.remapping![catVal]
@@ -478,7 +497,7 @@ function enrichRows(rows: Record<string, unknown>[], themeModel?: any, schema?: 
 }
 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var pal = colors || CHART_COLORS
 
@@ -627,7 +646,7 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: str
 }
 
 function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var pal = colors || CHART_COLORS
   var groups: Record<string, number[]> = {}
@@ -667,7 +686,7 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
 }
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
 
   var groups: Record<string, number[]> = {}
@@ -706,7 +725,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
 }
 
 function ScoreDriverInner({ datasetId, scoreField, schema, groupByField }: { datasetId: string; scoreField: string; schema: SchemaField[]; groupByField: string }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   var [minN, setMinN] = useState(3)
   var [sortBy, setSortBy] = useState<'delta' | 'count'>('delta')
 
@@ -834,7 +853,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField }: { dat
 }
 
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
@@ -847,7 +866,7 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
   rows.forEach(function(r) { var rv = String(r[rowField] || '').trim(), cv = String(r[colField] || '').trim(); if (!rv || !cv) return; rSet.add(rv); cSet.add(cv); if (!grid[rv]) grid[rv] = {}; grid[rv][cv] = (grid[rv][cv] || 0) + 1 })
@@ -860,7 +879,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
 }
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var grouped: Record<string, number[]> = {}
   rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
@@ -870,7 +889,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField 
 }
 
 function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string }) {
-  var { rows, loaded } = useRows(datasetId)
+  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
@@ -880,7 +899,7 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
 }
 
 function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; schema: SchemaField[]; datasetId: string }) {
-  var { rows: allRows, loaded } = useRows(datasetId)
+  var { rows: allRows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   var [page, setPage] = useState(0)
   var PAGE = 50
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
@@ -922,8 +941,13 @@ interface SavedChart { id: string; name: string; chartType: string; config: Reco
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function ChartsModule({ datasetId, schema, analytics, themeModel }: Props) {
+  var rawOpenFields = schema.fields.filter(function(f) { return f.type === 'open-ended' })
+  var [themeSourceField, setThemeSourceField] = useState(function() { return (themeModel && themeModel.fieldName) || rawOpenFields[0]?.field || '' })
+  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(null)
+  var [enrichKey, setEnrichKey] = useState(0)
+
   // Set enrichment context for useRows — must be before any inner component renders
-  _enrichCtx = { themeModel: themeModel, schema: schema }
+  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames }
 
   var [activeChart, setActiveChart] = useState('bar')
   var [hovered, setHovered] = useState<string | null>(null)
@@ -955,7 +979,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     var extraSummaries: Record<string, any> = {}
     if (hasThemes) {
       var themeCounts: Record<string, number> = {}
-      themeModel.themes.forEach(function(t: any) { themeCounts[t.name] = t.count || 0 })
+      themeModel.themes
+        .filter(function(t: any) { return !activeThemeNames || activeThemeNames.has(t.name || t.label) })
+        .forEach(function(t: any) { themeCounts[t.name] = t.count || 0 })
       extraSummaries['__themes__'] = { type: 'categorical', nonNull: analytics.totalRows, counts: themeCounts, topN: Object.keys(themeCounts) }
     }
     // Build summaries for mapped numeric fields from categorical counts + remapping
@@ -1233,6 +1259,61 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
             <div style={{ fontSize: 10, fontWeight: 800, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Fields</div>
             <div style={{ fontSize: 10, color: T.textFaint, fontStyle: 'italic', marginTop: 2 }}>Drag to slot or use dropdown below</div>
           </div>
+
+          {/* Themes section — source picker + toggle chips */}
+          {hasThemes && (function() {
+            var allThemesList: any[] = themeModel.themes || []
+            return (
+              <div style={{ borderBottom: '1px solid ' + T.border }}>
+                <div style={{ padding: '8px 12px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.purple, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6 }}>
+                    {'\uD83C\uDFF7'} Themes
+                  </div>
+                  {rawOpenFields.length > 1 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 3 }}>Source verbatim:</div>
+                      <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setEnrichKey(function(k) { return k + 1 }) }}
+                        style={{ width: '100%', padding: '5px 8px', fontSize: 11, border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.textMid, outline: 'none', cursor: 'pointer' }}>
+                        {rawOpenFields.map(function(f) { return <option key={f.field} value={f.field}>{f.label || f.field}</option> })}
+                      </select>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontSize: 10, color: T.textFaint }}>Filter themes:</span>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      <button onClick={function() { setActiveThemeNames(null); setEnrichKey(function(k) { return k + 1 }) }}
+                        style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>All</button>
+                      <button onClick={function() { setActiveThemeNames(new Set()); setEnrichKey(function(k) { return k + 1 }) }}
+                        style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>None</button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                    {allThemesList.map(function(t: any) {
+                      var name = t.name || t.label
+                      var isActive = !activeThemeNames || activeThemeNames.has(name)
+                      var color = t.color || T.accent
+                      return (
+                        <button key={name} onClick={function() {
+                          var next: Set<string>
+                          if (!activeThemeNames) {
+                            next = new Set(allThemesList.map(function(x: any) { return x.name || x.label }).filter(function(n: string) { return n !== name }))
+                          } else {
+                            next = new Set(activeThemeNames)
+                            if (next.has(name)) next.delete(name); else next.add(name)
+                          }
+                          setActiveThemeNames(next.size === allThemesList.length ? null : next)
+                          setEnrichKey(function(k) { return k + 1 })
+                        }}
+                        style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, border: '1px solid ' + (isActive ? color : T.border), background: isActive ? color + '22' : 'transparent', color: isActive ? color : T.textFaint, cursor: 'pointer', fontWeight: isActive ? 600 : 400, transition: 'all .1s' }}>
+                          {name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Field groups — filtered to types accepted by the current chart's slots */}
           {(function() {
