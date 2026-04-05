@@ -278,14 +278,18 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     // Smart axes: order by remapping, then detected scale, then alphabetical (Item 20)
     var catFieldObj = schema.find(function(f) { return f.field === catField })
     var catRemap = catFieldObj?.remapping
-    var orderedKeys = useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] }), catRemap) : rawEntries.map(function(e) { return e[0] }).sort()
+    // Themes: always sort by frequency descending; other fields: smart axes or alphabetical
+    var orderedKeys = catField === '__themes__'
+      ? rawEntries.slice().sort(function(a, b) { return (b[1] as number) - (a[1] as number) }).map(function(e) { return e[0] })
+      : (useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] }), catRemap) : rawEntries.map(function(e) { return e[0] }).sort())
     var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
     var cats = entries.map(function(e) { return e[0] })
     var vals = entries.map(function(e) { return e[1] })
     var totalCount = vals.reduce(function(a, b) { return a + b }, 0)
-    var displayVals = opts?.barMode === 'percent' ? vals.map(function(v) { return totalCount > 0 ? Math.round(v / totalCount * 1000) / 10 : 0 }) : vals
+    var isPercent = opts?.barMode === 'percent'
+    var displayVals = isPercent ? vals.map(function(v) { return totalCount > 0 ? Math.round(v / totalCount * 1000) / 10 : 0 }) : vals
     var catLabel = flByName(catField, schema)
-    var yTitle = opts?.barMode === 'percent' ? '% of ' + catLabel : 'Count'
+    var yTitle = isPercent ? '% of ' + catLabel : 'Count'
     var isH = opts?.orient === 'h'
 
     // Stacked/grouped with colorBy
@@ -294,7 +298,10 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       return <BarStackedInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} colorByField={colorByField} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
     }
 
-    var trace: any = { type: 'bar', marker: { color: primaryColor, line: { color: primaryColor + '40', width: 1 } }, text: displayVals.map(function(v) { return String(opts?.barMode === 'percent' ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<extra>%{' + (isH ? 'y' : 'x') + '}</extra>' }
+    var hoverTpl = isH
+      ? (isPercent ? '%{x:.1f}%<extra>%{y}</extra>' : '%{x}<extra>%{y}</extra>')
+      : (isPercent ? '%{y:.1f}%<extra>%{x}</extra>' : '%{y}<extra>%{x}</extra>')
+    var trace: any = { type: 'bar', marker: { color: primaryColor, line: { color: primaryColor + '40', width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: hoverTpl }
     if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = displayVals }
 
@@ -541,19 +548,24 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
   }
   cats = cats.slice(0, 30)
-  var colorArr = Array.from(colorVals).sort()
+  // Order color (stack/group) values by frequency descending — for themes this gives natural order
+  var colorArr = Array.from(colorVals).sort(function(a, b) { return (colorTotals[b] || 0) - (colorTotals[a] || 0) })
 
   var isH = orient === 'h'
+  var isBarPercent = barMode === 'percent'
   var traces = colorArr.map(function(col, i) {
     var ys = cats.map(function(cat) { return grid[cat] ? (grid[cat][col] || 0) : 0 })
-    if (barMode === 'percent') {
+    if (isBarPercent) {
       ys = cats.map(function(cat) {
         var total = Object.values(grid[cat] || {}).reduce(function(s, v) { return s + v }, 0)
         return total > 0 ? Math.round((grid[cat] ? (grid[cat][col] || 0) : 0) / total * 1000) / 10 : 0
       })
     }
     var colPct = colorGrandTotal > 0 ? Math.round((colorTotals[col] || 0) / colorGrandTotal * 100) : 0
-    var trace: any = { type: 'bar', name: col + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: '%{' + (isH ? 'x' : 'y') + '}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' }
+    var stackHoverTpl = isH
+      ? (isBarPercent ? '%{x:.1f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
+      : (isBarPercent ? '%{y:.1f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
+    var trace: any = { type: 'bar', name: col + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: stackHoverTpl }
     if (isH) { trace.y = cats; trace.x = ys; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = ys }
     return trace
@@ -670,6 +682,8 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
     keys = splitFieldObj.values.filter(function(k) { return groups[k] })
     var extrasSplit2 = Object.keys(groups).filter(function(k) { return !splitFieldObj!.values!.includes(k) }).sort()
     keys = keys.concat(extrasSplit2)
+  } else if (splitByField === '__themes__') {
+    keys = Object.keys(groups).sort(function(a, b) { return groups[b].length - groups[a].length })
   } else {
     keys = smartOrder(Object.keys(groups))
   }
