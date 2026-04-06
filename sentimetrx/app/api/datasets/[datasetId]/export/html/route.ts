@@ -357,38 +357,81 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
   </section>`
 }
 
-function buildThemeDetailSlides(themes: any[], fieldLabel: string): string[] {
+function buildThemeDetailSlides(
+  themes: any[], fieldLabel: string,
+  allRows: Record<string,any>[], rowKeyMap: Record<string,string>, fieldKeys: string[]
+): string[] {
   if (!themes?.length) return []
+
+  function matchesTheme(text: string, keywords: string[]): boolean {
+    if (!keywords?.length) return false
+    const lower = text.toLowerCase()
+    return keywords.some(kw => {
+      const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(lower)
+    })
+  }
+
+  function getComments(t: any): string[] {
+    if (!allRows?.length) return []
+    const keys = fieldKeys.map(fk => {
+      const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      return rowKeyMap[norm] || fk
+    })
+    const matched: string[] = []
+    for (const row of allRows) {
+      const text = keys.map(k => String(row[k] || '')).join(' ').trim()
+      if (text.length < 80) continue
+      if (matchesTheme(text, t.keywords || [])) matched.push(text)
+    }
+    matched.sort((a, b) => b.length - a.length)
+    const pool = matched.slice(0, Math.min(matched.length, 40))
+    const n = Math.min(5, pool.length)
+    if (n === 0) return []
+    const step = pool.length / n
+    return Array.from({ length: n }, (_, i) => pool[Math.floor(i * step)])
+      .map(s => trimNatural(s, 350))
+  }
+
   const total = themes.length
   return themes.map((t: any, tidx: number) => {
     manifest.push({ title: t.name || 'Theme', icon: '🏷️', section: fieldLabel })
     const themeColor = t.color || DN.teal
     const sent       = t.sentiment || ''
     const pctVal     = Math.round(t.percentage || 0)
+    const comments   = getComments(t)
 
     const sentBadge = sent
       ? `<span style="display:inline-block;padding:3px 12px;border-radius:4px;font-size:11px;font-weight:700;background:${sent==='positive'?'#f0fdf4':sent==='negative'?'#fef2f2':sent==='mixed'?'#fffbeb':'#f4f7f8'};color:${sent==='positive'?'#15803d':sent==='negative'?'#b91c1c':sent==='mixed'?'#92400e':DN.slateDk};border:1px solid currentColor">${sent.charAt(0).toUpperCase()+sent.slice(1)}</span>`
       : ''
 
-    const kwHtml = (t.keywords||[]).slice(0,8).map((k: string) =>
+    const kwHtml = (t.keywords||[]).slice(0,6).map((k: string) =>
       `<span style="display:inline-block;padding:3px 10px;margin:0 5px 5px 0;background:${DN.slateCard};border:1px solid ${DN.divider};border-radius:3px;font-size:10px;color:${DN.slateDk}">${esc(k)}</span>`).join('')
+
+    const quotesHtml = comments.length > 0
+      ? comments.map(q => `<blockquote class="quote-card">${esc(q)}</blockquote>`).join('')
+      : `<p style="font-size:11px;color:${DN.slate};font-style:italic;padding:8px 0">No verbatim responses matched this theme.</p>`
 
     const subtitle = `AI-identified theme  ·  ${tidx+1} of ${total}  ·  from: ${fieldLabel}`
     return `<section>
       <div style="position:absolute;top:0;left:0;right:0;height:5px;background:${themeColor}"></div>
       ${slideHeader(t.name || 'Theme', subtitle)}
-      <div class="slide-body" style="padding:16px 40px 16px 32px;display:flex;flex-direction:column;gap:16px">
-        <div style="display:flex;align-items:center;gap:12px">${sentBadge}</div>
-        ${t.description ? `<p style="font-size:13px;color:${DN.slateDk};font-style:italic;margin:0;line-height:1.6;max-width:720px">${esc(t.description)}</p>` : ''}
-        <div style="flex-wrap:wrap">${kwHtml}</div>
-        <div style="border-top:1px solid ${DN.divider};padding-top:14px;display:flex;align-items:flex-end;gap:24px">
-          <div>
-            <div style="font-size:32px;font-weight:700;color:${themeColor};line-height:1">${pctVal}%</div>
-            <div style="font-size:11px;color:${DN.slateDk};margin-top:4px">${t.count ? t.count.toLocaleString() + ' responses' : ''}</div>
+      <div class="slide-body two-col">
+        <div style="flex:0.8;display:flex;flex-direction:column;gap:10px;padding:8px 16px 8px 28px;border-right:1px solid ${DN.divider}">
+          <div>${sentBadge}</div>
+          ${t.description ? `<p style="font-size:11px;color:${DN.slateDk};font-style:italic;margin:0;line-height:1.55">${esc(t.description)}</p>` : ''}
+          <div style="flex-wrap:wrap">${kwHtml}</div>
+          <div style="margin-top:auto;border-top:1px solid ${DN.divider};padding-top:10px">
+            <div style="font-size:28px;font-weight:700;color:${themeColor};line-height:1">${pctVal}%</div>
+            <div style="font-size:10px;color:${DN.slateDk};margin-top:3px">${t.count ? t.count.toLocaleString() + ' responses' : ''}</div>
+            <div style="height:6px;background:${DN.slateCard};border-radius:3px;margin-top:8px;overflow:hidden">
+              <div style="height:100%;width:${pctVal}%;background:${themeColor};border-radius:3px"></div>
+            </div>
           </div>
-          <div style="flex:1;height:8px;background:${DN.slateCard};border-radius:4px;overflow:hidden;margin-bottom:4px">
-            <div style="height:100%;width:${pctVal}%;background:${themeColor};border-radius:4px"></div>
-          </div>
+        </div>
+        <div style="flex:1.2;display:flex;flex-direction:column;gap:6px;padding:8px 24px 8px 14px;overflow:hidden">
+          <div class="section-label" style="color:${DN.slateDk}">VOICES FROM THIS THEME</div>
+          <div style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px">${quotesHtml}</div>
         </div>
       </div>
     </section>`
@@ -823,7 +866,7 @@ export async function POST(req: Request, { params }: Params) {
     if (s) slides.push(s)
     // After each open-ended slide, add per-theme detail slides
     if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
-      buildThemeDetailSlides(sortedThemes, f.label).forEach(ts => slides.push(ts))
+      buildThemeDetailSlides(sortedThemes, f.label, allRows, rowKeyMap, [f.field]).forEach(ts => slides.push(ts))
     }
   }
 

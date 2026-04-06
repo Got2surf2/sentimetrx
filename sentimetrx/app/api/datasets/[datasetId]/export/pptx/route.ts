@@ -1182,8 +1182,106 @@ function buildCommentsSlide(
 function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s === 'negative' ? DN.redLight  : s === 'mixed' ? DN.amberLight : DN.slateLight }
 function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
 
-function buildThemeSlides(datasetName: string, themes: any[], fieldLabel?: string) {
+// Compact grid overview: multiple themes per page (summary before the per-theme detail slides)
+function buildThemeGridSlides(datasetName: string, themes: any[], fieldLabel?: string) {
   if (!themes || themes.length === 0) return
+  function chooseGrid(n: number) {
+    if (n <= 2) return { perPage: 2, cols: 2, rows: 1 }
+    if (n <= 4) return { perPage: 4, cols: 2, rows: 2 }
+    if (n <= 6) return { perPage: 6, cols: 3, rows: 2 }
+    return { perPage: 8, cols: 4, rows: 2 }
+  }
+  const { perPage, cols, rows } = chooseGrid(themes.length)
+  const gapX  = 0.16, gapY = 0.18
+  const cardW = (W - PAD * 2 - gapX * (cols - 1)) / cols
+  const cardH = (CH - gapY * (rows - 1)) / rows
+  const totalPages = Math.ceil(themes.length / perPage)
+  for (let pg = 0; pg < totalPages; pg++) {
+    const pageThemes = themes.slice(pg * perPage, (pg + 1) * perPage)
+    const slide = pptx.addSlide('NUMBERED')
+    bg(slide, pptx)
+    const pgTag = totalPages > 1 ? '  ·  ' + (pg + 1) + ' of ' + totalPages : ''
+    hdr(slide, pptx, 'Theme Analysis', DN.tealDark,
+      (fieldLabel ? 'AI-identified themes from: ' + fieldLabel : 'AI-identified themes from verbatim responses') + pgTag)
+    logo(slide)
+    pageThemes.forEach(function(t: any, i: number) {
+      const col = i % cols, row = Math.floor(i / cols)
+      const cx  = PAD + col * (cardW + gapX)
+      const cy  = CY  + row * (cardH + gapY)
+      const themeColor = (t.color || DN.teal).replace('#', '')
+      rect(slide, cx, cy, cardW, cardH, DN.white, 0.07, themeColor)
+      solidRect(slide, cx, cy, cardW, 0.07, themeColor)
+      const sent = t.sentiment || ''
+      if (sent) {
+        const sw = 0.8
+        rect(slide, cx + cardW - sw - 0.08, cy + 0.12, sw, 0.22, themeSentBg(sent), 0.5, themeSentFg(sent))
+        slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), { x: cx + cardW - sw - 0.08, y: cy + 0.12, w: sw, h: 0.22, fontSize: 7.5, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle' })
+      }
+      const nameH = cardH <= 2.0 ? 0.30 : 0.40
+      slide.addText(t.name || '', { x: cx + 0.14, y: cy + 0.14, w: cardW - (sent ? 1.0 : 0.28), h: nameH, fontSize: cardH <= 2.0 ? 10 : 12, bold: true, color: DN.navy, valign: 'top', wrap: true })
+      const descY = cy + 0.14 + nameH + 0.04
+      const descH = cardH <= 2.0 ? 0.40 : 0.58
+      if (t.description) slide.addText(t.description, { x: cx + 0.14, y: descY, w: cardW - 0.28, h: descH, fontSize: 8, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
+      const keywords: string[] = (t.keywords || []).slice(0, 3)
+      const kwY = descY + descH + 0.04; let kwX = cx + 0.14
+      keywords.forEach(function(k: string) {
+        const kw = k.length * 0.054 + 0.16
+        if (kwX + kw > cx + cardW - 0.06) return
+        rect(slide, kwX, kwY, kw, 0.18, DN.slateLight, 0.5, DN.divider)
+        slide.addText(k, { x: kwX + 0.05, y: kwY, w: kw - 0.10, h: 0.18, fontSize: 7, color: DN.slateDark, valign: 'middle', wrap: false })
+        kwX += kw + 0.05
+      })
+      const barY    = cy + cardH - (cardH <= 2.0 ? 0.44 : 0.50)
+      const pctVal  = Math.round(t.percentage || 0)
+      solidRect(slide, cx + 0.10, barY - 0.05, cardW - 0.20, 0.008, DN.divider)
+      if (t.count) slide.addText(t.count.toLocaleString() + ' responses', { x: cx + 0.14, y: barY, w: cardW * 0.55, h: 0.22, fontSize: 8, color: DN.slateDark, valign: 'middle' })
+      if (pctVal)  slide.addText(pctVal + '%', { x: cx + cardW * 0.55, y: barY - 0.02, w: cardW * 0.38, h: 0.28, fontSize: 14, bold: true, color: themeColor, align: 'right', valign: 'middle' })
+      const fill = Math.min(1, pctVal / 100)
+      solidRect(slide, cx + 0.14, cy + cardH - 0.14, cardW - 0.28, 0.06, DN.slateLight)
+      if (fill > 0) solidRect(slide, cx + 0.14, cy + cardH - 0.14, (cardW - 0.28) * fill, 0.06, themeColor)
+    })
+    footer(slide, datasetName)
+  }
+}
+
+function buildThemeSlides(
+  datasetName: string, themes: any[], fieldLabel?: string,
+  allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[]
+) {
+  if (!themes || themes.length === 0) return
+
+  // Keyword matcher
+  function matchesTheme(text: string, keywords: string[]): boolean {
+    if (!keywords?.length) return false
+    const lower = text.toLowerCase()
+    return keywords.some(function(kw) {
+      const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(lower)
+    })
+  }
+
+  // Pick 5 evenly-spread responses that match the theme and are substantive
+  function getComments(t: any): string[] {
+    if (!allRows?.length || !rowKeyMap || !fieldKeys?.length) return []
+    const keys = fieldKeys.map(fk => {
+      const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      return rowKeyMap[norm] || fk
+    })
+    const matched: string[] = []
+    for (const row of allRows) {
+      const text = keys.map(k => String(row[k] || '')).join(' ').trim()
+      if (text.length < 80) continue
+      if (matchesTheme(text, t.keywords || [])) matched.push(text)
+    }
+    // Prefer longer responses; sort descending by length then evenly sample 5
+    matched.sort((a, b) => b.length - a.length)
+    const pool = matched.slice(0, Math.min(matched.length, 40)) // top-40 longest
+    const n = Math.min(5, pool.length)
+    if (n === 0) return []
+    const step = pool.length / n
+    return Array.from({ length: n }, (_, i) => pool[Math.floor(i * step)])
+      .map(s => trimNatural(s, 350))
+  }
 
   const totalThemes = themes.length
   themes.forEach(function(t: any, tidx: number) {
@@ -1195,67 +1293,78 @@ function buildThemeSlides(datasetName: string, themes: any[], fieldLabel?: strin
     hdr(slide, pptx, 'Theme Analysis', DN.tealDark, themeSubtitle)
     logo(slide)
 
-    const themeColor  = (t.color || DN.teal).replace('#', '')
-    const fullW = W - PAD * 2
+    const themeColor = (t.color || DN.teal).replace('#', '')
+    const leftW  = W * 0.38 - PAD
+    const rightX = PAD + leftW + 0.24
+    const rightW = W - rightX - PAD * 0.5
     const lx = PAD
     const ly = CY
 
-    // Colored accent bar full width
-    solidRect(slide, lx, ly, fullW, 0.06, themeColor)
+    // ── LEFT: metadata ───────────────────────────────────────────────────────
+    solidRect(slide, lx, ly, leftW, 0.06, themeColor)
 
-    // Theme name
     slide.addText(t.name || '', {
-      x: lx, y: ly + 0.12, w: fullW * 0.7, h: 0.52,
-      fontSize: 22, bold: true, color: DN.navy, valign: 'top', wrap: true,
+      x: lx, y: ly + 0.12, w: leftW, h: 0.52,
+      fontSize: 18, bold: true, color: DN.navy, valign: 'top', wrap: true,
     })
 
-    // Sentiment badge
     const sent = t.sentiment || ''
     if (sent) {
-      const sentW = 1.1
-      rect(slide, lx + fullW - sentW, ly + 0.14, sentW, 0.28, themeSentBg(sent), 0.5, themeSentFg(sent))
+      const sentW = 1.0
+      rect(slide, lx, ly + 0.70, sentW, 0.26, themeSentBg(sent), 0.5, themeSentFg(sent))
       slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), {
-        x: lx + fullW - sentW, y: ly + 0.14, w: sentW, h: 0.28,
-        fontSize: 10, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
+        x: lx, y: ly + 0.70, w: sentW, h: 0.26,
+        fontSize: 9, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
       })
     }
 
-    // Description — wider area now
     if (t.description) {
       slide.addText(t.description, {
-        x: lx, y: ly + 0.78, w: fullW * 0.72, h: 1.1,
-        fontSize: 11, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.4,
+        x: lx, y: ly + 1.08, w: leftW, h: 1.0,
+        fontSize: 10, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.4,
       })
     }
 
-    // Keywords pills — up to 8 across full width
-    const keywords: string[] = (t.keywords || []).slice(0, 8)
-    const kwStartY = ly + 2.02
+    const keywords: string[] = (t.keywords || []).slice(0, 6)
+    const kwStartY = ly + 2.18
     let kwX = lx; let kwRow = 0
     keywords.forEach(function(k: string) {
-      const kw = k.length * 0.060 + 0.22
-      if (kwX + kw > lx + fullW * 0.85) { kwX = lx; kwRow++ }
+      const kw = k.length * 0.058 + 0.20
+      if (kwX + kw > lx + leftW) { kwX = lx; kwRow++ }
       if (kwRow > 1) return
-      rect(slide, kwX, kwStartY + kwRow * 0.30, kw, 0.24, DN.slateLight, 0.5, DN.divider)
-      slide.addText(k, { x: kwX + 0.08, y: kwStartY + kwRow * 0.30, w: kw - 0.16, h: 0.24, fontSize: 8.5, color: DN.slateDark, valign: 'middle', wrap: false })
-      kwX += kw + 0.08
+      rect(slide, kwX, kwStartY + kwRow * 0.28, kw, 0.22, DN.slateLight, 0.5, DN.divider)
+      slide.addText(k, { x: kwX + 0.07, y: kwStartY + kwRow * 0.28, w: kw - 0.14, h: 0.22, fontSize: 7.5, color: DN.slateDark, valign: 'middle', wrap: false })
+      kwX += kw + 0.07
     })
 
-    // Divider + stats row
-    const statsY = ly + 2.76
-    solidRect(slide, lx, statsY, fullW, 0.012, DN.divider)
-
+    solidRect(slide, lx, ly + 2.82, leftW, 0.012, DN.divider)
     const pctVal = Math.round(t.percentage || 0)
     const countStr = t.count ? t.count.toLocaleString() + ' responses' : ''
-    if (countStr) {
-      slide.addText(countStr, { x: lx, y: statsY + 0.10, w: fullW * 0.55, h: 0.30, fontSize: 10, color: DN.slateDark, valign: 'middle' })
-    }
-    if (pctVal) {
-      slide.addText(pctVal + '%', { x: lx + fullW * 0.55, y: statsY + 0.04, w: fullW * 0.44, h: 0.44, fontSize: 26, bold: true, color: themeColor, align: 'right', valign: 'middle' })
-    }
+    if (countStr) slide.addText(countStr, { x: lx, y: ly + 2.88, w: leftW * 0.6, h: 0.28, fontSize: 9, color: DN.slateDark, valign: 'middle' })
+    if (pctVal)   slide.addText(pctVal + '%', { x: lx + leftW * 0.6, y: ly + 2.82, w: leftW * 0.38, h: 0.42, fontSize: 22, bold: true, color: themeColor, align: 'right', valign: 'middle' })
     const barFill = Math.min(1, pctVal / 100)
-    solidRect(slide, lx, statsY + 0.54, fullW, 0.10, DN.slateLight)
-    if (barFill > 0) solidRect(slide, lx, statsY + 0.54, fullW * barFill, 0.10, themeColor)
+    solidRect(slide, lx, ly + 3.28, leftW, 0.08, DN.slateLight)
+    if (barFill > 0) solidRect(slide, lx, ly + 3.28, leftW * barFill, 0.08, themeColor)
+
+    // ── RIGHT: verbatim comments ─────────────────────────────────────────────
+    solidRect(slide, rightX - 0.12, ly, 0.012, CH, DN.divider)
+    lbl(slide, 'VOICES FROM THIS THEME', rightX, ly, rightW)
+    solidRect(slide, rightX, ly + 0.22, rightW, 0.012, DN.divider)
+
+    const comments = getComments(t)
+    if (comments.length > 0) {
+      const availH = CH - 0.38
+      const qGap   = 0.08
+      const qh     = (availH - qGap * (comments.length - 1)) / comments.length
+      comments.forEach(function(q, i) {
+        quoteCard(slide, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, q)
+      })
+    } else {
+      slide.addText('No verbatim responses matched this theme.', {
+        x: rightX, y: ly + 0.6, w: rightW, h: 0.6,
+        fontSize: 11, color: DN.slate, italic: true, align: 'center', valign: 'middle',
+      })
+    }
 
     footer(slide, datasetName)
   })
@@ -1736,124 +1845,131 @@ export async function POST(req: Request, { params }: Params) {
     // 3: About this report
     buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience)
 
-    // 4: Theme slides — global block only when there is a single open-ended field;
-    //    when multiple open-ends are selected each gets its own themes slide after its own field slides.
-    const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
-    const multiOpenEnd = openEndedSelected.length > 1
-    if (includeThemeSlides && sortedThemes.length > 0 && !multiOpenEnd) {
-      buildThemeSlides(datasetName, sortedThemes)
-    }
-
     // ── Group fields by section ───────────────────────────────────────────
-    const coreFields   = selectedFields.filter(f => !f.section || f.section === 'core')
-    const psychoFields = selectedFields.filter(f => f.section === 'psychographic')
-    let demoFields   = selectedFields.filter(f => f.section === 'demographic')
-
-    // Reorder demographic fields: personal first (gender, age, race, household income), then address, then other
+    const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
+    const coreFields        = selectedFields.filter(f => !f.section || f.section === 'core')
+    const psychoFields      = selectedFields.filter(f => f.section === 'psychographic')
+    let   demoFields        = selectedFields.filter(f => f.section === 'demographic')
     const personalDemoOrder = ['gender', 'age', 'race', 'household_income', 'household income', 'income']
     const addressDemoFields = ['address', 'street', 'city', 'state', 'zip', 'postal_code', 'country']
-    const demoSortKey = (f: SelectedField): number => {
-      const fieldLower = f.field.toLowerCase().replace(/[_\s]/g, '_')
-      for (let i = 0; i < personalDemoOrder.length; i++) {
-        if (fieldLower.includes(personalDemoOrder[i].replace(/[_\s]/g, '_'))) return i
+    demoFields = demoFields.sort((a, b) => {
+      const key = (f: SelectedField) => {
+        const fl = f.field.toLowerCase().replace(/[_\s]/g, '_')
+        for (let i = 0; i < personalDemoOrder.length; i++) { if (fl.includes(personalDemoOrder[i].replace(/[_\s]/g, '_'))) return i }
+        if (addressDemoFields.some(af => fl.includes(af.replace(/[_\s]/g, '_')))) return 1000
+        return 2000
       }
-      if (addressDemoFields.some(af => fieldLower.includes(af.replace(/[_\s]/g, '_')))) return 1000
-      return 2000
-    }
-    demoFields = demoFields.sort((a, b) => demoSortKey(a) - demoSortKey(b))
+      return key(a) - key(b)
+    })
 
-    const renderField = (f: SelectedField) => {
-      const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-      if (f.type === 'open-ended') {
-        buildOpenEndedSlide(datasetName, f, ai, audience, themes)
-        // Comment slides — use commentConfig from request; default enabled=true, slides=2
-        const cfg         = commentConfig[f.field]
-        const cmtEnabled  = cfg ? cfg.enabled : true
-        const cmtSlides   = cfg ? Math.max(1, Math.min(3, cfg.slides)) : (audience === 'full' ? 3 : 2)
-        if (cmtEnabled) {
-          const perSlide    = 6
-          const maxComments = cmtSlides * perSlide
-          // Use commentAnnotations if provided, else fall back to all demo/psycho fields
-          const annotFields = commentAnnotations.length > 0
-            ? selectedFields.filter(sf => commentAnnotations.includes(sf.field))
-            : commentDemoFields
-          const resolvedKey = rowKeyMap[normalize(f.field)] || f.field
-          console.log('[pptx/comments] field:', f.field, '| resolved row key:', resolvedKey, '| sample value:', allRows.length > 0 ? String(allRows[0][resolvedKey] || '(empty)').slice(0, 80) : 'no rows')
-          const allCommentItems: CommentItem[] = allRows
-            .map(function(row) {
-              const text = rowVal(row, f.field)
-              const demos = annotFields
-                .map(function(df) { return { label: df.label, value: rowVal(row, df.field), section: df.section } })
-                .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
-              const colorValue = commentColorField ? rowVal(row, commentColorField) : undefined
-              return { text, demos, colorValue }
-            })
-            .filter(function(c) { return c.text.length > 8 })
-
-          // Sample with colorValue diversity: round-robin across distinct color groups
-          const commentItems: CommentItem[] = (function() {
-            if (!commentColorField) return allCommentItems.slice(0, maxComments)
-            const groups: Record<string, CommentItem[]> = {}
-            allCommentItems.forEach(function(c) {
-              const key = c.colorValue || '__none__'
-              if (!groups[key]) groups[key] = []
-              groups[key].push(c)
-            })
-            const buckets = Object.values(groups)
-            const result: CommentItem[] = []
-            let i = 0
-            while (result.length < maxComments) {
-              let added = false
-              for (let b = 0; b < buckets.length && result.length < maxComments; b++) {
-                if (buckets[b][i]) { result.push(buckets[b][i]); added = true }
-              }
-              if (!added) break
-              i++
-            }
-            return result
-          })()
-
-          console.log('[pptx/comments] field', f.field, '→', commentItems.length, 'comments extracted (from', allRows.length, 'rows)')
-          if (commentItems.length > 0) {
-            const numSlides = Math.ceil(commentItems.length / perSlide)
-            for (let si = 0; si < numSlides; si++) {
-              buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides)
-            }
+    // Helper: build comment slides for one OE field (deferred to end)
+    const buildCommentSlidesForField = (f: SelectedField) => {
+      const cfg        = commentConfig[f.field]
+      const cmtEnabled = cfg ? cfg.enabled : true
+      if (!cmtEnabled) return
+      const cmtSlides   = cfg ? Math.max(1, Math.min(3, cfg.slides)) : (audience === 'full' ? 3 : 2)
+      const perSlide    = 6
+      const maxComments = cmtSlides * perSlide
+      const annotFields = commentAnnotations.length > 0
+        ? selectedFields.filter(sf => commentAnnotations.includes(sf.field))
+        : commentDemoFields
+      const resolvedKey = rowKeyMap[normalize(f.field)] || f.field
+      console.log('[pptx/comments] field:', f.field, '| resolved row key:', resolvedKey, '| sample value:', allRows.length > 0 ? String(allRows[0][resolvedKey] || '(empty)').slice(0, 80) : 'no rows')
+      const allCommentItems: CommentItem[] = allRows
+        .map(function(row) {
+          const text  = rowVal(row, f.field)
+          const demos = annotFields
+            .map(function(df) { return { label: df.label, value: rowVal(row, df.field), section: df.section } })
+            .filter(function(d) { return d.value.length > 0 && d.value.length < 60 })
+          const colorValue = commentColorField ? rowVal(row, commentColorField) : undefined
+          return { text, demos, colorValue }
+        })
+        .filter(function(c) { return c.text.length > 8 })
+      const commentItems: CommentItem[] = (function() {
+        if (!commentColorField) return allCommentItems.slice(0, maxComments)
+        const groups: Record<string, CommentItem[]> = {}
+        allCommentItems.forEach(function(c) {
+          const key = c.colorValue || '__none__'
+          if (!groups[key]) groups[key] = []
+          groups[key].push(c)
+        })
+        const buckets = Object.values(groups)
+        const result: CommentItem[] = []
+        let i = 0
+        while (result.length < maxComments) {
+          let added = false
+          for (let b = 0; b < buckets.length && result.length < maxComments; b++) {
+            if (buckets[b][i]) { result.push(buckets[b][i]); added = true }
           }
+          if (!added) break
+          i++
         }
-        // Per-field theme slide — only when multiple open-ended fields are selected
-        if (includeThemeSlides && sortedThemes.length > 0 && multiOpenEnd) {
-          const fieldThemes = computeFieldThemes(f.field, sortedThemes)
-          if (fieldThemes.length > 0) buildThemeSlides(datasetName, fieldThemes, f.label)
+        return result
+      })()
+      console.log('[pptx/comments] field', f.field, '→', commentItems.length, 'comments extracted (from', allRows.length, 'rows)')
+      if (commentItems.length > 0) {
+        const numSlides = Math.ceil(commentItems.length / perSlide)
+        for (let si = 0; si < numSlides; si++) {
+          buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides)
         }
-      } else if (f.type === 'categorical') {
-        if (audience !== 'executive') buildPieSlide(datasetName, f, ai)
-      } else if (f.type === 'numeric') {
-        if (audience !== 'executive') buildNumericSlide(datasetName, f, ai)
       }
     }
 
-    // ── 4: Core study questions (open-ended first, then numeric) ─────────
-    const coreOrdered = [
-      ...coreFields.filter(f => f.type === 'open-ended'),
-      ...coreFields.filter(f => f.type === 'numeric'),
-      ...coreFields.filter(f => f.type === 'categorical'),
-    ]
-    if (coreOrdered.length > 0) {
-      buildSectionDivider('Core Study Questions', 'Primary research questions and measured outcomes', coreOrdered.length)
-      coreOrdered.forEach(renderField)
+    // ── 4: Open-ended fields → theme grid → per-theme detail (one per theme) ──
+    if (openEndedSelected.length > 0) {
+      buildSectionDivider('Open-ended Responses', 'Verbatim feedback, themes, and narrative analysis', openEndedSelected.length)
+      openEndedSelected.forEach(function(f) {
+        const ai         = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+        const fieldThemes = openEndedSelected.length > 1
+          ? computeFieldThemes(f.field, sortedThemes)
+          : sortedThemes
+        // a) Overview slide (AI narrative + theme bar chart)
+        buildOpenEndedSlide(datasetName, f, ai, audience, fieldThemes.slice(0, 8))
+        // b) Theme grid overview (multiple themes per page)
+        if (includeThemeSlides && fieldThemes.length > 0) {
+          buildThemeGridSlides(datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined)
+        }
+        // c) Per-theme detail slides with verbatims on the right
+        if (includeThemeSlides && fieldThemes.length > 0) {
+          buildThemeSlides(datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field])
+        }
+      })
     }
 
-    // ── 5: Psychographic fields ───────────────────────────────────────────
-    if (psychoFields.length > 0 && audience !== 'executive') {
-      buildSectionDivider('Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', psychoFields.length)
-      psychoFields.forEach(renderField)
+    // ── 5: Categorical + numeric fields (all sections) ────────────────────
+    const nonOECore   = coreFields.filter(f => f.type !== 'open-ended')
+    const nonOEPsycho = psychoFields.filter(f => f.type !== 'open-ended')
+    const nonOEDemo   = demoFields.filter(f => f.type !== 'open-ended')
+
+    if (nonOECore.length > 0) {
+      buildSectionDivider('Core Study Questions', 'Primary research questions and measured outcomes', nonOECore.length)
+      nonOECore.forEach(function(f) {
+        const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+        if (f.type === 'categorical' && audience !== 'executive') buildPieSlide(datasetName, f, ai)
+        else if (f.type === 'numeric' && audience !== 'executive') buildNumericSlide(datasetName, f, ai)
+      })
+    }
+    if (nonOEPsycho.length > 0 && audience !== 'executive') {
+      buildSectionDivider('Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', nonOEPsycho.length)
+      nonOEPsycho.forEach(function(f) {
+        const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+        if (f.type === 'categorical') buildPieSlide(datasetName, f, ai)
+        else if (f.type === 'numeric') buildNumericSlide(datasetName, f, ai)
+      })
+    }
+    if (nonOEDemo.length > 0 && audience !== 'executive') {
+      buildSectionDivider('Demographic Breakdown', 'Audience composition and segment characteristics', nonOEDemo.length)
+      nonOEDemo.forEach(function(f) {
+        const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+        if (f.type === 'categorical') buildPieSlide(datasetName, f, ai)
+        else if (f.type === 'numeric') buildNumericSlide(datasetName, f, ai)
+      })
     }
 
-    // ── 6: Demographic fields ─────────────────────────────────────────────
-    if (demoFields.length > 0 && audience !== 'executive') {
-      buildSectionDivider('Demographic Breakdown', 'Audience composition and segment characteristics', demoFields.length)
-      demoFields.forEach(renderField)
+    // ── 6: Sample comments (verbatim pages) at the end ────────────────────
+    if (openEndedSelected.length > 0) {
+      buildSectionDivider('Sample Comments', 'Verbatim responses from survey participants', openEndedSelected.length)
+      openEndedSelected.forEach(buildCommentSlidesForField)
     }
 
     // Closing slide
