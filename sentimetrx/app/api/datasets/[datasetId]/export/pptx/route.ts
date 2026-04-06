@@ -282,8 +282,10 @@ async function generateNarratives(
       const posInRange = range > 0 ? ((s.avg - s.min) / range * 100).toFixed(0) : '50'
       return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}, std=${s.std?.toFixed(2)} | avg sits at ${posInRange}% of possible range`
     } else if (s.type === 'open-ended') {
-      const allSamples = (s.sample || []).slice(0, 20).map((t: string, i: number) => `[${i}] "${t.slice(0, 500)}"`).join('\n')
-      return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words per response\nCANDIDATE QUOTES (indexed 0–${Math.min(19, (s.sample||[]).length-1)}):\n${allSamples}`
+      // Prefer live evenly-sampled verbatims over the stale 10-item analytics snapshot
+      const samplePool = (f.liveSample && f.liveSample.length > 0) ? f.liveSample : (s.sample || [])
+      const allSamples = samplePool.slice(0, 20).map((t: string, i: number) => `[${i}] "${t.slice(0, 500)}"`).join('\n')
+      return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words per response\nCANDIDATE QUOTES (indexed 0–${Math.min(19, samplePool.length-1)}):\n${allSamples}`
     } else if (s.type === 'date') {
       return `${f.label} (date): ${s.min} to ${s.max}, n=${s.nonNull}`
     }
@@ -364,6 +366,7 @@ interface SelectedField {
   remapping?: Record<string, number>
   section?:   string   // 'psychographic' | 'demographic' | 'core' | undefined
   prompt?:    string   // original survey question text
+  liveSample?: string[] // evenly-sampled verbatims from allRows — replaces stale analytics snapshot
 }
 
 // Professional pie chart color palette
@@ -1849,6 +1852,21 @@ export async function POST(req: Request, { params }: Params) {
     const actual = rowKeyMap[normalize(fieldKey)]
     if (actual && row[actual] !== undefined && row[actual] !== null) return String(row[actual]).trim()
     return ''
+  }
+
+  // Build live verbatim samples for each OE field (20 evenly-spaced responses ≥ 30 chars).
+  // Replaces the stale 10-item analytics snapshot used for AI quote candidates.
+  if (allRows.length > 0) {
+    selectedFields.forEach(function(f) {
+      if (f.type !== 'open-ended') return
+      const texts = allRows
+        .map(function(row) { return rowVal(row, f.field) })
+        .filter(function(t) { return t.length >= 30 })
+      if (texts.length === 0) return
+      const n    = Math.min(20, texts.length)
+      const step = texts.length / n
+      f.liveSample = Array.from({ length: n }, function(_, i) { return texts[Math.floor(i * step)] })
+    })
   }
 
   // Re-compute theme counts by keyword-matching allRows against a specific open-ended field.

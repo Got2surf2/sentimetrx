@@ -30,6 +30,7 @@ interface Narratives {
 interface SelectedField {
   field: string; label: string; type: string; summary: any
   remapping?: Record<string, number>; section?: string; prompt?: string
+  liveSample?: string[] // evenly-sampled verbatims from allRows — replaces stale analytics snapshot
 }
 
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
@@ -65,8 +66,9 @@ async function generateNarratives(
     }
     if (s.type === 'numeric') return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}`
     if (s.type === 'open-ended') {
-      const allSamples = (s.sample||[]).slice(0,20).map((t: string, i: number) => `[${i}] "${t.slice(0,500)}"`).join('\n')
-      return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words\nCANDIDATE QUOTES (indexed 0–${Math.min(19,(s.sample||[]).length-1)}):\n${allSamples}`
+      const samplePool = (f.liveSample && f.liveSample.length > 0) ? f.liveSample : (s.sample || [])
+      const allSamples = samplePool.slice(0,20).map((t: string, i: number) => `[${i}] "${t.slice(0,500)}"`).join('\n')
+      return `${f.label} (open-ended, n=${s.nonNull}): avg ${s.avgWordCount} words\nCANDIDATE QUOTES (indexed 0–${Math.min(19,samplePool.length-1)}):\n${allSamples}`
     }
     return `${f.label}: no data`
   }).join('\n\n')
@@ -834,6 +836,23 @@ export async function POST(req: Request, { params }: Params) {
 
   const rowKeyMap: Record<string,string> = {}
   if (allRows.length > 0) for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
+
+  // Build live verbatim samples for each OE field (20 evenly-spaced responses ≥ 30 chars).
+  if (allRows.length > 0) {
+    const htmlRowVal = (row: Record<string,any>, key: string): string => {
+      if (row[key] != null) return String(row[key]).trim()
+      const actual = rowKeyMap[normalize(key)]
+      return actual && row[actual] != null ? String(row[actual]).trim() : ''
+    }
+    selectedFields.forEach(function(f) {
+      if (f.type !== 'open-ended') return
+      const texts = allRows.map(r => htmlRowVal(r, f.field)).filter(t => t.length >= 30)
+      if (texts.length === 0) return
+      const n = Math.min(20, texts.length)
+      const step = texts.length / n
+      f.liveSample = Array.from({ length: n }, (_, i) => texts[Math.floor(i * step)])
+    })
+  }
 
   // AI narratives
   let narratives: Narratives = {
