@@ -1464,11 +1464,36 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
       slide.addText('\uD83E\uDDE0', { x: W - 2.1, y: 1.6, w: 2.0, h: 2.0, fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle' })
     }
   } else {
-    const sectionEmoji: Record<string, string> = { 'Demographic Breakdown': '\uD83D\uDC65', 'Core Study Questions': '\uD83D\uDCCB' }
-    slide.addText(sectionEmoji[title] || title[0], {
-      x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
-      fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
-    })
+    const sectionEmoji: Record<string, string> = {
+      'Demographic Breakdown':  '\uD83D\uDC65',  // 👥
+      'Core Study Questions':   '\uD83D\uDCCB',  // 📋
+      'Open-ended Responses':   '\uD83D\uDCAC',  // 💬
+      'Sample Comments':        '\uD83D\uDDE3\uFE0F', // 🗣️
+    }
+
+    // For sections with a dedicated image, use it; otherwise fall back to emoji
+    const sectionImage: Record<string, string> = {
+      'Open-ended Responses': process.cwd() + '/public/openended_divider.png',
+      'Sample Comments':      process.cwd() + '/public/comments_divider.png',
+    }
+    const imgFile = sectionImage[title]
+    let imageUsed = false
+    if (imgFile && existsSync(imgFile)) {
+      try {
+        const base64  = readFileSync(imgFile).toString('base64')
+        const ext     = imgFile.endsWith('.png') ? 'png' : 'jpg'
+        const dataUrl = `data:image/${ext};base64,` + base64
+        const imgW = 1.87, imgH = 1.87
+        slide.addImage({ data: dataUrl, x: W - 1.0 - imgW / 2, y: 2.6 - imgH / 2, w: imgW, h: imgH })
+        imageUsed = true
+      } catch (_) { /* fall through to emoji */ }
+    }
+    if (!imageUsed) {
+      slide.addText(sectionEmoji[title] || title[0], {
+        x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
+        fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
+      })
+    }
   }
 
   // Section label chip

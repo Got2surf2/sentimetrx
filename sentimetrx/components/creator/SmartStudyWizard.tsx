@@ -67,7 +67,7 @@ export default function SmartStudyWizard({ onGenerated, onSkip, orgPrimaryIndust
     setIndustry(ind)
     setStudyType(null)
     setBotName('')
-    setBotEmoji('💬')
+    setBotEmoji(INDUSTRY_EMOJIS[ind] || '💬')
     setFocusAreas([])
   }
 
