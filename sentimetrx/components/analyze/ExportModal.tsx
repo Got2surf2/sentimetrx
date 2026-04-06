@@ -49,6 +49,7 @@ const EXPORTABLE_TYPES = new Set(['open-ended', 'categorical', 'numeric', 'date'
 
 type Step   = 'mode' | 'quick' | 'builder' | 'generating' | 'done'
 type Format = 'pptx' | 'html'
+type ShareState = 'idle' | 'uploading' | 'done' | 'error'
 
 interface SchemaField { field: string; type: string; label?: string; status?: string; section?: string }
 interface Props { datasetId: string; datasetName: string; onClose: () => void }
@@ -72,6 +73,11 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   const [themes,             setThemes]             = useState<any[]>([])
   const [includeThemeSlides, setIncludeThemeSlides] = useState(true)
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
+  const [shareState,   setShareState]   = useState<ShareState>('idle')
+  const [shareUrl,     setShareUrl]     = useState('')
+  const [shareExpiry,  setShareExpiry]  = useState('')
+  const [shareError,   setShareError]   = useState('')
+  const [shareCopied,  setShareCopied]  = useState(false)
 
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
@@ -139,6 +145,11 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     if (fieldsToSend.length === 0 && mode === 'quick') { setError('Select at least one field.'); return }
     setError('')
     setBlobUrl('')
+    setShareState('idle')
+    setShareUrl('')
+    setShareExpiry('')
+    setShareError('')
+    setShareCopied(false)
     setStep('generating')
     const ext  = format === 'html' ? '.html' : '.pptx'
     const name = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_report' + ext
@@ -210,6 +221,51 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   }
 
   // ── Done state ────────────────────────────────────────────────────────────
+  const handleShare = async () => {
+    if (!blobUrl || shareState === 'uploading') return
+    setShareState('uploading')
+    setShareError('')
+    try {
+      const res = await fetch(blobUrl)
+      const blob = await res.blob()
+      const uploadRes = await fetch('/api/datasets/' + datasetId + '/export/html/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/html' },
+        body: blob,
+      })
+      if (!uploadRes.ok) {
+        const d = await uploadRes.json().catch(() => ({}))
+        throw new Error(d.error || 'Upload failed')
+      }
+      const { url, expiresAt } = await uploadRes.json()
+      setShareUrl(url)
+      setShareExpiry(new Date(expiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))
+      setShareState('done')
+    } catch (e: any) {
+      setShareError(e.message || 'Share failed — check AWS configuration')
+      setShareState('error')
+    }
+  }
+
+  const handleCopyShareUrl = async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea')
+      ta.value = shareUrl
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    }
+  }
+
   const handleSaveFile = async () => {
     if (!blobUrl) return
     const suggestedName = fileName
@@ -264,6 +320,37 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
             style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700, color: 'white', background: HERMES, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <span style={{ fontSize: 16 }}>💾</span> Save file…
           </button>
+
+          {/* AWS share — HTML only */}
+          {format === 'html' && shareState !== 'done' && (
+            <button onClick={handleShare} disabled={shareState === 'uploading'}
+              style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700, color: '#0284c7', background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 8, cursor: shareState === 'uploading' ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: shareState === 'uploading' ? 0.7 : 1 }}>
+              <span style={{ fontSize: 16 }}>{shareState === 'uploading' ? '⏳' : '🔗'}</span>
+              {shareState === 'uploading' ? 'Uploading to AWS…' : 'Push to AWS — get shareable link'}
+            </button>
+          )}
+          {shareState === 'error' && (
+            <div style={{ width: '100%', fontSize: 11, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '8px 10px', textAlign: 'center', lineHeight: 1.5 }}>
+              {shareError}
+            </div>
+          )}
+          {shareState === 'done' && (
+            <div style={{ width: '100%', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>✓</span> Shareable link ready
+              </div>
+              <div style={{ fontSize: 10, color: '#6b7280' }}>Expires {shareExpiry} · Anyone with this link can view</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input readOnly value={shareUrl}
+                  style={{ flex: 1, fontSize: 10, border: '1px solid #d1fae5', borderRadius: 5, padding: '5px 8px', fontFamily: 'monospace', background: 'white', color: '#374151', minWidth: 0 }} />
+                <button onClick={handleCopyShareUrl}
+                  style={{ flexShrink: 0, padding: '5px 12px', fontSize: 11, fontWeight: 700, color: 'white', background: shareCopied ? '#059669' : '#0284c7', border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                  {shareCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <button onClick={function() {
             if (window.confirm('Discard this file without saving?')) {
               if (blobUrl) URL.revokeObjectURL(blobUrl)

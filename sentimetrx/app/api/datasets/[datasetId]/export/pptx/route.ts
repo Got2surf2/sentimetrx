@@ -186,6 +186,57 @@ function quoteCard(slide: any, x: number, y: number, w: number, h: number, text:
   ], { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4 })
 }
 
+// Splits text into alternating normal/highlighted runs based on keyword matches
+function buildHighlightedRuns(text: string, keywords: string[]): { text: string; highlight: boolean }[] {
+  type Span = { start: number; end: number }
+  const spans: Span[] = []
+  for (const kw of keywords) {
+    if (!kw) continue
+    const e  = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp('(?<![a-z])' + e + '\\w*', 'gi')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      spans.push({ start: m.index, end: m.index + m[0].length })
+    }
+  }
+  spans.sort((a, b) => a.start - b.start)
+  // Merge overlapping spans
+  const merged: Span[] = []
+  for (const s of spans) {
+    if (merged.length && s.start < merged[merged.length - 1].end) {
+      merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, s.end)
+    } else {
+      merged.push({ ...s })
+    }
+  }
+  const runs: { text: string; highlight: boolean }[] = []
+  let pos = 0
+  for (const { start, end } of merged) {
+    if (start > pos) runs.push({ text: text.slice(pos, start), highlight: false })
+    runs.push({ text: text.slice(start, end), highlight: true })
+    pos = end
+  }
+  if (pos < text.length) runs.push({ text: text.slice(pos), highlight: false })
+  return runs.length > 0 ? runs : [{ text, highlight: false }]
+}
+
+// quoteCard variant that bolds + colors the theme keywords within the text
+function quoteCardHighlighted(slide: any, x: number, y: number, w: number, h: number, text: string, keywords: string[]) {
+  rect(slide, x, y, w, h, DN.white, 0.07, DN.divider)
+  solidRect(slide, x, y, 0.05, h, DN.teal)
+  const trimmed  = trimNatural(text, 320)
+  const runs     = buildHighlightedRuns(trimmed, keywords)
+  const textRuns = [
+    { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
+    ...runs.map(r => r.highlight
+      ? { text: r.text, options: { fontSize: 10, bold: true, color: DN.teal, italic: false } }
+      : { text: r.text, options: { fontSize: 10, color: DN.navyLight, italic: true } }
+    ),
+    { text: '\u201D', options: { fontSize: 16, bold: true, color: DN.tealLight } },
+  ]
+  slide.addText(textRuns, { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4 })
+}
+
 // ── AI narrative generation ───────────────────────────────────────────────────
 
 interface FieldInsight {
@@ -1246,7 +1297,8 @@ function buildThemeGridSlides(datasetName: string, themes: any[], fieldLabel?: s
 
 function buildThemeSlides(
   datasetName: string, themes: any[], fieldLabel?: string,
-  allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[]
+  allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[],
+  usedComments?: Set<string>
 ) {
   if (!themes || themes.length === 0) return
 
@@ -1260,7 +1312,8 @@ function buildThemeSlides(
     })
   }
 
-  // Pick 5 evenly-spread responses that match the theme and are substantive
+  // Pick 5 evenly-spread responses that match the theme and are substantive.
+  // Excludes any comment already used elsewhere in the deck (dedup via usedComments set).
   function getComments(t: any): string[] {
     if (!allRows?.length || !rowKeyMap || !fieldKeys?.length) return []
     const keys = fieldKeys.map(fk => {
@@ -1276,11 +1329,17 @@ function buildThemeSlides(
     // Prefer longer responses; sort descending by length then evenly sample 5
     matched.sort((a, b) => b.length - a.length)
     const pool = matched.slice(0, Math.min(matched.length, 40)) // top-40 longest
-    const n = Math.min(5, pool.length)
+    // Prefer comments not already used; fall back to full pool if too few unique remain
+    const fresh = usedComments ? pool.filter(s => !usedComments.has(s.slice(0, 120))) : pool
+    const source = fresh.length >= 3 ? fresh : pool
+    const n = Math.min(5, source.length)
     if (n === 0) return []
-    const step = pool.length / n
-    return Array.from({ length: n }, (_, i) => pool[Math.floor(i * step)])
+    const step = source.length / n
+    const picked = Array.from({ length: n }, (_, i) => source[Math.floor(i * step)])
       .map(s => trimNatural(s, 350))
+    // Register selected comments so later slides skip them
+    if (usedComments) picked.forEach(s => usedComments.add(s.slice(0, 120)))
+    return picked
   }
 
   const totalThemes = themes.length
@@ -1357,7 +1416,7 @@ function buildThemeSlides(
       const qGap   = 0.08
       const qh     = (availH - qGap * (comments.length - 1)) / comments.length
       comments.forEach(function(q, i) {
-        quoteCard(slide, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, q)
+        quoteCardHighlighted(slide, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, q, t.keywords || [])
       })
     } else {
       slide.addText('No verbatim responses matched this theme.', {
@@ -1777,26 +1836,26 @@ export async function POST(req: Request, { params }: Params) {
     return ''
   }
 
-  // Re-compute theme counts by keyword-matching allRows against a specific open-ended field
+  // Re-compute theme counts by keyword-matching allRows against a specific open-ended field.
+  // Uses multi-match semantics (a row can match multiple themes) so percentage = "% of
+  // respondents who mentioned this theme", with denominator = rows that have text in this field.
   function computeFieldThemes(fieldKey: string, themeList: any[]): any[] {
     if (!themeList.length || !allRows.length) return themeList
-    const counts: Record<string, number> = {}
-    allRows.forEach(function(row) {
-      const text = rowVal(row, fieldKey).toLowerCase()
-      if (!text.trim()) return
-      let bestTheme = '', bestHits = 0
-      themeList.forEach(function(t: any) {
-        let hits = 0
-        ;(t.keywords || []).forEach(function(kw: string) { if (text.includes(kw.toLowerCase())) hits++ })
-        if (hits > bestHits) { bestHits = hits; bestTheme = t.name || t.label }
-      })
-      if (bestTheme) counts[bestTheme] = (counts[bestTheme] || 0) + 1
+    // Rows where this specific field has content
+    const nonEmpty = allRows.filter(function(row) {
+      return rowVal(row, fieldKey).trim().length > 0
     })
-    const total = Object.values(counts).reduce(function(a: number, b: number) { return a + b }, 0) || 1
+    const total = nonEmpty.length || 1
     return themeList
       .map(function(t: any) {
-        const name = t.name || t.label
-        const count = counts[name] || 0
+        const keywords: string[] = (t.keywords || []) as string[]
+        const count = nonEmpty.filter(function(row) {
+          const text = rowVal(row, fieldKey).toLowerCase()
+          return keywords.some(function(kw) {
+            const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(text)
+          })
+        }).length
         return Object.assign({}, t, { count, percentage: Math.round(count / total * 100) })
       })
       .filter(function(t: any) { return t.count > 0 })
@@ -1862,6 +1921,10 @@ export async function POST(req: Request, { params }: Params) {
       return key(a) - key(b)
     })
 
+    // Shared set: tracks comment texts (first 120 chars) already used anywhere in the deck.
+    // Theme detail slides claim their quotes first; comment pages at the end skip dupes.
+    const usedCommentTexts = new Set<string>()
+
     // Helper: build comment slides for one OE field (deferred to end)
     const buildCommentSlidesForField = (f: SelectedField) => {
       const cfg        = commentConfig[f.field]
@@ -1884,7 +1947,9 @@ export async function POST(req: Request, { params }: Params) {
           const colorValue = commentColorField ? rowVal(row, commentColorField) : undefined
           return { text, demos, colorValue }
         })
-        .filter(function(c) { return c.text.length > 8 })
+        .filter(function(c) {
+          return c.text.length > 8 && !usedCommentTexts.has(c.text.slice(0, 120))
+        })
       const commentItems: CommentItem[] = (function() {
         if (!commentColorField) return allCommentItems.slice(0, maxComments)
         const groups: Record<string, CommentItem[]> = {}
@@ -1907,6 +1972,8 @@ export async function POST(req: Request, { params }: Params) {
         return result
       })()
       console.log('[pptx/comments] field', f.field, '→', commentItems.length, 'comments extracted (from', allRows.length, 'rows)')
+      // Register these comments so nothing else re-uses them
+      commentItems.forEach(c => usedCommentTexts.add(c.text.slice(0, 120)))
       if (commentItems.length > 0) {
         const numSlides = Math.ceil(commentItems.length / perSlide)
         for (let si = 0; si < numSlides; si++) {
@@ -1920,7 +1987,9 @@ export async function POST(req: Request, { params }: Params) {
       buildSectionDivider('Open-ended Responses', 'Verbatim feedback, themes, and narrative analysis', openEndedSelected.length)
       openEndedSelected.forEach(function(f) {
         const ai         = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        const fieldThemes = openEndedSelected.length > 1
+        // Always recompute per-field so count = rows with text in THIS field (not all fields combined)
+        // and percentage = count / non-empty rows for this field.
+        const fieldThemes = allRows.length > 0
           ? computeFieldThemes(f.field, sortedThemes)
           : sortedThemes
         // a) Overview slide (AI narrative + theme bar chart)
@@ -1931,7 +2000,7 @@ export async function POST(req: Request, { params }: Params) {
         }
         // c) Per-theme detail slides with verbatims on the right
         if (includeThemeSlides && fieldThemes.length > 0) {
-          buildThemeSlides(datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field])
+          buildThemeSlides(datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts)
         }
       })
     }

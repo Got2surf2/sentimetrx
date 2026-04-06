@@ -848,13 +848,40 @@ export async function POST(req: Request, { params }: Params) {
   const openEndedFields = selectedFields.filter(f => f.type === 'open-ended')
   const multiOE = openEndedFields.length > 1
 
+  // Re-compute theme counts per field: denominator = rows with text in THIS field,
+  // multi-match so percentage = "% of respondents who mentioned this theme."
+  function computeFieldThemes(fieldKey: string, themeList: any[]): any[] {
+    if (!themeList.length || !allRows.length) return themeList
+    function fRowVal(row: Record<string,any>, key: string): string {
+      if (row[key] != null) return String(row[key]).trim()
+      const actual = rowKeyMap[normalize(key)]
+      return actual && row[actual] != null ? String(row[actual]).trim() : ''
+    }
+    const nonEmpty = allRows.filter(row => fRowVal(row, fieldKey).length > 0)
+    const total = nonEmpty.length || 1
+    return themeList
+      .map(function(t: any) {
+        const keywords: string[] = (t.keywords || []) as string[]
+        const count = nonEmpty.filter(function(row) {
+          const text = fRowVal(row, fieldKey).toLowerCase()
+          return keywords.some(function(kw) {
+            const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(text)
+          })
+        }).length
+        return Object.assign({}, t, { count, percentage: Math.round(count / total * 100) })
+      })
+      .filter(function(t: any) { return t.count > 0 })
+      .sort(function(a: any, b: any) { return b.count - a.count })
+  }
+
   function renderField(f: SelectedField) {
     const ai = narratives.fieldInsights[f.field] || { keyFinding: f.label, narrative: '', implication: '' }
     if (f.type === 'categorical') return buildCategoricalSlide(f, ai)
     if (f.type === 'numeric')     return buildNumericSlide(f, ai, allRows, rowKeyMap)
     if (f.type === 'open-ended') {
       const fieldThemes = includeThemeSlides && sortedThemes.length > 0
-        ? sortedThemes.slice(0, 8)
+        ? (allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes).slice(0, 8)
         : []
       return buildOpenEndedSlide(f, ai, fieldThemes)
     }
@@ -864,9 +891,10 @@ export async function POST(req: Request, { params }: Params) {
   function renderFieldWithThemes(f: SelectedField) {
     const s = renderField(f)
     if (s) slides.push(s)
-    // After each open-ended slide, add per-theme detail slides
+    // After each open-ended slide, add per-theme detail slides with field-specific counts
     if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
-      buildThemeDetailSlides(sortedThemes, f.label, allRows, rowKeyMap, [f.field]).forEach(ts => slides.push(ts))
+      const fieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes
+      buildThemeDetailSlides(fieldThemes, f.label, allRows, rowKeyMap, [f.field]).forEach(ts => slides.push(ts))
     }
   }
 
