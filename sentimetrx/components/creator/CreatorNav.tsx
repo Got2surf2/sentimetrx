@@ -9,7 +9,7 @@ export function getStepCompletion(draft: StudyDraft): boolean[] {
     !!(draft.name?.trim() && draft.bot_name?.trim()),    // 0 Basics
     !!(c.greeting?.trim()),                              // 1 Opening
     (c.q3Enabled === false || !!(c.q3?.trim())) && (c.q4Enabled === false || !!(c.q4?.trim())),  // 2 Conversation
-    !!(c.clarifiers?.default?.trim()),                   // 3 Clarifiers
+    true,                                                // 3 Clarifiers (default fallback auto-provided)
     true,                                                // 4 Custom Questions (optional — always complete once visited)
     true,                                                // 5 Psychographics (optional — always complete once visited)
     true,                                                // 6 Demographics (optional — always complete once visited)

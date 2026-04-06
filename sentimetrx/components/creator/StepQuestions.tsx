@@ -440,10 +440,12 @@ function QuestionCard({
 function SuggestedQuestionsPanel({
   industry,
   onAdd,
+  onRemove,
   existingIds,
 }: {
   industry: string
   onAdd: (q: SurveyQuestion) => void
+  onRemove: (key: string) => void
   existingIds: Set<string>
 }) {
   const [open, setOpen] = useState(true)
@@ -481,7 +483,7 @@ function SuggestedQuestionsPanel({
             return (
               <div
                 key={sq.key}
-                className={'flex items-start gap-3 bg-white border rounded-xl px-4 py-3 transition-all ' + (alreadyAdded ? 'border-green-200 opacity-60' : 'border-orange-200 hover:border-orange-400 cursor-pointer')}
+                className={'flex items-start gap-3 bg-white border rounded-xl px-4 py-3 transition-all ' + (alreadyAdded ? 'border-green-200' : 'border-orange-200 hover:border-orange-400 cursor-pointer')}
                 onClick={() => {
                   if (alreadyAdded) return
                   onAdd({
@@ -502,9 +504,17 @@ function SuggestedQuestionsPanel({
                   </div>
                 </div>
                 <div className="flex-shrink-0 text-xs font-semibold mt-0.5">
-                  {alreadyAdded
-                    ? <span className="text-green-500">Added</span>
-                    : <span className="text-orange-500">+ Add</span>}
+                  {alreadyAdded ? (
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onRemove(sq.key) }}
+                      className="text-red-400 hover:text-red-600 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span className="text-orange-500">+ Add</span>
+                  )}
                 </div>
               </div>
             )
@@ -895,6 +905,10 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
         <SuggestedQuestionsPanel
           industry={industry}
           onAdd={addSuggestedQuestion}
+          onRemove={key => setQuestions(questions.filter(q => {
+            const base = (q.id ?? '').includes('_') ? q.id!.slice(0, q.id!.lastIndexOf('_')) : q.id
+            return base !== key
+          }))}
           existingIds={existingIds}
         />
       )}
@@ -941,24 +955,24 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
             <button
               type="button"
               onClick={() => {
-                const next = customQCount <= 1 ? 0 : customQCount - 1
-                updateConfig({ customQCount: next })
+                const display = customQCount === 0 || customQCount >= totalQ ? totalQ : customQCount
+                updateConfig({ customQCount: Math.max(1, display - 1) })
               }}
-              disabled={customQCount === 0}
+              disabled={customQCount === 1}
               className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center"
             >
-              -
+              −
             </button>
             <span className="w-10 text-center text-lg font-bold text-gray-800">
-              {customQCount === 0 || customQCount >= totalQ ? 'All' : customQCount}
+              {customQCount === 0 || customQCount >= totalQ ? totalQ : customQCount}
             </span>
             <button
               type="button"
               onClick={() => {
-                const next = customQCount === 0 ? 2 : Math.min(totalQ - 1, customQCount + 1)
-                updateConfig({ customQCount: next })
+                const next = customQCount + 1
+                updateConfig({ customQCount: next >= totalQ ? 0 : next })
               }}
-              disabled={customQCount !== 0 && customQCount >= totalQ - 1}
+              disabled={customQCount === 0 || customQCount >= totalQ}
               className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center"
             >
               +

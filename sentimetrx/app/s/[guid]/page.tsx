@@ -30,7 +30,7 @@ async function findStudy(supabase: any, identifier: string) {
     .single()
   if (data) return data
 
-  // Last resort: try slug even if it looked like a UUID
+  // Last resort: try slug even if it looked like a UUID, then try id
   if (isUUID) {
     const { data: slugData } = await supabase
       .from('studies')
@@ -39,6 +39,15 @@ async function findStudy(supabase: any, identifier: string) {
       .limit(1)
       .single()
     if (slugData) return slugData
+
+    // Final fallback: try by primary id (for legacy studies with no guid)
+    const { data: idData } = await supabase
+      .from('studies')
+      .select('*')
+      .eq('id', identifier)
+      .limit(1)
+      .single()
+    if (idData) return idData
   }
 
   return null

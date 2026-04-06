@@ -423,12 +423,14 @@ export default function StepPsychographics({ draft, updateConfig, onNext, onBack
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button type="button" onClick={() => updateConfig({ psychoCount: Math.max(1, count - 1) })}
-            className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 transition-all flex items-center justify-center">
+            disabled={count <= 1}
+            className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center">
             −
           </button>
           <span className="w-8 text-center text-lg font-bold text-gray-800">{count}</span>
           <button type="button" onClick={() => updateConfig({ psychoCount: Math.min(totalSelected || 10, count + 1) })}
-            className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 transition-all flex items-center justify-center">
+            disabled={totalSelected > 0 && count >= totalSelected}
+            className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center">
             +
           </button>
         </div>

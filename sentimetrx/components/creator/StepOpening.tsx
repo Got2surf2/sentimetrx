@@ -30,12 +30,13 @@ function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: bool
 
 // ── Adaptive follow-up panel ─────────────────────────────────
 function FollowUpPanel({
-  followUp, onChange, scaleOptions, defaultPrompts
+  followUp, onChange, scaleOptions, defaultPrompts, exportLabelPlaceholder
 }: {
-  followUp:        LikertFollowUp | undefined
-  onChange:        (fu: LikertFollowUp) => void
-  scaleOptions:    { score: number; label: string }[]
-  defaultPrompts?: Record<number, string>
+  followUp:               LikertFollowUp | undefined
+  onChange:               (fu: LikertFollowUp) => void
+  scaleOptions:           { score: number; label: string }[]
+  defaultPrompts?:        Record<number, string>
+  exportLabelPlaceholder?: string
 }) {
   const fu = followUp ?? {
     enabled: false, mode: 'shared',
@@ -63,6 +64,20 @@ function FollowUpPanel({
 
       {fu.enabled && (
         <div className="px-4 py-4 flex flex-col gap-4">
+          {/* Export label */}
+          {exportLabelPlaceholder && (
+            <div>
+              <label className={labelCls}>Verbatim export label</label>
+              <input
+                type="text"
+                value={fu.exportLabel ?? ''}
+                onChange={e => set({ exportLabel: e.target.value })}
+                placeholder={exportLabelPlaceholder}
+                className={inputCls}
+              />
+              <p className="text-xs text-gray-400 mt-1 px-0.5">Column name in analytics &amp; CSV exports.</p>
+            </div>
+          )}
           {/* Shared vs per-response mode */}
           <div className="flex gap-2">
             {(['shared', 'per-response'] as const).map(m => (
@@ -92,10 +107,7 @@ function FollowUpPanel({
                   className={inputCls + ' resize-none'}
                 />
               </div>
-              <div className="flex gap-4">
-                <Toggle value={fu.shareClarify} onChange={v => set({ shareClarify: v })} label="Keyword clarifier" />
-                <Toggle value={fu.shareAI} onChange={v => set({ shareAI: v })} label="AI clarifier" />
-              </div>
+              <Toggle value={!!(fu.shareClarify || fu.shareAI)} onChange={v => set({ shareClarify: v, shareAI: v })} label="Enable clarifier follow-up" />
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -111,10 +123,7 @@ function FollowUpPanel({
                       rows={2}
                       className={inputCls + ' resize-none text-xs'}
                     />
-                    <div className="flex gap-4">
-                      <Toggle value={pr.clarify} onChange={v => setPerResponse(opt.score, { clarify: v })} label="Keyword clarifier" />
-                      <Toggle value={pr.useAI} onChange={v => setPerResponse(opt.score, { useAI: v })} label="AI clarifier" />
-                    </div>
+                    <Toggle value={!!(pr.clarify || pr.useAI)} onChange={v => setPerResponse(opt.score, { clarify: v, useAI: v })} label="Enable clarifier follow-up" />
                   </div>
                 )
               })}
@@ -652,6 +661,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
               onChange={fu => updateConfig({ npsFollowUp: fu })}
               scaleOptions={npsScaleOptions}
               defaultPrompts={npsDefaultPrompts}
+              exportLabelPlaceholder="NPS Follow Up"
             />
           </div>
         </Section>
@@ -742,6 +752,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
               onChange={fu => updateConfig({ experienceFollowUp: fu })}
               scaleOptions={c.ratingScale.map(r => ({ score: r.score, label: r.label }))}
               defaultPrompts={experienceDefaultPrompts}
+              exportLabelPlaceholder="Experience Follow Up"
             />
           </div>
         </Section>

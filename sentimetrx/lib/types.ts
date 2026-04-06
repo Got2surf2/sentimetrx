@@ -22,6 +22,7 @@ export interface RatingOption {
 export interface LikertFollowUp {
   enabled:      boolean
   mode:         'shared' | 'per-response'  // shared = one prompt for all; per-response = unique per score
+  exportLabel?: string                      // label for the verbatim in analytics/CSV exports
   // shared mode
   sharedPrompt: string
   shareClarify: boolean
@@ -187,6 +188,7 @@ export interface StudyConfig {
   // Clarifiers (used by legacy Q1/Q3/Q4 and open custom questions)
   clarifiers:         StudyClarifiers
   useAIClarify?:      boolean
+  maxClarifierCount?: number           // max times a clarifier fires per session (default unlimited)
 
   // Response control
   allowMultipleResponses?: boolean   // default false — one response per device
