@@ -433,13 +433,11 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
     })
   }
 
-  // Date standalone — larger font, no response count
-  if (computedAt) {
-    slide.addText(new Date(computedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), {
-      x: PAD + 0.18, y: 4.55, w: W - 4.0, h: 0.44,
-      fontSize: 16, color: DN.slate, valign: 'middle',
-    })
-  }
+  // Date — always show report generation date, not analytics compute date
+  slide.addText(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), {
+    x: PAD + 0.18, y: 4.55, w: W - 4.0, h: 0.44,
+    fontSize: 16, color: DN.slate, valign: 'middle',
+  })
 
   // Bottom footer strip
   solidRect(slide, 0, H - 0.48, W, 0.48, DN.navyMid)
@@ -462,9 +460,8 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
   const cardW = (W - PAD * 2 - 0.3) / 3
 
   // Three scope cards
-  const dateStr = computedAt
-    ? new Date(computedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : 'N/A'
+  // Report Generated = today (generation date, not analytics compute date)
+  const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
   const openCount = fields.filter(f => f.type === 'open-ended').length
   const catCount  = fields.filter(f => f.type === 'categorical').length
@@ -1856,16 +1853,42 @@ export async function POST(req: Request, { params }: Params) {
 
   // Build live verbatim samples for each OE field (20 evenly-spaced responses ≥ 30 chars).
   // Replaces the stale 10-item analytics snapshot used for AI quote candidates.
+  // For positively-framed fields ("liked most", "best", etc.) filter out complaint-pattern
+  // responses so showcase quotes actually reflect the field's intent.
+  const POSITIVE_FRAME_TERMS = ['liked', 'love', 'best', 'enjoy', 'favour', 'favor', 'positive', 'highlight', 'appreciate', 'great about', 'good about']
+  const NEGATIVE_FRAME_TERMS = ['dislik', 'worst', 'complaint', 'problem', 'issue', 'improv', 'suggest', 'concern', 'disappoint', 'frustrat', 'bad about', 'difficult', 'challenge']
+  // Complaint-pattern indicators in response text
+  const COMPLAINT_SIGNALS = ['no one', 'nobody', 'didn\'t', 'did not', 'wouldn\'t', 'would not', 'couldn\'t', 'could not', 'wasn\'t', 'was not', 'weren\'t', 'were not', 'never', 'ignored', 'waited', 'wait', 'rude', 'horrible', 'terrible', 'awful', 'unacceptable', 'disappointing', 'poor service', 'not helpful']
+
+  function isPositivelyFramedField(f: SelectedField): boolean {
+    const lbl = (f.label + ' ' + (f.prompt || '')).toLowerCase()
+    return POSITIVE_FRAME_TERMS.some(t => lbl.includes(t)) && !NEGATIVE_FRAME_TERMS.some(t => lbl.includes(t))
+  }
+
+  function looksLikeComplaint(text: string): boolean {
+    const lower = text.toLowerCase()
+    return COMPLAINT_SIGNALS.filter(s => lower.includes(s)).length >= 2
+  }
+
   if (allRows.length > 0) {
     selectedFields.forEach(function(f) {
       if (f.type !== 'open-ended') return
+      const positiveFrame = isPositivelyFramedField(f)
       const texts = allRows
         .map(function(row) { return rowVal(row, f.field) })
+        .filter(function(t) {
+          if (t.length < 30) return false
+          if (positiveFrame && looksLikeComplaint(t)) return false
+          return true
+        })
+      // Fall back to unfiltered if filtering left too few (< 5)
+      const source = texts.length >= 5 ? texts : allRows
+        .map(function(row) { return rowVal(row, f.field) })
         .filter(function(t) { return t.length >= 30 })
-      if (texts.length === 0) return
-      const n    = Math.min(20, texts.length)
-      const step = texts.length / n
-      f.liveSample = Array.from({ length: n }, function(_, i) { return texts[Math.floor(i * step)] })
+      if (source.length === 0) return
+      const n    = Math.min(20, source.length)
+      const step = source.length / n
+      f.liveSample = Array.from({ length: n }, function(_, i) { return source[Math.floor(i * step)] })
     })
   }
 

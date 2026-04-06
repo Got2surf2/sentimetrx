@@ -130,7 +130,8 @@ function slideHeader(title: string, subtitle?: string, dark = false): string {
 
 function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: number, computedAt: string|null): string {
   manifest.push({ title: datasetName, icon: '🏠' })
-  const dateStr = computedAt ? new Date(computedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : ''
+  // Always use report generation date, not analytics compute date
+  const dateStr = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
   return `<section class="slide-title" style="background:${DN.navy}">
     <div class="title-left-bar"></div>
     <div class="title-gold-bar"></div>
@@ -838,19 +839,37 @@ export async function POST(req: Request, { params }: Params) {
   if (allRows.length > 0) for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
 
   // Build live verbatim samples for each OE field (20 evenly-spaced responses ≥ 30 chars).
+  // For positively-framed fields ("liked most", "best", etc.) filter out complaint-pattern responses.
   if (allRows.length > 0) {
     const htmlRowVal = (row: Record<string,any>, key: string): string => {
       if (row[key] != null) return String(row[key]).trim()
       const actual = rowKeyMap[normalize(key)]
       return actual && row[actual] != null ? String(row[actual]).trim() : ''
     }
+    const POSITIVE_FRAME_TERMS = ['liked', 'love', 'best', 'enjoy', 'favour', 'favor', 'positive', 'highlight', 'appreciate', 'great about', 'good about']
+    const NEGATIVE_FRAME_TERMS = ['dislik', 'worst', 'complaint', 'problem', 'issue', 'improv', 'suggest', 'concern', 'disappoint', 'frustrat', 'bad about', 'difficult', 'challenge']
+    const COMPLAINT_SIGNALS = ["no one", "nobody", "didn't", "did not", "wouldn't", "would not", "couldn't", "could not", "wasn't", "was not", "weren't", "were not", "never", "ignored", "waited", "wait", "rude", "horrible", "terrible", "awful", "unacceptable", "disappointing", "poor service", "not helpful"]
+    const isPositiveFrame = (f: SelectedField) => {
+      const lbl = (f.label + ' ' + (f.prompt || '')).toLowerCase()
+      return POSITIVE_FRAME_TERMS.some(t => lbl.includes(t)) && !NEGATIVE_FRAME_TERMS.some(t => lbl.includes(t))
+    }
+    const looksLikeComplaint = (text: string) => {
+      const lower = text.toLowerCase()
+      return COMPLAINT_SIGNALS.filter(s => lower.includes(s)).length >= 2
+    }
     selectedFields.forEach(function(f) {
       if (f.type !== 'open-ended') return
-      const texts = allRows.map(r => htmlRowVal(r, f.field)).filter(t => t.length >= 30)
-      if (texts.length === 0) return
-      const n = Math.min(20, texts.length)
-      const step = texts.length / n
-      f.liveSample = Array.from({ length: n }, (_, i) => texts[Math.floor(i * step)])
+      const positiveFrame = isPositiveFrame(f)
+      const texts = allRows.map(r => htmlRowVal(r, f.field)).filter(t => {
+        if (t.length < 30) return false
+        if (positiveFrame && looksLikeComplaint(t)) return false
+        return true
+      })
+      const source = texts.length >= 5 ? texts : allRows.map(r => htmlRowVal(r, f.field)).filter(t => t.length >= 30)
+      if (source.length === 0) return
+      const n = Math.min(20, source.length)
+      const step = source.length / n
+      f.liveSample = Array.from({ length: n }, (_, i) => source[Math.floor(i * step)])
     })
   }
 
