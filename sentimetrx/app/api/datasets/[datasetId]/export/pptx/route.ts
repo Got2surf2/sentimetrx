@@ -1801,12 +1801,27 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
   }
 
-  // Fetch raw rows for comment slides (up to 10 batches)
-  const { data: rowBatches } = await service
-    .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(10)
+  // Fetch ALL rows (paginated, 200 batch-records per call) up to 30 000 rows.
+  // Batches from individual survey responses are ~1 row each; CSV uploads can be 500–1 000 rows
+  // each. With a 200-batch page size we get the full dataset for typical studies without OOM.
   const allRows: Record<string, any>[] = []
-  for (const batch of (rowBatches || [])) {
-    for (const row of (batch.rows || [])) allRows.push(row)
+  {
+    const PAGE = 200
+    const MAX_ROWS = 30_000
+    let page = 0, hasMore = true
+    while (hasMore && allRows.length < MAX_ROWS) {
+      const from = page * PAGE
+      const { data: batchPage, error: bErr } = await service
+        .from('dataset_rows')
+        .select('rows')
+        .eq('dataset_id', params.datasetId)
+        .order('batch_index', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (bErr || !batchPage || batchPage.length === 0) { hasMore = false; break }
+      for (const b of batchPage) for (const r of (b.rows || [])) allRows.push(r)
+      if (batchPage.length < PAGE) hasMore = false
+      page++
+    }
   }
 
   // Build a normalized key map so we can find columns regardless of case/spaces

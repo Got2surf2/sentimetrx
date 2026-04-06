@@ -811,11 +811,26 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
   }
 
-  // Fetch raw rows for numeric histograms
-  const { data: rowBatches } = await service
-    .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(10)
+  // Fetch ALL rows (paginated, 200 batch-records per call) up to 30 000 rows.
   const allRows: Record<string,any>[] = []
-  for (const batch of (rowBatches || [])) for (const row of (batch.rows || [])) allRows.push(row)
+  {
+    const PAGE = 200
+    const MAX_ROWS = 30_000
+    let page = 0, hasMore = true
+    while (hasMore && allRows.length < MAX_ROWS) {
+      const from = page * PAGE
+      const { data: batchPage, error: bErr } = await service
+        .from('dataset_rows')
+        .select('rows')
+        .eq('dataset_id', params.datasetId)
+        .order('batch_index', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (bErr || !batchPage || batchPage.length === 0) { hasMore = false; break }
+      for (const b of batchPage) for (const r of (b.rows || [])) allRows.push(r)
+      if (batchPage.length < PAGE) hasMore = false
+      page++
+    }
+  }
 
   const rowKeyMap: Record<string,string> = {}
   if (allRows.length > 0) for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
