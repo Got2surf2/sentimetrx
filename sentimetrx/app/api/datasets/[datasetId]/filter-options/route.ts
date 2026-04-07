@@ -1,6 +1,7 @@
 // app/api/datasets/[datasetId]/filter-options/route.ts
-// Returns distinct values and numeric ranges for filter UI — lightweight alternative
-// to fetching all rows. Reads batch records and extracts unique values per field.
+// Returns distinct values and numeric ranges for filter UI.
+// Uses pre-computed analytics (fieldSummaries) when available — instant, no row scanning.
+// Falls back to batch sampling for fields not in analytics.
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -14,10 +15,10 @@ export async function GET(_req: Request, { params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Get dataset state for schema
+  // Get schema + analytics in one query
   const { data: stateRow } = await supabase
     .from('dataset_state')
-    .select('schema_config')
+    .select('schema_config, analytics')
     .eq('dataset_id', params.datasetId)
     .single()
 
@@ -26,72 +27,98 @@ export async function GET(_req: Request, { params }: Props) {
   }
 
   const schema = stateRow.schema_config as { fields: { field: string; type: string; label?: string }[] }
+  const analytics = stateRow.analytics as { fieldSummaries?: Record<string, any> } | null
+  const summaries = analytics?.fieldSummaries || {}
   const fields = schema.fields || []
 
-  // Fetch batches — each batch has a `rows` array of records
-  // Cap at 20 batches (~200 rows each = ~4000 rows) to stay fast
-  const MAX_BATCHES = 20
-  const { data: batches, error } = await supabase
-    .from('dataset_rows')
-    .select('rows')
-    .eq('dataset_id', params.datasetId)
-    .order('batch_index', { ascending: true })
-    .limit(MAX_BATCHES)
+  // Build filter options per field — prefer analytics (instant) over batch scanning
+  const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string }> = {}
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // Build filter options per field by scanning batch rows
-  const catValues: Record<string, Set<string>> = {}
-  const numRanges: Record<string, { min: number; max: number }> = {}
-  const dateRanges: Record<string, { min: string; max: string }> = {}
+  // Track fields that need batch-scan fallback
+  const needsScan: { field: string; type: string }[] = []
 
   for (const f of fields) {
-    if (f.type === 'categorical' || f.type === 'open-ended') catValues[f.field] = new Set()
+    const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
+    const summary = summaries[f.field]
+
+    if (f.type === 'categorical' || f.type === 'open-ended') {
+      if (summary?.counts && Object.keys(summary.counts).length > 0) {
+        // Use pre-computed counts — keys are the distinct values
+        opt.values = Object.keys(summary.counts).sort()
+      } else {
+        needsScan.push(f)
+      }
+    }
+
+    if (f.type === 'numeric') {
+      if (summary?.min != null && summary?.max != null) {
+        opt.min = summary.min
+        opt.max = summary.max
+      } else {
+        needsScan.push(f)
+      }
+    }
+
+    if (f.type === 'date') {
+      // Dates rarely have pre-computed ranges — always scan
+      needsScan.push(f)
+    }
+
+    options[f.field] = opt
   }
 
-  for (let bi = 0; bi < (batches || []).length; bi++) {
-    const batchRows = (batches![bi] as any).rows || []
-    for (let ri = 0; ri < batchRows.length; ri++) {
-      const row = batchRows[ri]
-      for (const f of fields) {
-        const val = row[f.field]
-        if (val == null || String(val).trim() === '') continue
-        const str = String(val).trim()
+  // Batch-scan fallback for fields not covered by analytics
+  if (needsScan.length > 0) {
+    const MAX_BATCHES = 30
+    const { data: batches } = await supabase
+      .from('dataset_rows')
+      .select('rows')
+      .eq('dataset_id', params.datasetId)
+      .order('batch_index', { ascending: true })
+      .limit(MAX_BATCHES)
 
-        if ((f.type === 'categorical' || f.type === 'open-ended') && catValues[f.field]) {
-          if (catValues[f.field].size < 200) catValues[f.field].add(str)
-        }
+    if (batches) {
+      const catSets: Record<string, Set<string>> = {}
+      const numRanges: Record<string, { min: number; max: number }> = {}
+      const dateRanges: Record<string, { min: string; max: string }> = {}
 
-        if (f.type === 'numeric') {
-          const n = parseFloat(str)
-          if (!isNaN(n)) {
-            if (!numRanges[f.field]) numRanges[f.field] = { min: n, max: n }
-            else {
-              if (n < numRanges[f.field].min) numRanges[f.field].min = n
-              if (n > numRanges[f.field].max) numRanges[f.field].max = n
+      for (const f of needsScan) {
+        if (f.type === 'categorical' || f.type === 'open-ended') catSets[f.field] = new Set()
+      }
+
+      for (const batch of batches) {
+        const batchRows = (batch as any).rows || []
+        for (const row of batchRows) {
+          for (const f of needsScan) {
+            const val = row[f.field]
+            if (val == null || String(val).trim() === '') continue
+            const str = String(val).trim()
+
+            if (catSets[f.field] && catSets[f.field].size < 200) {
+              catSets[f.field].add(str)
+            }
+            if (f.type === 'numeric') {
+              const n = parseFloat(str)
+              if (!isNaN(n)) {
+                if (!numRanges[f.field]) numRanges[f.field] = { min: n, max: n }
+                else { if (n < numRanges[f.field].min) numRanges[f.field].min = n; if (n > numRanges[f.field].max) numRanges[f.field].max = n }
+              }
+            }
+            if (f.type === 'date') {
+              if (!dateRanges[f.field]) dateRanges[f.field] = { min: str, max: str }
+              else { if (str < dateRanges[f.field].min) dateRanges[f.field].min = str; if (str > dateRanges[f.field].max) dateRanges[f.field].max = str }
             }
           }
         }
+      }
 
-        if (f.type === 'date') {
-          if (!dateRanges[f.field]) dateRanges[f.field] = { min: str, max: str }
-          else {
-            if (str < dateRanges[f.field].min) dateRanges[f.field].min = str
-            if (str > dateRanges[f.field].max) dateRanges[f.field].max = str
-          }
-        }
+      // Merge scan results into options
+      for (const f of needsScan) {
+        if (catSets[f.field]) options[f.field].values = Array.from(catSets[f.field]).sort()
+        if (numRanges[f.field]) { options[f.field].min = numRanges[f.field].min; options[f.field].max = numRanges[f.field].max }
+        if (dateRanges[f.field]) { options[f.field].dateMin = dateRanges[f.field].min; options[f.field].dateMax = dateRanges[f.field].max }
       }
     }
-  }
-
-  // Assemble response
-  const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string }> = {}
-  for (const f of fields) {
-    const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
-    if (catValues[f.field]) opt.values = Array.from(catValues[f.field]).sort()
-    if (numRanges[f.field]) { opt.min = numRanges[f.field].min; opt.max = numRanges[f.field].max }
-    if (dateRanges[f.field]) { opt.dateMin = dateRanges[f.field].min; opt.dateMax = dateRanges[f.field].max }
-    options[f.field] = opt
   }
 
   return NextResponse.json({ fields: options })

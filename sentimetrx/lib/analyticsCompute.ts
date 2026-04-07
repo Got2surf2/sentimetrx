@@ -19,8 +19,9 @@ import type {
 } from './analyzeTypes'
 
 // How many dataset_rows records to fetch per DB round-trip.
-// Each record holds up to 50 data rows, so this = up to 10000 rows per pass.
-const BATCH_PAGE_SIZE = 200
+// Each record holds up to 200 data rows, so 500 records = up to 100K rows per pass.
+// For 500K rows this means ~5 DB round-trips instead of 50.
+const BATCH_PAGE_SIZE = 500
 
 // -- Running accumulators per field type ---------------------------------
 
@@ -121,7 +122,7 @@ function accumRow(accum: Accum, raw: unknown): void {
     accum.totalWords += str.split(/\s+/).filter(Boolean).length
     accum.totalChars += str.length
     if (str.length > accum.maxLen) accum.maxLen = str.length
-    if (accum.sample.length < 10) accum.sample.push(str)
+    if (accum.sample.length < 20) accum.sample.push(str)
     return
   }
 
