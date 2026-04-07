@@ -2,7 +2,7 @@
 // Coalition for the Homeless — Donor Study Configuration
 // Complete study template ready to deploy
 // Created from stakeholder questions mapping: Brad Butterstein (CEO), Craig Fairey (Wells Fargo),
-// Liza Coburn (TRUIST), Jim Schreiber (Attorney)
+// Liza Coburn (TRUIST), Jim Schreiber (Attorney), Sean McGrady, Larry Kahn
 
 import { StudyConfig } from '@/lib/types'
 
@@ -16,13 +16,13 @@ const generateId = (function() {
  * COALITION FOR THE HOMELESS — DONOR INSIGHT STUDY
  *
  * Survey Structure:
- * - 19 total questions
- * - 17 categorical/likert (multiple choice, scales, multi-select)
- * - 2 open-ended (capture nuance + strategic insights)
+ * - 31 total questions
+ * - 21 categorical/likert (multiple choice, scales, multi-select)
+ * - 8 open-ended (capture nuance + strategic insights)
  * - 2 demographic (involvement, tenure)
  *
- * Completion time: ~7-10 minutes
- * Focus: Donor motivation, retention, growth, & legacy giving
+ * Completion time: ~10-14 minutes (use customQCount to sample a subset per respondent)
+ * Focus: Donor motivation, retention, growth, capital campaign, & legacy giving
  */
 
 export const coalitionDonorStudyConfig: StudyConfig = {
@@ -57,19 +57,61 @@ export const coalitionDonorStudyConfig: StudyConfig = {
   q4Enabled: false,
 
   // ──────────────────────────────────────────────────────────
-  // CUSTOM QUESTIONS (17 total)
-  // Organized in 6 sections:
-  // 1. Giving Profile & Mindset (3Q)
-  // 2. Motivation & Values (3Q)
-  // 3. Communication & Recognition (3Q)
-  // 4. Engagement & Involvement (2Q)
-  // 5. Retention & Growth (2Q)
-  // 6. Legacy & Strategic Giving (2Q)
-  // + 2 Open-Ended Insights
+  // CUSTOM QUESTIONS (29 total)
+  // Organized in 8 sections:
+  // 1. Awareness & Perception (3Q) — Sean McGrady
+  // 2. Giving Profile & Mindset (3Q)
+  // 3. Motivation & Values (4Q) — enhanced with Sean McGrady
+  // 4. Communication & Recognition (3Q)
+  // 5. Engagement & Involvement (3Q) — enhanced with Sean McGrady
+  // 6. Retention & Growth (2Q)
+  // 7. Legacy, Capital Campaign & Strategic Giving (5Q) — enhanced with Sean McGrady
+  // + 6 Open-Ended Insights
   // ──────────────────────────────────────────────────────────
 
   questions: [
-    // ─── SECTION 1: GIVING PROFILE & MINDSET (3Q) ───
+    // ─── SECTION 1: AWARENESS & PERCEPTION (3Q) — Sean McGrady ───
+    {
+      id: generateId(),
+      type: 'radio',
+      prompt: "How familiar are you with the Coalition's programs and impact in Central Florida?",
+      exportLabel: "Org Familiarity",
+      required: true,
+      options: [
+        "Very familiar — I follow closely and understand the programs well",
+        "Somewhat familiar — I know the basics but not the details",
+        "Slightly familiar — I've heard of the Coalition but know little about its work",
+        "Not familiar — this is relatively new to me",
+      ],
+    },
+    {
+      id: generateId(),
+      type: 'open',
+      prompt: "What is your current understanding of homelessness in our community, and where do you see the greatest unmet need?",
+      exportLabel: "Perceived Unmet Need",
+      required: false,
+      clarify: true,
+      useAI: false,
+    },
+    {
+      id: generateId(),
+      type: 'radio',
+      prompt: "Which area do you believe represents the greatest unmet need in addressing homelessness locally?",
+      exportLabel: "Greatest Unmet Need",
+      required: true,
+      options: [
+        "Affordable housing and permanent supportive housing",
+        "Mental health and substance abuse treatment",
+        "Job training and employment pathways",
+        "Emergency shelter and basic needs (food, hygiene)",
+        "Prevention — keeping at-risk families housed",
+        "Services for specific populations (veterans, youth, families)",
+        "Systemic advocacy and policy change",
+        "Unsure / need more information",
+      ],
+    },
+
+    // ─── SECTION 2: GIVING PROFILE & MINDSET (3Q) ───
     {
       id: generateId(),
       type: 'radio',
@@ -115,7 +157,35 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
 
-    // ─── SECTION 2: MOTIVATION & VALUES (3Q) ───
+    {
+      id: generateId(),
+      type: 'checkbox',
+      prompt: "When you evaluate philanthropic opportunities, what criteria matter most in deciding where to invest? (Select all that apply)",
+      exportLabel: "Giving Criteria",
+      required: true,
+      options: [
+        "Measurable outcomes and proven impact",
+        "Strong leadership and governance",
+        "Financial transparency and efficiency",
+        "Alignment with my personal values and passions",
+        "Local community focus",
+        "Innovation and forward-thinking approach",
+        "Recommendation from peers or trusted advisors",
+        "Personal connection to the cause or beneficiaries",
+        "Ability to see or experience the impact firsthand",
+      ],
+    },
+
+    // ─── SECTION 3: MOTIVATION & VALUES (4Q) — enhanced with Sean McGrady ───
+    {
+      id: generateId(),
+      type: 'open',
+      prompt: "What experiences or values most influence your interest in addressing homelessness?",
+      exportLabel: "Personal Motivation",
+      required: false,
+      clarify: true,
+      useAI: false,
+    },
     {
       id: generateId(),
       type: 'radio',
@@ -161,7 +231,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
 
-    // ─── SECTION 3: COMMUNICATION & RECOGNITION (3Q) ───
+    // ─── SECTION 4: COMMUNICATION & RECOGNITION (3Q) ───
     {
       id: generateId(),
       type: 'checkbox',
@@ -209,7 +279,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
 
-    // ─── SECTION 4: ENGAGEMENT & INVOLVEMENT (2Q) ───
+    // ─── SECTION 5: ENGAGEMENT & INVOLVEMENT (3Q) — enhanced with Sean McGrady ───
     {
       id: generateId(),
       type: 'radio',
@@ -222,6 +292,22 @@ export const coalitionDonorStudyConfig: StudyConfig = {
         "Prefer to support financially, not volunteer",
         "No — not interested in volunteering",
         "Already volunteer",
+      ],
+    },
+    {
+      id: generateId(),
+      type: 'checkbox',
+      prompt: "Beyond financial contributions, in what ways do you prefer to engage? (Select all that apply)",
+      exportLabel: "Engagement Beyond Financial",
+      required: true,
+      options: [
+        "Advisory or board roles",
+        "Advocacy and raising awareness",
+        "Convening others — connecting people and resources",
+        "Hands-on volunteering with clients",
+        "Event hosting or sponsorship",
+        "Mentoring or professional skills sharing",
+        "Prefer financial support only",
       ],
     },
     {
@@ -242,7 +328,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
 
-    // ─── SECTION 5: RETENTION & GROWTH (2Q) ───
+    // ─── SECTION 6: RETENTION & GROWTH (2Q) ───
     {
       id: generateId(),
       type: 'checkbox',
@@ -281,7 +367,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
 
-    // ─── SECTION 6: LEGACY & STRATEGIC GIVING (2Q) ───
+    // ─── SECTION 7: LEGACY, CAPITAL CAMPAIGN & STRATEGIC GIVING (5Q) — enhanced with Sean McGrady ───
     {
       id: generateId(),
       type: 'radio',
@@ -314,7 +400,68 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       ],
     },
 
-    // ─── SECTION 7: OPEN-ENDED INSIGHTS (2Q) ───
+    {
+      id: generateId(),
+      type: 'radio',
+      prompt: "How do you typically prioritize between immediate-impact programs and long-term infrastructure investments like capital campaigns?",
+      exportLabel: "Immediate vs Long-Term Priority",
+      required: true,
+      options: [
+        "Strongly prefer immediate impact — help people right now",
+        "Lean toward immediate impact, but open to infrastructure",
+        "Balance both — split support between immediate and long-term",
+        "Lean toward infrastructure — lasting systemic change matters more",
+        "Strongly prefer long-term infrastructure investments",
+        "It depends on the opportunity and timing",
+      ],
+    },
+    {
+      id: generateId(),
+      type: 'radio',
+      prompt: "How do you typically structure your philanthropic commitments?",
+      exportLabel: "Commitment Structure",
+      required: true,
+      options: [
+        "One-time gifts as the need arises",
+        "Annual recurring gifts",
+        "Multi-year pledges (2-5 year commitment)",
+        "Matching gifts through my employer",
+        "Donor-advised fund (DAF) distributions",
+        "A mix of approaches depending on the organization",
+        "Other / Prefer not to say",
+      ],
+    },
+    {
+      id: generateId(),
+      type: 'open',
+      prompt: "What elements of a capital campaign would make it compelling for you to support at a leadership level?",
+      exportLabel: "Capital Campaign Appeal",
+      required: false,
+      clarify: true,
+      useAI: false,
+    },
+
+    // ─── SECTION 8: FAMILY IMPACT & THE ASK (2Q) — Larry Kahn ───
+    {
+      id: generateId(),
+      type: 'open',
+      prompt: "Why does it matter to you if families are homeless here in Central Florida?",
+      exportLabel: "Family Homelessness Importance",
+      required: false,
+      clarify: true,
+      useAI: false,
+    },
+    {
+      id: generateId(),
+      type: 'open',
+      prompt: "What would make you give $500 to build a new Children's and Women's Center and provide shelter, food, healthcare and safety for families in crisis?",
+      exportLabel: "Capital Campaign Ask Response",
+      required: false,
+      clarify: true,
+      useAI: false,
+    },
+
+    // ─── SECTION 9: OPEN-ENDED INSIGHTS (4Q) ───
     {
       id: generateId(),
       type: 'open',
@@ -331,6 +478,24 @@ export const coalitionDonorStudyConfig: StudyConfig = {
       exportLabel: "Multi-Year Supporter Factors",
       required: false,
       clarify: false,
+      useAI: false,
+    },
+    {
+      id: generateId(),
+      type: 'open',
+      prompt: "What aspects of the Coalition's mission resonate most strongly with you personally, and why?",
+      exportLabel: "Mission Resonance",
+      required: false,
+      clarify: true,
+      useAI: false,
+    },
+    {
+      id: generateId(),
+      type: 'open',
+      prompt: "What outcomes or milestones would give you confidence that your investment is driving meaningful, lasting change?",
+      exportLabel: "Confidence Milestones",
+      required: false,
+      clarify: true,
       useAI: false,
     },
   ],
@@ -354,6 +519,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
     },
   ],
   psychoCount: 2, // Show both nonprofit psycho questions
+  customQCount: 0, // 0 = show all questions to every respondent (change to e.g. 18 to sample)
 
   // ──────────────────────────────────────────────────────────
   // DEMOGRAPHICS
@@ -403,7 +569,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
  */
 export const coalitionStudyMetadata = {
   name: 'Coalition for the Homeless — Donor Insights Study',
-  description: 'Comprehensive donor study capturing motivation, retention, growth, and legacy giving. Based on stakeholder interviews with CEO, corporate partners, and legal advisors.',
+  description: 'Comprehensive donor study capturing awareness, motivation, retention, growth, capital campaign readiness, and legacy giving. Based on stakeholder interviews with CEO, corporate partners, legal advisors, and board members.',
   botName: 'Coalition Insights Bot',
   botEmoji: '🤝',
   industry: 'nonprofit',
