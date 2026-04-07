@@ -4,17 +4,11 @@ import { NextResponse } from 'next/server'
 export async function POST() {
   const supabase = createClient()
   await supabase.auth.signOut()
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
   return new NextResponse(null, {
     status: 303,
-    headers: { Location: 'https://www.sentimetrx.ai/login' },
+    headers: { Location: `${baseUrl}/login` },
   })
 }
 
-export async function GET() {
-  const supabase = createClient()
-  await supabase.auth.signOut()
-  return new NextResponse(null, {
-    status: 303,
-    headers: { Location: 'https://www.sentimetrx.ai/login' },
-  })
-}
+export const GET = POST

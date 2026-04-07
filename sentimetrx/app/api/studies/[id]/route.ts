@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { SLUG_REGEX } from '@/lib/constants'
 
 interface Params { params: { id: string } }
 
@@ -35,7 +36,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     ? orgData[0]?.is_admin_org
     : (orgData as any)?.is_admin_org
 
-  const body = await req.json()
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
   // Check ownership — creator or admin can update (including close/reopen)
   const { data: existing } = await supabase
@@ -64,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       updates.slug = null  // clear slug
     } else {
       // Validate format: lowercase alphanumeric + hyphens, 3-50 chars
-      if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(slug)) {
+      if (!SLUG_REGEX.test(slug)) {
         return NextResponse.json({ error: 'Slug must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
       }
       // Check uniqueness

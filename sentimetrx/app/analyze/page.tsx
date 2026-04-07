@@ -48,10 +48,10 @@ export default async function AnalyzePage() {
   if (dsErr) console.error('[AnalyzePage] datasets query error:', dsErr.message)
 
   // Fetch creator names separately (the FK join to auth.users is unreliable)
-  var creatorIds = Array.from(new Set((rawDatasets || []).map(function(d: any) { return d.created_by }).filter(Boolean)))
-  var creatorMap: Record<string, string> = {}
+  const creatorIds = Array.from(new Set((rawDatasets || []).map(function(d: any) { return d.created_by }).filter(Boolean)))
+  const creatorMap: Record<string, string> = {}
   if (creatorIds.length > 0) {
-    var { data: creators } = await supabase
+    const { data: creators } = await supabase
       .from('users')
       .select('id, full_name, email')
       .in('id', creatorIds)

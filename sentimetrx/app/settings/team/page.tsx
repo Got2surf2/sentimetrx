@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import TeamClient from './TeamClient'
 
 export const dynamic = 'force-dynamic'
@@ -17,9 +18,7 @@ export default async function TeamPage() {
 
   if (!userData?.org_id) redirect('/dashboard')
 
-  const org = Array.isArray(userData.organizations)
-    ? userData.organizations[0]
-    : userData.organizations as any
+  const org = resolveOrg(userData.organizations) as any
 
   const { data: members } = await supabase
     .from('users')

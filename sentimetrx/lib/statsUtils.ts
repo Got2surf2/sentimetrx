@@ -2,10 +2,15 @@
 // Statistical computation functions for the Statistics module.
 // Ported from Ana.html's statistical engine.
 
+export interface TTestResult { t: number; df: number; p: number; ma: number; mb: number; sa: number; sb: number; na: number; nb: number; d: number; se: number }
+export interface ANOVAResult { F: number; dfB: number; dfW: number; p: number; eta2: number; SSB: number; SSW: number; MSB: number; MSW: number; groupStats: Record<string, { n: number; mean: number; sd: number }>; pairwise: { a: string; b: string; t: number; df: number; p: number; ma: number; mb: number; pAdj: number }[]; k: number; N: number }
+export interface ChiSquareResult { chi2: number; df: number; p: number; V: number; N: number; rows: string[]; cols: string[]; table: Record<string, Record<string, number>>; rowSums: Record<string, number>; colSums: Record<string, number> }
+export interface RegressionResult { coefs: { name: string; beta: number; se: number; t: number; p: number; ci: [number, number] }[]; R2: number; R2adj: number; F: number; Fp: number; n: number; p: number; SSE: number; SST: number; MSE: number; yhat: number[]; resid: number[]; names: string[] }
+
 export function mean(a: number[]): number { return a.length ? a.reduce(function(s, v) { return s + v }, 0) / a.length : NaN }
 export function variance(a: number[], ddof: number = 1): number { if (a.length < 2) return NaN; var m = mean(a); return a.reduce(function(s, v) { return s + (v - m) ** 2 }, 0) / (a.length - ddof) }
 export function std(a: number[], ddof: number = 1): number { return Math.sqrt(variance(a, ddof)) }
-export function median(a: number[]): number { var s = a.slice().sort(function(x, y) { return x - y }); var m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
+export function median(a: number[]): number { if (!a.length) return NaN; var s = a.slice().sort(function(x, y) { return x - y }); var m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 export function quantile(a: number[], q: number): number { var s = a.slice().sort(function(x, y) { return x - y }); var p = (s.length - 1) * q; var lo = Math.floor(p); var hi = Math.ceil(p); return s[lo] + (s[hi] - s[lo]) * (p - lo) }
 // Unbiased Fisher-Pearson skewness G1 — matches Excel SKEW(), SPSS, SAS
 export function skewness(a: number[]): number {
@@ -197,6 +202,7 @@ function invertMatrix(M: number[][]): number[][] | null {
 }
 
 export function olsRegression(y: number[], X: number[][], names: string[]): any {
+  if (y.length !== X.length || X.length === 0) return null
   var n = y.length, Xd = X.map(function(r) { return [1].concat(r) }), q = Xd[0].length
   var XtX = Array.from({ length: q }, function(_, i) { return Array.from({ length: q }, function(_, j) { return Xd.reduce(function(s, r) { return s + r[i] * r[j] }, 0) }) })
   var Xty = Array.from({ length: q }, function(_, i) { return Xd.reduce(function(s, r, ri) { return s + r[i] * y[ri] }, 0) })
@@ -265,10 +271,16 @@ export function bootstrapCI(values: number[], nIter: number = 2000, ciLevel: num
 }
 
 // Formatting
-export function fmt2(v: number): string { return isNaN(v) || v == null ? '\u2014' : Number(v).toFixed(2) }
-export function fmt4(v: number): string { return isNaN(v) || v == null ? '\u2014' : Number(v).toFixed(4) }
-export function fmtN(v: number): string { if (v == null || isNaN(v)) return '\u2014'; var a = Math.abs(v); return a >= 10000 || a < 0.001 ? v.toExponential(3) : a >= 100 ? v.toFixed(1) : a >= 10 ? v.toFixed(2) : v.toFixed(3) }
-export function fmtP(p: number): string { if (p == null || isNaN(p)) return '\u2014'; if (p < 0.001) return 'p < 0.001'; return 'p = ' + p.toFixed(3) }
+export function formatDecimal2(v: number): string { return isNaN(v) || v == null ? '\u2014' : Number(v).toFixed(2) }
+export function formatDecimal4(v: number): string { return isNaN(v) || v == null ? '\u2014' : Number(v).toFixed(4) }
+export function formatNumber(v: number): string { if (v == null || isNaN(v)) return '\u2014'; var a = Math.abs(v); return a >= 10000 || a < 0.001 ? v.toExponential(3) : a >= 100 ? v.toFixed(1) : a >= 10 ? v.toFixed(2) : v.toFixed(3) }
+export function formatPValue(p: number): string { if (p == null || isNaN(p)) return '\u2014'; if (p < 0.001) return 'p < 0.001'; return 'p = ' + p.toFixed(3) }
+
+// Backward-compatible aliases
+export const fmt2 = formatDecimal2
+export const fmt4 = formatDecimal4
+export const fmtN = formatNumber
+export const fmtP = formatPValue
 
 export function sigLabel(p: number): { stars: string; color: string; bg: string; border: string; label: string } {
   if (p < 0.001) return { stars: '***', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', label: 'highly significant' }

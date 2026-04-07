@@ -52,9 +52,15 @@ export async function POST(request: Request, { params }: Props) {
   const userMsg =
     'Thematic analysis on ' + texts.length + ' responses for field \'' + fieldLabel + '\'.' +
     schemaLine + '\n\nResponses:\n' + corpusText +
-    '\n\nIdentify 4-7 distinct themes. Return:\n' +
+    '\n\nIdentify 4-7 distinct themes. For each theme, provide 8-15 keywords that include:\n' +
+    '- Core terms that define the theme\n' +
+    '- Common synonyms and related phrases respondents might use\n' +
+    '- Informal/colloquial variants (e.g. "pricey" for expensive, "meh" for mediocre)\n' +
+    '- Short phrases (2-3 words) where a single word is ambiguous\n\n' +
+    'Return:\n' +
     '{"themes":[{"id":"t1","name":"Name","description":"One sentence.",' +
-    '"keywords":["k1","k2","k3"],"sentiment":"positive","count":0,"percentage":0,"relatedThemes":[]}],' +
+    '"keywords":["core term","synonym1","synonym2","informal variant","short phrase"],' +
+    '"sentiment":"positive","count":0,"percentage":0,"relatedThemes":[]}],' +
     '"summary":"2-3 sentences.","fieldName":"' + fieldLabel + '"}'
 
   try {

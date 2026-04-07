@@ -367,9 +367,8 @@ const FLOW_ITEM_ICONS: Record<OpeningFlowItem['type'], string> = {
   open_end:          '💬',
 }
 
-let _oeCounter = 0
 function newOpenEndItem(): OpeningFlowItem {
-  return { id: 'oe_' + (++_oeCounter) + '_' + Date.now(), type: 'open_end', prompt: '', exportLabel: 'Opening Response', clarify: true, useAI: false }
+  return { id: 'oe_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), type: 'open_end', prompt: '', exportLabel: 'Opening Response', clarify: true, useAI: false }
 }
 
 // ── Main component ───────────────────────────────────────────

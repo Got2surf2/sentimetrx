@@ -4,7 +4,7 @@
 // Three modes: quick-pick industry (multi-select with icons), edit, paste JSON.
 // Matches Ana.html's ThemeEditor + industry picker UX.
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Theme, THEME_PALETTE, sentColor, sentBg } from '@/lib/themeUtils'
 
 var T = {
@@ -38,6 +38,8 @@ interface Props {
   onClose: () => void
   initialData?: InitialData | null
   industryThemes: Record<string, Theme[]>
+  datasetId?: string
+  apiKey?: string
 }
 
 var inputStyle: React.CSSProperties = {
@@ -48,7 +50,7 @@ var inputStyle: React.CSSProperties = {
 
 type Step = 'pick' | 'edit' | 'json'
 
-export default function ThemeEditor({ onApply, onClose, initialData, industryThemes }: Props) {
+export default function ThemeEditor({ onApply, onClose, initialData, industryThemes, datasetId, apiKey }: Props) {
   var industries = Object.keys(industryThemes).sort()
   var [step, setStep] = useState<Step>(initialData ? 'edit' : 'pick')
   var [checkedInds, setCheckedInds] = useState<Set<string>>(new Set())
@@ -191,6 +193,41 @@ export default function ThemeEditor({ onApply, onClose, initialData, industryThe
       })
     })
   }
+
+  var [expandingId, setExpandingId] = useState<string | null>(null)
+
+  var expandKeywords = useCallback(async function(themeId: string) {
+    if (!apiKey || !datasetId) return
+    var theme = editThemes.find(function(t) { return t.id === themeId })
+    if (!theme) return
+    setExpandingId(themeId)
+    try {
+      var res = await fetch('/api/datasets/' + datasetId + '/expand-keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: apiKey,
+          themeName: theme.name,
+          keywords: theme.keywords.filter(function(k) { return k.trim() }),
+          context: theme.description || undefined,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      var data = await res.json()
+      if (data.keywords && Array.isArray(data.keywords)) {
+        setIsModified(true)
+        setEditThemes(function(prev) {
+          return prev.map(function(t) {
+            return t.id === themeId ? { ...t, keywords: data.keywords } : t
+          })
+        })
+      }
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setExpandingId(null)
+    }
+  }, [apiKey, datasetId, editThemes])
 
   function handleApply() {
     if (!editThemes.length) return
@@ -381,6 +418,13 @@ export default function ThemeEditor({ onApply, onClose, initialData, industryThe
                               style={{ fontSize: 11, padding: '3px 10px', background: 'transparent', border: '1px dashed ' + T.borderMid, borderRadius: 20, color: T.textMute, cursor: 'pointer' }}>
                               + add
                             </button>
+                            {apiKey && datasetId && (
+                              <button onClick={function() { expandKeywords(t.id) }}
+                                disabled={expandingId === t.id}
+                                style={{ fontSize: 11, padding: '3px 10px', background: expandingId === t.id ? T.bg : T.accentBg, border: '1px solid ' + T.accent + '40', borderRadius: 20, color: T.accent, cursor: expandingId === t.id ? 'wait' : 'pointer', fontWeight: 600 }}>
+                                {expandingId === t.id ? 'Expanding...' : '✦ Expand with AI'}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

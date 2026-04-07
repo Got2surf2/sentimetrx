@@ -50,11 +50,11 @@ function DemoModal({ initial, onSave, onClose, saving }: {
   onClose: () => void
   saving: boolean
 }) {
-  var [label, setLabel] = useState(initial?.label || '')
-  var [type, setType] = useState<'select' | 'text'>(initial?.type || 'select')
-  var [options, setOptions] = useState(initial?.options || '')
+  const [label, setLabel] = useState(initial?.label || '')
+  const [type, setType] = useState<'select' | 'text'>(initial?.type || 'select')
+  const [options, setOptions] = useState(initial?.options || '')
 
-  var key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'custom_field'
+  const key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'custom_field'
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
@@ -123,11 +123,11 @@ function PsychoModal({ initial, onSave, onClose, saving }: {
   onClose: () => void
   saving: boolean
 }) {
-  var [industry, setIndustry] = useState(initial?.industry || 'universal')
-  var [prompt, setPrompt] = useState(initial?.prompt || '')
-  var [responses, setResponses] = useState((initial?.responses || []).join('\n'))
+  const [industry, setIndustry] = useState(initial?.industry || 'universal')
+  const [prompt, setPrompt] = useState(initial?.prompt || '')
+  const [responses, setResponses] = useState((initial?.responses || []).join('\n'))
 
-  var industryLabel = industry === 'universal'
+  const industryLabel = industry === 'universal'
     ? 'Universal / Cross-Industry'
     : INDUSTRY_LABELS[industry as Industry] || industry
 
@@ -220,7 +220,7 @@ function ConfirmDelete({ onConfirm, onCancel, deleting }: { onConfirm: () => voi
 function IndustrySection({ label, count, onAdd, addLabel, children }: {
   label: string; count: number; children: React.ReactNode; onAdd?: () => void; addLabel?: string
 }) {
-  var [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true)
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div className="flex items-center">
@@ -250,7 +250,7 @@ function IndustrySection({ label, count, onAdd, addLabel, children }: {
 
 // ── Open-ended card (read-only, existing behavior) ───────────────────────────
 function OpenEndedCard({ q }: { q: OpenEndedQ }) {
-  var [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-start justify-between gap-3">
@@ -314,26 +314,26 @@ function CrudButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () =>
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '', fullName = '' }: Props) {
-  var [tab, setTab] = useState<Tab>('demographics')
-  var [industry, setIndustry] = useState('')
-  var [search, setSearch] = useState('')
-  var [loading, setLoading] = useState(true)
-  var [saving, setSaving] = useState(false)
-  var [deleting, setDeleting] = useState(false)
+  const [tab, setTab] = useState<Tab>('demographics')
+  const [industry, setIndustry] = useState('')
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
-  var [data, setData] = useState<{
+  const [data, setData] = useState<{
     psychographic: PsychographicQ[]; structured: StructuredQ[]; openEnded: OpenEndedQ[]
     customDemo: CustomDemoField[]; customPsycho: PsychographicQ[]
   }>({ psychographic: [], structured: [], openEnded: [], customDemo: [], customPsycho: [] })
 
   // Modal state
-  var [demoModal, setDemoModal] = useState<{ mode: 'create' | 'edit'; item?: CustomDemoField } | null>(null)
-  var [psychoModal, setPsychoModal] = useState<{ mode: 'create' | 'edit'; item?: PsychographicQ } | null>(null)
-  var [deleteTarget, setDeleteTarget] = useState<{ id: string; type: 'demo' | 'psycho' } | null>(null)
+  const [demoModal, setDemoModal] = useState<{ mode: 'create' | 'edit'; item?: CustomDemoField } | null>(null)
+  const [psychoModal, setPsychoModal] = useState<{ mode: 'create' | 'edit'; item?: PsychographicQ } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: 'demo' | 'psycho' } | null>(null)
 
   function load() {
     setLoading(true)
-    var params = new URLSearchParams()
+    const params = new URLSearchParams()
     if (industry) params.set('industry', industry)
     fetch('/api/admin/questions?' + params.toString())
       .then(function(r) { return r.json() })
@@ -343,17 +343,17 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
 
   useEffect(load, [industry])
 
-  var inputCls = 'px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors'
+  const inputCls = 'px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors'
 
   function filterBySearch<T extends { prompt: string }>(items: T[]): T[] {
     if (!search.trim()) return items
-    var s = search.toLowerCase()
+    const s = search.toLowerCase()
     return items.filter(function(q) { return q.prompt.toLowerCase().includes(s) })
   }
 
   function groupByIndustry<T extends { industryLabel: string }>(items: T[]): Record<string, T[]> {
-    var groups: Record<string, T[]> = {}
-    for (var item of items) {
+    const groups: Record<string, T[]> = {}
+    for (const item of items) {
       if (!groups[item.industryLabel]) groups[item.industryLabel] = []
       groups[item.industryLabel].push(item)
     }
@@ -407,16 +407,16 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
     } finally { setDeleting(false) }
   }
 
-  var psychoFiltered = filterBySearch(data.psychographic)
-  var structuredFiltered = filterBySearch(data.structured)
-  var openEndedFiltered = filterBySearch(data.openEnded)
-  var customPsychoFiltered = filterBySearch(data.customPsycho)
-  var customDemoFiltered = data.customDemo.filter(function(f) {
+  const psychoFiltered = filterBySearch(data.psychographic)
+  const structuredFiltered = filterBySearch(data.structured)
+  const openEndedFiltered = filterBySearch(data.openEnded)
+  const customPsychoFiltered = filterBySearch(data.customPsycho)
+  const customDemoFiltered = data.customDemo.filter(function(f) {
     return !search.trim() || f.label.toLowerCase().includes(search.toLowerCase())
   })
 
   // Demo bank filtered by search
-  var demoBankFiltered = DEMO_BANK.filter(function(f) {
+  const demoBankFiltered = DEMO_BANK.filter(function(f) {
     return !search.trim() || f.label.toLowerCase().includes(search.toLowerCase())
   })
 
@@ -434,7 +434,7 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
         {/* Tabs */}
         <div className="flex gap-2 mb-6 flex-wrap">
           {TAB_DEFS.map(function(t) {
-            var count = t.id === 'demographics' ? demoBankFiltered.length + customDemoFiltered.length
+            const count = t.id === 'demographics' ? demoBankFiltered.length + customDemoFiltered.length
               : t.id === 'psychographic' ? psychoFiltered.length + customPsychoFiltered.length
               : t.id === 'structured' ? structuredFiltered.length
               : openEndedFiltered.length
@@ -483,7 +483,7 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
                   </div>
                   <div className="px-5 pb-5 pt-4 flex flex-col gap-3">
                     {demoBankFiltered.map(function(f) {
-                      var opts = f.options ? f.options.map(function(o) { return Array.isArray(o) ? o[1] : o }) : []
+                      const opts = f.options ? f.options.map(function(o) { return Array.isArray(o) ? o[1] : o }) : []
                       return (
                         <div key={f.key} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
                           <div className="flex-1">
@@ -519,7 +519,7 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
                       <div className="text-sm text-gray-400 text-center py-6">No custom fields yet. Click "Add Field" to create one.</div>
                     ) : (
                       customDemoFiltered.map(function(f) {
-                        var opts = f.options ? f.options.split('\n').map(function(o: string) { return o.trim() }).filter(Boolean) : []
+                        const opts = f.options ? f.options.split('\n').map(function(o: string) { return o.trim() }).filter(Boolean) : []
                         return (
                           <div key={f.id} className="bg-white border border-orange-100 rounded-xl p-4 flex items-start gap-3">
                             <div className="flex-1">

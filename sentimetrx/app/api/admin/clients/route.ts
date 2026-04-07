@@ -31,25 +31,24 @@ export async function GET() {
 
   if (!orgs) return NextResponse.json([])
 
-  // Get user counts per org
-  const { data: userCounts } = await service
-    .from('users')
-    .select('org_id')
-
-  // Get study + response counts per org
-  const { data: studyCounts } = await service
-    .from('studies')
-    .select('org_id, id')
-
-  const { data: responseCounts } = await service
-    .from('responses')
-    .select('org_id')
-
-  const result = orgs.map(org => ({
-    ...org,
-    user_count:     (userCounts     || []).filter(u => u.org_id    === org.id).length,
-    study_count:    (studyCounts    || []).filter(s => s.org_id    === org.id).length,
-    response_count: (responseCounts || []).filter(r => r.org_id    === org.id).length,
+  // Per-org counts using count queries (not fetching all rows)
+  const result = await Promise.all(orgs.map(async (org: any) => {
+    const [userResult, studyResult] = await Promise.all([
+      service.from('users').select('id', { count: 'exact', head: true }).eq('org_id', org.id),
+      service.from('studies').select('id').eq('org_id', org.id),
+    ])
+    const studyIds = (studyResult.data || []).map((s: any) => s.id)
+    let responseCount = 0
+    if (studyIds.length > 0) {
+      const { count } = await service.from('responses').select('id', { count: 'exact', head: true }).in('study_id', studyIds)
+      responseCount = count || 0
+    }
+    return {
+      ...org,
+      user_count:     userResult.count || 0,
+      study_count:    studyIds.length,
+      response_count: responseCount,
+    }
   }))
 
   return NextResponse.json(result)

@@ -22,8 +22,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
-  const body = await req.json()
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { org_id, email, role } = body
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (email && !emailRegex.test(email)) return NextResponse.json({ error: 'Invalid email format' }, { status: 400 })
 
   if (!org_id) {
     return NextResponse.json({ error: 'org_id is required' }, { status: 400 })

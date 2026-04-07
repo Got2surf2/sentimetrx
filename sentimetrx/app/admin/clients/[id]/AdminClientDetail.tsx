@@ -245,11 +245,11 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
           {members.length === 0 ? (
             <Empty text="No members yet" />
           ) : (
-            <div className="flex flex-col divide-y divide-slate-800">
+            <div className="flex flex-col divide-y divide-gray-200">
               {members.map(m => (
                 <div key={m.id} className="flex items-center justify-between py-3 gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-white truncate">{m.full_name || m.email}</div>
+                    <div className="text-sm font-medium text-gray-800 truncate">{m.full_name || m.email}</div>
                     {m.full_name && <div className="text-xs text-gray-400 truncate">{m.email}</div>}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -267,13 +267,13 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
           {studies.length === 0 ? (
             <Empty text="No studies yet" />
           ) : (
-            <div className="flex flex-col divide-y divide-slate-800">
+            <div className="flex flex-col divide-y divide-gray-200">
               {studies.map(study => (
                 <div key={study.id} className="flex items-center justify-between py-3 gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span>{study.bot_emoji}</span>
-                      <span className="text-sm font-medium text-white truncate">{study.name}</span>
+                      <span className="text-sm font-medium text-gray-800 truncate">{study.name}</span>
                       <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + statusColor(study.status)}>
                         {study.status}
                       </span>
@@ -335,7 +335,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                 value={inviteEmail}
                 onChange={e => setInviteEmail(e.target.value)}
                 placeholder="Email (optional)"
-                className="flex-1 min-w-[200px] bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
+                className="flex-1 min-w-[200px] bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400"
               />
               <button
                 onClick={handleGenerateInvite}
@@ -350,7 +350,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
           {invites.length === 0 ? (
             <Empty text="No invite links yet" />
           ) : (
-            <div className="flex flex-col divide-y divide-slate-800">
+            <div className="flex flex-col divide-y divide-gray-200">
               {invites.map(inv => {
                 const status = inviteStatus(inv)
                 return (
@@ -387,7 +387,7 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-6">
-      <h2 className="font-semibold text-white mb-4">{title}</h2>
+      <h2 className="font-semibold text-gray-800 mb-4">{title}</h2>
       {children}
     </div>
   )

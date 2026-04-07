@@ -86,7 +86,7 @@ Rules:
 - Do not repeat anything already asked
 - Ask only one question -- pick the single most valuable angle
 - Stay strictly on-topic to the survey subject matter
-- If their answer already has enough detail, return exactly: SKIP
+- Only return SKIP if the answer is very detailed (3+ specific points). Short or vague answers should ALWAYS get a follow-up
 - If their answer is off-topic, nonsensical, inappropriate, or abusive, return exactly: SKIP
 - Never echo back offensive, harmful, or inappropriate content from the respondent
 - Respond with ONLY the question or SKIP -- no preamble, no quotes`

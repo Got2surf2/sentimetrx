@@ -2,6 +2,8 @@
 // Client-safe pure utilities for theme matching, counting, and text utilities.
 // No server-only imports. Safe to use in browser components.
 
+import { expandLemma } from './lemmas'
+
 export interface Theme {
   id: string
   name: string
@@ -30,10 +32,22 @@ export interface TextSegment {
   matched: boolean
 }
 
-// Stem-aware keyword regex (no global flag -- avoids lastIndex bug on repeated test())
+// Lemma-aware keyword regex: expands irregular forms then builds alternation.
+// "run" → matches run|runs|ran|running|runner|runners (via lemma) plus stem-suffix via \w*
+// "good" → matches good|better|best plus stem-suffix
 function buildKwRegex(kw: string): RegExp {
-  const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp('(?<![a-z])' + esc + '\\w*', 'i')
+  const forms = expandLemma(kw)
+  // Build alternation of all lemma forms, each with stem-suffix \w*
+  // Use plain array dedup (no Set) for client bundle compatibility
+  const seen: Record<string, boolean> = {}
+  const alts: string[] = []
+  for (let i = 0; i < forms.length; i++) {
+    const alt = forms[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
+    if (!seen[alt]) { seen[alt] = true; alts.push(alt) }
+  }
+  const escOrig = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
+  if (!seen[escOrig]) alts.push(escOrig)
+  return new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'i')
 }
 
 export function commentMatchesTheme(text: string, theme: Theme): boolean {
@@ -69,10 +83,22 @@ export function recountThemes(
       return String(r[f] || '').trim().length > 0
     })
   })
+  // Pre-compile keyword regexes for all themes to avoid rebuilding per row
+  const themeRegexes: Map<string, RegExp[]> = new Map()
+  for (const t of themes) {
+    if (t.keywords && t.keywords.length) {
+      themeRegexes.set(t.id, t.keywords.map(buildKwRegex))
+    }
+  }
   return themes.map(function(t) {
+    const regexes = themeRegexes.get(t.id)
+    if (!regexes || !regexes.length) {
+      const ci = wilsonCI(0, nonEmpty.length)
+      return { ...t, count: 0, percentage: 0, ciLow: ci.ciLow, ciHigh: ci.ciHigh }
+    }
     const count = nonEmpty.filter(function(r) {
-      const text = fields.map(function(f) { return String(r[f] || '') }).join(' ')
-      return commentMatchesTheme(text, t)
+      const text = fields.map(function(f) { return String(r[f] || '') }).join(' ').toLowerCase()
+      return regexes.some(function(re) { return re.test(text) })
     }).length
     const pct = nonEmpty.length > 0 ? Math.round(count / nonEmpty.length * 100) : 0
     const ci = wilsonCI(count, nonEmpty.length)
@@ -94,36 +120,81 @@ export function evenSample<T>(arr: T[], n: number): T[] {
   })
 }
 
-// Returns text split into matched/unmatched keyword segments for highlighting
+// Clause boundary characters — used to expand keyword highlights to the surrounding phrase
+const CLAUSE_BREAKS = /[,.;:!?\-—–\n]/
+
+/**
+ * Expand a keyword match span to the nearest clause boundaries.
+ * Given "The food was great, but we had to wait over 30 minutes for our table, which was bad"
+ * with keyword "wait" matching at position 38-42, this expands to
+ * "but we had to wait over 30 minutes for our table" (the clause between the commas).
+ */
+function expandToClause(text: string, matchStart: number, matchEnd: number): { start: number; end: number } {
+  // Expand left to nearest clause break (or start of text)
+  let left = matchStart
+  while (left > 0 && !CLAUSE_BREAKS.test(text[left - 1])) left--
+  // Skip whitespace after the break
+  while (left < matchStart && text[left] === ' ') left++
+
+  // Expand right to nearest clause break (or end of text)
+  let right = matchEnd
+  while (right < text.length && !CLAUSE_BREAKS.test(text[right])) right++
+
+  return { start: left, end: right }
+}
+
+// Returns text split into matched/unmatched keyword segments for highlighting.
+// Highlights expand to the containing clause boundary for contextual phrases.
 export function highlightKeywords(text: string, keywords: string[]): TextSegment[] {
   if (!keywords || !keywords.length) return [{ text, matched: false }]
+  // Pre-compile all keyword regexes with global flag for full-text scanning
+  const compiledRegexes: RegExp[] = []
+  for (let ki = 0; ki < keywords.length; ki++) {
+    if (keywords[ki]) {
+      const base = buildKwRegex(keywords[ki])
+      // Rebuild with 'gi' flag for exec() scanning
+      compiledRegexes.push(new RegExp(base.source, 'gi'))
+    }
+  }
+  if (!compiledRegexes.length) return [{ text, matched: false }]
+
+  // Find all keyword matches and expand each to clause boundaries
+  type Span = { start: number; end: number }
+  const spans: Span[] = []
+  for (let ki = 0; ki < compiledRegexes.length; ki++) {
+    const re = compiledRegexes[ki]
+    re.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      spans.push(expandToClause(text, m.index, m.index + m[0].length))
+    }
+  }
+  if (!spans.length) return [{ text, matched: false }]
+
+  // Sort by start position, merge overlapping spans
+  spans.sort(function(a, b) { return a.start - b.start })
+  const merged: Span[] = [spans[0]]
+  for (let i = 1; i < spans.length; i++) {
+    const last = merged[merged.length - 1]
+    if (spans[i].start <= last.end) {
+      if (spans[i].end > last.end) last.end = spans[i].end
+    } else {
+      merged.push(spans[i])
+    }
+  }
+
+  // Build segments from merged spans
   const parts: TextSegment[] = []
-  let remaining = text
-  let guard = 0
-  while (remaining.length > 0 && guard < 2000) {
-    guard++
-    let earliest = -1
-    let earliestEnd = -1
-    for (let ki = 0; ki < keywords.length; ki++) {
-      const kw = keywords[ki]
-      if (!kw) continue
-      const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const re = new RegExp('(?<![a-z])' + esc + '\\w*', 'i')
-      const m = remaining.match(re)
-      if (m && m.index !== undefined) {
-        if (earliest === -1 || m.index < earliest) {
-          earliest = m.index
-          earliestEnd = m.index + m[0].length
-        }
-      }
+  let pos = 0
+  for (let i = 0; i < merged.length; i++) {
+    if (merged[i].start > pos) {
+      parts.push({ text: text.slice(pos, merged[i].start), matched: false })
     }
-    if (earliest === -1) {
-      parts.push({ text: remaining, matched: false })
-      break
-    }
-    if (earliest > 0) parts.push({ text: remaining.slice(0, earliest), matched: false })
-    parts.push({ text: remaining.slice(earliest, earliestEnd), matched: true })
-    remaining = remaining.slice(earliestEnd)
+    parts.push({ text: text.slice(merged[i].start, merged[i].end), matched: true })
+    pos = merged[i].end
+  }
+  if (pos < text.length) {
+    parts.push({ text: text.slice(pos), matched: false })
   }
   return parts
 }

@@ -25,6 +25,11 @@ export async function POST(_req: Request, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (dataset.org_id !== userData?.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const service = createServiceRoleClient()
 
   // Load current schema from dataset_state

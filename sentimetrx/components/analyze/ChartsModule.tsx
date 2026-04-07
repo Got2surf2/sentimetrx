@@ -301,7 +301,23 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var hoverTpl = isH
       ? (isPercent ? '%{x:.1f}%<extra>%{y}</extra>' : '%{x}<extra>%{y}</extra>')
       : (isPercent ? '%{y:.1f}%<extra>%{x}</extra>' : '%{y}<extra>%{x}</extra>')
-    var trace: any = { type: 'bar', marker: { color: primaryColor, line: { color: primaryColor + '40', width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: hoverTpl }
+    // Ordinal fields get a green→grey→red gradient; nominal fields get single color
+    var isOrdField = (catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(cats)
+    var barColors: string | string[] = primaryColor
+    if (isOrdField && cats.length >= 3) {
+      // Gradient: green (best) → grey (mid) → red (worst)
+      // smartOrder returns low→high, so reversed orderedKeys = high→low (Excellent first)
+      var ordGrad = ['#059669','#34D399','#94A3B8','#F97316','#DC2626']
+      barColors = cats.map(function(_, i) {
+        var frac = cats.length <= 1 ? 0 : i / (cats.length - 1)
+        if (frac < 0.15) return ordGrad[0]
+        if (frac < 0.38) return ordGrad[1]
+        if (frac < 0.62) return ordGrad[2]
+        if (frac < 0.82) return ordGrad[3]
+        return ordGrad[4]
+      })
+    }
+    var trace: any = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: hoverTpl }
     if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = displayVals }
 

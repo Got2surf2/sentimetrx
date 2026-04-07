@@ -43,14 +43,10 @@ export default async function AdminClientPage({ params }: Props) {
     .eq('org_id', params.id)
     .order('created_at', { ascending: false })
 
-  const studyIds = (studies || []).map(s => s.id)
-  const { data: responsesRaw } = studyIds.length > 0
-    ? await service.from('responses').select('study_id').in('study_id', studyIds)
-    : { data: [] }
-
-  const studiesWithCounts = (studies || []).map(s => ({
-    ...s,
-    response_count: (responsesRaw || []).filter(r => r.study_id === s.id).length,
+  // Per-study response counts using head queries (not fetching all rows)
+  const studiesWithCounts = await Promise.all((studies || []).map(async (s: any) => {
+    const { count } = await service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', s.id)
+    return { ...s, response_count: count || 0 }
   }))
 
   const { data: allOrgs } = await service

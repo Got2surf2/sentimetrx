@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateStudyGuid } from '@/lib/guid'
+import { SLUG_REGEX } from '@/lib/constants'
 import type { StudyConfig } from '@/lib/types'
 
 // GET /api/studies — list studies for the current user's client
@@ -35,7 +36,8 @@ export async function POST(req: NextRequest) {
     .eq('id', user.id)
     .single()
 
-  const body = await req.json()
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { name, bot_name, bot_emoji, config, slug: rawSlug } = body
 
   if (!name || !bot_name || !config) {
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
   let slug: string | null = null
   if (rawSlug && typeof rawSlug === 'string' && rawSlug.trim()) {
     slug = rawSlug.toLowerCase().trim()
-    if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(slug)) {
+    if (!SLUG_REGEX.test(slug)) {
       return NextResponse.json({ error: 'Slug must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
     }
     const { data: conflict } = await supabase

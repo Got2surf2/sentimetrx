@@ -11,17 +11,22 @@ export const dynamic = 'force-dynamic'
 interface Params { params: { datasetId: string } }
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
-  var { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { user: null }
-  return { user }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { user: null, orgId: null }
+  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  return { user, orgId: (userData?.org_id as string | null) }
 }
 
 export async function GET(_req: Request, { params }: Params) {
-  var supabase = createClient()
-  var { user } = await authCheck(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createClient()
+  const { user, orgId } = await authCheck(supabase)
+  if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var { data, error } = await supabase
+  const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (dataset.org_id !== orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { data, error } = await supabase
     .from('dataset_state')
     .select('*')
     .eq('dataset_id', params.datasetId)
@@ -32,15 +37,19 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
-  var supabase = createClient()
-  var { user } = await authCheck(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createClient()
+  const { user, orgId } = await authCheck(supabase)
+  if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var body = await req.json()
-  var { schema_config, theme_model, saved_charts, saved_stats, filter_state, session_state } = body
+  const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (dsCheck.org_id !== orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  var service = createServiceRoleClient()
-  var { error } = await service
+  const body = await req.json()
+  const { schema_config, theme_model, saved_charts, saved_stats, filter_state, session_state } = body
+
+  const service = createServiceRoleClient()
+  const { error } = await service
     .from('dataset_state')
     .update({
       schema_config: schema_config,
@@ -59,25 +68,29 @@ export async function PUT(req: Request, { params }: Params) {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
-  var supabase = createClient()
-  var { user } = await authCheck(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createClient()
+  const { user, orgId } = await authCheck(supabase)
+  if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var body: Record<string, unknown>
+  const { data: dsCheck2 } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!dsCheck2) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (dsCheck2.org_id !== orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  let body: Record<string, unknown>
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  var ALLOWED_FIELDS = ['schema_config', 'theme_model', 'saved_charts', 'saved_stats', 'filter_state', 'session_state']
-  var patch: Record<string, unknown> = {
+  const ALLOWED_FIELDS = ['schema_config', 'theme_model', 'saved_charts', 'saved_stats', 'filter_state', 'session_state']
+  const patch: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
     updated_by: user.id,
   }
 
-  for (var i = 0; i < ALLOWED_FIELDS.length; i++) {
-    var key = ALLOWED_FIELDS[i]
+  for (let i = 0; i < ALLOWED_FIELDS.length; i++) {
+    const key = ALLOWED_FIELDS[i]
     if (body[key] !== undefined) {
       patch[key] = body[key]
     }
@@ -87,8 +100,8 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })
   }
 
-  var service = createServiceRoleClient()
-  var { error } = await service
+  const service = createServiceRoleClient()
+  const { error } = await service
     .from('dataset_state')
     .update(patch)
     .eq('dataset_id', params.datasetId)

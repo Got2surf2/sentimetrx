@@ -23,6 +23,7 @@ interface Props { study: any; logoUrl?: string; orgName?: string; isAdmin?: bool
 export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin=false, allOrgs=[], userEmail='', fullName='' }: Props) {
   const [step,   setStep]   = useState(0)
   const [transferring, setTransferring] = useState(false)
+  const [transferOrgId, setTransferOrgId] = useState('')
 
   function goTo(i: number) {
     setStep(i)
@@ -131,9 +132,9 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
             <p className="text-sm text-gray-400 mb-4">Move this study to a different organization. This will change who can access it.</p>
             <div className="flex items-center gap-3">
               <select
-                id="transfer-org"
                 disabled={transferring}
-                defaultValue=""
+                value={transferOrgId}
+                onChange={e => setTransferOrgId(e.target.value)}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors disabled:opacity-50"
               >
                 <option value="" disabled>Select organization...</option>
@@ -144,11 +145,10 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
               <button
                 disabled={transferring}
                 onClick={async () => {
-                  const select = document.getElementById('transfer-org') as HTMLSelectElement
-                  const newOrgId = select.value
-                  if (!newOrgId) return
-                  const orgName = select.options[select.selectedIndex].text
-                  if (!confirm(`Transfer "${draft.name}" to ${orgName}?`)) return
+                  if (!transferOrgId) return
+                  const orgLabel = allOrgs.find(o => o.id === transferOrgId)?.name ?? transferOrgId
+                  if (!confirm(`Transfer "${draft.name}" to ${orgLabel}?`)) return
+                  const newOrgId = transferOrgId
                   setTransferring(true)
                   setError(null)
                   try {

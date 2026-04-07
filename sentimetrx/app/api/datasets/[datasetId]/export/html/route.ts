@@ -3,10 +3,13 @@
 // Same request body as /export/pptx — returns text/html file download.
 
 import { NextResponse } from 'next/server'
-import { createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { pickBestComments } from '@/lib/export/scoreComments'
+import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
+import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120
 
 interface Params { params: { datasetId: string } }
 
@@ -108,11 +111,13 @@ ${fields.map(f => {
 
 // ── HTML slide builders ───────────────────────────────────────────────────────
 
-let chartIndex = 0
-const charts: Record<string, { data: any[]; layout: any }> = {}
-const manifest: { title: string; icon: string; section?: string }[] = []
+interface SlideCtx {
+  chartIndex: number
+  charts: Record<string, { data: any[]; layout: any }>
+  manifest: { title: string; icon: string; section?: string }[]
+}
 
-function chartId() { return 'chart-' + (chartIndex++) }
+function chartId(ctx: SlideCtx) { return 'chart-' + (ctx.chartIndex++) }
 
 function slideHeader(title: string, subtitle?: string, dark = false): string {
   const bg = dark ? DN.navy : DN.slateCard
@@ -128,8 +133,8 @@ function slideHeader(title: string, subtitle?: string, dark = false): string {
   </div>`
 }
 
-function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: number, computedAt: string|null): string {
-  manifest.push({ title: datasetName, icon: '🏠' })
+function buildTitleSlide(ctx: SlideCtx, datasetName: string, reportTitle: string, totalRows: number, computedAt: string|null): string {
+  ctx.manifest.push({ title: datasetName, icon: '🏠' })
   // Always use report generation date, not analytics compute date
   const dateStr = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
   return `<section class="slide-title" style="background:${DN.navy}">
@@ -150,8 +155,8 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
   </section>`
 }
 
-function buildSummarySlide(totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]): string {
-  manifest.push({ title: 'Executive Summary', icon: '📋' })
+function buildSummarySlide(ctx: SlideCtx, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]): string {
+  ctx.manifest.push({ title: 'Executive Summary', icon: '📋' })
   const kpis: { v: string; l: string }[] = [{ v: totalRows.toLocaleString(), l: 'Total Responses' }]
   const numF = fields.find(f => f.type === 'numeric')
   if (numF?.summary?.avg != null) kpis.push({ v: String(Math.round(numF.summary.avg)), l: trunc(numF.label, 20) })
@@ -191,19 +196,43 @@ function buildSummarySlide(totalRows: number, bullets: string[], takeaways: stri
   </section>`
 }
 
-function buildCategoricalSlide(f: SelectedField, ai: FieldInsight): string {
-  manifest.push({ title: f.label, icon: '📊', section: f.section })
+function buildCategoricalSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight): string {
+  ctx.manifest.push({ title: f.label, icon: '📊', section: f.section })
   const counts = f.summary?.counts as Record<string, number> || {}
+  const allKeys = Object.keys(counts)
   const total  = Object.values(counts).reduce((s: number, v: any) => s + Number(v), 0) || 1
-  const sorted = Object.entries(counts).sort(([,a],[,b]) => Number(b)-Number(a)).slice(0, 15)
-  const remapping = f.remapping || {}
 
-  const labels  = sorted.map(([k]) => remapping[k] !== undefined ? String(remapping[k]) : k)
-  const values  = sorted.map(([,v]) => Math.round(Number(v) / total * 1000) / 10)
-  const rawCts  = sorted.map(([,v]) => Number(v))
+  // Use smartOrder: remapping first, then scale detection, then count-descending
+  const isOrdinal = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
+  let orderedKeys: string[]
+  if (isOrdinal) {
+    orderedKeys = smartOrder(allKeys, f.remapping).slice().reverse() // best-first
+  } else {
+    orderedKeys = allKeys.slice().sort((a, b) => (counts[b] || 0) - (counts[a] || 0))
+  }
+  orderedKeys = orderedKeys.filter(k => (counts[k] || 0) > 0).slice(0, 15)
 
-  const cid = chartId()
-  charts[cid] = {
+  // Labels: always use the original text labels (NOT numeric remapping values)
+  const labels  = orderedKeys.map(k => k)
+  const values  = orderedKeys.map(k => Math.round((counts[k] || 0) / total * 1000) / 10)
+  const rawCts  = orderedKeys.map(k => counts[k] || 0)
+
+  // Color: ordinal gradient (green→red) or single color
+  let barColors: string | string[] = DN.teal
+  if (isOrdinal && orderedKeys.length >= 3) {
+    const ordGrad = ['#059669','#34D399','#94A3B8','#F97316','#DC2626']
+    barColors = orderedKeys.map(function(_, i) {
+      const frac = orderedKeys.length <= 1 ? 0 : i / (orderedKeys.length - 1)
+      if (frac < 0.15) return ordGrad[0]
+      if (frac < 0.38) return ordGrad[1]
+      if (frac < 0.62) return ordGrad[2]
+      if (frac < 0.82) return ordGrad[3]
+      return ordGrad[4]
+    })
+  }
+
+  const cid = chartId(ctx)
+  ctx.charts[cid] = {
     data: [{
       type: 'bar', orientation: 'h',
       y: labels.slice().reverse(),
@@ -211,7 +240,7 @@ function buildCategoricalSlide(f: SelectedField, ai: FieldInsight): string {
       customdata: rawCts.slice().reverse(),
       text: values.slice().reverse().map(v => v + '%'),
       textposition: 'outside',
-      marker: { color: DN.teal },
+      marker: { color: Array.isArray(barColors) ? barColors.slice().reverse() : barColors },
       hovertemplate: '<b>%{y}</b><br>%{x:.0f}% (%{customdata} responses)<extra></extra>',
     }],
     layout: {
@@ -242,8 +271,8 @@ function buildCategoricalSlide(f: SelectedField, ai: FieldInsight): string {
   </section>`
 }
 
-function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<string,any>[], rowKeyMap: Record<string,string>): string {
-  manifest.push({ title: f.label, icon: '🔢', section: f.section })
+function buildNumericSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, allRows: Record<string,any>[], rowKeyMap: Record<string,string>): string {
+  ctx.manifest.push({ title: f.label, icon: '🔢', section: f.section })
   const s = f.summary || {}
   const subtitle = f.prompt || 'Numeric · ' + (s.nonNull||0).toLocaleString() + ' responses'
 
@@ -256,9 +285,9 @@ function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<s
   }
   const rawVals = allRows.map(r => parseFloat(rowVal(r, f.field))).filter(v => !isNaN(v))
 
-  const cid = chartId()
+  const cid = chartId(ctx)
   if (rawVals.length > 5) {
-    charts[cid] = {
+    ctx.charts[cid] = {
       data: [{
         type: 'histogram', x: rawVals, nbinsx: 20,
         marker: { color: DN.teal, line: { color: DN.tealLight, width: 1 } },
@@ -301,8 +330,8 @@ function buildNumericSlide(f: SelectedField, ai: FieldInsight, allRows: Record<s
   </section>`
 }
 
-function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]): string {
-  manifest.push({ title: f.label, icon: '💬', section: f.section })
+function buildOpenEndedSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, themes: any[]): string {
+  ctx.manifest.push({ title: f.label, icon: '💬', section: f.section })
   const subtitle = f.prompt || 'Open-ended · ' + (f.summary?.nonNull||0).toLocaleString() + ' responses'
   // Prefer AI-curated quotes (≤140 chars each); fall back to raw sample
   const allSamples = (f.summary?.sample || []) as string[]
@@ -316,10 +345,10 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
 
   let chartHtml = ''
   if (fieldThemes.length > 0) {
-    const cid = chartId()
+    const cid = chartId(ctx)
     const labels = fieldThemes.map((t: any) => trunc(t.name||t.label, 30))
     const vals   = fieldThemes.map((t: any) => t.percentage || 0)
-    charts[cid] = {
+    ctx.charts[cid] = {
       data: [{
         type: 'bar', orientation: 'h',
         y: labels.slice().reverse(),
@@ -360,10 +389,11 @@ function buildOpenEndedSlide(f: SelectedField, ai: FieldInsight, themes: any[]):
   </section>`
 }
 
-function buildThemeDetailSlides(
-  themes: any[], fieldLabel: string,
-  allRows: Record<string,any>[], rowKeyMap: Record<string,string>, fieldKeys: string[]
-): string[] {
+async function buildThemeDetailSlides(
+  ctx: SlideCtx, themes: any[], fieldLabel: string,
+  allRows: Record<string,any>[], rowKeyMap: Record<string,string>, fieldKeys: string[],
+  apiKey?: string,
+): Promise<string[]> {
   if (!themes?.length) return []
 
   function matchesTheme(text: string, keywords: string[]): boolean {
@@ -375,7 +405,7 @@ function buildThemeDetailSlides(
     })
   }
 
-  function getComments(t: any): string[] {
+  async function getComments(t: any): Promise<string[]> {
     if (!allRows?.length) return []
     const keys = fieldKeys.map(fk => {
       const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
@@ -387,22 +417,29 @@ function buildThemeDetailSlides(
       if (text.length < 80) continue
       if (matchesTheme(text, t.keywords || [])) matched.push(text)
     }
+    if (!matched.length) return []
     matched.sort((a, b) => b.length - a.length)
     const pool = matched.slice(0, Math.min(matched.length, 40))
-    const n = Math.min(5, pool.length)
-    if (n === 0) return []
-    const step = pool.length / n
-    return Array.from({ length: n }, (_, i) => pool[Math.floor(i * step)])
-      .map(s => trimNatural(s, 350))
+
+    return pickBestComments(
+      pool,
+      { name: t.name || '', description: t.description || '', keywords: t.keywords || [], sentiment: t.sentiment || '' },
+      5,
+      apiKey || undefined,
+      undefined,
+      350,
+    )
   }
 
   const total = themes.length
-  return themes.map((t: any, tidx: number) => {
-    manifest.push({ title: t.name || 'Theme', icon: '🏷️', section: fieldLabel })
+  const slides: string[] = []
+  for (let tidx = 0; tidx < themes.length; tidx++) {
+    const t = themes[tidx] as any
+    ctx.manifest.push({ title: t.name || 'Theme', icon: '🏷️', section: fieldLabel })
     const themeColor = t.color || DN.teal
     const sent       = t.sentiment || ''
     const pctVal     = Math.round(t.percentage || 0)
-    const comments   = getComments(t)
+    const comments   = await getComments(t)
 
     const sentBadge = sent
       ? `<span style="display:inline-block;padding:3px 12px;border-radius:4px;font-size:11px;font-weight:700;background:${sent==='positive'?'#f0fdf4':sent==='negative'?'#fef2f2':sent==='mixed'?'#fffbeb':'#f4f7f8'};color:${sent==='positive'?'#15803d':sent==='negative'?'#b91c1c':sent==='mixed'?'#92400e':DN.slateDk};border:1px solid currentColor">${sent.charAt(0).toUpperCase()+sent.slice(1)}</span>`
@@ -416,7 +453,7 @@ function buildThemeDetailSlides(
       : `<p style="font-size:11px;color:${DN.slate};font-style:italic;padding:8px 0">No verbatim responses matched this theme.</p>`
 
     const subtitle = `AI-identified theme  ·  ${tidx+1} of ${total}  ·  from: ${fieldLabel}`
-    return `<section>
+    slides.push(`<section>
       <div style="position:absolute;top:0;left:0;right:0;height:5px;background:${themeColor}"></div>
       ${slideHeader(t.name || 'Theme', subtitle)}
       <div class="slide-body two-col">
@@ -437,12 +474,13 @@ function buildThemeDetailSlides(
           <div style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px">${quotesHtml}</div>
         </div>
       </div>
-    </section>`
-  })
+    </section>`)
+  }
+  return slides
 }
 
-function buildClosingSlide(datasetName: string, takeaways: string[]): string {
-  manifest.push({ title: 'Key Takeaways', icon: '✅' })
+function buildClosingSlide(ctx: SlideCtx, datasetName: string, takeaways: string[]): string {
+  ctx.manifest.push({ title: 'Key Takeaways', icon: '✅' })
   const taHtml = takeaways.slice(0, 3).map((ta, i) =>
     `<div class="closing-ta"><div class="closing-ta-num">${i+1}</div><div>${esc(ta)}</div></div>`).join('')
   return `<section style="background:${DN.navy};color:${DN.white}">
@@ -607,7 +645,7 @@ const CSS = `
 `
 
 // ── HTML template ─────────────────────────────────────────────────────────────
-function buildHTML(datasetName: string, slides: string[], chartsJson: string, nav: typeof manifest): string {
+function buildHTML(datasetName: string, slides: string[], chartsJson: string, nav: SlideCtx['manifest']): string {
   const sectionLabels: Record<string, string> = { demographic: 'Demographics', psychographic: 'Psychographics', core: 'Core Questions' }
 
   // Group nav items — insert section headers when section changes
@@ -635,7 +673,9 @@ function buildHTML(datasetName: string, slides: string[], chartsJson: string, na
 <title>${esc(datasetName)} — StoryTime Report</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
 <style>
-  html,body{margin:0;padding:0;height:100%;background:#0D2B45;font-family:'Inter',system-ui,-apple-system,sans-serif}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0D2B45;font-family:'Inter',system-ui,-apple-system,sans-serif}
+  .reveal{width:100%!important;height:100%!important}
+  .reveal .slide-number{font-size:12px;background:rgba(0,0,0,.3);color:#7A8BA0;padding:4px 10px;border-radius:4px}
   ${CSS}
 </style>
 </head>
@@ -669,7 +709,8 @@ const CHARTS = ${chartsJson};
 Reveal.initialize({
   hash:true, transition:'fade', width:1280, height:720,
   slideNumber:'c/t', controls:true, progress:true, center:false,
-  margin:0, minScale:0.1, maxScale:2.0,
+  margin:0.04, minScale:0.2, maxScale:2.0,
+  embedded:false, respondToHashChanges:true,
 });
 function tryRender(section) {
   if (!section) return;
@@ -745,12 +786,17 @@ document.addEventListener('keydown', function(e) {
 
 // ── POST handler ──────────────────────────────────────────────────────────────
 export async function POST(req: Request, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const body = await req.json().catch(() => ({}))
   const selectedFieldNames: string[] = body.fields || []
   const audience:            string   = body.audience || 'stakeholder'
   const instructions:        string   = body.instructions || ''
   const includeThemeSlides:  boolean  = body.includeThemeSlides !== false
   const selectedThemeIds:    string[] = body.selectedThemeIds || []
+  const rawFilters: Record<string, any> = body.filters || {}
 
   if (selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -838,6 +884,46 @@ export async function POST(req: Request, { params }: Params) {
   const rowKeyMap: Record<string,string> = {}
   if (allRows.length > 0) for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
 
+  // Apply filters if provided
+  const hasFilters = Object.keys(rawFilters).length > 0
+  if (hasFilters) {
+    const filters = deserializeFilters(rawFilters as SerializedFilters)
+    const filtered = applyFilters(allRows, filters)
+    allRows.length = 0
+    for (let fi = 0; fi < filtered.length; fi++) allRows.push(filtered[fi])
+  }
+
+  // Recompute field summaries from filtered rows when filters are active
+  if (hasFilters) {
+    for (const sf of selectedFields) {
+      const key = rowKeyMap[normalize(sf.field)] || sf.field
+      if (sf.type === 'categorical') {
+        const counts: Record<string, number> = {}
+        let nonNull = 0
+        for (const row of allRows) {
+          const v = row[key] != null ? String(row[key]).trim() : ''
+          if (v) { counts[v] = (counts[v] || 0) + 1; nonNull++ }
+        }
+        sf.summary = { ...(sf.summary || {}), counts, nonNull, uniqueCount: Object.keys(counts).length }
+      } else if (sf.type === 'numeric') {
+        const vals: number[] = []
+        for (const row of allRows) {
+          const n = parseFloat(String(row[key] ?? ''))
+          if (!isNaN(n)) vals.push(n)
+        }
+        if (vals.length > 0) {
+          vals.sort((a, b) => a - b)
+          const sum = vals.reduce((s, v) => s + v, 0)
+          sf.summary = { ...(sf.summary || {}), nonNull: vals.length, min: vals[0], max: vals[vals.length - 1], avg: Math.round(sum / vals.length * 100) / 100, median: vals[Math.floor(vals.length / 2)] }
+        }
+      } else if (sf.type === 'open-ended') {
+        let nonNull = 0
+        for (const row of allRows) { if (row[key] != null && String(row[key]).trim()) nonNull++ }
+        sf.summary = { ...(sf.summary || {}), nonNull }
+      }
+    }
+  }
+
   // Build live verbatim samples for each OE field (20 evenly-spaced responses ≥ 30 chars).
   // For positively-framed fields ("liked most", "best", etc.) filter out complaint-pattern responses.
   if (allRows.length > 0) {
@@ -884,15 +970,13 @@ export async function POST(req: Request, { params }: Params) {
     catch (e) { console.error('[export/html] AI error:', e) }
   }
 
-  // Reset per-request state
-  chartIndex = 0
-  Object.keys(charts).forEach(k => delete charts[k])
-  manifest.length = 0
+  // Per-request mutable state (no module-level sharing)
+  const ctx: SlideCtx = { chartIndex: 0, charts: {}, manifest: [] }
 
   // Build slides
   const slides: string[] = []
-  slides.push(buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt))
-  slides.push(buildSummarySlide(analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields))
+  slides.push(buildTitleSlide(ctx, datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt))
+  slides.push(buildSummarySlide(ctx, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields))
 
   const coreFields   = selectedFields.filter(f => !f.section || f.section === 'core')
   const psychoFields = selectedFields.filter(f => f.section === 'psychographic')
@@ -928,38 +1012,39 @@ export async function POST(req: Request, { params }: Params) {
       .sort(function(a: any, b: any) { return b.count - a.count })
   }
 
-  function renderField(f: SelectedField) {
+  async function renderField(f: SelectedField) {
     const ai = narratives.fieldInsights[f.field] || { keyFinding: f.label, narrative: '', implication: '' }
-    if (f.type === 'categorical') return buildCategoricalSlide(f, ai)
-    if (f.type === 'numeric')     return buildNumericSlide(f, ai, allRows, rowKeyMap)
+    if (f.type === 'categorical') return buildCategoricalSlide(ctx, f, ai)
+    if (f.type === 'numeric')     return buildNumericSlide(ctx, f, ai, allRows, rowKeyMap)
     if (f.type === 'open-ended') {
       const fieldThemes = includeThemeSlides && sortedThemes.length > 0
         ? (allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes).slice(0, 8)
         : []
-      return buildOpenEndedSlide(f, ai, fieldThemes)
+      return buildOpenEndedSlide(ctx, f, ai, fieldThemes)
     }
     return ''
   }
 
-  function renderFieldWithThemes(f: SelectedField) {
-    const s = renderField(f)
+  async function renderFieldWithThemes(f: SelectedField) {
+    const s = await renderField(f)
     if (s) slides.push(s)
     // After each open-ended slide, add per-theme detail slides with field-specific counts
     if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
       const fieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes
-      buildThemeDetailSlides(fieldThemes, f.label, allRows, rowKeyMap, [f.field]).forEach(ts => slides.push(ts))
+      const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], apiKey || undefined)
+      themeSlides.forEach(ts => slides.push(ts))
     }
   }
 
-  coreFields.forEach(renderFieldWithThemes)
-  if (psychoFields.length > 0) psychoFields.forEach(renderFieldWithThemes)
-  if (demoFields.length > 0) demoFields.forEach(renderFieldWithThemes)
+  for (const f of coreFields) await renderFieldWithThemes(f)
+  if (psychoFields.length > 0) for (const f of psychoFields) await renderFieldWithThemes(f)
+  if (demoFields.length > 0) for (const f of demoFields) await renderFieldWithThemes(f)
 
   if (narratives.keyTakeaways?.length > 0) {
-    slides.push(buildClosingSlide(datasetName, narratives.keyTakeaways))
+    slides.push(buildClosingSlide(ctx, datasetName, narratives.keyTakeaways))
   }
 
-  const html     = buildHTML(datasetName, slides, JSON.stringify(charts), [...manifest])
+  const html     = buildHTML(datasetName, slides, JSON.stringify(ctx.charts), [...ctx.manifest])
   const safeName = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40)
   const filename = safeName + '_report.html'
 

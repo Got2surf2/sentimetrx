@@ -145,9 +145,12 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
               {Object.entries(filters).map(function(e) {
                 var field = e[0], f = e[1]
                 var lbl = fieldLabel(field)
+                var fmtChipDate = function(ts: number) { var d = new Date(ts); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
                 var desc = f.type === 'cat'
                   ? Array.from(f.values).slice(0, 2).join(', ') + (f.values.size > 2 ? ' +' + (f.values.size - 2) : '')
-                  : f.values[0] + '\u2013' + f.values[1]
+                  : f.type === 'daterange'
+                    ? fmtChipDate(f.values[0]) + ' \u2013 ' + fmtChipDate(f.values[1])
+                    : f.values[0] + ' \u2013 ' + f.values[1]
                 return (
                   <span key={field} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '3px 10px', background: 'white', borderRadius: 12, border: '1px solid ' + T.accentMid, color: T.text }}>
                     {lbl}: {desc}
@@ -285,7 +288,7 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var curMinTs = pf && pf.type === 'daterange' ? pf.values[0] : absMinTs
                 var curMaxTs = pf && pf.type === 'daterange' ? pf.values[1] : absMaxTs
                 var inclBlanksDt = pf ? (pf as PendingDate).includeBlanks !== false : true
-                var fmtD = function(ts: number) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() }
+                var fmtD = function(ts: number) { return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
                 var stepMs = Math.max(86400000, Math.round((absMaxTs - absMinTs) / 200))
 
                 var setDateRange = function(minTs: number, maxTs: number, ib?: boolean) {
@@ -329,7 +332,11 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                   }
                 }
 
-                var thumbBase: React.CSSProperties = { position: 'absolute', top: '50%', width: 18, height: 18, borderRadius: '50%', background: '#fff', border: '3px solid ' + T.accent, transform: 'translate(-50%, -50%)', cursor: 'grab', zIndex: 5, boxShadow: '0 1px 4px rgba(0,0,0,.18)', touchAction: 'none' }
+                var thumbBase: React.CSSProperties = { position: 'absolute', top: '50%', width: 18, height: 18, borderRadius: '50%', background: '#fff', border: '3px solid ' + T.accent, transform: 'translate(-50%, -50%)', cursor: 'grab', boxShadow: '0 1px 4px rgba(0,0,0,.18)', touchAction: 'none' }
+                // When thumbs overlap (within 3%), put left thumb on top so user can drag it right
+                var thumbsOverlap = Math.abs(dtPctLeft - (100 - dtPctRight)) < 3
+                var leftZ = thumbsOverlap ? 7 : 5
+                var rightZ = thumbsOverlap ? 4 : 5
 
                 return (
                   <div key={f.field} style={{ background: T.bgCard, border: (isActive ? '2px solid ' + T.accent : '1px solid ' + T.border), borderRadius: 10, padding: '14px 16px' }}>
@@ -347,11 +354,11 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                       {/* Orange active range */}
                       <div style={{ position: 'absolute', top: '50%', left: dtPctLeft + '%', right: dtPctRight + '%', height: 4, background: T.accent, borderRadius: 2, transform: 'translateY(-50%)' }} />
                       {/* Left thumb — drag to change min */}
-                      <div style={Object.assign({}, thumbBase, { left: dtPctLeft + '%' })}
+                      <div style={Object.assign({}, thumbBase, { left: dtPctLeft + '%', zIndex: leftZ })}
                         onMouseDown={startDrag('left') as any}
                         onTouchStart={startDrag('left') as any} />
                       {/* Right thumb — drag to change max */}
-                      <div style={Object.assign({}, thumbBase, { left: (100 - dtPctRight) + '%' })}
+                      <div style={Object.assign({}, thumbBase, { left: (100 - dtPctRight) + '%', zIndex: rightZ })}
                         onMouseDown={startDrag('right') as any}
                         onTouchStart={startDrag('right') as any} />
                     </div>

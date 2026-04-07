@@ -14,14 +14,14 @@ export const dynamic = 'force-dynamic'
 interface Params { params: { datasetId: string } }
 
 export async function POST(_req: Request, { params }: Params) {
-  var supabase = createClient()
-  var { data: { user } } = await supabase.auth.getUser()
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var service = createServiceRoleClient()
+  const service = createServiceRoleClient()
 
   // Load dataset + linked study
-  var { data: dataset } = await service
+  const { data: dataset } = await service
     .from('datasets').select('*, studies(id, name, config)').eq('id', params.datasetId).single()
 
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
@@ -29,34 +29,34 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Not a study-linked dataset' }, { status: 400 })
   }
 
-  var study = (dataset as any).studies
+  const study = (dataset as any).studies
   if (!study || !study.config) {
-    return NextResponse.json({ error: 'Study config not found', needsReview: true }, { status: 200 })
+    return NextResponse.json({ error: 'Study config not found', needsReview: true }, { status: 400 })
   }
 
   // Build schema from study config
-  var schema = buildStudySchema(study.config)
+  const schema = buildStudySchema(study.config)
 
   // Ensure all fields have prompt populated (for PPTX subtitles)
   if (study.config.questions) {
     study.config.questions.forEach(function(q: any) {
-      var col = q.exportLabel || q.prompt || q.id
-      var field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
+      const col = q.exportLabel || q.prompt || q.id
+      const field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
       if (field && !field.prompt) field.prompt = q.prompt
     })
   }
   if (study.config.psychographicBank) {
     study.config.psychographicBank.forEach(function(pq: any) {
-      var sanitized = (pq.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      var field = schema.fields.find(function(f: any) { return f.field === 'psycho_' + sanitized })
+      const sanitized = (pq.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      const field = schema.fields.find(function(f: any) { return f.field === 'psycho_' + sanitized })
       if (field && !field.prompt) field.prompt = pq.q
     })
   }
   if (study.config.demoFields) {
     study.config.demoFields.forEach(function(df: any) {
       if (!df.enabled) return
-      var sanitized = (df.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      var field = schema.fields.find(function(f: any) { return f.field === 'demo_' + sanitized })
+      const sanitized = (df.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      const field = schema.fields.find(function(f: any) { return f.field === 'demo_' + sanitized })
       if (field && !field.prompt) field.prompt = df.label
     })
   }
@@ -64,8 +64,8 @@ export async function POST(_req: Request, { params }: Params) {
   // Apply question text as field labels (aliases)
   if (study.config.questions) {
     study.config.questions.forEach(function(q: any) {
-      var col = q.exportLabel || q.prompt || q.id
-      var field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
+      const col = q.exportLabel || q.prompt || q.id
+      const field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
       if (field) {
         // analyticsLabel takes priority; fall back to truncated prompt
         if (q.analyticsLabel) {
@@ -91,27 +91,27 @@ export async function POST(_req: Request, { params }: Params) {
   })
 
   // Extract industry and map to ana_library
-  var industry = study.config.industry as Industry | undefined
-  var anaLibrary = industry && industry !== 'other' ? (ANA_LIBRARY_KEY[industry as Exclude<Industry, 'other'>] || null) : null
+  const industry = study.config.industry as Industry | undefined
+  const anaLibrary = industry && industry !== 'other' ? (ANA_LIBRARY_KEY[industry as Exclude<Industry, 'other'>] || null) : null
 
   // Update dataset name and ana_library
-  var datasetUpdate: Record<string, unknown> = { name: study.name + ' \u2014 Analytics' }
+  const datasetUpdate: Record<string, unknown> = { name: study.name + ' \u2014 Analytics' }
   if (anaLibrary) datasetUpdate.ana_library = anaLibrary
   await service.from('datasets').update(datasetUpdate).eq('id', params.datasetId)
 
   // Build theme model from industry themes if available
-  var themeUpdate: Record<string, unknown> = {
+  const themeUpdate: Record<string, unknown> = {
     schema_config: schema,
     updated_at: new Date().toISOString(),
     updated_by: user.id,
   }
   if (anaLibrary && INDUSTRY_THEMES[anaLibrary]) {
-    var industryThemes = INDUSTRY_THEMES[anaLibrary]
+    const industryThemes = INDUSTRY_THEMES[anaLibrary]
     // Map IndustryTheme → AnaTheme format
-    var SENTIMENT_COLORS: Record<string, string> = {
+    const SENTIMENT_COLORS: Record<string, string> = {
       positive: '#16a34a', negative: '#dc2626', neutral: '#6b7280', mixed: '#d97706'
     }
-    var anaThemes = industryThemes.map(function(t) {
+    const anaThemes = industryThemes.map(function(t) {
       return {
         id: t.id,
         name: t.name,
@@ -136,7 +136,7 @@ export async function POST(_req: Request, { params }: Params) {
   }
 
   // Save schema + theme model to dataset_state
-  var { error: stateErr } = await service
+  const { error: stateErr } = await service
     .from('dataset_state')
     .update(themeUpdate)
     .eq('dataset_id', params.datasetId)

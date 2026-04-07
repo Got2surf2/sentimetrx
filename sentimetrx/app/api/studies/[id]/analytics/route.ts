@@ -4,16 +4,16 @@ import { NextRequest, NextResponse } from 'next/server'
 interface Params { params: { id: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
-  var supabase = createClient()
-  var authResult = await supabase.auth.getUser()
+  const supabase = createClient()
+  const authResult = await supabase.auth.getUser()
   if (!authResult.data.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var url  = new URL(req.url)
-  var from = url.searchParams.get('from')
-  var to   = url.searchParams.get('to')
+  const url  = new URL(req.url)
+  const from = url.searchParams.get('from')
+  const to   = url.searchParams.get('to')
 
   // Verify study exists and user can access it
-  var studyResult = await supabase
+  const studyResult = await supabase
     .from('studies')
     .select('id, name, bot_name, bot_emoji, status, config')
     .eq('id', params.id)
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Study not found' }, { status: 404 })
   }
 
-  var query = supabase
+  let query = supabase
     .from('responses')
     .select('sentiment, nps_score, experience_score, completed_at, status')
     .eq('study_id', params.id)
@@ -34,42 +34,42 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (from) query = query.gte('completed_at', from)
   if (to)   query = query.lte('completed_at', to + 'T23:59:59Z')
 
-  var result = await query
+  const result = await query
 
   if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
 
-  var rows = result.data || []
+  const rows = result.data || []
 
-  var total = rows.length
+  const total = rows.length
 
   // Support both old (promoter/passive/detractor) and new (positive/neutral/negative) sentiment values
-  var promoters  = rows.filter(function(r) { return r.sentiment === 'positive'  || r.sentiment === 'promoter' }).length
-  var passives   = rows.filter(function(r) { return r.sentiment === 'neutral'   || r.sentiment === 'passive' }).length
-  var detractors = rows.filter(function(r) { return r.sentiment === 'negative'  || r.sentiment === 'detractor' }).length
+  const promoters  = rows.filter(function(r) { return r.sentiment === 'positive'  || r.sentiment === 'promoter' }).length
+  const passives   = rows.filter(function(r) { return r.sentiment === 'neutral'   || r.sentiment === 'passive' }).length
+  const detractors = rows.filter(function(r) { return r.sentiment === 'negative'  || r.sentiment === 'detractor' }).length
 
   // Average NPS — only rows that actually have an NPS score
-  var npsRows = rows.filter(function(r) { return r.nps_score != null })
-  var avgNps  = npsRows.length > 0
+  const npsRows = rows.filter(function(r) { return r.nps_score != null })
+  const avgNps  = npsRows.length > 0
     ? Math.round(npsRows.reduce(function(s, r) { return s + r.nps_score }, 0) / npsRows.length * 10) / 10
     : 0
 
   // Average experience score — only rows that actually have a score
-  var expRows = rows.filter(function(r) { return r.experience_score != null })
-  var avgExp  = expRows.length > 0
+  const expRows = rows.filter(function(r) { return r.experience_score != null })
+  const avgExp  = expRows.length > 0
     ? Math.round(expRows.reduce(function(s, r) { return s + r.experience_score }, 0) / expRows.length * 10) / 10
     : 0
 
   // NPS trend by day — only rows with NPS scores
-  var npsMap: Record<string, { sum: number; count: number }> = {}
-  for (var i = 0; i < rows.length; i++) {
-    var r = rows[i]
+  const npsMap: Record<string, { sum: number; count: number }> = {}
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
     if (r.nps_score == null || !r.completed_at) continue
-    var date = r.completed_at.slice(0, 10)
+    const date = r.completed_at.slice(0, 10)
     if (!npsMap[date]) npsMap[date] = { sum: 0, count: 0 }
     npsMap[date].sum   += r.nps_score
     npsMap[date].count += 1
   }
-  var npsTrend = Object.entries(npsMap)
+  const npsTrend = Object.entries(npsMap)
     .sort(function(a, b) { return a[0].localeCompare(b[0]) })
     .map(function(entry) {
       return {
@@ -80,13 +80,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     })
 
   // Volume by day
-  var volumeMap: Record<string, number> = {}
-  for (var vi = 0; vi < rows.length; vi++) {
+  const volumeMap: Record<string, number> = {}
+  for (let vi = 0; vi < rows.length; vi++) {
     if (!rows[vi].completed_at) continue
-    var vdate = rows[vi].completed_at.slice(0, 10)
+    const vdate = rows[vi].completed_at.slice(0, 10)
     volumeMap[vdate] = (volumeMap[vdate] || 0) + 1
   }
-  var volumeByDay = Object.entries(volumeMap)
+  const volumeByDay = Object.entries(volumeMap)
     .sort(function(a, b) { return a[0].localeCompare(b[0]) })
     .map(function(entry) { return { date: entry[0], count: entry[1] } })
 

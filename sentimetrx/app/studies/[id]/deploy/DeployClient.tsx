@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import QRCode from 'qrcode'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 
@@ -24,30 +25,11 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
   const [qrDataUrl,   setQrDataUrl]   = useState<string | null>(null)
   const [error,       setError]       = useState<string | null>(null)
 
-  // Generate QR code client-side using qrcode library via CDN
+  // Generate QR code client-side using qrcode npm package
   useEffect(() => {
-    const script = document.createElement('script')
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
-    script.onload = () => {
-      const container = document.getElementById('qr-container')
-      if (!container) return
-      container.innerHTML = ''
-      // @ts-ignore
-      new window.QRCode(container, {
-        text:          surveyUrl,
-        width:         200,
-        height:        200,
-        colorDark:     '#ffffff',
-        colorLight:    '#0a1628',
-        correctLevel:  2, // QRCode.CorrectLevel.Q
-      })
-      setTimeout(() => {
-        const canvas = container.querySelector('canvas')
-        if (canvas) setQrDataUrl(canvas.toDataURL('image/png'))
-      }, 200)
-    }
-    document.head.appendChild(script)
-    return () => { document.head.removeChild(script) }
+    QRCode.toDataURL(surveyUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#0a1628' } })
+      .then(url => setQrDataUrl(url))
+      .catch(() => {})
   }, [surveyUrl])
 
   const handleCopy = async () => {
@@ -160,11 +142,14 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
               Print and display at a physical location — restaurant table, hotel desk, event venue.
             </p>
             <div className="flex flex-col items-center gap-4">
-              <div
-                id="qr-container"
-                className="rounded-2xl overflow-hidden p-4"
-                style={{ background: '#0a1628', border: `2px solid ${theme.primaryColor || '#00b4d8'}30` }}
-              />
+              {qrDataUrl && (
+                <div
+                  className="rounded-2xl overflow-hidden p-4"
+                  style={{ background: '#0a1628', border: `2px solid ${theme.primaryColor || '#00b4d8'}30` }}
+                >
+                  <img src={qrDataUrl} alt="QR code" width={200} height={200} />
+                </div>
+              )}
               {qrDataUrl && (
                 <button
                   onClick={handleDownloadQR}

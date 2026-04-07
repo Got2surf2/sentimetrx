@@ -22,10 +22,10 @@ interface ParsedFile {
 }
 
 function splitCSVFields(line: string): string[] {
-  var vals: string[] = []
-  var cur = '', inQ = false
-  for (var i = 0; i < line.length; i++) {
-    var ch = line[i]
+  const vals: string[] = []
+  let cur = '', inQ = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
     if (ch === '"') { inQ = !inQ }
     else if (ch === ',' && !inQ) { vals.push(cur); cur = '' }
     else cur += ch
@@ -39,8 +39,8 @@ function parseCSV(text: string): Record<string, unknown>[] {
   if (lines.length < 2) return []
   const headers = splitCSVFields(lines[0])
   return lines.slice(1).map(function(line) {
-    var vals = splitCSVFields(line)
-    var row: Record<string, unknown> = {}
+    const vals = splitCSVFields(line)
+    const row: Record<string, unknown> = {}
     headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
     return row
   })
@@ -48,40 +48,40 @@ function parseCSV(text: string): Record<string, unknown>[] {
 
 // ── SurveyMonkey detection & parsing ──────────────────────────────────────
 
-var SM_META_COLS = ['respondent id', 'collector id', 'start date', 'end date', 'ip address', 'email address', 'first name', 'last name', 'custom data']
-var SM_SUB_NOISE = ['', 'response', 'open-ended response', 'other (please specify)', 'comment']
+const SM_META_COLS = ['respondent id', 'collector id', 'start date', 'end date', 'ip address', 'email address', 'first name', 'last name', 'custom data']
+const SM_SUB_NOISE = ['', 'response', 'open-ended response', 'other (please specify)', 'comment']
 
 function isSurveyMonkeyCSV(text: string): boolean {
-  var lines = text.trim().split('\n')
+  const lines = text.trim().split('\n')
   if (lines.length < 3) return false
-  var row1 = splitCSVFields(lines[0])
-  var row2 = splitCSVFields(lines[1])
+  const row1 = splitCSVFields(lines[0])
+  const row2 = splitCSVFields(lines[1])
   if (row1.length !== row2.length) return false
 
   // Check 1: first column looks like SM metadata
-  var firstLower = (row1[0] || '').toLowerCase().trim()
-  var hasSmMeta = SM_META_COLS.some(function(m) { return firstLower.includes(m) })
+  const firstLower = (row1[0] || '').toLowerCase().trim()
+  const hasSmMeta = SM_META_COLS.some(function(m) { return firstLower.includes(m) })
 
   // Check 2: row1 has duplicate headers (matrix questions)
-  var seen = new Set<string>()
-  var dupeCount = 0
+  const seen = new Set<string>()
+  let dupeCount = 0
   row1.forEach(function(h) {
-    var lh = h.toLowerCase().trim()
+    const lh = h.toLowerCase().trim()
     if (lh && seen.has(lh)) dupeCount++
     seen.add(lh)
   })
 
   // Check 3: row2 mostly has short/noise sub-labels, not full data
-  var noiseCount = 0
+  let noiseCount = 0
   row2.forEach(function(v) {
     if (SM_SUB_NOISE.includes(v.toLowerCase().trim())) noiseCount++
   })
-  var row2IsSubHeader = noiseCount > row2.length * 0.3
+  const row2IsSubHeader = noiseCount > row2.length * 0.3
 
   // Check 4: row3 looks like data (has numbers, dates, actual content)
-  var row3 = lines.length > 2 ? splitCSVFields(lines[2]) : []
-  var dataLike = row3.filter(function(v) {
-    var t = v.trim()
+  const row3 = lines.length > 2 ? splitCSVFields(lines[2]) : []
+  const dataLike = row3.filter(function(v) {
+    const t = v.trim()
     return t && (t.match(/^\d/) || t.length > 2)
   }).length
 
@@ -89,27 +89,27 @@ function isSurveyMonkeyCSV(text: string): boolean {
 }
 
 function parseSurveyMonkeyCSV(text: string): { rows: Record<string, unknown>[]; mergedHeaders: string[] } {
-  var lines = text.trim().split('\n').filter(function(l) { return l.trim() })
+  const lines = text.trim().split('\n').filter(function(l) { return l.trim() })
   if (lines.length < 3) return { rows: [], mergedHeaders: [] }
 
-  var row1 = splitCSVFields(lines[0])
-  var row2 = splitCSVFields(lines[1])
+  const row1 = splitCSVFields(lines[0])
+  const row2 = splitCSVFields(lines[1])
 
   // Merge the two header rows into one clean set of column names
-  var headers: string[] = []
-  var lastParent = ''
-  var colCounts: Record<string, number> = {}
+  const headers: string[] = []
+  let lastParent = ''
+  const colCounts: Record<string, number> = {}
 
-  for (var c = 0; c < row1.length; c++) {
-    var parent = (row1[c] || '').trim()
-    var sub = (row2[c] || '').trim()
-    var subLower = sub.toLowerCase()
+  for (let c = 0; c < row1.length; c++) {
+    let parent = (row1[c] || '').trim()
+    const sub = (row2[c] || '').trim()
+    const subLower = sub.toLowerCase()
 
     // Track the parent for matrix continuation (blank row1 = same question)
     if (parent) lastParent = parent
     else parent = lastParent
 
-    var merged = ''
+    let merged = ''
     if (!sub || SM_SUB_NOISE.includes(subLower) || sub === parent) {
       // No meaningful sub-label — just use parent
       merged = parent
@@ -131,9 +131,9 @@ function parseSurveyMonkeyCSV(text: string): { rows: Record<string, unknown>[]; 
   }
 
   // Parse data rows (skip first 2 header rows)
-  var rows = lines.slice(2).map(function(line) {
-    var vals = splitCSVFields(line)
-    var row: Record<string, unknown> = {}
+  const rows = lines.slice(2).map(function(line) {
+    const vals = splitCSVFields(line)
+    const row: Record<string, unknown> = {}
     headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
     return row
   })
@@ -205,7 +205,7 @@ export default function UploadClient() {
           rows = parseTSV(text)
           fmt = 'tsv'
         } else if (isSurveyMonkeyCSV(text)) {
-          var smResult = parseSurveyMonkeyCSV(text)
+          const smResult = parseSurveyMonkeyCSV(text)
           rows = smResult.rows
           fmt = 'surveymonkey'
         } else {
@@ -213,8 +213,8 @@ export default function UploadClient() {
           fmt = 'csv'
         }
         if (rows.length === 0) { setParseError('No data rows found.'); return }
-        var cols = Object.keys(rows[0] || {})
-        var inc: Record<string, boolean> = {}
+        const cols = Object.keys(rows[0] || {})
+        const inc: Record<string, boolean> = {}
         cols.forEach(function(c) { inc[c] = true })
         setFieldInclude(inc)
         setFieldAlias({})
@@ -239,19 +239,19 @@ export default function UploadClient() {
     setCreating(true); setError(''); setUploadPct(0); setUploadMsg('Preparing data...')
     try {
       // Filter rows to only include selected fields
-      var includedCols = parsed.columns.filter(function(c) { return fieldInclude[c] !== false })
+      const includedCols = parsed.columns.filter(function(c) { return fieldInclude[c] !== false })
       if (includedCols.length === 0) { setError('Select at least one field.'); setCreating(false); return }
-      var filteredRows = parsed.rows.map(function(row) {
-        var filtered: Record<string, unknown> = {}
+      const filteredRows = parsed.rows.map(function(row) {
+        const filtered: Record<string, unknown> = {}
         includedCols.forEach(function(c) { filtered[c] = row[c] })
         return filtered
       })
 
-      var schema = autoDetectSchema(filteredRows)
+      const schema = autoDetectSchema(filteredRows)
 
       // Apply user-provided aliases
       schema.fields.forEach(function(f) {
-        var alias = fieldAlias[f.field]
+        const alias = fieldAlias[f.field]
         if (alias && alias.trim()) f.label = alias.trim()
       })
 
@@ -309,9 +309,9 @@ export default function UploadClient() {
     }
   }
 
-  var includedColsList = parsed ? parsed.columns.filter(function(c) { return fieldInclude[c] !== false }) : []
-  var previewRows = parsed ? parsed.rows.map(function(row) {
-    var filtered: Record<string, unknown> = {}
+  const includedColsList = parsed ? parsed.columns.filter(function(c) { return fieldInclude[c] !== false }) : []
+  const previewRows = parsed ? parsed.rows.map(function(row) {
+    const filtered: Record<string, unknown> = {}
     includedColsList.forEach(function(c) { filtered[c] = row[c] })
     return filtered
   }) : []
@@ -420,15 +420,15 @@ export default function UploadClient() {
                 <p className="text-xs text-gray-400">Uncheck fields you don't need. Add aliases for cleaner column names.</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={function() { var inc: Record<string, boolean> = {}; parsed.columns.forEach(function(c) { inc[c] = true }); setFieldInclude(inc) }}
+                <button onClick={function() { const inc: Record<string, boolean> = {}; parsed.columns.forEach(function(c) { inc[c] = true }); setFieldInclude(inc) }}
                   className="text-xs font-semibold text-orange-600 hover:underline">All</button>
-                <button onClick={function() { var inc: Record<string, boolean> = {}; parsed.columns.forEach(function(c) { inc[c] = false }); setFieldInclude(inc) }}
+                <button onClick={function() { const inc: Record<string, boolean> = {}; parsed.columns.forEach(function(c) { inc[c] = false }); setFieldInclude(inc) }}
                   className="text-xs font-semibold text-gray-400 hover:underline">None</button>
               </div>
             </div>
             <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {parsed.columns.map(function(col) {
-                var included = fieldInclude[col] !== false
+                const included = fieldInclude[col] !== false
                 return (
                   <div key={col} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 8, background: included ? '#fff' : '#f9fafb', border: '1px solid ' + (included ? '#e5e7eb' : '#f3f4f6'), opacity: included ? 1 : 0.5, transition: 'all .15s' }}>
                     <input type="checkbox" checked={included}
@@ -482,7 +482,7 @@ export default function UploadClient() {
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Included fields</p>
               <div className="flex flex-wrap gap-1.5">
                 {includedColsList.map(function(c) {
-                  var alias = fieldAlias[c]
+                  const alias = fieldAlias[c]
                   return <span key={c} className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-1 rounded-lg">{alias && alias.trim() ? alias.trim() + ' (' + c + ')' : c}</span>
                 })}
               </div>

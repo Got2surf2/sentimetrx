@@ -6,19 +6,20 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 // Use this in Server Components, Route Handlers, Server Actions
 export function createClient() {
   const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  return createServerClient(url, anonKey,
     {
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
-          try { cookieStore.set({ name, value, ...options }) } catch {}
+          try { cookieStore.set({ name, value, ...options }) } catch (e) { /* cookie op outside request context */ }
         },
         remove(name: string, options: CookieOptions) {
-          try { cookieStore.set({ name, value: '', ...options }) } catch {}
+          try { cookieStore.set({ name, value: '', ...options }) } catch (e) { /* cookie op outside request context */ }
         },
       },
     }
@@ -29,9 +30,9 @@ export function createClient() {
 // Use ONLY in server-side API routes that need admin access
 // (e.g. saving survey responses from unauthenticated users)
 export function createServiceRoleClient() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  )
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!key) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
+  return createServiceClient(url, key, { auth: { persistSession: false } })
 }

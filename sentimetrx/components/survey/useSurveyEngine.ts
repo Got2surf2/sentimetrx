@@ -88,36 +88,40 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom }: Prop
     } catch {}
   }
 
-  // ── Partial save — fire-and-forget POST after each answered question ──────
+  // ── Partial save — debounced fire-and-forget POST after each answered question ──
+  const savePartialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savePartial = useCallback(() => {
-    try {
-      var s = state.current
-      var partialPayload: Record<string, unknown> = {
-        agent:     study.bot_name,
-        timestamp: new Date().toISOString(),
-        deviceFingerprint: deviceFingerprint.current,
-      }
-      if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
-      if (s.rating != null) partialPayload.experienceRating = { score: s.rating, label: s.ratingLabel || '', sentiment: s.sentiment || 'neutral' }
-      if (s.answers.q1 || s.answers.q2 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
-      if (Object.keys(s.openingAnswers).length) partialPayload.openingAnswers = s.openingAnswers
-      if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
-      if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
-      if (Object.values(s.demographics).some(function(v) { return !!v })) partialPayload.demographics = s.demographics
+    if (savePartialTimer.current) clearTimeout(savePartialTimer.current)
+    savePartialTimer.current = setTimeout(() => {
+      try {
+        var s = state.current
+        var partialPayload: Record<string, unknown> = {
+          agent:     study.bot_name,
+          timestamp: new Date().toISOString(),
+          deviceFingerprint: deviceFingerprint.current,
+        }
+        if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
+        if (s.rating != null) partialPayload.experienceRating = { score: s.rating, label: s.ratingLabel || '', sentiment: s.sentiment || 'neutral' }
+        if (s.answers.q1 || s.answers.q2 || s.answers.q3 || s.answers.q4) partialPayload.openEnded = s.answers
+        if (Object.keys(s.openingAnswers).length) partialPayload.openingAnswers = s.openingAnswers
+        if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
+        if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
+        if (Object.values(s.demographics).some(function(v) { return !!v })) partialPayload.demographics = s.demographics
 
-      var duration_sec = Math.round((Date.now() - s.startTime) / 1000)
-      fetch('/api/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          study_guid:   study.guid,
-          payload:      partialPayload,
-          duration_sec: duration_sec,
-          session_id:   sessionId.current,
-          status:       'incomplete',
-        }),
-      }).catch(function() { /* fail silently */ })
-    } catch { /* fail silently */ }
+        var duration_sec = Math.round((Date.now() - s.startTime) / 1000)
+        fetch('/api/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            study_guid:   study.guid,
+            payload:      partialPayload,
+            duration_sec: duration_sec,
+            session_id:   sessionId.current,
+            status:       'incomplete',
+          }),
+        }).catch(function() { /* fail silently */ })
+      } catch { /* fail silently */ }
+    }, 2000)
   }, [study])
 
   // -- Helpers -----------------------------------------------

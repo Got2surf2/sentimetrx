@@ -6,8 +6,13 @@ export async function PATCH(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { user_id, role } = await req.json()
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
+  const { user_id, role } = body
   if (!user_id || !role) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+
+  const ALLOWED_ROLES = ['owner', 'admin', 'member', 'viewer']
+  if (!ALLOWED_ROLES.includes(body.role)) return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
 
   const { data: actor } = await supabase.from('users').select('org_id, role').eq('id', user.id).single()
   const { data: target } = await supabase.from('users').select('org_id').eq('id', user_id).single()
@@ -29,7 +34,9 @@ export async function DELETE(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { user_id } = await req.json()
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
+  const { user_id } = body
   if (!user_id) return NextResponse.json({ error: 'Missing user_id' }, { status: 400 })
   if (user_id === user.id) return NextResponse.json({ error: 'Cannot remove yourself' }, { status: 400 })
 

@@ -1526,6 +1526,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           onClose={function() { setShowThemeEditor(false) }}
           initialData={themes ? { themes: themes.themes, libName: themeLibName, source: themeSource } : null}
           industryThemes={industryThemes}
+          datasetId={datasetId}
+          apiKey={apiKey}
         />
       )}
       {showThemeEditor && industryThemes == null && (

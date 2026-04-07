@@ -3,10 +3,10 @@
 // Uses survey blueprints to configure opening patterns (rating-first vs open-first)
 
 import type { StudyDraft } from './studyDraft'
-import type { StudyConfig, SurveyQuestion, LikertScaleOption, OpeningFlowItem } from './types'
+import type { StudyConfig, SurveyQuestion, LikertScaleOption, OpeningFlowItem, QuestionType } from './types'
 import type { Industry } from './industryDefaults'
 import type { StudyType } from './surveyBlueprints'
-import { INDUSTRY_DEFAULTS, INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS } from './industryDefaults'
+import { INDUSTRY_DEFAULTS, INDUSTRY_SUGGESTED_QUESTIONS } from './industryDefaults'
 import { getBlueprintForStudyType } from './surveyBlueprints'
 
 export interface WizardAnswers {
@@ -25,13 +25,13 @@ export interface WizardAnswers {
 
 function createSurveyQuestion(
   id: string,
-  type: any,
+  type: QuestionType,
   prompt: string,
-  options?: any[],
+  options?: string[],
   exportLabel?: string,
   likertScale?: LikertScaleOption[]
 ): SurveyQuestion {
-  const q: any = { id, type, prompt, exportLabel: exportLabel || prompt }
+  const q: Partial<SurveyQuestion> = { id, type, prompt, exportLabel: exportLabel || prompt }
   if (options) q.options = options
   if (likertScale) q.likertScale = likertScale
   return q as SurveyQuestion
@@ -200,14 +200,11 @@ const FOCUS_AREA_QUESTIONS: Record<string, SurveyQuestion[]> = {
 // MAIN GENERATOR
 // ─────────────────────────────────────────────────────────────
 
-let questionIdCounter = 0
 function nextQId(): string {
-  return 'q_' + (++questionIdCounter)
+  return 'q_' + crypto.randomUUID().slice(0, 8)
 }
 
 export function generateStudyDraft(answers: WizardAnswers): StudyDraft {
-  questionIdCounter = 0
-
   // Get blueprint for the selected study type
   const blueprint = getBlueprintForStudyType(answers.studyType)
 
@@ -243,7 +240,7 @@ export function generateStudyDraft(answers: WizardAnswers): StudyDraft {
         botAvatarGradient: 'linear-gradient(135deg, #00b4d8, #0077a8)',
       },
       questions: [],
-    } as any
+    } as StudyConfig
   } else {
     const defaults = INDUSTRY_DEFAULTS[answers.industry]
     config = {
@@ -267,7 +264,7 @@ export function generateStudyDraft(answers: WizardAnswers): StudyDraft {
         accentColor: '#00d4ff',
         botAvatarGradient: 'linear-gradient(135deg, #00b4d8, #0077a8)',
       },
-    } as any
+    } as StudyConfig
   }
 
   // Apply blueprint opening pattern
@@ -289,7 +286,7 @@ export function generateStudyDraft(answers: WizardAnswers): StudyDraft {
     openingFlow.push({
       id: 'opening_oe',
       type: 'open_end',
-      prompt: (config as any).ratingPrompt || 'In your own words, tell us about your experience.',
+      prompt: config.ratingPrompt || 'In your own words, tell us about your experience.',
       exportLabel: 'Opening Response',
       clarify: true,
     })
@@ -359,9 +356,6 @@ export function generateStudyDraft(answers: WizardAnswers): StudyDraft {
   }
 
   config.questions = questionsToAdd
-
-  // Auto-generate name and bot info
-  const industryLabel = INDUSTRY_LABELS[answers.industry] || answers.industry
 
   return {
     name: `${blueprint.label} Study`,

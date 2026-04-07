@@ -5,10 +5,14 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
+import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 import { existsSync, readFileSync } from 'fs'
+import { pickBestComments, extractHighlightPhrases } from '@/lib/export/scoreComments'
+import type { HighlightedComment } from '@/lib/export/scoreComments'
+import { expandLemma } from '@/lib/lemmas'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120
 
 interface Params { params: { datasetId: string } }
 
@@ -95,8 +99,8 @@ function logo(slide: any) {
   )
 }
 
-function footer(slide: any, datasetName: string) {
-  solidRect(slide, 0, FY - 0.02, W, 0.015, DN.teal, 62)
+function footer(slide: any, pptx: any, datasetName: string) {
+  solidRect(slide, pptx, 0, FY - 0.02, W, 0.015, DN.teal, 62)
   slide.addText('datanautix.com  ·  ' + datasetName, {
     x: PAD, y: FY, w: W * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', wrap: false,
   })
@@ -105,14 +109,11 @@ function footer(slide: any, datasetName: string) {
   })
 }
 
-// pptx is module-level during build — we capture it per call via closure
-let pptx: any = null
-
-function rect(slide: any, x: number, y: number, w: number, h: number, fill: string, radius = 0.07, border = DN.divider) {
+function rect(slide: any, pptx: any, x: number, y: number, w: number, h: number, fill: string, radius = 0.07, border = DN.divider) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill }, line: { color: border, width: 1 }, rectRadius: radius })
 }
 
-function solidRect(slide: any, x: number, y: number, w: number, h: number, fill: string, transparency = 0) {
+function solidRect(slide: any, pptx: any, x: number, y: number, w: number, h: number, fill: string, transparency = 0) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill, transparency }, line: { width: 0 } })
 }
 
@@ -141,8 +142,8 @@ function trimNatural(s: string, max: number): string {
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
 
 // KPI card: big number + label, optional sub — all elements bounded within h
-function kpiCard(slide: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string, bg_ = DN.slateLight, valColor = DN.navy) {
-  rect(slide, x, y, w, h, bg_, 0.08, DN.divider)
+function kpiCard(slide: any, pptx: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string, bg_ = DN.slateLight, valColor = DN.navy) {
+  rect(slide, pptx, x, y, w, h, bg_, 0.08, DN.divider)
   const hasSub  = !!sub
   const valH    = h * (hasSub ? 0.42 : 0.58)
   const metaTop = y + valH + 0.06
@@ -155,9 +156,9 @@ function kpiCard(slide: any, x: number, y: number, w: number, h: number, value: 
 }
 
 // KPI card on dark (navy) background
-function kpiCardDark(slide: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string) {
+function kpiCardDark(slide: any, pptx: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: DN.navyMid }, line: { color: DN.navyLight, width: 1 } })
-  solidRect(slide, x, y, w, 0.04, DN.gold)
+  solidRect(slide, pptx, x, y, w, 0.04, DN.gold)
   const hasSub   = !!sub
   const valH     = h * (hasSub ? 0.44 : 0.56)
   const metaTop  = y + valH + 0.08
@@ -169,16 +170,16 @@ function kpiCardDark(slide: any, x: number, y: number, w: number, h: number, val
 }
 
 // Insight box with left accent stripe
-function insightBox(slide: any, x: number, y: number, w: number, h: number, text: string, accentColor = DN.teal, bgColor = DN.slateLight) {
-  rect(slide, x, y, w, h, bgColor, 0.07, accentColor)
-  solidRect(slide, x, y, 0.06, h, accentColor)
+function insightBox(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string, accentColor = DN.teal, bgColor = DN.slateLight) {
+  rect(slide, pptx, x, y, w, h, bgColor, 0.07, accentColor)
+  solidRect(slide, pptx, x, y, 0.06, h, accentColor)
   slide.addText(text, { x: x + 0.16, y: y + 0.1, w: w - 0.24, h: h - 0.2, fontSize: 11.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
 }
 
 // Quote card — opening " is inline with the first word of the comment
-function quoteCard(slide: any, x: number, y: number, w: number, h: number, text: string) {
-  rect(slide, x, y, w, h, DN.white, 0.07, DN.divider)
-  solidRect(slide, x, y, 0.05, h, DN.teal)
+function quoteCard(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string) {
+  rect(slide, pptx, x, y, w, h, DN.white, 0.07, DN.divider)
+  solidRect(slide, pptx, x, y, 0.05, h, DN.teal)
   slide.addText([
     { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
     { text: trimNatural(text, 320), options: { fontSize: 10, color: DN.navyLight, italic: true } },
@@ -186,17 +187,41 @@ function quoteCard(slide: any, x: number, y: number, w: number, h: number, text:
   ], { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4 })
 }
 
-// Splits text into alternating normal/highlighted runs based on keyword matches
+// Splits text into alternating normal/highlighted runs.
+// Accepts either AI-extracted phrases (exact substrings) or keyword stems.
+// If a phrase is multi-word (likely AI-extracted), does exact case-insensitive substring match.
+// If a phrase is a single word, uses lemma-expanded regex matching.
 function buildHighlightedRuns(text: string, keywords: string[]): { text: string; highlight: boolean }[] {
   type Span = { start: number; end: number }
   const spans: Span[] = []
   for (const kw of keywords) {
     if (!kw) continue
-    const e  = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const re = new RegExp('(?<![a-z])' + e + '\\w*', 'gi')
-    let m: RegExpExecArray | null
-    while ((m = re.exec(text)) !== null) {
-      spans.push({ start: m.index, end: m.index + m[0].length })
+    const isPhrase = kw.includes(' ') || kw.length > 20
+    if (isPhrase) {
+      // AI-extracted phrase — find exact substring (case-insensitive)
+      const lower = text.toLowerCase()
+      const kwLower = kw.toLowerCase()
+      let idx = lower.indexOf(kwLower)
+      while (idx !== -1) {
+        spans.push({ start: idx, end: idx + kw.length })
+        idx = lower.indexOf(kwLower, idx + 1)
+      }
+    } else {
+      // Single keyword — use lemma-expanded regex
+      const forms = expandLemma(kw)
+      const seen: Record<string, boolean> = {}
+      const alts: string[] = []
+      for (let i = 0; i < forms.length; i++) {
+        const alt = forms[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
+        if (!seen[alt]) { seen[alt] = true; alts.push(alt) }
+      }
+      const escOrig = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
+      if (!seen[escOrig]) alts.push(escOrig)
+      const re = new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'gi')
+      let m: RegExpExecArray | null
+      while ((m = re.exec(text)) !== null) {
+        spans.push({ start: m.index, end: m.index + m[0].length })
+      }
     }
   }
   spans.sort((a, b) => a.start - b.start)
@@ -221,9 +246,9 @@ function buildHighlightedRuns(text: string, keywords: string[]): { text: string;
 }
 
 // quoteCard variant that bolds + colors the theme keywords within the text
-function quoteCardHighlighted(slide: any, x: number, y: number, w: number, h: number, text: string, keywords: string[]) {
-  rect(slide, x, y, w, h, DN.white, 0.07, DN.divider)
-  solidRect(slide, x, y, 0.05, h, DN.teal)
+function quoteCardHighlighted(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string, keywords: string[]) {
+  rect(slide, pptx, x, y, w, h, DN.white, 0.07, DN.divider)
+  solidRect(slide, pptx, x, y, 0.05, h, DN.teal)
   const trimmed  = trimNatural(text, 320)
   const runs     = buildHighlightedRuns(trimmed, keywords)
   const textRuns = [
@@ -234,7 +259,7 @@ function quoteCardHighlighted(slide: any, x: number, y: number, w: number, h: nu
     ),
     { text: '\u201D', options: { fontSize: 16, bold: true, color: DN.tealLight } },
   ]
-  slide.addText(textRuns, { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4 })
+  slide.addText(textRuns, { x: x + 0.12, y: y + 0.06, w: w - 0.22, h: h - 0.12, valign: 'middle', wrap: true, lineSpacingMultiple: 1.4 })
 }
 
 // ── AI narrative generation ───────────────────────────────────────────────────
@@ -377,20 +402,20 @@ const PIE_COLORS = [
 
 // ── Slide builders ────────────────────────────────────────────────────────────
 
-function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: number, computedAt: string | null) {
+function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, totalRows: number, computedAt: string | null) {
   const slide = pptx.addSlide('NUMBERED')
 
   // Deep navy background
-  solidRect(slide, 0, 0, W, H, DN.navy)
+  solidRect(slide, pptx, 0, 0, W, H, DN.navy)
 
   // Gold thin bar at very top
-  solidRect(slide, 0, 0, W, 0.07, DN.gold)
+  solidRect(slide, pptx, 0, 0, W, 0.07, DN.gold)
 
   // Left teal accent strip
-  solidRect(slide, 0, 0.07, 0.18, H - 0.07, DN.teal)
+  solidRect(slide, pptx, 0, 0.07, 0.18, H - 0.07, DN.teal)
 
   // Right panel — slightly lighter navy for depth
-  solidRect(slide, W - 3.2, 0.07, 3.2, H - 0.07, DN.navyMid)
+  solidRect(slide, pptx, W - 3.2, 0.07, 3.2, H - 0.07, DN.navyMid)
 
   // Decorative circles — use pptxgenjs transparency (0-100 scale, 100=fully transparent)
   slide.addShape(pptx.ShapeType.ellipse, {
@@ -417,18 +442,18 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
   )
 
   // Gold divider line
-  solidRect(slide, PAD + 0.18, 1.82, 6.0, 0.04, DN.gold)
+  solidRect(slide, pptx, PAD + 0.18, 1.82, 6.0, 0.04, DN.gold)
 
-  // Dataset name — main title, large
-  slide.addText(datasetName, {
-    x: PAD + 0.18, y: 2.0, w: W - 4.0, h: 1.8,
+  // Main title — user's report title if provided, otherwise dataset name
+  const mainTitle = reportTitle || datasetName
+  const subtitle  = reportTitle ? datasetName : ''
+  slide.addText(mainTitle, {
+    x: PAD + 0.18, y: 2.0, w: W - 4.0, h: 1.4,
     fontSize: 28, bold: true, color: DN.white, wrap: true, valign: 'top', lineSpacingMultiple: 1.2,
   })
-
-  // Subtitle from AI
-  if (reportTitle && reportTitle !== 'Data Analysis Report') {
-    slide.addText(reportTitle, {
-      x: PAD + 0.18, y: 3.9, w: W - 4.0, h: 0.5,
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: PAD + 0.18, y: 3.5, w: W - 4.0, h: 0.5,
       fontSize: 14, color: DN.tealLight, italic: true, valign: 'middle',
     })
   }
@@ -440,8 +465,8 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
   })
 
   // Bottom footer strip
-  solidRect(slide, 0, H - 0.48, W, 0.48, DN.navyMid)
-  solidRect(slide, 0, H - 0.48, W, 0.03, DN.gold, 50)
+  solidRect(slide, pptx, 0, H - 0.48, W, 0.48, DN.navyMid)
+  solidRect(slide, pptx, 0, H - 0.48, W, 0.03, DN.gold, 50)
   const generatedOn = new Date().toLocaleString()
   slide.addText('Proprietary and Confidential  ·  Prepared by Datanautix  ·  datanautix.com  ·  Report generated ' + generatedOn, {
     x: PAD + 0.18, y: H - 0.44, w: W - 1.0, h: 0.38,
@@ -449,10 +474,10 @@ function buildTitleSlide(datasetName: string, reportTitle: string, totalRows: nu
   })
 }
 
-function buildAboutSlide(datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string) {
+function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string, filterDescription?: string, dataSource?: 'study' | 'upload') {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
-  hdr(slide, pptx, 'About This Report', DN.teal, 'Methodology, scope and data coverage')
+  hdr(slide, pptx, 'About This Report — ' + datasetName, DN.teal, 'Methodology, scope and data coverage')
   logo(slide)
 
   const y0 = CY + 0.1
@@ -474,7 +499,7 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
   ]
   scopeCards.forEach(function(sc, i) {
     const cx = PAD + i * (cardW + 0.15)
-    kpiCard(slide, cx, y0, cardW, cardH, sc.v, sc.l, sc.sub, sc.bg, sc.vc)
+    kpiCard(slide, pptx, cx, y0, cardW, cardH, sc.v, sc.l, sc.sub, sc.bg, sc.vc)
   })
 
   // Fields breakdown
@@ -493,7 +518,7 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
     const sec = f.section === 'demographic' ? 'demographic' : f.section === 'psychographic' ? 'psychographic' : null
     const tc  = sec ? sectionColor[sec] : (typeColor[f.type] || DN.slateDark)
     const badgeLabel = sec ? sec : f.type
-    solidRect(slide, x, y + 0.07, 0.07, 0.20, tc)
+    solidRect(slide, pptx, x, y + 0.07, 0.07, 0.20, tc)
     // Label — leave room for the badge
     slide.addText(f.label || f.field, { x: x + 0.16, y, w: colW2 - badgeW - 0.26, h: 0.34, fontSize: 12, color: DN.navyLight, bold: false, valign: 'middle' })
     // Section/type badge — right-aligned, no-wrap
@@ -504,27 +529,42 @@ function buildAboutSlide(datasetName: string, totalRows: number, computedAt: str
   col1.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD, listY + i * 0.36) })
   col2.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD + colW2 + 0.4, listY + i * 0.36) })
 
+  // Active filters callout (if filtered)
+  let noteY = H - 0.9
+  if (filterDescription) {
+    const filterY = noteY - 0.52
+    solidRect(slide, pptx, PAD, filterY, W - PAD * 2, 0.44, 'FFF7ED')
+    solidRect(slide, pptx, PAD, filterY, 0.06, 0.44, DN.orange)
+    slide.addText('⚠ ' + filterDescription, {
+      x: PAD + 0.16, y: filterY + 0.04, w: W - PAD * 2 - 0.28, h: 0.36,
+      fontSize: 9, color: DN.navyLight, bold: false, wrap: true,
+    })
+    noteY = filterY - 0.08
+  }
+
   // Methodology note
-  const noteY = H - 0.9
-  solidRect(slide, PAD, noteY, W - PAD * 2, 0.52, DN.slateLight)
-  slide.addText('Methodology: Responses were collected and analyzed using Sarina (AI-assisted survey platform). Statistical significance not assumed unless stated. Open-ended responses are verbatim samples.', {
+  solidRect(slide, pptx, PAD, noteY, W - PAD * 2, 0.52, DN.slateLight)
+  const collectionMethod = dataSource === 'study'
+    ? 'Responses were collected using Sarina (AI-assisted conversational survey platform).'
+    : 'Data was uploaded from an external source.'
+  slide.addText('Methodology: ' + collectionMethod + ' Analysis performed using Ana AI Text Analytics. Statistical significance not assumed unless stated. Open-ended responses are verbatim samples.', {
     x: PAD + 0.12, y: noteY + 0.08, w: W - PAD * 2 - 0.24, h: 0.36,
     fontSize: 8.5, color: DN.slateDark, italic: true, wrap: true,
   })
 
-  footer(slide, datasetName)
+  footer(slide, pptx, datasetName)
 }
 
-function buildSummarySlide(datasetName: string, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]) {
+function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bullets: string[], takeaways: string[], themes: any[], fields: SelectedField[]) {
   const slide = pptx.addSlide('NUMBERED')
 
   // Dark navy background — high impact
-  solidRect(slide, 0, 0, W, H, DN.navy)
-  solidRect(slide, 0, 0, W, 0.07, DN.gold)
-  solidRect(slide, 0, 0.07, 0.07, H - 0.07, DN.teal)
+  solidRect(slide, pptx, 0, 0, W, H, DN.navy)
+  solidRect(slide, pptx, 0, 0, W, 0.07, DN.gold)
+  solidRect(slide, pptx, 0, 0.07, 0.07, H - 0.07, DN.teal)
 
   // Header
-  solidRect(slide, 0.07, 0.07, W - 0.07, HH - 0.07, DN.navyMid)
+  solidRect(slide, pptx, 0.07, 0.07, W - 0.07, HH - 0.07, DN.navyMid)
   slide.addText('Executive Summary', {
     x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18,
     fontSize: 20, bold: true, color: DN.white, valign: 'middle',
@@ -554,7 +594,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   const kpiCount = Math.min(kpis.length, 4)
   const kpiW     = (W - PAD * 2 - 0.1 * (kpiCount - 1)) / kpiCount
   kpis.slice(0, kpiCount).forEach(function(k, i) {
-    kpiCardDark(slide, PAD + i * (kpiW + 0.1), CY, kpiW, 0.88, k.v, k.l, k.s)
+    kpiCardDark(slide, pptx, PAD + i * (kpiW + 0.1), CY, kpiW, 0.88, k.v, k.l, k.s)
   })
 
   // ── Two column layout below KPIs ──────────────────────────────────────────
@@ -565,13 +605,13 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
 
   // Left: key findings bullets
   slide.addText('KEY FINDINGS', { x: PAD, y: colY, w: leftW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
-  solidRect(slide, PAD, colY + 0.24, leftW, 0.025, DN.gold, 62)
+  solidRect(slide, pptx, PAD, colY + 0.24, leftW, 0.025, DN.gold, 62)
 
   const realBullets = bullets.filter(b => b && b.length > 10)
   if (realBullets.length > 0) {
     realBullets.slice(0, 5).forEach(function(b, i) {
       const by = colY + 0.34 + i * 0.74
-      solidRect(slide, PAD, by + 0.08, 0.05, 0.05, DN.teal)
+      solidRect(slide, pptx, PAD, by + 0.08, 0.05, 0.05, DN.teal)
       slide.addText(b, { x: PAD + 0.12, y: by, w: leftW - 0.14, h: 0.7, fontSize: 11, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.25 })
     })
   } else {
@@ -583,7 +623,7 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
       const topKey = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || ''
       const topPct_ = total_ > 0 ? Math.round(counts[topKey] / total_ * 100) : 0
       const fy = colY + 0.34 + i * 0.74
-      solidRect(slide, PAD, fy + 0.12, 0.05, 0.05, DN.gold)
+      solidRect(slide, pptx, PAD, fy + 0.12, 0.05, 0.05, DN.gold)
       slide.addText(f.label || f.field, { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.28, fontSize: 10, bold: true, color: DN.slate })
       slide.addText(topPct_ + '% — ' + topKey, { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.44, fontSize: 12, bold: true, color: DN.white, wrap: true, lineSpacingMultiple: 1.2 })
     })
@@ -592,16 +632,16 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   // Right: themes + takeaways
   if (themes.length > 0) {
     slide.addText('TOP THEMES', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
-    solidRect(slide, rightX, colY + 0.24, rightW, 0.025, DN.gold, 62)
+    solidRect(slide, pptx, rightX, colY + 0.24, rightW, 0.025, DN.gold, 62)
     const maxThemes = Math.min(themes.length, 5)
     const thH = 0.62
     themes.slice(0, maxThemes).forEach(function(t: any, i: number) {
       const ty = colY + 0.34 + i * (thH + 0.08)
       const hasData  = (t.count || 0) > 0
       const hitPct   = Math.round((t.percentage || 0) * 10) / 10
-      solidRect(slide, rightX, ty, rightW, thH, DN.navyMid)
-      if (hasData) solidRect(slide, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal, 75)
-      solidRect(slide, rightX, ty, 0.05, thH, hasData ? DN.teal : DN.slate)
+      solidRect(slide, pptx, rightX, ty, rightW, thH, DN.navyMid)
+      if (hasData) solidRect(slide, pptx, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal, 75)
+      solidRect(slide, pptx, rightX, ty, 0.05, thH, hasData ? DN.teal : DN.slate)
       slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.85, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle' })
       if (hasData) {
         slide.addText(hitPct + '%', { x: rightX + rightW - 0.72, y: ty + 0.06, w: 0.66, h: thH - 0.12, fontSize: 12, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
@@ -614,21 +654,21 @@ function buildSummarySlide(datasetName: string, totalRows: number, bullets: stri
   if (takeaways.length > 0) {
     const taY = themes.length > 0 ? colY + 0.34 + Math.min(themes.length, 5) * 0.7 + 0.2 : colY + 0.34
     slide.addText('RECOMMENDED ACTIONS', { x: rightX, y: taY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
-    solidRect(slide, rightX, taY + 0.24, rightW, 0.025, DN.gold, 62)
+    solidRect(slide, pptx, rightX, taY + 0.24, rightW, 0.025, DN.gold, 62)
     takeaways.slice(0, 3).forEach(function(ta, i) {
       const ty = taY + 0.34 + i * 0.68
-      solidRect(slide, rightX, ty, rightW, 0.58, DN.navyMid)
-      solidRect(slide, rightX, ty, 0.05, 0.58, i === 0 ? DN.gold : DN.teal)
+      solidRect(slide, pptx, rightX, ty, rightW, 0.58, DN.navyMid)
+      solidRect(slide, pptx, rightX, ty, 0.05, 0.58, i === 0 ? DN.gold : DN.teal)
       // Number badge
-      solidRect(slide, rightX + 0.12, ty + 0.09, 0.34, 0.34, i === 0 ? DN.gold : DN.teal)
+      solidRect(slide, pptx, rightX + 0.12, ty + 0.09, 0.34, 0.34, i === 0 ? DN.gold : DN.teal)
       slide.addText(String(i + 1), { x: rightX + 0.12, y: ty + 0.09, w: 0.34, h: 0.34, fontSize: 12, bold: true, color: i === 0 ? DN.navy : DN.white, align: 'center', valign: 'middle' })
       slide.addText(ta, { x: rightX + 0.56, y: ty + 0.04, w: rightW - 0.64, h: 0.50, fontSize: 10, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2 })
     })
   }
 
   // Bottom footer
-  solidRect(slide, 0, H - 0.38, W, 0.38, DN.navyMid)
-  solidRect(slide, 0, H - 0.38, W, 0.02, DN.gold, 62)
+  solidRect(slide, pptx, 0, H - 0.38, W, 0.38, DN.navyMid)
+  solidRect(slide, pptx, 0, H - 0.38, W, 0.02, DN.gold, 62)
   slide.addText('datanautix.com  ·  ' + trunc(datasetName, 50), {
     x: PAD, y: H - 0.34, w: W * 0.72, h: 0.28, fontSize: 7.5, color: DN.slate, valign: 'middle',
   })
@@ -668,7 +708,7 @@ function autoInsight(label: string, orderedKeys: string[], counts: Record<string
   return '"' + topKey + '" is the most common response (' + topPct + '%), followed by "' + secondKey + '" (' + secondPct + '%). Together they account for ' + (topPct + secondPct) + '% of all responses.'
 }
 
-function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
+function buildCategoricalSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   const subtitle = (f.section === 'demographic' || f.section === 'psychographic') && f.prompt
@@ -716,26 +756,26 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
   const cntX    = pctX + 0.62
 
   // ── Left panel ───────────────────────────────────────────────────────────────
-  kpiCard(slide, PAD, CY, leftW, 0.88, total.toLocaleString(), 'Total Responses', (s?.uniqueCount || allKeys.length) + ' unique values', DN.tealPale, DN.teal)
+  kpiCard(slide, pptx, PAD, CY, leftW, 0.88, total.toLocaleString(), 'Total Responses', (s?.uniqueCount || allKeys.length) + ' unique values', DN.tealPale, DN.teal)
 
   let leftY = CY + 1.01
 
   if (isOrdinal) {
     const t2Color = top2 >= 70 ? DN.green : top2 >= 50 ? DN.amber : DN.red
     const t2Bg    = top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight
-    kpiCard(slide, PAD, leftY, leftW, 0.88, top2 + '%', 'Top-2 Positive', top2Keys.slice(0, 2).map(k => trunc(k, 14)).join(' + '), t2Bg, t2Color)
+    kpiCard(slide, pptx, PAD, leftY, leftW, 0.88, top2 + '%', 'Top-2 Positive', top2Keys.slice(0, 2).map(k => trunc(k, 14)).join(' + '), t2Bg, t2Color)
     leftY += 1.01
 
     if (avgScore !== null) {
       const aFrac  = maxScore > 0 ? avgScore / maxScore : 0.5
       const aColor = aFrac >= 0.65 ? DN.green : aFrac >= 0.4 ? DN.amber : DN.red
-      kpiCard(slide, PAD, leftY, leftW, 0.88, Math.round(avgScore) + ' / ' + maxScore, 'Average Score', undefined, DN.slateLight, aColor)
+      kpiCard(slide, pptx, PAD, leftY, leftW, 0.88, Math.round(avgScore) + ' / ' + maxScore, 'Average Score', undefined, DN.slateLight, aColor)
       leftY += 1.01
     }
 
     if (bot2 > 4 && bot2Keys.length > 0) {
-      solidRect(slide, PAD, leftY, leftW, 0.72, 'FEE2E2')
-      solidRect(slide, PAD, leftY, 0.06, 0.72, DN.red)
+      solidRect(slide, pptx, PAD, leftY, leftW, 0.72, 'FEE2E2')
+      solidRect(slide, pptx, PAD, leftY, 0.06, 0.72, DN.red)
       slide.addText(bot2 + '%', { x: PAD + 0.14, y: leftY + 0.05, w: 0.75, h: 0.34, fontSize: 22, bold: true, color: DN.red, valign: 'middle' })
       slide.addText('expressed concern', { x: PAD + 0.93, y: leftY + 0.05, w: leftW - 1.05, h: 0.3, fontSize: 9, bold: true, color: DN.red, valign: 'middle' })
       slide.addText(bot2Keys.map(k => trunc(k, 14)).join(' or '), { x: PAD + 0.14, y: leftY + 0.42, w: leftW - 0.2, h: 0.24, fontSize: 8, color: DN.slateDark })
@@ -750,17 +790,17 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, bot2)
 
   const insightH = Math.max(0.5, H - leftY - 0.55)
-  insightBox(slide, PAD, leftY + 0.1, leftW, insightH, insightText, DN.teal, DN.tealPale)
+  insightBox(slide, pptx, PAD, leftY + 0.1, leftW, insightH, insightText, DN.teal, DN.tealPale)
 
   // Implication strip
   if (hasRealAI && ai.implication) {
-    solidRect(slide, PAD, H - 0.72, leftW, 0.44, DN.orangePale)
-    solidRect(slide, PAD, H - 0.72, 0.06, 0.44, DN.orange)
+    solidRect(slide, pptx, PAD, H - 0.72, leftW, 0.44, DN.orangePale)
+    solidRect(slide, pptx, PAD, H - 0.72, 0.06, 0.44, DN.orange)
     slide.addText('→ ' + ai.implication, { x: PAD + 0.13, y: H - 0.72 + 0.04, w: leftW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
   }
 
   // Vertical divider
-  solidRect(slide, PAD + leftW + 0.18, CY + 0.06, 0.012, CH - 0.12, DN.divider)
+  solidRect(slide, pptx, PAD + leftW + 0.18, CY + 0.06, 0.012, CH - 0.12, DN.divider)
 
   // ── Right panel: custom horizontal bar chart ──────────────────────────────
   const n     = orderedKeys.length
@@ -773,7 +813,7 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
   slide.addText('Distribution', { x: barX, y: CY, w: barMaxW, h: 0.28, fontSize: 10, bold: true, color: DN.slateDark, valign: 'middle' })
   slide.addText('%', { x: pctX, y: CY, w: 0.6, h: 0.28, fontSize: 10, bold: true, color: DN.slateDark, valign: 'middle' })
   slide.addText('n', { x: cntX, y: CY, w: 1.0, h: 0.28, fontSize: 10, bold: true, color: DN.slateDark, valign: 'middle' })
-  solidRect(slide, chartX, CY + 0.3, W - chartX - PAD * 0.5, 0.012, DN.divider)
+  solidRect(slide, pptx, chartX, CY + 0.3, W - chartX - PAD * 0.5, 0.012, DN.divider)
 
   const rowStart = CY + 0.42
   orderedKeys.forEach(function(key, i) {
@@ -785,7 +825,7 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     const isTop   = i === 0
 
     // Subtle row tint
-    if (i % 2 === 0) solidRect(slide, chartX, ry, W - chartX - PAD * 0.4, rowH, 'F8F9FA')
+    if (i % 2 === 0) solidRect(slide, pptx, chartX, ry, W - chartX - PAD * 0.4, rowH, 'F8F9FA')
 
     // Label
     slide.addText(trunc(key, 48), {
@@ -797,10 +837,10 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     // Bar track
     const trackY = ry + rowH * 0.22
     const trackH = rowH * 0.55
-    solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
+    solidRect(slide, pptx, barX, trackY, barMaxW, trackH, 'EAECEF')
 
     // Bar fill
-    if (barW > 0.05) solidRect(slide, barX, trackY, barW, trackH, col)
+    if (barW > 0.05) solidRect(slide, pptx, barX, trackY, barW, trackH, col)
 
     // Percentage
     slide.addText(pctVal + '%', {
@@ -815,10 +855,10 @@ function buildCategoricalSlide(datasetName: string, f: SelectedField, ai: FieldI
     })
   })
 
-  footer(slide, datasetName)
+  footer(slide, pptx, datasetName)
 }
 
-function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
+function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   const subtitle = (f.section === 'demographic' || f.section === 'psychographic') && f.prompt
@@ -844,7 +884,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
   ]
   const sw = (W - PAD * 2 - 0.16) / statsData.length
   statsData.forEach(function(st, i) {
-    kpiCard(slide, PAD + i * (sw + 0.04), CY, sw, 0.82, st.v, st.k, undefined, st.bg, st.vc)
+    kpiCard(slide, pptx, PAD + i * (sw + 0.04), CY, sw, 0.82, st.v, st.k, undefined, st.bg, st.vc)
   })
 
   // ── Insight text (needed for both branches to anchor insight Y) ───────────────
@@ -888,7 +928,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
     slide.addText('Distribution', { x: barX,   y: headerY, w: barMaxW, h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
     slide.addText('%',            { x: pctX,   y: headerY, w: pctW,    h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, align: 'right', valign: 'middle' })
     slide.addText('n',            { x: cntX,   y: headerY, w: cntW,    h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
-    solidRect(slide, PAD, headerY + 0.28, W - PAD * 2, 0.012, DN.divider)
+    solidRect(slide, pptx, PAD, headerY + 0.28, W - PAD * 2, 0.012, DN.divider)
 
     orderedKeys.forEach(function(key, i) {
       const count  = rawCounts[key] || 0
@@ -899,8 +939,8 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       const numFrac = numMax > numMin ? (Number(key) - numMin) / (numMax - numMin) : 0.5
       const col     = numFrac >= 0.75 ? '059669' : numFrac >= 0.55 ? '34D399' : numFrac >= 0.45 ? '94A3B8' : numFrac >= 0.25 ? 'F97316' : 'DC2626'
 
-      if (i % 2 === 0) solidRect(slide, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
-      solidRect(slide, swatchX, ry + rowH * 0.18, swatchW, rowH * 0.64, col)
+      if (i % 2 === 0) solidRect(slide, pptx, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
+      solidRect(slide, pptx, swatchX, ry + rowH * 0.18, swatchW, rowH * 0.64, col)
 
       // Integer key — centered, larger font
       slide.addText(key, {
@@ -909,8 +949,8 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       })
 
       const trackH = rowH * 0.52; const trackY = ry + (rowH - trackH) / 2
-      solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
-      if (bw > 0.04) solidRect(slide, barX, trackY, bw, trackH, col)
+      solidRect(slide, pptx, barX, trackY, barMaxW, trackH, 'EAECEF')
+      if (bw > 0.04) solidRect(slide, pptx, barX, trackY, bw, trackH, col)
 
       slide.addText(pctVal + '%', { x: pctX, y: ry, w: pctW, h: rowH, fontSize: 13, bold: true, color: col, align: 'right', valign: 'middle' })
       slide.addText(count.toLocaleString(), { x: cntX, y: ry, w: cntW, h: rowH, fontSize: 11, color: DN.slateDark, valign: 'middle' })
@@ -925,7 +965,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
     const histBuckets: any[] = s?.histogram || []
 
     lbl(slide, 'DISTRIBUTION', chartX, chartY - 0.24, chartW2)
-    solidRect(slide, chartX, chartY - 0.02, chartW2, 0.012, DN.divider)
+    solidRect(slide, pptx, chartX, chartY - 0.02, chartW2, 0.012, DN.divider)
 
     if (histBuckets.length > 0) {
       const maxCount = Math.max(...histBuckets.map((b: any) => b.count), 1)
@@ -935,7 +975,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
         const bx  = chartX + i * bw
         const by  = chartY + chartH2 * 0.84 - bh
         const col = posInRange >= 0.65 ? DN.teal : posInRange <= 0.35 ? 'F97316' : DN.teal
-        solidRect(slide, bx + 0.02, by, bw - 0.04, bh, col)
+        solidRect(slide, pptx, bx + 0.02, by, bw - 0.04, bh, col)
       })
       // X-axis labels — every bar, larger font, centered under bar
       const allIntegers = histBuckets.every((b: any) => Number.isInteger(b.min) && Number.isInteger(b.max))
@@ -952,7 +992,7 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
       // Mean line
       if (s?.avg != null && range > 0) {
         const meanX = chartX + ((s.avg - s.min) / range) * chartW2
-        solidRect(slide, meanX - 0.01, chartY, 0.02, chartH2 * 0.84, DN.orange)
+        solidRect(slide, pptx, meanX - 0.01, chartY, 0.02, chartH2 * 0.84, DN.orange)
         const avgLabel = 'avg ' + Math.round(s.avg)
         slide.addText(avgLabel, {
           x: Math.min(meanX - 0.35, chartX + chartW2 - 0.72), y: chartY + 0.04,
@@ -971,12 +1011,12 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
     const rightW = W - rightX - PAD * 0.5
 
     lbl(slide, 'PERFORMANCE WITHIN RANGE', rightX, chartY - 0.24, rightW)
-    solidRect(slide, rightX, chartY - 0.02, rightW, 0.012, DN.divider)
+    solidRect(slide, pptx, rightX, chartY - 0.02, rightW, 0.012, DN.divider)
     const gaugeY = chartY + 0.1
-    rect(slide, rightX, gaugeY, rightW, 0.32, DN.slateLight, 0.06, DN.divider)
+    rect(slide, pptx, rightX, gaugeY, rightW, 0.32, DN.slateLight, 0.06, DN.divider)
     const fillW = Math.max(0.12, rightW * posInRange)
-    solidRect(slide, rightX, gaugeY, fillW, 0.32, perfColor + '99')
-    solidRect(slide, rightX + fillW - 0.05, gaugeY - 0.05, 0.1, 0.42, perfColor)
+    solidRect(slide, pptx, rightX, gaugeY, fillW, 0.32, perfColor + '99')
+    solidRect(slide, pptx, rightX + fillW - 0.05, gaugeY - 0.05, 0.1, 0.42, perfColor)
     slide.addText(String(s?.min ?? '0'), { x: rightX, y: gaugeY + 0.34, w: 0.6, h: 0.22, fontSize: 9, color: DN.slateDark })
     slide.addText(String(s?.max ?? '—'), { x: rightX + rightW - 0.6, y: gaugeY + 0.34, w: 0.6, h: 0.22, fontSize: 9, color: DN.slateDark, align: 'right' })
     slide.addText('avg ' + (s?.avg != null ? Math.round(s.avg) : '—'), {
@@ -991,70 +1031,84 @@ function buildNumericSlide(datasetName: string, f: SelectedField, ai: FieldInsig
         fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2,
       })
       if (ai.narrative) {
-        insightBox(slide, rightX, narY + 0.54, rightW, Math.min(1.3, insightY - narY - 1.1), ai.narrative, DN.teal, DN.tealPale)
+        insightBox(slide, pptx, rightX, narY + 0.54, rightW, Math.min(1.3, insightY - narY - 1.1), ai.narrative, DN.teal, DN.tealPale)
       }
     } else {
-      insightBox(slide, rightX, narY, rightW, Math.min(1.2, insightY - narY - 0.1), insightText, DN.teal, DN.tealPale)
+      insightBox(slide, pptx, rightX, narY, rightW, Math.min(1.2, insightY - narY - 0.1), insightText, DN.teal, DN.tealPale)
     }
 
     if (hasRealAI && ai.implication) {
-      solidRect(slide, rightX, insightY - 0.56, rightW, 0.44, DN.orangePale)
-      solidRect(slide, rightX, insightY - 0.56, 0.06, 0.44, DN.orange)
+      solidRect(slide, pptx, rightX, insightY - 0.56, rightW, 0.44, DN.orangePale)
+      solidRect(slide, pptx, rightX, insightY - 0.56, 0.06, 0.44, DN.orange)
       slide.addText('→ ' + ai.implication, { x: rightX + 0.13, y: insightY - 0.52, w: rightW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
     }
   }
 
   // ── Insight box — full width, anchored above footer ───────────────────────────
   if (withImpl) {
-    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
+    insightBox(slide, pptx, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
     const implY = insightY + insH + 0.08
-    solidRect(slide, PAD, implY, W - PAD * 2, implH, DN.goldPale)
-    solidRect(slide, PAD, implY, 0.05, implH, DN.gold)
+    solidRect(slide, pptx, PAD, implY, W - PAD * 2, implH, DN.goldPale)
+    solidRect(slide, pptx, PAD, implY, 0.05, implH, DN.gold)
     slide.addText('→ ' + ai.implication, { x: PAD + 0.12, y: implY + 0.04, w: W - PAD * 2 - 0.18, h: implH - 0.08, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
   } else {
-    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
+    insightBox(slide, pptx, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
   }
 
-  footer(slide, datasetName)
+  footer(slide, pptx, datasetName)
 }
 
-function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[]) {
+function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[]) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, f.label, DN.tealDark, 'Open-ended verbatim responses')
   logo(slide)
 
   const s = f.summary
-  const maxQuotes = audience === 'full' ? 5 : audience === 'stakeholder' ? 4 : 3
-  // Prefer AI-curated quotes; fall back to raw sample filtered by length
-  // Prefer substantive quotes ≥200 chars; fall back to shorter ones if not enough
-  const longSamples = (s?.sample || []).filter((q: string) => q && q.trim().length >= 200)
-  const rawFallback = (longSamples.length >= 2 ? longSamples : (s?.sample || []).filter((q: string) => q && q.trim().length > 50))
-    .slice(0, maxQuotes).map((q: string) => trimNatural(q, 400))
+  const maxQuotes = audience === 'full' ? 7 : audience === 'stakeholder' ? 6 : 5
+  // Use liveSample (fresh from filtered rows) over stale analytics snapshot
+  const samplePool = (f.liveSample && f.liveSample.length > 0) ? f.liveSample : (s?.sample || [])
+  // Prefer substantive quotes ≥150 chars; sort by length descending to pick the most complete ones
+  const longSamples = samplePool.filter((q: string) => q && q.trim().length >= 150).sort((a: string, b: string) => b.length - a.length)
+  const rawFallback = (longSamples.length >= maxQuotes ? longSamples : samplePool.filter((q: string) => q && q.trim().length > 50).sort((a: string, b: string) => b.length - a.length))
+    .slice(0, maxQuotes).map((q: string) => trimNatural(q, 450))
   const quotes: string[] = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
-    ? ai.pickedQuotes.slice(0, maxQuotes).map((q: string) => trimNatural(q, 400))
+    ? ai.pickedQuotes.slice(0, maxQuotes).map((q: string) => trimNatural(q, 450))
     : rawFallback
 
   const leftW  = W * 0.44 - PAD
   const rightX = W * 0.44 + 0.1
   const rightW = W - rightX - PAD * 0.5
 
-  // Left panel: stats + narrative + themes
+  // Left panel: original prompt + stats + narrative + themes
+  let leftStartY = CY
+  // Show original prompt if available; fall back to label if it's meaningful (not just the raw field key)
+  const promptText = f.prompt || (f.label !== f.field ? f.label : '')
+  if (promptText) {
+    solidRect(slide, pptx, PAD, CY, leftW, 0.48, DN.slateLight)
+    solidRect(slide, pptx, PAD, CY, 0.05, 0.48, DN.teal)
+    slide.addText('\u201C' + promptText + '\u201D', {
+      x: PAD + 0.12, y: CY + 0.04, w: leftW - 0.18, h: 0.40,
+      fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, lineSpacingMultiple: 1.3,
+    })
+    leftStartY = CY + 0.56
+  }
+
   // Stats
-  kpiCard(slide, PAD, CY, leftW * 0.46, 0.8, (s?.nonNull || 0).toLocaleString(), 'Responses', undefined, DN.tealPale, DN.teal)
-  kpiCard(slide, PAD + leftW * 0.49, CY, leftW * 0.46, 0.8, String(s?.avgWordCount || '—'), 'Avg Words', 'per response', DN.slateCard, DN.navyLight)
+  kpiCard(slide, pptx, PAD, leftStartY, leftW * 0.46, 0.8, (s?.nonNull || 0).toLocaleString(), 'Responses', undefined, DN.tealPale, DN.teal)
+  kpiCard(slide, pptx, PAD + leftW * 0.49, leftStartY, leftW * 0.46, 0.8, String(s?.avgWordCount || '—'), 'Avg Words', 'per response', DN.slateCard, DN.navyLight)
 
   // Key finding
   if (ai.keyFinding) {
-    lbl(slide, 'HEADLINE FINDING', PAD, CY + 0.92, leftW)
-    slide.addText(ai.keyFinding, { x: PAD, y: CY + 1.14, w: leftW, h: 0.44, fontSize: 13, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2 })
+    lbl(slide, 'HEADLINE FINDING', PAD, leftStartY + 0.92, leftW)
+    slide.addText(ai.keyFinding, { x: PAD, y: leftStartY + 1.14, w: leftW, h: 0.44, fontSize: 13, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2 })
   }
 
   // Narrative
   if (ai.narrative) {
-    const narY = CY + (ai.keyFinding ? 1.65 : 0.92)
+    const narY = leftStartY + (ai.keyFinding ? 1.65 : 0.92)
     const narH = Math.min(1.1, H - narY - (themes.length > 0 ? 1.0 : 0.45) - (ai.implication ? 0.65 : 0.1))
-    insightBox(slide, PAD, narY, leftW, narH, ai.narrative, DN.teal, DN.tealPale)
+    insightBox(slide, pptx, PAD, narY, leftW, narH, ai.narrative, DN.teal, DN.tealPale)
   }
 
   // Relevant themes
@@ -1065,15 +1119,15 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
     const pillW = (leftW - 0.1 * (relThemes.length - 1)) / relThemes.length
     relThemes.forEach(function(t: any, i: number) {
       const tc = (t.color || DN.teal).replace('#', '')
-      rect(slide, PAD + i * (pillW + 0.1), thY + 0.24, pillW, 0.36, tc + '20', 0.07, tc + '60')
+      rect(slide, pptx, PAD + i * (pillW + 0.1), thY + 0.24, pillW, 0.36, tc + '20', 0.07, tc + '60')
       slide.addText(trunc(t.name, 16), { x: PAD + i * (pillW + 0.1) + 0.06, y: thY + 0.24, w: pillW - 0.12, h: 0.36, fontSize: 8.5, bold: true, color: tc, align: 'center', valign: 'middle' })
     })
   }
 
   // Implication
   if (ai.implication) {
-    solidRect(slide, PAD, H - 0.78, leftW, 0.48, DN.orangePale)
-    solidRect(slide, PAD, H - 0.78, 0.07, 0.48, DN.orange)
+    solidRect(slide, pptx, PAD, H - 0.78, leftW, 0.48, DN.orangePale)
+    solidRect(slide, pptx, PAD, H - 0.78, 0.07, 0.48, DN.orange)
     slide.addText('→ ' + ai.implication, { x: PAD + 0.14, y: H - 0.78 + 0.04, w: leftW - 0.2, h: 0.4, fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
   }
 
@@ -1083,7 +1137,7 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
   if (quotes.length > 0) {
     const qh = Math.min(0.9, (CH - 0.24) / quotes.length - 0.1)
     quotes.forEach(function(q, i) {
-      quoteCard(slide, rightX, CY + 0.24 + i * (qh + 0.1), rightW, qh, q)
+      quoteCard(slide, pptx, rightX, CY + 0.24 + i * (qh + 0.1), rightW, qh, q)
     })
   } else {
     slide.addText('No verbatim responses available for this field.', {
@@ -1092,7 +1146,7 @@ function buildOpenEndedSlide(datasetName: string, f: SelectedField, ai: FieldIns
     })
   }
 
-  footer(slide, datasetName)
+  footer(slide, pptx, datasetName)
 }
 
 interface CommentItem { text: string; demos: Array<{ label: string; value: string; section?: string }>; colorValue?: string }
@@ -1100,7 +1154,6 @@ interface CommentItem { text: string; demos: Array<{ label: string; value: strin
 // Map a field value to a card accent strip color
 // Numeric: green→red gradient based on relative value
 // Categorical: deterministic palette color per unique value
-const _colorCache: Record<string, Record<string, string>> = {}
 function valueToColor(val: string, allValsForField?: string[]): string {
   // Try numeric interpretation first
   const num = parseFloat(val)
@@ -1134,6 +1187,7 @@ function valueToColor(val: string, allValsForField?: string[]): string {
 }
 
 function buildCommentsSlide(
+  pptx: any,
   datasetName: string,
   fieldLabel: string,
   fieldSection: string | undefined,
@@ -1167,8 +1221,8 @@ function buildCommentsSlide(
     // Card background + left accent strip (color from colorValue if present)
     const allColorVals = comments.map(function(x) { return x.colorValue || '' }).filter(Boolean)
     const stripColor = c.colorValue ? valueToColor(c.colorValue, allColorVals) : DN.teal
-    rect(slide, cx, cy, cardW, cardH, DN.white, 0.06, DN.divider)
-    solidRect(slide, cx, cy, 0.06, cardH, stripColor)
+    rect(slide, pptx, cx, cy, cardW, cardH, DN.white, 0.06, DN.divider)
+    solidRect(slide, pptx, cx, cy, 0.06, cardH, stripColor)
 
     // Opening curly-quote mark
     slide.addText('\u201C', {
@@ -1193,7 +1247,7 @@ function buildCommentsSlide(
     // Demo = Sarina palette (orange), Psycho = Ana palette (teal)
     if (hasDemos) {
       const demoY = cy + cardH - demoRowH - 0.02
-      solidRect(slide, cx + 0.06, demoY - 0.03, cardW - 0.12, 0.010, DN.divider)
+      solidRect(slide, pptx, cx + 0.06, demoY - 0.03, cardW - 0.12, 0.010, DN.divider)
       const pillH    = 0.22
       const pillPadX = 0.10   // horizontal text padding inside pill
       const pillGap  = 0.07
@@ -1226,7 +1280,7 @@ function buildCommentsSlide(
     }
   })
 
-  footer(slide, datasetName)
+  footer(slide, pptx, datasetName)
 }
 
 // Sentiment badge colors (matches TextMine sentBg/sentColor)
@@ -1234,7 +1288,7 @@ function themeSentBg(s: string)    { return s === 'positive' ? DN.greenLight : s
 function themeSentFg(s: string)    { return s === 'positive' ? DN.green      : s === 'negative' ? DN.red       : s === 'mixed' ? DN.amber      : DN.slateDark  }
 
 // Compact grid overview: multiple themes per page (summary before the per-theme detail slides)
-function buildThemeGridSlides(datasetName: string, themes: any[], fieldLabel?: string) {
+function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fieldLabel?: string) {
   if (!themes || themes.length === 0) return
   function chooseGrid(n: number) {
     if (n <= 2) return { perPage: 2, cols: 2, rows: 1 }
@@ -1260,12 +1314,12 @@ function buildThemeGridSlides(datasetName: string, themes: any[], fieldLabel?: s
       const cx  = PAD + col * (cardW + gapX)
       const cy  = CY  + row * (cardH + gapY)
       const themeColor = (t.color || DN.teal).replace('#', '')
-      rect(slide, cx, cy, cardW, cardH, DN.white, 0.07, themeColor)
-      solidRect(slide, cx, cy, cardW, 0.07, themeColor)
+      rect(slide, pptx, cx, cy, cardW, cardH, DN.white, 0.07, themeColor)
+      solidRect(slide, pptx, cx, cy, cardW, 0.07, themeColor)
       const sent = t.sentiment || ''
       if (sent) {
         const sw = 0.8
-        rect(slide, cx + cardW - sw - 0.08, cy + 0.12, sw, 0.22, themeSentBg(sent), 0.5, themeSentFg(sent))
+        rect(slide, pptx, cx + cardW - sw - 0.08, cy + 0.12, sw, 0.22, themeSentBg(sent), 0.5, themeSentFg(sent))
         slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), { x: cx + cardW - sw - 0.08, y: cy + 0.12, w: sw, h: 0.22, fontSize: 7.5, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle' })
       }
       const nameH = cardH <= 2.0 ? 0.30 : 0.40
@@ -1278,27 +1332,27 @@ function buildThemeGridSlides(datasetName: string, themes: any[], fieldLabel?: s
       keywords.forEach(function(k: string) {
         const kw = k.length * 0.054 + 0.16
         if (kwX + kw > cx + cardW - 0.06) return
-        rect(slide, kwX, kwY, kw, 0.18, DN.slateLight, 0.5, DN.divider)
+        rect(slide, pptx, kwX, kwY, kw, 0.18, DN.slateLight, 0.5, DN.divider)
         slide.addText(k, { x: kwX + 0.05, y: kwY, w: kw - 0.10, h: 0.18, fontSize: 7, color: DN.slateDark, valign: 'middle', wrap: false })
         kwX += kw + 0.05
       })
       const barY    = cy + cardH - (cardH <= 2.0 ? 0.44 : 0.50)
       const pctVal  = Math.round(t.percentage || 0)
-      solidRect(slide, cx + 0.10, barY - 0.05, cardW - 0.20, 0.008, DN.divider)
+      solidRect(slide, pptx, cx + 0.10, barY - 0.05, cardW - 0.20, 0.008, DN.divider)
       if (t.count) slide.addText(t.count.toLocaleString() + ' responses', { x: cx + 0.14, y: barY, w: cardW * 0.55, h: 0.22, fontSize: 8, color: DN.slateDark, valign: 'middle' })
       if (pctVal)  slide.addText(pctVal + '%', { x: cx + cardW * 0.55, y: barY - 0.02, w: cardW * 0.38, h: 0.28, fontSize: 14, bold: true, color: themeColor, align: 'right', valign: 'middle' })
       const fill = Math.min(1, pctVal / 100)
-      solidRect(slide, cx + 0.14, cy + cardH - 0.14, cardW - 0.28, 0.06, DN.slateLight)
-      if (fill > 0) solidRect(slide, cx + 0.14, cy + cardH - 0.14, (cardW - 0.28) * fill, 0.06, themeColor)
+      solidRect(slide, pptx, cx + 0.14, cy + cardH - 0.14, cardW - 0.28, 0.06, DN.slateLight)
+      if (fill > 0) solidRect(slide, pptx, cx + 0.14, cy + cardH - 0.14, (cardW - 0.28) * fill, 0.06, themeColor)
     })
-    footer(slide, datasetName)
+    footer(slide, pptx, datasetName)
   }
 }
 
-function buildThemeSlides(
-  datasetName: string, themes: any[], fieldLabel?: string,
+async function buildThemeSlides(
+  pptx: any, datasetName: string, themes: any[], fieldLabel?: string,
   allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[],
-  usedComments?: Set<string>
+  usedComments?: Set<string>, apiKey?: string,
 ) {
   if (!themes || themes.length === 0) return
 
@@ -1312,9 +1366,10 @@ function buildThemeSlides(
     })
   }
 
-  // Pick 5 evenly-spread responses that match the theme and are substantive.
-  // Excludes any comment already used elsewhere in the deck (dedup via usedComments set).
-  function getComments(t: any): string[] {
+  // Pick 5 best responses for a theme using AI relevance scoring,
+  // then extract conceptual highlight phrases via AI.
+  // Falls back to keyword-based highlighting if no API key available.
+  async function getComments(t: any): Promise<HighlightedComment[]> {
     if (!allRows?.length || !rowKeyMap || !fieldKeys?.length) return []
     const keys = fieldKeys.map(fk => {
       const norm = fk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
@@ -1326,24 +1381,21 @@ function buildThemeSlides(
       if (text.length < 80) continue
       if (matchesTheme(text, t.keywords || [])) matched.push(text)
     }
-    // Prefer longer responses; sort descending by length then evenly sample 5
+    if (!matched.length) return []
     matched.sort((a, b) => b.length - a.length)
-    const pool = matched.slice(0, Math.min(matched.length, 40)) // top-40 longest
-    // Prefer comments not already used; fall back to full pool if too few unique remain
-    const fresh = usedComments ? pool.filter(s => !usedComments.has(s.slice(0, 120))) : pool
-    const source = fresh.length >= 3 ? fresh : pool
-    const n = Math.min(5, source.length)
-    if (n === 0) return []
-    const step = source.length / n
-    const picked = Array.from({ length: n }, (_, i) => source[Math.floor(i * step)])
-      .map(s => trimNatural(s, 350))
-    // Register selected comments so later slides skip them
-    if (usedComments) picked.forEach(s => usedComments.add(s.slice(0, 120)))
-    return picked
+    const pool = matched.slice(0, Math.min(matched.length, 40))
+
+    const themeInfo = { name: t.name || '', description: t.description || '', keywords: t.keywords || [], sentiment: t.sentiment || '' }
+    // Only use AI scoring if there are many candidates to filter; skip for small pools
+    const useAI = pool.length > 8 ? (apiKey || undefined) : undefined
+    const picked = await pickBestComments(pool, themeInfo, 5, useAI, usedComments || undefined, 350)
+    // Use keyword-based highlighting (fast) — AI phrase extraction removed for performance
+    return picked.map(text => ({ text, phrases: themeInfo.keywords }))
   }
 
   const totalThemes = themes.length
-  themes.forEach(function(t: any, tidx: number) {
+  for (let tidx = 0; tidx < themes.length; tidx++) {
+    const t = themes[tidx] as any
     const slide = pptx.addSlide('NUMBERED')
     bg(slide, pptx)
     const themeSubtitle = fieldLabel
@@ -1360,7 +1412,7 @@ function buildThemeSlides(
     const ly = CY
 
     // ── LEFT: metadata ───────────────────────────────────────────────────────
-    solidRect(slide, lx, ly, leftW, 0.06, themeColor)
+    solidRect(slide, pptx, lx, ly, leftW, 0.06, themeColor)
 
     slide.addText(t.name || '', {
       x: lx, y: ly + 0.12, w: leftW, h: 0.52,
@@ -1370,7 +1422,7 @@ function buildThemeSlides(
     const sent = t.sentiment || ''
     if (sent) {
       const sentW = 1.0
-      rect(slide, lx, ly + 0.70, sentW, 0.26, themeSentBg(sent), 0.5, themeSentFg(sent))
+      rect(slide, pptx, lx, ly + 0.70, sentW, 0.26, themeSentBg(sent), 0.5, themeSentFg(sent))
       slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), {
         x: lx, y: ly + 0.70, w: sentW, h: 0.26,
         fontSize: 9, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle',
@@ -1391,32 +1443,34 @@ function buildThemeSlides(
       const kw = k.length * 0.058 + 0.20
       if (kwX + kw > lx + leftW) { kwX = lx; kwRow++ }
       if (kwRow > 1) return
-      rect(slide, kwX, kwStartY + kwRow * 0.28, kw, 0.22, DN.slateLight, 0.5, DN.divider)
+      rect(slide, pptx, kwX, kwStartY + kwRow * 0.28, kw, 0.22, DN.slateLight, 0.5, DN.divider)
       slide.addText(k, { x: kwX + 0.07, y: kwStartY + kwRow * 0.28, w: kw - 0.14, h: 0.22, fontSize: 7.5, color: DN.slateDark, valign: 'middle', wrap: false })
       kwX += kw + 0.07
     })
 
-    solidRect(slide, lx, ly + 2.82, leftW, 0.012, DN.divider)
+    solidRect(slide, pptx, lx, ly + 2.82, leftW, 0.012, DN.divider)
     const pctVal = Math.round(t.percentage || 0)
     const countStr = t.count ? t.count.toLocaleString() + ' responses' : ''
     if (countStr) slide.addText(countStr, { x: lx, y: ly + 2.88, w: leftW * 0.6, h: 0.28, fontSize: 9, color: DN.slateDark, valign: 'middle' })
     if (pctVal)   slide.addText(pctVal + '%', { x: lx + leftW * 0.6, y: ly + 2.82, w: leftW * 0.38, h: 0.42, fontSize: 22, bold: true, color: themeColor, align: 'right', valign: 'middle' })
     const barFill = Math.min(1, pctVal / 100)
-    solidRect(slide, lx, ly + 3.28, leftW, 0.08, DN.slateLight)
-    if (barFill > 0) solidRect(slide, lx, ly + 3.28, leftW * barFill, 0.08, themeColor)
+    solidRect(slide, pptx, lx, ly + 3.28, leftW, 0.08, DN.slateLight)
+    if (barFill > 0) solidRect(slide, pptx, lx, ly + 3.28, leftW * barFill, 0.08, themeColor)
 
     // ── RIGHT: verbatim comments ─────────────────────────────────────────────
-    solidRect(slide, rightX - 0.12, ly, 0.012, CH, DN.divider)
+    solidRect(slide, pptx, rightX - 0.12, ly, 0.012, CH, DN.divider)
     lbl(slide, 'VOICES FROM THIS THEME', rightX, ly, rightW)
-    solidRect(slide, rightX, ly + 0.22, rightW, 0.012, DN.divider)
+    solidRect(slide, pptx, rightX, ly + 0.22, rightW, 0.012, DN.divider)
 
-    const comments = getComments(t)
+    const comments = await getComments(t)
     if (comments.length > 0) {
       const availH = CH - 0.38
       const qGap   = 0.08
       const qh     = (availH - qGap * (comments.length - 1)) / comments.length
-      comments.forEach(function(q, i) {
-        quoteCardHighlighted(slide, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, q, t.keywords || [])
+      comments.forEach(function(hc, i) {
+        // Use AI-extracted phrases for highlighting; fall back to theme keywords
+        const highlightTerms = hc.phrases && hc.phrases.length > 0 ? hc.phrases : (t.keywords || [])
+        quoteCardHighlighted(slide, pptx, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, hc.text, highlightTerms)
       })
     } else {
       slide.addText('No verbatim responses matched this theme.', {
@@ -1425,17 +1479,17 @@ function buildThemeSlides(
       })
     }
 
-    footer(slide, datasetName)
-  })
+    footer(slide, pptx, datasetName)
+  }
 }
 
-function buildSectionDivider(title: string, subtitle: string, fieldCount: number) {
+function buildSectionDivider(pptx: any, title: string, subtitle: string, fieldCount: number) {
   const slide = pptx.addSlide('NUMBERED')
 
-  solidRect(slide, 0, 0, W, H, DN.navy)
-  solidRect(slide, 0, 0, W, 0.07, DN.gold)
-  solidRect(slide, 0, 0.07, 0.18, H - 0.07, DN.teal)
-  solidRect(slide, W - 3.0, 0.07, 3.0, H - 0.07, DN.navyMid)
+  solidRect(slide, pptx, 0, 0, W, H, DN.navy)
+  solidRect(slide, pptx, 0, 0, W, 0.07, DN.gold)
+  solidRect(slide, pptx, 0, 0.07, 0.18, H - 0.07, DN.teal)
+  solidRect(slide, pptx, W - 3.0, 0.07, 3.0, H - 0.07, DN.navyMid)
 
   // Decorative circles
   slide.addShape(pptx.ShapeType.ellipse, { x: W - 2.8, y: 0.8, w: 3.6, h: 3.6, fill: { color: DN.teal, transparency: 92 }, line: { color: DN.teal, transparency: 79, width: 1 } })
@@ -1497,7 +1551,7 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   }
 
   // Section label chip
-  solidRect(slide, PAD + 0.18, 1.6, 2.0, 0.34, DN.teal, 81)
+  solidRect(slide, pptx, PAD + 0.18, 1.6, 2.0, 0.34, DN.teal, 81)
   slide.addText(title.toUpperCase(), {
     x: PAD + 0.24, y: 1.6, w: 1.94, h: 0.34,
     fontSize: 8, bold: true, color: DN.tealLight, charSpacing: 1.5, valign: 'middle',
@@ -1510,7 +1564,7 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   })
 
   // Gold divider
-  solidRect(slide, PAD + 0.18, 3.25, 4.5, 0.04, DN.gold)
+  solidRect(slide, pptx, PAD + 0.18, 3.25, 4.5, 0.04, DN.gold)
 
   // Subtitle
   slide.addText(subtitle, {
@@ -1519,13 +1573,13 @@ function buildSectionDivider(title: string, subtitle: string, fieldCount: number
   })
 
   // Bottom footer
-  solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
-  solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold, 56)
+  solidRect(slide, pptx, 0, H - 0.44, W, 0.44, DN.navyMid)
+  solidRect(slide, pptx, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText('datanautix.com', { x: PAD + 0.18, y: H - 0.4, w: 3.0, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle' })
   slide.addText('Proprietary and Confidential', { x: W - 3.6, y: H - 0.4, w: 3.2, h: 0.34, fontSize: 8.5, color: DN.slate, valign: 'middle', align: 'right' })
 }
 
-function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) {
+function buildPieSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   const subtitle = (f.section === 'demographic' || f.section === 'psychographic') && f.prompt
@@ -1555,11 +1609,11 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) 
 
   // ── KPI row ───────────────────────────────────────────────────────────────
   const kw = (W - PAD * 2 - 0.2) / 3
-  kpiCard(slide, PAD,                CY, kw, 0.78, total.toLocaleString(), 'Respondents', undefined, DN.slateLight, DN.navy)
-  kpiCard(slide, PAD + kw + 0.1,    CY, kw, 0.78, topPct_ + '%', 'Top Response', topKey,
+  kpiCard(slide, pptx, PAD,                CY, kw, 0.78, total.toLocaleString(), 'Respondents', undefined, DN.slateLight, DN.navy)
+  kpiCard(slide, pptx, PAD + kw + 0.1,    CY, kw, 0.78, topPct_ + '%', 'Top Response', topKey,
     isOrdinal ? (top2 >= 70 ? DN.greenLight : top2 >= 50 ? DN.amberLight : DN.redLight) : DN.slateLight,
     isOrdinal ? (top2 >= 70 ? DN.green      : top2 >= 50 ? DN.amber      : DN.red)      : DN.navy)
-  kpiCard(slide, PAD + kw * 2 + 0.2, CY, kw, 0.78,
+  kpiCard(slide, pptx, PAD + kw * 2 + 0.2, CY, kw, 0.78,
     isOrdinal ? top2 + '%' : String(orderedKeys.length),
     isOrdinal ? 'Top-2 Positive' : 'Unique Values', undefined,
     DN.slateLight,
@@ -1605,7 +1659,7 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) 
   slide.addText('Distribution', { x: barX,   y: headerY, w: barMaxW, h: 0.26, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
   slide.addText('%',            { x: pctX,   y: headerY, w: pctW,    h: 0.26, fontSize: 8.5, bold: true, color: DN.slateDark, align: 'right', valign: 'middle' })
   slide.addText('n',            { x: cntX,   y: headerY, w: cntW,    h: 0.26, fontSize: 8.5, bold: true, color: DN.slateDark, valign: 'middle' })
-  solidRect(slide, PAD, headerY + 0.28, W - PAD * 2, 0.012, DN.divider)
+  solidRect(slide, pptx, PAD, headerY + 0.28, W - PAD * 2, 0.012, DN.divider)
 
   const maxVal = Math.max(...orderedKeys.map(k => rawCounts[k] || 0), 1)
 
@@ -1618,10 +1672,10 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) 
     const isTop  = i === 0
 
     // Alternating row tint
-    if (i % 2 === 0) solidRect(slide, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
+    if (i % 2 === 0) solidRect(slide, pptx, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
 
     // Color swatch
-    solidRect(slide, swatchX, ry + rowH * 0.18, swatchW, rowH * 0.64, col)
+    solidRect(slide, pptx, swatchX, ry + rowH * 0.18, swatchW, rowH * 0.64, col)
 
     // Label — no excessive truncation; label column is 2.8" wide
     slide.addText(trunc(key, 44), {
@@ -1632,8 +1686,8 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) 
     // Bar track + fill — tall, prominent
     const trackH = rowH * 0.52
     const trackY = ry + (rowH - trackH) / 2
-    solidRect(slide, barX, trackY, barMaxW, trackH, 'EAECEF')
-    if (bw > 0.04) solidRect(slide, barX, trackY, bw, trackH, col)
+    solidRect(slide, pptx, barX, trackY, barMaxW, trackH, 'EAECEF')
+    if (bw > 0.04) solidRect(slide, pptx, barX, trackY, bw, trackH, col)
 
     // Percentage — right-aligned, bold, colored
     slide.addText(pctVal + '%', {
@@ -1650,30 +1704,30 @@ function buildPieSlide(datasetName: string, f: SelectedField, ai: FieldInsight) 
 
   // ── Insight + optional implication, full width, anchored above footer ─────
   if (withImpl) {
-    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
+    insightBox(slide, pptx, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
     const implY = insightY + insH + 0.08
-    solidRect(slide, PAD, implY, W - PAD * 2, implH, DN.goldPale)
-    solidRect(slide, PAD, implY, 0.05, implH, DN.gold)
+    solidRect(slide, pptx, PAD, implY, W - PAD * 2, implH, DN.goldPale)
+    solidRect(slide, pptx, PAD, implY, 0.05, implH, DN.gold)
     slide.addText('→ ' + ai.implication, {
       x: PAD + 0.12, y: implY + 0.04, w: W - PAD * 2 - 0.18, h: implH - 0.08,
       fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true,
     })
   } else {
-    insightBox(slide, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
+    insightBox(slide, pptx, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
   }
 
-  footer(slide, datasetName)
+  footer(slide, pptx, datasetName)
 }
 
-function buildClosingSlide(datasetName: string, takeaways: string[]) {
+function buildClosingSlide(pptx: any, datasetName: string, takeaways: string[]) {
   const slide = pptx.addSlide('NUMBERED')
 
-  solidRect(slide, 0, 0, W, H, DN.navy)
-  solidRect(slide, 0, 0, W, 0.07, DN.gold)
-  solidRect(slide, 0, 0.07, 0.07, H - 0.07, DN.teal)
+  solidRect(slide, pptx, 0, 0, W, H, DN.navy)
+  solidRect(slide, pptx, 0, 0, W, 0.07, DN.gold)
+  solidRect(slide, pptx, 0, 0.07, 0.07, H - 0.07, DN.teal)
 
   // Right panel for visual depth
-  solidRect(slide, W - 3.0, 0.07, 3.0, H - 0.07, DN.navyMid)
+  solidRect(slide, pptx, W - 3.0, 0.07, 3.0, H - 0.07, DN.navyMid)
   slide.addShape(pptx.ShapeType.ellipse, {
     x: W - 2.8, y: 1.0, w: 3.4, h: 3.4,
     fill: { color: DN.teal, transparency: 93 }, line: { color: DN.teal, transparency: 79, width: 1 }
@@ -1688,7 +1742,7 @@ function buildClosingSlide(datasetName: string, takeaways: string[]) {
     x: PAD + 0.07, y: 0.65, w: W - 4.0, h: 0.75,
     fontSize: 34, bold: true, color: DN.white,
   })
-  solidRect(slide, PAD + 0.07, 1.52, 5.2, 0.04, DN.gold)
+  solidRect(slide, pptx, PAD + 0.07, 1.52, 5.2, 0.04, DN.gold)
 
   // Takeaway cards — large, clean
   const displayTA = takeaways.length > 0 ? takeaways : ['Review the detailed findings slides for specific recommendations.']
@@ -1697,8 +1751,8 @@ function buildClosingSlide(datasetName: string, takeaways: string[]) {
     const cardH = 1.35
 
     // Card background
-    solidRect(slide, PAD + 0.07, ty, W - 3.4, cardH, DN.navyMid)
-    solidRect(slide, PAD + 0.07, ty, W - 3.4, 0.04, i === 0 ? DN.gold : DN.teal)
+    solidRect(slide, pptx, PAD + 0.07, ty, W - 3.4, cardH, DN.navyMid)
+    solidRect(slide, pptx, PAD + 0.07, ty, W - 3.4, 0.04, i === 0 ? DN.gold : DN.teal)
 
     // Number circle
     slide.addShape(pptx.ShapeType.ellipse, {
@@ -1720,8 +1774,8 @@ function buildClosingSlide(datasetName: string, takeaways: string[]) {
   })
 
   // Footer
-  solidRect(slide, 0, H - 0.44, W, 0.44, DN.navyMid)
-  solidRect(slide, 0, H - 0.44, W, 0.025, DN.gold, 56)
+  solidRect(slide, pptx, 0, H - 0.44, W, 0.44, DN.navyMid)
+  solidRect(slide, pptx, 0, H - 0.44, W, 0.025, DN.gold, 56)
   slide.addText(
     [
       { text: 'data',             options: { color: DN.orangeLight, bold: true, italic: true } },
@@ -1749,6 +1803,8 @@ export async function POST(req: Request, { params }: Params) {
   const commentColorField: string     = body.commentColorField  || ''
   const includeThemeSlides: boolean   = body.includeThemeSlides !== false
   const selectedThemeIds: string[]    = body.selectedThemeIds   || []
+  const rawFilters: Record<string, any> = body.filters || {}
+  const reportTitle: string             = body.reportTitle || ''
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -1855,18 +1911,6 @@ export async function POST(req: Request, { params }: Params) {
   const rowKeyMap: Record<string, string> = {}  // normalizedKey → actualKey in first row
   if (allRows.length > 0) {
     for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
-    console.log('[pptx/comments] fetched', allRows.length, 'rows')
-    console.log('[pptx/comments] first-row keys:', Object.keys(allRows[0]).slice(0, 30))
-    console.log('[pptx/comments] normalized key map:', JSON.stringify(rowKeyMap).slice(0, 600))
-    // Trace q3/q4 values across sample rows
-    const q3key = rowKeyMap['q3_response'] || 'q3_response'
-    const q4key = rowKeyMap['q4_response'] || 'q4_response'
-    for (let ti = 0; ti < Math.min(5, allRows.length); ti++) {
-      const r = allRows[ti]
-      console.log('[pptx/comments] row', ti, '→ q3_response(', q3key, '):', JSON.stringify(String(r[q3key] ?? '(null)')).slice(0, 80), '| q4_response(', q4key, '):', JSON.stringify(String(r[q4key] ?? '(null)')).slice(0, 80))
-    }
-  } else {
-    console.log('[pptx/comments] NO ROWS RETURNED from dataset_rows for dataset', params.datasetId)
   }
   function rowVal(row: Record<string, any>, fieldKey: string): string {
     // Direct match first, then normalized fallback
@@ -1874,6 +1918,67 @@ export async function POST(req: Request, { params }: Params) {
     const actual = rowKeyMap[normalize(fieldKey)]
     if (actual && row[actual] !== undefined && row[actual] !== null) return String(row[actual]).trim()
     return ''
+  }
+
+  // Apply filters if provided — filter rows before any analysis
+  const hasFilters = Object.keys(rawFilters).length > 0
+  let filterDescription = ''
+  if (hasFilters) {
+    const filters = deserializeFilters(rawFilters as SerializedFilters)
+    const before = allRows.length
+    const filtered = applyFilters(allRows, filters)
+    // Replace allRows so all downstream processing uses filtered data
+    allRows.length = 0
+    for (let fi = 0; fi < filtered.length; fi++) allRows.push(filtered[fi])
+    // Build human-readable filter description for the About slide
+    const parts: string[] = []
+    for (const field of Object.keys(rawFilters)) {
+      const f = rawFilters[field]
+      const schemaField = (schema?.fields || []).find((sf: any) => sf.field === field)
+      const label = schemaField?.label || field
+      if (f.type === 'cat' && f.values?.length) {
+        parts.push(label + ': ' + f.values.slice(0, 5).join(', ') + (f.values.length > 5 ? ' (+' + (f.values.length - 5) + ' more)' : ''))
+      } else if (f.type === 'range' && f.values) {
+        parts.push(label + ': ' + f.values[0] + ' – ' + f.values[1])
+      } else if (f.type === 'daterange' && f.values) {
+        const fmtDt = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        parts.push(label + ': ' + fmtDt(f.values[0]) + ' – ' + fmtDt(f.values[1]))
+      }
+    }
+    filterDescription = parts.join('  ·  ')
+    filterDescription = 'Filtered: ' + allRows.length + ' of ' + before + ' rows  ·  ' + filterDescription
+
+    // Recompute field summaries from filtered rows so all slides reflect filtered data
+    for (const sf of selectedFields) {
+      const key = rowKeyMap[normalize(sf.field)] || sf.field
+      if (sf.type === 'categorical') {
+        const counts: Record<string, number> = {}
+        let nonNull = 0
+        for (const row of allRows) {
+          const v = row[key] != null ? String(row[key]).trim() : ''
+          if (v) { counts[v] = (counts[v] || 0) + 1; nonNull++ }
+        }
+        sf.summary = { ...(sf.summary || {}), counts, nonNull, uniqueCount: Object.keys(counts).length }
+      } else if (sf.type === 'numeric') {
+        const vals: number[] = []
+        for (const row of allRows) {
+          const n = parseFloat(String(row[key] ?? ''))
+          if (!isNaN(n)) vals.push(n)
+        }
+        if (vals.length > 0) {
+          vals.sort((a, b) => a - b)
+          const sum = vals.reduce((s, v) => s + v, 0)
+          sf.summary = { ...(sf.summary || {}), nonNull: vals.length, min: vals[0], max: vals[vals.length - 1], avg: Math.round(sum / vals.length * 100) / 100, median: vals[Math.floor(vals.length / 2)] }
+        }
+      } else if (sf.type === 'open-ended') {
+        let nonNull = 0
+        for (const row of allRows) {
+          const v = row[key] != null ? String(row[key]).trim() : ''
+          if (v) nonNull++
+        }
+        sf.summary = { ...(sf.summary || {}), nonNull }
+      }
+    }
   }
 
   // Build live verbatim samples for each OE field (20 evenly-spaced responses ≥ 30 chars).
@@ -1962,7 +2067,7 @@ export async function POST(req: Request, { params }: Params) {
   // ── Build PPTX ─────────────────────────────────────────────────────────────
   try {
     const pptxgen  = (await import('pptxgenjs')).default
-    pptx           = new pptxgen()
+    const pptx     = new pptxgen()
     pptx.layout    = 'LAYOUT_WIDE'
     pptx.defineSlideMaster({
       title: 'NUMBERED',
@@ -1974,16 +2079,17 @@ export async function POST(req: Request, { params }: Params) {
     pptx.title     = datasetName
 
     // 1: Title
-    buildTitleSlide(datasetName, narratives.reportTitle || '', analytics.totalRows, analytics.computedAt)
+    buildTitleSlide(pptx, datasetName, reportTitle || narratives.reportTitle || '', hasFilters ? allRows.length : analytics.totalRows, analytics.computedAt)
 
     // Sort themes by frequency (count descending)
     const sortedThemes = [...themes].sort(function(a: any, b: any) { return (b.count || 0) - (a.count || 0) })
 
     // 2: Executive Summary
-    buildSummarySlide(datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields)
+    buildSummarySlide(pptx, datasetName, analytics.totalRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields)
 
     // 3: About this report
-    buildAboutSlide(datasetName, analytics.totalRows, analytics.computedAt, selectedFields, audience)
+    const dataSource = dataset.study_id ? 'study' as const : 'upload' as const
+    buildAboutSlide(pptx, datasetName, hasFilters ? allRows.length : analytics.totalRows, analytics.computedAt, selectedFields, audience, filterDescription || undefined, dataSource)
 
     // ── Group fields by section ───────────────────────────────────────────
     const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
@@ -2018,7 +2124,6 @@ export async function POST(req: Request, { params }: Params) {
         ? selectedFields.filter(sf => commentAnnotations.includes(sf.field))
         : commentDemoFields
       const resolvedKey = rowKeyMap[normalize(f.field)] || f.field
-      console.log('[pptx/comments] field:', f.field, '| resolved row key:', resolvedKey, '| sample value:', allRows.length > 0 ? String(allRows[0][resolvedKey] || '(empty)').slice(0, 80) : 'no rows')
       const allCommentItems: CommentItem[] = allRows
         .map(function(row) {
           const text  = rowVal(row, f.field)
@@ -2052,21 +2157,20 @@ export async function POST(req: Request, { params }: Params) {
         }
         return result
       })()
-      console.log('[pptx/comments] field', f.field, '→', commentItems.length, 'comments extracted (from', allRows.length, 'rows)')
       // Register these comments so nothing else re-uses them
       commentItems.forEach(c => usedCommentTexts.add(c.text.slice(0, 120)))
       if (commentItems.length > 0) {
         const numSlides = Math.ceil(commentItems.length / perSlide)
         for (let si = 0; si < numSlides; si++) {
-          buildCommentsSlide(datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides)
+          buildCommentsSlide(pptx, datasetName, f.label, f.section, commentItems.slice(si * perSlide, (si + 1) * perSlide), si + 1, numSlides)
         }
       }
     }
 
     // ── 4: Open-ended fields → theme grid → per-theme detail (one per theme) ──
     if (openEndedSelected.length > 0) {
-      buildSectionDivider('Open-ended Responses', 'Verbatim feedback, themes, and narrative analysis', openEndedSelected.length)
-      openEndedSelected.forEach(function(f) {
+      buildSectionDivider(pptx, 'Open-ended Responses', 'Verbatim feedback, themes, and narrative analysis', openEndedSelected.length)
+      for (const f of openEndedSelected) {
         const ai         = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
         // Always recompute per-field so count = rows with text in THIS field (not all fields combined)
         // and percentage = count / non-empty rows for this field.
@@ -2074,16 +2178,16 @@ export async function POST(req: Request, { params }: Params) {
           ? computeFieldThemes(f.field, sortedThemes)
           : sortedThemes
         // a) Overview slide (AI narrative + theme bar chart)
-        buildOpenEndedSlide(datasetName, f, ai, audience, fieldThemes.slice(0, 8))
+        buildOpenEndedSlide(pptx, datasetName, f, ai, audience, fieldThemes.slice(0, 8))
         // b) Theme grid overview (multiple themes per page)
         if (includeThemeSlides && fieldThemes.length > 0) {
-          buildThemeGridSlides(datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined)
+          buildThemeGridSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined)
         }
         // c) Per-theme detail slides with verbatims on the right
         if (includeThemeSlides && fieldThemes.length > 0) {
-          buildThemeSlides(datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts)
+          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, apiKey || undefined)
         }
-      })
+      }
     }
 
     // ── 5: Categorical + numeric fields (all sections) ────────────────────
@@ -2092,39 +2196,42 @@ export async function POST(req: Request, { params }: Params) {
     const nonOEDemo   = demoFields.filter(f => f.type !== 'open-ended')
 
     if (nonOECore.length > 0) {
-      buildSectionDivider('Core Study Questions', 'Primary research questions and measured outcomes', nonOECore.length)
+      buildSectionDivider(pptx, 'Core Study Questions', 'Primary research questions and measured outcomes', nonOECore.length)
       nonOECore.forEach(function(f) {
         const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        if (f.type === 'categorical' && audience !== 'executive') buildPieSlide(datasetName, f, ai)
-        else if (f.type === 'numeric' && audience !== 'executive') buildNumericSlide(datasetName, f, ai)
+        if (f.type === 'categorical' && audience !== 'executive') buildPieSlide(pptx, datasetName, f, ai)
+        else if (f.type === 'numeric' && audience !== 'executive') buildNumericSlide(pptx, datasetName, f, ai)
       })
     }
     if (nonOEPsycho.length > 0 && audience !== 'executive') {
-      buildSectionDivider('Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', nonOEPsycho.length)
+      buildSectionDivider(pptx, 'Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', nonOEPsycho.length)
       nonOEPsycho.forEach(function(f) {
         const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        if (f.type === 'categorical') buildPieSlide(datasetName, f, ai)
-        else if (f.type === 'numeric') buildNumericSlide(datasetName, f, ai)
+        if (f.type === 'categorical') buildPieSlide(pptx, datasetName, f, ai)
+        else if (f.type === 'numeric') buildNumericSlide(pptx, datasetName, f, ai)
       })
     }
     if (nonOEDemo.length > 0 && audience !== 'executive') {
-      buildSectionDivider('Demographic Breakdown', 'Audience composition and segment characteristics', nonOEDemo.length)
+      buildSectionDivider(pptx, 'Demographic Breakdown', 'Audience composition and segment characteristics', nonOEDemo.length)
       nonOEDemo.forEach(function(f) {
         const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        if (f.type === 'categorical') buildPieSlide(datasetName, f, ai)
-        else if (f.type === 'numeric') buildNumericSlide(datasetName, f, ai)
+        if (f.type === 'categorical') buildPieSlide(pptx, datasetName, f, ai)
+        else if (f.type === 'numeric') buildNumericSlide(pptx, datasetName, f, ai)
       })
     }
 
     // ── 6: Sample comments (verbatim pages) at the end ────────────────────
     if (openEndedSelected.length > 0) {
-      buildSectionDivider('Sample Comments', 'Verbatim responses from survey participants', openEndedSelected.length)
-      openEndedSelected.forEach(buildCommentSlidesForField)
+      openEndedSelected.forEach(function(f) {
+        const dividerSubtitle = f.prompt || 'Sample verbatim responses'
+        buildSectionDivider(pptx, f.label, dividerSubtitle, 1)
+        buildCommentSlidesForField(f)
+      })
     }
 
     // Closing slide
     if ((narratives.keyTakeaways || []).length > 0) {
-      buildClosingSlide(datasetName, narratives.keyTakeaways)
+      buildClosingSlide(pptx, datasetName, narratives.keyTakeaways)
     }
 
     const buffer  = await pptx.write({ outputType: 'nodebuffer' }) as Buffer

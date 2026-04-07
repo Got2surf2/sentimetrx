@@ -4,6 +4,8 @@
 // PowerPoint export modal — Quick Export or Custom Builder flow.
 
 import { useState, useEffect } from 'react'
+import { useFilters } from '@/components/analyze/FilterContext'
+import { serializeFilters, filterCount } from '@/lib/filterUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES = '#e8622a'
@@ -55,18 +57,21 @@ interface SchemaField { field: string; type: string; label?: string; status?: st
 interface Props { datasetId: string; datasetName: string; onClose: () => void }
 
 export default function ExportModal({ datasetId, datasetName, onClose }: Props) {
+  const { filters } = useFilters()
+  const activeFilterCount = filterCount(filters)
   const [step,         setStep]         = useState<Step>('mode')
   const [format,       setFormat]       = useState<Format>('pptx')
   const [fields,       setFields]       = useState<SchemaField[]>([])
   const [fieldCounts,  setFieldCounts]  = useState<Record<string, number>>({})
   const [selected,     setSelected]     = useState<Set<string>>(new Set())
   const [audience,     setAudience]     = useState('stakeholder')
+  const [reportTitle,  setReportTitle]  = useState('')
   const [instructions, setInstructions] = useState('')
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState('')
   const [fileName,     setFileName]     = useState('')
   const [blobUrl,      setBlobUrl]      = useState('')
-  const [progressMsg,  setProgressMsg]  = useState('Building your PowerPoint…')
+  const [progressMsg,  setProgressMsg]  = useState('Building your presentation…')
   const [commentConfig,      setCommentConfig]      = useState<Record<string, { enabled: boolean; slides: number }>>({})
   const [commentAnnotations, setCommentAnnotations] = useState<string[]>([])
   const [commentColorField,  setCommentColorField]  = useState<string>('')
@@ -165,7 +170,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
       'Running AI analysis…',
       ...fieldLabels.map(function(l, i) { return 'Building slide ' + (i + 3) + ' — ' + l.slice(0, 40) + '…' }),
       'Compiling comment slides…',
-      'Finalising PowerPoint…',
+      format === 'html' ? 'Finalising HTML presentation…' : 'Finalising PowerPoint…',
     ]
     let msgIdx = 0
     setProgressMsg(msgs[0])
@@ -176,6 +181,8 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
 
     try {
       const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds) }
+      if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
+      if (activeFilterCount > 0) body.filters = serializeFilters(filters)
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
       const endpoint = format === 'html' ? '/api/datasets/' + datasetId + '/export/html' : '/api/datasets/' + datasetId + '/export/pptx'
       const res = await fetch(endpoint, {
@@ -468,6 +475,12 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                 <LottieLoader size={80} message="Loading fields…" />
               ) : (
                 <>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 4 }}>Report title (optional)</div>
+                    <input type="text" value={reportTitle} onChange={function(e) { setReportTitle(e.target.value) }}
+                      placeholder={datasetName + ' Report'}
+                      style={{ width: '100%', padding: '8px 12px', fontSize: 13, border: '1px solid #d1d5db', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
@@ -509,6 +522,13 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                     <div style={{ fontSize: 10, color: S.textFaint, marginTop: 4 }}>
                       AI will use your instructions to shape the narrative, slide order, and what to emphasize.
                     </div>
+                  </div>
+
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 4 }}>Report title (optional)</div>
+                    <input type="text" value={reportTitle} onChange={function(e) { setReportTitle(e.target.value) }}
+                      placeholder={datasetName + ' Report'}
+                      style={{ width: '100%', padding: '8px 12px', fontSize: 13, border: '1px solid #d1d5db', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }} />
                   </div>
 
                   <AudiencePicker audience={audience} setAudience={setAudience} />

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { SLUG_REGEX } from '@/lib/constants'
 
 // GET /api/studies/check-slug?slug=xxx&exclude=studyId
 // Returns { available: boolean }
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (!slug) return NextResponse.json({ available: true })
 
   // Validate format
-  if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(slug)) {
+  if (!SLUG_REGEX.test(slug)) {
     return NextResponse.json({ available: false, reason: 'Invalid format. Use 3-50 lowercase letters, numbers, and hyphens.' })
   }
 

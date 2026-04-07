@@ -26,16 +26,16 @@ interface Props {
 }
 
 function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, children }: Props) {
-  var { filters, setFilters, showFilters, setShowFilters } = useFilters()
-  var [rows, setRows] = useState<Record<string, unknown>[]>([])
-  var [rowsLoaded, setRowsLoaded] = useState(false)
-  var [loadingRows, setLoadingRows] = useState(false)
-  var [chipsExpanded, setChipsExpanded] = useState(false)
-  var [sessionSaving, setSessionSaving] = useState(false)
-  var [sessionSaved, setSessionSaved] = useState(false)
+  const { filters, setFilters, showFilters, setShowFilters } = useFilters()
+  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+  const [rowsLoaded, setRowsLoaded] = useState(false)
+  const [loadingRows, setLoadingRows] = useState(false)
+  const [chipsExpanded, setChipsExpanded] = useState(false)
+  const [sessionSaving, setSessionSaving] = useState(false)
+  const [sessionSaved, setSessionSaved] = useState(false)
 
   // Build aliases from schema
-  var aliases: Record<string, string> = {}
+  const aliases: Record<string, string> = {}
   schemaFields.forEach(function(f) { if (f.label && f.label !== f.field) aliases[f.field] = f.label })
 
   // Restore session (filters) on mount
@@ -45,9 +45,9 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       .then(function(d) {
         if (d.session_state && d.session_state.filters) {
           // Restore filters from session — need to reconstruct Sets from arrays
-          var restored: Filters = {}
+          const restored: Filters = {}
           Object.entries(d.session_state.filters).forEach(function(entry) {
-            var field = entry[0], f = entry[1] as any
+            const field = entry[0], f = entry[1] as any
             if (f.type === 'cat') {
               restored[field] = { type: 'cat', values: new Set(f.values || []), excludeBlanks: f.excludeBlanks || false }
             } else {
@@ -60,38 +60,62 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       .catch(function() {})
   }, [datasetId])
 
-  // Lazy-load rows when filter modal opens
+  // Fetch lightweight filter options when filter modal opens (not all rows)
   useEffect(function() {
     if (!showFilters || rowsLoaded || loadingRows) return
     setLoadingRows(true)
-    var PAGE_SIZE = 500, page = 0, allRows: Record<string, unknown>[] = []
     ;(async function() {
       try {
-        while (true) {
-          var r = await fetch('/api/datasets/' + datasetId + '/rows?page=' + page + '&pageSize=' + PAGE_SIZE)
-          if (!r.ok) break
-          var data = await r.json()
-          var batch: Record<string, unknown>[] = data.rows || []
-          allRows = allRows.concat(batch)
-          if (page >= (data.totalPages || 0) - 1 || batch.length < PAGE_SIZE) break
-          page++
+        const r = await fetch('/api/datasets/' + datasetId + '/filter-options')
+        if (!r.ok) throw new Error('Failed')
+        const data = await r.json()
+        const fieldOpts = data.fields || {}
+
+        // Build synthetic rows that FiltersModal can use for distinct values and ranges
+        // Each distinct value becomes one "row" so Set extraction and min/max work
+        const syntheticRows: Record<string, unknown>[] = []
+        const allValues: Record<string, string[]> = {}
+        for (const key of Object.keys(fieldOpts)) {
+          const opt = fieldOpts[key]
+          if (opt.values) allValues[key] = opt.values
+          if (opt.min != null) allValues[key] = [String(opt.min), String(opt.max)]
+          if (opt.dateMin) allValues[key] = [opt.dateMin, opt.dateMax]
         }
-        setRows(allRows)
+        // Build enough rows to cover all distinct values per field
+        const maxLen = Math.max(1, ...Object.values(allValues).map(function(v) { return v.length }))
+        for (let i = 0; i < maxLen; i++) {
+          const row: Record<string, unknown> = {}
+          for (const key of Object.keys(allValues)) {
+            const vals = allValues[key]
+            if (i < vals.length) row[key] = vals[i]
+          }
+          syntheticRows.push(row)
+        }
+
+        // Also update schema fields with values from the endpoint
+        schemaFields.forEach(function(sf) {
+          const opt = fieldOpts[sf.field]
+          if (opt?.values && !sf.values) sf.values = opt.values
+          if (opt?.min != null && sf.min == null) sf.min = opt.min
+          if (opt?.max != null && sf.max == null) sf.max = opt.max
+        })
+
+        setRows(syntheticRows)
         setRowsLoaded(true)
       } catch {}
       setLoadingRows(false)
     })()
   }, [showFilters, rowsLoaded, loadingRows, datasetId])
 
-  var fCount = filterCount(filters)
+  const fCount = filterCount(filters)
 
   // Save session handler
-  var handleSaveSession = function() {
+  const handleSaveSession = function() {
     setSessionSaving(true)
     // Serialize filters (Sets → arrays for JSON)
-    var serializedFilters: Record<string, any> = {}
+    const serializedFilters: Record<string, any> = {}
     Object.entries(filters).forEach(function(entry) {
-      var field = entry[0], f = entry[1]
+      const field = entry[0], f = entry[1]
       if (f.type === 'cat') {
         serializedFilters[field] = { type: 'cat', values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
       } else {
@@ -99,7 +123,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       }
     })
 
-    var sessionState = {
+    const sessionState = {
       filters: serializedFilters,
       savedAt: new Date().toISOString(),
     }
@@ -123,16 +147,16 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
         <div style={{ background: '#fff4ef', borderBottom: '1px solid #fbd5c2', padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: chipsExpanded ? 'wrap' : 'nowrap', overflow: chipsExpanded ? 'visible' : 'hidden', maxHeight: chipsExpanded ? 'none' : 32 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Filtered:</span>
           {Object.entries(filters).map(function(entry) {
-            var field = entry[0], f = entry[1]
-            var label = aliases[field] || field
-            var desc = ''
-            if (f.type === 'cat') { var vals = Array.from(f.values); desc = vals.length <= 2 ? vals.join(', ') : vals.length + ' values' }
+            const field = entry[0], f = entry[1]
+            const label = aliases[field] || field
+            let desc = ''
+            if (f.type === 'cat') { const vals = Array.from(f.values); desc = vals.length <= 2 ? vals.join(', ') : vals.length + ' values' }
             else if (f.type === 'range') desc = f.values[0] + '\u2013' + f.values[1]
-            else if (f.type === 'daterange') { var fmt = function(ts: number) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() }; desc = fmt(f.values[0]) + '\u2013' + fmt(f.values[1]) }
+            else if (f.type === 'daterange') { const fmt = function(ts: number) { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() }; desc = fmt(f.values[0]) + '\u2013' + fmt(f.values[1]) }
             return (
               <span key={field} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 20, background: 'white', border: '1px solid #fbd5c2', color: '#374151', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <span style={{ color: '#e8622a', fontWeight: 700 }}>{label}:</span> {desc}
-                <button onClick={function() { setFilters(function(prev) { var next: Record<string, any> = {}; Object.keys(prev).forEach(function(k) { if (k !== field) next[k] = prev[k] }); return next as any }) }}
+                <button onClick={function() { setFilters(function(prev) { const next: Record<string, any> = {}; Object.keys(prev).forEach(function(k) { if (k !== field) next[k] = prev[k] }); return next as any }) }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, lineHeight: 1, padding: 0 }}>{'\u00D7'}</button>
               </span>
             )

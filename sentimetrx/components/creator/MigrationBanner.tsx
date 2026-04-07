@@ -18,15 +18,13 @@ interface Props {
 }
 
 export default function MigrationBanner({ studyId, currentConfig, onStudyTypeAdded }: Props) {
-  const [dismissed, setDismissed] = useState(false)
+  const dismissalKey = `dismissed_migration_${studyId}`
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(dismissalKey) === 'true'
+  })
   const [showPicker, setShowPicker] = useState(false)
   const [saving, setSaving] = useState(false)
-
-  // Check if already dismissed in localStorage
-  const dismissalKey = `dismissed_migration_${studyId}`
-  if (typeof window !== 'undefined' && localStorage.getItem(dismissalKey) === 'true') {
-    return null
-  }
 
   // Only show if studyType is missing
   if (currentConfig.studyType) {

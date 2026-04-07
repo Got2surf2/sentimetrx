@@ -27,7 +27,7 @@ export default function SurveyWidget({ study }: Props) {
   const chatRef    = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
-  const [status,       setStatus]      = useState<'checking' | 'active' | 'closed' | 'draft'>('checking')
+  const [status,       setStatus]      = useState<'checking' | 'active' | 'closed' | 'draft' | 'error'>('checking')
   const [liveBotName,  setLiveBotName]  = useState(study.bot_name)
   const [liveBotEmoji, setLiveBotEmoji] = useState(study.bot_emoji)
   const [liveConfig,   setLiveConfig]   = useState(study.config)
@@ -70,7 +70,10 @@ export default function SurveyWidget({ study }: Props) {
   useEffect(() => {
     fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
       .then(async res => {
-        if (!res.ok) { setStatus('closed'); return }
+        if (!res.ok) {
+          setStatus(res.status === 404 ? 'closed' : 'error')
+          return
+        }
         const data = await res.json()
         // Update live fields from fresh API response
         if (data.bot_name)  setLiveBotName(data.bot_name)
@@ -78,7 +81,7 @@ export default function SurveyWidget({ study }: Props) {
         if (data.config)    setLiveConfig(data.config)
         setStatus('active')
       })
-      .catch(() => setStatus('closed'))
+      .catch(() => setStatus('error'))
   }, [study.guid])
 
   useEffect(() => {
@@ -111,8 +114,9 @@ export default function SurveyWidget({ study }: Props) {
     )
   }
 
-  if (status === 'closed' || status === 'draft') {
+  if (status === 'closed' || status === 'draft' || status === 'error') {
     const isClosed = status === 'closed'
+    const isError = status === 'error'
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: theme.backgroundColor, overflow: 'hidden', fontSize: baseFontSize }}>
         <div style={{ background: theme.headerGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
@@ -125,11 +129,11 @@ export default function SurveyWidget({ study }: Props) {
           </div>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center', gap: 16 }}>
-          <div style={{ fontSize: '3rem' }}>{isClosed ? '🔒' : '🚧'}</div>
+          <div style={{ fontSize: '3rem' }}>{isError ? '⚠️' : isClosed ? '🔒' : '🚧'}</div>
           <div>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: '1.125rem', marginBottom: 8 }}>{isClosed ? 'This survey is now closed' : 'Not yet available'}</div>
+            <div style={{ color: 'white', fontWeight: 700, fontSize: '1.125rem', marginBottom: 8 }}>{isError ? 'Something went wrong' : isClosed ? 'This survey is now closed' : 'Not yet available'}</div>
             <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.875rem', lineHeight: 1.6 }}>
-              {isClosed ? 'Thank you for your interest. This survey is no longer accepting responses.' : "This survey isn't published yet. Please check back soon."}
+              {isError ? 'We couldn\u2019t load this survey. Please try again later.' : isClosed ? 'Thank you for your interest. This survey is no longer accepting responses.' : "This survey isn't published yet. Please check back soon."}
             </div>
           </div>
         </div>

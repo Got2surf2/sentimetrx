@@ -6,10 +6,10 @@
 
 import { StudyConfig } from '@/lib/types'
 
-// Simple ID generator for survey questions
+// Simple ID generator for survey questions — prefixed to avoid collision with other templates
 const generateId = (function() {
   let counter = 0
-  return function() { return 'q_' + (++counter) }
+  return function() { return 'coalition_q_' + (++counter) }
 })()
 
 /**
@@ -540,7 +540,7 @@ export const coalitionDonorStudyConfig: StudyConfig = {
   clarifiers: {
     default: 'Thank you for that feedback.',
   },
-  useAIClarify: false, // Open-ended questions not using AI clarifiers
+  useAIClarify: true, // AI-powered follow-up on short/vague open-ended answers
 
   // ──────────────────────────────────────────────────────────
   // THEME & BRANDING

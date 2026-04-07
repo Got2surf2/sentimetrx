@@ -2,7 +2,6 @@
 // Returns the current user's org features (including primaryIndustries)
 
 import { createClient } from '@/lib/supabase/server'
-import { headers } from 'next/headers'
 
 export async function GET(request: Request) {
   try {

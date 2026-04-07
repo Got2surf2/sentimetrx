@@ -27,23 +27,28 @@ export default async function AdminPage() {
     .select('id, name, slug, plan, is_admin_org, created_at')
     .order('created_at', { ascending: false })
 
-  const { data: userCounts }    = await service.from('users').select('org_id')
-  const { data: studiesData }   = await service.from('studies').select('id, org_id')
-  const { data: responseData }  = await service.from('responses').select('study_id')
+  // Per-org counts using targeted queries (not fetching all rows)
+  const enriched = await Promise.all((orgs || []).map(async (org: any) => {
+    const [userResult, studyResult] = await Promise.all([
+      service.from('users').select('id', { count: 'exact', head: true }).eq('org_id', org.id),
+      service.from('studies').select('id').eq('org_id', org.id),
+    ])
 
-  // Build a study_id → org_id lookup so response counts flow through studies
-  const studyOrgMap: Record<string, string> = {}
-  ;(studiesData || []).forEach((s: any) => { studyOrgMap[s.id] = s.org_id })
+    const orgStudies = studyResult.data || []
+    const studyIds = orgStudies.map((s: any) => s.id)
+    let responseCount = 0
+    if (studyIds.length > 0) {
+      const { count } = await service.from('responses').select('id', { count: 'exact', head: true }).in('study_id', studyIds)
+      responseCount = count || 0
+    }
 
-  const enriched = (orgs || []).map(org => {
-    const orgStudyIds = new Set((studiesData || []).filter((s: any) => s.org_id === org.id).map((s: any) => s.id))
     return {
       ...org,
-      user_count:     (userCounts   || []).filter((u: any) => u.org_id === org.id).length,
-      study_count:    orgStudyIds.size,
-      response_count: (responseData || []).filter((r: any) => orgStudyIds.has(r.study_id)).length,
+      user_count:     userResult.count || 0,
+      study_count:    orgStudies.length,
+      response_count: responseCount,
     }
-  })
+  }))
 
   return (
     <AdminClient

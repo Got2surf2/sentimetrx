@@ -76,7 +76,8 @@ export function computeFieldStats(
   const uniqueArr   = Array.from(new Set(strVals))
   const uniqueRatio = uniqueArr.length / nonNull.length
   const avgLen      = strVals.reduce(function(s: number, v) { return s + v.length }, 0) / strVals.length
-  const maxLen      = Math.max.apply(null, strVals.map(function(v) { return v.length }))
+  let maxLen = 0
+  for (const v of strVals) { if (v.length > maxLen) maxLen = v.length }
   const allNum      = nonNull.every(function(v) {
     const s = String(v).trim()
     return s !== '' && !isNaN(Number(s))
@@ -253,7 +254,7 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
   if (config.questions) {
     for (const q of config.questions) {
       const col  = sanitizeColumnName(q.exportLabel || q.prompt || q.id)
-      const type: AnaFieldType = (q.type === 'open' || q.type === 'numeric') ? 'open-ended' : 'categorical'
+      const type: AnaFieldType = q.type === 'open' ? 'open-ended' : q.type === 'numeric' ? 'numeric' : 'categorical'
       fields.push({ field: col, type, sqt: type === 'open-ended' ? 'open-text' : 'single-select', prompt: q.prompt })
     }
   }

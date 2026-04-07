@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type MutableRefObject } from 'react'
 
 // ── Curated rating-scale picks (for experience/Likert scales) ─
 
@@ -85,6 +85,9 @@ export default function EmojiPickerPopover({
   const [open, setOpen] = useState(false)
   const wrapRef        = useRef<HTMLDivElement>(null)
   const pickerRef      = useRef<HTMLDivElement>(null)
+  const onChangeRef    = useRef(onChange) as MutableRefObject<(v: string) => void>
+
+  useEffect(() => { onChangeRef.current = onChange })
 
   const aboveLabel  = industryEmojis ? (industryLabel ? `${industryLabel} picks` : 'Industry picks') : 'Suggested'
   const aboveEmojis = industryEmojis ?? curatedEmojis ?? QUICK_EMOJIS
@@ -116,7 +119,7 @@ export default function EmojiPickerPopover({
       function handlePick(e: Event) {
         const detail = (e as CustomEvent).detail
         const emoji = detail?.emoji?.unicode || detail?.unicode
-        if (emoji) { onChange(emoji); setOpen(false) }
+        if (emoji) { onChangeRef.current(emoji); setOpen(false) }
       }
       picker.addEventListener('emoji-click', handlePick)
     })
@@ -126,7 +129,7 @@ export default function EmojiPickerPopover({
         try { pickerRef.current.innerHTML = '' } catch (_) {}
       }
     }
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open])
 
   const btnSizeCls = size === 'sm'
     ? 'text-base px-1.5 py-1 min-w-[2rem]'

@@ -33,9 +33,8 @@ function Toggle({ on, onToggle, labelOn, labelOff }: { on: boolean; onToggle: ()
 }
 
 
-let _convQCounter = 0
 function newConvQuestion(type: 'open' | 'radio' | 'checkbox'): SurveyQuestion {
-  const id = 'cq_' + (++_convQCounter) + '_' + Date.now()
+  const id = 'cq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
   return { id, type, prompt: '', exportLabel: '', conversationPosition: true, ...(type !== 'open' ? { options: ['', ''] } : {}) }
 }
 

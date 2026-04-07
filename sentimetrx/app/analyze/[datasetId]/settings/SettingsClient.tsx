@@ -16,8 +16,6 @@ interface Props {
   isOwner:    boolean
   isAdmin?:   boolean
   allOrgs?:   OrgOption[]
-  themeModel?: any
-  datasetId?: string
 }
 
 const HERMES = '#E8632A'
@@ -34,6 +32,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   const [delConfirm,  setDelConfirm]  = useState(false)
   const [deleting,    setDeleting]    = useState(false)
   const [transferring, setTransferring] = useState(false)
+  const [transferOrgId, setTransferOrgId] = useState('')
   const [error,       setError]       = useState('')
 
   async function handleSaveDetails() {
@@ -54,15 +53,9 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
     }
   }
 
-  async function handleSaveSchema(updated: SchemaConfig) {
-    // PATCH only schema_config — never overwrite theme_model, saved_charts, etc.
+  // Schema edits update local state only — SchemaEditor's own Save button handles persistence
+  function handleSaveSchema(updated: SchemaConfig) {
     setSchema(updated)
-    await fetch('/api/datasets/' + dataset.id + '/state', {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ schema_config: updated }),
-    })
-    router.refresh()
   }
 
   async function handleArchive() {
@@ -165,9 +158,9 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
           </div>
           <div className="flex items-center gap-3">
             <select
-              id="transfer-dataset-org"
               disabled={transferring}
-              defaultValue=""
+              value={transferOrgId}
+              onChange={function(e) { setTransferOrgId(e.target.value) }}
               className={inputCls + ' flex-1 disabled:opacity-50'}
             >
               <option value="" disabled>Select organization...</option>
@@ -178,11 +171,10 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
             <button
               disabled={transferring}
               onClick={async function() {
-                const select = document.getElementById('transfer-dataset-org') as HTMLSelectElement
-                const newOrgId = select.value
-                if (!newOrgId) return
-                const orgName = select.options[select.selectedIndex].text
-                if (!confirm('Transfer "' + name + '" to ' + orgName + '?')) return
+                if (!transferOrgId) return
+                const orgLabel = (allOrgs.find(function(o) { return o.id === transferOrgId }) || {}).name || transferOrgId
+                if (!confirm('Transfer "' + name + '" to ' + orgLabel + '?')) return
+                var newOrgId = transferOrgId
                 setTransferring(true)
                 setError('')
                 try {
