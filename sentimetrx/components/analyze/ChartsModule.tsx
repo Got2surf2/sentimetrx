@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 // Dynamic Plotly import
 var PlotlyRef: any = null
@@ -188,7 +189,7 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
     if (!ref.current || !traces.length) return
     var baseX = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
     var baseY = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
-    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 16, r: 20, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
+    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 24, r: 60, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
     var merged = Object.assign({}, base, layout || {})
     // Deep merge axes so caller's title/tickangle don't lose grid settings
     merged.xaxis = Object.assign({}, baseX, layout?.xaxis || {})
@@ -299,8 +300,8 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     }
 
     var hoverTpl = isH
-      ? (isPercent ? '%{x:.1f}%<extra>%{y}</extra>' : '%{x}<extra>%{y}</extra>')
-      : (isPercent ? '%{y:.1f}%<extra>%{x}</extra>' : '%{y}<extra>%{x}</extra>')
+      ? (isPercent ? '%{x:.0f}%<extra>%{y}</extra>' : '%{x}<extra>%{y}</extra>')
+      : (isPercent ? '%{y:.0f}%<extra>%{x}</extra>' : '%{y}<extra>%{x}</extra>')
     // Ordinal fields get a green→grey→red gradient; nominal fields get single color
     var isOrdField = (catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(cats)
     var barColors: string | string[] = primaryColor
@@ -317,7 +318,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
         return ordGrad[4]
       })
     }
-    var trace: any = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? v + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: hoverTpl }
+    var trace: any = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? Math.round(v) + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: hoverTpl }
     if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = displayVals }
 
@@ -428,7 +429,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
 
   if (chartType === 'driver') {
     var dScoreF = config.score; if (!dScoreF) return <EmptyChart msg="Assign a numeric score field above." />
-    return <ScoreDriverInner datasetId={datasetId} scoreField={dScoreF} schema={schema} groupByField={config.groupBy || ''} />
+    return <ScoreDriverInner datasetId={datasetId} scoreField={dScoreF} schema={schema} groupByField={config.groupBy || ''} colors={opts?.colors || CHART_COLORS} />
   }
 
   if (chartType === 'table') return <TableInner analytics={analytics} schema={schema} datasetId={datasetId} />
@@ -521,7 +522,7 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
   var pal = colors || CHART_COLORS
 
   // Build crosstab: category × colorBy
@@ -579,8 +580,8 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     }
     var colPct = colorGrandTotal > 0 ? Math.round((colorTotals[col] || 0) / colorGrandTotal * 100) : 0
     var stackHoverTpl = isH
-      ? (isBarPercent ? '%{x:.1f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
-      : (isBarPercent ? '%{y:.1f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
+      ? (isBarPercent ? '%{x:.0f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
+      : (isBarPercent ? '%{y:.0f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
     var trace: any = { type: 'bar', name: col + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: stackHoverTpl }
     if (isH) { trace.y = cats; trace.x = ys; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = ys }
@@ -675,7 +676,7 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: str
 
 function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
   var pal = colors || CHART_COLORS
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) {
@@ -717,7 +718,7 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
 
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) {
@@ -754,30 +755,65 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
   )
 }
 
-function ScoreDriverInner({ datasetId, scoreField, schema, groupByField }: { datasetId: string; scoreField: string; schema: SchemaField[]; groupByField: string }) {
+function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors }: { datasetId: string; scoreField: string; schema: SchemaField[]; groupByField: string; colors?: string[] }) {
+  var pal = colors || CHART_COLORS
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   var [minN, setMinN] = useState(3)
   var [sortBy, setSortBy] = useState<'delta' | 'count'>('delta')
-
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  var [mode, setMode] = useState<'delta' | 'regression'>('delta')
+  var [regressionResults, setRegressionResults] = useState<any[]>([]) // one per OE field
+  var [combinedResult, setCombinedResult] = useState<any>(null)
 
   var themeModel = _enrichCtx.themeModel
   var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
-  var groupField = groupByField || (hasThemes ? '__themes__' : '')
 
+  // OE fields available for regression
+  var oeFields = schema.filter(function(f) { return f.type === 'open-ended' })
+  var [selectedOE, setSelectedOE] = useState<Set<string>>(new Set(oeFields.map(function(f) { return f.field })))
+
+  // Run regression per OE field + combined when mode switches
+  useEffect(function() {
+    if (mode !== 'regression' || !loaded || !hasThemes || selectedOE.size === 0) { setRegressionResults([]); setCombinedResult(null); return }
+    var { computeThemeImpact } = require('@/lib/themeImpact')
+    var themeInput = themeModel.themes.map(function(t: any) { return { id: t.id || '', name: t.name || '', keywords: t.keywords || [] } })
+    var scoreFieldObj = schema.find(function(f) { return f.field === scoreField })
+    var oeArr = Array.from(selectedOE)
+
+    // Per-field regressions
+    var perField: any[] = []
+    for (var oi = 0; oi < oeArr.length; oi++) {
+      var fieldObj = schema.find(function(f) { return f.field === oeArr[oi] })
+      var r = computeThemeImpact({
+        themes: themeInput, rows: rows, scoreField: scoreField,
+        textFields: [oeArr[oi]], scoreRemapping: scoreFieldObj?.remapping,
+      }, fieldObj?.label || oeArr[oi])
+      if (r) perField.push(r)
+    }
+    setRegressionResults(perField)
+
+    // Combined regression (all OE fields together)
+    if (oeArr.length > 1) {
+      var combined = computeThemeImpact({
+        themes: themeInput, rows: rows, scoreField: scoreField,
+        textFields: oeArr, scoreRemapping: scoreFieldObj?.remapping,
+      }, 'Combined')
+      setCombinedResult(combined)
+    } else {
+      setCombinedResult(null)
+    }
+  }, [mode, loaded, selectedOE, scoreField])
+
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+
+  var groupField = groupByField || (hasThemes ? '__themes__' : '')
   if (!groupField) return <EmptyChart msg="Add themes in TextMine, or assign a categorical 'Group by' field to see score drivers." />
 
-  var groups: Record<string, number[]> = {}
+  // Compute overall average
   var allScores: number[] = []
-
   rows.forEach(function(r) {
     var score = parseFloat(String(r[scoreField] || '').replace(/,/g, ''))
     if (isNaN(score)) return
     allScores.push(score)
-    var grp = String(r[groupField] || '').trim()
-    if (!grp || grp === 'Unclassified') return
-    if (!groups[grp]) groups[grp] = []
-    groups[grp].push(score)
   })
 
   if (!allScores.length) return <EmptyChart msg="No numeric data in the selected score field." />
@@ -785,69 +821,239 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField }: { dat
   var overallAvg = allScores.reduce(function(a, b) { return a + b }, 0) / allScores.length
   var scoreLabel = schema.find(function(f) { return f.field === scoreField })?.label || scoreField
 
-  var stats = Object.entries(groups)
-    .map(function(entry) {
-      var name = entry[0], scores = entry[1]
-      var avg = scores.reduce(function(a, b) { return a + b }, 0) / scores.length
-      var sorted = scores.slice().sort(function(a, b) { return a - b })
-      var median = sorted[Math.floor(sorted.length / 2)]
-      // Compute color theme hint if available
-      var themeObj = hasThemes ? themeModel.themes.find(function(t: any) { return t.name === name }) : null
-      return { name: name, avg: avg, median: median, n: scores.length, delta: avg - overallAvg, themeColor: themeObj?.color }
+  // Compute mean delta — per OE field if multiple selected and themes available
+  var oeArr = Array.from(selectedOE)
+  var perFieldDeltas: { fieldLabel: string; stats: { name: string; avg: number; n: number; delta: number }[] }[] = []
+
+  if (hasThemes && oeArr.length > 0) {
+    // Build keyword regexes for theme matching
+    var { expandLemma } = require('@/lib/lemmas')
+    var buildKwRe = function(kw: string) {
+      var forms = expandLemma(kw)
+      var seen: Record<string, boolean> = {}; var alts: string[] = []
+      for (var i = 0; i < forms.length; i++) { var alt = forms[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'; if (!seen[alt]) { seen[alt] = true; alts.push(alt) } }
+      var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'; if (!seen[esc]) alts.push(esc)
+      return new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'i')
+    }
+    var themeRegexes = themeModel.themes.map(function(t: any) { return (t.keywords || []).filter(Boolean).map(buildKwRe) })
+
+    for (var fi = 0; fi < oeArr.length; fi++) {
+      var oeFld = oeArr[fi]
+      var fldObj = schema.find(function(f) { return f.field === oeFld })
+      var fldLabel = fldObj?.label || oeFld
+      var themeScores: Record<string, number[]> = {}
+      themeModel.themes.forEach(function(t: any) { themeScores[t.name] = [] })
+
+      rows.forEach(function(r: any) {
+        var score = parseFloat(String(r[scoreField] || '').replace(/,/g, ''))
+        if (isNaN(score)) return
+        var text = String(r[oeFld] || '').toLowerCase().trim()
+        if (!text) return
+        for (var ti = 0; ti < themeModel.themes.length; ti++) {
+          if (themeRegexes[ti].length > 0 && themeRegexes[ti].some(function(re: RegExp) { return re.test(text) })) {
+            themeScores[themeModel.themes[ti].name].push(score)
+          }
+        }
+      })
+
+      var fieldStats = Object.entries(themeScores)
+        .filter(function(e) { return e[1].length >= minN })
+        .map(function(e) {
+          var avg = e[1].reduce(function(a, b) { return a + b }, 0) / e[1].length
+          return { name: e[0], avg: avg, n: e[1].length, delta: avg - overallAvg }
+        })
+      perFieldDeltas.push({ fieldLabel: fldLabel, stats: fieldStats })
+    }
+  }
+
+  // Fallback: original groupField-based delta (for non-theme groupBy)
+  var groups: Record<string, number[]> = {}
+  if (!hasThemes || oeArr.length === 0) {
+    rows.forEach(function(r) {
+      var score = parseFloat(String(r[scoreField] || '').replace(/,/g, ''))
+      if (isNaN(score)) return
+      var grp = String(r[groupField] || '').trim()
+      if (!grp || grp === 'Unclassified') return
+      if (!groups[grp]) groups[grp] = []
+      groups[grp].push(score)
     })
-    .filter(function(s) { return s.n >= minN })
+  }
 
-  if (!stats.length) return <EmptyChart msg={'No groups with ' + minN + '+ responses. Lower the min filter.'} />
+  var stats = hasThemes && perFieldDeltas.length > 0
+    ? perFieldDeltas[0].stats.map(function(s) { return { ...s, median: 0, themeColor: null } })
+    : Object.entries(groups)
+      .map(function(entry) {
+        var name = entry[0], scores = entry[1]
+        var avg = scores.reduce(function(a, b) { return a + b }, 0) / scores.length
+        return { name: name, avg: avg, median: 0, n: scores.length, delta: avg - overallAvg, themeColor: null }
+      })
+      .filter(function(s) { return s.n >= minN })
 
-  if (sortBy === 'delta') stats.sort(function(a, b) { return a.delta - b.delta })
-  else stats.sort(function(a, b) { return a.n - b.n })
+  if (!stats.length && perFieldDeltas.every(function(d) { return d.stats.length === 0 })) return <EmptyChart msg={'No groups with ' + minN + '+ responses. Lower the min filter.'} />
 
-  var maxAbs = stats.reduce(function(m, s) { return Math.max(m, Math.abs(s.delta)) }, 0) || 1
+  var chartData = stats
+  var xLabel = '\u0394 vs overall avg (' + overallAvg.toFixed(1) + ')'
+  var xFormat = '+.2f'
+  var rInfo = ''
+  var isGrouped = false
+  var traces: any[] = []
+  var maxAbs = 0.1
+  var xPad = 0.1
 
-  var names = stats.map(function(s) { return s.name })
-  var deltas = stats.map(function(s) { return parseFloat(s.delta.toFixed(3)) })
-  var colors = stats.map(function(s) {
-    var intensity = Math.min(1, 0.45 + (Math.abs(s.delta) / maxAbs) * 0.55)
-    return s.delta >= 0
-      ? 'rgba(22,163,74,' + intensity + ')'
-      : 'rgba(220,38,38,' + intensity + ')'
-  })
+  var useRegression = mode === 'regression' && regressionResults.length > 0
 
-  var traces = [{
-    type: 'bar' as const,
-    y: names,
-    x: deltas,
-    orientation: 'h' as const,
-    marker: { color: colors, line: { width: 0 } },
-    text: stats.map(function(s) { return (s.delta >= 0 ? '+' : '') + s.delta.toFixed(2) + '  n=' + s.n }),
-    textposition: 'outside' as const,
-    textfont: { size: 10 },
-    customdata: stats.map(function(s) { return [s.avg.toFixed(2), s.n] }),
-    hovertemplate: '<b>%{y}</b><br>Avg ' + scoreLabel + ': %{customdata[0]}<br>Delta vs overall: %{x:+.2f}<br>n=%{customdata[1]}<extra></extra>',
-  }]
+  // Mean delta with multiple OE fields — grouped bars
+  if (!useRegression && perFieldDeltas.length > 1) {
+    isGrouped = true
+    var fieldColors = pal.slice(0, 4)
+    var allNames = new Set<string>()
+    perFieldDeltas.forEach(function(fd) { fd.stats.forEach(function(s) { allNames.add(s.name) }) })
+    var themeNames = Array.from(allNames)
+    themeNames.sort(function(a, b) {
+      var maxA = 0, maxB = 0
+      perFieldDeltas.forEach(function(fd) {
+        var sa = fd.stats.find(function(s) { return s.name === a })
+        var sb = fd.stats.find(function(s) { return s.name === b })
+        if (sa) maxA = Math.max(maxA, Math.abs(sa.delta))
+        if (sb) maxB = Math.max(maxB, Math.abs(sb.delta))
+      })
+      return maxA - maxB
+    })
 
-  var xPad = maxAbs * 0.35
-  var layout = {
-    xaxis: {
-      title: '\u0394 vs overall avg (' + overallAvg.toFixed(1) + ')',
-      range: [-(maxAbs + xPad), maxAbs + xPad],
-      zeroline: true, zerolinewidth: 2, zerolinecolor: T.textMid,
-      tickformat: '+.2f',
-    },
+    perFieldDeltas.forEach(function(fd, fi) {
+      var deltas = themeNames.map(function(tn) {
+        var s = fd.stats.find(function(st) { return st.name === tn })
+        return s ? parseFloat(s.delta.toFixed(3)) : 0
+      })
+      deltas.forEach(function(d) { if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d) })
+      traces.push({
+        type: 'bar' as const, orientation: 'h' as const,
+        y: themeNames, x: deltas, name: fd.fieldLabel,
+        marker: { color: fieldColors[fi % fieldColors.length] },
+        text: deltas.map(function(d) { return (d >= 0 ? '+' : '') + d.toFixed(1) }),
+        textposition: 'outside' as const, textfont: { size: 9 },
+        hovertemplate: '<b>%{y}</b><br>\u0394: %{x:+.2f}<br>' + fd.fieldLabel + '<extra></extra>',
+      })
+    })
+    xFormat = '+.1f'
+    chartData = themeNames.map(function(n) { return { name: n, avg: 0, median: 0, n: 0, delta: 0, themeColor: null } })
+    xPad = maxAbs * 0.4
+  } else if (useRegression && regressionResults.length > 1) {
+    // Grouped bars — one trace per OE field
+    isGrouped = true
+    var fieldColors = pal.slice(0, 4)
+    // Collect all theme names across all regressions
+    var allNames = new Set<string>()
+    regressionResults.forEach(function(r: any) { r.impacts.forEach(function(imp: any) { allNames.add(imp.themeName) }) })
+    var themeNames = Array.from(allNames)
+    // Sort by absolute max coefficient across fields
+    themeNames.sort(function(a, b) {
+      var maxA = 0, maxB = 0
+      regressionResults.forEach(function(r: any) {
+        var ia = r.impacts.find(function(i: any) { return i.themeName === a })
+        var ib = r.impacts.find(function(i: any) { return i.themeName === b })
+        if (ia) maxA = Math.max(maxA, Math.abs(ia.coefficient))
+        if (ib) maxB = Math.max(maxB, Math.abs(ib.coefficient))
+      })
+      return maxA - maxB
+    })
+
+    var maxAbs = 0.1
+    regressionResults.forEach(function(r: any, ri: number) {
+      var coeffs = themeNames.map(function(tn) {
+        var imp = r.impacts.find(function(i: any) { return i.themeName === tn })
+        return imp ? imp.coefficient : 0
+      })
+      coeffs.forEach(function(c) { if (Math.abs(c) > maxAbs) maxAbs = Math.abs(c) })
+      var barColors = coeffs.map(function(c) {
+        var imp = r.impacts.find(function(i: any) { return i.themeName === themeNames[coeffs.indexOf(c)] })
+        var sig = imp ? imp.significant : false
+        return sig ? fieldColors[ri % fieldColors.length] : fieldColors[ri % fieldColors.length] + '40'
+      })
+      traces.push({
+        type: 'bar' as const, orientation: 'h' as const,
+        y: themeNames, x: coeffs, name: r.fieldLabel || ('Field ' + (ri + 1)),
+        marker: { color: barColors },
+        text: coeffs.map(function(c) { return (c >= 0 ? '+' : '') + c.toFixed(1) }),
+        textposition: 'outside' as const, textfont: { size: 9 },
+        hovertemplate: '<b>%{y}</b><br>Coefficient: %{x:+.2f}<br>' + (r.fieldLabel || '') + '<extra></extra>',
+      })
+    })
+    xLabel = 'Regression coefficient (impact on ' + scoreLabel + ')'
+    xFormat = '+.1f'
+    rInfo = regressionResults.map(function(r: any) {
+      return (r.fieldLabel || '?') + ': R\u00B2=' + (r.rSquared * 100).toFixed(0) + '%'
+    }).join('  \u00B7  ') + '  \u00B7  n=' + (regressionResults[0]?.n || 0).toLocaleString()
+
+    chartData = themeNames.map(function(n) { return { name: n, avg: 0, median: 0, n: 0, delta: 0, themeColor: null } })
+    xPad = maxAbs * 0.4
+
+  } else if (useRegression) {
+    // Single OE field — single trace
+    var singleResult = regressionResults[0]
+    chartData = singleResult.impacts.map(function(imp: any) {
+      return { name: imp.themeName, delta: imp.coefficient, n: imp.mentions, avg: imp.avgScore || 0, significant: imp.significant }
+    })
+    xLabel = 'Regression coefficient (impact on ' + scoreLabel + ')'
+    xFormat = '+.1f'
+    rInfo = 'R\u00B2 = ' + (singleResult.rSquared * 100).toFixed(1) + '%  \u00B7  n = ' + singleResult.n.toLocaleString() + '  \u00B7  baseline = ' + singleResult.intercept.toFixed(1)
+  }
+
+  if (!isGrouped) {
+    if (sortBy === 'delta') chartData.sort(function(a: any, b: any) { return a.delta - b.delta })
+    else chartData.sort(function(a: any, b: any) { return a.n - b.n })
+
+    maxAbs = chartData.reduce(function(m: number, s: any) { return Math.max(m, Math.abs(s.delta)) }, 0) || 1
+
+    var names = chartData.map(function(s: any) { return s.name })
+    var deltas = chartData.map(function(s: any) { return parseFloat(s.delta.toFixed(3)) })
+    var barClrs = chartData.map(function(s: any) {
+      var sig = useRegression ? (s.significant !== false) : true
+      var intensity = sig ? Math.min(1, 0.45 + (Math.abs(s.delta) / maxAbs) * 0.55) : 0.25
+      return s.delta >= 0
+        ? 'rgba(22,163,74,' + intensity + ')'
+        : 'rgba(220,38,38,' + intensity + ')'
+    })
+
+    traces = [{
+      type: 'bar' as const, y: names, x: deltas, orientation: 'h' as const,
+      marker: { color: barClrs, line: { width: 0 } },
+      text: chartData.map(function(s: any) {
+        var label = (s.delta >= 0 ? '+' : '') + s.delta.toFixed(1)
+        if (useRegression && s.significant === false) label += ' (ns)'
+        else if (useRegression) label += ' *'
+        return label + '  n=' + s.n
+      }),
+      textposition: 'outside' as const, textfont: { size: 10 },
+      hovertemplate: '<b>%{y}</b><br>' + (useRegression ? 'Coefficient' : 'Delta') + ': %{x:+.1f}<extra></extra>',
+    }]
+    xPad = maxAbs * 0.35
+  }
+
+  var layout: any = {
+    xaxis: { title: xLabel, range: [-(maxAbs + (xPad || maxAbs * 0.35)), maxAbs + (xPad || maxAbs * 0.35)], zeroline: true, zerolinewidth: 2, zerolinecolor: T.textMid, tickformat: xFormat },
     yaxis: { automargin: true },
     margin: { t: 20, r: 100, b: 60, l: 20 },
-    shapes: [{
-      type: 'line' as const,
-      x0: 0, x1: 0, y0: -0.5, y1: stats.length - 0.5,
-      line: { color: T.textMid, width: 1.5, dash: 'dash' as const },
-    }],
+    barmode: isGrouped ? 'group' : undefined,
+    legend: isGrouped ? { orientation: 'h' as const, y: -0.15 } : undefined,
+    shapes: [{ type: 'line' as const, x0: 0, x1: 0, y0: -0.5, y1: chartData.length - 0.5, line: { color: T.textMid, width: 1.5, dash: 'dash' as const } }],
   }
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Mode toggle */}
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Min responses:</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Mode:</span>
+          {([['delta', 'Mean Delta'], ['regression', 'Regression']] as [string, string][]).map(function(pair) {
+            return <button key={pair[0]} onClick={function() { setMode(pair[0] as any) }}
+              style={{ padding: '2px 9px', fontSize: 11, borderRadius: 20, border: '1px solid ' + (mode === pair[0] ? T.accent : T.border), background: mode === pair[0] ? T.accentBg : 'transparent', color: mode === pair[0] ? T.accent : T.textMid, cursor: 'pointer', fontWeight: mode === pair[0] ? 700 : 400 }}>
+              {pair[1]}
+            </button>
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Min:</span>
           {[1, 3, 5, 10].map(function(v) {
             return <button key={v} onClick={function() { setMinN(v) }}
               style={{ padding: '2px 9px', fontSize: 11, borderRadius: 20, border: '1px solid ' + (minN === v ? T.accent : T.border), background: minN === v ? T.accentBg : 'transparent', color: minN === v ? T.accent : T.textMid, cursor: 'pointer', fontWeight: minN === v ? 700 : 400 }}>
@@ -858,33 +1064,117 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField }: { dat
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: T.textMute }}>Sort:</span>
           {([['delta', 'By impact'], ['count', 'By volume']] as [string, string][]).map(function(pair) {
-            return <button key={pair[0]} onClick={function() { setSortBy(pair[0] as 'delta' | 'count') }}
+            return <button key={pair[0]} onClick={function() { setSortBy(pair[0] as any) }}
               style={{ padding: '2px 9px', fontSize: 11, borderRadius: 20, border: '1px solid ' + (sortBy === pair[0] ? T.accent : T.border), background: sortBy === pair[0] ? T.accentBg : 'transparent', color: sortBy === pair[0] ? T.accent : T.textMid, cursor: 'pointer', fontWeight: sortBy === pair[0] ? 700 : 400 }}>
               {pair[1]}
             </button>
           })}
         </div>
         <span style={{ fontSize: 11, color: T.textFaint, marginLeft: 'auto' }}>
-          {stats.length} group{stats.length !== 1 ? 's' : ''} \u00B7 {allScores.length.toLocaleString()} responses \u00B7 overall avg {overallAvg.toFixed(1)}
+          {chartData.length} group{chartData.length !== 1 ? 's' : ''} {'\u00B7'} {allScores.length.toLocaleString()} responses {'\u00B7'} overall avg {overallAvg.toFixed(1)}
         </span>
       </div>
+
+      {/* OE field selector — shown when themes exist and multiple OE fields available */}
+      {hasThemes && oeFields.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.textMute }}>Text fields:</span>
+          {oeFields.map(function(f) {
+            var active = selectedOE.has(f.field)
+            return <button key={f.field} onClick={function() {
+              var next = new Set(selectedOE)
+              if (active) next.delete(f.field); else next.add(f.field)
+              if (next.size > 0) setSelectedOE(next)
+            }}
+              style={{ padding: '2px 9px', fontSize: 10, borderRadius: 20, border: '1px solid ' + (active ? '#93C5FD' : T.border), background: active ? '#EFF6FF' : 'transparent', color: active ? '#1E40AF' : T.textMid, cursor: 'pointer', fontWeight: active ? 700 : 400 }}>
+              {active ? '\u2713 ' : ''}{f.label || f.field}
+            </button>
+          })}
+        </div>
+      )}
+
+      {/* R² info for regression mode */}
+      {mode === 'regression' && rInfo && (
+        <div style={{ fontSize: 11, color: '#1E40AF', background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: 8, padding: '6px 12px', marginBottom: 10 }}>
+          {rInfo}
+        </div>
+      )}
+
       <PlotlyChart
         traces={traces}
         layout={layout}
-        style={{ height: Math.max(320, stats.length * 38 + 110), width: '100%' }}
+        style={{ height: Math.max(320, chartData.length * 38 + 110), width: '100%' }}
       />
       <div style={{ display: 'flex', gap: 20, justifyContent: 'center', fontSize: 10, color: T.textMute, marginTop: 6 }}>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(22,163,74,.8)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Drives score up</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(220,38,38,.8)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Drives score down</span>
-        <span>Dashed line = overall avg ({overallAvg.toFixed(1)})</span>
+        {!useRegression && !isGrouped && (
+          <>
+            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(22,163,74,.8)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Drives score up</span>
+            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(220,38,38,.8)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Drives score down</span>
+            <span>Dashed line = overall avg ({overallAvg.toFixed(1)})</span>
+          </>
+        )}
+        {!useRegression && isGrouped && (
+          <span>Bars show {'\u0394'} from overall avg ({overallAvg.toFixed(1)}) {'\u00B7'} Left of zero = below avg {'\u00B7'} Right = above avg</span>
+        )}
+        {useRegression && (
+          <>
+            <span>Bars left of zero = lowers score {'\u00B7'} right of zero = raises score</span>
+            <span>Faded = not significant (p{'>'}0.05)</span>
+          </>
+        )}
       </div>
+
+      {/* Plain language + expert summaries */}
+      {(function() {
+        var sorted = chartData.slice().sort(function(a: any, b: any) { return Math.abs(b.delta) - Math.abs(a.delta) })
+        var topPos = sorted.find(function(s: any) { return s.delta > 0 })
+        var topNeg = sorted.find(function(s: any) { return s.delta < 0 })
+        var sigCount = useRegression ? chartData.filter(function(s: any) { return s.significant }).length : 0
+
+        // Plain language
+        var plain: string[] = []
+        if (topPos) plain.push('"' + topPos.name + '" has the strongest positive impact on ' + scoreLabel + ' (' + (topPos.delta >= 0 ? '+' : '') + topPos.delta.toFixed(1) + ' points).')
+        if (topNeg) plain.push('"' + topNeg.name + '" is the biggest detractor (' + topNeg.delta.toFixed(1) + ' points).')
+        if (useRegression && regressionResults.length > 0) {
+          var r2 = isGrouped ? regressionResults[0].rSquared : (regressionResults[0]?.rSquared || 0)
+          plain.push('Together, the themes explain ' + Math.round(r2 * 100) + '% of the variation in ' + scoreLabel + '.')
+        }
+
+        // Expert
+        var expert = ''
+        if (useRegression && regressionResults.length > 0) {
+          var r = regressionResults[0]
+          expert = 'OLS regression (n=' + (r.n || 0).toLocaleString() + ', R\u00B2=' + (r.rSquared * 100).toFixed(1) + '%). ' + sigCount + ' of ' + chartData.length + ' predictors significant at \u03B1=0.05.'
+          if (topPos) expert += ' Largest positive: ' + topPos.name + ' (\u03B2=' + (topPos.delta >= 0 ? '+' : '') + topPos.delta.toFixed(2) + ').'
+          if (topNeg) expert += ' Largest negative: ' + topNeg.name + ' (\u03B2=' + topNeg.delta.toFixed(2) + ').'
+        }
+
+        if (!plain.length && !expert) return null
+
+        return (
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {plain.length > 0 && (
+              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#15803D', marginBottom: 4 }}>PLAIN LANGUAGE</div>
+                <div style={{ fontSize: 12, color: '#166534', lineHeight: 1.5 }}>{plain.join(' ')}</div>
+              </div>
+            )}
+            {expert && (
+              <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#6D28D9', marginBottom: 4 }}>TECHNICAL</div>
+                <div style={{ fontSize: 11, color: '#4C1D95', lineHeight: 1.5, fontFamily: 'monospace' }}>{expert}</div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
 
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
@@ -897,7 +1187,7 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
   rows.forEach(function(r) { var rv = String(r[rowField] || '').trim(), cv = String(r[colField] || '').trim(); if (!rv || !cv) return; rSet.add(rv); cSet.add(cv); if (!grid[rv]) grid[rv] = {}; grid[rv][cv] = (grid[rv][cv] || 0) + 1 })
   var rowFieldObj = schema.find(function(f) { return f.field === rowField })
@@ -910,7 +1200,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
   var grouped: Record<string, number[]> = {}
   rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
   var dates = Object.keys(grouped).sort()
@@ -920,7 +1210,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField 
 
 function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
   var ganttFieldObj = schema.find(function(f) { return f.field === catField })
@@ -932,7 +1222,7 @@ function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; sc
   var { rows: allRows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   var [page, setPage] = useState(0)
   var PAGE = 50
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Loading data...</div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
   var total = allRows.length
   var rows = allRows.slice(page * PAGE, (page + 1) * PAGE)
   // Use allFields from enrichment context — includes __themes__ and __mapped__

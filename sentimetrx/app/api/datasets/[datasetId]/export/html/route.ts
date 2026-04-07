@@ -877,7 +877,14 @@ export async function POST(req: Request, { params }: Params) {
         .order('batch_index', { ascending: true })
         .range(from, from + PAGE - 1)
       if (bErr || !batchPage || batchPage.length === 0) { hasMore = false; break }
-      for (const b of batchPage) for (const r of (b.rows || [])) allRows.push(r)
+      for (const b of batchPage) {
+        const batchRows = (b.rows || [])
+        for (const r of batchRows) {
+          allRows.push(r)
+          if (allRows.length >= MAX_ROWS) { hasMore = false; break }
+        }
+        if (!hasMore) break
+      }
       if (batchPage.length < PAGE) hasMore = false
       page++
     }

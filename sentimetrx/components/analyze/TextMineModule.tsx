@@ -826,17 +826,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       })
   }, [])
 
-  // Fetch all rows progressively
+  // Fetch rows with sampling cap to avoid browser OOM on large datasets.
+  // Uses sampleMax=5000 — statistically representative for theme counting and comments.
+  // For datasets ≤5000 rows, all rows are returned (no sampling).
+  const SAMPLE_CAP = 5000
   const fetchAllRows = useCallback(async function() {
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     setRowsError(null)
     try {
-      const r = await fetch('/api/datasets/' + datasetId + '/rows?all=true')
+      const r = await fetch('/api/datasets/' + datasetId + '/rows?all=true&sampleMax=' + SAMPLE_CAP)
       if (!r.ok) throw new Error('Failed to load rows')
       const data = await r.json()
       const allRows: Record<string, unknown>[] = data.rows || []
       setRows(allRows)
+      if (data.sampled) {
+        setSamplingInfo({ sampled: allRows.length, total: data.totalRows || totalRows })
+      }
       // Recount saved themes against fresh rows
       if (savedThemeModel && savedThemeModel.themes && allRows.length > 0) {
         const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
@@ -1188,7 +1194,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           {datasetSource === 'study' ? 'Your study data is ready' : 'TextMine is ready'}
                         </h3>
                         <p style={{ fontSize: 13, color: T.textMute, lineHeight: 1.6, marginBottom: 24 }}>
-                          {rows.length.toLocaleString()} response{rows.length !== 1 ? 's' : ''} imported across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
+                          {samplingInfo
+                            ? samplingInfo.sampled.toLocaleString() + ' of ' + samplingInfo.total.toLocaleString() + ' responses sampled'
+                            : rows.length.toLocaleString() + ' response' + (rows.length !== 1 ? 's' : '') + ' imported'
+                          } across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
                           {' '}{datasetSource === 'study'
                             ? 'Run an AI analysis to discover themes, or apply a theme library.'
                             : 'Run an AI analysis or pick an industry theme library to get started.'}
