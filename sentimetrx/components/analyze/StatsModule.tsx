@@ -1920,7 +1920,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
                 {/* Sample size input */}
                 <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 10, color: T.textMute, marginBottom: 4 }}>Rows to analyse</div>
+                  <div style={{ fontSize: 10, color: T.textMute, marginBottom: 4 }}>Rows to analyze</div>
                   <input
                     type="number" min={0} value={pendingCap}
                     onChange={function(e) {

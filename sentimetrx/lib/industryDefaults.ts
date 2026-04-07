@@ -206,7 +206,7 @@ export const INDUSTRY_DEFAULTS: Record<Exclude<Industry, 'other'>, Defaults> = {
     q4: "Is there anything further you'd like to tell us that would help us maintain our standards?",
     clarifiers: {
       default: "Could you elaborate a little on that?",
-      food: "Are you referring to the flavours, presentation, temperature, pacing of courses, or something else?",
+      food: "Are you referring to the flavors, presentation, temperature, pacing of courses, or something else?",
       service: "Which aspect of the service experience stood out — the welcome, table service, sommelier, or another area?",
       atmosphere: "What about the ambience — the setting, noise level, music, or another element?",
     },

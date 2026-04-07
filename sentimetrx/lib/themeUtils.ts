@@ -65,10 +65,10 @@ function wilsonCI(count: number, total: number): { ciLow: number; ciHigh: number
   const p = count / total
   const z2 = z * z
   const denom = 1 + z2 / total
-  const centre = p + z2 / (2 * total)
+  const center = p + z2 / (2 * total)
   const spread = z * Math.sqrt((p * (1 - p) + z2 / (4 * total)) / total)
-  const lo = Math.max(0, (centre - spread) / denom)
-  const hi = Math.min(1, (centre + spread) / denom)
+  const lo = Math.max(0, (center - spread) / denom)
+  const hi = Math.min(1, (center + spread) / denom)
   return { ciLow: Math.round(lo * 100), ciHigh: Math.round(hi * 100) }
 }
 

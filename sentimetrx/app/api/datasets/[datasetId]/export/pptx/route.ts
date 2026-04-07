@@ -182,7 +182,7 @@ function quoteCard(slide: any, pptx: any, x: number, y: number, w: number, h: nu
   solidRect(slide, pptx, x, y, 0.05, h, DN.teal)
   slide.addText([
     { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
-    { text: trimNatural(text, 320), options: { fontSize: 10, color: DN.navyLight, italic: true } },
+    { text: trimNatural(text, 280), options: { fontSize: 10, color: DN.navyLight, italic: true } },
     { text: '\u201D', options: { fontSize: 16, bold: true, color: DN.tealLight } },
   ], { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4 })
 }
@@ -474,7 +474,7 @@ function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, to
   })
 }
 
-function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string, filterDescription?: string, dataSource?: 'study' | 'upload') {
+function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string, filterDescription?: string, dataSource?: 'study' | 'upload', samplingNote?: string) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, 'About This Report — ' + datasetName, DN.teal, 'Methodology, scope and data coverage')
@@ -540,6 +540,18 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
       fontSize: 9, color: DN.navyLight, bold: false, wrap: true,
     })
     noteY = filterY - 0.08
+  }
+
+  // Sampling note (if applicable)
+  if (samplingNote) {
+    const sampY = noteY - 0.44
+    solidRect(slide, pptx, PAD, sampY, W - PAD * 2, 0.36, 'EFF6FF')
+    solidRect(slide, pptx, PAD, sampY, 0.06, 0.36, '2563EB')
+    slide.addText('ℹ ' + samplingNote, {
+      x: PAD + 0.16, y: sampY + 0.04, w: W - PAD * 2 - 0.28, h: 0.28,
+      fontSize: 8.5, color: '1E40AF', italic: true, wrap: true,
+    })
+    noteY = sampY - 0.08
   }
 
   // Methodology note
@@ -1065,15 +1077,27 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   logo(slide)
 
   const s = f.summary
-  const maxQuotes = audience === 'full' ? 7 : audience === 'stakeholder' ? 6 : 5
+  const maxQuotes = 5
   // Use liveSample (fresh from filtered rows) over stale analytics snapshot
   const samplePool = (f.liveSample && f.liveSample.length > 0) ? f.liveSample : (s?.sample || [])
-  // Prefer substantive quotes ≥150 chars; sort by length descending to pick the most complete ones
-  const longSamples = samplePool.filter((q: string) => q && q.trim().length >= 150).sort((a: string, b: string) => b.length - a.length)
-  const rawFallback = (longSamples.length >= maxQuotes ? longSamples : samplePool.filter((q: string) => q && q.trim().length > 50).sort((a: string, b: string) => b.length - a.length))
-    .slice(0, maxQuotes).map((q: string) => trimNatural(q, 450))
+  // Target quote length: long enough to fill the box but short enough to not overflow
+  // Each quote box is roughly CH/5 tall ≈ 0.8". At ~10pt that fits ~120 chars comfortably.
+  const TARGET_MIN = 80
+  const TARGET_MAX = 280
+  // Sort by how close each quote is to the ideal range (prefer quotes that fill the box)
+  const candidates = samplePool
+    .filter((q: string) => q && q.trim().length >= TARGET_MIN)
+    .map((q: string) => ({ text: q.trim(), len: q.trim().length }))
+    .sort((a: { len: number }, b: { len: number }) => {
+      const aFit = a.len <= TARGET_MAX ? 0 : a.len - TARGET_MAX
+      const bFit = b.len <= TARGET_MAX ? 0 : b.len - TARGET_MAX
+      return aFit - bFit
+    })
+  const rawFallback = candidates.length >= maxQuotes
+    ? candidates.slice(0, maxQuotes).map((c: { text: string }) => trimNatural(c.text, TARGET_MAX))
+    : samplePool.filter((q: string) => q && q.trim().length > 40).slice(0, maxQuotes).map((q: string) => trimNatural(q, TARGET_MAX))
   const quotes: string[] = (ai.pickedQuotes && ai.pickedQuotes.length > 0)
-    ? ai.pickedQuotes.slice(0, maxQuotes).map((q: string) => trimNatural(q, 450))
+    ? ai.pickedQuotes.slice(0, maxQuotes).map((q: string) => trimNatural(q, TARGET_MAX))
     : rawFallback
 
   const leftW  = W * 0.44 - PAD
@@ -1305,9 +1329,9 @@ function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fie
     const pageThemes = themes.slice(pg * perPage, (pg + 1) * perPage)
     const slide = pptx.addSlide('NUMBERED')
     bg(slide, pptx)
-    const pgTag = totalPages > 1 ? '  ·  ' + (pg + 1) + ' of ' + totalPages : ''
-    hdr(slide, pptx, 'Theme Analysis', DN.tealDark,
-      (fieldLabel ? 'AI-identified themes from: ' + fieldLabel : 'AI-identified themes from verbatim responses') + pgTag)
+    const gridTitle = fieldLabel ? 'Theme Analysis — ' + fieldLabel : 'Theme Analysis'
+    const pgTag = totalPages > 1 ? (pg + 1) + ' of ' + totalPages : themes.length + ' themes identified'
+    hdr(slide, pptx, gridTitle, DN.tealDark, pgTag)
     logo(slide)
     pageThemes.forEach(function(t: any, i: number) {
       const col = i % cols, row = Math.floor(i / cols)
@@ -1398,10 +1422,11 @@ async function buildThemeSlides(
     const t = themes[tidx] as any
     const slide = pptx.addSlide('NUMBERED')
     bg(slide, pptx)
-    const themeSubtitle = fieldLabel
-      ? 'AI-identified themes from: ' + fieldLabel + '  ·  ' + (tidx + 1) + ' of ' + totalThemes
-      : 'AI-identified themes from verbatim responses  ·  ' + (tidx + 1) + ' of ' + totalThemes
-    hdr(slide, pptx, 'Theme Analysis', DN.tealDark, themeSubtitle)
+    const themeTitle = fieldLabel
+      ? 'Theme Analysis — ' + fieldLabel
+      : 'Theme Analysis'
+    const themeSubtitle = (tidx + 1) + ' of ' + totalThemes + ' themes'
+    hdr(slide, pptx, themeTitle, DN.tealDark, themeSubtitle)
     logo(slide)
 
     const themeColor = (t.color || DN.teal).replace('#', '')
@@ -1804,6 +1829,7 @@ export async function POST(req: Request, { params }: Params) {
   const includeThemeSlides: boolean   = body.includeThemeSlides !== false
   const selectedThemeIds: string[]    = body.selectedThemeIds   || []
   const rawFilters: Record<string, any> = body.filters || {}
+  const hasFilters = Object.keys(rawFilters).length > 0
   const reportTitle: string             = body.reportTitle || ''
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
@@ -1882,13 +1908,14 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
   }
 
-  // Fetch ALL rows (paginated, 200 batch-records per call) up to 30 000 rows.
-  // Batches from individual survey responses are ~1 row each; CSV uploads can be 500–1 000 rows
-  // each. With a 200-batch page size we get the full dataset for typical studies without OOM.
+  // Fetch rows for comment sampling and theme matching.
+  // When no filters: cap at 10K rows — field summaries come from pre-computed analytics.
+  // When filters active: fetch more (up to 30K) since we need to recompute summaries.
   const allRows: Record<string, any>[] = []
+  let rowsSampled = false
   {
     const PAGE = 200
-    const MAX_ROWS = 30_000
+    const MAX_ROWS = hasFilters ? 30_000 : 10_000
     let page = 0, hasMore = true
     while (hasMore && allRows.length < MAX_ROWS) {
       const from = page * PAGE
@@ -1902,6 +1929,10 @@ export async function POST(req: Request, { params }: Params) {
       for (const b of batchPage) for (const r of (b.rows || [])) allRows.push(r)
       if (batchPage.length < PAGE) hasMore = false
       page++
+    }
+    // If we hit the cap and there were more rows, mark as sampled
+    if (allRows.length >= MAX_ROWS && analytics.totalRows > MAX_ROWS) {
+      rowsSampled = true
     }
   }
 
@@ -1921,7 +1952,6 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   // Apply filters if provided — filter rows before any analysis
-  const hasFilters = Object.keys(rawFilters).length > 0
   let filterDescription = ''
   if (hasFilters) {
     const filters = deserializeFilters(rawFilters as SerializedFilters)
@@ -2089,7 +2119,10 @@ export async function POST(req: Request, { params }: Params) {
 
     // 3: About this report
     const dataSource = dataset.study_id ? 'study' as const : 'upload' as const
-    buildAboutSlide(pptx, datasetName, hasFilters ? allRows.length : analytics.totalRows, analytics.computedAt, selectedFields, audience, filterDescription || undefined, dataSource)
+    const samplingNote = rowsSampled
+      ? 'Theme analysis based on a sample of ' + allRows.length.toLocaleString() + ' of ' + analytics.totalRows.toLocaleString() + ' total responses. Categorical distributions use the full dataset. Percentages for open-ended themes may vary slightly (±2-3%) from a full-population analysis.'
+      : undefined
+    buildAboutSlide(pptx, datasetName, hasFilters ? allRows.length : analytics.totalRows, analytics.computedAt, selectedFields, audience, filterDescription || undefined, dataSource, samplingNote)
 
     // ── Group fields by section ───────────────────────────────────────────
     const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
@@ -2172,8 +2205,7 @@ export async function POST(req: Request, { params }: Params) {
       buildSectionDivider(pptx, 'Open-ended Responses', 'Verbatim feedback, themes, and narrative analysis', openEndedSelected.length)
       for (const f of openEndedSelected) {
         const ai         = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        // Always recompute per-field so count = rows with text in THIS field (not all fields combined)
-        // and percentage = count / non-empty rows for this field.
+        // Always recompute per-field so each OE field gets its own theme counts
         const fieldThemes = allRows.length > 0
           ? computeFieldThemes(f.field, sortedThemes)
           : sortedThemes

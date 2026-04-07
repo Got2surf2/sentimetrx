@@ -797,6 +797,7 @@ export async function POST(req: Request, { params }: Params) {
   const includeThemeSlides:  boolean  = body.includeThemeSlides !== false
   const selectedThemeIds:    string[] = body.selectedThemeIds || []
   const rawFilters: Record<string, any> = body.filters || {}
+  const hasFilters = Object.keys(rawFilters).length > 0
 
   if (selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -860,11 +861,12 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields selected' }, { status: 400 })
   }
 
-  // Fetch ALL rows (paginated, 200 batch-records per call) up to 30 000 rows.
+  // Fetch rows for comment sampling and theme matching.
+  // No filters: 2K row sample (summaries from analytics). Filters: up to 30K for recompute.
   const allRows: Record<string,any>[] = []
   {
     const PAGE = 200
-    const MAX_ROWS = 30_000
+    const MAX_ROWS = hasFilters ? 30_000 : 10_000
     let page = 0, hasMore = true
     while (hasMore && allRows.length < MAX_ROWS) {
       const from = page * PAGE
@@ -885,7 +887,6 @@ export async function POST(req: Request, { params }: Params) {
   if (allRows.length > 0) for (const k of Object.keys(allRows[0])) rowKeyMap[normalize(k)] = k
 
   // Apply filters if provided
-  const hasFilters = Object.keys(rawFilters).length > 0
   if (hasFilters) {
     const filters = deserializeFilters(rawFilters as SerializedFilters)
     const filtered = applyFilters(allRows, filters)

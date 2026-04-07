@@ -170,7 +170,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
       'Running AI analysis…',
       ...fieldLabels.map(function(l, i) { return 'Building slide ' + (i + 3) + ' — ' + l.slice(0, 40) + '…' }),
       'Compiling comment slides…',
-      format === 'html' ? 'Finalising HTML presentation…' : 'Finalising PowerPoint…',
+      format === 'html' ? 'Finalizing HTML presentation…' : 'Finalizing PowerPoint…',
     ]
     let msgIdx = 0
     setProgressMsg(msgs[0])
