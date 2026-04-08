@@ -4,6 +4,7 @@
 // Loads raw rows from the API, applies filters, runs all computations client-side.
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { readSession, writeSession } from '@/lib/useSessionState'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 // Dynamic Plotly import — avoids SSR crash
@@ -35,6 +36,7 @@ import {
   fmt2, fmt4, fmtN, fmtP, sigLabel,
   descBL, descBL_naive, corrBL, corrBL_naive,
   ttestBL, ttestBL_naive, anovaBL, anovaBL_naive,
+  mwBL, mwBL_naive,
   chiBL, chiBL_naive, regrBL, regrBL_naive,
   bootstrapCI, type MCResult,
 } from '@/lib/statsUtils'
@@ -96,9 +98,9 @@ function PanelHeader({ icon, title, desc }: { icon: string; title: string; desc:
   )
 }
 
-function FieldPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function FieldPill({ label, active, onClick, title }: { label: string; active: boolean; onClick: () => void; title?: string }) {
   return (
-    <button onClick={onClick} style={{ padding: '5px 14px', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? T.accentBg : 'transparent', border: '1px solid ' + (active ? T.accent : T.border), color: active ? T.accent : T.textMid, borderRadius: 20, cursor: 'pointer', transition: 'all .12s', whiteSpace: 'nowrap' }}>
+    <button onClick={onClick} title={title} style={{ padding: '5px 14px', fontSize: 12, fontWeight: active ? 700 : 500, background: active ? T.accentBg : 'transparent', border: '1px solid ' + (active ? T.accent : T.border), color: active ? T.accent : T.textMid, borderRadius: 20, cursor: 'pointer', transition: 'all .12s', whiteSpace: 'nowrap' }}>
       {label}
     </button>
   )
@@ -152,7 +154,7 @@ function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
   if (!text) return null
   var shown = mode === 'naive' && naiveText ? naiveText : text
   return (
-    <div style={{ marginTop: 18, marginBottom: 6, background: T.accentBg, border: '1px solid ' + T.accentMid, borderLeft: '3px solid ' + T.accent, borderRadius: 8, padding: '12px 16px 16px', fontSize: 13, lineHeight: 1.7, color: T.textMid }}>
+    <div style={{ marginTop: 18, marginBottom: 6, minHeight: 90, background: T.accentBg, border: '1px solid ' + T.accentMid, borderLeft: '3px solid ' + T.accent, borderRadius: 8, padding: '12px 16px 16px', fontSize: 13, lineHeight: 1.7, color: T.textMid }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: T.accent }}>{'\u25C6'} Bottom Line</div>
         {naiveText && (
@@ -169,9 +171,12 @@ function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
 
 // ─── SUB-PANELS ───────────────────────────────────────────────────────────────
 
-function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLevel }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; mcResults: Record<string, MCResult>; mcRunning: boolean; confidenceLevel: number }) {
-  var [sel, setSel] = useState(numFields[0]?.field || '')
+function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLevel, datasetId }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; mcResults: Record<string, MCResult>; mcRunning: boolean; confidenceLevel: number; datasetId: string }) {
+  var _dk = 'statsDesc_' + datasetId
+  var _ds = readSession<any>(_dk)
+  var [sel, setSel] = useState(_ds?.sel || numFields[0]?.field || '')
   useEffect(function() { if (!sel && numFields.length) setSel(numFields[0].field) }, [numFields.length])
+  useEffect(function() { writeSession(_dk, { sel: sel }) }, [sel, _dk])
   var selLabel = (function() { var f = numFields.find(function(nf) { return nf.field === sel }); return f && f.label ? f.label : sel })()
 
   var stats = useMemo(function() {
@@ -189,8 +194,8 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
     <div>
       <PanelHeader icon={'\u2211'} title="Descriptive Statistics" desc="Summary statistics, distribution shape, and normality tests for each numeric variable." />
       {stats && <BottomLine text={descBL(selLabel, stats)} naiveText={descBL_naive(selLabel, stats)} />}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-        {numFields.map(function(f) { return <FieldPill key={f.field} label={f.label || f.field} active={sel === f.field} onClick={function() { setSel(f.field) }} /> })}
+      <div style={{ maxWidth: 320, marginBottom: 20 }}>
+        <DSSelect label="Numeric field" value={sel} onChange={setSel} options={numFields.map(function(f) { return { v: f.field, l: f.label || f.field, s: (f as any).subCategory } })} />
       </div>
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
@@ -308,10 +313,13 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
   )
 }
 
-function CorrelationsPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
-  var [corrType, setCorrType] = useState('pearson')
+function CorrelationsPanel({ numFields, data, aliases, datasetId }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string }) {
+  var _ck = 'statsCorr_' + datasetId
+  var _cs = readSession<any>(_ck)
+  var [corrType, setCorrType] = useState(_cs?.corrType || 'pearson')
   var [selCell, setSelCell] = useState<{ i: number; j: number; f1: string; f2: string; r: number; p: number; n: number } | null>(null)
-  var [excluded, setExcluded] = useState<Set<string>>(new Set())
+  var [excluded, setExcluded] = useState<Set<string>>(function() { return _cs?.excluded ? new Set(_cs.excluded) : new Set() })
+  useEffect(function() { writeSession(_ck, { corrType: corrType, excluded: Array.from(excluded) }) }, [corrType, excluded, _ck])
 
   var activeFields = numFields.filter(function(f) { return !excluded.has(f.field) })
 
@@ -449,13 +457,16 @@ function CorrelationsPanel({ numFields, data, aliases }: { numFields: SchemaFiel
   )
 }
 
-function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[] }) {
-  var [testType, setTestType] = useState('auto')
-  var [numF, setNumF] = useState(numFields[0]?.field || '')
-  var [catF, setCatF] = useState(catFields[0]?.field || '')
-  var [catF2, setCatF2] = useState(catFields[1]?.field || catFields[0]?.field || '')
+function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string }) {
+  var _gk = 'statsGroup_' + datasetId
+  var _gs = readSession<any>(_gk)
+  var [testType, setTestType] = useState(_gs?.testType || 'auto')
+  var [numF, setNumF] = useState(_gs?.numF || numFields[0]?.field || '')
+  var [catF, setCatF] = useState(_gs?.catF || catFields[0]?.field || '')
+  var [catF2, setCatF2] = useState(_gs?.catF2 || catFields[1]?.field || catFields[0]?.field || '')
   var [panelDragOver, setPanelDragOver] = useState(false)
 
+  useEffect(function() { writeSession(_gk, { testType: testType, numF: numF, catF: catF, catF2: catF2 }) }, [testType, numF, catF, catF2, _gk])
   useEffect(function() { if (!numF && numFields.length) setNumF(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catF && catFields.length) setCatF(catFields[0].field) }, [catFields.length])
 
@@ -471,8 +482,15 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
       var gKeys = Object.keys(groups).filter(function(k) { return groups[k].length >= 2 })
       if (gKeys.length < 2) return null
       var eff = testType === 'auto' ? (gKeys.length === 2 ? 'ttest' : 'anova') : testType
-      if (eff === 'mw' && gKeys.length === 2) return { type: 'mw', res: mannWhitneyU(groups[gKeys[0]], groups[gKeys[1]]), g1: gKeys[0], g2: gKeys[1], groups: groups }
-      if (eff === 'ttest' && gKeys.length === 2) return { type: 'ttest', res: welchTTest(groups[gKeys[0]], groups[gKeys[1]]), g1: gKeys[0], g2: gKeys[1], groups: groups }
+      // For 2-group tests with >2 groups, use only the first two groups
+      if (eff === 'mw') {
+        var mwK = gKeys.slice(0, 2)
+        return { type: 'mw', res: mannWhitneyU(groups[mwK[0]], groups[mwK[1]]), g1: mwK[0], g2: mwK[1], groups: groups }
+      }
+      if (eff === 'ttest') {
+        var ttK = gKeys.slice(0, 2)
+        return { type: 'ttest', res: welchTTest(groups[ttK[0]], groups[ttK[1]]), g1: ttK[0], g2: ttK[1], groups: groups }
+      }
       return { type: 'anova', res: oneWayANOVA(groups), groups: groups }
     } catch { return null }
   }, [testType, numF, catF, catF2, data])
@@ -513,14 +531,25 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
         )
       })()}
       <PanelHeader icon={'\u2297'} title="Group Tests" desc={"Compare distributions across groups: Welch\u2019s t-test, one-way ANOVA, Mann-Whitney U, and Chi-square."} />
-      {result && result.res && <BottomLine
-        text={result.type === 'ttest' ? ttestBL(result.res, numF) : result.type === 'anova' ? anovaBL(result.res, numF) : result.type === 'chisq' ? chiBL(result.res, catF, catF2) : ''}
-        naiveText={result.type === 'ttest' ? ttestBL_naive(result.res, numF) : result.type === 'anova' ? anovaBL_naive(result.res, numF) : result.type === 'chisq' ? chiBL_naive(result.res, catF, catF2) : ''}
-      />}
+      {result && result.res && (function() {
+        var numLabel = aliases[numF] || numF
+        var catLabel = aliases[catF] || catF
+        var catLabel2 = aliases[catF2] || catF2
+        return <BottomLine
+          text={result.type === 'ttest' ? ttestBL(result.res, numLabel) : result.type === 'anova' ? anovaBL(result.res, numLabel) : result.type === 'mw' ? mwBL(result.res, numLabel, (result as any).g1 || '', (result as any).g2 || '') : result.type === 'chisq' ? chiBL(result.res, catLabel, catLabel2) : ''}
+          naiveText={result.type === 'ttest' ? ttestBL_naive(result.res, numLabel) : result.type === 'anova' ? anovaBL_naive(result.res, numLabel) : result.type === 'mw' ? mwBL_naive(result.res, numLabel, (result as any).g1 || '', (result as any).g2 || '') : result.type === 'chisq' ? chiBL_naive(result.res, catLabel, catLabel2) : ''}
+        />
+      })()}
       <Card style={{ padding: '16px 20px', marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-          {[['auto', 'Auto-select'], ['ttest', 't-test'], ['anova', 'ANOVA'], ['mw', 'Mann-Whitney'], ['chisq', 'Chi-square']].map(function(pair) {
-            return <FieldPill key={pair[0]} label={pair[1]} active={testType === pair[0]} onClick={function() { setTestType(pair[0]) }} />
+          {([
+            ['auto', 'Auto-select', 'Automatically picks the best test based on your data'],
+            ['ttest', 't-test', 'Compare means of 2 groups — use when you have one numeric outcome and one categorical grouping with exactly 2 groups'],
+            ['anova', 'ANOVA', 'Compare means across 3+ groups — use when your grouping variable has more than 2 categories'],
+            ['mw', 'Mann-Whitney', 'Non-parametric alternative to t-test — use when data is not normally distributed or has outliers'],
+            ['chisq', 'Chi-square', 'Test association between two categorical variables — use when both variables are categories (not numeric)'],
+          ] as [string, string, string][]).map(function(pair) {
+            return <FieldPill key={pair[0]} label={pair[1]} active={testType === pair[0]} onClick={function() { setTestType(pair[0]) }} title={pair[2]} />
           })}
         </div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -616,11 +645,14 @@ function GroupTestsPanel({ numFields, catFields, data }: { numFields: SchemaFiel
 
 var MAX_PREDICTORS = 12
 
-function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
-  var [outcomes, setOutcomes] = useState<Set<string>>(new Set())
-  var [predictors, setPredictors] = useState<Set<string>>(new Set())
-  var [activeOutcome, setActiveOutcome] = useState<string>('')
+function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string }) {
+  var _rk = 'statsReg_' + datasetId
+  var _rs = readSession<any>(_rk)
+  var [outcomes, setOutcomes] = useState<Set<string>>(function() { return _rs?.outcomes ? new Set(_rs.outcomes) : new Set() })
+  var [predictors, setPredictors] = useState<Set<string>>(function() { return _rs?.predictors ? new Set(_rs.predictors) : new Set() })
+  var [activeOutcome, setActiveOutcome] = useState<string>(_rs?.activeOutcome || '')
   var [outcomesOpen, setOutcomesOpen] = useState(true)
+  useEffect(function() { writeSession(_rk, { outcomes: Array.from(outcomes), predictors: Array.from(predictors), activeOutcome: activeOutcome }) }, [outcomes, predictors, activeOutcome, _rk])
 
   var fl2 = function(f: SchemaFieldConfig) { return aliases[f.field] || f.label || f.field }
 
@@ -764,7 +796,11 @@ function RegressionPanel({ numFields, data, aliases }: { numFields: SchemaFieldC
             <div style={{ fontSize: 10, color: T.amber, marginBottom: 6 }}>Max {MAX_PREDICTORS} reached. Deselect one to add another.</div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {predictorFields.map(function(f) {
+            {predictorFields.slice().sort(function(a, b) {
+              var ca = corrMap[a.field], cb = corrMap[b.field]
+              var absA = ca ? Math.abs(ca.r) : 0, absB = cb ? Math.abs(cb.r) : 0
+              return absB - absA
+            }).map(function(f) {
               var sel = predictors.has(f.field), atLimit = !sel && predictors.size >= MAX_PREDICTORS
               var warn = fieldDiag[f.field]
               var corr = !warn && outcomes.size > 0 ? corrMap[f.field] : undefined
@@ -1220,7 +1256,7 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
           <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 10 }}>Want a more polished narrative? Generate one with AI.</div>
           <button onClick={generateNarrative} disabled={aiLoading || !aiEnabled || !apiKey}
             style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (!aiEnabled || !apiKey || aiLoading) ? T.bg : T.accent, color: (!aiEnabled || !apiKey || aiLoading) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (!aiEnabled || !apiKey || aiLoading) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-            {aiLoading ? 'Writing summary\u2026' : '\u2726 Generate Narrative Summary'}
+            {aiLoading ? <><LottieLoader size={18} /> Writing summary&hellip;</> : '\u2726 Generate Narrative Summary'}
           </button>
           {aiReport && (
             <div style={{ marginTop: 14, background: T.accentBg, border: '1px solid ' + T.accentMid, borderRadius: 12, padding: '18px 20px' }}>
@@ -1241,16 +1277,19 @@ interface OutlierRow {
   isOutlier: boolean; direction: 'positive' | 'negative'
 }
 
-function OutlierAnalysisPanel({ numFields, catFields, data }: {
-  numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]
+function OutlierAnalysisPanel({ numFields, catFields, data, datasetId }: {
+  numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; datasetId: string
 }) {
-  var [quantField, setQuantField]       = useState(numFields[0]?.field || '')
-  var [catField,   setCatField]         = useState(catFields[0]?.field  || '')
-  var [showAll,    setShowAll]          = useState(false)
-  var [threshold,  setThreshold]        = useState(0.05)
+  var _ok = 'statsOutlier_' + datasetId
+  var _os = readSession<any>(_ok)
+  var [quantField, setQuantField]       = useState(_os?.quantField || numFields[0]?.field || '')
+  var [catField,   setCatField]         = useState(_os?.catField || catFields[0]?.field  || '')
+  var [showAll,    setShowAll]          = useState(_os?.showAll || false)
+  var [threshold,  setThreshold]        = useState(_os?.threshold || 0.05)
   var [copied,     setCopied]           = useState(false)
   var [outlierDragOver, setOutlierDragOver] = useState(false)
 
+  useEffect(function() { writeSession(_ok, { quantField: quantField, catField: catField, showAll: showAll, threshold: threshold }) }, [quantField, catField, showAll, threshold, _ok])
   useEffect(function() { if (!quantField && numFields.length) setQuantField(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catField   && catFields.length)  setCatField(catFields[0].field)   }, [catFields.length])
 
@@ -1567,12 +1606,16 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
 }
 
 export default function StatsModule({ datasetId, schema, themeModel }: Props) {
-  var [activePanel, setActivePanel] = useState('descriptives')
+  // Restore UI state from sessionStorage
+  var _statKey = 'stats_' + datasetId
+  var _statSaved = readSession<any>(_statKey)
+
+  var [activePanel, setActivePanel] = useState(_statSaved?.activePanel || 'descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
   var [validityOpen, setValidityOpen] = useState(false)
-  var [confidenceLevel, setConfidenceLevel] = useState(95)
-  var [pendingCap, setPendingCap] = useState(385)  // ceil(1.96² × 100) — min for ±5% MOE at 95% CI
-  var [pendingConfidence, setPendingConfidence] = useState(95)
+  var [confidenceLevel, setConfidenceLevel] = useState(_statSaved?.confidenceLevel || 99.5)
+  var [pendingCap, setPendingCap] = useState(_statSaved?.sampleCap || 385)
+  var [pendingConfidence, setPendingConfidence] = useState(_statSaved?.confidenceLevel || 99.5)
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
@@ -1580,7 +1623,11 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var { filters } = useFilters()
 
   // 0 = load all rows (no cap). Any positive number = systematic sample cap.
-  var [sampleCap, setSampleCap] = useState(385)
+  var [sampleCap, setSampleCap] = useState(_statSaved?.sampleCap || 385)
+
+  useEffect(function() {
+    writeSession(_statKey, { activePanel: activePanel, confidenceLevel: confidenceLevel, sampleCap: sampleCap })
+  }, [activePanel, confidenceLevel, sampleCap, _statKey])
 
   // Load rows whenever sampleCap changes and no data is loaded yet.
   useEffect(function() {
@@ -1617,9 +1664,12 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var hasThemes = !!(themeModel && themeModel.themes && themeModel.themes.length > 0)
 
   var schemaOpenFields = useMemo(function() { return schema.fields.filter(function(f) { return f.type === 'open-ended' }) }, [schema.fields])
-  var [themeSourceField, setThemeSourceField] = useState(function() { return (themeModel && themeModel.fieldName) || schema.fields.find(function(f) { return f.type === 'open-ended' })?.field || '' })
-  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(null)
+  var _stk = 'statsTheme_' + datasetId
+  var _sts = readSession<any>(_stk)
+  var [themeSourceField, setThemeSourceField] = useState(function() { return _sts?.themeSourceField || (themeModel && themeModel.fieldName) || schema.fields.find(function(f) { return f.type === 'open-ended' })?.field || '' })
+  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(function() { return _sts?.activeThemeNames ? new Set(_sts.activeThemeNames) : null })
   var [themeEnrichKey, setThemeEnrichKey] = useState(0)
+  useEffect(function() { writeSession(_stk, { themeSourceField: themeSourceField, activeThemeNames: activeThemeNames ? Array.from(activeThemeNames) : null }) }, [themeSourceField, activeThemeNames, _stk])
 
   var filteredData = useMemo(function() {
     return applyFilters(rows, filters)
@@ -1866,12 +1916,12 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
           {/* ── Analysis panels ── */}
           {rowsLoaded && (
             <>
-              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} confidenceLevel={confidenceLevel} />}
-              {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
-              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
-              {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} />}
+              {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} confidenceLevel={confidenceLevel} datasetId={datasetId} />}
+              {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
+              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
+              {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
               {activePanel === 'insights' && <AutoInsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
-              {activePanel === 'outliers' && <OutlierAnalysisPanel numFields={numFields} catFields={catFields} data={enrichedData} />}
+              {activePanel === 'outliers' && <OutlierAnalysisPanel numFields={numFields} catFields={catFields} data={enrichedData} datasetId={datasetId} />}
             </>
           )}
         </div>

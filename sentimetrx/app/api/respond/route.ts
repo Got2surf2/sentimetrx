@@ -166,5 +166,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save response' }, { status: 500 })
   }
 
+  // Refresh materialized view asynchronously (don't block response)
+  try { await supabase.rpc('refresh_study_response_stats') } catch {}
+
   return NextResponse.json({ success: true, response_id: response.id }, { status: 201 })
 }

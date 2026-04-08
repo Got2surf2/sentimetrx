@@ -3,7 +3,7 @@
 // app/analyze/[datasetId]/settings/SettingsClient.tsx
 // Rename, visibility, schema editor, archive, delete
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
@@ -34,6 +34,85 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   const [transferring, setTransferring] = useState(false)
   const [transferOrgId, setTransferOrgId] = useState('')
   const [error,       setError]       = useState('')
+
+  // Append data state
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [appendFile, setAppendFile] = useState<File | null>(null)
+  const [appendPreview, setAppendPreview] = useState<{ headers: string[]; rowCount: number; rows: Record<string, unknown>[] } | null>(null)
+  const [appending, setAppending] = useState(false)
+  const [appendDone, setAppendDone] = useState<number | null>(null)
+  const [appendError, setAppendError] = useState('')
+
+  var parseCSV = useCallback(function(text: string): Record<string, unknown>[] {
+    var lines = text.split('\n').map(function(l) { return l.trim() }).filter(Boolean)
+    if (lines.length < 2) return []
+    var headers = lines[0].split(',').map(function(h) { return h.replace(/^"|"$/g, '').trim() })
+    return lines.slice(1).map(function(line) {
+      var vals = line.split(',').map(function(v) { return v.replace(/^"|"$/g, '').trim() })
+      var row: Record<string, unknown> = {}
+      headers.forEach(function(h, i) { row[h] = vals[i] || '' })
+      return row
+    })
+  }, [])
+
+  function handleAppendFile(file: File) {
+    setAppendFile(file)
+    setAppendError('')
+    setAppendDone(null)
+    var reader = new FileReader()
+    reader.onload = function(e) {
+      var text = e.target?.result as string
+      var rows = parseCSV(text)
+      if (!rows.length) { setAppendError('No data rows found in file'); return }
+      var headers = Object.keys(rows[0])
+      setAppendPreview({ headers: headers, rowCount: rows.length, rows: rows })
+    }
+    reader.readAsText(file)
+  }
+
+  async function handleAppend() {
+    if (!appendPreview) return
+    setAppending(true)
+    setAppendError('')
+    var uploadedBatches: number[] = []
+    try {
+      var BATCH = 50
+      var total = 0
+      for (var i = 0; i < appendPreview.rows.length; i += BATCH) {
+        var chunk = appendPreview.rows.slice(i, i + BATCH)
+        var res = await fetch('/api/datasets/' + dataset.id + '/rows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: chunk, source_ref: appendFile?.name || 'append' }),
+        })
+        if (!res.ok) throw new Error('Upload failed at batch ' + Math.floor(i / BATCH + 1))
+        var resData = await res.json().catch(function() { return {} })
+        if (resData.batch_index != null) uploadedBatches.push(resData.batch_index)
+        total += chunk.length
+      }
+      // Recompute analytics
+      await fetch('/api/datasets/' + dataset.id + '/compute', { method: 'POST' })
+      setAppendDone(total)
+      setAppendPreview(null)
+      setAppendFile(null)
+      if (fileRef.current) fileRef.current.value = ''
+      router.refresh()
+    } catch (err: any) {
+      // Rollback: delete any batches that were uploaded before the failure
+      if (uploadedBatches.length > 0) {
+        try {
+          await fetch('/api/datasets/' + dataset.id + '/rows', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ batch_indexes: uploadedBatches }),
+          })
+        } catch {}
+      }
+      setAppendError((err.message || 'Failed to append data') + '. Partial upload has been rolled back.')
+    } finally {
+      setAppending(false)
+    }
+  }
 
   async function handleSaveDetails() {
     setSaving(true)
@@ -147,6 +226,44 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
           </p>
         </div>
         <SchemaEditor schema={schema} onChange={handleSaveSchema} />
+      </div>
+
+      {/* Append data */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+        <div>
+          <h2 className="font-bold text-gray-800">Append Data</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Add more rows to this dataset from a CSV file. Columns should match the existing schema.
+          </p>
+        </div>
+        <div
+          onDragOver={function(e) { e.preventDefault() }}
+          onDrop={function(e) { e.preventDefault(); var f = e.dataTransfer.files[0]; if (f) handleAppendFile(f) }}
+          className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-orange-300 transition-colors"
+          onClick={function() { fileRef.current?.click() }}
+        >
+          <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" className="hidden" onChange={function(e) { var f = e.target.files?.[0]; if (f) handleAppendFile(f) }} />
+          <p className="text-sm text-gray-500">{appendFile ? appendFile.name : 'Drop a CSV file here or click to browse'}</p>
+        </div>
+        {appendPreview && (
+          <div className="bg-gray-50 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-gray-700">{appendPreview.rowCount.toLocaleString()} rows found</p>
+            <p className="text-xs text-gray-400 mt-1">Columns: {appendPreview.headers.slice(0, 8).join(', ')}{appendPreview.headers.length > 8 ? ' + ' + (appendPreview.headers.length - 8) + ' more' : ''}</p>
+            <div className="flex items-center gap-3 mt-3">
+              <button onClick={handleAppend} disabled={appending}
+                className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
+                style={{ background: HERMES }}>
+                {appending ? 'Uploading...' : 'Append ' + appendPreview.rowCount.toLocaleString() + ' rows'}
+              </button>
+              <button onClick={function() { setAppendPreview(null); setAppendFile(null); if (fileRef.current) fileRef.current.value = '' }}
+                className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+            </div>
+          </div>
+        )}
+        {appendDone !== null && (
+          <p className="text-sm text-green-600 font-semibold">{appendDone.toLocaleString()} rows appended successfully. Analytics recomputed.</p>
+        )}
+        {appendError && <p className="text-xs text-red-500">{appendError}</p>}
       </div>
 
       {/* Admin: transfer to another org */}

@@ -1,10 +1,10 @@
 // app/api/datasets/[datasetId]/filter-options/route.ts
 // Returns distinct values and numeric ranges for filter UI.
-// Uses pre-computed analytics (fieldSummaries) when available — instant, no row scanning.
-// Falls back to batch sampling for fields not in analytics.
+// Uses dataset_rows_flat with SQL functions — instant at any scale.
+// Falls back to pre-computed analytics if flat table is empty.
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 interface Props { params: { datasetId: string } }
 
@@ -15,7 +15,6 @@ export async function GET(_req: Request, { params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Get schema + analytics in one query
   const { data: stateRow } = await supabase
     .from('dataset_state')
     .select('schema_config, analytics')
@@ -27,97 +26,82 @@ export async function GET(_req: Request, { params }: Props) {
   }
 
   const schema = stateRow.schema_config as { fields: { field: string; type: string; label?: string }[] }
-  const analytics = stateRow.analytics as { fieldSummaries?: Record<string, any> } | null
-  const summaries = analytics?.fieldSummaries || {}
   const fields = schema.fields || []
+  const service = createServiceRoleClient()
 
-  // Build filter options per field — prefer analytics (instant) over batch scanning
+  // Check if flat table has data for this dataset
+  const { count: flatCount } = await service
+    .from('dataset_rows_flat')
+    .select('id', { count: 'exact', head: true })
+    .eq('dataset_id', params.datasetId)
+
+  const hasFlat = (flatCount || 0) > 0
+
   const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string }> = {}
 
-  // Track fields that need batch-scan fallback
-  const needsScan: { field: string; type: string }[] = []
+  if (hasFlat) {
+    // Use SQL helper functions on flat table — fast at any scale
+    for (const f of fields) {
+      const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
 
-  for (const f of fields) {
-    const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
-    const summary = summaries[f.field]
-
-    if (f.type === 'categorical' || f.type === 'open-ended') {
-      if (summary?.counts && Object.keys(summary.counts).length > 0) {
-        // Use pre-computed counts — keys are the distinct values
-        opt.values = Object.keys(summary.counts).sort()
-      } else {
-        needsScan.push(f)
-      }
-    }
-
-    if (f.type === 'numeric') {
-      if (summary?.min != null && summary?.max != null) {
-        opt.min = summary.min
-        opt.max = summary.max
-      } else {
-        needsScan.push(f)
-      }
-    }
-
-    if (f.type === 'date') {
-      // Dates rarely have pre-computed ranges — always scan
-      needsScan.push(f)
-    }
-
-    options[f.field] = opt
-  }
-
-  // Batch-scan fallback for fields not covered by analytics
-  if (needsScan.length > 0) {
-    const MAX_BATCHES = 30
-    const { data: batches } = await supabase
-      .from('dataset_rows')
-      .select('rows')
-      .eq('dataset_id', params.datasetId)
-      .order('batch_index', { ascending: true })
-      .limit(MAX_BATCHES)
-
-    if (batches) {
-      const catSets: Record<string, Set<string>> = {}
-      const numRanges: Record<string, { min: number; max: number }> = {}
-      const dateRanges: Record<string, { min: string; max: string }> = {}
-
-      for (const f of needsScan) {
-        if (f.type === 'categorical' || f.type === 'open-ended') catSets[f.field] = new Set()
+      if (f.type === 'categorical' || f.type === 'open-ended') {
+        const { data } = await service.rpc('count_field_values', {
+          p_dataset_id: params.datasetId,
+          p_field_key: f.field,
+          p_limit: 200,
+        })
+        if (data) opt.values = data.map((r: any) => r.value).sort()
       }
 
-      for (const batch of batches) {
-        const batchRows = (batch as any).rows || []
-        for (const row of batchRows) {
-          for (const f of needsScan) {
-            const val = row[f.field]
-            if (val == null || String(val).trim() === '') continue
-            const str = String(val).trim()
-
-            if (catSets[f.field] && catSets[f.field].size < 200) {
-              catSets[f.field].add(str)
-            }
-            if (f.type === 'numeric') {
-              const n = parseFloat(str)
-              if (!isNaN(n)) {
-                if (!numRanges[f.field]) numRanges[f.field] = { min: n, max: n }
-                else { if (n < numRanges[f.field].min) numRanges[f.field].min = n; if (n > numRanges[f.field].max) numRanges[f.field].max = n }
-              }
-            }
-            if (f.type === 'date') {
-              if (!dateRanges[f.field]) dateRanges[f.field] = { min: str, max: str }
-              else { if (str < dateRanges[f.field].min) dateRanges[f.field].min = str; if (str > dateRanges[f.field].max) dateRanges[f.field].max = str }
-            }
-          }
+      if (f.type === 'numeric') {
+        const { data } = await service.rpc('numeric_field_stats', {
+          p_dataset_id: params.datasetId,
+          p_field_key: f.field,
+        })
+        if (data && data[0]) {
+          opt.min = data[0].min_val
+          opt.max = data[0].max_val
         }
       }
 
-      // Merge scan results into options
-      for (const f of needsScan) {
-        if (catSets[f.field]) options[f.field].values = Array.from(catSets[f.field]).sort()
-        if (numRanges[f.field]) { options[f.field].min = numRanges[f.field].min; options[f.field].max = numRanges[f.field].max }
-        if (dateRanges[f.field]) { options[f.field].dateMin = dateRanges[f.field].min; options[f.field].dateMax = dateRanges[f.field].max }
+      if (f.type === 'date') {
+        // Date ranges via direct query on flat table
+        const { data } = await service
+          .from('dataset_rows_flat')
+          .select('data')
+          .eq('dataset_id', params.datasetId)
+          .not('data->' + f.field, 'is', null)
+          .order('row_index', { ascending: true })
+          .limit(1)
+        const { data: dataMax } = await service
+          .from('dataset_rows_flat')
+          .select('data')
+          .eq('dataset_id', params.datasetId)
+          .not('data->' + f.field, 'is', null)
+          .order('row_index', { ascending: false })
+          .limit(1)
+        if (data?.[0]) opt.dateMin = String((data[0] as any).data[f.field] || '')
+        if (dataMax?.[0]) opt.dateMax = String((dataMax[0] as any).data[f.field] || '')
       }
+
+      options[f.field] = opt
+    }
+  } else {
+    // Fallback: use pre-computed analytics (same as before)
+    const analytics = stateRow.analytics as { fieldSummaries?: Record<string, any> } | null
+    const summaries = analytics?.fieldSummaries || {}
+
+    for (const f of fields) {
+      const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
+      const summary = summaries[f.field]
+
+      if ((f.type === 'categorical' || f.type === 'open-ended') && summary?.counts) {
+        opt.values = Object.keys(summary.counts).sort()
+      }
+      if (f.type === 'numeric' && summary?.min != null) {
+        opt.min = summary.min; opt.max = summary.max
+      }
+      options[f.field] = opt
     }
   }
 

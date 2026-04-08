@@ -27,10 +27,10 @@ interface Props {
 var HERMES = '#E8632A'
 
 var TABS = [
-  { key: 'textmine', label: 'TextMine' },
-  { key: 'charts', label: 'Charts' },
-  { key: 'stats', label: 'Statistics' },
-  { key: 'settings', label: 'Schema' },
+  { key: 'textmine', label: 'TextMine', icon: '\uD83D\uDCDD' },
+  { key: 'charts', label: 'Charts', icon: '\uD83D\uDCCA' },
+  { key: 'stats', label: 'Statistics', icon: '\u03A3' },
+  { key: 'settings', label: 'Schema', icon: '\u2699' },
 ]
 
 export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick, onSaveSession, sessionSaving, sessionSaved }: Props) {
@@ -93,7 +93,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                   borderBottom: isActive ? '3px solid white' : '3px solid transparent',
                   transition: 'all .12s',
                 }}>
-                {tab.label}
+                <span style={{ marginRight: 5 }}>{tab.icon}</span>{tab.label}
               </Link>
             )
           })}

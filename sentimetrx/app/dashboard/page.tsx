@@ -67,46 +67,54 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     }
   })
 
-  // Fetch per-study stats using lightweight aggregate queries (not all response rows)
+  // Fetch per-study stats from materialized view (single query) with fallback to count queries
   const studyIds = studies.map((s: any) => s.id)
   const statsMap: Record<string, { total: number; completeCount: number; promoters: number; passives: number; detractors: number; avgScore: number; ratingLabel: string; lastResponse: string | null }> = {}
 
   if (studyIds.length > 0) {
-    // Batch: fetch counts + avg scores per study in parallel
-    // Each query fetches only aggregation-relevant columns with a limit of 1 for metadata
-    const statPromises = studyIds.map(async (sid: string) => {
-      const [countResult, sentimentResult, scoreResult, lastResult] = await Promise.all([
-        // Total count
-        supabase.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', sid),
-        // Sentiment counts — fetch only sentiment column, cap at 50K for safety
-        supabase.from('responses').select('sentiment').eq('study_id', sid).limit(50000),
-        // Score averages — fetch only score columns, cap at 50K
-        supabase.from('responses').select('experience_score, nps_score').eq('study_id', sid).not('experience_score', 'is', null).limit(50000),
-        // Last response date
-        supabase.from('responses').select('completed_at').eq('study_id', sid).order('completed_at', { ascending: false }).limit(1),
-      ])
+    // Try materialized view first (instant)
+    let mvStats: any[] | null = null
+    try {
+      const { data } = await supabase.from('study_response_stats').select('*').in('study_id', studyIds)
+      mvStats = data
+    } catch {}
 
-      const total = countResult.count || 0
-      const sentRows = sentimentResult.data || []
-      const promoters  = sentRows.filter((r: any) => r.sentiment === 'positive' || r.sentiment === 'promoter').length
-      const passives   = sentRows.filter((r: any) => r.sentiment === 'neutral'  || r.sentiment === 'passive').length
-      const detractors = sentRows.filter((r: any) => r.sentiment === 'negative' || r.sentiment === 'detractor').length
-
-      const scoreRows = scoreResult.data || []
-      const avgScore = scoreRows.length > 0
-        ? Math.round(scoreRows.reduce((sum: number, r: any) => sum + (r.experience_score || 0), 0) / scoreRows.length * 10) / 10
-        : 0
-
-      const lastResponse = lastResult.data?.[0]?.completed_at || null
-
-      return { sid, total, completeCount: total, promoters, passives, detractors, avgScore, lastResponse }
-    })
-
-    const results = await Promise.all(statPromises)
-    for (const r of results) {
-      const study = studies.find((s: any) => s.id === r.sid) as any
-      const ratingLabel = study?.config?.experienceRatingLabel || 'Avg Rating'
-      statsMap[r.sid] = { ...r, ratingLabel }
+    if (mvStats && mvStats.length > 0) {
+      // Use materialized view
+      for (const mv of mvStats) {
+        const study = studies.find((s: any) => s.id === mv.study_id) as any
+        const ratingLabel = study?.config?.experienceRatingLabel || 'Avg Rating'
+        statsMap[mv.study_id] = {
+          total: mv.total_responses || 0,
+          completeCount: mv.complete_count || 0,
+          promoters: mv.promoters || 0,
+          passives: mv.passives || 0,
+          detractors: mv.detractors || 0,
+          avgScore: mv.avg_experience ? Math.round(mv.avg_experience * 10) / 10 : 0,
+          ratingLabel,
+          lastResponse: mv.last_response_at || null,
+        }
+      }
+      // Studies not in the view (no responses) get zeros
+      for (const sid of studyIds) {
+        if (!statsMap[sid]) {
+          const study = studies.find((s: any) => s.id === sid) as any
+          statsMap[sid] = { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: study?.config?.experienceRatingLabel || 'Avg Rating', lastResponse: null }
+        }
+      }
+    } else {
+      // Fallback: per-study count queries
+      const statPromises = studyIds.map(async (sid: string) => {
+        const { count } = await supabase.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', sid)
+        const { data: lastRow } = await supabase.from('responses').select('completed_at').eq('study_id', sid).order('completed_at', { ascending: false }).limit(1)
+        return { sid, total: count || 0, lastResponse: lastRow?.[0]?.completed_at || null }
+      })
+      const results = await Promise.all(statPromises)
+      for (const r of results) {
+        const study = studies.find((s: any) => s.id === r.sid) as any
+        const ratingLabel = study?.config?.experienceRatingLabel || 'Avg Rating'
+        statsMap[r.sid] = { total: r.total, completeCount: r.total, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel, lastResponse: r.lastResponse }
+      }
     }
   }
 

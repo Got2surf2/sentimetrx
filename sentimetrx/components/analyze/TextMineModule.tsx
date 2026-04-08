@@ -5,6 +5,7 @@
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { readSession, writeSession } from '@/lib/useSessionState'
 import {
   Theme, ThemeModel, THEME_PALETTE,
   recountThemes, sampleSize95, evenSample,
@@ -13,6 +14,7 @@ import {
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest } from '@/lib/statsUtils'
+import { smartOrder } from '@/lib/scaleUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
@@ -318,7 +320,7 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
 
 // ─── CompareTab (multi-field breakdown with significance) ─────────────────────
 
-function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownFields, setBreakdownFields, onDrillTheme }: {
+function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownFields, setBreakdownFields, onDrillTheme, viewMode, setViewMode, smartAxes, setSmartAxes }: {
   themes: ThemeModel | null
   parsedData: Record<string, unknown>[]
   schema: SchemaField[]
@@ -327,8 +329,11 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   breakdownFields: string[]
   setBreakdownFields: (f: string[]) => void
   onDrillTheme: (t: Theme, group?: string) => void
+  viewMode: 'group' | 'theme'
+  setViewMode: (v: 'group' | 'theme') => void
+  smartAxes: boolean
+  setSmartAxes: (v: boolean) => void
 }) {
-  var [viewMode, setViewMode] = useState<'group' | 'theme'>('group')
   var [showSummary, setShowSummary] = useState(false)
   var [copied, setCopied] = useState(false)
 
@@ -547,6 +552,11 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                 </button>
               })}
             </div>
+            {/* Smart Axes checkbox */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMute, cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(!smartAxes) }} style={{ accentColor: T.accent }} />
+              Smart Axes
+            </label>
             {/* Summarize Findings */}
             {outliers.length > 0 && (
               <button onClick={function() { setShowSummary(true) }}
@@ -561,9 +571,14 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
       {/* Stats cards — By Group or By Theme */}
       {compStats && breakdownFields.length > 0 && (function() {
         if (viewMode === 'group') {
+          var groupNames = compStats!.groupStats.map(function(g) { return g.group })
+          var orderedNames = smartAxes ? smartOrder(groupNames).reverse() : groupNames.slice().sort(function(a, b) { return a.localeCompare(b) })
+          var groupMap: Record<string, typeof compStats.groupStats[0]> = {}
+          compStats!.groupStats.forEach(function(g) { groupMap[g.group] = g })
+          var sortedGroups = orderedNames.map(function(n) { return groupMap[n] }).filter(Boolean)
           return (
             <div>
-              {compStats!.groupStats.map(function(g) {
+              {sortedGroups.map(function(g) {
                 var maxShare = g.themeCounts.reduce(function(m, tc) { return Math.max(m, g.groupTotal > 0 ? Math.round(tc.count / g.groupTotal * 100) : 0) }, 1)
                 if (g.unclassified > 0) { var uPct = g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0; if (uPct > maxShare) maxShare = uPct }
                 return (
@@ -590,9 +605,13 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         }
 
         // By Theme view
+        var sortedThemes = compStats!.themeStats.slice().sort(function(a, b) {
+          return smartAxes ? b.totalMatches - a.totalMatches : a.themeName.localeCompare(b.themeName)
+        })
         return (
           <div>
-            {compStats!.themeStats.map(function(ts, ti) {
+            {sortedThemes.map(function(ts) {
+              var ti = compStats!.themeStats.indexOf(ts)
               var pal = themeColors[ti] || THEME_PALETTE[0]
               var perGroupSorted = ts.perGroup.slice().sort(function(a, b) { return b.mentionRate - a.mentionRate })
               var maxShare = perGroupSorted.reduce(function(m, g) { return Math.max(m, g.mentionRate) }, 1)
@@ -714,19 +733,35 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
 
-  const [activeField, setActiveField] = useState<string | null>(null)
-  const [activeFields, setActiveFields] = useState<string[]>([])
-  const [subTab, setSubTab] = useState<SubTab>('themes')
-  const [themesView, setThemesView] = useState<'distribution' | 'cards'>('cards')
-  const [showAllThemes, setShowAllThemes] = useState(false)
-  const [breakdownField, setBreakdownField] = useState<string | null>(null)
-  const [compareFields, setCompareFields] = useState<string[]>([])
-  const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
+  // Restore UI state from sessionStorage
+  var _tmKey = 'textMine_' + datasetId
+  var _tmSaved = readSession<any>(_tmKey)
+
+  const [activeField, setActiveField] = useState<string | null>(_tmSaved?.activeField || null)
+  const [activeFields, setActiveFields] = useState<string[]>(_tmSaved?.activeFields || [])
+  const [subTab, setSubTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
+  const [themesView, setThemesView] = useState<'distribution' | 'cards'>(_tmSaved?.themesView || 'cards')
+  const [showAllThemes, setShowAllThemes] = useState(_tmSaved?.showAllThemes || false)
+  const [compareViewMode, setCompareViewMode] = useState<'group' | 'theme'>(_tmSaved?.compareViewMode || 'group')
+  const [compareSmartAxes, setCompareSmartAxes] = useState(_tmSaved?.compareSmartAxes !== undefined ? _tmSaved.compareSmartAxes : true)
+  const [breakdownField, setBreakdownField] = useState<string | null>(_tmSaved?.breakdownField || null)
+  const [compareFields, setCompareFields] = useState<string[]>(_tmSaved?.compareFields || [])
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(function() { return _tmSaved?.selectedValues ? new Set(_tmSaved.selectedValues) : new Set() })
   const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
   const [drillGroup, setDrillGroup] = useState<string | null>(null)
   const [selectedThemes, setSelectedThemes] = useState<Theme[]>([])
-  const [previousTab, setPreviousTab] = useState<SubTab>('themes')
+  const [previousTab, setPreviousTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
   const [isDirty, setIsDirty] = useState(false)
+
+  useEffect(function() {
+    writeSession(_tmKey, {
+      activeField: activeField, activeFields: activeFields, subTab: subTab,
+      themesView: themesView, showAllThemes: showAllThemes,
+      breakdownField: breakdownField, compareFields: compareFields,
+      selectedValues: Array.from(selectedValues),
+      compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
+    })
+  }, [activeField, activeFields, subTab, themesView, showAllThemes, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, _tmKey])
 
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
@@ -878,8 +913,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var _recountFields = effectiveFields.length > 0 ? effectiveFields
     : (themes?.fieldNames || (themes?.fieldName ? [themes.fieldName] : []))
   var displayThemes: ThemeModel | null = themes && filteredRows.length > 0 && _recountFields.length > 0
-    ? { ...themes, themes: recountThemes(themes.themes, filteredRows, _recountFields) }
-    : themes
+    ? { ...themes, themes: recountThemes(themes.themes, filteredRows, _recountFields).filter(function(t) { return t.name && t.name.trim() }) }
+    : themes ? { ...themes, themes: themes.themes.filter(function(t) { return t.name && t.name.trim() }) } : null
 
   // Stats for active fields (on filtered data)
   var activeFieldRows = filteredRows.filter(function(r) {
@@ -1252,7 +1287,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           })}
                         </div>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer', flexShrink: 0 }}>
-                          <input type="checkbox" checked={showAllThemes} onChange={function() { setShowAllThemes(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+                          <input type="checkbox" checked={showAllThemes} onChange={function() { setShowAllThemes(function(v: boolean) { return !v }) }} style={{ accentColor: T.accent }} />
                           Show all
                         </label>
                       </div>
@@ -1408,7 +1443,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 16 }}>Theme Clouds</h2>
                 {hasThemes && themes && rowsLoaded ? (
                   <WordCloud
-                    themes={themes.themes}
+                    themes={(displayThemes || themes).themes}
                     themeColors={themeColors}
                     parsedData={filteredRows}
                     activeField={activeField || themes!.fieldName}
@@ -1437,7 +1472,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} />
+              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} viewMode={compareViewMode} setViewMode={setCompareViewMode} smartAxes={compareSmartAxes} setSmartAxes={setCompareSmartAxes} />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}
@@ -1447,8 +1482,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   <>
                     {/* Breadcrumb + Theme strip — multi-select */}
                     <div style={{ padding: '8px 20px', borderBottom: '1px solid ' + T.border, background: T.bgCard, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={handleBackFromComments} style={{ fontSize: 12, fontWeight: 600, color: T.textMute, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px 2px 0', flexShrink: 0 }}>{'\u2190'} Back</button>
-                      <span style={{ fontSize: 12, color: T.border, flexShrink: 0 }}>|</span>
                       <span style={{ fontSize: 11, color: T.textFaint }}>{selectedThemes.length === 0 ? 'All responses' : selectedThemes.length === 1 ? 'Viewing' : selectedThemes.length + ' themes selected'} {'\u2014'} click themes to toggle</span>
                       {/* Theme strip — click to toggle multi-select */}
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1 }}>

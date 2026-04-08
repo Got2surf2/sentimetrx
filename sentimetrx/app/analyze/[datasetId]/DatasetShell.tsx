@@ -143,10 +143,15 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
-      {fCount > 0 && (
-        <div style={{ background: '#fff4ef', borderBottom: '1px solid #fbd5c2', padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: chipsExpanded ? 'wrap' : 'nowrap', overflow: chipsExpanded ? 'visible' : 'hidden', maxHeight: chipsExpanded ? 'none' : 32 }}>
+      {fCount > 0 && (function() {
+        var filterEntries = Object.entries(filters)
+        var MAX_COLLAPSED = 4
+        var visibleEntries = chipsExpanded ? filterEntries : filterEntries.slice(0, MAX_COLLAPSED)
+        var hiddenCount = filterEntries.length - MAX_COLLAPSED
+        return (
+        <div style={{ background: '#fff4ef', borderBottom: '1px solid #fbd5c2', padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Filtered:</span>
-          {Object.entries(filters).map(function(entry) {
+          {visibleEntries.map(function(entry) {
             const field = entry[0], f = entry[1]
             const label = aliases[field] || field
             let desc = ''
@@ -161,22 +166,25 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
               </span>
             )
           })}
-          {fCount > 3 && (
-            <button onClick={function() { setChipsExpanded(function(v) { return !v }) }}
-              style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
-              {chipsExpanded ? '\u2212 Less' : '+' + (fCount - 3) + ' more'}
+          {hiddenCount > 0 && (
+            <button onClick={function() { setChipsExpanded(function(v: boolean) { return !v }) }}
+              style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', background: 'white', border: '1px solid #fbd5c2', borderRadius: 20, cursor: 'pointer', padding: '2px 10px', flexShrink: 0 }}>
+              {chipsExpanded ? '\u2212 Less' : '+ ' + hiddenCount + ' more'}
             </button>
           )}
-          <button onClick={function() { setShowFilters(true) }}
-            style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', background: 'none', border: '1px solid #fbd5c2', borderRadius: 6, cursor: 'pointer', padding: '2px 8px', marginLeft: 'auto', flexShrink: 0 }}>
-            Edit
-          </button>
-          <button onClick={function() { setFilters({}) }}
-            style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
-            Clear all
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button onClick={function() { setShowFilters(true) }}
+              style={{ fontSize: 10, fontWeight: 700, color: '#e8622a', background: 'none', border: '1px solid #fbd5c2', borderRadius: 6, cursor: 'pointer', padding: '2px 8px' }}>
+              Edit
+            </button>
+            <button onClick={function() { setFilters({}) }}
+              style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}>
+              Clear all
+            </button>
+          </div>
         </div>
-      )}
+        )
+      })()}
 
       <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {children}

@@ -235,7 +235,13 @@ function buildHighlightedRuns(text: string, keywords: string[]): { text: string;
       const re = new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'gi')
       let m: RegExpExecArray | null
       while ((m = re.exec(text)) !== null) {
-        spans.push({ start: m.index, end: m.index + m[0].length })
+        // Expand to clause boundary for phrase-level highlighting
+        let left = m.index
+        while (left > 0 && !/[,.;:!?\-\u2014\u2013\n]/.test(text[left - 1])) left--
+        while (left < m.index && text[left] === ' ') left++
+        let right = m.index + m[0].length
+        while (right < text.length && !/[,.;:!?\-\u2014\u2013\n]/.test(text[right])) right++
+        spans.push({ start: left, end: right })
       }
     }
   }
@@ -549,40 +555,53 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
   col1.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD, listY + i * 0.36) })
   col2.slice(0, maxRows).forEach(function(f, i) { fieldRow(f, PAD + colW2 + 0.4, listY + i * 0.36) })
 
-  // Bottom notes — stack downward. Collect all notes, then render backgrounds first, text second.
+  // Bottom notes — stack downward with dynamic height per note
   const notesStartY = listY + maxRows * 0.36 + 0.2
   const noteW = W - PAD * 2
-  const noteH = 0.42
-  const noteGap = 0.08
+  const noteGap = 0.06
 
   const collectionMethod = dataSource === 'study'
     ? 'Collected using Sarina (AI conversational survey). '
     : 'Data uploaded from an external source. '
 
-  const notes: { y: number; bgColor: string; accentColor?: string; text: string; textColor: string }[] = []
+  // Estimate height: ~80 chars per line at fontSize 8, each line ~0.14"
+  function noteHeight(text: string): number {
+    const lines = Math.ceil(text.length / 100)
+    return Math.max(0.32, lines * 0.16 + 0.10)
+  }
+
+  const notes: { y: number; h: number; bgColor: string; accentColor?: string; text: string; textColor: string }[] = []
   let curNoteY = notesStartY
 
   if (samplingNote) {
-    notes.push({ y: curNoteY, bgColor: 'EFF6FF', accentColor: '2563EB', text: samplingNote, textColor: '1E40AF' })
-    curNoteY += noteH + noteGap
+    const h = noteHeight(samplingNote)
+    notes.push({ y: curNoteY, h, bgColor: 'EFF6FF', accentColor: '2563EB', text: samplingNote, textColor: '1E40AF' })
+    curNoteY += h + noteGap
   }
   if (filterDescription) {
-    notes.push({ y: curNoteY, bgColor: 'FFF7ED', accentColor: DN.orange, text: filterDescription, textColor: DN.navyLight })
-    curNoteY += noteH + noteGap
+    // Truncate filter description if too long
+    const fd = filterDescription.length > 250 ? filterDescription.slice(0, 247) + '...' : filterDescription
+    const h = noteHeight(fd)
+    notes.push({ y: curNoteY, h, bgColor: 'FFF7ED', accentColor: DN.orange, text: fd, textColor: DN.navyLight })
+    curNoteY += h + noteGap
   }
-  notes.push({ y: curNoteY, bgColor: DN.slateLight, text: 'Methodology: ' + collectionMethod + 'Analyzed using Ana AI Text Analytics.', textColor: DN.slateDark })
+  {
+    const methText = 'Methodology: ' + collectionMethod + 'Analyzed using Ana AI Text Analytics.'
+    const h = noteHeight(methText)
+    notes.push({ y: curNoteY, h, bgColor: DN.slateLight, text: methText, textColor: DN.slateDark })
+  }
 
   // Pass 1: draw all backgrounds
   for (const note of notes) {
-    solidRect(slide, pptx, PAD, note.y, noteW, noteH, note.bgColor)
-    if (note.accentColor) solidRect(slide, pptx, PAD, note.y, 0.06, noteH, note.accentColor)
+    solidRect(slide, pptx, PAD, note.y, noteW, note.h, note.bgColor)
+    if (note.accentColor) solidRect(slide, pptx, PAD, note.y, 0.06, note.h, note.accentColor)
   }
   // Pass 2: add all text (on top of backgrounds)
   for (const note of notes) {
     const tx = note.accentColor ? PAD + 0.14 : PAD + 0.12
     slide.addText(note.text, {
-      x: tx, y: note.y + 0.04, w: noteW - 0.24, h: noteH - 0.08,
-      fontSize: 8.5, color: note.textColor, italic: true, wrap: true, valign: 'middle',
+      x: tx, y: note.y + 0.03, w: noteW - 0.24, h: note.h - 0.06,
+      fontSize: 8, color: note.textColor, italic: true, wrap: true, valign: 'middle',
     })
   }
 
@@ -1249,7 +1268,7 @@ function buildCommentsSlide(
   logo(slide)
 
   const cols    = 2
-  const rows    = 3
+  const rows    = 4
   const gapX    = 0.22
   const gapY    = 0.16
   const cardW   = (W - PAD * 2 - gapX * (cols - 1)) / cols
@@ -1613,7 +1632,29 @@ function buildSectionDivider(pptx: any, title: string, subtitle: string, fieldCo
       } catch (_) { /* fall through to emoji */ }
     }
     if (!imageUsed) {
-      slide.addText(sectionEmoji[title] || title[0], {
+      // Derive icon from title + subtitle text
+      const iconText = (title + ' ' + subtitle).toLowerCase()
+      const iconMap: [string[], string][] = [
+        [['like', 'love', 'enjoy', 'best', 'favorite', 'positive', 'great', 'good'], '\u2764\uFE0F'],  // ❤️
+        [['dislike', 'least', 'worst', 'complaint', 'negative', 'problem', 'issue'], '\uD83D\uDC4E'],  // 👎
+        [['improve', 'suggest', 'recommend', 'change', 'better', 'wish'], '\uD83D\uDCA1'],  // 💡
+        [['experience', 'overall', 'general', 'visit'], '\u2B50'],  // ⭐
+        [['food', 'meal', 'taste', 'menu', 'dish', 'cuisine', 'dining'], '\uD83C\uDF7D\uFE0F'],  // 🍽️
+        [['service', 'staff', 'server', 'waiter', 'employee'], '\uD83D\uDE4B'],  // 🙋
+        [['clean', 'hygiene', 'sanit', 'facility'], '\u2728'],  // ✨
+        [['wait', 'time', 'speed', 'slow', 'fast', 'quick'], '\u23F1\uFE0F'],  // ⏱️
+        [['price', 'value', 'cost', 'money', 'worth', 'expensive'], '\uD83D\uDCB0'],  // 💰
+        [['room', 'hotel', 'stay', 'accommodation', 'bed'], '\uD83C\uDFE8'],  // 🏨
+        [['comment', 'feedback', 'response', 'verbatim', 'open-ended', 'tell us'], '\uD83D\uDCAC'],  // 💬
+        [['theme', 'topic', 'analysis', 'insight'], '\uD83C\uDFAF'],  // 🎯
+        [['health', 'medical', 'doctor', 'patient', 'care'], '\uD83C\uDFE5'],  // 🏥
+        [['satisfaction', 'rating', 'score', 'nps'], '\uD83D\uDCCA'],  // 📊
+      ]
+      let emoji = '\uD83D\uDCAC'  // default: 💬
+      for (const [keywords, icon] of iconMap) {
+        if (keywords.some(kw => iconText.includes(kw))) { emoji = icon; break }
+      }
+      slide.addText(emoji, {
         x: W - 2.1, y: 1.6, w: 2.0, h: 2.0,
         fontSize: 72, color: DN.tealLight, align: 'center', valign: 'middle',
       })
@@ -1797,79 +1838,90 @@ function buildThemeImpactSlide(
 ) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
-  hdr(slide, pptx, 'Key Driver Analysis — ' + targetLabel, DN.tealDark, 'Impact of each theme on ' + targetLabel + ' (OLS regression, n=' + n.toLocaleString() + ')')
+  const r2Pct = Math.round(rSquared * 100)
+  hdr(slide, pptx, 'Key Driver Analysis — ' + targetLabel, DN.tealDark,
+    'OLS regression  ·  n=' + n.toLocaleString() + '  ·  R\u00B2=' + r2Pct + '%  ·  baseline=' + intercept.toFixed(1))
   logo(slide)
 
-  // Left panel: model stats
-  const leftW = 2.8
-  kpiCard(slide, pptx, PAD, CY, leftW * 0.48, 0.78, (Math.round(rSquared * 100)) + '%', 'R² Explained', 'variance accounted for', DN.tealPale, DN.teal)
-  kpiCard(slide, pptx, PAD + leftW * 0.52, CY, leftW * 0.48, 0.78, intercept.toFixed(1), 'Baseline Score', 'intercept (no themes)', DN.slateCard, DN.navyLight)
-
-  // Interpretation guide
-  const guideY = CY + 0.92
-  lbl(slide, 'HOW TO READ', PAD, guideY, leftW)
-  slide.addText([
-    { text: 'Positive coefficient', options: { fontSize: 9, bold: true, color: '059669' } },
-    { text: ' = theme raises the score\n', options: { fontSize: 9, color: DN.slateDark } },
-    { text: 'Negative coefficient', options: { fontSize: 9, bold: true, color: 'DC2626' } },
-    { text: ' = theme lowers the score\n', options: { fontSize: 9, color: DN.slateDark } },
-    { text: 'Bold bars', options: { fontSize: 9, bold: true, color: DN.navy } },
-    { text: ' = statistically significant (p<0.05)\n', options: { fontSize: 9, color: DN.slateDark } },
-    { text: 'Faded bars', options: { fontSize: 9, color: DN.slate } },
-    { text: ' = not significant — interpret with caution', options: { fontSize: 9, color: DN.slateDark } },
-  ], { x: PAD, y: guideY + 0.2, w: leftW, h: 1.2, wrap: true, valign: 'top', lineSpacingMultiple: 1.5 })
-
-  insightBox(slide, pptx, PAD, guideY + 1.5, leftW, CH - 1.7,
-    'R² of ' + (Math.round(rSquared * 100)) + '% means the themes explain ' + (Math.round(rSquared * 100)) + '% of the variation in ' + targetLabel + '. The remaining ' + (100 - Math.round(rSquared * 100)) + '% is driven by factors not captured by these themes.',
-    DN.teal, DN.tealPale)
-
-  // Right panel: horizontal bar chart of coefficients
-  solidRect(slide, pptx, PAD + leftW + 0.18, CY + 0.06, 0.012, CH - 0.12, DN.divider)
-  const chartX = PAD + leftW + 0.4
-  const chartW = W - chartX - PAD * 0.5
+  // Full-width horizontal bar chart — no left panel
+  const labelW = 2.8   // theme name column
+  const coefW  = 0.7   // coefficient value column
+  const barAreaW = W - PAD * 2 - labelW - coefW - 0.3
+  const barMaxW = barAreaW / 2  // half for positive, half for negative
+  const midX   = PAD + labelW + 0.15 + barMaxW  // center line X
   const maxAbs = Math.max(...impacts.map(i => Math.abs(i.coefficient)), 0.1)
 
-  lbl(slide, 'IMPACT ON ' + targetLabel.toUpperCase(), chartX, CY, chartW)
-  const barStartY = CY + 0.28
-  const nBars = Math.min(impacts.length, 12)
-  const barH = Math.min(0.34, (CH - 0.4) / nBars - 0.06)
-  const barGap = 0.06
-  const midX = chartX + 2.4  // label width
-  const barMaxW = (chartW - 2.4 - 0.6) / 2  // half width for pos/neg
+  const nBars = Math.min(impacts.length, 10)
+  const availH = CH - 0.6  // leave room for legend at bottom
+  const barH = Math.min(0.36, availH / nBars - 0.05)
+  const barGap = 0.05
+  const barStartY = CY + 0.1
+
+  // Column headers
+  slide.addText('Theme', { x: PAD, y: CY - 0.12, w: labelW, h: 0.22, fontSize: 8, bold: true, color: DN.slateDark, align: 'right', valign: 'middle' })
+  slide.addText('\u2190 lowers score    |    raises score \u2192', { x: midX - barMaxW, y: CY - 0.12, w: barMaxW * 2, h: 0.22, fontSize: 7, color: DN.slate, align: 'center', valign: 'middle' })
 
   // Zero line
-  solidRect(slide, pptx, midX, barStartY - 0.04, 0.012, nBars * (barH + barGap) + 0.08, DN.slate)
+  solidRect(slide, pptx, midX, barStartY - 0.02, 0.012, nBars * (barH + barGap), DN.slate)
 
   for (let i = 0; i < nBars; i++) {
     const imp = impacts[i]
     const y = barStartY + i * (barH + barGap)
     const isPos = imp.coefficient >= 0
     const barW = Math.abs(imp.coefficient) / maxAbs * barMaxW
-    const barColor = isPos ? '059669' : 'DC2626'
-    const opacity = imp.significant ? 0 : 60
+    const barFillColor = imp.significant
+      ? (isPos ? '059669' : 'DC2626')
+      : (isPos ? '86EFAC' : 'FCA5A5')
 
-    // Theme name
-    slide.addText(imp.themeName, {
-      x: chartX, y, w: 2.3, h: barH,
+    // Theme name — right-aligned before the chart area
+    slide.addText(trunc(imp.themeName, 32), {
+      x: PAD, y, w: labelW, h: barH,
       fontSize: 9, color: DN.navy, bold: imp.significant, valign: 'middle', align: 'right',
     })
 
-    // Bar — use solidRect for significant, lighter for non-significant
-    const barFillColor = imp.significant ? barColor : (isPos ? '86EFAC' : 'FCA5A5')
+    // Bar
     if (isPos) {
-      solidRect(slide, pptx, midX + 0.02, y + barH * 0.15, barW, barH * 0.7, barFillColor)
+      solidRect(slide, pptx, midX + 0.02, y + barH * 0.18, barW, barH * 0.64, barFillColor)
     } else {
-      solidRect(slide, pptx, midX - 0.02 - barW, y + barH * 0.15, barW, barH * 0.7, barFillColor)
+      solidRect(slide, pptx, midX - 0.02 - barW, y + barH * 0.18, barW, barH * 0.64, barFillColor)
     }
 
-    // Coefficient label
+    // Coefficient label — outside the bar
     const sign = isPos ? '+' : ''
-    slide.addText(sign + imp.coefficient.toFixed(2) + (imp.significant ? ' *' : ''), {
-      x: isPos ? midX + barW + 0.06 : midX - barW - 0.7, y, w: 0.65, h: barH,
-      fontSize: 8.5, color: barColor, bold: imp.significant, valign: 'middle',
-      align: isPos ? 'left' : 'right',
+    const coefText = sign + imp.coefficient.toFixed(2) + (imp.significant ? ' *' : '')
+    slide.addText(coefText, {
+      x: isPos ? midX + barW + 0.06 : midX - barW - coefW - 0.04,
+      y, w: coefW, h: barH,
+      fontSize: 8, color: imp.significant ? (isPos ? '059669' : 'DC2626') : DN.slate,
+      bold: imp.significant, valign: 'middle', align: isPos ? 'left' : 'right',
     })
   }
+
+  // Interpretation box
+  const interpY = barStartY + nBars * (barH + barGap) + 0.08
+  solidRect(slide, pptx, PAD, interpY, W - PAD * 2, 0.52, DN.slateLight)
+  solidRect(slide, pptx, PAD, interpY, 0.06, 0.52, DN.teal)
+  const topTheme = impacts[0]
+  const topDir = topTheme && topTheme.coefficient >= 0 ? 'higher' : 'lower'
+  const interpText = 'How to read this chart: Each bar shows how much a topic in people\'s written feedback is connected to ' + targetLabel + '. '
+    + (topTheme ? 'For example, when people write about "' + topTheme.themeName + '", their ' + targetLabel + ' tends to be ' + topDir + ' by about ' + Math.abs(topTheme.coefficient).toFixed(1) + ' points. ' : '')
+    + 'Longer bars mean a stronger connection. '
+    + 'The themes collectively explain ' + r2Pct + '% of what drives ' + targetLabel + ' scores — the rest comes from factors not captured in the written responses.'
+  slide.addText(interpText, {
+    x: PAD + 0.14, y: interpY + 0.04, w: W - PAD * 2 - 0.24, h: 0.44,
+    fontSize: 8, color: DN.navyLight, italic: true, wrap: true, valign: 'middle', lineSpacingMultiple: 1.3,
+  })
+
+  // Legend line
+  const legY = interpY + 0.58
+  slide.addText([
+    { text: '\u25A0 ', options: { color: '059669', fontSize: 8 } },
+    { text: 'Raises score   ', options: { color: DN.slateDark, fontSize: 7.5 } },
+    { text: '\u25A0 ', options: { color: 'DC2626', fontSize: 8 } },
+    { text: 'Lowers score   ', options: { color: DN.slateDark, fontSize: 7.5 } },
+    { text: '* = statistically significant   ', options: { color: DN.slateDark, fontSize: 7.5 } },
+    { text: 'Faded = not significant', options: { color: DN.slate, fontSize: 7.5 } },
+  ], { x: PAD, y: legY, w: W - PAD * 2, h: 0.22, valign: 'middle' })
 
   footer(slide, pptx, datasetName)
 }
@@ -2040,13 +2092,41 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   // Fetch rows for comment sampling and theme matching.
-  // When no filters: cap at 10K rows — field summaries come from pre-computed analytics.
-  // When filters active: fetch more (up to 30K) since we need to recompute summaries.
+  // Fetch rows from flat table (fast) with fallback to batched table.
+  // Cap at 10K for no-filter, 30K for filtered.
   const allRows: Record<string, any>[] = []
   let rowsSampled = false
-  {
+  const MAX_ROWS = hasFilters ? 30_000 : 10_000
+
+  // Try flat table first
+  const { count: flatCount } = await service
+    .from('dataset_rows_flat')
+    .select('id', { count: 'exact', head: true })
+    .eq('dataset_id', params.datasetId)
+
+  if ((flatCount || 0) > 0) {
+    // Flat table — paginate in chunks of 1000 (Supabase default limit)
+    const FLAT_PAGE = 1000
+    let flatOffset = 0
+    while (allRows.length < MAX_ROWS) {
+      const { data: flatRows, error: flatErr } = await service
+        .from('dataset_rows_flat')
+        .select('data')
+        .eq('dataset_id', params.datasetId)
+        .order('row_index', { ascending: true })
+        .range(flatOffset, flatOffset + FLAT_PAGE - 1)
+      if (flatErr || !flatRows || flatRows.length === 0) break
+      for (const fr of flatRows) {
+        allRows.push((fr as any).data || fr)
+        if (allRows.length >= MAX_ROWS) break
+      }
+      if (flatRows.length < FLAT_PAGE) break
+      flatOffset += FLAT_PAGE
+    }
+    if (allRows.length >= MAX_ROWS && (flatCount || 0) > allRows.length) rowsSampled = true
+  } else {
+    // Fallback: batched table
     const PAGE = 200
-    const MAX_ROWS = hasFilters ? 30_000 : 10_000
     let page = 0, hasMore = true
     while (hasMore && allRows.length < MAX_ROWS) {
       const from = page * PAGE
@@ -2058,8 +2138,7 @@ export async function POST(req: Request, { params }: Params) {
         .range(from, from + PAGE - 1)
       if (bErr || !batchPage || batchPage.length === 0) { hasMore = false; break }
       for (const b of batchPage) {
-        const batchRows = (b.rows || [])
-        for (const r of batchRows) {
+        for (const r of ((b as any).rows || [])) {
           allRows.push(r)
           if (allRows.length >= MAX_ROWS) { hasMore = false; break }
         }
@@ -2068,11 +2147,9 @@ export async function POST(req: Request, { params }: Params) {
       if (batchPage.length < PAGE) hasMore = false
       page++
     }
-    if (allRows.length >= MAX_ROWS) {
-      rowsSampled = true
-    }
+    if (allRows.length >= MAX_ROWS) rowsSampled = true
   }
-  const knownTotal = analytics?.totalRows || dataset.row_count || 0
+  const knownTotal = analytics?.totalRows || dataset.row_count || (flatCount || 0) || 0
 
   // Build a normalized key map so we can find columns regardless of case/spaces
   // e.g. schema field "general_experience_comments" matches row key "General Experience Comments"
@@ -2310,7 +2387,7 @@ export async function POST(req: Request, { params }: Params) {
       const cmtEnabled = cfg ? cfg.enabled : true
       if (!cmtEnabled) return
       const cmtSlides   = cfg ? Math.max(1, Math.min(3, cfg.slides)) : (audience === 'full' ? 3 : 2)
-      const perSlide    = 6
+      const perSlide    = 8  // 4x2 grid
       const maxComments = cmtSlides * perSlide
       const annotFields = commentAnnotations.length > 0
         ? selectedFields.filter(sf => commentAnnotations.includes(sf.field))
@@ -2326,7 +2403,14 @@ export async function POST(req: Request, { params }: Params) {
           return { text, demos, colorValue }
         })
         .filter(function(c) {
-          return c.text.length > 8 && !usedCommentTexts.has(c.text.slice(0, 120))
+          // Prefer comments that fill the box (≥80 chars)
+          return c.text.length >= 80 && !usedCommentTexts.has(c.text.slice(0, 120))
+        })
+        .sort(function(a, b) {
+          // Sort by length — prefer comments that are long enough to fill ~60% of box (80-300 chars)
+          const aFit = a.text.length >= 80 && a.text.length <= 300 ? 0 : Math.abs(a.text.length - 190)
+          const bFit = b.text.length >= 80 && b.text.length <= 300 ? 0 : Math.abs(b.text.length - 190)
+          return aFit - bFit
         })
       const commentItems: CommentItem[] = (function() {
         if (!commentColorField) return allCommentItems.slice(0, maxComments)
@@ -2361,8 +2445,11 @@ export async function POST(req: Request, { params }: Params) {
 
     // ── 4: Open-ended fields → theme grid → per-theme detail (one per theme) ──
     if (openEndedSelected.length > 0) {
-      buildSectionDivider(pptx, 'Open-ended Responses', 'Verbatim feedback, themes, and narrative analysis', openEndedSelected.length)
       for (const f of openEndedSelected) {
+        // Divider slide per OE field with prompt
+        const divPrompt = f.prompt || (f.label !== f.field ? f.label : 'Open-ended verbatim responses')
+        buildSectionDivider(pptx, f.label, divPrompt, 1)
+
         const ai         = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
         // Always recompute per-field so each OE field gets its own theme counts
         const fieldThemes = allRows.length > 0
@@ -2420,12 +2507,16 @@ export async function POST(req: Request, { params }: Params) {
       })
     }
 
-    // ── 7: Theme Impact / Key Driver Analysis ────────────────────────────
-    const scoreFields = selectedFields.filter(f => f.type === 'numeric' || (f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length >= 3))
+    // ── 7: Theme Impact / Key Driver Analysis (full team report only) ────
+    const impactScoreFields: string[] = body.impactScoreFields || []
+    const scoreFields = (impactScoreFields.length > 0
+      ? selectedFields.filter(f => impactScoreFields.indexOf(f.field) !== -1)
+      : selectedFields.filter(f => f.type === 'numeric' || (f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length >= 3))
+    ).slice(0, 2)
     const impactOE = impactOEFields.length > 0
       ? openEndedSelected.filter(f => impactOEFields.indexOf(f.field) !== -1)
       : []
-    if (themes.length >= 3 && scoreFields.length > 0 && impactOE.length > 0 && allRows.length >= 30) {
+    if (audience === 'full' && themes.length >= 3 && scoreFields.length > 0 && impactOE.length > 0 && allRows.length >= 30) {
       const themeInput = themes.map((t: any) => ({ id: t.id || '', name: t.name || '', keywords: t.keywords || [] }))
       for (const sf of scoreFields.slice(0, 2)) {
         for (const oe of impactOE) {

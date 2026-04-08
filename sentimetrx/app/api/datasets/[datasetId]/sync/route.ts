@@ -37,8 +37,9 @@ export async function POST(req: Request, { params }: Params) {
 
     if (studyErr || !study) return NextResponse.json({ error: 'Linked study not found', detail: studyErr?.message }, { status: 404 })
 
-    // Full resync: delete existing rows so we start clean
+    // Full resync: delete existing rows from both tables so we start clean
     if (fullSync) {
+      try { await service.from('dataset_rows_flat').delete().eq('dataset_id', params.datasetId) } catch {}
       await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
       await service.from('datasets').update({ row_count: 0, last_synced_at: null }).eq('id', params.datasetId)
       // Reload dataset with cleared values
@@ -98,6 +99,14 @@ export async function POST(req: Request, { params }: Params) {
       .insert({ dataset_id: dataset.id, rows, row_count: rows.length, batch_index: nextIndex, source_ref: 'sync:' + syncTimestamp })
 
     if (batchErr) return NextResponse.json({ error: 'Failed to insert rows', detail: batchErr.message }, { status: 500 })
+
+    // Also insert into flat table
+    const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
+      return { dataset_id: dataset.id, row_index: nextIndex * 200 + i, data: r }
+    })
+    if (flatRows.length > 0) {
+    try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
+    }
 
     const newTotal = dataset.row_count + rows.length
 

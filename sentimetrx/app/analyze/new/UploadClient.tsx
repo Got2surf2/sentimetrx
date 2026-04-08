@@ -263,8 +263,9 @@ export default function UploadClient() {
       const dsData = await dsRes.json()
       if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
 
-      // 2. Upload rows in safe-sized chunks
+      // 2. Upload rows in safe-sized chunks — track batches for rollback
       const chunks = splitChunks(filteredRows)
+      const uploadedBatches: number[] = []
       for (let i = 0; i < chunks.length; i++) {
         setUploadMsg('Uploading rows — batch ' + (i + 1) + ' of ' + chunks.length)
         const res = await fetch('/api/datasets/' + dsData.id + '/rows', {
@@ -273,9 +274,16 @@ export default function UploadClient() {
         })
         if (!res.ok) {
           const e = await res.json().catch(function() { return {} })
-          setError('Upload failed on batch ' + (i + 1) + ': ' + (e.error || 'server error'))
+          // Rollback: delete uploaded batches and the dataset itself
+          if (uploadedBatches.length > 0) {
+            try { await fetch('/api/datasets/' + dsData.id + '/rows', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch_indexes: uploadedBatches }) }) } catch {}
+          }
+          try { await fetch('/api/datasets/' + dsData.id, { method: 'DELETE' }) } catch {}
+          setError('Upload failed on batch ' + (i + 1) + ': ' + (e.error || 'server error') + '. Upload rolled back.')
           return
         }
+        const resData = await res.json().catch(function() { return {} })
+        if (resData.batch_index != null) uploadedBatches.push(resData.batch_index)
         setUploadPct(Math.round(((i + 1) / (chunks.length + 2)) * 100))
       }
 

@@ -345,6 +345,12 @@ export function anovaBL(res: any, f: string): string {
   return 'Significant difference in ' + f + ' across ' + res.k + ' groups (F=' + fmt2(res.F) + ', ' + fmtP(res.p) + '). Effect size is ' + eff + ' (\u03B7\u00B2=' + fmt2(res.eta2) + ').' + pwStr
 }
 
+export function mwBL(res: any, f: string, g1: string, g2: string): string {
+  if (!res) return ''
+  if (res.p >= 0.05) return 'No significant difference in ' + f + ' between ' + g1 + ' and ' + g2 + ' (U=' + fmtN(res.U) + ', z=' + fmt2(res.z) + ', ' + fmtP(res.p) + ').'
+  return 'Significant difference in ' + f + ' between ' + g1 + ' and ' + g2 + ' (U=' + fmtN(res.U) + ', z=' + fmt2(res.z) + ', ' + fmtP(res.p) + ').'
+}
+
 export function chiBL(res: any, rf: string, cf: string): string {
   if (!res) return ''
   var assoc = res.V < 0.1 ? 'negligible' : res.V < 0.3 ? 'weak' : res.V < 0.5 ? 'moderate' : 'strong'
@@ -393,6 +399,12 @@ export function anovaBL_naive(res: any, f: string): string {
   var sig = res.pairwise ? res.pairwise.filter(function(pw: any) { return pw.pAdj < 0.05 }) : []
   var pwStr = sig.length ? ' In particular, these pairs stand out: ' + sig.slice(0, 3).map(function(pw: any) { return pw.a + ' vs ' + pw.b }).join(', ') + '.' : ''
   return "The groups are genuinely different on " + f + " \u2014 which group someone's in explains a " + eff + ' chunk of the variation.' + pwStr
+}
+
+export function mwBL_naive(res: any, f: string, g1: string, g2: string): string {
+  if (!res) return ''
+  if (res.p >= 0.05) return 'We compared ' + g1 + ' and ' + g2 + ' on ' + f + " using a non-parametric test. There's no meaningful difference between them — the gap we see could just be random variation."
+  return 'There is a real difference in ' + f + ' between ' + g1 + ' and ' + g2 + '. This holds up even without assuming the data follows a bell curve.'
 }
 
 export function chiBL_naive(res: any, rf: string, cf: string): string {

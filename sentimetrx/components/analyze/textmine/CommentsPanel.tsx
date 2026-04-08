@@ -5,6 +5,8 @@
 // onBack navigates back to themes list.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { readSession, writeSession } from '@/lib/useSessionState'
+import LottieLoader from '@/components/ui/LottieLoader'
 import {
   Theme, THEME_PALETTE, commentMatchesTheme, highlightKeywords,
   evenSample, sentColor, sentBg,
@@ -108,7 +110,6 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   colorByValue?: number | null
   colorByFieldSchema?: SchemaField | null
 }) {
-  var [expanded, setExpanded] = useState(false)
   var [localHover, setLocalHover] = useState<string | null>(null)
   // Effective hover: local card hover takes priority, then parent header hover
   var effectiveHover = localHover || hoveredThemeId || null
@@ -215,12 +216,9 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   })
   // Combine all metadata into one list: ratings first, then others
   var allMeta = ratingFields.concat(otherFields)
-  // Show first row (up to ~5 items), rest behind expand
-  var FIRST_ROW_MAX = 5
-  var firstRowMeta = allMeta.slice(0, FIRST_ROW_MAX)
-  var overflowMeta = allMeta.slice(FIRST_ROW_MAX)
-
-  var hasMore = overflowMeta.length > 0
+  // Show all pills but limit to 2 visual rows by default using max-height + overflow
+  var [metaExpanded, setMetaExpanded] = useState(false)
+  var hasMoreMeta = allMeta.length > 3 // 3+ pills may exceed 2 rows depending on label width
 
   // Format metadata values — dates shown as mm/dd/yy
   var formatFieldValue = function(val: unknown, f: SchemaField): string {
@@ -283,7 +281,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
       </div>
 
       {/* Comment text with highlights */}
-      <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: (ratingFields.length > 0 || hasMore) ? 8 : 0 }}>
+      <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: (ratingFields.length > 0 || hasMoreMeta) ? 8 : 0 }}>
         {segments.map(function(seg, i) {
           if (seg.matched) {
             var sp = segPal(seg.text)
@@ -297,42 +295,33 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
         })}
       </div>
 
-      {/* Metadata: 1 row, then expand */}
-      {firstRowMeta.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 2 }}>
-          {firstRowMeta.map(function(f) {
-            var val = row.meta[f.field]
-            var isRating = f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
-            var color = isRating ? (fieldColorFor(val, f) || T.textMid) : null
-            return (
-              <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
-                <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span> {formatFieldValue(val, f)}
-              </span>
-            )
-          })}
-          {hasMore && (
-            <button onClick={function() { setExpanded(function(v) { return !v }) }}
-              style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: expanded ? T.accentBg : T.bg, color: expanded ? T.accent : T.textFaint, border: '1px solid ' + (expanded ? T.accentMid : T.border), cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-              {expanded ? '\u2212 Less' : '+ ' + overflowMeta.length + ' more'}
+      {/* Metadata pills — 2 rows max, expand to show all */}
+      {allMeta.length > 0 && (
+        <div style={{ position: 'relative', marginTop: 2 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', maxHeight: metaExpanded ? 'none' : 49, overflow: 'hidden' }}>
+            {allMeta.map(function(f) {
+              var val = row.meta[f.field]
+              var isRating = f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
+              var color = isRating ? (fieldColorFor(val, f) || T.textMid) : null
+              return (
+                <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
+                  <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span> {formatFieldValue(val, f)}
+                </span>
+              )
+            })}
+          </div>
+          {hasMoreMeta && !metaExpanded && (
+            <button onClick={function() { setMetaExpanded(true) }}
+              style={{ position: 'absolute', right: 0, bottom: 0, fontSize: 11, padding: '2px 8px', borderRadius: 10, background: T.bg, color: T.textFaint, border: '1px solid ' + T.border, cursor: 'pointer', fontWeight: 600, boxShadow: '-8px 0 6px -2px white' }}>
+              + more
             </button>
           )}
-        </div>
-      )}
-
-      {/* Expanded overflow metadata */}
-      {expanded && overflowMeta.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6, paddingTop: 6, borderTop: '1px solid ' + T.border }}>
-          {overflowMeta.map(function(f) {
-            var val = row.meta[f.field]
-            var isRating = f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
-            var color = isRating ? (fieldColorFor(val, f) || T.textMid) : null
-            return (
-              <span key={f.field} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: color ? color + '15' : T.bg, color: color || T.textMute, border: '1px solid ' + (color ? color + '40' : T.border), display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: isRating ? 700 : 500 }}>
-                <span style={{ opacity: 0.7, fontWeight: isRating ? 500 : 400 }}>{fieldAlias(f.field)}:</span>{' '}
-                <span style={{ fontWeight: 700 }}>{formatFieldValue(val, f)}</span>
-              </span>
-            )
-          })}
+          {hasMoreMeta && metaExpanded && (
+            <button onClick={function() { setMetaExpanded(false) }}
+              style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: T.accentBg, color: T.accent, border: '1px solid ' + T.accentMid, cursor: 'pointer', fontWeight: 600, marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+              {'\u2212'} Less
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -359,7 +348,10 @@ export default function CommentsPanel({
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
   const [colorField, setColorField] = useState('')
-  const [gridCols, setGridCols] = useState(2)
+  var _commKey = 'comments_' + datasetId
+  var _commSaved = readSession<any>(_commKey)
+  const [gridCols, setGridCols] = useState(_commSaved?.gridCols || 2)
+  useEffect(function() { writeSession(_commKey, { gridCols: gridCols }) }, [gridCols, _commKey])
 
   // Schema fields available for color-coding (numeric / rating types)
   const colorableFields = useMemo(function() {
@@ -443,9 +435,14 @@ export default function CommentsPanel({
   }, [parsedData, fields, metaCols])
 
   const matched = useMemo(function() {
-    var raw = showAllMode ? allRows : allRows.filter(function(r) {
-      return activeThemes.some(function(t) { return commentMatchesTheme(r.text, t) })
-    })
+    var raw = showAllMode
+      ? allRows.filter(function(r) {
+          // In showAllMode, hide unclassified comments (those matching no theme)
+          return allThemes.some(function(t) { return commentMatchesTheme(r.text, t) })
+        })
+      : allRows.filter(function(r) {
+          return activeThemes.some(function(t) { return commentMatchesTheme(r.text, t) })
+        })
 
     // sortClauses empty → Fisher-Yates shuffle keyed to shuffleSeed
     if (sortClauses.length === 0) {
@@ -689,7 +686,7 @@ export default function CommentsPanel({
         )}
         {summaryLoading && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.textMute, fontSize: 12 }}>
-            <Spinner /> Generating summary...
+            <LottieLoader size={20} /> Generating summary...
           </div>
         )}
         {aiSummary && (
@@ -867,7 +864,7 @@ export default function CommentsPanel({
             No responses matched this theme.
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)', gap: 10, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)', gap: 10, alignItems: 'stretch' }}>
         {visible.map(function(row, i) {
           var cbv = (colorField && row.meta[colorField] != null) ? parseFloat(String(row.meta[colorField])) : null
           return (

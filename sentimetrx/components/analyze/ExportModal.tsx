@@ -78,6 +78,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   const [themes,             setThemes]             = useState<any[]>([])
   const [includeThemeSlides, setIncludeThemeSlides] = useState(true)
   const [impactOEFields,     setImpactOEFields]     = useState<Set<string>>(new Set())
+  const [impactScoreFields,  setImpactScoreFields]  = useState<Set<string>>(new Set())
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
   const [shareState,   setShareState]   = useState<ShareState>('idle')
   const [shareUrl,     setShareUrl]     = useState('')
@@ -186,6 +187,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
       const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds) }
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
       if (impactOEFields.size > 0) body.impactOEFields = Array.from(impactOEFields)
+      if (impactScoreFields.size > 0) body.impactScoreFields = Array.from(impactScoreFields)
       if (activeFilterCount > 0) body.filters = serializeFilters(filters)
       if (mode === 'builder' && instructions.trim()) body.instructions = instructions.trim()
       const endpoint = format === 'html' ? '/api/datasets/' + datasetId + '/export/html' : '/api/datasets/' + datasetId + '/export/pptx'
@@ -488,7 +490,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
-                  <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} />
+                  {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
                   {error && <ErrorBox message={error} />}
                 </>
@@ -550,7 +552,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   </div>
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
-                  <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} />
+                  {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
 
                   {error && <ErrorBox message={error} />}
@@ -700,44 +702,75 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
   )
 }
 
-function ImpactFieldPicker({ fields, impactOEFields, setImpactOEFields }: {
+function ImpactFieldPicker({ fields, impactOEFields, setImpactOEFields, impactScoreFields, setImpactScoreFields }: {
   fields: SchemaField[]
   impactOEFields: Set<string>
   setImpactOEFields: (v: Set<string>) => void
+  impactScoreFields: Set<string>
+  setImpactScoreFields: (v: Set<string>) => void
 }) {
   const oeFields = fields.filter(function(f) { return f.type === 'open-ended' })
-  const hasScore = fields.some(function(f) { return f.type === 'numeric' || (f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length >= 3) })
-  if (oeFields.length === 0 || !hasScore) return null
+  const numFields = fields.filter(function(f) { return f.type === 'numeric' || (f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length >= 3) })
+  if (oeFields.length === 0 || numFields.length === 0) return null
 
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>
+    <div style={{ marginBottom: 12, padding: '12px 14px', background: '#FAFBFC', border: '1px solid #e5e7eb', borderRadius: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
         Key Driver Analysis
-        <span style={{ fontWeight: 400, textTransform: 'none', marginLeft: 6, color: '#9ca3af' }}>Which open-ended fields to include in theme impact regression</span>
+        <span style={{ fontWeight: 400, textTransform: 'none', marginLeft: 6, color: '#9ca3af' }}>Full team report only</span>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {oeFields.map(function(f) {
-          const active = impactOEFields.has(f.field)
-          return (
-            <button key={f.field} type="button"
-              onClick={function() {
-                var next = new Set(impactOEFields)
-                if (active) next.delete(f.field); else next.add(f.field)
-                setImpactOEFields(next)
-              }}
-              style={{
-                padding: '5px 12px', fontSize: 11, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
-                background: active ? '#EFF6FF' : '#f4f5f7', color: active ? '#1E40AF' : '#9ca3af',
-                border: '1px solid ' + (active ? '#93C5FD' : '#e5e7eb'),
-              }}>
-              {active ? '✓ ' : ''}{f.label || f.field}
-            </button>
-          )
-        })}
-        {impactOEFields.size === 0 && (
-          <span style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic' }}>No fields selected — Key Driver slides will be skipped</span>
-        )}
+
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Outcome variables (score fields):</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {numFields.map(function(f) {
+            const active = impactScoreFields.has(f.field)
+            return (
+              <button key={f.field} type="button"
+                onClick={function() {
+                  var next = new Set(impactScoreFields)
+                  if (active) next.delete(f.field); else next.add(f.field)
+                  setImpactScoreFields(next)
+                }}
+                style={{
+                  padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                  background: active ? '#F0FDF4' : '#f4f5f7', color: active ? '#15803D' : '#9ca3af',
+                  border: '1px solid ' + (active ? '#86EFAC' : '#e5e7eb'),
+                }}>
+                {active ? '✓ ' : ''}{f.label || f.field}
+              </button>
+            )
+          })}
+        </div>
       </div>
+
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Open-ended predictor fields:</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {oeFields.map(function(f) {
+            const active = impactOEFields.has(f.field)
+            return (
+              <button key={f.field} type="button"
+                onClick={function() {
+                  var next = new Set(impactOEFields)
+                  if (active) next.delete(f.field); else next.add(f.field)
+                  setImpactOEFields(next)
+                }}
+                style={{
+                  padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                  background: active ? '#EFF6FF' : '#f4f5f7', color: active ? '#1E40AF' : '#9ca3af',
+                  border: '1px solid ' + (active ? '#93C5FD' : '#e5e7eb'),
+                }}>
+                {active ? '✓ ' : ''}{f.label || f.field}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {(impactOEFields.size === 0 || impactScoreFields.size === 0) && (
+        <div style={{ fontSize: 10, color: '#9ca3af', fontStyle: 'italic', marginTop: 6 }}>Select at least one outcome and one predictor — or leave empty to skip Key Driver slides</div>
+      )}
     </div>
   )
 }

@@ -102,9 +102,21 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   const freqMap: Record<string, number> = {}
   rawWords.forEach(function(w) { freqMap[w] = (freqMap[w] || 0) + 1 })
 
+  // Include all theme keywords that have matches, PLUS ensure every theme with count>0
+  // on the themes page has at least its top keyword represented (even if local freq is low)
   const allWords: WordEntry[] = Object.entries(wordThemeMap)
     .filter(function([, v]) { return v.freq > 0 })
     .map(function([w, v]) { return { word: w, freq: v.freq, themeIdx: v.themeIdx } })
+
+  // Ensure every theme with count>0 on the themes page has at least one keyword in the cloud
+  const representedThemes = new Set(allWords.map(function(w) { return w.themeIdx }))
+  themes.forEach(function(t, idx) {
+    if (t.count > 0 && !representedThemes.has(idx)) {
+      // Pick the first keyword and give it the theme's count as frequency
+      var topKw = (t.keywords || [])[0]
+      if (topKw) allWords.push({ word: topKw.toLowerCase(), freq: Math.max(1, t.count), themeIdx: idx })
+    }
+  })
 
   const covered = new Set(Object.keys(wordThemeMap))
   Object.entries(freqMap).sort(function(a, b) { return b[1] - a[1] }).slice(0, 20).forEach(function([w, f]) {
@@ -130,10 +142,24 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
 
   const total = parsedData.filter(function(r) { return String(r[activeField] || '').trim().length > 0 }).length
 
-  // Filter words by 3% threshold unless showAll
+  // Filter themes by 3% threshold (same logic as Themes page) unless showAll
   var MIN_PCT = 3
-  var filteredWords = showAll ? allWords : allWords.filter(function(w) { return total > 0 && (w.freq / total * 100) >= MIN_PCT })
-
+  var visibleThemeIdxs = new Set(
+    showAll
+      ? themes.map(function(_, i) { return i })
+      : themes.map(function(t, i) { return { idx: i, pct: total > 0 ? t.count / total * 100 : 0 } })
+          .filter(function(x) { return x.pct >= MIN_PCT })
+          .map(function(x) { return x.idx })
+  )
+  // Fallback: if no themes pass threshold, show top 5
+  if (!visibleThemeIdxs.size && !showAll) {
+    ;[...themes].map(function(t, i) { return { idx: i, count: t.count } })
+      .sort(function(a, b) { return b.count - a.count })
+      .slice(0, 5)
+      .forEach(function(x) { visibleThemeIdxs.add(x.idx) })
+  }
+  // Filter words to only those belonging to visible themes (or non-theme words)
+  var filteredWords = allWords.filter(function(w) { return w.themeIdx < 0 || visibleThemeIdxs.has(w.themeIdx) })
   if (!filteredWords.length && !showAll) filteredWords = allWords.slice(0, 10) // fallback: show top 10
 
   return (
@@ -146,8 +172,8 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
             <input type="checkbox" checked={showAll} onChange={function() { setShowAll(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
             Show all
           </label>
-          {!showAll && filteredWords.length < allWords.length && (
-            <span style={{ fontSize: 10, color: T.textFaint }}>({allWords.length - filteredWords.length} below {MIN_PCT}% hidden)</span>
+          {!showAll && visibleThemeIdxs.size < themes.length && (
+            <span style={{ fontSize: 10, color: T.textFaint }}>({themes.length - visibleThemeIdxs.size} theme{themes.length - visibleThemeIdxs.size !== 1 ? 's' : ''} below {MIN_PCT}% hidden)</span>
           )}
           <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
             {(['frequency', 'grouped'] as const).map(function(mode) {
@@ -176,6 +202,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
         <div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
             {themes.map(function(t, idx) {
+              if (!visibleThemeIdxs.has(idx)) return null
               const pal = themeColors[idx] || THEME_PALETTE[0]
               const isOn = !activeThemes || activeThemes.has(idx)
               const pct = total > 0 ? Math.round(t.count / total * 100) : 0
@@ -221,8 +248,9 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {[...themes].sort(function(a, b) { return b.count - a.count }).map(function(t) {
             const idx = themes.indexOf(t)
+            if (!visibleThemeIdxs.has(idx)) return null
             const pal = themeColors[idx] || THEME_PALETTE[0]
-            const tWords = filteredWords.filter(function(w) { return w.themeIdx === idx }).sort(function(a, b) { return b.freq - a.freq })
+            const tWords = allWords.filter(function(w) { return w.themeIdx === idx }).sort(function(a, b) { return b.freq - a.freq })
             if (!tWords.length) return null
             const pct = total > 0 ? Math.round(t.count / total * 100) : 0
             return (

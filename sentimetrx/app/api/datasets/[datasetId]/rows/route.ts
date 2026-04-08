@@ -220,6 +220,14 @@ export async function POST(req: Request, { params }: Params) {
 
   if (insertResult.error) return NextResponse.json({ error: insertResult.error.message }, { status: 500 })
 
+  // Also insert into flat table for fast queries
+  const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
+    return { dataset_id: params.datasetId, row_index: nextIndex * 200 + i, data: r }
+  })
+  if (flatRows.length > 0) {
+    try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
+  }
+
   const countResult = await service
     .from('dataset_rows')
     .select('row_count')
@@ -235,4 +243,44 @@ export async function POST(req: Request, { params }: Params) {
     .eq('id', params.datasetId)
 
   return NextResponse.json({ ok: true, batch_index: nextIndex, row_count: rows.length, total_rows: total }, { status: 201 })
+}
+
+// DELETE /api/datasets/[datasetId]/rows — rollback batches by index
+export async function DELETE(req: Request, { params }: Params) {
+  const supabase = createClient()
+  const auth = await authCheck(supabase)
+  if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const body = await req.json().catch(function() { return {} })
+  const batchIndexes: number[] = body.batch_indexes
+  if (!Array.isArray(batchIndexes) || batchIndexes.length === 0) {
+    return NextResponse.json({ error: 'batch_indexes must be a non-empty array' }, { status: 400 })
+  }
+
+  const service = createServiceRoleClient()
+
+  // Delete from batched table
+  await service.from('dataset_rows').delete()
+    .eq('dataset_id', params.datasetId)
+    .in('batch_index', batchIndexes)
+
+  // Delete from flat table (each batch used row_index = batchIndex * 200 + i)
+  for (var bi = 0; bi < batchIndexes.length; bi++) {
+    var startIdx = batchIndexes[bi] * 200
+    await service.from('dataset_rows_flat').delete()
+      .eq('dataset_id', params.datasetId)
+      .gte('row_index', startIdx)
+      .lt('row_index', startIdx + 200)
+  }
+
+  // Recalculate row count
+  const countResult = await service.from('dataset_rows').select('row_count').eq('dataset_id', params.datasetId)
+  const total = (countResult.data || []).reduce(function(sum: number, b: { row_count: number }) { return sum + (b.row_count || 0) }, 0)
+  await service.from('datasets').update({ row_count: total, updated_at: new Date().toISOString() }).eq('id', params.datasetId)
+
+  return NextResponse.json({ ok: true, deleted_batches: batchIndexes.length, total_rows: total })
 }

@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
+import { readSession, writeSession } from '@/lib/useSessionState'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 // Dynamic Plotly import
@@ -384,9 +385,43 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var catF3 = config.category; if (!catF3) return <EmptyChart msg="Assign a category field above." />
     var s3 = fs[catF3]; if (!s3 || !s3.counts) return <EmptyChart msg="No data." />
     var f3Obj = schema.find(function(f) { return f.field === catF3 })
-    var e3Keys = smartOrder(Object.keys(s3.counts), f3Obj?.remapping).slice(0, 20)
-    var e3 = e3Keys.map(function(k) { return [k, s3.counts![k] || 0] as [string, number] })
-    return <PlotlyChart traces={[{ x: e3.map(function(e, i) { return (i % 5) * 2 }), y: e3.map(function(e, i) { return Math.floor(i / 5) * 2 }), mode: 'markers+text', marker: { size: e3.map(function(e) { return Math.max(20, Math.sqrt(e[1]) * 4) }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.8, line: { color: e3.map(function(_, i) { return pal[i % pal.length] + '40' }), width: 1 } }, text: e3.map(function(e) { return e[0] + '\n' + e[1] }), textposition: 'center', textfont: { size: 10 } }]} layout={{ showlegend: false, xaxis: { visible: false }, yaxis: { visible: false }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
+    var e3Keys = smartOrder(Object.keys(s3.counts), f3Obj?.remapping).slice(0, 25)
+    var e3 = e3Keys.map(function(k) { return [k, s3.counts![k] || 0] as [string, number] }).sort(function(a, b) { return b[1] - a[1] })
+    // Circle-pack layout: place largest first, then find best position for each subsequent circle
+    var maxVal = Math.max.apply(null, e3.map(function(e) { return e[1] })) || 1
+    var radii = e3.map(function(e) { return 15 + Math.sqrt(e[1] / maxVal) * 55 })
+    var placed: { x: number; y: number; r: number }[] = []
+    e3.forEach(function(_, i) {
+      var r = radii[i]
+      if (i === 0) { placed.push({ x: 0, y: 0, r: r }); return }
+      // Try candidate positions around each placed circle
+      var bestX = 0, bestY = 0, bestDist = Infinity
+      for (var pi = 0; pi < placed.length; pi++) {
+        for (var angle = 0; angle < 360; angle += 15) {
+          var rad = angle * Math.PI / 180
+          var cx = placed[pi].x + Math.cos(rad) * (placed[pi].r + r + 2)
+          var cy = placed[pi].y + Math.sin(rad) * (placed[pi].r + r + 2)
+          var overlaps = false
+          for (var j = 0; j < placed.length; j++) {
+            var dx = cx - placed[j].x, dy = cy - placed[j].y
+            if (Math.sqrt(dx * dx + dy * dy) < placed[j].r + r + 1) { overlaps = true; break }
+          }
+          if (!overlaps) {
+            var dist = Math.sqrt(cx * cx + cy * cy)
+            if (dist < bestDist) { bestDist = dist; bestX = cx; bestY = cy }
+          }
+        }
+      }
+      placed.push({ x: bestX, y: bestY, r: r })
+    })
+    var total3 = e3.reduce(function(s, e) { return s + e[1] }, 0)
+    return <PlotlyChart traces={[{
+      x: placed.map(function(p) { return p.x }), y: placed.map(function(p) { return p.y }),
+      mode: 'markers+text' as const,
+      marker: { size: radii.map(function(r) { return r * 2 }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.85, line: { color: e3.map(function(_, i) { return pal[i % pal.length] }), width: 1.5 }, sizemode: 'diameter' as const },
+      text: e3.map(function(e) { var pct = total3 > 0 ? Math.round(e[1] / total3 * 100) : 0; return e[0] + '\n' + e[1].toLocaleString() + ' (' + pct + '%)' }),
+      textposition: 'center' as const, textfont: { size: radii.map(function(r) { return Math.max(8, Math.min(13, r * 0.28)) }) }, hoverinfo: 'text' as const
+    }]} layout={{ showlegend: false, xaxis: { visible: false, zeroline: false }, yaxis: { visible: false, zeroline: false, scaleanchor: 'x' }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'waterfall') {
@@ -405,12 +440,12 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var bField = config.field; if (!bField) return <EmptyChart msg="Assign a measure field above." />
     var splitByField = config.splitBy || ''
     if (splitByField) {
-      return <BulletSplitInner analytics={analytics} schema={schema} datasetId={datasetId} measureField={bField} splitByField={splitByField} />
+      return <BulletSplitInner analytics={analytics} schema={schema} datasetId={datasetId} measureField={bField} splitByField={splitByField} smartAxes={useSmartOrder} colors={pal} />
     }
     var bs = fs[bField]; if (!bs || bs.avg == null) return <EmptyChart msg="No numeric data." />
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, maxWidth: 320, margin: '0 auto' }}>
-        <GaugeCard label={flByName(bField, schema)} avg={bs.avg || 0} median={bs.median || bs.avg || 0} min={bs.min || 0} max={bs.max || 100} n={bs.nonNull || 0} overallAvg={null} />
+        <GaugeCard label={flByName(bField, schema)} avg={bs.avg || 0} median={bs.median || bs.avg || 0} min={bs.min || 0} max={bs.max || 100} n={bs.nonNull || 0} overallAvg={null} accentColor={primaryColor} />
       </div>
     )
   }
@@ -522,7 +557,7 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
 
   // Build crosstab: category × colorBy
@@ -591,12 +626,13 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
   var isStackedCount = barMode !== 'percent'
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(cats) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h', y: -0.2, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(cats) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
 
-function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: string; avg: number; median: number; min: number; max: number; n: number; overallAvg: number | null }) {
+function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }: { label: string; avg: number; median: number; min: number; max: number; n: number; overallAvg: number | null; accentColor?: string }) {
+  var gaugeAccent = accentColor || T.accent
   var range = max - min || 1
   var pct = Math.max(0, Math.min(1, (avg - min) / range))
   var angle = -90 + pct * 180 // -90 to 90 degrees
@@ -631,10 +667,10 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: str
         {(function() {
           var a = (angle - 90) * Math.PI / 180
           var nx = gx + (r - 22) * Math.cos(a), ny = gy + (r - 22) * Math.sin(a)
-          return <line x1={gx} y1={gy} x2={nx} y2={ny} stroke={T.accent} strokeWidth={2.5} strokeLinecap="round" />
+          return <line x1={gx} y1={gy} x2={nx} y2={ny} stroke={gaugeAccent} strokeWidth={2.5} strokeLinecap="round" />
         })()}
         {/* Center dot */}
-        <circle cx={gx} cy={gy} r={4} fill={T.accent} />
+        <circle cx={gx} cy={gy} r={4} fill={gaugeAccent} />
         {/* Median marker */}
         {(function() {
           var mPct = Math.max(0, Math.min(1, (median - min) / range))
@@ -676,7 +712,7 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg }: { label: str
 
 function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) {
@@ -716,21 +752,47 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
   return <PlotlyChart traces={traces} layout={{ yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
 }
 
-function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string }) {
+function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField, smartAxes, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string; smartAxes?: boolean; colors?: string[] }) {
+  var bulletPal = colors || CHART_COLORS
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  var [showAllKPI, setShowAllKPI] = useState(false)
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
 
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) {
-    var grp = String(r[splitByField] || '(blank)').trim()
+    var grp = String(r[splitByField] || '').trim()
     var val = parseFloat(String(r[measureField] || ''))
-    if (!grp || isNaN(val)) return
+    if (!grp || grp === '(blank)' || grp === '' || isNaN(val)) return
     if (!groups[grp]) groups[grp] = []
     groups[grp].push(val)
   })
 
+  // Filter out groups below 3% of total unless showAll — only for themes (many categories)
+  var totalKPI = Object.values(groups).reduce(function(s, v) { return s + v.length }, 0)
+  if (!showAllKPI && splitByField === '__themes__' && totalKPI > 0) {
+    var filtered: Record<string, number[]> = {}
+    Object.entries(groups).forEach(function(e) {
+      if (e[1].length / totalKPI >= 0.03) filtered[e[0]] = e[1]
+    })
+    groups = filtered
+  }
+
   var splitFieldObjB = schema.find(function(f) { return f.field === splitByField })
-  var groupKeys = smartOrder(Object.keys(groups), splitFieldObjB?.remapping)
+  var groupKeys: string[]
+  if (smartAxes) {
+    // Smart axes = alphabetical
+    groupKeys = smartOrder(Object.keys(groups), splitFieldObjB?.remapping)
+  } else if (splitByField === '__themes__') {
+    // Themes: sort by frequency (count) descending
+    groupKeys = Object.keys(groups).sort(function(a, b) { return groups[b].length - groups[a].length })
+  } else {
+    // Non-smart, non-theme: sort by average value descending
+    groupKeys = Object.keys(groups).sort(function(a, b) {
+      var avgA = groups[a].reduce(function(s, v) { return s + v }, 0) / groups[a].length
+      var avgB = groups[b].reduce(function(s, v) { return s + v }, 0) / groups[b].length
+      return avgB - avgA
+    })
+  }
   if (!groupKeys.length) return <EmptyChart msg="No data for this combination." />
 
   // Overall stats for vs comparison
@@ -745,12 +807,29 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
   })
   var totalNB = stats.reduce(function(t, s) { return t + s.n }, 0)
 
+  var hiddenCount = totalKPI > 0 ? Object.keys(groups).length : 0  // groups after filter
+  var preFilterCount = rows.reduce(function(s, r) { var g = String(r[splitByField] || '').trim(); return g && g !== '(blank)' ? s : s }, Object.keys(groups).length)
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-      {stats.map(function(s) {
-        var pctB = totalNB > 0 ? Math.round(s.n / totalNB * 100) : 0
-        return <GaugeCard key={s.label} label={s.label + ' (' + pctB + '%)'} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} />
-      })}
+    <div>
+      {splitByField === '__themes__' && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+          <input type="checkbox" checked={showAllKPI} onChange={function() { setShowAllKPI(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+          Show all
+        </label>
+        {!showAllKPI && (
+          <span style={{ fontSize: 10, color: T.textFaint }}>Themes below 3% hidden</span>
+        )}
+      </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+        {stats.map(function(s) {
+          var pctB = totalNB > 0 ? Math.round(s.n / totalNB * 100) : 0
+          var si = stats.indexOf(s)
+          return <GaugeCard key={s.label} label={s.label + ' (' + pctB + '%)'} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} accentColor={bulletPal[si % bulletPal.length]} />
+        })}
+      </div>
     </div>
   )
 }
@@ -803,7 +882,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     }
   }, [mode, loaded, selectedOE, scoreField])
 
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
 
   var groupField = groupByField || (hasThemes ? '__themes__' : '')
   if (!groupField) return <EmptyChart msg="Add themes in TextMine, or assign a categorical 'Group by' field to see score drivers." />
@@ -965,15 +1044,15 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
         return imp ? imp.coefficient : 0
       })
       coeffs.forEach(function(c) { if (Math.abs(c) > maxAbs) maxAbs = Math.abs(c) })
-      var barColors = coeffs.map(function(c) {
-        var imp = r.impacts.find(function(i: any) { return i.themeName === themeNames[coeffs.indexOf(c)] })
-        var sig = imp ? imp.significant : false
-        return sig ? fieldColors[ri % fieldColors.length] : fieldColors[ri % fieldColors.length] + '40'
+      var baseColor = fieldColors[ri % fieldColors.length]
+      var barOpacities = coeffs.map(function(c, ci) {
+        var imp = r.impacts.find(function(i: any) { return i.themeName === themeNames[ci] })
+        return imp && imp.significant ? 1.0 : 0.3
       })
       traces.push({
         type: 'bar' as const, orientation: 'h' as const,
         y: themeNames, x: coeffs, name: r.fieldLabel || ('Field ' + (ri + 1)),
-        marker: { color: barColors },
+        marker: { color: baseColor, opacity: barOpacities },
         text: coeffs.map(function(c) { return (c >= 0 ? '+' : '') + c.toFixed(1) }),
         textposition: 'outside' as const, textfont: { size: 9 },
         hovertemplate: '<b>%{y}</b><br>Coefficient: %{x:+.2f}<br>' + (r.fieldLabel || '') + '<extra></extra>',
@@ -1174,7 +1253,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
 
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
@@ -1187,7 +1266,7 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
   rows.forEach(function(r) { var rv = String(r[rowField] || '').trim(), cv = String(r[colField] || '').trim(); if (!rv || !cv) return; rSet.add(rv); cSet.add(cv); if (!grid[rv]) grid[rv] = {}; grid[rv][cv] = (grid[rv][cv] || 0) + 1 })
   var rowFieldObj = schema.find(function(f) { return f.field === rowField })
@@ -1200,17 +1279,60 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  var [smooth, setSmooth] = useState(false)
+  var [window, setWindow] = useState(7)
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var grouped: Record<string, number[]> = {}
   rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
   var dates = Object.keys(grouped).sort()
   var yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
-  return <PlotlyChart traces={[{ x: dates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: T.blue, width: 2 }, marker: { size: 5 } }]} layout={{ xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' } }} />
+
+  // Moving average smoothing
+  var smoothed = yVals
+  if (smooth && yVals.length > window) {
+    smoothed = yVals.map(function(_, i) {
+      var start = Math.max(0, i - Math.floor(window / 2))
+      var end = Math.min(yVals.length, i + Math.ceil(window / 2))
+      var slice = yVals.slice(start, end)
+      return slice.reduce(function(a, b) { return a + b }, 0) / slice.length
+    })
+  }
+
+  var traces: any[] = []
+  if (smooth) {
+    traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'markers', marker: { color: T.blue, size: 4, opacity: 0.3 }, name: 'Raw', showlegend: true })
+    traces.push({ x: dates, y: smoothed, type: 'scatter', mode: 'lines', line: { color: T.accent, width: 3, shape: 'spline' }, name: window + '-day avg', showlegend: true })
+  } else {
+    traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: T.blue, width: 2 }, marker: { size: 5 } })
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+          <input type="checkbox" checked={smooth} onChange={function() { setSmooth(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+          Smooth curve
+        </label>
+        {smooth && (
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: T.textFaint }}>Window:</span>
+            {[3, 7, 14, 30].map(function(w) {
+              return <button key={w} onClick={function() { setWindow(w) }}
+                style={{ padding: '2px 8px', fontSize: 10, borderRadius: 12, border: '1px solid ' + (window === w ? T.accent : T.border), background: window === w ? T.accentBg : 'transparent', color: window === w ? T.accent : T.textMid, cursor: 'pointer', fontWeight: window === w ? 700 : 400 }}>
+                {w}d
+              </button>
+            })}
+          </div>
+        )}
+      </div>
+      <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: smooth ? { orientation: 'h' as const, y: -0.15 } : undefined }} />
+    </div>
+  )
 }
 
 function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
   var ganttFieldObj = schema.find(function(f) { return f.field === catField })
@@ -1222,7 +1344,7 @@ function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; sc
   var { rows: allRows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   var [page, setPage] = useState(0)
   var PAGE = 50
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} /></div>
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var total = allRows.length
   var rows = allRows.slice(page * PAGE, (page + 1) * PAGE)
   // Use allFields from enrichment context — includes __themes__ and __mapped__
@@ -1262,21 +1384,34 @@ interface SavedChart { id: string; name: string; chartType: string; config: Reco
 
 export default function ChartsModule({ datasetId, schema, analytics, themeModel }: Props) {
   var rawOpenFields = schema.fields.filter(function(f) { return f.type === 'open-ended' })
-  var [themeSourceField, setThemeSourceField] = useState(function() { return (themeModel && themeModel.fieldName) || rawOpenFields[0]?.field || '' })
-  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(null)
+  var _themeKey = 'chartTheme_' + datasetId
+  var _savedTheme = readSession<any>(_themeKey)
+  var [themeSourceField, setThemeSourceField] = useState(function() { return _savedTheme?.themeSourceField || (themeModel && themeModel.fieldName) || rawOpenFields[0]?.field || '' })
+  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(function() { return _savedTheme?.activeThemeNames ? new Set(_savedTheme.activeThemeNames) : null })
   var [enrichKey, setEnrichKey] = useState(0)
+
+  useEffect(function() {
+    writeSession(_themeKey, { themeSourceField: themeSourceField, activeThemeNames: activeThemeNames ? Array.from(activeThemeNames) : null })
+  }, [themeSourceField, activeThemeNames, _themeKey])
 
   // Set enrichment context for useRows — must be before any inner component renders
   _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames }
 
-  var [activeChart, setActiveChart] = useState('bar')
+  var [activeChart, setActiveChart] = useState(function() { return readSession<string>('activeChart_' + datasetId) || 'bar' })
+  useEffect(function() { writeSession('activeChart_' + datasetId, activeChart) }, [activeChart, datasetId])
   var [hovered, setHovered] = useState<string | null>(null)
-  var [barMode, setBarMode] = useState<'count' | 'percent'>('count')
-  var [barStack, setBarStack] = useState(false)
-  var [barOrient, setBarOrient] = useState<'v' | 'h'>('v')
-  var [smartAxes, setSmartAxes] = useState(true)
-  var [activePalette, setActivePalette] = useState('hermes')
+  // Display options — restore from sessionStorage
+  var _displayKey = 'chartDisplay_' + datasetId
+  var _savedDisplay = readSession<any>(_displayKey)
+  var [barMode, setBarMode] = useState<'count' | 'percent'>(_savedDisplay?.barMode || 'count')
+  var [barStack, setBarStack] = useState(_savedDisplay?.barStack || false)
+  var [barOrient, setBarOrient] = useState<'v' | 'h'>(_savedDisplay?.barOrient || 'v')
+  var [smartAxes, setSmartAxes] = useState(_savedDisplay?.smartAxes !== undefined ? _savedDisplay.smartAxes : true)
+  var [activePalette, setActivePalette] = useState(_savedDisplay?.activePalette || 'hermes')
   var [showPalettePicker, setShowPalettePicker] = useState(false)
+  useEffect(function() {
+    writeSession(_displayKey, { barMode: barMode, barStack: barStack, barOrient: barOrient, smartAxes: smartAxes, activePalette: activePalette })
+  }, [barMode, barStack, barOrient, smartAxes, activePalette, _displayKey])
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
   var hasData = analytics && analytics.totalRows > 0
@@ -1330,8 +1465,10 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
     }
   }
 
-  // Chart config state — cached per chart type
-  var [chartConfigs, setChartConfigs] = useState<Record<string, Record<string, string>>>({})
+  // Chart config state — cached per chart type, persisted in sessionStorage across module switches
+  var _configKey = 'chartConfigs_' + datasetId
+  var [chartConfigs, setChartConfigs] = useState<Record<string, Record<string, string>>>(function() { return readSession<Record<string, Record<string, string>>>(_configKey) || {} })
+  useEffect(function() { writeSession(_configKey, chartConfigs) }, [chartConfigs, _configKey])
 
   // Update a specific slot in a chart config
   var updateSlot = function(slotKey: string, value: string) {
@@ -1580,61 +1717,6 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
             <div style={{ fontSize: 10, color: T.textFaint, fontStyle: 'italic', marginTop: 2 }}>Drag to slot or use dropdown below</div>
           </div>
 
-          {/* Themes section — source picker + toggle chips */}
-          {hasThemes && (function() {
-            var allThemesList: any[] = themeModel.themes || []
-            return (
-              <div style={{ borderBottom: '1px solid ' + T.border }}>
-                <div style={{ padding: '8px 12px' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: T.purple, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6 }}>
-                    {'\uD83C\uDFF7'} Themes
-                  </div>
-                  {rawOpenFields.length > 1 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 3 }}>Source verbatim:</div>
-                      <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setEnrichKey(function(k) { return k + 1 }) }}
-                        style={{ width: '100%', padding: '5px 8px', fontSize: 11, border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.textMid, outline: 'none', cursor: 'pointer' }}>
-                        {rawOpenFields.map(function(f) { return <option key={f.field} value={f.field}>{f.label || f.field}</option> })}
-                      </select>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <span style={{ fontSize: 10, color: T.textFaint }}>Filter themes:</span>
-                    <div style={{ display: 'flex', gap: 3 }}>
-                      <button onClick={function() { setActiveThemeNames(null); setEnrichKey(function(k) { return k + 1 }) }}
-                        style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>All</button>
-                      <button onClick={function() { setActiveThemeNames(new Set()); setEnrichKey(function(k) { return k + 1 }) }}
-                        style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>None</button>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                    {allThemesList.map(function(t: any) {
-                      var name = t.name || t.label
-                      var isActive = !activeThemeNames || activeThemeNames.has(name)
-                      var color = t.color || T.accent
-                      return (
-                        <button key={name} onClick={function() {
-                          var next: Set<string>
-                          if (!activeThemeNames) {
-                            next = new Set(allThemesList.map(function(x: any) { return x.name || x.label }).filter(function(n: string) { return n !== name }))
-                          } else {
-                            next = new Set(activeThemeNames)
-                            if (next.has(name)) next.delete(name); else next.add(name)
-                          }
-                          setActiveThemeNames(next.size === allThemesList.length ? null : next)
-                          setEnrichKey(function(k) { return k + 1 })
-                        }}
-                        style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, border: '1px solid ' + (isActive ? color : T.border), background: isActive ? color + '22' : 'transparent', color: isActive ? color : T.textFaint, cursor: 'pointer', fontWeight: isActive ? 600 : 400, transition: 'all .1s' }}>
-                          {name}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
-
           {/* Field groups — filtered to types accepted by the current chart's slots */}
           {(function() {
             var slots = CHART_SLOTS[activeChart] || []
@@ -1642,6 +1724,55 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
             var accepted = new Set(slots.flatMap(function(s) { return s.accepts }))
             var visible = accepted.has('any') ? allFields : allFields.filter(function(f) { return accepted.has(f.type) })
             return <ChartFieldGroups fields={visible} currentConfig={currentConfig} />
+          })()}
+
+          {/* Theme filter — at bottom of sidebar */}
+          {hasThemes && (function() {
+            var allThemesList: any[] = themeModel.themes || []
+            return (
+              <div style={{ borderTop: '1px solid ' + T.border, padding: '8px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.07em', textTransform: 'uppercase' }}>{'\uD83C\uDFF7'} Filter Themes</span>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    <button onClick={function() { setActiveThemeNames(null); setEnrichKey(function(k) { return k + 1 }) }}
+                      style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>All</button>
+                    <button onClick={function() { setActiveThemeNames(new Set()); setEnrichKey(function(k) { return k + 1 }) }}
+                      style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, border: '1px solid ' + T.border, background: 'transparent', color: T.textMute, cursor: 'pointer' }}>None</button>
+                  </div>
+                </div>
+                {rawOpenFields.length > 1 && (
+                  <div style={{ marginBottom: 6 }}>
+                    <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setEnrichKey(function(k) { return k + 1 }) }}
+                      style={{ width: '100%', padding: '4px 8px', fontSize: 11, border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.textMid, outline: 'none', cursor: 'pointer' }}>
+                      {rawOpenFields.map(function(f) { return <option key={f.field} value={f.field}>{f.label || f.field}</option> })}
+                    </select>
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {allThemesList.map(function(t: any) {
+                    var name = t.name || t.label
+                    var isActive = !activeThemeNames || activeThemeNames.has(name)
+                    var color = t.color || T.accent
+                    return (
+                      <button key={name} onClick={function() {
+                        var next: Set<string>
+                        if (!activeThemeNames) {
+                          next = new Set(allThemesList.map(function(x: any) { return x.name || x.label }).filter(function(n: string) { return n !== name }))
+                        } else {
+                          next = new Set(activeThemeNames)
+                          if (next.has(name)) next.delete(name); else next.add(name)
+                        }
+                        setActiveThemeNames(next.size === allThemesList.length ? null : next)
+                        setEnrichKey(function(k) { return k + 1 })
+                      }}
+                      style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, border: '1px solid ' + (isActive ? color : T.border), background: isActive ? color + '22' : 'transparent', color: isActive ? color : T.textFaint, cursor: 'pointer', fontWeight: isActive ? 600 : 400, transition: 'all .1s' }}>
+                        {name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
           })()}
         </div>
 
@@ -1695,7 +1826,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
           {hasData && currentSlots.some(function(s) { return s.accepts.includes('categorical') && currentConfig[s.key] }) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: smartAxes ? T.accent : T.textMute, cursor: 'pointer' }}>
-                <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+                <input type="checkbox" checked={smartAxes} onChange={function() { setSmartAxes(function(v: boolean) { return !v }) }} style={{ accentColor: T.accent }} />
                 Smart Axes
               </label>
               {smartAxes && (function() {
