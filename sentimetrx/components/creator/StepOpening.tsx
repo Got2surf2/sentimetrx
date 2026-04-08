@@ -462,9 +462,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
       ratingType:             type,
       ratingPrompt:           preset.defaultPrompt,
       ratingScale:            newScale,
-      experienceRatingLabel:  c.experienceRatingLabel && !Object.values(RATING_PRESETS).some(p => p.dashboardLabel === c.experienceRatingLabel)
-                                ? c.experienceRatingLabel  // user has a custom label — keep it
-                                : preset.dashboardLabel,
+      experienceRatingLabel:  preset.dashboardLabel,
       experienceFollowUp:     newFollowUp,
     })
   }

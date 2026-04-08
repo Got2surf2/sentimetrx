@@ -275,15 +275,32 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => updateConfig({ allowMultipleResponses: !draft.config.allowMultipleResponses })}
-            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.allowMultipleResponses ? 'bg-orange-500' : 'bg-gray-200'}`}
+            onClick={() => updateConfig({ allowMultipleResponses: draft.config.allowMultipleResponses === false ? true : false })}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.allowMultipleResponses === false ? 'bg-orange-500' : 'bg-gray-200'}`}
           >
-            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.allowMultipleResponses ? 'translate-x-5' : 'translate-x-0'}`} />
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.allowMultipleResponses === false ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
           <span className="text-sm text-gray-600">
-            {draft.config.allowMultipleResponses
-              ? <><strong className="text-gray-800">Multiple responses allowed</strong> — same device can submit again</>
-              : <><strong className="text-gray-800">One response per device</strong> — prevents duplicate submissions</>}
+            {draft.config.allowMultipleResponses === false
+              ? <><strong className="text-gray-800">One response per device</strong> — prevents duplicate submissions</>
+              : <><strong className="text-gray-800">Multiple responses allowed</strong> — same device can submit again</>}
+          </span>
+        </div>
+      </Section>
+
+      <Section title="Response capture" description="How single-choice, likert, and rating questions are recorded.">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateConfig({ confirmBeforeRecord: !draft.config.confirmBeforeRecord })}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.confirmBeforeRecord ? 'bg-orange-500' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.confirmBeforeRecord ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+          <span className="text-sm text-gray-600">
+            {draft.config.confirmBeforeRecord
+              ? <><strong className="text-gray-800">Tap then confirm</strong> — respondent selects an option, then presses Confirm</>
+              : <><strong className="text-gray-800">Instant capture</strong> — single tap records the answer immediately</>}
           </span>
         </div>
       </Section>

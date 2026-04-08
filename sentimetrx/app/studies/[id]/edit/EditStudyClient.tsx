@@ -62,6 +62,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
         const j = await res.json()
         throw new Error(j.error || 'Failed to save')
       }
+      router.refresh() // invalidate Next.js cache so re-edit loads fresh data
       router.push(status === 'active' ? `/studies/${study.id}/deploy` : '/dashboard')
     } catch (e: any) {
       setError(e.message)

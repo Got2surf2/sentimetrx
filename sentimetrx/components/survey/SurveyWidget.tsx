@@ -63,7 +63,16 @@ export default function SurveyWidget({ study }: Props) {
     return () => vv.removeEventListener('resize', onResize)
   }, [scrollBottom])
 
-  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom })
+  const theme = liveConfig.theme
+
+  // Detect if background is light — used to flip text/border colors across the survey
+  const isLightBg = (() => {
+    const hex = (theme.backgroundColor || '#1a1a2e').replace('#', '')
+    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16)
+    return (r * 299 + g * 587 + b * 114) / 1000 > 150
+  })()
+
+  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom, isLightBg })
 
   // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
   // are always the latest from the DB, not potentially stale server-rendered props
@@ -91,7 +100,6 @@ export default function SurveyWidget({ study }: Props) {
     }
   }, [status, renderInput])
 
-  const theme = liveConfig.theme
   const baseFontSize = (liveConfig.surveyFontSize || 18) + 'px'
 
   // Set the root font-size so all rem units scale proportionally.
@@ -144,8 +152,8 @@ export default function SurveyWidget({ study }: Props) {
     )
   }
 
-  // Active survey — device already responded
-  if (deviceBlocked) {
+  // Active survey — device already responded (only block if config restricts it)
+  if (deviceBlocked && liveConfig.allowMultipleResponses === false) {
     return (
       <div style={{
         width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
@@ -247,17 +255,7 @@ export default function SurveyWidget({ study }: Props) {
       <div
         ref={chatRef}
         className="survey-chat"
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          padding: '12px 12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          // Ensure it can shrink
-          minHeight: 0,
-        }}
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, '--scrollbar-color': isLightBg ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.2)' } as any}
       />
 
       {/* Input area — fixed height, max-height to prevent psycho buttons overflowing */}
@@ -268,8 +266,8 @@ export default function SurveyWidget({ study }: Props) {
           padding: '10px 12px',
           paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
           background: theme.backgroundColor + 'f0',
-          borderTop: '1px solid rgba(255,255,255,0.07)',
-          maxHeight: '35vh',
+          borderTop: '1px solid ' + (isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'),
+          maxHeight: '50vh',
           overflowY: 'auto',
           overflowX: 'hidden',
         }}

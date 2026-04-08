@@ -74,69 +74,101 @@ export async function GET(req: Request, { params }: Params) {
 
   const totalRows  = metaResult.data?.row_count || 0
 
+  // Check if flat table is populated (preferred path — SQL-level operations)
+  const flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', params.datasetId)
+  const hasFlat = (flatCheck.count || 0) > 0
+
   // ── BULK MODE: return all rows (or a systematic sample) in one response ─
   if (allMode) {
-    // Systematic sampling: when sampleMax is set and the dataset exceeds it,
-    // include every step-th row so the result is evenly distributed over time.
-    // step = ceil(totalRows / sampleMax) — e.g. 50k rows, sampleMax 10k → step 5.
-    // We compute step from the stored row_count so we never need to materialise
-    // the full array; sampling happens during the streaming loop.
-    const doSample    = sampleMax !== null && totalRows > sampleMax
-    const sampleStep  = doSample ? Math.ceil(totalRows / sampleMax!) : 1
-    let globalIdx   = 0
+    const doSample = sampleMax !== null && totalRows > sampleMax
 
+    // ── Fast path: use flat table with SQL-level sampling (no full-array accumulation)
+    if (hasFlat) {
+      const sampleStep = doSample ? Math.ceil(totalRows / sampleMax!) : 1
+      let query = service.from('dataset_rows_flat').select('data').eq('dataset_id', params.datasetId)
+      if (doSample) {
+        // Systematic sampling at SQL level: every N-th row by row_index
+        query = query.filter('row_index', 'eq.mod', sampleStep.toString() + '.0') as any
+        // Supabase JS doesn't support modulo, so use RPC or fetch with limit
+      }
+      // Supabase JS client doesn't support modulo filters — use paginated fetch with step
+      const FLAT_PAGE = 5000
+      const allRows: Record<string, unknown>[] = []
+      let offset = 0
+      let fetchMore = true
+      while (fetchMore) {
+        let q = service.from('dataset_rows_flat').select('data, row_index').eq('dataset_id', params.datasetId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
+        const { data: flatRows, error: flatErr } = await q
+        if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
+        if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
+        for (let i = 0; i < flatRows.length; i++) {
+          if (!doSample || flatRows[i].row_index % sampleStep === 0) {
+            allRows.push(projectRow(flatRows[i].data, fieldSet))
+          }
+        }
+        if (doSample && allRows.length >= sampleMax!) { fetchMore = false; break }
+        if (flatRows.length < FLAT_PAGE) fetchMore = false
+        offset += FLAT_PAGE
+      }
+      return NextResponse.json({
+        rows: allRows, page: 1, pageSize: allRows.length, totalRows, totalPages: 1,
+        field: field || undefined, sampled: doSample,
+        sampleSize: doSample ? allRows.length : totalRows,
+        sampleRate: doSample ? parseFloat((allRows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
+      })
+    }
+
+    // ── Fallback: batched table (legacy path for datasets without flat rows)
+    const sampleStep = doSample ? Math.ceil(totalRows / sampleMax!) : 1
+    let globalIdx = 0
     const allRows: Record<string, unknown>[] = []
     let bulkPage = 0
-    const BULK_FETCH = 200  // fetch 200 batch records per DB call (~10K rows)
+    const BULK_FETCH = 200
     let hasMore = true
 
     while (hasMore) {
       const bFrom = bulkPage * BULK_FETCH
       const bTo   = bFrom + BULK_FETCH - 1
-
-      const batchResult = await service
-        .from('dataset_rows')
-        .select('rows')
-        .eq('dataset_id', params.datasetId)
-        .order('batch_index', { ascending: true })
-        .range(bFrom, bTo)
-
+      const batchResult = await service.from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).order('batch_index', { ascending: true }).range(bFrom, bTo)
       if (batchResult.error) return NextResponse.json({ error: batchResult.error.message }, { status: 500 })
       const batches = batchResult.data
       if (!batches || batches.length === 0) { hasMore = false; break }
-
       for (let bi = 0; bi < batches.length; bi++) {
         const batchRows = batches[bi].rows || []
         for (let ri = 0; ri < batchRows.length; ri++) {
-          if (!doSample || globalIdx % sampleStep === 0) {
-            allRows.push(projectRow(batchRows[ri], fieldSet))
-          }
+          if (!doSample || globalIdx % sampleStep === 0) allRows.push(projectRow(batchRows[ri], fieldSet))
           globalIdx++
         }
       }
-
       if (batches.length < BULK_FETCH) hasMore = false
       bulkPage++
     }
 
     return NextResponse.json({
-      rows:       allRows,
-      page:       1,
-      pageSize:   allRows.length,
-      totalRows,
-      totalPages: 1,
-      field:      field || undefined,
-      // Sampling metadata — consumed by StatsModule to show a banner
-      sampled:    doSample,
+      rows: allRows, page: 1, pageSize: allRows.length, totalRows, totalPages: 1,
+      field: field || undefined, sampled: doSample,
       sampleSize: doSample ? allRows.length : totalRows,
       sampleRate: doSample ? parseFloat((allRows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
     })
   }
 
-  // ── PAGINATED MODE (original behavior) ─────────────────────────────────
+  // ── PAGINATED MODE ─────────────────────────────────────────────────────
   const totalPages = Math.ceil(totalRows / pageSize)
   const skip       = (page - 1) * pageSize
 
+  // Fast path: use flat table with SQL OFFSET/LIMIT
+  if (hasFlat) {
+    const { data: flatRows, error: flatErr } = await service
+      .from('dataset_rows_flat').select('data')
+      .eq('dataset_id', params.datasetId)
+      .order('row_index', { ascending: true })
+      .range(skip, skip + pageSize - 1)
+    if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
+    const collected = (flatRows || []).map(function(r) { return projectRow(r.data, fieldSet) })
+    return NextResponse.json({ rows: collected, page, pageSize, totalRows, totalPages, field: field || undefined })
+  }
+
+  // Fallback: batched table
   const collected: Record<string, unknown>[] = []
   let rowsSeen  = 0
   let pageBatch = 0
@@ -145,18 +177,10 @@ export async function GET(req: Request, { params }: Params) {
   outer: while (collected.length < pageSize) {
     const pFrom = pageBatch * PAGE_FETCH
     const pTo   = pFrom + PAGE_FETCH - 1
-
-    const pageResult = await service
-      .from('dataset_rows')
-      .select('rows, row_count')
-      .eq('dataset_id', params.datasetId)
-      .order('batch_index', { ascending: true })
-      .range(pFrom, pTo)
-
+    const pageResult = await service.from('dataset_rows').select('rows, row_count').eq('dataset_id', params.datasetId).order('batch_index', { ascending: true }).range(pFrom, pTo)
     if (pageResult.error) return NextResponse.json({ error: pageResult.error.message }, { status: 500 })
     const pageBatches = pageResult.data
     if (!pageBatches || pageBatches.length === 0) break
-
     for (let pbi = 0; pbi < pageBatches.length; pbi++) {
       const pRows: Record<string, unknown>[] = pageBatches[pbi].rows || []
       for (let pri = 0; pri < pRows.length; pri++) {
@@ -166,7 +190,6 @@ export async function GET(req: Request, { params }: Params) {
         rowsSeen++
       }
     }
-
     if (pageBatches.length < PAGE_FETCH) break
     pageBatch++
   }

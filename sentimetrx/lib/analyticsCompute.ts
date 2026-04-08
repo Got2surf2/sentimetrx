@@ -349,3 +349,147 @@ export async function computeAnalytics(
     fieldSummaries,
   }
 }
+
+// -- SQL-based analytics (flat table) — handles 2M+ rows without JS memory --
+
+export async function computeAnalyticsSQL(
+  service: SupabaseClient,
+  datasetId: string,
+  schema: SchemaConfig
+): Promise<DatasetAnalytics> {
+  // Get total row count from flat table
+  var countRes = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', datasetId)
+  var totalRows = countRes.count || 0
+
+  var activeFields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
+  var fieldSummaries: Record<string, FieldSummary> = {}
+
+  // Get a sample row to detect text fields
+  var sampleRes = await service.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(20)
+  var sampleRows = (sampleRes.data || []).map(function(r) { return r.data })
+
+  for (var fi = 0; fi < schema.fields.length; fi++) {
+    var f = schema.fields[fi]
+    if (f.type === 'ignore') {
+      fieldSummaries[f.field] = { type: 'ignore', nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
+      continue
+    }
+    if (f.type === 'id') {
+      var idNonNull = 0
+      sampleRows.forEach(function(r) { if (r[f.field] != null && String(r[f.field]).trim()) idNonNull++ })
+      fieldSummaries[f.field] = { type: 'id', nonNull: totalRows, uniqueCount: totalRows, sample: [] } as IgnoredSummary
+      continue
+    }
+
+    if (f.type === 'categorical') {
+      var catRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
+      var counts: Record<string, number> = {}
+      var nonNull = 0
+      ;(catRes.data || []).forEach(function(r: any) { counts[r.value] = Number(r.count); nonNull += Number(r.count) })
+      var sorted = Object.entries(counts).sort(function(a, b) { return b[1] - a[1] })
+      fieldSummaries[f.field] = {
+        type: 'categorical', nonNull: nonNull,
+        counts: Object.fromEntries(sorted),
+        topN: sorted.slice(0, 20).map(function(e) { return e[0] }),
+        values: sorted.slice(0, 500).map(function(e) { return e[0] }),
+        uniqueCount: sorted.length,
+        uniqueRatio: nonNull > 0 ? parseFloat((sorted.length / nonNull).toFixed(4)) : 0,
+      } satisfies CategoricalSummary
+      continue
+    }
+
+    if (f.type === 'numeric') {
+      var numRes = await service.rpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: f.field })
+      var nr = (numRes.data || [])[0]
+      if (!nr || !nr.n) {
+        fieldSummaries[f.field] = { type: 'numeric', nonNull: 0, min: 0, max: 0, avg: 0, median: 0, stddev: 0, p25: 0, p75: 0, histogram: [], uniqueCount: 0, isDiscrete: false } as NumericSummary
+        continue
+      }
+      // Get value counts for discrete detection + histogram
+      var vcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 50 })
+      var valCounts: Record<string, number> = {}
+      ;(vcRes.data || []).forEach(function(r: any) { valCounts[r.value] = Number(r.count) })
+      var uniqueNumCount = Object.keys(valCounts).length
+      var isDiscrete = uniqueNumCount <= 20
+      // Build histogram from value counts if discrete, else approximate from stats
+      var histBuckets: HistogramBucket[] = []
+      var nMin = Number(nr.min_val), nMax = Number(nr.max_val)
+      if (isDiscrete) {
+        Object.entries(valCounts).sort(function(a, b) { return parseFloat(a[0]) - parseFloat(b[0]) }).forEach(function(e) {
+          var v = parseFloat(e[0])
+          histBuckets.push({ min: v, max: v, count: e[1] })
+        })
+      } else {
+        var bCount = 10, width = (nMax - nMin) / bCount
+        if (width > 0) {
+          for (var hi = 0; hi < bCount; hi++) {
+            histBuckets.push({ min: parseFloat((nMin + hi * width).toFixed(4)), max: parseFloat((hi === bCount - 1 ? nMax : nMin + (hi + 1) * width).toFixed(4)), count: 0 })
+          }
+          // Approximate bucket counts from value counts
+          Object.entries(valCounts).forEach(function(e) {
+            var v = parseFloat(e[0])
+            var idx = Math.min(Math.floor((v - nMin) / width), bCount - 1)
+            if (idx >= 0 && idx < bCount) histBuckets[idx].count += e[1]
+          })
+        }
+      }
+      fieldSummaries[f.field] = {
+        type: 'numeric', nonNull: Number(nr.n),
+        min: nMin, max: nMax,
+        avg: parseFloat(Number(nr.avg_val).toFixed(4)),
+        median: parseFloat(Number(nr.median_val).toFixed(4)),
+        stddev: parseFloat(Number(nr.stddev_val || 0).toFixed(4)),
+        p25: parseFloat(Number(nr.median_val).toFixed(4)),  // approximate
+        p75: parseFloat(Number(nr.median_val).toFixed(4)),  // approximate
+        histogram: histBuckets,
+        valueCounts: isDiscrete ? valCounts : undefined,
+        uniqueCount: uniqueNumCount, isDiscrete: isDiscrete,
+      } satisfies NumericSummary
+      continue
+    }
+
+    if (f.type === 'open-ended') {
+      var oeNonNull = 0, totalWords = 0, totalChars = 0, maxLen = 0
+      var oeSample: string[] = []
+      sampleRows.forEach(function(r) {
+        var v = String(r[f.field] || '').trim()
+        if (!v) return
+        oeNonNull++
+        totalWords += v.split(/\s+/).length
+        totalChars += v.length
+        if (v.length > maxLen) maxLen = v.length
+        if (oeSample.length < 20) oeSample.push(v)
+      })
+      // Get accurate nonNull count from SQL
+      var oeCountRes = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true })
+        .eq('dataset_id', datasetId).not('data->>' + f.field, 'is', null)
+      fieldSummaries[f.field] = {
+        type: 'open-ended', nonNull: oeCountRes.count || oeNonNull,
+        avgWordCount: oeNonNull > 0 ? parseFloat((totalWords / oeNonNull).toFixed(1)) : 0,
+        avgCharLen: oeNonNull > 0 ? Math.round(totalChars / oeNonNull) : 0,
+        maxCharLen: maxLen, sample: oeSample,
+      } satisfies OpenEndedSummary
+      continue
+    }
+
+    if (f.type === 'date') {
+      var dateCounts: Record<string, number> = {}
+      var dateMin = '', dateMax = ''
+      var dcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
+      var dateNonNull = 0
+      ;(dcRes.data || []).forEach(function(r: any) {
+        dateCounts[r.value] = Number(r.count)
+        dateNonNull += Number(r.count)
+        if (!dateMin || r.value < dateMin) dateMin = r.value
+        if (!dateMax || r.value > dateMax) dateMax = r.value
+      })
+      fieldSummaries[f.field] = { type: 'date', nonNull: dateNonNull, min: dateMin, max: dateMax, counts: dateCounts } satisfies DateSummary
+      continue
+    }
+
+    // Fallback for any other type
+    fieldSummaries[f.field] = { type: f.type as any, nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
+  }
+
+  return { totalRows: totalRows, computedAt: new Date().toISOString(), fieldSummaries: fieldSummaries }
+}

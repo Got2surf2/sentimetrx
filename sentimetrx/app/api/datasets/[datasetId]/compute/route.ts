@@ -9,14 +9,14 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { computeAnalytics } from '@/lib/analyticsCompute'
+import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
 
 // Vercel Pro timeout is 30s. For very large datasets (>200k rows) this may
 // need to move to a Supabase Edge Function or pg_cron job. For now the
 // streaming approach handles up to ~100k rows well within 30s.
-export const maxDuration = 30
+export const maxDuration = 120
 
 interface Params { params: { datasetId: string } }
 
@@ -78,10 +78,17 @@ export async function POST(_req: Request, { params }: Params) {
     // Non-fatal: if sample fetch fails, proceed with existing schema
   }
 
-  // Stream through all batches and compute
+  // Check if flat table is populated — use SQL-based compute (handles 2M+ rows)
+  const flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', params.datasetId)
+  const hasFlat = (flatCheck.count || 0) > 0
+
   let analytics
   try {
-    analytics = await computeAnalytics(service, params.datasetId, schema)
+    if (hasFlat) {
+      analytics = await computeAnalyticsSQL(service, params.datasetId, schema)
+    } else {
+      analytics = await computeAnalytics(service, params.datasetId, schema)
+    }
   } catch (err) {
     console.error('[compute] error:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

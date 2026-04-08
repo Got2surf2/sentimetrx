@@ -95,8 +95,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
   }
 
-  // Use service role client when transferring orgs (RLS may block cross-org updates)
-  const updateClient = updates.org_id ? createServiceRoleClient() : supabase
+  // Use service role for all updates — API already verified ownership above
+  const updateClient = createServiceRoleClient()
   const { data, error } = await updateClient
     .from('studies')
     .update(updates)

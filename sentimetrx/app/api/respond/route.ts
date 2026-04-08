@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   // ── Device limit check (final submit only) ───────────────────────────────
   const config = study.config as Record<string, unknown> || {}
-  if (isFinal && !isPartial && config.allowMultipleResponses !== true) {
+  if (isFinal && !isPartial && config.allowMultipleResponses === false) {
     // Check if this IP already submitted a complete response for this study
     const { data: existing } = await supabase
       .from('responses')

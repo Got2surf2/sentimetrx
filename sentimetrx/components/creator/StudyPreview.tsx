@@ -8,6 +8,24 @@ export default function StudyPreview({ draft }: Props) {
   const { bot_name, bot_emoji, config: c } = draft
   const theme = c.theme
 
+  // Detect light vs dark background
+  const isLight = (() => {
+    const hex = (theme.backgroundColor || '#1a1a2e').replace('#', '')
+    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16)
+    return (r * 299 + g * 587 + b * 114) / 1000 > 150
+  })()
+  const P = {
+    text:     isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.88)',
+    textMute: isLight ? 'rgba(0,0,0,0.4)'  : 'rgba(255,255,255,0.4)',
+    textFaint:isLight ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.3)',
+    bubbleBg: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.07)',
+    bubbleBdr:isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)',
+    btnBg:    isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.04)',
+    btnBdr:   isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)',
+    inputBg:  isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
+    inputTx:  isLight ? 'rgba(0,0,0,0.3)'  : 'rgba(255,255,255,0.3)',
+  }
+
   const greeting = c.greeting || `Hi there — I'm ${bot_name || 'your bot'} 👋`
 
   return (
@@ -49,10 +67,10 @@ export default function StudyPreview({ draft }: Props) {
       <div className="flex-1 px-3 py-3 flex flex-col gap-2.5 overflow-hidden">
 
         {/* Bot greeting */}
-        <BotMsg text={greeting} emoji={bot_emoji} theme={theme} />
+        <BotMsg text={greeting} emoji={bot_emoji} theme={theme} P={P} />
 
         {/* Bot follow-up */}
-        <BotMsg text="Ready to share your feedback?" emoji={bot_emoji} theme={theme} />
+        <BotMsg text="Ready to share your feedback?" emoji={bot_emoji} theme={theme} P={P} />
 
         {/* User yes */}
         <div className="flex justify-end">
@@ -67,7 +85,7 @@ export default function StudyPreview({ draft }: Props) {
         {/* Rating prompt — only if experience rating enabled */}
         {c.experienceEnabled !== false && (
           <>
-            <BotMsg text={c.ratingPrompt || 'How was your experience?'} emoji={bot_emoji} theme={theme} />
+            <BotMsg text={c.ratingPrompt || 'How was your experience?'} emoji={bot_emoji} theme={theme} P={P} />
 
             {/* Rating scale preview */}
             <div className="flex gap-1 flex-wrap">
@@ -76,12 +94,12 @@ export default function StudyPreview({ draft }: Props) {
                   key={i}
                   className="flex flex-col items-center gap-0.5 rounded-xl px-1.5 py-2 flex-1"
                   style={{
-                    background: i === 4 ? `${theme.primaryColor}20` : 'rgba(255,255,255,0.04)',
-                    border: `2px solid ${i === 4 ? theme.primaryColor : 'rgba(255,255,255,0.08)'}`,
+                    background: i === 4 ? `${theme.primaryColor}20` : P.btnBg,
+                    border: `2px solid ${i === 4 ? theme.primaryColor : P.btnBdr}`,
                   }}
                 >
                   <span className="text-sm">{r.emoji}</span>
-                  <span className="text-white/40 text-center leading-tight" style={{ fontSize: '7px' }}>
+                  <span className="text-center leading-tight" style={{ fontSize: '7px', color: P.textMute }}>
                     {r.label}
                   </span>
                 </div>
@@ -93,7 +111,7 @@ export default function StudyPreview({ draft }: Props) {
         {/* NPS prompt — only if NPS enabled and experience disabled (otherwise NPS comes later) */}
         {c.npsEnabled !== false && c.experienceEnabled === false && (
           <>
-            <BotMsg text={c.npsPrompt || 'How likely are you to recommend us?'} emoji={bot_emoji} theme={theme} />
+            <BotMsg text={c.npsPrompt || 'How likely are you to recommend us?'} emoji={bot_emoji} theme={theme} P={P} />
             <div className="flex gap-0.5 flex-wrap justify-center">
               {Array.from({ length: 5 }, (_, i) => (
                 <div
@@ -101,15 +119,15 @@ export default function StudyPreview({ draft }: Props) {
                   className="flex items-center justify-center rounded-lg"
                   style={{
                     width: 28, height: 28,
-                    background: i === 4 ? `${theme.primaryColor}20` : 'rgba(255,255,255,0.04)',
-                    border: `2px solid ${i === 4 ? theme.primaryColor : 'rgba(255,255,255,0.08)'}`,
-                    color: 'rgba(255,255,255,0.5)', fontSize: '9px', fontWeight: 700,
+                    background: i === 4 ? `${theme.primaryColor}20` : P.btnBg,
+                    border: `2px solid ${i === 4 ? theme.primaryColor : P.btnBdr}`,
+                    color: P.textMute, fontSize: '9px', fontWeight: 700,
                   }}
                 >
                   {i + 1}
                 </div>
               ))}
-              <span className="text-white/30 text-xs self-center ml-1">... 10</span>
+              <span className="text-xs self-center ml-1" style={{ color: P.textFaint }}>... 10</span>
             </div>
           </>
         )}
@@ -125,7 +143,7 @@ export default function StudyPreview({ draft }: Props) {
       >
         <div
           className="flex-1 px-3 py-2 rounded-xl text-xs"
-          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)' }}
+          style={{ background: P.inputBg, color: P.inputTx }}
         >
           Share your thoughts...
         </div>
@@ -140,7 +158,7 @@ export default function StudyPreview({ draft }: Props) {
   )
 }
 
-function BotMsg({ text, emoji, theme }: { text: string; emoji: string; theme: any }) {
+function BotMsg({ text, emoji, theme, P }: { text: string; emoji: string; theme: any; P: Record<string, string> }) {
   return (
     <div className="flex items-end gap-2">
       <div
@@ -152,9 +170,9 @@ function BotMsg({ text, emoji, theme }: { text: string; emoji: string; theme: an
       <div
         className="px-3 py-2 rounded-2xl rounded-bl-sm text-xs leading-relaxed max-w-[85%]"
         style={{
-          background: 'rgba(255,255,255,0.07)',
-          color: 'rgba(255,255,255,0.88)',
-          border: '1px solid rgba(255,255,255,0.06)',
+          background: P.bubbleBg,
+          color: P.text,
+          border: '1px solid ' + P.bubbleBdr,
         }}
       >
         {text}

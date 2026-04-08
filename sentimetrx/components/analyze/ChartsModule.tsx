@@ -484,24 +484,32 @@ var _enrichCtx: {
 
 // Raw-row cache keyed by datasetId — survives re-renders so re-enrichment doesn't re-fetch
 var _rawRowsCache: Record<string, Record<string, unknown>[]> = {}
+var _rawRowsCacheId: string | null = null  // track which dataset is cached
+
+var CHART_SAMPLE_MAX = 10000  // cap rows fetched for charts — keeps 500K datasets usable
 
 function useRows(datasetId: string, enrichKey: number = 0) {
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [loaded, setLoaded] = useState(false)
   var [loading, setLoading] = useState(false)
   useEffect(function() {
+    // Evict cache if dataset changed
+    if (_rawRowsCacheId && _rawRowsCacheId !== datasetId) {
+      delete _rawRowsCache[_rawRowsCacheId]
+      _rawRowsCacheId = null
+    }
     if (_rawRowsCache[datasetId]) {
-      // Already fetched — just re-enrich with updated context
       setRows(enrichRows(_rawRowsCache[datasetId]))
       setLoaded(true)
       return
     }
     if (loading) return
     setLoading(true)
-    fetch('/api/datasets/' + datasetId + '/rows?all=true')
+    fetch('/api/datasets/' + datasetId + '/rows?all=true&sampleMax=' + CHART_SAMPLE_MAX)
       .then(function(r) { return r.json() })
       .then(function(data) {
         _rawRowsCache[datasetId] = data.rows || []
+        _rawRowsCacheId = datasetId
         setRows(enrichRows(_rawRowsCache[datasetId]))
         setLoaded(true); setLoading(false)
       }).catch(function() { setLoading(false) })

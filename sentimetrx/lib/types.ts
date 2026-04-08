@@ -191,7 +191,7 @@ export interface StudyConfig {
   maxClarifierCount?: number           // max times a clarifier fires per session (default unlimited)
 
   // Response control
-  allowMultipleResponses?: boolean   // default false — one response per device
+  allowMultipleResponses?: boolean   // default true — multiple responses allowed; set false to limit to one per device
 
   // Psychographics
   psychographicBank:  PsychoQuestion[]
@@ -209,6 +209,9 @@ export interface StudyConfig {
   // Branding
   brandingLabel?:     string           // default 'DATANAUTIX'; max 15 chars; empty string = no branding
   showBranding?:      boolean          // default true — show "by <label>" on survey hero
+
+  // Input mode
+  confirmBeforeRecord?: boolean        // default false (auto-record on tap); true = require confirm button for radio/likert/rating
 
   // Accessibility
   surveyFontSize?:    number           // base font size in px for survey widget (default 18)

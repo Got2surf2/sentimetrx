@@ -1622,8 +1622,9 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [samplingMeta, setSamplingMeta] = useState<{ sampled: boolean; sampleSize: number; totalRows: number } | null>(null)
   var { filters } = useFilters()
 
-  // 0 = load all rows (no cap). Any positive number = systematic sample cap.
-  var [sampleCap, setSampleCap] = useState(_statSaved?.sampleCap || 385)
+  // Positive number = systematic sample cap. 0 = "all" but still capped at 5000 to prevent browser freeze.
+  var STATS_HARD_CAP = 5000
+  var [sampleCap, setSampleCap] = useState(_statSaved?.sampleCap || 2000)
 
   useEffect(function() {
     writeSession(_statKey, { activePanel: activePanel, confidenceLevel: confidenceLevel, sampleCap: sampleCap })
@@ -1634,7 +1635,8 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     var cancelled = false
-    var url = '/api/datasets/' + datasetId + '/rows?all=true' + (sampleCap > 0 ? '&sampleMax=' + sampleCap : '')
+    var effectiveCap = sampleCap === 0 ? STATS_HARD_CAP : sampleCap
+    var url = '/api/datasets/' + datasetId + '/rows?all=true&sampleMax=' + effectiveCap
     fetch(url)
       .then(function(r) { return r.json() })
       .then(function(data) {
