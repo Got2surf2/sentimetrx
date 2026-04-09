@@ -1,12 +1,4 @@
+.DS_Store
 node_modules/
 .next/
-.env
-.env.local
-.env.*.local
-.DS_Store
-*.tsbuildinfo
-out/
-data.sql
-schema.sql
-supabase/.temp/
-scripts/
+tsconfig.tsbuildinfo
