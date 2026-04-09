@@ -1,0 +1,147 @@
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { SLUG_REGEX } from '@/lib/constants'
+
+interface Params { params: { id: string } }
+
+export async function GET(_req: NextRequest, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data, error } = await supabase
+    .from('studies')
+    .select('*')
+    .eq('id', params.id)
+    .single()
+
+  if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json(data)
+}
+
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Get user's org info
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+
+  const orgData = userData?.organizations
+  const isAdmin = Array.isArray(orgData)
+    ? orgData[0]?.is_admin_org
+    : (orgData as any)?.is_admin_org
+
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
+
+  // Check ownership — creator or admin can update (including close/reopen)
+  const { data: existing } = await supabase
+    .from('studies')
+    .select('status, created_by')
+    .eq('id', params.id)
+    .single()
+
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  if (!isAdmin && existing.created_by !== user.id) {
+    return NextResponse.json({ error: 'You can only edit your own studies' }, { status: 403 })
+  }
+
+  // Allow visibility changes only by creator or admin
+  const allowed = ['name', 'bot_name', 'bot_emoji', 'status', 'config', 'visibility', 'slug']
+  const updates: Record<string, unknown> = {}
+  for (const key of allowed) {
+    if (key in body) updates[key] = body[key]
+  }
+
+  // Validate slug if provided
+  if (updates.slug != null) {
+    const slug = String(updates.slug).toLowerCase().trim()
+    if (slug === '') {
+      updates.slug = null  // clear slug
+    } else {
+      // Validate format: lowercase alphanumeric + hyphens, 3-50 chars
+      if (!SLUG_REGEX.test(slug)) {
+        return NextResponse.json({ error: 'Slug must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
+      }
+      // Check uniqueness
+      const { data: conflict } = await supabase
+        .from('studies')
+        .select('id')
+        .eq('slug', slug)
+        .neq('id', params.id)
+        .limit(1)
+      if (conflict && conflict.length > 0) {
+        return NextResponse.json({ error: 'This URL is already taken. Try a different one.' }, { status: 409 })
+      }
+      updates.slug = slug
+    }
+  }
+
+  // Admin-only: allow changing org_id (transfer study to another org)
+  if ('org_id' in body) {
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Only admins can transfer studies' }, { status: 403 })
+    }
+    updates.org_id = body.org_id
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+  }
+
+  // Use service role for all updates — API already verified ownership above
+  const updateClient = createServiceRoleClient()
+  const { data, error } = await updateClient
+    .from('studies')
+    .update(updates)
+    .eq('id', params.id)
+    .select('id, guid, slug, status, visibility, org_id')
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: study } = await supabase
+    .from('studies')
+    .select('id, name, created_by, status')
+    .eq('id', params.id)
+    .single()
+
+  if (!study) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Get user admin status
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+
+  const orgData = userData?.organizations
+  const isAdmin = Array.isArray(orgData)
+    ? orgData[0]?.is_admin_org
+    : (orgData as any)?.is_admin_org
+
+  if (!isAdmin && study.created_by !== user.id) {
+    return NextResponse.json({ error: 'You can only delete your own studies' }, { status: 403 })
+  }
+
+  const { error } = await supabase
+    .from('studies')
+    .delete()
+    .eq('id', params.id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true, deleted: study.name })
+}

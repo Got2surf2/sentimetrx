@@ -1,0 +1,153 @@
+{
+  "description": "Structured multiple-choice industry questions for study context and screening",
+  "industries": [
+    {
+      "industry": "healthcare",
+      "questions": [
+        { "key": "i_hc_type",      "prompt": "What type of healthcare visit was this?",                        "exportLabel": "Visit Type",           "type": "radio", "options": ["Routine check-up", "Follow-up appointment", "Urgent care", "Specialist consultation", "Procedure or treatment"] },
+        { "key": "i_hc_insurance",  "prompt": "How do you typically pay for healthcare?",                       "exportLabel": "Payment Method",       "type": "radio", "options": ["Private insurance", "Medicare / Medicaid", "Self-pay", "Employer-provided insurance", "Prefer not to say"] },
+        { "key": "i_hc_access",     "prompt": "How easy is it for you to access healthcare when you need it?",  "exportLabel": "Healthcare Access",    "type": "radio", "options": ["Very easy", "Fairly easy", "Neutral", "Somewhat difficult", "Very difficult"] },
+        { "key": "i_hc_comms",      "prompt": "How well does our team keep you informed about your care?",      "exportLabel": "Care Communication",   "type": "radio", "options": ["Extremely well", "Very well", "Adequately", "Not well enough", "Poorly"] }
+      ]
+    },
+    {
+      "industry": "hospitality",
+      "questions": [
+        { "key": "i_ho_purpose",    "prompt": "What is the primary purpose of your stay?",                      "exportLabel": "Stay Purpose",         "type": "radio", "options": ["Leisure / vacation", "Business", "Event or celebration", "Family visit", "Other"] },
+        { "key": "i_ho_booking",    "prompt": "How did you book your stay?",                                    "exportLabel": "Booking Channel",      "type": "radio", "options": ["Direct — hotel website", "Booking.com", "Expedia", "Hotels.com", "Travel agent", "Phone or walk-in"] },
+        { "key": "i_ho_amenities",  "prompt": "Which amenities matter most when choosing a hotel?","exportLabel": "Key Amenity",           "type": "radio", "options": ["Location", "Price", "Room quality", "Breakfast included", "Pool or gym", "Free parking", "Pet-friendly"] },
+        { "key": "i_ho_loyalty",    "prompt": "Are you a member of a hotel loyalty program?",                  "exportLabel": "Loyalty Program",       "type": "radio", "options": ["Yes — this hotel chain", "Yes — a competitor", "No but I am interested", "No and not interested"] }
+      ]
+    },
+    {
+      "industry": "casual_dining",
+      "questions": [
+        { "key": "i_rs_occasion",   "prompt": "What best describes the occasion for your visit today?",         "exportLabel": "Dining Occasion",      "type": "radio", "options": ["Casual meal", "Business lunch or dinner", "Special occasion / celebration", "Quick bite", "Family meal"] },
+        { "key": "i_rs_group",      "prompt": "How large was your dining party today?",                         "exportLabel": "Party Size",           "type": "radio", "options": ["Just me", "2 people", "3–4 people", "5 or more people"] },
+        { "key": "i_rs_order",      "prompt": "How did you place your order today?",                            "exportLabel": "Order Method",         "type": "radio", "options": ["Dine-in with server", "Counter order", "Mobile app", "Third-party delivery", "Drive-through"] },
+        { "key": "i_rs_diet",       "prompt": "Do you have any dietary preferences we should know about?",      "exportLabel": "Dietary Preference",   "type": "radio", "options": ["No restrictions", "Vegetarian", "Vegan", "Gluten-free", "Halal", "Other dietary needs"] }
+      ]
+    },
+    {
+      "industry": "fine_dining",
+      "questions": [
+        { "key": "i_rs_occasion",   "prompt": "What best describes the occasion for your visit this evening?",  "exportLabel": "Dining Occasion",      "type": "radio", "options": ["Romantic dinner", "Business dinner", "Special celebration", "Anniversary or birthday", "Personal treat"] },
+        { "key": "i_rs_group",      "prompt": "How large was your dining party this evening?",                  "exportLabel": "Party Size",           "type": "radio", "options": ["Just me", "2 people", "3–4 people", "5 or more people"] },
+        { "key": "i_fd_wine",       "prompt": "Did you take advantage of our wine or beverage program?",       "exportLabel": "Beverage Engagement",  "type": "radio", "options": ["Yes — wine pairing", "Yes — selected from the list", "Yes — cocktails", "No — water or soft drinks only"] },
+        { "key": "i_rs_diet",       "prompt": "Any dietary requirements for future visits?", "exportLabel": "Dietary Requirement", "type": "radio", "options": ["None", "Vegetarian", "Vegan", "Gluten-free", "Allergen-related", "Other"] }
+      ]
+    },
+    {
+      "industry": "fast_food",
+      "questions": [
+        { "key": "i_ff_channel",    "prompt": "How did you order today?",                                       "exportLabel": "Order Channel",        "type": "radio", "options": ["In-store at the counter", "Self-service kiosk", "Drive-through", "Mobile app", "Third-party delivery"] },
+        { "key": "i_ff_time",       "prompt": "What time of day was your visit?",                               "exportLabel": "Visit Time",           "type": "radio", "options": ["Breakfast", "Lunch", "Afternoon snack", "Dinner", "Late night"] },
+        { "key": "i_rs_group",      "prompt": "Who did you order for today?",                                   "exportLabel": "Order For",            "type": "radio", "options": ["Just myself", "2 people", "3–4 people", "5 or more people"] },
+        { "key": "i_rs_diet",       "prompt": "Do you have any dietary preferences?",                           "exportLabel": "Dietary Preference",   "type": "radio", "options": ["No restrictions", "Vegetarian", "Vegan", "Gluten-free", "Halal", "Other dietary needs"] }
+      ]
+    },
+    {
+      "industry": "travel_tourism",
+      "questions": [
+        { "key": "i_tr_type",       "prompt": "What type of trip is this?",                                     "exportLabel": "Trip Type",            "type": "radio", "options": ["Solo travel", "Couple", "Family with children", "Group of friends", "Business travel"] },
+        { "key": "i_tr_duration",   "prompt": "How long is your trip?",                                         "exportLabel": "Trip Duration",        "type": "radio", "options": ["Day trip", "2–3 nights", "4–7 nights", "1–2 weeks", "More than 2 weeks"] },
+        { "key": "i_tr_plan",       "prompt": "How far in advance did you plan this trip?",                     "exportLabel": "Planning Lead Time",   "type": "radio", "options": ["Last minute (under a week)", "1–4 weeks", "1–3 months", "More than 3 months"] },
+        { "key": "i_tr_budget",     "prompt": "How would you describe your travel budget for this trip?",       "exportLabel": "Travel Budget",        "type": "radio", "options": ["Budget / backpacker", "Mid-range", "Comfortable", "Luxury"] }
+      ]
+    },
+    {
+      "industry": "political",
+      "questions": [
+        { "key": "i_po_engage",     "prompt": "How do you most often engage with political issues?",            "exportLabel": "Political Engagement", "type": "radio", "options": ["Voting", "Donating", "Volunteering", "Attending events", "Sharing on social media", "Following the news"] },
+        { "key": "i_po_issues",     "prompt": "Which issues matter most to you right now?",                     "exportLabel": "Key Issues",           "type": "checkbox", "options": ["Economy and jobs", "Healthcare", "Education", "Public safety", "Environment", "Immigration", "Other"] },
+        { "key": "i_po_trust",      "prompt": "How much do you trust elected officials to act in your interest?","exportLabel": "Institutional Trust",   "type": "radio", "options": ["A great deal", "A fair amount", "Not very much", "Not at all"] }
+      ]
+    },
+    {
+      "industry": "media_entertainment",
+      "questions": [
+        { "key": "i_me_type",       "prompt": "What type of content or entertainment brought you here today?",  "exportLabel": "Content Type",         "type": "radio", "options": ["Film or cinema", "Streaming / on-demand", "Live broadcast", "Podcast or audio", "Online video", "Other"] },
+        { "key": "i_en_ticket",     "prompt": "How did you access or purchase this today?",                     "exportLabel": "Access Method",        "type": "radio", "options": ["Online in advance", "At the door / box office", "Via a third-party app", "Subscription included", "Complimentary"] },
+        { "key": "i_en_group",      "prompt": "Who did you come with today?",                                   "exportLabel": "Attendance Group",     "type": "radio", "options": ["Alone", "Partner or date", "Friends", "Family", "Work colleagues"] }
+      ]
+    },
+    {
+      "industry": "performing_arts",
+      "questions": [
+        { "key": "i_en_type",       "prompt": "What type of performance brought you here today?",               "exportLabel": "Performance Type",     "type": "radio", "options": ["Theatre or drama", "Musical theatre", "Opera or classical music", "Dance", "Comedy", "Other"] },
+        { "key": "i_en_ticket",     "prompt": "How did you purchase your ticket?",                              "exportLabel": "Ticket Channel",       "type": "radio", "options": ["Online in advance", "At the box office", "Via a third-party app", "Complimentary / guest list", "Subscription or membership"] },
+        { "key": "i_en_group",      "prompt": "Who did you come with today?",                                   "exportLabel": "Attendance Group",     "type": "radio", "options": ["Alone", "Partner or date", "Friends", "Family", "Work colleagues"] },
+        { "key": "i_pa_seat",       "prompt": "How would you rate the sightlines and comfort of your seating?", "exportLabel": "Seating Experience",   "type": "radio", "options": ["Excellent", "Good", "Adequate", "Poor", "Very poor"] }
+      ]
+    },
+    {
+      "industry": "saas_software",
+      "questions": [
+        { "key": "i_sw_role",       "prompt": "What is your primary role when using this product?",             "exportLabel": "User Role",            "type": "radio", "options": ["Individual contributor", "Team lead / manager", "Executive / decision-maker", "Administrator", "Developer / technical"] },
+        { "key": "i_sw_tenure",     "prompt": "How long have you been using this product?",                     "exportLabel": "Product Tenure",       "type": "radio", "options": ["Less than a month", "1–6 months", "6–12 months", "1–2 years", "Over 2 years"] },
+        { "key": "i_sw_frequency",  "prompt": "How often do you use this product?",                             "exportLabel": "Usage Frequency",      "type": "radio", "options": ["Multiple times a day", "Daily", "A few times a week", "Weekly", "Less than weekly"] }
+      ]
+    },
+    {
+      "industry": "retail_ecommerce",
+      "questions": [
+        { "key": "i_re_channel",    "prompt": "How did you shop with us this time?",                            "exportLabel": "Shopping Channel",     "type": "radio", "options": ["Website on desktop", "Mobile app", "Mobile website", "In-store", "Phone order"] },
+        { "key": "i_re_frequency",  "prompt": "How often do you shop with us?",                                 "exportLabel": "Shopping Frequency",   "type": "radio", "options": ["First time", "A few times a year", "Monthly", "Weekly", "Multiple times a week"] },
+        { "key": "i_re_spend",      "prompt": "How would you describe your typical order size with us?",        "exportLabel": "Order Size",           "type": "radio", "options": ["Small — under $25", "Medium — $25-$75", "Large — $75-$150", "Very large — over $150"] }
+      ]
+    },
+    {
+      "industry": "financial_services",
+      "questions": [
+        { "key": "i_fs_product",    "prompt": "Which of our products or services do you primarily use?",        "exportLabel": "Primary Product",      "type": "radio", "options": ["Checking / current account", "Savings account", "Credit card", "Mortgage / loan", "Investment / wealth management", "Insurance", "Multiple products"] },
+        { "key": "i_fs_tenure",     "prompt": "How long have you been a customer?",                             "exportLabel": "Customer Tenure",      "type": "radio", "options": ["Less than 1 year", "1–3 years", "3–5 years", "5–10 years", "Over 10 years"] },
+        { "key": "i_fs_channel",    "prompt": "How do you most often interact with us?",                        "exportLabel": "Interaction Channel",  "type": "radio", "options": ["Mobile app", "Online banking website", "In-branch", "Phone / call center", "ATM"] }
+      ]
+    },
+    {
+      "industry": "education",
+      "questions": [
+        { "key": "i_ed_role",       "prompt": "What is your relationship to the school?",                       "exportLabel": "Respondent Role",      "type": "radio", "options": ["Parent / guardian", "Student", "Teacher / staff", "Administrator", "Community member"] },
+        { "key": "i_ed_grade",      "prompt": "Which grade level is most relevant to your feedback?",           "exportLabel": "Grade Level",          "type": "radio", "options": ["Pre-K / Kindergarten", "Elementary (1-5)", "Middle school (6-8)", "High school (9-12)"] }
+      ]
+    },
+    {
+      "industry": "higher_education",
+      "questions": [
+        { "key": "i_he_status",     "prompt": "What is your current status?",                                   "exportLabel": "Student Status",       "type": "radio", "options": ["Undergraduate student", "Graduate student", "Doctoral student", "Alumni", "Faculty / staff", "Parent / family"] },
+        { "key": "i_he_mode",       "prompt": "What is your primary mode of study?",                            "exportLabel": "Study Mode",           "type": "radio", "options": ["Full-time on-campus", "Part-time on-campus", "Fully online", "Hybrid", "Evening / weekend"] }
+      ]
+    },
+    {
+      "industry": "hr_employee",
+      "questions": [
+        { "key": "i_hr_tenure",     "prompt": "How long have you worked at this organization?",                 "exportLabel": "Employee Tenure",      "type": "radio", "options": ["Less than 6 months", "6 months – 1 year", "1–3 years", "3–5 years", "5–10 years", "Over 10 years"] },
+        { "key": "i_hr_level",      "prompt": "What level best describes your role?",                           "exportLabel": "Role Level",           "type": "radio", "options": ["Individual contributor", "Team lead", "Manager", "Director / VP", "Executive / C-suite"] },
+        { "key": "i_hr_remote",     "prompt": "What is your current work arrangement?",                        "exportLabel": "Work Arrangement",     "type": "radio", "options": ["Fully in-office", "Hybrid (mostly office)", "Hybrid (mostly remote)", "Fully remote", "Field-based"] }
+      ]
+    },
+    {
+      "industry": "sports",
+      "questions": [
+        { "key": "i_sp_type",       "prompt": "What type of event did you attend?",                             "exportLabel": "Event Type",           "type": "radio", "options": ["Regular season game", "Playoff / championship", "Exhibition / friendly", "Special event", "Youth / amateur event"] },
+        { "key": "i_sp_tickets",    "prompt": "How did you get your tickets?",                                  "exportLabel": "Ticket Source",        "type": "radio", "options": ["Season ticket holder", "Purchased online in advance", "Bought at the venue", "Secondary market (StubHub, etc.)", "Complimentary / gift"] },
+        { "key": "i_sp_group",      "prompt": "Who did you come with today?",                                   "exportLabel": "Attendance Group",     "type": "radio", "options": ["Alone", "Partner", "Friends", "Family with kids", "Corporate / business group"] }
+      ]
+    },
+    {
+      "industry": "nonprofit",
+      "questions": [
+        { "key": "i_np_involvement","prompt": "How are you involved with our organization?",                    "exportLabel": "Involvement Type",     "type": "radio", "options": ["Donor", "Volunteer", "Event attendee", "Program participant", "Board / committee member", "Staff"] },
+        { "key": "i_np_tenure",     "prompt": "How long have you been involved with us?",                      "exportLabel": "Involvement Duration", "type": "radio", "options": ["Less than 1 year", "1–3 years", "3–5 years", "Over 5 years"] }
+      ]
+    },
+    {
+      "industry": "automotive_repair",
+      "questions": [
+        { "key": "i_ar_service",    "prompt": "What type of service did you come in for?",                      "exportLabel": "Service Type",         "type": "radio", "options": ["Routine maintenance (oil change, tires, etc.)", "Specific repair", "Diagnostic / inspection", "Warranty work", "Body / collision repair"] },
+        { "key": "i_ar_vehicle",    "prompt": "How old is the vehicle you brought in?",                        "exportLabel": "Vehicle Age",          "type": "radio", "options": ["Under 1 year", "1–3 years", "4–7 years", "8–12 years", "Over 12 years"] },
+        { "key": "i_ar_first",      "prompt": "Is this your first visit to our shop?",                         "exportLabel": "First Visit",          "type": "radio", "options": ["Yes — first time", "No — been here before", "No — regular customer"] }
+      ]
+    }
+  ]
+}

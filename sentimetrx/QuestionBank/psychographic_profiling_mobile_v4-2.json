@@ -1,0 +1,2209 @@
+{
+  "psychographic_profiling": [
+    {
+      "industry": "Healthcare",
+      "questions": [
+        {
+          "key": "p_household",
+          "prompt": "What best describes your household right now?",
+          "responses": [
+            "🧍 Single or couple, no children",
+            "👨‍👩‍👧 Family with kids at home",
+            "🎓 Empty nester — kids grown",
+            "👴 Retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_hc_insurance",
+          "prompt": "What's your health insurance situation?",
+          "responses": [
+            "🏢 Employer-sponsored plan",
+            "🏛️ Medicare or Medicaid",
+            "🛒 Marketplace / self-purchased plan",
+            "🚫 Currently uninsured"
+          ]
+        },
+        {
+          "key": "p_hc_caregiver",
+          "prompt": "Do you make health decisions for others too?",
+          "responses": [
+            "👶 Yes — for young children",
+            "👴 Yes — for an aging parent or relative",
+            "🤝 Sometimes — I support a partner's care",
+            "🙋 No — I manage my own health only"
+          ]
+        },
+        {
+          "key": "p_hc_approach",
+          "prompt": "What's your approach to your health?",
+          "responses": [
+            "🔍 Proactive — regular checkups",
+            "🚨 Reactive — only when something's wrong",
+            "🤝 I follow my doctor's lead",
+            "🌿 Holistic first, then conventional"
+          ]
+        },
+        {
+          "key": "p_hc_conditions",
+          "prompt": "Do you manage any ongoing health conditions?",
+          "responses": [
+            "✅ Yes — chronic condition(s) central to my care",
+            "⚠️ Yes — mild and well-managed",
+            "🔍 Monitoring something that may become chronic",
+            "🚫 No ongoing conditions"
+          ]
+        },
+        {
+          "key": "p_hc_medication",
+          "prompt": "What's your attitude toward medication?",
+          "responses": [
+            "✅ I follow prescriptions without hesitation",
+            "🌿 I prefer natural or lifestyle approaches first",
+            "🔍 I research every medication before taking it",
+            "💊 I take the minimum needed, avoid long-term use"
+          ]
+        },
+        {
+          "key": "p_hc_technology",
+          "prompt": "How do you feel about health tech (apps, wearables, telehealth)?",
+          "responses": [
+            "📱 I actively use it — it's empowering",
+            "🤔 Open to it but not yet fully adopted",
+            "👨‍⚕️ I prefer in-person care over digital",
+            "🔒 Privacy-concerned — avoid sharing health data"
+          ]
+        },
+        {
+          "key": "p_hc_research",
+          "prompt": "How do you research health info?",
+          "responses": [
+            "💻 Trusted sites (Mayo Clinic, WebMD)",
+            "👥 Friends, family & online communities",
+            "🩺 I rely on my provider only",
+            "🔄 Multiple sources, always cross-referenced"
+          ]
+        },
+        {
+          "key": "p_hc_barrier",
+          "prompt": "Biggest barrier to getting healthcare?",
+          "responses": [
+            "💰 Cost & insurance",
+            "⏰ Time & scheduling",
+            "😟 Distrust or anxiety",
+            "📍 No local providers available"
+          ]
+        },
+        {
+          "key": "p_hc_compliance",
+          "prompt": "When a doctor recommends treatment...",
+          "responses": [
+            "✅ I follow without much question",
+            "❓ I ask lots of questions first",
+            "🔁 I get a second opinion",
+            "🔍 I research it thoroughly on my own first"
+          ]
+        },
+        {
+          "key": "p_hc_mental_vs_physical",
+          "prompt": "Mental health vs. physical health?",
+          "responses": [
+            "⚖️ I treat them equally",
+            "💪 Physical health comes first",
+            "🧠 Mental health is my primary focus",
+            "😔 I struggle to address either consistently"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Hospitality (Hotel / Lodging)",
+      "questions": [
+        {
+          "key": "p_household",
+          "prompt": "What best describes your household right now?",
+          "responses": [
+            "🧍 Single or couple, no children",
+            "👨‍👩‍👧 Family with kids at home",
+            "🎓 Empty nester — kids grown",
+            "👴 Retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_ho_purpose",
+          "prompt": "What's the main purpose of your hotel stays?",
+          "responses": [
+            "💼 Business — work trips & conferences",
+            "🏖️ Leisure — holidays & personal travel",
+            "🔀 Bleisure — I regularly blend both",
+            "👨‍👩‍👧 Family — trips centered around kids"
+          ]
+        },
+        {
+          "key": "p_ho_frequency",
+          "prompt": "How many nights do you spend in hotels per year?",
+          "responses": [
+            "🔴 1–5 nights",
+            "🟡 6–15 nights",
+            "🟠 16–30 nights",
+            "🟢 30+ nights — frequent traveler"
+          ]
+        },
+        {
+          "key": "p_ho_checkin",
+          "prompt": "How do you prefer to check in?",
+          "responses": [
+            "📱 Mobile / app check-in — skip the desk entirely",
+            "🤝 Front desk — I like the personal greeting",
+            "⚡ Either is fine — whatever's fastest",
+            "🔑 Self-service kiosk works for me"
+          ]
+        },
+        {
+          "key": "p_ho_booking_factor",
+          "prompt": "What's your #1 booking factor?",
+          "responses": [
+            "💰 Best price for my budget",
+            "📍 Location above all else",
+            "🏆 Loyalty points & status",
+            "✨ Unique, local character"
+          ]
+        },
+        {
+          "key": "p_ho_booking_channel",
+          "prompt": "How do you usually book?",
+          "responses": [
+            "🌐 Hotel's own site or app",
+            "🔍 OTAs (Expedia, Booking.com)",
+            "👔 Travel agent or corporate platform",
+            "👥 Friends' recommendations"
+          ]
+        },
+        {
+          "key": "p_ho_loyalty",
+          "prompt": "How much does loyalty status matter?",
+          "responses": [
+            "⭐⭐⭐ I plan trips around points & status",
+            "⭐⭐ It sways close calls",
+            "⭐ I'm a member but rarely factor it in",
+            "🚫 No memberships"
+          ]
+        },
+        {
+          "key": "p_ho_type",
+          "prompt": "Boutique or chain hotels?",
+          "responses": [
+            "🏡 Boutique — local & distinctive",
+            "🏨 Chain — predictable & reliable",
+            "🔄 Depends on the trip purpose",
+            "😐 Indifferent — just clean, safe & good value"
+          ]
+        },
+        {
+          "key": "p_ho_amenity",
+          "prompt": "Most important hotel amenity?",
+          "responses": [
+            "🛏️ Bed quality & sleep environment",
+            "🍽️ Food, bar & room service",
+            "🧘 Spa & wellness",
+            "💼 WiFi, desk & meeting rooms"
+          ]
+        },
+        {
+          "key": "p_ho_philosophy",
+          "prompt": "How do you think about where you stay?",
+          "responses": [
+            "🌟 The hotel IS part of the experience",
+            "🏕️ It's just a base camp",
+            "⚖️ I balance hotel quality with activities budget",
+            "🏠 Open to Airbnb or hostels over traditional hotels"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Restaurants — Casual Dining",
+      "questions": [
+        {
+          "key": "p_household",
+          "prompt": "What best describes your household right now?",
+          "responses": [
+            "🧍 Single or couple, no children",
+            "👨‍👩‍👧 Family with kids at home",
+            "🎓 Empty nester — kids grown",
+            "👴 Retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_cd_driver",
+          "prompt": "What drives you to a casual restaurant?",
+          "responses": [
+            "📍 Convenience — close & quick",
+            "❤️ Familiarity — I know I'll enjoy it",
+            "👥 Social — great for group gatherings",
+            "🗺️ Exploration — trying somewhere new"
+          ]
+        },
+        {
+          "key": "p_cd_frequency",
+          "prompt": "How often do you eat out at casual restaurants?",
+          "responses": [
+            "🔴 Rarely — special occasions only",
+            "🟡 ~Once a week",
+            "🟠 2–3x a week",
+            "🟢 4+ times a week"
+          ]
+        },
+        {
+          "key": "p_cd_companion",
+          "prompt": "Who are you typically dining with?",
+          "responses": [
+            "🧍 Solo — quick, low-fuss",
+            "👫 Partner or a close friend",
+            "👨‍👩‍👧 Family, including kids",
+            "👥 Groups of 4 or more"
+          ]
+        },
+        {
+          "key": "p_cd_discovery",
+          "prompt": "How do you discover new restaurants?",
+          "responses": [
+            "📱 Social media (Instagram, TikTok)",
+            "⭐ Review platforms (Yelp, Google)",
+            "👥 Word of mouth",
+            "🚶 I walk past and get drawn in"
+          ]
+        },
+        {
+          "key": "p_rs_tipping",
+          "prompt": "How do you feel about tipping?",
+          "responses": [
+            "✅ I tip generously — it's part of dining out",
+            "📊 Standard 18–20%, consistently",
+            "😤 Tip prompts everywhere are frustrating",
+            "🔍 Varies — I base it on the quality of service"
+          ]
+        },
+        {
+          "key": "p_cd_drinks",
+          "prompt": "How important are drinks to your dining experience?",
+          "responses": [
+            "🍷 Important — I factor in the bar & wine list",
+            "🍺 Occasional — I order drinks sometimes",
+            "☕ Non-alcoholic only",
+            "🚫 I don't consider drinks in my choice"
+          ]
+        },
+        {
+          "key": "p_cd_delivery",
+          "prompt": "How often do you order delivery?",
+          "responses": [
+            "🛵 Mostly delivery over dining in",
+            "⚖️ Equal mix — depends on mood",
+            "🍽️ I prefer dining in",
+            "🚫 I never use delivery"
+          ]
+        },
+        {
+          "key": "p_cd_satisfaction",
+          "prompt": "What most affects your dining satisfaction?",
+          "responses": [
+            "🍴 Food quality & consistency",
+            "⏱️ Speed & efficiency of service",
+            "🏠 Atmosphere & noise level",
+            "😊 Friendly, attentive staff"
+          ]
+        },
+        {
+          "key": "p_rs_price_sensitivity",
+          "prompt": "How price-sensitive are you?",
+          "responses": [
+            "💰💰 Very — price is always a primary factor",
+            "💰 I'll pay more for quality",
+            "😌 Experience over price",
+            "🎟️ I use promos & loyalty rewards to offset cost"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Restaurants — Fine Dining",
+      "questions": [
+        {
+          "key": "p_fd_occasion",
+          "prompt": "What brings you to fine dining?",
+          "responses": [
+            "🎉 A milestone or special occasion",
+            "🤝 Client or professional entertainment",
+            "👨‍🍳 Culinary curiosity — I seek exceptional food",
+            "💝 Treating myself or a partner"
+          ]
+        },
+        {
+          "key": "p_fd_frequency",
+          "prompt": "How often do you dine fine in a year?",
+          "responses": [
+            "🔴 Rarely or never",
+            "🟡 1–3 times",
+            "🟠 4–9 times",
+            "🟢 10+ times — a meaningful part of my lifestyle"
+          ]
+        },
+        {
+          "key": "p_fd_chef_following",
+          "prompt": "Do you follow specific chefs or restaurants?",
+          "responses": [
+            "❤️ Yes — I track chefs and follow them to new places",
+            "👀 Somewhat — a few names I actively seek out",
+            "📰 I follow recommendations, not specific chefs",
+            "🚫 No — occasion and mood guide where I go"
+          ]
+        },
+        {
+          "key": "p_fd_dietary",
+          "prompt": "Do dietary needs affect your reservations?",
+          "responses": [
+            "⚠️ Yes — strict allergy or intolerance I must flag",
+            "🌿 Yes — dietary preference I always communicate",
+            "😌 Mild preference but I'm flexible",
+            "🚫 No restrictions — I eat everything"
+          ]
+        },
+        {
+          "key": "p_fd_discovery",
+          "prompt": "How do you discover fine dining worth visiting?",
+          "responses": [
+            "🌟 Michelin, James Beard & critical recognition",
+            "📰 Food media, critics & editorial coverage",
+            "👥 Trusted recommendations from peers",
+            "📱 Social media & chef content"
+          ]
+        },
+        {
+          "key": "p_fd_value",
+          "prompt": "What do you value most in a fine dining experience?",
+          "responses": [
+            "👨‍🍳 Chef's creative vision & technique",
+            "🎩 Impeccable, detail-oriented service",
+            "🍷 Wine program & sommelier expertise",
+            "✨ Atmosphere, décor & exclusivity"
+          ]
+        },
+        {
+          "key": "p_fd_menu_style",
+          "prompt": "Tasting menu or à la carte?",
+          "responses": [
+            "🎯 Tasting menu — I want the chef's full vision",
+            "🗺️ À la carte — I want control over my meal",
+            "🔄 Depends on the restaurant's strength",
+            "😐 Indifferent — execution and flavor are all that matter"
+          ]
+        },
+        {
+          "key": "p_fd_wine",
+          "prompt": "Your relationship with the wine list?",
+          "responses": [
+            "🍷 I trust the sommelier's guidance",
+            "📚 I'm knowledgeable and navigate it myself",
+            "😌 I appreciate quality beverages but don't go deep",
+            "🍹 I prefer cocktails or non-alcoholic pairings"
+          ]
+        },
+        {
+          "key": "p_fd_avant_garde",
+          "prompt": "How do you feel about avant-garde cuisine?",
+          "responses": [
+            "🚀 I seek it out — boundary-pushing excites me",
+            "⚖️ I appreciate creativity balanced with approachability",
+            "🏛️ I prefer classic, refined over avant-garde",
+            "😋 Execution and flavor matter more than concept"
+          ]
+        },
+        {
+          "key": "p_fd_budget",
+          "prompt": "How do you handle the investment required?",
+          "responses": [
+            "📅 I budget specifically for fine dining as a lifestyle",
+            "🎁 Occasional planned splurge",
+            "💼 Corporate expense or entertainment budget",
+            "🔍 I seek prix-fixe deals, restaurant weeks & lunch menus"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Restaurants — Fast Food / Quick Service",
+      "questions": [
+        {
+          "key": "p_household",
+          "prompt": "What best describes your household right now?",
+          "responses": [
+            "🧍 Single or couple, no children",
+            "👨‍👩‍👧 Family with kids at home",
+            "🎓 Empty nester — kids grown",
+            "👴 Retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_ff_driver",
+          "prompt": "Why fast food over other options?",
+          "responses": [
+            "⏱️ Speed — I need food quickly",
+            "💰 Price — it consistently fits my budget",
+            "🔁 Habit — I have favorite orders I return to",
+            "🚗 Convenience — drive-through & location fit my routine"
+          ]
+        },
+        {
+          "key": "p_ff_frequency",
+          "prompt": "How often do you visit fast food?",
+          "responses": [
+            "🔴 Rarely",
+            "🟡 ~Once a week",
+            "🟠 A few times a week",
+            "🟢 Daily or near-daily"
+          ]
+        },
+        {
+          "key": "p_ff_channel",
+          "prompt": "How do you usually order?",
+          "responses": [
+            "🚗 Drive-through — I stay in the car",
+            "🧍 Counter — I order and eat in",
+            "📱 App — I order ahead & pick up",
+            "🛵 Delivery — it comes to me"
+          ]
+        },
+        {
+          "key": "p_ff_daypart",
+          "prompt": "When do you most often visit?",
+          "responses": [
+            "☀️ Breakfast — part of my morning routine",
+            "🌞 Lunch — quick midday meal",
+            "🌙 Dinner or late night",
+            "🔀 No pattern — varies day to day"
+          ]
+        },
+        {
+          "key": "p_ff_health",
+          "prompt": "How health-conscious are you about fast food?",
+          "responses": [
+            "🥗 I actively look for healthier menu options",
+            "😐 Aware of the nutrition info — doesn't change my order",
+            "🍟 I don't prioritize health here — it's an indulgence",
+            "🚫 I avoid fast food primarily for health reasons"
+          ]
+        },
+        {
+          "key": "p_ff_tipping",
+          "prompt": "How do you feel about tip prompts at the counter?",
+          "responses": [
+            "✅ Happy to tip — I always add something",
+            "😐 I tip occasionally depending on the order",
+            "😤 Annoyed — it's not appropriate at fast food",
+            "🔍 Depends on the place and interaction"
+          ]
+        },
+        {
+          "key": "p_ff_brand",
+          "prompt": "What makes you choose a specific brand?",
+          "responses": [
+            "🍔 A specific craving for a particular item",
+            "📍 Whatever's closest",
+            "🎟️ App deals & loyalty rewards",
+            "🔁 Habit — I default to my preferred brand"
+          ]
+        },
+        {
+          "key": "p_ff_priority",
+          "prompt": "What matters most in a QSR visit?",
+          "responses": [
+            "✅ Accuracy — my order is always correct",
+            "⚡ Speed — from order to food as fast as possible",
+            "🔄 Consistency — it tastes the same every time",
+            "🧹 Cleanliness & safety"
+          ]
+        },
+        {
+          "key": "p_ff_vs_cooking",
+          "prompt": "Fast food vs. cooking at home?",
+          "responses": [
+            "🏠 It's a primary alternative to home cooking",
+            "⏰ It fills gaps when I'm too busy or tired to cook",
+            "👨‍🍳 I mostly cook — fast food is rare for me",
+            "😈 A guilty pleasure I consciously try to limit"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Travel & Tourism",
+      "questions": [
+        {
+          "key": "p_household",
+          "prompt": "What best describes your household right now?",
+          "responses": [
+            "🧍 Single or couple, no children",
+            "👨‍👩‍👧 Family with kids at home",
+            "🎓 Empty nester — kids grown",
+            "👴 Retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_tr_companion",
+          "prompt": "Who do you usually travel with?",
+          "responses": [
+            "🧍 Solo — I travel alone by choice",
+            "👫 Partner or close friend",
+            "👨‍👩‍👧 Family, including children",
+            "👥 Friend groups or organized tours"
+          ]
+        },
+        {
+          "key": "p_tr_frequency",
+          "prompt": "How many leisure trips do you take per year?",
+          "responses": [
+            "🔴 One or fewer",
+            "🟡 2–3 trips",
+            "🟠 4–6 trips",
+            "🟢 7+ trips — travel is a core lifestyle"
+          ]
+        },
+        {
+          "key": "p_tr_personality",
+          "prompt": "What's your travel personality?",
+          "responses": [
+            "🗺️ Explorer — new places & immersive local experiences",
+            "🏖️ Relaxer — rest, disconnection & rejuvenation",
+            "🏛️ Culturalist — history, art, food & depth",
+            "🧗 Adventurer — outdoor, physical & thrill-based"
+          ]
+        },
+        {
+          "key": "p_tr_scope",
+          "prompt": "Do you prefer domestic or international travel?",
+          "responses": [
+            "✈️ Primarily international",
+            "🏡 Primarily domestic",
+            "⚖️ Equal mix",
+            "🧭 I go wherever the experience calls for"
+          ]
+        },
+        {
+          "key": "p_tr_planning",
+          "prompt": "How far ahead do you plan trips?",
+          "responses": [
+            "📅 6+ months — I plan extensively and early",
+            "📅 2–5 months — moderate advance planning",
+            "📅 A few weeks out — flexible, lower commitment",
+            "⚡ Last minute — spontaneity is part of the appeal"
+          ]
+        },
+        {
+          "key": "p_tr_budget",
+          "prompt": "How do you approach travel budgeting?",
+          "responses": [
+            "💰 Strict budget — optimize every decision",
+            "💳 General range, flexible for special experiences",
+            "💎 I invest heavily and rarely compromise on quality",
+            "🎟️ Points, miles & deals to travel more for less"
+          ]
+        },
+        {
+          "key": "p_tr_structure",
+          "prompt": "How do you feel about group tours or packaged itineraries?",
+          "responses": [
+            "🎯 I prefer them — structure and guidance enhance my trip",
+            "🔄 Occasionally for specific activities within self-directed travel",
+            "🚫 I avoid them — I want full freedom and spontaneity",
+            "⚖️ Semi-structured — essentials booked, days left flexible"
+          ]
+        },
+        {
+          "key": "p_tr_inspiration",
+          "prompt": "What's your primary source of travel inspiration?",
+          "responses": [
+            "📱 Social media (Instagram, TikTok, influencers)",
+            "👥 Friends' and family's firsthand recommendations",
+            "📰 Travel publications, blogs & editorial content",
+            "🗺️ Personal bucket list & longstanding desires"
+          ]
+        },
+        {
+          "key": "p_tr_sustainability",
+          "prompt": "How important is sustainable travel?",
+          "responses": [
+            "🌍🌍 Very — I actively seek eco-certified stays & offset carbon",
+            "🌍 Somewhat — I consider it but won't sacrifice significantly",
+            "😐 Aware but it rarely changes my actual choices",
+            "🚫 Not currently a factor in how I travel"
+          ]
+        },
+        {
+          "key": "p_tr_identity",
+          "prompt": "How central is travel to your identity?",
+          "responses": [
+            "🌟 Central — one of my most important life investments",
+            "⚖️ Meaningful but competes with other financial priorities",
+            "😌 Enjoyable but not a defining part of who I am",
+            "✈️ I travel mainly out of obligation — family or work"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Politics & Advocacy",
+      "questions": [
+        {
+          "key": "p_po_engagement",
+          "prompt": "How politically engaged are you?",
+          "responses": [
+            "🔴 Minimal — I largely tune it out",
+            "🟡 Selective — only issues I care deeply about",
+            "🟠 Moderate — I vote & stay informed",
+            "🟢 Highly — I follow & act daily"
+          ]
+        },
+        {
+          "key": "p_po_issues",
+          "prompt": "Which issues matter most to you?",
+          "responses": [
+            "🏥 Healthcare, social welfare & housing",
+            "💰 Economy, taxes & fiscal policy",
+            "🌍 Climate, environment & energy",
+            "🛡️ National security, immigration & civil rights"
+          ]
+        },
+        {
+          "key": "p_po_alignment",
+          "prompt": "How would you place yourself politically?",
+          "responses": [
+            "🔵 Consistently left / progressive",
+            "🟣 Center-left / moderate liberal",
+            "⚪ Centrist / independent",
+            "🔴 Center-right to conservative"
+          ]
+        },
+        {
+          "key": "p_po_participation",
+          "prompt": "What's your main form of participation?",
+          "responses": [
+            "🗳️ Voting in all elections including local",
+            "💸 Donating to candidates, causes or organizations",
+            "📣 Volunteering, canvassing or attending rallies",
+            "📱 Online advocacy — posting, sharing, engaging"
+          ]
+        },
+        {
+          "key": "p_po_trust",
+          "prompt": "How much do you trust key institutions?",
+          "responses": [
+            "💚 High — most institutions act in good faith",
+            "🟡 Selective — I trust on a case-by-case basis",
+            "🟠 Low — I'm skeptical of most",
+            "🔴 Very low — I believe most are broken or captured"
+          ]
+        },
+        {
+          "key": "p_po_media",
+          "prompt": "How do you consume political news?",
+          "responses": [
+            "📺 Traditional media — newspapers & TV news",
+            "🎙️ Digital & indie media — podcasts & newsletters",
+            "📱 Social media — I encounter news through my feed",
+            "🚫 I deliberately limit it to protect my mental health"
+          ]
+        },
+        {
+          "key": "p_po_dialogue",
+          "prompt": "How do you engage with opposing political views?",
+          "responses": [
+            "🤝 I actively seek dialogue",
+            "⚖️ I engage when it seems productive",
+            "🚶 I generally avoid political conversations",
+            "🚫 I see opposition as incompatible with my values"
+          ]
+        },
+        {
+          "key": "p_po_efficacy",
+          "prompt": "How effective is political advocacy?",
+          "responses": [
+            "💪 Highly effective — collective action creates real change",
+            "🔄 Partially — some issues respond, others don't",
+            "😒 Skeptical — advocacy is often performative",
+            "😤 Frustrated — I've lost faith in the system's responsiveness"
+          ]
+        },
+        {
+          "key": "p_po_identity",
+          "prompt": "What role does identity play in your politics?",
+          "responses": [
+            "🌟 Central — lived experience shapes what I fight for",
+            "⚖️ Significant but one of several lenses",
+            "🧠 Minor — I reason from broad principles, not group identity",
+            "🏛️ None — politics should be driven by shared civic values"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Entertainment — Media & Film",
+      "questions": [
+        {
+          "key": "p_me_driver",
+          "prompt": "What drives you to watch something new?",
+          "responses": [
+            "🏆 Critical acclaim or awards recognition",
+            "👥 Recommendation from friends or family",
+            "📱 Trending — I want to be part of the conversation",
+            "🎬 A genre, director, actor or franchise I follow"
+          ]
+        },
+        {
+          "key": "p_me_genre",
+          "prompt": "Which genres do you watch most?",
+          "responses": [
+            "🎭 Drama & prestige TV",
+            "😂 Comedy & light entertainment",
+            "🚀 Sci-fi, fantasy & action",
+            "🔍 Documentary, true crime & non-fiction"
+          ]
+        },
+        {
+          "key": "p_me_platform",
+          "prompt": "How do you mainly watch content?",
+          "responses": [
+            "📺 Streaming platforms at home",
+            "🎭 Movie theaters — I value the big-screen experience",
+            "📡 Linear cable or broadcast TV",
+            "🔀 Mix of platforms — no strong preference"
+          ]
+        },
+        {
+          "key": "p_me_subscriptions",
+          "prompt": "How many streaming subs do you have?",
+          "responses": [
+            "🚫 None — I use free platforms or physical media",
+            "1️⃣–2️⃣ Selective — I rotate based on content",
+            "3️⃣–4️⃣ A core set for my household's tastes",
+            "5️⃣+ I subscribe broadly and rarely cancel"
+          ]
+        },
+        {
+          "key": "p_me_ads",
+          "prompt": "Ad-supported or ad-free streaming?",
+          "responses": [
+            "🚫 Ad-free always — I pay the premium",
+            "📺 Fine with ads if the price is right",
+            "🔄 Depends on the platform and what I'm watching",
+            "💸 I pick the cheapest tier regardless"
+          ]
+        },
+        {
+          "key": "p_me_consumption",
+          "prompt": "Binge all at once or week to week?",
+          "responses": [
+            "🍿 Binge — I want it all immediately",
+            "📅 Weekly release — I enjoy the anticipation",
+            "🔄 Depends on the show",
+            "⏭️ I wait for a full season to drop, then binge"
+          ]
+        },
+        {
+          "key": "p_me_format",
+          "prompt": "Series or films — which do you prefer?",
+          "responses": [
+            "📺 Serialized shows — depth of character over time",
+            "🎬 Films — a complete story in one sitting",
+            "⚖️ Both equally, depending on mood and genre",
+            "⏱️ Short formats — limited series or documentaries"
+          ]
+        },
+        {
+          "key": "p_me_relevance",
+          "prompt": "How important is cultural or social relevance to you?",
+          "responses": [
+            "🌍 Very — I actively seek content that challenges society",
+            "⚖️ Somewhat — I appreciate meaning alongside escapism",
+            "🍿 Not important — I choose for enjoyment, not meaning",
+            "🚫 I actively avoid heavy or politically charged content"
+          ]
+        },
+        {
+          "key": "p_me_engagement",
+          "prompt": "What do you do after watching something?",
+          "responses": [
+            "💬 Discuss it with friends or family",
+            "🔍 Read reviews, analysis or fan commentary",
+            "📱 Share reactions on social media",
+            "➡️ Move on — I'm always on to the next thing"
+          ]
+        },
+        {
+          "key": "p_me_volume",
+          "prompt": "How do you feel about today's volume of content?",
+          "responses": [
+            "😵 Overwhelmed — finding quality feels exhausting",
+            "🤩 Excited — there's always something great to discover",
+            "😢 Nostalgic — the golden era of my favorite content has passed",
+            "🎯 Selective — I have clear filters and don't feel the volume"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Entertainment — Performing Arts & Venues",
+      "questions": [
+        {
+          "key": "p_pa_frequency",
+          "prompt": "How often do you attend live performing arts events?",
+          "responses": [
+            "🔴 Almost never",
+            "🟡 Rarely — an occasional treat",
+            "🟠 A few times a year",
+            "🟢 Monthly or more — it's a core part of my lifestyle"
+          ]
+        },
+        {
+          "key": "p_pa_form",
+          "prompt": "Which art forms do you attend most?",
+          "responses": [
+            "🎭 Theater — plays and musicals",
+            "🎶 Music — symphony, opera or jazz",
+            "💃 Dance — ballet or contemporary",
+            "😂 Comedy & spoken word"
+          ]
+        },
+        {
+          "key": "p_pa_travel",
+          "prompt": "Would you travel to another city for a show?",
+          "responses": [
+            "✈️ Yes — I do this regularly for the right performance",
+            "🚗 Yes — within a few hours' drive",
+            "🤔 Only for something truly exceptional",
+            "🚫 No — I stick to local and regional programming"
+          ]
+        },
+        {
+          "key": "p_pa_streaming",
+          "prompt": "How do you feel about streamed or digital performances?",
+          "responses": [
+            "💻 Love it — great access, especially for opera & dance",
+            "⚖️ Useful but not the same as being there live",
+            "😐 I rarely engage with streamed arts content",
+            "🚫 It misses the point — live is the only way"
+          ]
+        },
+        {
+          "key": "p_pa_loyalty",
+          "prompt": "What's your relationship with a specific venue or company?",
+          "responses": [
+            "🎟️ Subscriber or season ticket holder",
+            "🎫 Regular single-ticket buyer",
+            "👥 Casual, occasional attendee",
+            "🍸 I go mainly for the social occasion, not the art form"
+          ]
+        },
+        {
+          "key": "p_pa_driver",
+          "prompt": "Why live over staying home?",
+          "responses": [
+            "✨ The irreplaceable energy of a live, in-the-moment experience",
+            "👫 The social ritual of going out",
+            "💛 Supporting artists and cultural institutions I believe in",
+            "🌟 The prestige and cultural cachet of attending"
+          ]
+        },
+        {
+          "key": "p_pa_discovery",
+          "prompt": "How do you discover performances worth attending?",
+          "responses": [
+            "📧 Venue emails & season brochures",
+            "📰 Arts media, critics & editorial coverage",
+            "👥 Recommendations from peers with similar tastes",
+            "📱 Social media & YouTube previews"
+          ]
+        },
+        {
+          "key": "p_pa_price",
+          "prompt": "How do you feel about ticket prices?",
+          "responses": [
+            "💎 I invest significantly for exceptional or rare performances",
+            "⚖️ Value-conscious — occasional splurge but budget-aware overall",
+            "😬 Price is a genuine barrier — I'd attend more if cheaper",
+            "🎟️ I rely on discounts, rush tickets or membership perks"
+          ]
+        },
+        {
+          "key": "p_pa_advocacy",
+          "prompt": "How do you engage beyond attending performances?",
+          "responses": [
+            "💛 I donate or financially support arts organizations",
+            "📱 I share content and recommend performances actively",
+            "🎓 I attend pre/post-show events, talks & educational programming",
+            "🎭 My engagement is limited to attending — nothing beyond that"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "SaaS / Software",
+      "questions": [
+        {
+          "key": "p_sw_org_size",
+          "prompt": "How large is your organization?",
+          "responses": [
+            "🌱 Startup or SMB (under 100 employees)",
+            "🏢 Mid-market (100–1,000 employees)",
+            "🏭 Enterprise (1,000–10,000 employees)",
+            "🌐 Large enterprise (10,000+ employees)"
+          ]
+        },
+        {
+          "key": "p_sw_role",
+          "prompt": "Your role in software purchasing decisions?",
+          "responses": [
+            "👑 Decision maker — I have final authority",
+            "🔍 Influencer — I evaluate and recommend",
+            "💻 End user — I use what's provided",
+            "⚙️ Admin — I manage implementation and rollout"
+          ]
+        },
+        {
+          "key": "p_sw_trigger",
+          "prompt": "What triggers a new software evaluation?",
+          "responses": [
+            "😤 A clear pain point or process inefficiency",
+            "📣 Peer recommendation or industry buzz",
+            "📧 A compelling vendor pitch at the right moment",
+            "🔄 Renewal period for an existing contract"
+          ]
+        },
+        {
+          "key": "p_sw_ai_readiness",
+          "prompt": "How ready is your org to adopt AI tools?",
+          "responses": [
+            "🚀 Leading — we're already using AI across workflows",
+            "📈 Building — we're actively piloting and learning",
+            "🤔 Cautious — interested but not yet committed",
+            "🚫 Resistant — concerns about risk, cost or readiness"
+          ]
+        },
+        {
+          "key": "p_sw_strategy",
+          "prompt": "Platform suite or best-of-breed tools?",
+          "responses": [
+            "🏢 One platform — less complexity always wins",
+            "⚡ Best-of-breed — I want the best tool per job",
+            "⚖️ Core platform + best-of-breed where it matters",
+            "🤷 Context-dependent — varies by function"
+          ]
+        },
+        {
+          "key": "p_sw_concern",
+          "prompt": "Biggest concern when adopting new software?",
+          "responses": [
+            "👥 User adoption — will my team actually use it?",
+            "🔌 Integration — will it work with our existing stack?",
+            "🔒 Security and data privacy compliance",
+            "💰 Total cost of ownership beyond the subscription"
+          ]
+        },
+        {
+          "key": "p_sw_cycle",
+          "prompt": "How long is your typical buying cycle?",
+          "responses": [
+            "⚡ Under 1 month",
+            "📅 1–3 months — standard demos and review",
+            "🗓️ 3–6 months — formal evaluation and stakeholder alignment",
+            "🏢 6+ months — enterprise procurement with legal & exec sign-off"
+          ]
+        },
+        {
+          "key": "p_sw_trial",
+          "prompt": "How important is a free trial or freemium access?",
+          "responses": [
+            "⭐⭐⭐ Essential — I won't seriously evaluate without it",
+            "⭐⭐ Very helpful — I prefer hands-on experience",
+            "⭐ Somewhat — I rely more on demos and vendor walkthroughs",
+            "🚫 Not important — references and analyst reports are enough"
+          ]
+        },
+        {
+          "key": "p_sw_roi",
+          "prompt": "How do you measure the ROI of a SaaS investment?",
+          "responses": [
+            "⏱️ Time saved and productivity gains",
+            "💰 Revenue impact — attributable pipeline or outcomes",
+            "📉 Cost reduction vs. prior solutions or headcount",
+            "🤷 We struggle to measure ROI formally — it's often qualitative"
+          ]
+        },
+        {
+          "key": "p_sw_vendor",
+          "prompt": "What's your relationship with current vendors?",
+          "responses": [
+            "🤝 Strategic — I engage regularly with CSMs and account managers",
+            "📦 Transactional — I value the product, not the relationship",
+            "🔔 Reactive — I only engage at problems or renewal",
+            "😒 Underserved — vendors disappear after the sale"
+          ]
+        },
+        {
+          "key": "p_sw_discovery",
+          "prompt": "How do you stay current on new SaaS tools?",
+          "responses": [
+            "👥 Industry communities, Slack groups & peer networks",
+            "📊 G2, Capterra, Gartner or Forrester reports",
+            "💼 LinkedIn content & thought leaders in my space",
+            "🎤 Vendor outreach & industry conferences"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Retail / E-commerce",
+      "questions": [
+        {
+          "key": "p_household",
+          "prompt": "What best describes your household right now?",
+          "responses": [
+            "🧍 Single or couple, no children",
+            "👨‍👩‍👧 Family with kids at home",
+            "🎓 Empty nester — kids grown",
+            "👴 Retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_re_channel",
+          "prompt": "How do you prefer to shop?",
+          "responses": [
+            "💻 Primarily online",
+            "🏪 Primarily in-store",
+            "🔄 Research online, buy in-store (or vice versa)",
+            "⚡ Channel-agnostic — wherever has the best deal or fastest option"
+          ]
+        },
+        {
+          "key": "p_re_delivery",
+          "prompt": "What delivery speed do you expect?",
+          "responses": [
+            "⚡ Same-day or next-day — I'll pay for it",
+            "📦 2–3 days is fine for most purchases",
+            "📬 Standard shipping is OK if it saves money",
+            "😌 Flexible — delivery speed rarely drives my decision"
+          ]
+        },
+        {
+          "key": "p_re_choice_driver",
+          "prompt": "What most influences your choice of retailer?",
+          "responses": [
+            "💰 Price and value — I actively compare and seek the best deal",
+            "❤️ Brand trust and past experience",
+            "📦 Product selection and availability",
+            "⚡ Convenience — fast shipping, easy returns, low friction"
+          ]
+        },
+        {
+          "key": "p_re_discovery",
+          "prompt": "How do you discover new products or brands?",
+          "responses": [
+            "📱 Social media (Instagram, TikTok, influencer content)",
+            "🔍 Search engines — I find brands while looking for specific items",
+            "👥 Word of mouth from friends, family or community",
+            "📧 Email newsletters, loyalty apps & retail communications"
+          ]
+        },
+        {
+          "key": "p_re_bnpl",
+          "prompt": "How do you feel about buy now, pay later?",
+          "responses": [
+            "✅ I use it regularly — great for bigger purchases",
+            "🤔 I've tried it but don't rely on it",
+            "😐 I prefer to pay in full at the time of purchase",
+            "🚫 I avoid it — it encourages overspending"
+          ]
+        },
+        {
+          "key": "p_re_resale",
+          "prompt": "How do you feel about secondhand & resale?",
+          "responses": [
+            "♻️ Enthusiastic — I actively buy and sell resale",
+            "👀 Open to it for the right items",
+            "😐 Rarely think about it",
+            "🚫 I prefer new — condition and provenance matter to me"
+          ]
+        },
+        {
+          "key": "p_re_sustainability",
+          "prompt": "How important is brand ethics & sustainability?",
+          "responses": [
+            "🌍🌍 Very — I research brand practices and pay a premium",
+            "🌍 Somewhat — I factor it in when options are comparable",
+            "😐 Minimally — price and quality take priority",
+            "🚫 Not currently a factor in my purchasing decisions"
+          ]
+        },
+        {
+          "key": "p_re_returns",
+          "prompt": "How much do returns and customer service affect your loyalty?",
+          "responses": [
+            "⭐⭐⭐ Big impact — one bad return loses me as a customer",
+            "⭐⭐ Moderately — it influences repeat purchases",
+            "⭐ Mildly — I rarely return items so it doesn't weigh heavily",
+            "🚫 Not at all — I rarely need to return anything"
+          ]
+        },
+        {
+          "key": "p_re_loyalty",
+          "prompt": "Do loyalty programs affect how you shop?",
+          "responses": [
+            "🏆 A lot — I choose retailers to earn rewards",
+            "😌 Somewhat — I participate but it's not the main driver",
+            "👍 I like relevant recommendations, but rewards aren't everything",
+            "🚫 I find loyalty programs and personalisation annoying"
+          ]
+        },
+        {
+          "key": "p_re_impulse",
+          "prompt": "What's your relationship with impulse purchasing?",
+          "responses": [
+            "😅 Prone — promos and browsing often lead to unplanned buys",
+            "⚖️ Occasional — I have reasonable control",
+            "🎯 Deliberate — I research before buying and rarely deviate",
+            "🚫 I actively resist impulse buying"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Financial Services",
+      "questions": [
+        {
+          "key": "p_household",
+          "prompt": "What best describes your household right now?",
+          "responses": [
+            "🧍 Single or couple, no children",
+            "👨‍👩‍👧 Family with kids at home",
+            "🎓 Empty nester — kids grown",
+            "👴 Retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_fs_planning",
+          "prompt": "How would you describe your financial planning?",
+          "responses": [
+            "📊 Proactive — I have a clear plan and review it regularly",
+            "📋 Moderate — some structure but room to improve",
+            "🔔 Reactive — I address financial matters as they arise",
+            "😬 Avoidant — I find it stressful and tend to put it off"
+          ]
+        },
+        {
+          "key": "p_fs_priority",
+          "prompt": "What's your top financial priority right now?",
+          "responses": [
+            "🛡️ Building emergency savings & financial security",
+            "💳 Paying down debt",
+            "📈 Investing and growing long-term wealth",
+            "🏠 Funding a major near-term goal (home, business, education)"
+          ]
+        },
+        {
+          "key": "p_fs_debt",
+          "prompt": "What's your attitude toward debt?",
+          "responses": [
+            "🔧 A useful tool — leverage is part of building wealth",
+            "⚖️ Acceptable for big purchases, managed carefully",
+            "🚫 Something to minimize and eliminate as fast as possible",
+            "😬 A source of anxiety I try not to think about"
+          ]
+        },
+        {
+          "key": "p_fs_retirement",
+          "prompt": "Where are you in retirement planning?",
+          "responses": [
+            "🌱 Early stage — just starting to save",
+            "📈 Mid-journey — saving consistently",
+            "🏁 Near retirement — within 10 years",
+            "✅ Already retired or semi-retired"
+          ]
+        },
+        {
+          "key": "p_fs_insurance",
+          "prompt": "How do you approach insurance coverage?",
+          "responses": [
+            "🛡️ Proactive — I review and optimize my coverage regularly",
+            "📋 Reactive — I have it but rarely think about it",
+            "💰 Minimal — I carry only what's legally required",
+            "🤷 Uncertain — I don't feel confident about my current coverage"
+          ]
+        },
+        {
+          "key": "p_fs_management",
+          "prompt": "How do you manage day-to-day finances?",
+          "responses": [
+            "📱 Fully digital — apps and platforms I control myself",
+            "👔 Through a financial advisor or wealth manager",
+            "🏦 Through my bank's standard products and services",
+            "🤷 Informally — no specific tools or professional guidance"
+          ]
+        },
+        {
+          "key": "p_fs_risk",
+          "prompt": "What's your investment risk tolerance?",
+          "responses": [
+            "🚀 Aggressive — I prioritize maximum growth and accept volatility",
+            "⚖️ Moderate — growth with reasonable downside protection",
+            "🛡️ Conservative — capital preservation over high returns",
+            "🤷 Unclear — I act inconsistently and haven't defined this"
+          ]
+        },
+        {
+          "key": "p_fs_trust",
+          "prompt": "How much do you trust traditional financial institutions?",
+          "responses": [
+            "💚 High — I rely on established institutions for security",
+            "🟡 Moderate — I work with them but remain skeptical of incentives",
+            "🔴 Low — I prefer fintech alternatives or self-directed approaches",
+            "🔮 I'm actively exploring crypto, DeFi or alternative assets"
+          ]
+        },
+        {
+          "key": "p_fs_advice",
+          "prompt": "How do you prefer to get financial advice?",
+          "responses": [
+            "💼 I actively seek and pay for professional advice",
+            "📚 Free resources — articles, podcasts & community forums",
+            "🤔 I want guidance but don't know where to start or who to trust",
+            "🧭 I make financial decisions fully independently"
+          ]
+        },
+        {
+          "key": "p_fs_stress",
+          "prompt": "How much does financial stress affect your wellbeing?",
+          "responses": [
+            "😰 Significantly — it regularly affects my mental health",
+            "😐 Moderately — a background concern but manageable",
+            "😌 Minimally — I feel reasonably secure",
+            "✅ Not at all — I feel financially stable and confident"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Education (K-12)",
+      "questions": [
+        {
+          "key": "p_ed_role",
+          "prompt": "Your primary connection to K-12 education?",
+          "responses": [
+            "👨‍👩‍👧 Parent or guardian of a current K-12 student",
+            "🏫 K-12 educator or school administrator",
+            "📋 Education policymaker, advocate or non-profit professional",
+            "💻 EdTech product or curriculum developer"
+          ]
+        },
+        {
+          "key": "p_ed_concern",
+          "prompt": "Biggest concern about K-12 education today?",
+          "responses": [
+            "📚 Academic performance gaps & unequal access",
+            "🧠 Student mental health & social-emotional development",
+            "👩‍🏫 Teacher retention, compensation & support",
+            "🔮 Curriculum relevance — preparing students for the future"
+          ]
+        },
+        {
+          "key": "p_ed_ai",
+          "prompt": "How should schools handle AI tools in learning?",
+          "responses": [
+            "🚀 Embrace them — teach students to use AI responsibly",
+            "⚖️ Permit with clear guidelines and guardrails",
+            "🚫 Restrict — protect foundational learning skills first",
+            "🤷 Undecided — the right approach is still genuinely unclear"
+          ]
+        },
+        {
+          "key": "p_ed_phones",
+          "prompt": "How do you feel about phones in schools?",
+          "responses": [
+            "🚫 Ban them — they hurt focus and social development",
+            "⚖️ Managed use — permitted with clear policies",
+            "📱 Students should manage their own device use",
+            "🤷 Mixed — depends on age and context"
+          ]
+        },
+        {
+          "key": "p_ed_technology",
+          "prompt": "How do you view technology in the K-12 classroom?",
+          "responses": [
+            "🚀 Essential — a transformative enabler of personalized learning",
+            "⚖️ Beneficial but needs careful, deliberate guardrails",
+            "⚠️ Overemphasized — screen time is displacing foundational learning",
+            "🔄 Mixed — depends on the tool, age group and implementation quality"
+          ]
+        },
+        {
+          "key": "p_ed_engagement",
+          "prompt": "How actively engaged are you in a child's academic progress?",
+          "responses": [
+            "🔍 Highly — monitor grades, talk to teachers & supplement at home",
+            "📋 Moderately — stay informed but give real independence",
+            "🤝 Minimally — I trust the school and step in when needed",
+            "😔 Barriers (time, work, language) limit me though I want more"
+          ]
+        },
+        {
+          "key": "p_ed_outcome",
+          "prompt": "Most important outcome of a K-12 education?",
+          "responses": [
+            "📖 Academic achievement and preparation for higher education",
+            "💡 Critical thinking, problem-solving and adaptability",
+            "❤️ Social-emotional development, empathy and citizenship",
+            "🔧 Practical life skills and career readiness"
+          ]
+        },
+        {
+          "key": "p_ed_school_choice",
+          "prompt": "How do you view private, charter & alternative schooling?",
+          "responses": [
+            "🏆 Strongly positive — competition and choice improve outcomes",
+            "⚖️ Nuanced — alternatives serve niches but must not defund public schools",
+            "🏫 Skeptical — concentrate resources on strengthening public schools",
+            "🚫 Opposed — school choice increases inequality and stratification"
+          ]
+        },
+        {
+          "key": "p_ed_testing",
+          "prompt": "How do you feel about standardized testing?",
+          "responses": [
+            "📊 Essential — objective data drives accountability",
+            "⚖️ Useful but significantly over-relied upon",
+            "😟 Harmful — it narrows curriculum and stresses students",
+            "🤷 Mixed — depends on the specific test and how results are used"
+          ]
+        },
+        {
+          "key": "p_ed_confidence",
+          "prompt": "How confident are you in your local school district?",
+          "responses": [
+            "💚 High — I trust local leadership and direction",
+            "🟡 Moderate — genuine effort but significant room to improve",
+            "🔴 Low — leadership is misaligned with the community's actual needs",
+            "😐 Disengaged — I don't closely follow district-level decisions"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Higher Education",
+      "questions": [
+        {
+          "key": "p_he_role",
+          "prompt": "Your primary relationship to higher education?",
+          "responses": [
+            "🎓 Current or recent student",
+            "👨‍👩‍👧 Parent or guardian of a college-age student",
+            "🏛️ Higher education administrator, faculty or staff",
+            "💼 Employer or industry professional who hires graduates"
+          ]
+        },
+        {
+          "key": "p_he_degree_value",
+          "prompt": "How valuable is a traditional 4-year degree today?",
+          "responses": [
+            "⭐⭐⭐ High — it remains one of the best long-term investments",
+            "⭐⭐ Conditional — depends heavily on institution, major & career path",
+            "⭐ Declining — bootcamps and certs are increasingly competitive",
+            "🚫 Poor value — the cost-to-benefit ratio no longer justifies it for most"
+          ]
+        },
+        {
+          "key": "p_he_vocational",
+          "prompt": "How do you view trade and vocational alternatives?",
+          "responses": [
+            "🔧 Underrated — trades and vocational paths deserve equal respect",
+            "⚖️ A legitimate alternative for those who choose it",
+            "📋 Useful but traditional degrees still open more doors",
+            "🎓 Degrees remain the primary and most reliable pathway"
+          ]
+        },
+        {
+          "key": "p_he_ai",
+          "prompt": "What's your view on AI in higher education?",
+          "responses": [
+            "🚀 Positive — AI tools improve learning and should be embraced",
+            "⚖️ Cautious — valuable if institutions develop clear, fair AI policies",
+            "😟 Concerned — it's undermining academic integrity and genuine learning",
+            "🚫 Opposed — AI should be restricted in academic coursework"
+          ]
+        },
+        {
+          "key": "p_he_challenge",
+          "prompt": "Most significant challenge facing higher education today?",
+          "responses": [
+            "💰 Affordability and the student debt burden",
+            "📋 Curricula not keeping pace with employer needs",
+            "📉 Declining enrollment and shifting demographics",
+            "🐌 Institutional inertia and resistance to meaningful change"
+          ]
+        },
+        {
+          "key": "p_he_prestige",
+          "prompt": "How important is institutional reputation to you?",
+          "responses": [
+            "⭐⭐⭐ Very — prestige signals quality and opens career doors",
+            "⭐⭐ Moderate — outcomes and campus culture matter more",
+            "⭐ Minimal — I focus on program quality, not the name",
+            "🚫 Not important — over-credentialism based on prestige is harmful"
+          ]
+        },
+        {
+          "key": "p_he_online",
+          "prompt": "How do you feel about online and hybrid higher education?",
+          "responses": [
+            "🌐🌐 Very positive — it democratizes access and improves flexibility",
+            "🌐 Positive with caveats — quality and employer perception vary",
+            "😐 Skeptical — in-person experiences offer irreplaceable development",
+            "🚫 Online should supplement residential education, not replace it"
+          ]
+        },
+        {
+          "key": "p_he_purpose",
+          "prompt": "Career preparation vs. broad intellectual development?",
+          "responses": [
+            "💼 Career preparation should be the primary focus",
+            "⚖️ Both are equally important and not fundamentally in conflict",
+            "🎓 Intellectual development and liberal arts should remain central",
+            "🔀 Institutions should offer flexible tracks serving both orientations"
+          ]
+        },
+        {
+          "key": "p_he_dei",
+          "prompt": "Your view on DEI initiatives in higher education?",
+          "responses": [
+            "🌍 Essential — campuses must actively reflect and serve diverse populations",
+            "📊 Important but outcomes-focused — programs should show demonstrable results",
+            "⚖️ Merit-based admissions and hiring should guide decisions",
+            "🤔 Current approaches risk compromising academic standards or free inquiry"
+          ]
+        },
+        {
+          "key": "p_he_alumni",
+          "prompt": "How do you engage with your alma mater?",
+          "responses": [
+            "🌟 Actively — I donate, attend events and mentor students",
+            "📅 Occasionally — when something meaningful or relevant comes up",
+            "😐 Minimally — I've largely moved on",
+            "🚫 Not at all — I feel disconnected or dissatisfied with the institution"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "HR / Employee Experience",
+      "questions": [
+        {
+          "key": "p_hr_ex_approach",
+          "prompt": "How would you describe your org's approach to employee experience?",
+          "responses": [
+            "🌟 Highly intentional — EX is a strategic priority",
+            "📈 Improving — we've recognized it and are actively building",
+            "⚠️ Inconsistent — efforts vary widely across teams",
+            "😔 Underdeveloped — acknowledged but rarely prioritized"
+          ]
+        },
+        {
+          "key": "p_hr_mgmt_challenge",
+          "prompt": "What's your biggest people management challenge right now?",
+          "responses": [
+            "🏃 Retention — keeping top talent in a competitive market",
+            "💤 Engagement — employees who are present but not fully committed",
+            "🌐 Culture — cohesion across a distributed or diverse workforce",
+            "📚 Development — building skills pipelines for future business needs"
+          ]
+        },
+        {
+          "key": "p_hr_recruiting",
+          "prompt": "What's your biggest recruiting challenge?",
+          "responses": [
+            "🔍 Finding qualified candidates in a thin talent market",
+            "💰 Competing on compensation with larger or better-funded employers",
+            "⏱️ Speed — our process loses candidates to faster-moving competitors",
+            "🌐 Employer brand — we struggle to stand out and attract the right people"
+          ]
+        },
+        {
+          "key": "p_hr_ai",
+          "prompt": "How is your organization using AI in HR?",
+          "responses": [
+            "🚀 Actively — AI is in our recruiting, analytics and HR workflows",
+            "🔬 Piloting — testing specific use cases carefully",
+            "🤔 Exploring — interested but not yet deployed",
+            "🚫 Not yet — concerns about bias, privacy or organizational readiness"
+          ]
+        },
+        {
+          "key": "p_hr_pay_transparency",
+          "prompt": "What's your stance on pay transparency?",
+          "responses": [
+            "✅ Fully in favor — transparency builds trust and equity",
+            "⚖️ Supportive in principle but complex to execute in practice",
+            "😐 Neutral — we follow legal requirements and go no further",
+            "😟 Concerned — it creates more internal problems than it solves"
+          ]
+        },
+        {
+          "key": "p_hr_feedback",
+          "prompt": "How do you currently gather employee feedback?",
+          "responses": [
+            "📊 Regular pulse surveys with structured action-planning",
+            "📋 Annual surveys — we review but act inconsistently",
+            "💬 Informal — manager conversations and open-door policies",
+            "🚫 No structured approach to gathering feedback"
+          ]
+        },
+        {
+          "key": "p_hr_remote",
+          "prompt": "How does your organization approach flexible and remote work?",
+          "responses": [
+            "🏡 Fully flexible — employees choose when and where they work",
+            "🔄 Hybrid — set office days with flexibility built in",
+            "🏢 Return to office — in-person is the default",
+            "🧩 Context-dependent — varies by role, team and function"
+          ]
+        },
+        {
+          "key": "p_hr_alignment",
+          "prompt": "How aligned are HR and executive leadership on people strategy?",
+          "responses": [
+            "💚 Highly aligned — HR drives strategic decisions",
+            "🟡 Mostly aligned — respected but sometimes treated as support",
+            "🟠 Partial tension — people priorities vs. business pressure",
+            "🔴 Poorly aligned — HR is seen as administrative, not strategic"
+          ]
+        },
+        {
+          "key": "p_hr_mgr_dev",
+          "prompt": "How does your org invest in manager development?",
+          "responses": [
+            "🌟 A strategic priority — heavy investment in training and coaching",
+            "📋 Covered in onboarding but not sustained consistently",
+            "🌱 Organic — managers develop through experience, not programs",
+            "😔 Underfunded — we know it matters but haven't prioritized it"
+          ]
+        },
+        {
+          "key": "p_hr_dei",
+          "prompt": "How do you approach DEI within your talent strategy?",
+          "responses": [
+            "🌍 Fully integrated — across hiring, development & leadership",
+            "📈 Actively building — have goals but face execution gaps",
+            "📋 Compliance-focused — meet legal requirements, no further",
+            "🤔 Uncertain — leadership hasn't aligned on DEI approach"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Sports",
+      "questions": [
+        {
+          "key": "p_sp_role",
+          "prompt": "What's your primary relationship with sports?",
+          "responses": [
+            "❤️ Passionate fan — I follow specific teams or athletes closely",
+            "📺 Casual viewer — I watch major events but not day-to-day",
+            "🏃 Active participant — playing and competing matters more than watching",
+            "🎯 Both — I'm an engaged fan and an active participant"
+          ]
+        },
+        {
+          "key": "p_sp_connection",
+          "prompt": "What most drives your connection to a specific team or sport?",
+          "responses": [
+            "🏠 Geographic loyalty — I root for my hometown or regional teams",
+            "👨‍👩‍👧 Personal history — a sport or team I grew up with in my family",
+            "🏆 Athletic excellence — I follow teams or athletes at the highest level",
+            "👥 Community — my social circle is the primary reason I follow specific sports"
+          ]
+        },
+        {
+          "key": "p_sp_viewing",
+          "prompt": "How do you primarily watch live sports?",
+          "responses": [
+            "🏟️ In-stadium or in-arena — I attend whenever possible",
+            "📺 Traditional broadcast TV — cable or satellite sports packages",
+            "📱 Streaming services and digital platforms",
+            "📲 Social media highlights and recaps — I rarely watch full games"
+          ]
+        },
+        {
+          "key": "p_sp_esports",
+          "prompt": "How do you engage with esports or competitive gaming?",
+          "responses": [
+            "🎮 Actively — I watch or compete and see it as a legitimate sport",
+            "👀 Casually — I follow it occasionally",
+            "😐 Aware but not personally interested",
+            "🚫 I don't consider esports a sport"
+          ]
+        },
+        {
+          "key": "p_sp_womens",
+          "prompt": "How do you engage with women's sports?",
+          "responses": [
+            "❤️ Actively — I follow teams and athletes closely",
+            "👀 Occasionally — big events or marquee matchups",
+            "😐 Aware but don't actively follow",
+            "🚫 Not at all"
+          ]
+        },
+        {
+          "key": "p_sp_activism",
+          "prompt": "How comfortable are you with athlete activism?",
+          "responses": [
+            "💚 Very — athletes have a platform and should use it",
+            "⚖️ It depends on the issue and how it's expressed",
+            "😐 I prefer athletes stay focused on competition",
+            "🔴 It puts me off — keep sport and social issues separate"
+          ]
+        },
+        {
+          "key": "p_sp_commercial",
+          "prompt": "How do you feel about the commercialisation of sports?",
+          "responses": [
+            "💚 Positive — commercial investment raises quality and visibility",
+            "😐 Neutral — it's the reality of professional sport at scale",
+            "⚖️ Ambivalent — it enables but compromises the purity of competition",
+            "🔴 Negative — over-commercialisation has damaged my connection to sport"
+          ]
+        },
+        {
+          "key": "p_sp_betting",
+          "prompt": "How do you engage with fantasy sports or sports betting?",
+          "responses": [
+            "🎮 Actively — it's a significant part of how I engage with sport",
+            "😌 Casually — I participate occasionally but it's not central",
+            "👀 I don't participate but understand why others do",
+            "🚫 I avoid it — I believe it distorts genuine fan engagement"
+          ]
+        },
+        {
+          "key": "p_sp_youth",
+          "prompt": "What's your connection to youth sports?",
+          "responses": [
+            "👨‍👩‍👧 Active sports parent — deeply involved in my child's participation",
+            "🏃 Former youth athlete — nostalgic connection",
+            "👀 Interested observer — not directly involved",
+            "😐 No meaningful personal connection to youth sports"
+          ]
+        },
+        {
+          "key": "p_sp_spending",
+          "prompt": "How much do you spend on sports fandom annually?",
+          "responses": [
+            "💰💰 Significantly — sports is one of my top discretionary spending categories",
+            "💰 Moderately — it's meaningful in my budget",
+            "💸 Minimally — I enjoy sports but keep spending low",
+            "🚫 Almost nothing — I consume sports purely through free or included channels"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Non-Profit / Charity",
+      "questions": [
+        {
+          "key": "p_np_role",
+          "prompt": "What best describes your connection to the non-profit sector?",
+          "responses": [
+            "💸 Donor — I financially support causes I care about",
+            "🙌 Volunteer — I give my time and skills",
+            "💼 Professional — I work for or lead a non-profit",
+            "🏘️ Beneficiary or community member directly served"
+          ]
+        },
+        {
+          "key": "p_np_causes",
+          "prompt": "Which cause areas do you support most?",
+          "responses": [
+            "🏥 Health, medical research or mental health",
+            "🌍 Environment & climate",
+            "📚 Education, youth or community development",
+            "🤝 Poverty, hunger, housing or social services"
+          ]
+        },
+        {
+          "key": "p_np_geography",
+          "prompt": "What's your geographic giving focus?",
+          "responses": [
+            "🏘️ Local — my own community comes first",
+            "🏛️ National — domestic issues are my priority",
+            "🌍 Global — I give where the need is greatest",
+            "🔀 Mixed — I give across local, national and global causes"
+          ]
+        },
+        {
+          "key": "p_np_giving_style",
+          "prompt": "How do you typically give?",
+          "responses": [
+            "🔄 Recurring — automatic monthly or annual giving",
+            "💸 One-time — when a campaign or story moves me to act",
+            "🔀 Mix — some recurring, some responsive to moments",
+            "🎁 In-kind — I prefer to give goods, skills or time over money"
+          ]
+        },
+        {
+          "key": "p_np_motivation",
+          "prompt": "What most motivates you to support a specific cause?",
+          "responses": [
+            "❤️ Personal connection — it's directly affected me or someone I love",
+            "📊 Demonstrated impact — I trust the organization delivers measurable results",
+            "🏘️ Community need — it addresses something I see in my local context",
+            "🌍 Values alignment — the cause reflects my broader worldview"
+          ]
+        },
+        {
+          "key": "p_np_evaluation",
+          "prompt": "How do you evaluate whether a non-profit deserves support?",
+          "responses": [
+            "📊 Third-party ratings (Charity Navigator, GiveWell, Candid)",
+            "📋 Financial transparency — I review annual reports and public filings",
+            "🤝 Personal trust — recommendations from people in my network",
+            "💛 Storytelling — powerful impact stories move me to act"
+          ]
+        },
+        {
+          "key": "p_np_overhead",
+          "prompt": "How do you feel about overhead and administrative costs?",
+          "responses": [
+            "💰 Low overhead is essential — maximize direct mission spend",
+            "💡 Evolved view — effective orgs must invest in infrastructure",
+            "📊 Outcomes, not overhead ratios, are the true measure",
+            "🤷 I'm genuinely uncertain and haven't formed a clear view"
+          ]
+        },
+        {
+          "key": "p_np_engagement",
+          "prompt": "How do you engage with non-profits beyond financial giving?",
+          "responses": [
+            "🙌 Volunteering time and hands-on service",
+            "📣 Advocacy — raising awareness and influencing my network",
+            "🔧 Skills-based contributions — pro bono professional services",
+            "🏛️ Board or committee involvement at a governance level"
+          ]
+        },
+        {
+          "key": "p_np_collab",
+          "prompt": "How do you feel about business & non-profit collaboration?",
+          "responses": [
+            "💚 Very positive — market tools can amplify social impact",
+            "⚖️ Cautiously optimistic — valuable, but mission must come first",
+            "😒 Skeptical — CSR is often performative and dilutes charity work",
+            "🚫 Opposed — market logic and non-profit values don't mix"
+          ]
+        },
+        {
+          "key": "p_np_barrier",
+          "prompt": "What's the biggest barrier to you giving more?",
+          "responses": [
+            "💰 Financial limitations — I give what I can but income constrains me",
+            "🤔 Distrust — uncertainty about whether my donation will be used effectively",
+            "😵 Decision fatigue — too many causes, I don't know where to focus",
+            "🔄 Competing priorities — other financial goals take precedence right now"
+          ]
+        },
+        {
+          "key": "p_np_churn",
+          "prompt": "What would cause you to stop giving to an organization?",
+          "responses": [
+            "📉 Loss of trust — a scandal, misuse of funds or poor transparency",
+            "😶 Donor neglect — I stopped hearing from them or feeling valued",
+            "🔀 Shift in priorities — my own giving focus changed, not their fault",
+            "📊 No evidence of impact — I couldn't see my donation making a difference"
+          ]
+        },
+        {
+          "key": "p_np_upgrade",
+          "prompt": "What would make you give more to an org you already support?",
+          "responses": [
+            "📊 Clearer proof of impact — show me what my money actually achieved",
+            "🤝 A deeper relationship — more meaningful updates and personal connection",
+            "🎯 A specific campaign or project I can direct my gift toward",
+            "💰 Better financial footing — if I had more discretionary income"
+          ]
+        },
+        {
+          "key": "p_np_responsibility",
+          "prompt": "Who is most responsible for solving major social problems?",
+          "responses": [
+            "🏛️ Government — only systemic policy creates lasting change",
+            "🏢 Corporations — they have the resources and should lead",
+            "🙋 Individuals & communities — change starts at the grassroots",
+            "🤝 All three equally — it takes coordinated effort across sectors"
+          ]
+        },
+        {
+          "key": "p_np_comms",
+          "prompt": "How do you prefer to hear from orgs you support?",
+          "responses": [
+            "📧 Email — detailed updates I can read on my own time",
+            "📱 Text — short, timely nudges and urgent alerts only",
+            "📬 Physical mail — newsletters and printed impact reports",
+            "📣 Social media — I follow orgs and engage with their content"
+          ]
+        },
+        {
+          "key": "p_np_recognition",
+          "prompt": "What's your preferred donor recognition?",
+          "responses": [
+            "✍️ Handwritten note — personal and thoughtful",
+            "📞 A call from leadership — I feel genuinely seen",
+            "📧 Email receipt and acknowledgement — clean and sufficient",
+            "🚫 No recognition needed — I give anonymously or without fanfare"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Automotive Repair",
+      "questions": [
+        {
+          "key": "p_ar_vehicle_type",
+          "prompt": "What best describes your vehicle situation?",
+          "responses": [
+            "🔋 I own or lease an EV or PHEV",
+            "🔄 Considering switching to EV in the next 2 years",
+            "⛽ Conventional gas or mild hybrid vehicle",
+            "🚗 I own a mix of EV and conventional"
+          ]
+        },
+        {
+          "key": "p_ar_vehicle_age",
+          "prompt": "What's the age and warranty status of your main vehicle?",
+          "responses": [
+            "🆕 Under 3 years — still under manufacturer warranty",
+            "📅 3–7 years — out of new-car warranty",
+            "🗓️ 8–12 years — well out of warranty",
+            "⏳ 13+ years — older vehicle, higher mileage"
+          ]
+        },
+        {
+          "key": "p_ar_vehicle_count",
+          "prompt": "How many vehicles does your household run?",
+          "responses": [
+            "🚗 One vehicle",
+            "🚗🚗 Two vehicles",
+            "🚗🚗🚗 Three or more",
+            "🚫 None — I don't currently own a vehicle"
+          ]
+        },
+        {
+          "key": "p_ar_selection",
+          "prompt": "How do you find and select an automotive repair shop?",
+          "responses": [
+            "❤️ Trusted shop I've used for years — rarely consider alternatives",
+            "👥 Word of mouth — recommendations from friends or family",
+            "⭐ Online reviews (Google, Yelp) for each need",
+            "🚗 I default to the dealership for my vehicle make"
+          ]
+        },
+        {
+          "key": "p_ar_knowledge",
+          "prompt": "How much do you know about your vehicle?",
+          "responses": [
+            "🔧 Quite a lot — I handle minor repairs and understand how vehicles work",
+            "🗣️ Enough to have informed conversations with mechanics",
+            "🔋 The basics — oil, tyres, warning lights",
+            "🤷 Very little — I rely entirely on professionals"
+          ]
+        },
+        {
+          "key": "p_ar_concern",
+          "prompt": "Biggest concern when bringing your car in for service?",
+          "responses": [
+            "💰 Being overcharged or sold services I don't actually need",
+            "✅ Quality of work — will repairs be done correctly?",
+            "🔍 Transparency — I want to understand what's being done and why",
+            "⏰ Convenience — the time and logistics of being without my vehicle"
+          ]
+        },
+        {
+          "key": "p_ar_price",
+          "prompt": "How price-sensitive are you for automotive repair?",
+          "responses": [
+            "💰💰 Very — I always compare quotes before committing",
+            "💰 Moderate — price matters but I'll pay more for trusted quality",
+            "😌 Not very — I prioritize reliability and convenience over cost",
+            "🔄 Depends — major work gets compared, minor work does not"
+          ]
+        },
+        {
+          "key": "p_ar_comms",
+          "prompt": "How do you prefer to communicate with your shop?",
+          "responses": [
+            "🤝 In person — I want to see the work and speak face-to-face",
+            "📞 Phone — quick, direct communication",
+            "📱 Text or app — digital updates, photos and approvals",
+            "📧 Email — I prefer a written record of all recommendations"
+          ]
+        },
+        {
+          "key": "p_ar_maintenance",
+          "prompt": "How proactively do you maintain your vehicle?",
+          "responses": [
+            "🌟 Very — I follow the manufacturer schedule closely",
+            "✅ Reasonably — close to schedule but occasionally fall behind",
+            "🔔 Reactive — I address issues as they arise",
+            "😐 Minimal — I wait for warning lights or obvious signs"
+          ]
+        },
+        {
+          "key": "p_ar_shop_type",
+          "prompt": "Independent repair shop or dealership service center?",
+          "responses": [
+            "🏪 Strongly prefer independent — better value and more personal service",
+            "🏭 Prefer dealership — factory-trained technicians and OEM parts matter",
+            "🔄 I use both depending on service type and vehicle age",
+            "😐 Indifferent — I choose based on reputation and reviews"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "Universal / Cross-Industry",
+      "questions": [
+        {
+          "key": "p_frequency",
+          "prompt": "How often do you typically engage with us?",
+          "responses": [
+            "🆕 This is my first time",
+            "📅 A few times a year",
+            "🔄 Monthly",
+            "⭐ Weekly or more"
+          ]
+        },
+        {
+          "key": "p_channel",
+          "prompt": "What is your preferred way to interact with us?",
+          "responses": [
+            "🏢 In person",
+            "💻 Website or mobile app",
+            "📞 Phone",
+            "📧 Email"
+          ]
+        },
+        {
+          "key": "p_duration",
+          "prompt": "How long have you been a customer or visitor?",
+          "responses": [
+            "🆕 Less than 6 months",
+            "📅 6 months to 2 years",
+            "🔄 2 to 5 years",
+            "⭐ More than 5 years"
+          ]
+        },
+        {
+          "key": "p_recency",
+          "prompt": "When was your last interaction with us?",
+          "responses": [
+            "🆕 Today was my first time",
+            "📅 Within the last week",
+            "🔄 Within the last month",
+            "⏳ More than a month ago"
+          ]
+        },
+        {
+          "key": "p_spend",
+          "prompt": "How would you describe your typical spending?",
+          "responses": [
+            "🔴 Minimal — only essentials",
+            "🟡 Moderate — average spender",
+            "🟠 Regular — consistent purchaser",
+            "🟢 High — I invest significantly"
+          ]
+        },
+        {
+          "key": "p_device",
+          "prompt": "What device do you mostly use to interact with us?",
+          "responses": [
+            "📱 Smartphone",
+            "💻 Laptop or desktop",
+            "📟 Tablet",
+            "🤷 No preference"
+          ]
+        },
+        {
+          "key": "p_referral",
+          "prompt": "How did you first hear about us?",
+          "responses": [
+            "👥 Friend or family recommendation",
+            "📱 Social media",
+            "🔍 Online search",
+            "📺 Advertisement or walked by"
+          ]
+        },
+        {
+          "key": "p_loyalty",
+          "prompt": "How would you describe your loyalty to us?",
+          "responses": [
+            "💚 Exclusive — I only use you",
+            "🟡 Primary — you're my main choice",
+            "🟠 Split — I use several equally",
+            "🔴 No strong preference"
+          ]
+        },
+        {
+          "key": "p_choice_driver",
+          "prompt": "What matters most when choosing a provider like us?",
+          "responses": [
+            "💰 Price and value for money",
+            "⭐ Quality of service",
+            "⚡ Convenience and ease",
+            "🤝 Reputation and trust"
+          ]
+        },
+        {
+          "key": "p_exp_priority",
+          "prompt": "What is most important in a great experience?",
+          "responses": [
+            "⚡ Speed and efficiency",
+            "😊 Friendliness and warmth",
+            "🎓 Expertise and knowledge",
+            "✨ Going above and beyond"
+          ]
+        },
+        {
+          "key": "p_satisfaction",
+          "prompt": "Which aspect of our service satisfies you most?",
+          "responses": [
+            "👥 Staff and people",
+            "⭐ Quality of product or service",
+            "💰 Pricing",
+            "🏢 Convenience and atmosphere"
+          ]
+        },
+        {
+          "key": "p_improvement",
+          "prompt": "If you could change one thing, what would it be?",
+          "responses": [
+            "💰 Better pricing",
+            "⚡ Faster service",
+            "💬 Better communication",
+            "✨ More personalisation"
+          ]
+        },
+        {
+          "key": "p_value",
+          "prompt": "How do you feel about the value for the price?",
+          "responses": [
+            "🟢 Excellent value",
+            "🟡 Good value",
+            "🟠 Fair — could be better",
+            "🔴 Poor value"
+          ]
+        },
+        {
+          "key": "p_comparison",
+          "prompt": "How do we compare to similar providers?",
+          "responses": [
+            "🟢 Much better",
+            "🟡 Somewhat better",
+            "🟠 About the same",
+            "🔴 Somewhat worse"
+          ]
+        },
+        {
+          "key": "p_social",
+          "prompt": "Which social media platforms do you use most?",
+          "responses": [
+            "📘 Facebook or Instagram",
+            "🎵 TikTok or YouTube",
+            "💼 LinkedIn or X",
+            "🚫 I don't use social media"
+          ]
+        },
+        {
+          "key": "p_comms_pref",
+          "prompt": "How do you prefer to receive updates from us?",
+          "responses": [
+            "📧 Email",
+            "📱 SMS or push notification",
+            "📘 Social media",
+            "🚫 I prefer not to receive updates"
+          ]
+        },
+        {
+          "key": "p_review",
+          "prompt": "Where do you look for reviews before deciding?",
+          "responses": [
+            "🔍 Google Reviews",
+            "👥 Word of mouth",
+            "📘 Social media platforms",
+            "🚫 I don't look at reviews"
+          ]
+        },
+        {
+          "key": "p_content",
+          "prompt": "What type of content from us would be most useful?",
+          "responses": [
+            "🏷️ Offers and promotions",
+            "📚 How-to guides and tips",
+            "📰 News and updates",
+            "🎬 Behind the scenes or stories"
+          ]
+        },
+        {
+          "key": "p_comms_freq",
+          "prompt": "How often would you like to hear from us?",
+          "responses": [
+            "🔴 Only for important updates",
+            "🟡 Monthly",
+            "🟠 Weekly",
+            "🟢 As often as possible"
+          ]
+        },
+        {
+          "key": "p_decision",
+          "prompt": "Who else is involved when you decide to use us?",
+          "responses": [
+            "🙋 I decide alone",
+            "👫 Partner or spouse",
+            "👨‍👩‍👧 Family",
+            "👥 Friends or colleagues"
+          ]
+        },
+        {
+          "key": "p_decision_time",
+          "prompt": "How long did it take to decide to use us?",
+          "responses": [
+            "⚡ Immediate — decided on the spot",
+            "📅 A few days",
+            "📆 A week or two",
+            "⏳ A month or more"
+          ]
+        },
+        {
+          "key": "p_barrier",
+          "prompt": "What was the biggest barrier to choosing us?",
+          "responses": [
+            "💰 Price concerns",
+            "❓ Uncertainty about quality",
+            "🔍 Awareness — I didn't know about you",
+            "🚫 There was no barrier"
+          ]
+        },
+        {
+          "key": "p_trigger",
+          "prompt": "What triggered your decision to visit us today?",
+          "responses": [
+            "📅 Planned in advance",
+            "⚡ Spontaneous decision",
+            "👥 Recommended by someone",
+            "📺 Saw an ad or promotion"
+          ]
+        }
+      ]
+    }
+  ]
+}
