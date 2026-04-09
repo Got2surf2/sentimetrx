@@ -5,3 +5,8 @@ node_modules/
 .env.*.local
 .DS_Store
 *.tsbuildinfo
+out/
+data.sql
+schema.sql
+supabase/.temp/
+scripts/
