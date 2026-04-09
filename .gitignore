@@ -1,4 +1,8 @@
-.DS_Store
 node_modules/
 .next/
-tsconfig.tsbuildinfo
+.env
+.env.local
+.env.*.local
+.DS_Store
+*.tsbuildinfo
+out/
