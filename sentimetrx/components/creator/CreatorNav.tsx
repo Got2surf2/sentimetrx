@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import type { StudyDraft } from '@/lib/studyDraft'
 
 // ── Step completion logic ─────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ interface CreatorNavProps {
   highestVisited: number
   onStepClick:    (step: number) => void
   onPublish:      () => void
+  onImport?:      (draft: StudyDraft) => void
   saving:         boolean
   freeNav?:       boolean
 }
@@ -47,15 +49,48 @@ export default function CreatorNav({
   highestVisited,
   onStepClick,
   onPublish,
+  onImport,
   saving,
   freeNav = false,
 }: CreatorNavProps) {
   const completion = getStepCompletion(draft)
   const allDone    = completion.every(Boolean)
   const canPublish = allDone && !saving
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleExport() {
+    const exportData = { name: draft.name, bot_name: draft.bot_name, bot_emoji: draft.bot_emoji, slug: draft.slug, config: draft.config }
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = (draft.name || 'study').replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !onImport) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string)
+        if (!parsed.config || !parsed.config.greeting === undefined) {
+          alert('Invalid study JSON — missing config or greeting field.')
+          return
+        }
+        onImport(parsed as StudyDraft)
+      } catch {
+        alert('Invalid JSON file.')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = '' // reset so same file can be re-imported
+  }
 
   return (
-    <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
+    <div className="flex items-center gap-1 flex-wrap">
 
       {/* Step pills */}
       {CREATOR_STEP_LABELS.map((label, i) => {
@@ -113,7 +148,7 @@ export default function CreatorNav({
       {/* Divider */}
       <div className="w-px h-4 bg-gray-200 mx-1 flex-shrink-0" />
 
-      {/* Publish button */}
+      {/* Publish button — right after Review */}
       <button
         type="button"
         disabled={!canPublish}
@@ -134,6 +169,51 @@ export default function CreatorNav({
         )}
         <span>{saving ? 'Publishing…' : 'Publish'}</span>
       </button>
+
+      {/* Divider */}
+      <div className="w-px h-4 bg-gray-200 mx-1 flex-shrink-0" />
+
+      {/* Export Study JSON */}
+      <button
+        type="button"
+        onClick={handleExport}
+        title="Export study as JSON"
+        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 hover:text-gray-700 transition-all cursor-pointer"
+      >
+        <span>Export Study</span>
+      </button>
+
+      {/* Import Study JSON */}
+      {onImport && (
+        <>
+          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Import study from JSON"
+            className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 hover:text-gray-700 transition-all cursor-pointer"
+          >
+            <span>Import Study</span>
+          </button>
+        </>
+      )}
+
+      {/* Design Deck PPTX */}
+      {draft.id && (
+        <button
+          type="button"
+          onClick={() => {
+            const a = document.createElement('a')
+            a.href = `/api/studies/${draft.id}/design-export`
+            a.download = (draft.name || 'study').replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_design.pptx'
+            a.click()
+          }}
+          title="Download study design summary as PowerPoint"
+          className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 hover:text-gray-700 transition-all cursor-pointer"
+        >
+          <span>Generate Design Deck</span>
+        </button>
+      )}
 
     </div>
   )

@@ -292,7 +292,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => updateConfig({ confirmBeforeRecord: !draft.config.confirmBeforeRecord })}
+            onClick={() => updateConfig({ confirmBeforeRecord: draft.config.confirmBeforeRecord === true ? false : true })}
             className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.confirmBeforeRecord ? 'bg-orange-500' : 'bg-gray-200'}`}
           >
             <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.confirmBeforeRecord ? 'translate-x-5' : 'translate-x-0'}`} />

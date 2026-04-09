@@ -216,6 +216,18 @@ export interface StudyConfig {
   // Input mode
   confirmBeforeRecord?: boolean        // default false (auto-record on tap); true = require confirm button for radio/likert/rating
 
+  // Closing message — shown after all questions are complete
+  closingMessage?:  string   // bot's thank-you message (default: "Thank you so much -- {bot_name} really appreciates...")
+  closingCard?:     string   // card subtitle text (default: "Your responses have been saved. Thank you for your time.")
+
+  // Question redirect — when respondent asks a question in a clarifier response, redirect them
+  questionRedirect?: {
+    enabled:  boolean
+    message:  string   // e.g. "Great question! I don't have the answer right now, but you can visit"
+    linkText: string   // e.g. "our website"
+    linkUrl:  string   // e.g. "https://example.com/faq"
+  }
+
   // Section transition messages (shown between survey sections)
   sectionTransitions?: {
     customQuestions?:  { enabled: boolean; text: string }
@@ -282,8 +294,9 @@ export interface SurveyPayload {
   experienceRating: { score: number; label: string; sentiment: Sentiment }
   openEnded:        { q1: string; q2: string; q3: string; q4: string }
   customAnswers?:   Record<string, string | string[]>   // keyed by SurveyQuestion.id
-  psychographics:   Record<string, string>
-  demographics:     Record<string, string>
+  psychographics:    Record<string, string>
+  demographics:      Record<string, string>
+  conversationLog?:  Array<{ who: 'bot' | 'user'; text: string; ai?: boolean }>
 }
 
 export interface SubmitResponseBody {

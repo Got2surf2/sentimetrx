@@ -87,6 +87,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
             highestVisited={7}
             onStepClick={goTo}
             onPublish={() => handleSave('active')}
+            onImport={(imported) => setDraft(prev => ({ ...prev, name: imported.name || prev.name, bot_name: imported.bot_name || prev.bot_name, bot_emoji: imported.bot_emoji || prev.bot_emoji, slug: imported.slug || prev.slug, config: imported.config }))}
             saving={saving}
             freeNav={true}
           />

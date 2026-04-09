@@ -140,9 +140,8 @@ export function TransitionMessagePanel({ enabled, text, onToggle, onTextChange, 
       </div>
       {enabled && (
         <textarea
-          value={text}
+          value={text || defaultText}
           onChange={e => onTextChange(e.target.value)}
-          placeholder={defaultText}
           rows={2}
           className="mt-3 w-full px-4 py-2.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-amber-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors resize-none"
         />

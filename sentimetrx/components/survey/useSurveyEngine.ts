@@ -16,6 +16,7 @@ interface Props {
   inputRef:   React.RefObject<HTMLDivElement>
   scrollBottom: () => void
   isLightBg?: boolean
+  reducedMotion?: boolean
 }
 
 interface State {
@@ -34,9 +35,11 @@ interface State {
   demographics:    Record<string, string>
   startTime:       number
   openingAnswers:  Record<string, string>
+  lastUserMsg:     string
+  conversationLog: Array<{ who: 'bot' | 'user'; text: string; ai?: boolean }>
 }
 
-export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLightBg = false }: Props) {
+export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
   // Adaptive colors — white text on dark bg, dark text on light bg
@@ -67,6 +70,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     demographics: {},
     startTime: Date.now(),
     openingAnswers: {},
+    lastUserMsg: '',
+    conversationLog: [],
   })
 
   // ── Session ID — persists for this browser tab, new on new visit ──────────
@@ -167,8 +172,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     if (inputRef.current) inputRef.current.innerHTML = ''
   }, [inputRef])
 
-  const addMsg = useCallback((who: 'bot' | 'user', text: string) => {
+  const addMsg = useCallback((who: 'bot' | 'user', text: string, ai?: boolean) => {
     if (!chatRef.current) return
+
+    // Log every message for conversation replay
+    state.current.conversationLog.push({ who, text, ...(ai ? { ai: true } : {}) })
+
     const wrap = document.createElement('div')
     wrap.className = `msg-animate flex items-end gap-2 ${who === 'user' ? 'flex-row-reverse self-end max-w-[80%]' : 'self-start max-w-[80%]'}`
 
@@ -188,6 +197,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       bub.style.cssText = `background:${config.theme.primaryColor};color:#fff;`
       bub.textContent = text
       wrap.appendChild(bub)
+      state.current.lastUserMsg = text
     }
 
     chatRef.current.appendChild(wrap)
@@ -197,6 +207,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
   const showTyping = useCallback((dur = 1000): Promise<void> => {
     return new Promise(res => {
       if (!chatRef.current) { res(); return }
+      // Reduced motion: skip the animation, use a minimal pause for readability
+      if (reducedMotion) { setTimeout(res, Math.min(dur, 200)); return }
       const t = document.createElement('div')
       t.id = 'typing-indicator'
       t.className = 'flex items-end gap-2 self-start'
@@ -233,8 +245,99 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     return /^(no|nope|nah|not really|nothing|none|n\/a|na|no thanks|skip|pass|all good|that'?s? (all|it)|i'?m good|nothing else|not at the moment)\.?$/.test(t) || t.length < 5
   }
 
+  // Rules-based acknowledgment that adapts to what the respondent said
+  const smartAck = (text: string): string => {
+    const t = text.trim().toLowerCase()
+    // Decline / refusal / negative
+    if (isDecline(t) || /^(no|nope|nah|not really|nothing|i don'?t know|idk|unsure|not sure|can'?t think)/.test(t)) {
+      const opts = [
+        'No worries at all -- thanks for being honest.',
+        'Totally fine -- appreciate you letting me know.',
+        'That\'s okay -- thanks for taking the time.',
+        'Understood -- let\'s keep going.',
+      ]
+      return opts[Math.floor(Math.random() * opts.length)]
+    }
+    // Very short response (1-3 words that aren't a decline)
+    if (t.split(/\s+/).length <= 3) {
+      return 'Got it -- thanks for sharing that.'
+    }
+    // Positive / enthusiastic
+    if (/\b(love|great|awesome|amazing|fantastic|excellent|wonderful|best|happy|impressed)\b/.test(t)) {
+      return 'That\'s wonderful to hear -- thank you for sharing!'
+    }
+    // Negative / frustrated
+    if (/\b(terrible|awful|worst|horrible|hate|frustrated|angry|disappointed|annoying|unacceptable)\b/.test(t)) {
+      return 'We really appreciate you sharing that -- it helps us understand what needs to change.'
+    }
+    // Default for substantive feedback
+    const opts = [
+      'Got it -- that\'s genuinely helpful.',
+      'Thank you -- that\'s really useful feedback.',
+      'Appreciate you sharing that -- it makes a difference.',
+    ]
+    return opts[Math.floor(Math.random() * opts.length)]
+  }
+
+  const isQuestionOrOffTopic = (text: string) => {
+    const t = text.trim().toLowerCase()
+    if (t.endsWith('?')) return true
+    if (/\b(who are you|what are you|tell me|what is this|what do you|how do you|where (is|are|can)|can you tell|could you tell|explain|help me)\b/i.test(t)) return true
+    return false
+  }
+
   const shouldClarify = (text: string) =>
-    !isDecline(text) && text.trim().split(/\s+/).length < 12
+    !isDecline(text) && !isQuestionOrOffTopic(text) && text.trim().split(/\s+/).length < 12
+
+  // AI-powered deflection: detects questions/off-topic and generates contextual redirect
+  const checkDeflect = async (text: string, questionAsked: string) => {
+    const qr = config.questionRedirect
+    if (!qr?.enabled || !qr.linkUrl) return false
+    try {
+      const res = await fetch('/api/deflect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studyName:     study.bot_name,
+          orgName:       study.name,
+          questionAsked,
+          answer:        text,
+          linkText:      qr.linkText || 'our website',
+          linkUrl:       qr.linkUrl,
+        }),
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      if (!data.deflection) return false
+
+      clearInput()
+      await showTyping(900)
+      // Log the deflection (strip HTML for clean log)
+      const plainText = data.deflection.replace(/<[^>]+>/g, '')
+      state.current.conversationLog.push({ who: 'bot', text: plainText, ai: true })
+      // Render bot message with HTML link
+      if (chatRef.current) {
+        const wrap = document.createElement('div')
+        wrap.className = 'msg-animate flex items-end gap-2 self-start max-w-[80%]'
+        const av = document.createElement('div')
+        av.className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0'
+        av.style.background = config.theme.botAvatarGradient
+        av.textContent = study.bot_emoji
+        const bub = document.createElement('div')
+        bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed'
+        bub.style.cssText = 'background:' + C.bubbleBg + ';color:' + C.text + ';border:1px solid ' + C.bubbleBdr + ';'
+        // Style the link within the AI-generated response
+        bub.innerHTML = data.deflection.replace(/<a /g, '<a style="color:' + config.theme.primaryColor + ';text-decoration:underline;font-weight:500" ')
+        wrap.append(av, bub)
+        chatRef.current.appendChild(wrap)
+        scrollBottom()
+      }
+      await showTyping(2500)
+      return true
+    } catch {
+      return false
+    }
+  }
 
   const buildClarify = async (text: string, qKey: 'q3' | 'q4'): Promise<string | null> => {
     const s = state.current
@@ -308,8 +411,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       npsRecommend:  { score: s.npsScore!, label: s.npsLabel! },
       openEnded:     s.answers,
       customAnswers: s.customAnswers,
-      psychographics: s.psychoAnswers,
-      demographics:   s.demographics,
+      psychographics:    s.psychoAnswers,
+      demographics:      s.demographics,
+      conversationLog:   s.conversationLog,
     }
 
     // Add device fingerprint to payload for server-side duplicate check
@@ -342,17 +446,18 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
   const stepDone = useCallback(async () => {
     await showTyping(1000)
-    addMsg('bot', `Thank you so much -- ${study.bot_name} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`)
+    addMsg('bot', config.closingMessage || `Thank you so much -- ${study.bot_name} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`)
     await showTyping(600)
 
     if (!chatRef.current) return
     const card = document.createElement('div')
     card.className = 'rounded-2xl p-5 text-center my-1'
     card.style.background = config.theme.headerGradient
+    const cardSubtitle = config.closingCard || 'Your responses have been saved. Thank you for your time.'
     card.innerHTML = `
       <div class="text-4xl mb-2">${study.bot_emoji}</div>
       <div class="text-white font-semibold text-lg mb-1">All done!</div>
-      <div class="text-white/75 text-sm leading-snug">Your responses have been saved. Thank you for your time.</div>
+      <div class="text-white/75 text-sm leading-snug">${cardSubtitle}</div>
     `
     chatRef.current.appendChild(card)
     scrollBottom()
@@ -377,9 +482,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     const demoTransition = config.sectionTransitions?.demographics
     if (demoTransition?.enabled !== false) {
       await showTyping(800)
-      addMsg('bot', demoTransition?.text || 'Almost done -- a couple of optional questions about you. Completely up to you.')
+      const msg = demoTransition?.text || 'Almost done -- a couple of optional questions about you. Completely up to you.'
+      addMsg('bot', msg)
+      await showTyping(Math.max(2000, msg.length * 40))
+    } else {
+      await showTyping(350)
     }
-    await showTyping(350)
 
     if (!inputRef.current) return
     var wrap = document.createElement('div')
@@ -467,7 +575,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           psychoSel = opt
           psychoBtns.forEach(b => { b.style.borderColor = C.inputBdr; b.style.background = C.btnBg })
           btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '20'
-          if (psychoConfirmBtn) { psychoConfirmBtn.style.background = config.theme.primaryColor; psychoConfirmBtn.style.color = '#fff' }
+          if (psychoConfirmBtn) { psychoConfirmBtn.style.display = 'block'; psychoConfirmBtn.style.background = config.theme.primaryColor; psychoConfirmBtn.style.color = '#fff' }
         } else {
           commitPsycho(opt)
         }
@@ -479,7 +587,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       psychoConfirmBtn = document.createElement('button')
       psychoConfirmBtn.textContent = 'Confirm'
       psychoConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
-      psychoConfirmBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
+      psychoConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
       psychoConfirmBtn.onclick = () => { if (psychoSel) commitPsycho(psychoSel) }
       col.appendChild(psychoConfirmBtn)
     }
@@ -536,13 +644,18 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       }
       savePartialRef.current()
       clearInput()
+      // Smart deflection: if respondent asked a question or went off-topic, redirect and skip clarifier
+      if (v && !isDecline(v) && await checkDeflect(v, state.current.currentQuestion || '')) {
+        await next()
+        return
+      }
       // Check for clarifier on short responses
       if (v && storageKey && shouldClarify(v) && state.current.clarifyCount < 2) {
         const cq = await buildClarify(v, storageKey === 'q1' ? 'q3' : 'q4')
         if (cq) {
           state.current.clarifyCount++
           await showTyping(1100)
-          addMsg('bot', cq)
+          addMsg('bot', cq, true)
           // Show clarify input — on submit, append to existing answer then proceed
           showLikertClarifyInput(storageKey, v, next)
           return
@@ -587,6 +700,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       }
       savePartialRef.current()
       clearInput()
+      // AI deflection: detect questions/off-topic and respond contextually
+      if (val && !isDecline(val)) await checkDeflect(val, state.current.currentQuestion || '')
       await next()
     }
     wrap.append(ta, sendBtn)
@@ -603,9 +718,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     const psychoTransition = config.sectionTransitions?.psychographics
     if (psychoTransition?.enabled !== false) {
       await showTyping(900)
-      addMsg('bot', psychoTransition?.text || 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
+      const msg = psychoTransition?.text || 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.'
+      addMsg('bot', msg)
+      await showTyping(Math.max(2000, msg.length * 40))
+    } else {
+      await showTyping(200)
     }
-    await showTyping(200)
     await stepPsychoQ()
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
@@ -618,7 +736,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     if (cqTransition?.enabled) {
       clearInput()
       await showTyping(800)
-      addMsg('bot', cqTransition.text || 'Now for a few more specific questions.')
+      const msg = cqTransition.text || 'Now for a few more specific questions.'
+      addMsg('bot', msg)
+      await showTyping(Math.max(2000, msg.length * 40))
     }
 
     // Randomly sample customQCount questions if set, otherwise show all
@@ -649,6 +769,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         if (q.type === 'open') {
           const submit = async (val: string) => {
             customAnswers[q.id] = val
+            // Smart deflection: if respondent asked a question, redirect and skip clarifier
+            if (val && !isDecline(val) && await checkDeflect(val, q.prompt)) {
+              clearInput()
+              resolve()
+              return
+            }
             // Clarifier follow-up for non-trivial responses
             if (val && (q.clarify !== false) && config.useAIClarify && shouldClarify(val) && state.current.clarifyCount < 2) {
               const cq = await buildClarify(val, 'q4')
@@ -656,7 +782,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
                 state.current.clarifyCount++
                 clearInput()
                 await showTyping(1000)
-                addMsg('bot', cq)
+                addMsg('bot', cq, true)
                 state.current.currentQuestion = cq
                 showLikertFollowUpInput(async () => { resolve() })
                 return
@@ -739,7 +865,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
                 allBtns.forEach(b => { b.style.borderColor = C.inputBdr; b.style.background = C.btnBg })
                 btn.style.borderColor = config.theme.primaryColor
                 btn.style.background  = config.theme.primaryColor + '20'
-                if (confirmBtn) { confirmBtn.style.background = config.theme.primaryColor; confirmBtn.style.color = '#fff' }
+                if (confirmBtn) { confirmBtn.style.display = 'block'; confirmBtn.style.background = config.theme.primaryColor; confirmBtn.style.color = '#fff' }
               } else {
                 col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
                 btn.style.borderColor = config.theme.primaryColor
@@ -757,7 +883,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             confirmBtn = document.createElement('button')
             confirmBtn.textContent = 'Confirm'
             confirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
-            confirmBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
+            confirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             confirmBtn.onclick = () => {
               if (!selectedOpt) return
               col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
@@ -782,18 +908,30 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           const btns: HTMLButtonElement[] = []
           opts.forEach(opt => {
             const btn = document.createElement('button')
-            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
+            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2.5'
             btn.style.cssText = 'background:' + C.btnBg + ';border:1.5px solid ' + C.inputBdr + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
-            btn.textContent = opt
+            const icon = document.createElement('span')
+            icon.className = 'flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-xs font-bold'
+            icon.style.cssText = 'background:' + C.inputBdr + ';color:' + C.textMute + ';'
+            icon.textContent = '✕'
+            const label = document.createElement('span')
+            label.textContent = opt
+            btn.append(icon, label)
             btn.onclick = () => {
               if (selected.has(opt)) {
                 selected.delete(opt)
                 btn.style.borderColor = C.inputBdr
                 btn.style.background  = C.btnBg
+                icon.style.background = C.inputBdr
+                icon.style.color = C.textMute
+                icon.textContent = '✕'
               } else {
                 selected.add(opt)
                 btn.style.borderColor = config.theme.primaryColor
                 btn.style.background  = config.theme.primaryColor + '20'
+                icon.style.background = '#22c55e'
+                icon.style.color = '#fff'
+                icon.textContent = '✓'
               }
               doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : C.disabledBg
               doneBtn.style.color      = selected.size > 0 ? '#fff' : C.textMute
@@ -895,7 +1033,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
               if (prompt.trim()) {
                 clearInput()
                 await showTyping(800)
-                addMsg('bot', prompt)
+                addMsg('bot', prompt, true)
                 state.current.currentQuestion = prompt
                 showLikertFollowUpInput(async () => { resolve() })
                 return
@@ -918,7 +1056,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
                 allLikertBtns.forEach(b => { b.style.borderColor = C.inputBdr; b.style.background = C.btnBg })
                 sb.style.borderColor = config.theme.primaryColor
                 sb.style.background  = config.theme.primaryColor + '20'
-                if (likertConfirmBtn) { likertConfirmBtn.style.background = config.theme.primaryColor; likertConfirmBtn.style.color = '#fff' }
+                if (likertConfirmBtn) { likertConfirmBtn.style.display = 'block'; likertConfirmBtn.style.background = config.theme.primaryColor; likertConfirmBtn.style.color = '#fff' }
               } else {
                 await commitLikert(s)
               }
@@ -931,7 +1069,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             likertConfirmBtn = document.createElement('button')
             likertConfirmBtn.textContent = 'Confirm'
             likertConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
-            likertConfirmBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
+            likertConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             likertConfirmBtn.onclick = async () => { if (selectedScore) await commitLikert(selectedScore) }
             likertWrap.appendChild(likertConfirmBtn)
           }
@@ -965,7 +1103,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
                 allRatingBtns.forEach(b => { b.style.borderColor = C.inputBdr; b.style.background = C.btnBg })
                 sb.style.borderColor = config.theme.primaryColor
                 sb.style.background  = config.theme.primaryColor + '20'
-                if (ratingConfirmBtn) { ratingConfirmBtn.style.background = config.theme.primaryColor; ratingConfirmBtn.style.color = '#fff' }
+                if (ratingConfirmBtn) { ratingConfirmBtn.style.display = 'block'; ratingConfirmBtn.style.background = config.theme.primaryColor; ratingConfirmBtn.style.color = '#fff' }
               } else {
                 ratingRow.querySelectorAll('button').forEach((b: any) => b.disabled = true)
                 sb.style.borderColor = config.theme.primaryColor
@@ -984,7 +1122,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             ratingConfirmBtn = document.createElement('button')
             ratingConfirmBtn.textContent = 'Confirm'
             ratingConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
-            ratingConfirmBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
+            ratingConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             ratingConfirmBtn.onclick = () => {
               if (selectedRating === null) return
               ratingWrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
@@ -1145,12 +1283,23 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           wrap.className = 'flex flex-col gap-1.5 mt-1.5'
           opts.forEach(opt => {
             const btn = document.createElement('button')
-            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
+            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2.5'
             btn.style.cssText = 'background:' + C.btnBg + ';border:1.5px solid ' + C.inputBdr + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
-            btn.textContent = opt
+            const icon = document.createElement('span')
+            icon.className = 'flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-xs font-bold'
+            icon.style.cssText = 'background:' + C.inputBdr + ';color:' + C.textMute + ';'
+            icon.textContent = '✕'
+            const label = document.createElement('span')
+            label.textContent = opt
+            btn.append(icon, label)
             btn.onclick = () => {
-              if (selected.has(opt)) { selected.delete(opt); btn.style.borderColor = C.inputBdr; btn.style.background = C.btnBg }
-              else { selected.add(opt); btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '20' }
+              if (selected.has(opt)) {
+                selected.delete(opt); btn.style.borderColor = C.inputBdr; btn.style.background = C.btnBg
+                icon.style.background = C.inputBdr; icon.style.color = C.textMute; icon.textContent = '✕'
+              } else {
+                selected.add(opt); btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '20'
+                icon.style.background = '#22c55e'; icon.style.color = '#fff'; icon.textContent = '✓'
+              }
               doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : C.disabledBg
               doneBtn.style.color      = selected.size > 0 ? '#fff' : C.textMute
             }
@@ -1186,16 +1335,17 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
   stepConversationExtrasRef.current = stepConversationExtras
 
   const progressFlow = useCallback(async (qKey: 'q3' | 'q4') => {
+    const lastMsg = state.current.lastUserMsg || ''
     if (qKey === 'q3') {
       // Skip Q4 if disabled
       if (config.q4Enabled === false) {
         await showTyping(700)
-        addMsg('bot', 'Got it -- that\'s genuinely helpful.')
+        addMsg('bot', smartAck(lastMsg), true)
         await stepConversationExtras()
         return
       }
       await showTyping(700)
-      addMsg('bot', 'Got it -- that\'s genuinely helpful.')
+      addMsg('bot', smartAck(lastMsg), true)
       await showTyping(800)
       addMsg('bot', config.q4)
       state.current.currentQuestion = config.q4
@@ -1206,9 +1356,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         showTextInputOptional('q4')
       }
     } else {
-      if (!isDecline(state.current.answers.q4)) {
+      if (!isDecline(lastMsg)) {
         await showTyping(700)
-        addMsg('bot', 'Thank you -- we\'ll make sure that gets to the right people.')
+        addMsg('bot', smartAck(lastMsg), true)
       }
       await stepConversationExtras()
     }
@@ -1218,6 +1368,11 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     state.current.answers[qKey] = val
     savePartial()
     clearInput()
+    // Smart deflection: if respondent asked a question, redirect and skip clarifier
+    if (!isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
+      await progressFlow(qKey)
+      return
+    }
     // Only attempt clarification if enabled for this question (default: on)
     const clarifyEnabled = qKey === 'q3' ? config.q3Clarify !== false : config.q4Clarify !== false
     if (clarifyEnabled && state.current.clarifyCount < 2 && shouldClarify(val)) {
@@ -1225,7 +1380,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       if (cq) {
         state.current.clarifyCount++
         await showTyping(1100)
-        addMsg('bot', cq)
+        addMsg('bot', cq, true)
         showClarifyInput(qKey, val)
         return
       }
@@ -1342,6 +1497,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       if (!isDecline(val)) state.current.answers[qKey] = originalVal + ' [+ ' + val + ']'
       savePartialRef.current()
       clearInput()
+      // AI deflection: detect questions/off-topic and respond contextually
+      if (!isDecline(val)) await checkDeflect(val, state.current.currentQuestion || '')
       await progressFlowRef.current(qKey)
     }
 
@@ -1479,7 +1636,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           if (!prompt.trim()) { await next(); return }
           clearInput()
           await showTyping(900)
-          addMsg('bot', prompt)
+          addMsg('bot', prompt, true)
           state.current.currentQuestion = prompt
           showLikertFollowUpInput(next, storageKey)
         }
@@ -1542,7 +1699,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
                 expSel = r
                 expBtns.forEach(b => { b.style.borderColor = C.inputBdr; b.style.background = C.btnBg })
                 rb.style.borderColor = config.theme.primaryColor; rb.style.background = config.theme.primaryColor + '20'
-                if (expConfirmBtn) { expConfirmBtn.style.background = config.theme.primaryColor; expConfirmBtn.style.color = '#fff' }
+                if (expConfirmBtn) { expConfirmBtn.style.display = 'block'; expConfirmBtn.style.background = config.theme.primaryColor; expConfirmBtn.style.color = '#fff' }
               } else {
                 await commitExp(r)
               }
@@ -1555,7 +1712,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             expConfirmBtn = document.createElement('button')
             expConfirmBtn.textContent = 'Confirm'
             expConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
-            expConfirmBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
+            expConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
             expConfirmBtn.onclick = async () => { if (expSel) await commitExp(expSel) }
             expWrap.appendChild(expConfirmBtn)
           }
@@ -1609,7 +1766,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
                 npsSel = s
                 npsBtns.forEach(b => { b.style.borderColor = C.inputBdr; b.style.background = C.btnBg })
                 sb.style.borderColor = config.theme.primaryColor; sb.style.background = config.theme.primaryColor + '20'
-                if (npsConfirmBtn) { npsConfirmBtn.style.background = config.theme.primaryColor; npsConfirmBtn.style.color = '#fff' }
+                if (npsConfirmBtn) { npsConfirmBtn.style.display = 'block'; npsConfirmBtn.style.background = config.theme.primaryColor; npsConfirmBtn.style.color = '#fff' }
               } else {
                 await commitNps(s)
               }
@@ -1622,7 +1779,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             npsConfirmBtn = document.createElement('button')
             npsConfirmBtn.textContent = 'Confirm'
             npsConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
-            npsConfirmBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
+            npsConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
             npsConfirmBtn.onclick = async () => { if (npsSel) await commitNps(npsSel) }
             npsWrap.appendChild(npsConfirmBtn)
           }

@@ -11,7 +11,7 @@ export default async function ResponsesPage({ params }: Props) {
   if (!user) redirect('/login')
 
   const [{ data: study }, { data: userData }] = await Promise.all([
-    supabase.from('studies').select('id, name, bot_emoji, status').eq('id', params.id).single(),
+    supabase.from('studies').select('id, name, bot_name, bot_emoji, status, config').eq('id', params.id).single(),
     supabase.from('users').select('full_name, organizations(is_admin_org, logo_url, name, features)').eq('id', user.id).single(),
   ])
 
@@ -24,7 +24,9 @@ export default async function ResponsesPage({ params }: Props) {
     <ResponsesDashboard
       studyId={study.id}
       studyName={study.name}
+      botName={study.bot_name}
       botEmoji={study.bot_emoji}
+      studyConfig={study.config}
       logoUrl={orgData?.logo_url   || ''}
       orgName={orgData?.name       || ''}
       isAdmin={!!orgData?.is_admin_org}

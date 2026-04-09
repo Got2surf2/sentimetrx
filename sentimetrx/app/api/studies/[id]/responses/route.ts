@@ -290,5 +290,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     .in('id', ids)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Refresh materialized view so dashboard stats reflect the deletion
+  try { await serviceSupabase.rpc('refresh_study_response_stats') } catch {}
+
   return NextResponse.json({ deleted: count ?? ids.length })
 }

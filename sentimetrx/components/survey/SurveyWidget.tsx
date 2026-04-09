@@ -72,7 +72,10 @@ export default function SurveyWidget({ study }: Props) {
     return (r * 299 + g * 587 + b * 114) / 1000 > 150
   })()
 
-  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom, isLightBg })
+  // Detect reduced motion preference from device accessibility settings
+  const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+
+  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom, isLightBg, reducedMotion: prefersReducedMotion })
 
   // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
   // are always the latest from the DB, not potentially stale server-rendered props
@@ -100,10 +103,15 @@ export default function SurveyWidget({ study }: Props) {
     }
   }, [status, renderInput])
 
-  const baseFontSize = (liveConfig.surveyFontSize || 18) + 'px'
+  // Respect device accessibility: compute font size as a scale factor on the
+  // browser's default (typically 16px, but larger if user has OS/browser text
+  // scaling enabled). This way surveyFontSize=18 means "112.5% of device default"
+  // rather than a hard 18px that ignores accessibility settings.
+  const configFontPx = liveConfig.surveyFontSize || 18
+  const baseFontSize = ((configFontPx / 16) * 100) + '%'
 
   // Set the root font-size so all rem units scale proportionally.
-  // Safe because the survey page (/s/[guid]) only contains this widget.
+  // Using % preserves the user's device text-size preference as a base.
   useEffect(() => {
     const prev = document.documentElement.style.fontSize
     document.documentElement.style.fontSize = baseFontSize

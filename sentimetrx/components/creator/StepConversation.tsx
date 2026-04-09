@@ -272,6 +272,23 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
         </div>
       </Section>
 
+      {/* Closing message */}
+      <Section title="Closing message" description="The thank-you message shown after the respondent completes all questions.">
+        <Field label="Bot message">
+          <Input
+            value={c.closingMessage || `Thank you so much -- ${draft.bot_name || 'the bot'} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`}
+            onChange={v => updateConfig({ closingMessage: v })}
+            multiline rows={2}
+          />
+        </Field>
+        <Field label="Card subtitle (below &quot;All done!&quot;)">
+          <Input
+            value={c.closingCard || 'Your responses have been saved. Thank you for your time.'}
+            onChange={v => updateConfig({ closingCard: v })}
+          />
+        </Field>
+      </Section>
+
       <NavButtons onBack={onBack} onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Clarifiers" />
     </div>
   )

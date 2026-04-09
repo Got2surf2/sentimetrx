@@ -154,6 +154,7 @@ export default function NewStudyPage() {
             highestVisited={highestVisited}
             onStepClick={goTo}
             onPublish={handleNavPublish}
+            onImport={(imported) => { setDraft({ ...imported, id: undefined }); setHighestVisited(7); goTo(7) }}
             saving={saving}
             freeNav={false}
           />

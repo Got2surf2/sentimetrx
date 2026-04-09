@@ -196,6 +196,58 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
         )}
       </Section>
 
+      {/* Question redirect */}
+      <Section
+        title="Smart deflection"
+        description="When a respondent asks a question or goes off-topic instead of giving feedback, the bot uses AI to generate a contextual response that politely redirects them to a resource link, then continues the survey."
+      >
+        <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Enable AI deflection</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              Uses Claude to detect questions and off-topic responses, then generates a tailored redirect with your link
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => updateConfig({ questionRedirect: { ...c.questionRedirect, enabled: !c.questionRedirect?.enabled, message: c.questionRedirect?.message || '', linkText: c.questionRedirect?.linkText || 'our website', linkUrl: c.questionRedirect?.linkUrl || '' } })}
+            className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (c.questionRedirect?.enabled ? 'bg-orange-500' : 'bg-gray-200')}
+          >
+            <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (c.questionRedirect?.enabled ? 'translate-x-5' : 'translate-x-0')} />
+          </button>
+        </div>
+        {c.questionRedirect?.enabled && (
+          <div className="flex flex-col gap-3 mt-2">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Link text (shown in bot response)</label>
+                <input
+                  type="text"
+                  value={c.questionRedirect?.linkText || ''}
+                  onChange={e => updateConfig({ questionRedirect: { ...c.questionRedirect!, linkText: e.target.value } })}
+                  placeholder="our website"
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Link URL</label>
+                <input
+                  type="text"
+                  value={c.questionRedirect?.linkUrl || ''}
+                  onChange={e => updateConfig({ questionRedirect: { ...c.questionRedirect!, linkUrl: e.target.value } })}
+                  placeholder="https://example.com/faq"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              The bot will generate context-appropriate responses like: &quot;That&apos;s a great question! I&apos;m just here to collect feedback, but you can find that info at{' '}
+              <span className="text-blue-500 underline">{c.questionRedirect?.linkText || 'our website'}</span>.&quot;
+            </p>
+          </div>
+        )}
+      </Section>
+
       <NavButtons onBack={onBack} onNext={onNext} nextLabel="Next: Custom Questions" />
     </div>
   )

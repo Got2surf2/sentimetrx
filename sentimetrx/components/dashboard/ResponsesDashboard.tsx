@@ -20,7 +20,9 @@ interface Response {
 interface Props {
   studyId:    string
   studyName:  string
+  botName?:   string
   botEmoji:   string
+  studyConfig?: any
   logoUrl?:   string
   orgName?:   string
   isAdmin?:   boolean
@@ -32,7 +34,7 @@ interface Props {
 const HERMES   = '#E8632A'
 const SENTIMENTS = ['', 'promoter', 'passive', 'detractor']
 
-export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoUrl='', orgName='', isAdmin=false, analyzeEnabled=false, userEmail='', fullName='' }: Props) {
+export default function ResponsesDashboard({ studyId, studyName, botName='', botEmoji, studyConfig, logoUrl='', orgName='', isAdmin=false, analyzeEnabled=false, userEmail='', fullName='' }: Props) {
   const [responses,   setResponses]   = useState<Response[]>([])
   const [total,       setTotal]       = useState(0)
   const [loading,     setLoading]     = useState(true)
@@ -257,7 +259,7 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {responses.map(r => (
-                      <tr key={r.id} className={"hover:bg-orange-50/40 transition-colors cursor-pointer " + (checkedIds.has(r.id) ? "bg-orange-50/60" : "")} onClick={() => setSelected(r)}>
+                      <tr key={r.id} className={"hover:bg-orange-50/40 transition-colors " + (r.payload?.conversationLog?.length > 0 ? 'cursor-pointer ' : '') + (checkedIds.has(r.id) ? "bg-orange-50/60" : "")} onClick={() => { if (r.payload?.conversationLog?.length > 0) setSelected(r) }}>
                         <td className="px-4 py-3.5" onClick={e => { e.stopPropagation(); toggleCheck(r.id) }}>
                           <button type="button"
                             className={"w-5 h-5 rounded border-2 flex items-center justify-center transition-all " + (checkedIds.has(r.id) ? "bg-orange-500 border-orange-500" : "bg-white border-gray-300 hover:border-orange-400")}>
@@ -278,7 +280,9 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
                           {r.payload?.openEnded?.q1 || '—'}
                         </td>
                         <td className="px-5 py-3.5 text-right">
-                          <span className="text-xs font-medium" style={{ color: HERMES }}>View →</span>
+                          {r.payload?.conversationLog?.length > 0
+                            ? <span className="text-xs font-medium" style={{ color: HERMES }}>View →</span>
+                            : <span className="text-xs text-gray-300">—</span>}
                         </td>
                       </tr>
                     ))}
@@ -303,52 +307,268 @@ export default function ResponsesDashboard({ studyId, studyName, botEmoji, logoU
         </div>
       </main>
 
-      {/* Response detail modal */}
+      {/* Conversation replay modal */}
       {selected && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelected(null)}>
-          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-xl"
-            onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl">
-              <h2 className="font-semibold text-gray-800">Response detail</h2>
-              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 text-xl transition-colors">×</button>
-            </div>
-            <div className="px-6 py-5 flex flex-col gap-5">
-              <div className="flex gap-4 flex-wrap">
-                <Badge label="Sentiment"  value={selected.sentiment || '—'} />
-                <Badge label="Experience" value={String(selected.experience_score ?? '—')} />
-                <Badge label="NPS"        value={String(selected.nps_score ?? '—')} />
-                <Badge label="Duration"   value={selected.duration_sec ? `${selected.duration_sec}s` : '—'} />
-              </div>
-              <AnswerBlock label="Q1 — Follow-up" value={selected.payload?.openEnded?.q1} />
-              <AnswerBlock label="Q3"              value={selected.payload?.openEnded?.q3} />
-              <AnswerBlock label="Q4"              value={selected.payload?.openEnded?.q4} />
-              {Object.keys(selected.payload?.psychographics || {}).length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Psychographics</div>
-                  <div className="flex flex-col gap-1.5">
-                    {Object.entries(selected.payload.psychographics).map(([k, v]) => (
-                      <div key={k} className="flex gap-3 text-sm bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="text-gray-500 capitalize flex-shrink-0 w-32">{k.replace(/_/g,' ')}</span>
-                        <span className="text-gray-800 font-medium">{v as string}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {Object.keys(selected.payload?.demographics || {}).filter(k => selected.payload.demographics[k]).length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Demographics</div>
-                  <div className="flex gap-3 flex-wrap">
-                    {Object.entries(selected.payload.demographics).filter(([, v]) => v).map(([k, v]) => (
-                      <Badge key={k} label={k} value={v as string} />
-                    ))}
-                  </div>
-                </div>
-              )}
+        <ConversationModal
+          response={selected}
+          studyId={studyId}
+          studyConfig={studyConfig}
+          botName={botName}
+          botEmoji={botEmoji}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Conversation replay modal ─────────────────────────────────────────────
+
+interface ConvMsg {
+  who: 'bot' | 'user'
+  text: string
+  ai?: boolean  // true if generated by AI or rules
+}
+
+function buildConversation(response: Response, config: any, botName: string): ConvMsg[] {
+  const msgs: ConvMsg[] = []
+  const p = response.payload || {}
+  const oe = p.openEnded || {}
+
+  // Greeting
+  if (config?.greeting) {
+    msgs.push({ who: 'bot', text: config.greeting })
+  }
+
+  // Ready prompt
+  msgs.push({ who: 'bot', text: 'Are you ready to share your feedback?' })
+  msgs.push({ who: 'user', text: 'Yes, let\'s go! 👍' })
+
+  // Opening flow: experience rating
+  if (p.experienceRating?.score != null) {
+    if (config?.ratingPrompt) msgs.push({ who: 'bot', text: config.ratingPrompt })
+    msgs.push({ who: 'user', text: `${p.experienceRating.label || ''} (${p.experienceRating.score}/5)` })
+  }
+
+  // Opening flow: NPS
+  if (p.npsRecommend?.score != null) {
+    if (config?.npsPrompt) msgs.push({ who: 'bot', text: config.npsPrompt })
+    msgs.push({ who: 'user', text: `${p.npsRecommend.label || ''} (${p.npsRecommend.score}/5)` })
+  }
+
+  // Q1 follow-up (after rating)
+  if (oe.q1) {
+    // The follow-up prompt depends on sentiment
+    const sentiment = p.experienceRating?.sentiment || 'neutral'
+    const q1Prompt = sentiment === 'positive' ? config?.promoterQ1 : sentiment === 'negative' ? config?.detractorQ1 : config?.passiveQ1
+    if (q1Prompt) msgs.push({ who: 'bot', text: q1Prompt, ai: true })
+    // q1 may contain [+ clarifier response]
+    const parts = oe.q1.split(' [+ ')
+    msgs.push({ who: 'user', text: parts[0] })
+    if (parts.length > 1) {
+      msgs.push({ who: 'bot', text: '(clarifier follow-up)', ai: true })
+      msgs.push({ who: 'user', text: parts[1].replace(/\]$/, '') })
+    }
+  }
+
+  // Q3
+  if (oe.q3) {
+    if (config?.q3 && config.q3Enabled !== false) msgs.push({ who: 'bot', text: config.q3 })
+    const parts = oe.q3.split(' [+ ')
+    msgs.push({ who: 'user', text: parts[0] })
+    if (parts.length > 1) {
+      msgs.push({ who: 'bot', text: '(clarifier follow-up)', ai: true })
+      msgs.push({ who: 'user', text: parts[1].replace(/\]$/, '') })
+    }
+  }
+
+  // Q4
+  if (oe.q4) {
+    if (config?.q4 && config.q4Enabled !== false) msgs.push({ who: 'bot', text: config.q4 })
+    const parts = oe.q4.split(' [+ ')
+    msgs.push({ who: 'user', text: parts[0] })
+    if (parts.length > 1) {
+      msgs.push({ who: 'bot', text: '(clarifier follow-up)', ai: true })
+      msgs.push({ who: 'user', text: parts[1].replace(/\]$/, '') })
+    }
+  }
+
+  // Custom questions
+  if (p.customAnswers && config?.questions) {
+    const questions = (config.questions as any[]).filter((q: any) => q.type !== 'hidden' && q.enabled !== false)
+    for (const q of questions) {
+      const answer = p.customAnswers[q.id]
+      if (answer != null) {
+        msgs.push({ who: 'bot', text: q.prompt })
+        const ansText = Array.isArray(answer) ? answer.join(', ') : String(answer)
+        if (ansText) {
+          const parts = ansText.split(' [+ ')
+          msgs.push({ who: 'user', text: parts[0] })
+          if (parts.length > 1) {
+            msgs.push({ who: 'bot', text: '(clarifier follow-up)', ai: true })
+            msgs.push({ who: 'user', text: parts[1].replace(/\]$/, '') })
+          }
+        }
+      }
+    }
+  }
+
+  // Psychographics
+  const psycho = p.psychographics || {}
+  const psychoEntries = Object.entries(psycho).filter(([, v]) => v)
+  if (psychoEntries.length > 0) {
+    const transitionText = config?.sectionTransitions?.psychographics?.text || 'Just a few quick questions to round things out.'
+    if (config?.sectionTransitions?.psychographics?.enabled !== false) {
+      msgs.push({ who: 'bot', text: transitionText })
+    }
+    // Match psycho keys to bank questions
+    const bank = config?.psychographicBank || []
+    for (const [key, val] of psychoEntries) {
+      const bankQ = bank.find((b: any) => b.key === key)
+      if (bankQ) msgs.push({ who: 'bot', text: bankQ.q })
+      msgs.push({ who: 'user', text: val as string })
+    }
+  }
+
+  // Demographics
+  const demo = p.demographics || {}
+  const demoEntries = Object.entries(demo).filter(([, v]) => v)
+  if (demoEntries.length > 0) {
+    const demoTransitionText = config?.sectionTransitions?.demographics?.text || 'Almost done -- a couple of optional questions about you.'
+    if (config?.sectionTransitions?.demographics?.enabled !== false) {
+      msgs.push({ who: 'bot', text: demoTransitionText })
+    }
+    const demoFields = config?.demoFields || []
+    for (const [key, val] of demoEntries) {
+      const field = demoFields.find((f: any) => f.key === key)
+      msgs.push({ who: 'bot', text: field?.label || key.replace(/_/g, ' ') })
+      msgs.push({ who: 'user', text: val as string })
+    }
+  }
+
+  // Closing
+  const closingMsg = config?.closingMessage || `Thank you so much -- ${botName} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`
+  msgs.push({ who: 'bot', text: closingMsg })
+
+  return msgs
+}
+
+function ConversationModal({ response, studyId, studyConfig, botName, botEmoji, onClose }: {
+  response: Response
+  studyId: string
+  studyConfig: any
+  botName: string
+  botEmoji: string
+  onClose: () => void
+}) {
+  const msgs: ConvMsg[] = response.payload?.conversationLog || []
+  const theme = studyConfig?.theme || { primaryColor: '#00b4d8', backgroundColor: '#0a1628', headerGradient: 'linear-gradient(135deg, #00b4d8, #0077a8)', botAvatarGradient: 'linear-gradient(135deg, #00b4d8, #0077a8)' }
+
+  // Adapt to viewer's system light/dark preference instead of study background
+  const prefersDark = typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)')?.matches
+  const isLight = !prefersDark
+  const chatBg = isLight ? '#f8fafc' : '#0f172a'
+  const botBubble = isLight
+    ? { background: '#ffffff', color: '#1e293b', border: '1px solid #e2e8f0' }
+    : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.07)' }
+  const mutedText = isLight ? '#94a3b8' : 'rgba(255,255,255,0.3)'
+  const subtleText = isLight ? '#64748b' : 'rgba(255,255,255,0.5)'
+  const borderColor = isLight ? '#e2e8f0' : 'rgba(255,255,255,0.08)'
+  const doneCardText = isLight ? '#1e293b' : '#ffffff'
+  const doneCardSub = isLight ? '#64748b' : 'rgba(255,255,255,0.6)'
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="w-full max-w-sm shadow-2xl rounded-3xl overflow-hidden flex flex-col"
+        style={{ height: 'min(85vh, 700px)' }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Phone header */}
+        <div className="px-4 py-3 flex items-center gap-3 flex-shrink-0" style={{ background: theme.headerGradient }}>
+          <div className="w-9 h-9 rounded-full flex items-center justify-center text-base flex-shrink-0" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            {botEmoji}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-white font-semibold text-sm truncate">{botName}</div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              {response.completed_at ? new Date(response.completed_at).toLocaleString() : ''}
+              {response.duration_sec ? ` · ${Math.floor(response.duration_sec / 60)}m ${response.duration_sec % 60}s` : ''}
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            {response.sentiment && (
+              <span className={'text-xs px-2 py-0.5 rounded-full font-medium capitalize ' + ({
+                promoter: 'bg-green-400/20 text-green-200',
+                passive: 'bg-amber-400/20 text-amber-200',
+                detractor: 'bg-red-400/20 text-red-200',
+              }[response.sentiment] || 'bg-white/10 text-white/50')}>{response.sentiment}</span>
+            )}
+            <button onClick={onClose} className="text-white/60 hover:text-white text-lg transition-colors ml-1">×</button>
+          </div>
         </div>
-      )}
+
+        {/* Chat area */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2.5" style={{ background: chatBg }}>
+          {msgs.map((msg, i) => (
+            <div key={i} className={'flex items-end gap-2 ' + (msg.who === 'user' ? 'flex-row-reverse self-end max-w-[85%]' : 'self-start max-w-[85%]')}>
+              {msg.who === 'bot' && (
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0" style={{ background: theme.botAvatarGradient }}>
+                  {botEmoji}
+                </div>
+              )}
+              <div className="relative">
+                <div
+                  className={'px-3 py-2 text-sm leading-relaxed ' + (msg.who === 'user'
+                    ? 'rounded-2xl rounded-br-sm font-medium'
+                    : 'rounded-2xl rounded-bl-sm')}
+                  style={msg.who === 'user'
+                    ? { background: theme.primaryColor, color: '#fff' }
+                    : botBubble}
+                >
+                  {msg.text}
+                </div>
+                {msg.ai && (
+                  <span className="absolute -bottom-3.5 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ background: theme.primaryColor + '30', color: theme.primaryColor }}>
+                    AI
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* All done card */}
+          <div className="rounded-2xl p-4 text-center my-1" style={{ background: isLight ? theme.primaryColor + '15' : theme.headerGradient }}>
+            <div className="text-3xl mb-1">{botEmoji}</div>
+            <div className="font-semibold text-base" style={{ color: doneCardText }}>All done!</div>
+            <div className="text-xs mt-0.5" style={{ color: doneCardSub }}>{studyConfig?.closingCard || 'Your responses have been saved. Thank you for your time.'}</div>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="px-4 py-3 flex-shrink-0 border-t flex items-center justify-between" style={{ background: chatBg, borderColor }}>
+          <div className="flex items-center gap-2 text-xs" style={{ color: mutedText }}>
+            <span>Exp: {response.experience_score ?? '—'}/5</span>
+            <span>·</span>
+            <span>NPS: {response.nps_score ?? '—'}/5</span>
+            {response.duration_sec && <><span>·</span><span>{response.duration_sec}s</span></>}
+          </div>
+          <button
+            onClick={() => {
+              const a = document.createElement('a')
+              a.href = `/api/studies/${studyId}/responses/${response.id}/conversation-export`
+              a.download = 'conversation.pptx'
+              a.click()
+            }}
+            className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
+            style={{ background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)', color: subtleText }}
+            onMouseEnter={e => { e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = isLight ? '#000' : '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = subtleText }}
+          >
+            Export PPTX
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

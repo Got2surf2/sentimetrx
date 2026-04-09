@@ -223,6 +223,25 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
             </button>
           </div>
 
+          {/* Study design export */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6">
+            <h2 className="font-semibold text-white mb-1">Study design summary</h2>
+            <p className="text-gray-400 text-sm mb-4">
+              Download a presentation that outlines every prompt, question, and setting — ready to share with clients.
+            </p>
+            <button
+              onClick={() => {
+                const a = document.createElement('a')
+                a.href = `/api/studies/${study.id}/design-export`
+                a.download = study.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_design.pptx'
+                a.click()
+              }}
+              className="px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium transition-all"
+            >
+              Download design deck (PPTX)
+            </button>
+          </div>
+
           {/* Quick links */}
           <div className="flex gap-3">
             <Link
