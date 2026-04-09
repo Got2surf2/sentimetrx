@@ -98,6 +98,24 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     } catch { deviceFingerprint.current = 'unknown' }
   }
 
+  // ── Hidden fields — read URL params and inject into customAnswers ─────────
+  const hiddenFieldsPopulated = useRef(false)
+  if (!hiddenFieldsPopulated.current) {
+    hiddenFieldsPopulated.current = true
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const hiddenQuestions = (config.questions ?? []).filter(q => q.type === 'hidden')
+      for (const q of hiddenQuestions) {
+        const key = q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+        if (!key) continue
+        const val = params.get(key)
+        if (val) {
+          state.current.customAnswers[q.id] = val
+        }
+      }
+    } catch {}
+  }
+
   // ── Check device limit — returns true if already completed ────────────────
   const deviceBlocked = useRef<boolean>(false)
   if (config.allowMultipleResponses === false) {
@@ -586,7 +604,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
 
   const stepCustomQuestions = useCallback(async () => {
-    const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition && q.enabled !== false)
+    const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition && q.enabled !== false && q.type !== 'hidden')
     if (allQuestions.length === 0) { await stepPsychoIntro(); return }
 
     // Randomly sample customQCount questions if set, otherwise show all
@@ -1023,7 +1041,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
   // Run conversation-position extras (questions shown after Q4, before custom-Q phase)
   const stepConversationExtras = useCallback(async () => {
-    const extras = (config.questions ?? []).filter(q => q.conversationPosition && q.enabled !== false)
+    const extras = (config.questions ?? []).filter(q => q.conversationPosition && q.enabled !== false && q.type !== 'hidden')
     if (extras.length === 0) { await stepCustomQuestions(); return }
 
     const customAnswers: Record<string, string | string[]> = { ...state.current.customAnswers }

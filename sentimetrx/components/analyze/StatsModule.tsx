@@ -988,98 +988,105 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
   var runAnalysis = useCallback(function() {
     if (!data.length || !numFields.length) return
     setRunning(true); setAiReport(null)
-    var fs: AutoFinding[] = []
 
-    // ── 1. Pairwise Pearson correlations ──────────────────────────
-    for (var i = 0; i < numFields.length; i++) {
-      for (var j = i + 1; j < numFields.length; j++) {
-        var fi = numFields[i].field, fj = numFields[j].field
-        var vi = getNum(fi, data), vj = getNum(fj, data), nn = Math.min(vi.length, vj.length)
-        if (nn < 10) continue
-        var cr = pearsonR(vi.slice(0, nn), vj.slice(0, nn))
-        if (isNaN(cr.r) || isNaN(cr.p) || cr.p >= 0.05 || Math.abs(cr.r) < 0.15) continue
-        var strength = Math.abs(cr.r) > 0.7 ? 'strong' : Math.abs(cr.r) > 0.4 ? 'moderate' : 'weak'
-        var dir = cr.r > 0 ? 'positive' : 'negative'
-        fs.push({
-          type: 'correlation',
-          title: fLbl(fi) + ' \u2194 ' + fLbl(fj),
-          detail: strength.charAt(0).toUpperCase() + strength.slice(1) + ' ' + dir + ' correlation — r\u202f=\u202f' + cr.r.toFixed(2) + ', n\u202f=\u202f' + cr.n,
-          magnitude: Math.abs(cr.r),
-          p: cr.p,
-          badge: strength + ' ' + dir,
-          badgeColor: cr.r > 0 ? T.green : T.blue,
-          badgeBg: cr.r > 0 ? T.greenBg : T.blueBg,
-        })
-      }
-    }
+    // Run analysis in chunked setTimeout batches to avoid freezing the UI
+    setTimeout(function() {
+      var fs: AutoFinding[] = []
 
-    // ── 2. Group differences (categorical × numeric) ───────────────
-    catFields.forEach(function(cf) {
-      numFields.forEach(function(nf) {
-        var groups: Record<string, number[]> = {}
-        data.forEach(function(r) {
-          var v = parseFloat(String(r[nf.field] || '').replace(/,/g, '')); if (isNaN(v)) return
-          var k = String(r[cf.field] ?? '(blank)').trim(); if (!k) return
-          if (!groups[k]) groups[k] = []; groups[k].push(v)
-        })
-        var keys = Object.keys(groups).filter(function(k) { return groups[k].length >= 3 })
-        if (keys.length < 2 || keys.length > 12) return
-
-        var p: number, magnitude: number, detail: string
-        if (keys.length === 2) {
-          var tr = welchTTest(groups[keys[0]], groups[keys[1]]); if (!tr) return
-          p = tr.p; magnitude = Math.min(Math.abs(tr.d) * 0.3, 0.99)
-          var hiK = tr.ma >= tr.mb ? keys[0] : keys[1], loK = tr.ma >= tr.mb ? keys[1] : keys[0]
-          detail = fLbl(cf.field) + ' drives ' + fLbl(nf.field) + ' — ' + hiK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + ' vs ' + loK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1) + " (Cohen's d\u202f=\u202f" + tr.d.toFixed(2) + ')'
-        } else {
-          var ar = oneWayANOVA(groups); if (!ar) return
-          p = ar.p; magnitude = ar.eta2
-          var sorted = keys.slice().sort(function(a, b) { return mean(groups[b]) - mean(groups[a]) })
-          detail = fLbl(cf.field) + ' groups differ on ' + fLbl(nf.field) + ' — highest: ' + sorted[0] + ' (' + mean(groups[sorted[0]]).toFixed(1) + '), lowest: ' + sorted[sorted.length - 1] + ' (' + mean(groups[sorted[sorted.length - 1]]).toFixed(1) + '), \u03B7\u00B2\u202f=\u202f' + ar.eta2.toFixed(2)
+      // ── 1. Pairwise Pearson correlations (chunked) ──────────────
+      for (var i = 0; i < numFields.length; i++) {
+        for (var j = i + 1; j < numFields.length; j++) {
+          var fi = numFields[i].field, fj = numFields[j].field
+          var vi = getNum(fi, data), vj = getNum(fj, data), nn = Math.min(vi.length, vj.length)
+          if (nn < 10) continue
+          var cr = pearsonR(vi.slice(0, nn), vj.slice(0, nn))
+          if (isNaN(cr.r) || isNaN(cr.p) || cr.p >= 0.05 || Math.abs(cr.r) < 0.15) continue
+          var strength = Math.abs(cr.r) > 0.7 ? 'strong' : Math.abs(cr.r) > 0.4 ? 'moderate' : 'weak'
+          var dir = cr.r > 0 ? 'positive' : 'negative'
+          fs.push({
+            type: 'correlation',
+            title: fLbl(fi) + ' \u2194 ' + fLbl(fj),
+            detail: strength.charAt(0).toUpperCase() + strength.slice(1) + ' ' + dir + ' correlation — r\u202f=\u202f' + cr.r.toFixed(2) + ', n\u202f=\u202f' + cr.n,
+            magnitude: Math.abs(cr.r),
+            p: cr.p,
+            badge: strength + ' ' + dir,
+            badgeColor: cr.r > 0 ? T.green : T.blue,
+            badgeBg: cr.r > 0 ? T.greenBg : T.blueBg,
+          })
         }
-        if (p >= 0.05) return
-        var eff = magnitude > 0.14 ? 'large effect' : magnitude > 0.06 ? 'medium effect' : 'small effect'
-        fs.push({
-          type: 'group_effect',
-          title: fLbl(cf.field) + ' \u2192 ' + fLbl(nf.field),
-          detail: detail,
-          magnitude: magnitude,
-          p: p,
-          badge: eff,
-          badgeColor: magnitude > 0.14 ? T.accent : magnitude > 0.06 ? T.amber : T.textMid,
-          badgeBg: magnitude > 0.14 ? T.accentBg : magnitude > 0.06 ? T.amberBg : T.bg,
+      }
+
+      // ── 2. Group differences (categorical × numeric) ─────────────
+      setTimeout(function() {
+        catFields.forEach(function(cf) {
+          numFields.forEach(function(nf) {
+            var groups: Record<string, number[]> = {}
+            data.forEach(function(r) {
+              var v = parseFloat(String(r[nf.field] || '').replace(/,/g, '')); if (isNaN(v)) return
+              var k = String(r[cf.field] ?? '(blank)').trim(); if (!k) return
+              if (!groups[k]) groups[k] = []; groups[k].push(v)
+            })
+            var keys = Object.keys(groups).filter(function(k) { return groups[k].length >= 3 })
+            if (keys.length < 2 || keys.length > 12) return
+
+            var p: number, magnitude: number, detail: string
+            if (keys.length === 2) {
+              var tr = welchTTest(groups[keys[0]], groups[keys[1]]); if (!tr) return
+              p = tr.p; magnitude = Math.min(Math.abs(tr.d) * 0.3, 0.99)
+              var hiK = tr.ma >= tr.mb ? keys[0] : keys[1], loK = tr.ma >= tr.mb ? keys[1] : keys[0]
+              detail = fLbl(cf.field) + ' drives ' + fLbl(nf.field) + ' — ' + hiK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + ' vs ' + loK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1) + " (Cohen's d\u202f=\u202f" + tr.d.toFixed(2) + ')'
+            } else {
+              var ar = oneWayANOVA(groups); if (!ar) return
+              p = ar.p; magnitude = ar.eta2
+              var sorted = keys.slice().sort(function(a, b) { return mean(groups[b]) - mean(groups[a]) })
+              detail = fLbl(cf.field) + ' groups differ on ' + fLbl(nf.field) + ' — highest: ' + sorted[0] + ' (' + mean(groups[sorted[0]]).toFixed(1) + '), lowest: ' + sorted[sorted.length - 1] + ' (' + mean(groups[sorted[sorted.length - 1]]).toFixed(1) + '), \u03B7\u00B2\u202f=\u202f' + ar.eta2.toFixed(2)
+            }
+            if (p >= 0.05) return
+            var eff = magnitude > 0.14 ? 'large effect' : magnitude > 0.06 ? 'medium effect' : 'small effect'
+            fs.push({
+              type: 'group_effect',
+              title: fLbl(cf.field) + ' \u2192 ' + fLbl(nf.field),
+              detail: detail,
+              magnitude: magnitude,
+              p: p,
+              badge: eff,
+              badgeColor: magnitude > 0.14 ? T.accent : magnitude > 0.06 ? T.amber : T.textMid,
+              badgeBg: magnitude > 0.14 ? T.accentBg : magnitude > 0.06 ? T.amberBg : T.bg,
+            })
+          })
         })
-      })
-    })
 
-    // ── 3. Distribution flags (skew) ──────────────────────────────
-    numFields.forEach(function(nf) {
-      var vals = getNum(nf.field, data)
-      if (vals.length < 20) return
-      var sk = skewness(vals)
-      if (Math.abs(sk) < 1.5) return
-      var dir = sk > 0 ? 'right' : 'left'
-      fs.push({
-        type: 'distribution',
-        title: fLbl(nf.field) + ' is heavily ' + dir + '-skewed',
-        detail: (dir === 'right' ? 'Most values are low with a long tail upward' : 'Most values are high with a long tail downward') + ' — skewness\u202f=\u202f' + sk.toFixed(2) + '. Consider log-transforming before regression.',
-        magnitude: Math.min(Math.abs(sk) / 6, 0.5),
-        p: 1,
-        badge: dir + '-skewed',
-        badgeColor: T.amber,
-        badgeBg: T.amberBg,
-      })
-    })
+        // ── 3. Distribution flags (skew) ────────────────────────────
+        setTimeout(function() {
+          numFields.forEach(function(nf) {
+            var vals = getNum(nf.field, data)
+            if (vals.length < 20) return
+            var sk = skewness(vals)
+            if (Math.abs(sk) < 1.5) return
+            var dir = sk > 0 ? 'right' : 'left'
+            fs.push({
+              type: 'distribution',
+              title: fLbl(nf.field) + ' is heavily ' + dir + '-skewed',
+              detail: (dir === 'right' ? 'Most values are low with a long tail upward' : 'Most values are high with a long tail downward') + ' — skewness\u202f=\u202f' + sk.toFixed(2) + '. Consider log-transforming before regression.',
+              magnitude: Math.min(Math.abs(sk) / 6, 0.5),
+              p: 1,
+              badge: dir + '-skewed',
+              badgeColor: T.amber,
+              badgeBg: T.amberBg,
+            })
+          })
 
-    // Sort by magnitude desc (correlations + group effects on top, distribution flags below)
-    fs.sort(function(a, b) {
-      var aScore = (a.type === 'distribution' ? 0 : 1) * 10 + a.magnitude
-      var bScore = (b.type === 'distribution' ? 0 : 1) * 10 + b.magnitude
-      return bScore - aScore
-    })
+          fs.sort(function(a, b) {
+            var aScore = (a.type === 'distribution' ? 0 : 1) * 10 + a.magnitude
+            var bScore = (b.type === 'distribution' ? 0 : 1) * 10 + b.magnitude
+            return bScore - aScore
+          })
 
-    setFindings(fs)
-    setRunning(false)
+          setFindings(fs)
+          setRunning(false)
+        }, 0)
+      }, 0)
+    }, 0)
   }, [data, numFields, catFields, aliases])
 
   // Auto-run when data loads

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { createHash } from 'crypto'
+import { checkRateLimit } from '@/lib/rateLimit'
 import type { SubmitResponseBody, Sentiment } from '@/lib/types'
 
 // POST /api/respond
@@ -12,6 +13,10 @@ import type { SubmitResponseBody, Sentiment } from '@/lib/types'
 //   2. Final submit (status='complete')   — marks response complete, checks device limits
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 30 requests per minute per IP (covers partial saves + final submit)
+  var ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
+  var rl = checkRateLimit('respond:' + ip, 30, 60000)
+  if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   let body: SubmitResponseBody
 
   try {
@@ -53,9 +58,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Study is not accepting responses' }, { status: 403 })
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-             || req.headers.get('x-real-ip')
-             || 'unknown'
   const ip_hash = createHash('sha256').update(ip).digest('hex')
 
   // ── Device limit check (final submit only) ───────────────────────────────

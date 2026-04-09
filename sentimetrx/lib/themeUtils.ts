@@ -35,7 +35,7 @@ export interface TextSegment {
 // Lemma-aware keyword regex: expands irregular forms then builds alternation.
 // "run" → matches run|runs|ran|running|runner|runners (via lemma) plus stem-suffix via \w*
 // "good" → matches good|better|best plus stem-suffix
-function buildKwRegex(kw: string): RegExp {
+export function buildKwRegex(kw: string): RegExp {
   const forms = expandLemma(kw)
   // Build alternation of all lemma forms, each with stem-suffix \w*
   // Use plain array dedup (no Set) for client bundle compatibility

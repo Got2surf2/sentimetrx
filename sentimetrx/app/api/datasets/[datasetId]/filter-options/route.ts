@@ -15,6 +15,12 @@ export async function GET(_req: Request, { params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Verify org membership
+  const { data: userData } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
+  const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (dataset.org_id !== userData?.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { data: stateRow } = await supabase
     .from('dataset_state')
     .select('schema_config, analytics')

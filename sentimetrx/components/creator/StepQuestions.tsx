@@ -22,6 +22,7 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   date:     'Date picker',
   rating:   'Rating scale',
   numeric:  'Numeric input',
+  hidden:   'Hidden field',
 }
 
 const TYPE_ICONS: Record<QuestionType, string> = {
@@ -33,6 +34,7 @@ const TYPE_ICONS: Record<QuestionType, string> = {
   date:     '\uD83D\uDCC5',
   rating:   '\uD83D\uDD22',
   numeric:  '\uD83D\uDCAC',
+  hidden:   '\uD83D\uDD12',
 }
 
 const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
@@ -344,7 +346,44 @@ function QuestionCard({
       </div>
 
       {/* Card body */}
-      {expanded && (
+      {expanded && q.type === 'hidden' && (
+        <div className="px-4 py-4 flex flex-col gap-4">
+          <div className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+            Hidden fields are not shown to respondents. Their values are populated from URL parameters when the survey link is opened.
+          </div>
+          {/* Field name (internal label) */}
+          <div>
+            <label className={labelCls}>Field name</label>
+            <input type="text" value={q.prompt || ''} onChange={e => {
+              const name = e.target.value
+              const patch: Partial<SurveyQuestion> = { prompt: name }
+              // Auto-generate paramKey from field name if paramKey hasn't been manually edited
+              if (!q.paramKey || q.paramKey === (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')) {
+                patch.paramKey = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+              }
+              set(patch)
+            }}
+              placeholder="e.g. Recipient ID, Location, Department"
+              className={inputCls} />
+          </div>
+          {/* URL parameter key */}
+          <div>
+            <label className={labelCls}>URL parameter key <span className="text-gray-400 font-normal">(auto-generated from field name)</span></label>
+            <input type="text" value={q.paramKey || ''} onChange={e => set({ paramKey: e.target.value.replace(/[^a-zA-Z0-9_-]/g, '') })}
+              placeholder={q.prompt ? q.prompt.toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '') : 'e.g. rid, src, dept'}
+              className={inputCls} />
+            <p className="text-xs text-gray-400 mt-1">Only letters, numbers, hyphens, and underscores. This becomes the query parameter name in the URL.</p>
+          </div>
+          {/* Export label */}
+          <div>
+            <label className={labelCls}>CSV export label <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input type="text" value={q.exportLabel || ''} onChange={e => set({ exportLabel: e.target.value })}
+              placeholder={q.prompt || 'Column header in CSV export'}
+              className={inputCls} />
+          </div>
+        </div>
+      )}
+      {expanded && q.type !== 'hidden' && (
         <div className="px-4 py-4 flex flex-col gap-4">
           {/* Prompt */}
           <div>
@@ -857,7 +896,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
     const q: SurveyQuestion = {
       id:       genId(),
       type,
-      prompt:   '',
+      prompt:   type === 'hidden' ? '' : '',
       required: false,
       ...(type === 'radio' || type === 'checkbox' || type === 'dropdown' ? { options: ['', ''] } : {}),
       ...(type === 'likert' ? {
@@ -870,6 +909,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
         ]
       } : {}),
       ...(type === 'rating' ? { ratingMin: 1, ratingMax: 5 } : {}),
+      ...(type === 'hidden' ? { paramKey: '', enabled: true } : {}),
     }
     setQuestions([...questions, q])
     setAddingType(null)

@@ -79,6 +79,29 @@ export async function PATCH(req: Request, { params }: Params) {
   updates.updated_at = new Date().toISOString()
 
   const service = createServiceRoleClient()
+
+  // Archive/restore: move rows to/from archive tables via SQL functions
+  if (updates.status === 'archived') {
+    try {
+      await service.rpc('archive_dataset', { p_dataset_id: params.datasetId, p_user_id: user.id })
+      return NextResponse.json({ ok: true })
+    } catch (archErr: any) {
+      return NextResponse.json({ error: 'Archive failed: ' + (archErr.message || archErr) }, { status: 500 })
+    }
+  }
+  if (updates.status === 'active') {
+    // Check if restoring from archive
+    const { data: ds } = await service.from('datasets').select('status').eq('id', params.datasetId).single()
+    if (ds?.status === 'archived') {
+      try {
+        await service.rpc('restore_dataset', { p_dataset_id: params.datasetId })
+        return NextResponse.json({ ok: true })
+      } catch (restErr: any) {
+        return NextResponse.json({ error: 'Restore failed: ' + (restErr.message || restErr) }, { status: 500 })
+      }
+    }
+  }
+
   const { error: updErr } = await service
     .from('datasets')
     .update(updates)

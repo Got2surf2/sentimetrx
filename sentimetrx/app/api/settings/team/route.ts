@@ -1,5 +1,24 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+
+// GET /api/settings/team — list all users in the caller's org
+export async function GET(_req: NextRequest) {
+  var supabase = createClient()
+  var { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  var { data: actor } = await supabase.from('users').select('org_id, role').eq('id', user.id).single()
+  if (!actor?.org_id) return NextResponse.json({ error: 'No org' }, { status: 403 })
+
+  var { data: members, error } = await supabase
+    .from('users')
+    .select('id, email, full_name, role, created_at')
+    .eq('org_id', actor.org_id)
+    .order('created_at', { ascending: true })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ members: members || [] })
+}
 
 export async function PATCH(req: NextRequest) {
   const supabase = createClient()

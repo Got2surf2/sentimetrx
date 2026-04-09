@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { pickBestComments } from '@/lib/export/scoreComments'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
+import { buildKwRegex } from '@/lib/themeUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 
 export const dynamic     = 'force-dynamic'
@@ -396,13 +397,20 @@ async function buildThemeDetailSlides(
 ): Promise<string[]> {
   if (!themes?.length) return []
 
+  // Pre-compile keyword regexes per theme for performance
+  var themeRegexCache = new Map<string, RegExp[]>()
+  function getThemeRegexes(keywords: string[]): RegExp[] {
+    var key = keywords.join('|')
+    if (themeRegexCache.has(key)) return themeRegexCache.get(key)!
+    var regexes = keywords.map(function(kw) { return buildKwRegex(kw) })
+    themeRegexCache.set(key, regexes)
+    return regexes
+  }
   function matchesTheme(text: string, keywords: string[]): boolean {
     if (!keywords?.length) return false
-    const lower = text.toLowerCase()
-    return keywords.some(kw => {
-      const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(lower)
-    })
+    var regexes = getThemeRegexes(keywords)
+    var lower = text.toLowerCase()
+    return regexes.some(function(re) { return re.test(lower) })
   }
 
   async function getComments(t: any): Promise<string[]> {
@@ -1026,15 +1034,13 @@ export async function POST(req: Request, { params }: Params) {
     }
     const nonEmpty = allRows.filter(row => fRowVal(row, fieldKey).length > 0)
     const total = nonEmpty.length || 1
+    var fieldThemeRegexes = themeList.map(function(t: any) { return (t.keywords || []).map(function(kw: string) { return buildKwRegex(kw) }) })
     return themeList
-      .map(function(t: any) {
-        const keywords: string[] = (t.keywords || []) as string[]
+      .map(function(t: any, ti: number) {
+        var regexes = fieldThemeRegexes[ti]
         const count = nonEmpty.filter(function(row) {
           const text = fRowVal(row, fieldKey).toLowerCase()
-          return keywords.some(function(kw) {
-            const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            return new RegExp('(?<![a-z])' + e + '\\w*', 'i').test(text)
-          })
+          return regexes.some(function(re: RegExp) { return re.test(text) })
         }).length
         return Object.assign({}, t, { count, percentage: Math.round(count / total * 100) })
       })

@@ -135,6 +135,43 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
             </a>
           </div>
 
+          {/* Hidden fields URL template */}
+          {(() => {
+            const hiddenFields = (study.config?.questions ?? []).filter((q: any) => q.type === 'hidden')
+              .map((q: any) => ({ ...q, paramKey: q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '') }))
+              .filter((q: any) => q.paramKey)
+            if (hiddenFields.length === 0) return null
+            const templateUrl = surveyUrl + '?' + hiddenFields.map((q: any) => q.paramKey + '=').join('&')
+            return (
+              <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                <h2 className="font-semibold text-white mb-1">Hidden fields</h2>
+                <p className="text-gray-400 text-sm mb-4">
+                  This survey has hidden fields that can be populated via URL parameters. Use this template when building campaign links.
+                </p>
+                <div className="px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-gray-300 font-mono break-all mb-3">
+                  {templateUrl}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {hiddenFields.map((q: any) => (
+                    <div key={q.id} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-cyan-400">{q.paramKey}</span>
+                      <span className="text-gray-500">→</span>
+                      <span className="text-gray-400">{q.prompt || q.exportLabel || 'Unnamed field'}</span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(templateUrl)
+                  }}
+                  className="mt-3 px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition-all"
+                >
+                  Copy template URL
+                </button>
+              </div>
+            )
+          })()}
+
           {/* QR code */}
           <div className="bg-white border border-gray-200 rounded-2xl p-6">
             <h2 className="font-semibold text-white mb-1">QR code</h2>

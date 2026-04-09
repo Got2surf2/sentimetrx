@@ -493,6 +493,8 @@ function useRows(datasetId: string, enrichKey: number = 0) {
   var [loaded, setLoaded] = useState(false)
   var [loading, setLoading] = useState(false)
   useEffect(function() {
+    // Skip fetching when enrichKey is -1 (component uses aggregation API instead)
+    if (enrichKey < 0) return
     // Evict cache if dataset changed
     if (_rawRowsCacheId && _rawRowsCacheId !== datasetId) {
       delete _rawRowsCache[_rawRowsCacheId]
@@ -515,6 +517,28 @@ function useRows(datasetId: string, enrichKey: number = 0) {
       }).catch(function() { setLoading(false) })
   }, [datasetId, enrichKey])
   return { rows: rows, loaded: loaded, loading: loading }
+}
+
+// Aggregation hook — fetches pre-computed results from SQL, no raw rows needed
+var _aggCache: Record<string, any> = {}
+
+function useAggregation(datasetId: string, spec: Record<string, unknown> | null) {
+  var [data, setData] = useState<any>(null)
+  var [loaded, setLoaded] = useState(false)
+  var cacheKey = datasetId + ':' + JSON.stringify(spec)
+  useEffect(function() {
+    if (!spec) return
+    if (_aggCache[cacheKey]) { setData(_aggCache[cacheKey]); setLoaded(true); return }
+    setLoaded(false)
+    fetch('/api/datasets/' + datasetId + '/aggregate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(spec),
+    }).then(function(r) { return r.json() })
+      .then(function(d) { _aggCache[cacheKey] = d; setData(d); setLoaded(true) })
+      .catch(function() { setLoaded(true) })
+  }, [datasetId, cacheKey])
+  return { data: data, loaded: loaded }
 }
 
 // Reads source field, active themes, and mapped fields from _enrichCtx
@@ -564,23 +588,34 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
 }
 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var aggSpec = catField && colorByField ? { op: 'crosstab', rowField: catField, colField: colorByField, limit: 30 } : null
+  var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
+  // Fallback to useRows for __themes__ or __mapped__ virtual fields that aren't in the flat table
+  var needsRows = catField.startsWith('__') || colorByField.startsWith('__')
+  var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
+  var loaded = needsRows ? rowsLoaded : aggLoaded
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
 
-  // Build crosstab: category × colorBy
+  // Build crosstab: from aggregation API or from rows
   var grid: Record<string, Record<string, number>> = {}
   var colorVals = new Set<string>()
   var colorTotals: Record<string, number> = {}
-  rows.forEach(function(r) {
-    var cat = String(r[catField] || '').trim()
-    var col = String(r[colorByField] || '').trim()
-    if (!cat || !col) return
-    colorVals.add(col)
-    colorTotals[col] = (colorTotals[col] || 0) + 1
-    if (!grid[cat]) grid[cat] = {}
-    grid[cat][col] = (grid[cat][col] || 0) + 1
-  })
+  if (!needsRows && aggData && aggData.grid) {
+    grid = aggData.grid
+    ;(aggData.cols || []).forEach(function(c: string) { colorVals.add(c) })
+    Object.values(grid).forEach(function(row: any) { Object.entries(row).forEach(function(e: any) { colorTotals[e[0]] = (colorTotals[e[0]] || 0) + e[1] }) })
+  } else {
+    rows.forEach(function(r) {
+      var cat = String(r[catField] || '').trim()
+      var col = String(r[colorByField] || '').trim()
+      if (!cat || !col) return
+      colorVals.add(col)
+      colorTotals[col] = (colorTotals[col] || 0) + 1
+      if (!grid[cat]) grid[cat] = {}
+      grid[cat][col] = (grid[cat][col] || 0) + 1
+    })
+  }
   var colorGrandTotal = Object.values(colorTotals).reduce(function(a, b) { return a + b }, 0)
 
   // Smart axes ordering
@@ -762,61 +797,59 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField, smartAxes, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string; smartAxes?: boolean; colors?: string[] }) {
   var bulletPal = colors || CHART_COLORS
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var needsRows = splitByField.startsWith('__') || measureField.startsWith('__')
+  var aggSpec = !needsRows && splitByField && measureField ? { op: 'group_stats', groupField: splitByField, valueField: measureField } : null
+  var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
+  var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
+  var loaded = needsRows ? rowsLoaded : aggLoaded
   var [showAllKPI, setShowAllKPI] = useState(false)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
 
-  var groups: Record<string, number[]> = {}
-  rows.forEach(function(r) {
-    var grp = String(r[splitByField] || '').trim()
-    var val = parseFloat(String(r[measureField] || ''))
-    if (!grp || grp === '(blank)' || grp === '' || isNaN(val)) return
-    if (!groups[grp]) groups[grp] = []
-    groups[grp].push(val)
-  })
+  // Build stats from aggregation API or rows
+  var stats: { label: string; avg: number; median: number; min: number; max: number; n: number }[] = []
+  var totalKPI = 0
 
-  // Filter out groups below 3% of total unless showAll — only for themes (many categories)
-  var totalKPI = Object.values(groups).reduce(function(s, v) { return s + v.length }, 0)
-  if (!showAllKPI && splitByField === '__themes__' && totalKPI > 0) {
-    var filtered: Record<string, number[]> = {}
-    Object.entries(groups).forEach(function(e) {
-      if (e[1].length / totalKPI >= 0.03) filtered[e[0]] = e[1]
+  if (!needsRows && aggData && aggData.groups) {
+    var aggGroups = aggData.groups as Record<string, { n: number; mean: number; median: number; min: number; max: number }>
+    Object.entries(aggGroups).forEach(function(e) {
+      totalKPI += e[1].n
+      stats.push({ label: e[0], avg: e[1].mean, median: e[1].median, min: e[1].min, max: e[1].max, n: e[1].n })
     })
-    groups = filtered
-  }
-
-  var splitFieldObjB = schema.find(function(f) { return f.field === splitByField })
-  var groupKeys: string[]
-  if (smartAxes) {
-    // Smart axes = alphabetical
-    groupKeys = smartOrder(Object.keys(groups), splitFieldObjB?.remapping)
-  } else if (splitByField === '__themes__') {
-    // Themes: sort by frequency (count) descending
-    groupKeys = Object.keys(groups).sort(function(a, b) { return groups[b].length - groups[a].length })
   } else {
-    // Non-smart, non-theme: sort by average value descending
-    groupKeys = Object.keys(groups).sort(function(a, b) {
-      var avgA = groups[a].reduce(function(s, v) { return s + v }, 0) / groups[a].length
-      var avgB = groups[b].reduce(function(s, v) { return s + v }, 0) / groups[b].length
-      return avgB - avgA
+    var groups: Record<string, number[]> = {}
+    rows.forEach(function(r) {
+      var grp = String(r[splitByField] || '').trim()
+      var val = parseFloat(String(r[measureField] || ''))
+      if (!grp || grp === '(blank)' || grp === '' || isNaN(val)) return
+      if (!groups[grp]) groups[grp] = []
+      groups[grp].push(val)
+    })
+    totalKPI = Object.values(groups).reduce(function(s, v) { return s + v.length }, 0)
+    Object.keys(groups).forEach(function(grp) {
+      var vs = groups[grp].slice().sort(function(a, b) { return a - b })
+      stats.push({ label: grp, avg: vs.reduce(function(a, b) { return a + b }, 0) / vs.length, median: vs[Math.floor(vs.length / 2)], min: vs[0], max: vs[vs.length - 1], n: vs.length })
     })
   }
-  if (!groupKeys.length) return <EmptyChart msg="No data for this combination." />
 
-  // Overall stats for vs comparison
-  var allVals = Object.values(groups).flat()
-  var overallAvg = allVals.length > 0 ? allVals.reduce(function(a, b) { return a + b }, 0) / allVals.length : null
+  // Filter out groups below 3% — only for themes
+  if (!showAllKPI && splitByField === '__themes__' && totalKPI > 0) {
+    stats = stats.filter(function(s) { return s.n / totalKPI >= 0.03 })
+  }
 
-  var stats = groupKeys.map(function(grp) {
-    var vs = groups[grp].slice().sort(function(a, b) { return a - b })
-    var avg = vs.reduce(function(a, b) { return a + b }, 0) / vs.length
-    var med = vs[Math.floor(vs.length / 2)]
-    return { label: grp, avg: avg, median: med, min: vs[0], max: vs[vs.length - 1], n: vs.length }
-  })
+  // Sort
+  var splitFieldObjB = schema.find(function(f) { return f.field === splitByField })
+  if (smartAxes) {
+    var orderedKeys = smartOrder(stats.map(function(s) { return s.label }), splitFieldObjB?.remapping)
+    stats.sort(function(a, b) { return orderedKeys.indexOf(a.label) - orderedKeys.indexOf(b.label) })
+  } else if (splitByField === '__themes__') {
+    stats.sort(function(a, b) { return b.n - a.n })
+  } else {
+    stats.sort(function(a, b) { return b.avg - a.avg })
+  }
+  if (!stats.length) return <EmptyChart msg="No data for this combination." />
+
   var totalNB = stats.reduce(function(t, s) { return t + s.n }, 0)
-
-  var hiddenCount = totalKPI > 0 ? Object.keys(groups).length : 0  // groups after filter
-  var preFilterCount = rows.reduce(function(s, r) { var g = String(r[splitByField] || '').trim(); return g && g !== '(blank)' ? s : s }, Object.keys(groups).length)
+  var overallAvg = totalNB > 0 ? stats.reduce(function(s, x) { return s + x.avg * x.n }, 0) / totalNB : null
 
   return (
     <div>
@@ -1273,10 +1306,20 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var needsRows = rowField.startsWith('__') || colField.startsWith('__')
+  var aggSpec = !needsRows && rowField && colField ? { op: 'crosstab', rowField: rowField, colField: colField, limit: 30 } : null
+  var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
+  var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
+  var loaded = needsRows ? rowsLoaded : aggLoaded
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
-  rows.forEach(function(r) { var rv = String(r[rowField] || '').trim(), cv = String(r[colField] || '').trim(); if (!rv || !cv) return; rSet.add(rv); cSet.add(cv); if (!grid[rv]) grid[rv] = {}; grid[rv][cv] = (grid[rv][cv] || 0) + 1 })
+  if (!needsRows && aggData && aggData.grid) {
+    grid = aggData.grid
+    ;(aggData.rows || []).forEach(function(r: string) { rSet.add(r) })
+    ;(aggData.cols || []).forEach(function(c: string) { cSet.add(c) })
+  } else {
+    rows.forEach(function(r) { var rv = String(r[rowField] || '').trim(), cv = String(r[colField] || '').trim(); if (!rv || !cv) return; rSet.add(rv); cSet.add(cv); if (!grid[rv]) grid[rv] = {}; grid[rv][cv] = (grid[rv][cv] || 0) + 1 })
+  }
   var rowFieldObj = schema.find(function(f) { return f.field === rowField })
   var colFieldObj = schema.find(function(f) { return f.field === colField })
   var rArr = smartOrder(Array.from(rSet), rowFieldObj?.remapping)
@@ -1286,14 +1329,23 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
 }
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var aggSpec = dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: 'day' } : null
+  var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
+  var { rows, loaded: rowsLoaded } = useRows(datasetId, aggLoaded ? -1 : (_enrichCtx.enrichKey || 0))
+  var loaded = aggLoaded && aggData?.series ? true : rowsLoaded
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
-  var grouped: Record<string, number[]> = {}
-  rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
-  var dates = Object.keys(grouped).sort()
-  var yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
+  var dates: string[] = []
+  var yVals: number[] = []
+  if (aggData && aggData.series && aggData.series.length > 0) {
+    aggData.series.forEach(function(s: any) { dates.push(s.date); yVals.push(metricField ? (s.avg || 0) : s.count) })
+  } else {
+    var grouped: Record<string, number[]> = {}
+    rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
+    dates = Object.keys(grouped).sort()
+    yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
+  }
 
   // Moving average smoothing
   var smoothed = yVals

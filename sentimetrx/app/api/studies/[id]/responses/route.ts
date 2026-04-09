@@ -24,12 +24,20 @@ export async function GET(req: NextRequest, { params }: Params) {
   const limit     = parseInt(url.searchParams.get('limit')  || '50')
   const offset    = parseInt(url.searchParams.get('offset') || '0')
 
-  // Fetch study config for labels
+  // Fetch study config — user's Supabase client enforces RLS (org membership)
   const { data: study } = await supabase
     .from('studies')
-    .select('name, config')
+    .select('name, config, org_id, created_by')
     .eq('id', params.id)
     .single()
+
+  if (!study) return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
+
+  // Verify ownership — creator or same org
+  const { data: userData } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
+  if (study.org_id !== userData?.org_id && study.created_by !== user.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const cfg = study?.config || {}
 

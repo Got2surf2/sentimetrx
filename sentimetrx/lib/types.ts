@@ -46,6 +46,7 @@ export type QuestionType =
   | 'date'
   | 'rating'   // numeric scale with fixed min/max (e.g. 1-5, 1-7, 0-10)
   | 'numeric'  // free numeric entry (age, spend, count)
+  | 'hidden'   // hidden field populated via URL params (not shown to respondent)
 
 export interface LikertScaleOption {
   score:  number
@@ -85,6 +86,8 @@ export interface SurveyQuestion {
   ratingMin?:   number                // default 1
   ratingMax?:   number                // default 5
   // numeric input -- no extra fields needed; stores raw number as string
+  // hidden field -- URL param key that maps to this field
+  paramKey?:    string                // URL parameter name (e.g. 'recipient_id', 'source')
   // flow placement
   conversationPosition?: boolean      // if true, show after Q4 in conversation phase, not custom-Q phase
   // enabled/disabled
