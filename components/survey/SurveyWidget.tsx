@@ -194,7 +194,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
 
   // Active survey
   return (
-    <div style={{
+    <div data-survey="true" style={{
       width: '100%',
       height: '100%',
       display: 'flex',
@@ -219,10 +219,10 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, color: 'white', fontSize: '0.9375rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveBotName}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveStudy.name}</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveConfig.headerSubtitle || liveStudy.name}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <span className="live-dot" />
-            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.6875rem' }}>Ready for your feedback</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.6875rem' }}>{liveConfig.headerStatus || 'Ready for your feedback'}</span>
           </div>
         </div>
         {liveConfig.showBranding !== false && (() => {

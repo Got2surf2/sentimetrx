@@ -15,6 +15,7 @@ import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepDemographics from '@/components/creator/StepDemographics'
 import StepContactInfo from '@/components/creator/StepContactInfo'
+import StepClosing from '@/components/creator/StepClosing'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
 
@@ -56,6 +57,7 @@ export default function NewStudyPage() {
   const [highestVisited, setHighestVisited] = useState(0)
   const [draft,          setDraft]          = useState<StudyDraft>(EMPTY_DRAFT)
   const [saving,         setSaving]         = useState(false)
+  const [translating,    setTranslating]    = useState(false)
   const [error,          setError]          = useState<string | null>(null)
   const [savedGuid,      setSavedGuid]      = useState<string | null>(null)
   const [showModal,      setShowModal]      = useState(true)
@@ -119,14 +121,14 @@ export default function NewStudyPage() {
   // Nav publish button: jump to Review step so user sees the summary first.
   // The actual API call happens when they click Publish inside StepReview.
   function handleNavPublish() {
-    goTo(8)
+    goTo(9)
   }
 
   function handleWizardGenerated(generated: StudyDraft) {
     // Merge generated draft into state and jump to Review step
     setDraft(generated)
     setShowModal(false)
-    goTo(8)
+    goTo(9)
   }
 
   const stepProps = { draft, update, updateConfig }
@@ -155,8 +157,9 @@ export default function NewStudyPage() {
             highestVisited={highestVisited}
             onStepClick={goTo}
             onPublish={handleNavPublish}
-            onImport={(imported) => { setDraft({ ...imported, id: undefined }); setHighestVisited(7); goTo(8) }}
+            onImport={(imported) => { setDraft({ ...imported, id: undefined }); setHighestVisited(8); goTo(9) }}
             saving={saving}
+            translating={translating}
             freeNav={false}
           />
         </div>
@@ -174,6 +177,7 @@ export default function NewStudyPage() {
           <StepBasics
             {...stepProps}
             onNext={() => goTo(1)}
+            onTranslatingChange={setTranslating}
           />
         )}
         {step === 1 && (
@@ -226,9 +230,16 @@ export default function NewStudyPage() {
           />
         )}
         {step === 8 && (
+          <StepClosing
+            {...stepProps}
+            onNext={() => goTo(9)}
+            onBack={() => goTo(7)}
+          />
+        )}
+        {step === 9 && (
           <StepReview
             {...stepProps}
-            onBack={() => goTo(7)}
+            onBack={() => goTo(8)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}

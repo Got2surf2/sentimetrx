@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from 'react'
 import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey } from '@/lib/types'
-import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS } from '@/lib/types'
+import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
 
 // ============================================================
 // useSurveyEngine
@@ -152,6 +152,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         var partialPayload: Record<string, unknown> = {
           agent:     study.bot_name,
           timestamp: new Date().toISOString(),
+          language:  activeLang.current,
           deviceFingerprint: deviceFingerprint.current,
         }
         if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
@@ -229,13 +230,57 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     scrollBottom()
   }, [chatRef, config, study.bot_emoji, scrollBottom])
 
-  const typingSpeed = config.typingSpeed ?? 1.0
+  const typingSpeed = config.typingSpeed ?? 0.5
+  // Consistent duration based on message length: ~30ms per char, clamped 400–1800ms
+  const typingDur = (text: string) => Math.max(400, Math.min(1800, text.length * 30))
+
+  // Start typing indicator (returns remove function)
+  const startTypingIndicator = useCallback(() => {
+    if (!chatRef.current) return () => {}
+    // Remove any existing indicator first
+    document.getElementById('typing-indicator')?.remove()
+    if (reducedMotion) return () => {}
+    const t = document.createElement('div')
+    t.id = 'typing-indicator'
+    t.className = 'flex items-end gap-2 self-start'
+    const av = document.createElement('div')
+    av.className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0'
+    av.style.background = config.theme.botAvatarGradient
+    av.textContent = study.bot_emoji
+    const bub = document.createElement('div')
+    bub.className = 'px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1.5'
+    bub.style.cssText = 'background:' + C.bubbleBg + ';border:1px solid ' + C.bubbleBdr + ';--dot-color:' + config.theme.primaryColor + ';'
+    ;[0, 200, 400].forEach(delay => {
+      const dot = document.createElement('span')
+      dot.className = 'typing-dot'
+      dot.style.animationDelay = `${delay}ms`
+      bub.appendChild(dot)
+    })
+    t.append(av, bub)
+    chatRef.current.appendChild(t)
+    scrollBottom()
+    return () => { document.getElementById('typing-indicator')?.remove() }
+  }, [chatRef, config, study.bot_emoji, scrollBottom])
+
+  // Show typing during an async operation. The typing indicator stays visible
+  // for at least minDur AND until the promise resolves — whichever is longer.
+  const showTypingDuring = useCallback(async <T,>(promise: Promise<T>, minDur = 800): Promise<T> => {
+    minDur = Math.round(minDur * typingSpeed)
+    const removeIndicator = startTypingIndicator()
+    const minWait = new Promise<void>(res => setTimeout(res, reducedMotion ? Math.min(minDur, 200) : minDur))
+    const [result] = await Promise.all([promise, minWait])
+    removeIndicator()
+    return result
+  }, [startTypingIndicator])
+
   const showTyping = useCallback((dur = 1000): Promise<void> => {
     dur = Math.round(dur * typingSpeed)
     return new Promise(res => {
       if (!chatRef.current) { res(); return }
       // Reduced motion: skip the animation, use a minimal pause for readability
       if (reducedMotion) { setTimeout(res, Math.min(dur, 200)); return }
+      // Remove any existing indicator to prevent duplicates
+      document.getElementById('typing-indicator')?.remove()
       const t = document.createElement('div')
       t.id = 'typing-indicator'
       t.className = 'flex items-end gap-2 self-start'
@@ -321,26 +366,27 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const qr = config.questionRedirect
     if (!qr?.enabled) return false
     try {
-      const res = await fetch('/api/deflect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studyName:     orgName || study.name,
-          orgName:       orgName || study.name,
-          questionAsked,
-          answer:        text,
-          linkText:      qr.linkText || '',
-          linkUrl:       qr.linkUrl || '',
-          customMessage: qr.message || '',
-          language:      activeLang.current !== 'en' ? activeLang.current : undefined,
-        }),
-      })
-      if (!res.ok) return false
-      const data = await res.json()
-      if (!data.deflection) return false
+      // Show typing during the API call so there's no visible lag
+      const data = await showTypingDuring(
+        fetch('/api/deflect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studyName:     orgName || study.name,
+            orgName:       orgName || study.name,
+            questionAsked,
+            answer:        text,
+            linkText:      qr.linkText || '',
+            linkUrl:       qr.linkUrl || '',
+            customMessage: qr.message || '',
+            language:      activeLang.current !== 'en' ? activeLang.current : undefined,
+          }),
+        }).then(r => r.ok ? r.json() : null),
+        800,
+      )
+      if (!data?.deflection) return false
 
       clearInput()
-      await showTyping(900)
       // Log the deflection (strip HTML for clean log)
       const plainText = data.deflection.replace(/<[^>]+>/g, '')
       state.current.conversationLog.push({ who: 'bot', text: plainText, ai: true })
@@ -361,7 +407,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         chatRef.current.appendChild(wrap)
         scrollBottom()
       }
-      await showTyping(2500)
+      await showTyping(typingDur(plainText))
       return true
     } catch {
       return false
@@ -433,9 +479,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     // Cancel any pending partial save to prevent it from overwriting the complete status
     if (savePartialTimer.current) { clearTimeout(savePartialTimer.current); savePartialTimer.current = null }
     const s = state.current
+    const lang = activeLang.current
     const payload: Partial<SurveyPayload> = {
       agent:            study.bot_name,
       timestamp:        new Date().toISOString(),
+      language:         lang,
       openEnded:        s.answers,
       customAnswers:    s.customAnswers,
       psychographics:   s.psychoAnswers,
@@ -449,6 +497,40 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     }
     if (s.npsScore != null) {
       payload.npsRecommend = { score: s.npsScore, label: s.npsLabel! }
+    }
+
+    // Auto-translate non-English open-ended responses back to English
+    if (lang !== 'en' && config.autoTranslateResponses) {
+      try {
+        const textsToTranslate: Record<string, string> = {}
+        if (s.answers.q1) textsToTranslate.q1 = s.answers.q1
+        if (s.answers.q2) textsToTranslate.q2 = s.answers.q2
+        if (s.answers.q3) textsToTranslate.q3 = s.answers.q3
+        if (s.answers.q4) textsToTranslate.q4 = s.answers.q4
+        const customTexts: Record<string, string> = {}
+        for (const [k, v] of Object.entries(s.customAnswers)) {
+          if (typeof v === 'string' && v.trim()) customTexts[k] = v
+        }
+        if (Object.keys(textsToTranslate).length > 0 || Object.keys(customTexts).length > 0) {
+          const res = await fetch('/api/translate-responses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ texts: textsToTranslate, customTexts, fromLanguage: lang }),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            // Store originals, replace with translated
+            if (data.texts && Object.keys(data.texts).length > 0) {
+              payload.openEndedOriginal = { ...s.answers }
+              payload.openEnded = { ...s.answers, ...data.texts }
+            }
+            if (data.customTexts && Object.keys(data.customTexts).length > 0) {
+              payload.customAnswersOriginal = { ...s.customAnswers }
+              payload.customAnswers = { ...s.customAnswers, ...data.customTexts }
+            }
+          }
+        }
+      } catch { /* translation failed — submit originals */ }
     }
 
     // Add device fingerprint to payload for server-side duplicate check
@@ -526,14 +608,15 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
   // -- Flow Steps --------------------------------------------
 
   const stepDone = useCallback(async () => {
-    await showTyping(1000)
     const closingMsgFallback = config.closingMessage || `Thank you so much -- ${study.bot_name} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`
     const closingMsgTranslated = t('closingMessage', closingMsgFallback)
-    // If t() returned the English fallback unchanged and we're not in English, use built-in
-    addMsg('bot', closingMsgTranslated === closingMsgFallback && activeLang.current !== 'en'
+    const closingFinal = closingMsgTranslated === closingMsgFallback && activeLang.current !== 'en'
       ? tUI('closingMessageDefault', closingMsgFallback)
-      : closingMsgTranslated)
-    await showTyping(600)
+      : closingMsgTranslated
+    await showTyping(typingDur(closingFinal))
+    // If t() returned the English fallback unchanged and we're not in English, use built-in
+    addMsg('bot', closingFinal)
+    await showTyping(400)
 
     if (!chatRef.current) return
     const card = document.createElement('div')
@@ -571,12 +654,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     clearInput()
     const demoTransition = config.sectionTransitions?.demographics
     if (demoTransition?.enabled !== false) {
-      await showTyping(800)
       const msg = tTransition('demographics', demoTransition?.text || 'Almost done -- a couple of optional questions about you. Completely up to you.')
+      await showTyping(typingDur(msg))
       addMsg('bot', msg)
-      await showTyping(Math.max(2000, msg.length * 40))
+      await showTyping(400)
     } else {
-      await showTyping(350)
+      await showTyping(400)
     }
 
     if (!inputRef.current) return
@@ -589,7 +672,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
     for (var fi = 0; fi < activeFields.length; fi++) {
       var df = activeFields[fi]
-      var tDemoLabel = tUI('demo_' + df.key, df.label)
+      var tDemoLabel = tDemoLabel_(df.key, df.label)
       if (df.type === 'select' && df.options && df.options.length > 0) {
         var sel = document.createElement('select')
         sel.style.cssText = selectStyle
@@ -598,7 +681,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         sel.appendChild(ph)
         for (var oi = 0; oi < df.options.length; oi++) {
           var opt = document.createElement('option')
-          opt.value = df.options[oi][0]; opt.textContent = tUI('demo_opt_' + df.options[oi][0], df.options[oi][1])
+          opt.value = df.options[oi][0]; opt.textContent = tDemoOption(df.key, oi, df.options[oi][1])
           sel.appendChild(opt)
         }
         wrap.appendChild(sel)
@@ -641,12 +724,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     clearInput()
     var contactTransition = config.contactTransition
     if (contactTransition?.enabled !== false) {
-      await showTyping(800)
-      var msg = tTransition('contact', contactTransition?.text || "If you'd like us to follow up, please share your contact details below. Completely optional.")
+      var msg = tContactTransition(contactTransition?.text || "If you'd like us to follow up, please share your contact details below. Completely optional.")
+      await showTyping(typingDur(msg))
       addMsg('bot', msg)
-      await showTyping(Math.max(2000, msg.length * 40))
+      await showTyping(400)
     } else {
-      await showTyping(350)
+      await showTyping(400)
     }
 
     if (!inputRef.current) return
@@ -666,7 +749,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         var sel = document.createElement('select')
         sel.style.cssText = baseStyle + 'cursor:pointer;appearance:none;'
         var ph = document.createElement('option')
-        ph.value = ''; ph.textContent = cf.label + (cf.required ? ' *' : '') + '...'
+        ph.value = ''; ph.textContent = tContactLabel(cf.key, cf.label) + (cf.required ? ' *' : '') + '...'
         sel.appendChild(ph)
         for (var si = 0; si < US_STATES.length; si++) {
           var opt = document.createElement('option')
@@ -681,7 +764,8 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       } else {
         var inp = document.createElement('input')
         inp.type = cf.type === 'email' ? 'email' : cf.type === 'phone' ? 'tel' : 'text'
-        inp.placeholder = (cf.placeholder || cf.label) + (cf.required ? ' *' : ' (optional)')
+        var cfLabel = tContactLabel(cf.key, cf.placeholder || cf.label)
+        inp.placeholder = cfLabel + (cf.required ? ' *' : ' (' + tUI('optional', 'optional') + ')')
         inp.style.cssText = baseStyle
         if (cf.type === 'phone') inp.inputMode = 'tel'
         if (cf.type === 'zip_code') inp.inputMode = 'numeric'
@@ -745,8 +829,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (s.psychoIdx >= s.psychoQuestions.length) { await advanceSection(); return }
     clearInput()
     const q = s.psychoQuestions[s.psychoIdx]
-    await showTyping(750)
-    addMsg('bot', tPsycho(q.key, 'q', q.q) as string)
+    const qText = tPsycho(q.key, 'q', q.q) as string
+    await showTyping(typingDur(qText))
+    addMsg('bot', qText)
 
     if (!inputRef.current) return
     const col = document.createElement('div')
@@ -812,7 +897,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     wrap.className = 'flex flex-col gap-2 mt-1.5'
     const row = document.createElement('div')
     row.className = 'flex gap-2 items-end w-full'
-    const ta = document.createElement('textarea')
+    const ta = document.createElement('textarea'); ta.lang = activeLang.current
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
@@ -833,10 +918,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
     const skipBtn = document.createElement('button')
     skipBtn.textContent = tUI('skip', 'Skip')
-    skipBtn.className = 'text-xs self-start px-2 py-1'
-    skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
-    skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
-    skipBtn.onmouseleave = () => { skipBtn.style.color = C.textFaint }
+    skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
+    skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+    skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
+    skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
     const submit = async () => {
       const v = ta.value.trim()
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
@@ -854,10 +939,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       }
       // Check for clarifier on short responses
       if (v && storageKey && shouldClarify(v) && state.current.clarifyCount < 2) {
-        const cq = await buildClarify(v, storageKey === 'q1' ? 'q3' : 'q4')
+        const cq = await showTypingDuring(buildClarify(v, storageKey === 'q1' ? 'q3' : 'q4'), 800)
         if (cq) {
           state.current.clarifyCount++
-          await showTyping(1100)
           addMsg('bot', cq, true)
           // Show clarify input — on submit, append to existing answer then proceed
           showLikertClarifyInput(storageKey, v, next)
@@ -880,12 +964,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (!inputRef.current) return
     const wrap = document.createElement('div')
     wrap.className = 'flex gap-2 items-end w-full mt-1.5'
-    const ta = document.createElement('textarea')
+    const ta = document.createElement('textarea'); ta.lang = activeLang.current
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = tUI('clarifyPlaceholder', 'Feel free to add a bit more...')
-    ta.style.cssText = `background:' + C.inputBg + ';border:1.5px solid ${config.theme.primaryColor}28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;`
+    ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;'
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
     ta.oninput  = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px' }
@@ -922,12 +1006,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     state.current.psychoIdx = 0
     const psychoTransition = config.sectionTransitions?.psychographics
     if (psychoTransition?.enabled !== false) {
-      await showTyping(900)
       const msg = tTransition('psychographics', psychoTransition?.text || 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
+      await showTyping(typingDur(msg))
       addMsg('bot', msg)
-      await showTyping(Math.max(2000, msg.length * 40))
+      await showTyping(400)
     } else {
-      await showTyping(200)
+      await showTyping(400)
     }
     await stepPsychoQ()
   }, [addMsg, clearInput, showTyping, stepPsychoQ])
@@ -940,10 +1024,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const cqTransition = config.sectionTransitions?.customQuestions
     if (cqTransition?.enabled) {
       clearInput()
-      await showTyping(800)
       const msg = tTransition('customQuestions', cqTransition.text || 'Now for a few more specific questions.')
+      await showTyping(typingDur(msg))
       addMsg('bot', msg)
-      await showTyping(Math.max(2000, msg.length * 40))
+      await showTyping(400)
     }
 
     // Randomly sample customQCount questions if set, otherwise show all
@@ -990,14 +1074,15 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       // ── message — display only, no response expected ─────────
       if (q.type === 'message') {
         const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
-        await showTyping(Math.max(600, tPrompt.length * 30))
+        await showTyping(typingDur(tPrompt))
         addMsg('bot', tPrompt)
-        await showTyping(Math.max(400, tPrompt.length * 20))
+        await showTyping(400)
+        qi++
         continue
       }
 
       const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
-      await showTyping(800)
+      await showTyping(typingDur(tPrompt))
       addMsg('bot', tPrompt)
       state.current.currentQuestion = q.prompt
 
@@ -1016,11 +1101,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             }
             // Clarifier follow-up for non-trivial responses
             if (val && (q.clarify !== false) && config.useAIClarify && shouldClarify(val) && state.current.clarifyCount < 2) {
-              const cq = await buildClarify(val, 'q4')
+              const cq = await showTypingDuring(buildClarify(val, 'q4'), 800)
               if (cq) {
                 state.current.clarifyCount++
                 clearInput()
-                await showTyping(1000)
                 addMsg('bot', cq, true)
                 state.current.currentQuestion = cq
                 showLikertFollowUpInput(async () => { resolve() })
@@ -1030,16 +1114,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             clearInput()
             resolve()
           }
-          if (q.required) {
-            showTextInput('q4') // reuse showTextInput UI, answer stored separately
-            // intercept: override the send handler below via resolve pattern
-          }
           // Build inline to capture resolve
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-2 mt-1.5'
           const row = document.createElement('div')
           row.className = 'flex gap-2 items-end w-full'
-          const ta = document.createElement('textarea')
+          const ta = document.createElement('textarea'); ta.lang = activeLang.current
     ta.cols = 1
           ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
@@ -1070,10 +1150,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           if (!q.required) {
             const skipBtn = document.createElement('button')
             skipBtn.textContent = tUI('skip', 'Skip')
-            skipBtn.className = 'text-xs self-start px-2 py-1'
-            skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
-            skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
-            skipBtn.onmouseleave = () => { skipBtn.style.color = C.textFaint }
+            skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
+            skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+            skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
+            skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
             skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); submit('') }
             wrap.appendChild(skipBtn)
           }
@@ -1172,16 +1252,20 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
                 icon.style.color = '#fff'
                 icon.textContent = '✓'
               }
+              doneBtn.textContent = selected.size > 0 ? tUI('done', 'Done') : q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
               doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : C.disabledBg
               doneBtn.style.color      = selected.size > 0 ? '#fff' : C.textMute
+              doneBtn.style.display    = selected.size > 0 ? 'block' : q.required ? 'block' : 'none'
             }
             btns.push(btn)
             wrap.appendChild(btn)
           })
+          const btnRow = document.createElement('div')
+          btnRow.className = 'flex items-center gap-3 mt-1'
           const doneBtn = document.createElement('button')
-          doneBtn.textContent = selected.size > 0 ? tUI('done', 'Done') : q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('skip', 'Skip')
-          doneBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
-          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
+          doneBtn.textContent = q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
+          doneBtn.className = 'px-4 py-2 rounded-xl text-sm font-semibold transition-all'
+          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
           doneBtn.onclick = () => {
             if (selected.size === 0 && q.required) return
             wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
@@ -1191,7 +1275,21 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             clearInput()
             resolve()
           }
-          wrap.appendChild(doneBtn)
+          btnRow.appendChild(doneBtn)
+          if (!q.required) {
+            const skipBtn = document.createElement('button')
+            skipBtn.textContent = tUI('skip', 'Skip')
+            skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
+            skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+            skipBtn.onclick = () => {
+              wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              customAnswers[q.id] = []
+              clearInput()
+              resolve()
+            }
+            btnRow.appendChild(skipBtn)
+          }
+          wrap.appendChild(btnRow)
           clearInput()
           inputRef.current.appendChild(wrap)
           scrollBottom()
@@ -1235,9 +1333,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           if (!q.required) {
             const skipBtn = document.createElement('button')
             skipBtn.textContent = tUI('skip', 'Skip')
-            skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-size:0.75rem;font-family:inherit;margin-left:4px;'
-            skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
-            skipBtn.onmouseleave = () => { skipBtn.style.color = C.textFaint }
+            skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
+            skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;margin-left:4px;'
+            skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
+            skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
             skipBtn.onclick = () => { wrap.querySelectorAll('select,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.append(sel, goBtn, skipBtn)
           } else {
@@ -1276,10 +1375,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             if (q.followUp?.enabled) {
               const fu = q.followUp
               const pr = fu.mode === 'per-response' ? fu.perResponse?.[s.score] : null
-              const prompt = pr ? pr.prompt : (fu.sharedPrompt || '')
-              if (prompt.trim()) {
+              const englishPrompt = pr ? pr.prompt : (fu.sharedPrompt || '')
+              if (englishPrompt.trim()) {
+                const prompt = tFollowUp('question_' + q.id, s.score, fu.sharedPrompt || '', fu.perResponse)
                 clearInput()
-                await showTyping(800)
+                await showTyping(typingDur(prompt))
                 addMsg('bot', prompt, true)
                 state.current.currentQuestion = prompt
                 showLikertFollowUpInput(async () => { resolve() })
@@ -1296,7 +1396,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             sb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
             var emojiSize = scale.length > 1 ? (0.9 + (s.score - 1) / (scale.length - 1) * 0.6) : 1.125
-            sb.innerHTML = '<span style="font-size:' + emojiSize.toFixed(2) + 'rem">' + (s.emoji || '⭐') + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center">' + tLabel + '</span>'
+            sb.innerHTML = '<span style="font-size:' + emojiSize.toFixed(2) + 'rem">' + (s.emoji || '⭐') + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>'
             sb.onmouseenter = () => { if (!likertConfirm || selectedScore !== s) { sb.style.borderColor = config.theme.primaryColor; sb.style.background = C.btnHoverBg } }
             sb.onmouseleave = () => { if (!likertConfirm || selectedScore !== s) { sb.style.borderColor = C.inputBdr; sb.style.background = C.btnBg } }
             sb.onclick = async () => {
@@ -1420,9 +1520,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           if (!q.required) {
             const skipBtn = document.createElement('button')
             skipBtn.textContent = tUI('skip', 'Skip')
-            skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-size:0.75rem;font-family:inherit;margin-left:4px;'
-            skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
-            skipBtn.onmouseleave = () => { skipBtn.style.color = C.textFaint }
+            skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
+            skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;margin-left:4px;'
+            skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
+            skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
             skipBtn.onclick = () => { wrap.querySelectorAll('input,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.appendChild(skipBtn)
           }
@@ -1476,14 +1577,14 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       // ── message — display only, no response expected ─────────
       if (q.type === 'message') {
         const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
-        await showTyping(Math.max(600, tPrompt.length * 30))
+        await showTyping(typingDur(tPrompt))
         addMsg('bot', tPrompt)
-        await showTyping(Math.max(400, tPrompt.length * 20))
+        await showTyping(400)
         continue
       }
 
       const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
-      await showTyping(800)
+      await showTyping(typingDur(tPrompt))
       addMsg('bot', tPrompt)
       state.current.currentQuestion = q.prompt
 
@@ -1495,19 +1596,19 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           wrap.className = 'flex flex-col gap-2 mt-1.5'
           const row = document.createElement('div')
           row.className = 'flex gap-2 items-end w-full'
-          const ta = document.createElement('textarea')
+          const ta = document.createElement('textarea'); ta.lang = activeLang.current
           ta.cols = 1
           ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
           ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
-          ta.style.cssText = `background:' + C.inputBg + ';border:1.5px solid ${config.theme.primaryColor}28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;`
+          ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
           ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
           ta.onblur  = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
           ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px' }
           const sendBtn = document.createElement('button')
           sendBtn.textContent = '→'
           sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
-          sendBtn.style.cssText = `background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;`
+          sendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
           ta.oninput = () => {
             ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
             sendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : C.disabledBg
@@ -1527,8 +1628,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           if (!q.required) {
             const skipBtn = document.createElement('button')
             skipBtn.textContent = tUI('skip', 'Skip')
-            skipBtn.className = 'text-xs self-start px-2 py-1'
-            skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
+            skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
+            skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+            skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
+            skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
             skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.appendChild(skipBtn)
           }
@@ -1583,15 +1686,19 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
                 selected.add(opt); btn.style.borderColor = config.theme.primaryColor; btn.style.background = config.theme.primaryColor + '20'
                 icon.style.background = '#22c55e'; icon.style.color = '#fff'; icon.textContent = '✓'
               }
+              doneBtn.textContent = selected.size > 0 ? tUI('done', 'Done') : q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
               doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : C.disabledBg
               doneBtn.style.color      = selected.size > 0 ? '#fff' : C.textMute
+              doneBtn.style.display    = selected.size > 0 ? 'block' : q.required ? 'block' : 'none'
             }
             wrap.appendChild(btn)
           })
+          const btnRow = document.createElement('div')
+          btnRow.className = 'flex items-center gap-3 mt-1'
           const doneBtn = document.createElement('button')
-          doneBtn.textContent = q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done') + ' / ' + tUI('skip', 'Skip')
-          doneBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
-          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
+          doneBtn.textContent = q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
+          doneBtn.className = 'px-4 py-2 rounded-xl text-sm font-semibold transition-all'
+          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
           doneBtn.onclick = () => {
             if (selected.size === 0 && q.required) return
             wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
@@ -1599,7 +1706,19 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             if (arr.length > 0) addMsg('user', arr.join(', '))
             customAnswers[q.id] = arr; clearInput(); resolve()
           }
-          wrap.appendChild(doneBtn)
+          btnRow.appendChild(doneBtn)
+          if (!q.required) {
+            const skipBtn = document.createElement('button')
+            skipBtn.textContent = tUI('skip', 'Skip')
+            skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
+            skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+            skipBtn.onclick = () => {
+              wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+              customAnswers[q.id] = []; clearInput(); resolve()
+            }
+            btnRow.appendChild(skipBtn)
+          }
+          wrap.appendChild(btnRow)
           clearInput()
           inputRef.current.appendChild(wrap)
           scrollBottom()
@@ -1637,13 +1756,14 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (qKey === 'q3') {
       // Skip Q4 if disabled
       if (config.q4Enabled === false) {
-        if (!skipAck) { await showTyping(700); addMsg('bot', smartAck(lastMsg), true) }
+        if (!skipAck) { const ack = smartAck(lastMsg); await showTyping(typingDur(ack)); addMsg('bot', ack, true) }
         await stepConversationExtras()
         return
       }
-      if (!skipAck) { await showTyping(700); addMsg('bot', smartAck(lastMsg), true) }
-      await showTyping(800)
-      addMsg('bot', t('q4', config.q4))
+      if (!skipAck) { const ack = smartAck(lastMsg); await showTyping(typingDur(ack)); addMsg('bot', ack, true) }
+      const q4Text = t('q4', config.q4)
+      await showTyping(typingDur(q4Text))
+      addMsg('bot', q4Text)
       state.current.currentQuestion = config.q4
       // q4: optional by default, required if q4Required === true
       if (config.q4Required === true) {
@@ -1653,8 +1773,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       }
     } else {
       if (!skipAck && !isDecline(lastMsg)) {
-        await showTyping(700)
-        addMsg('bot', smartAck(lastMsg), true)
+        const ack = smartAck(lastMsg)
+        await showTyping(typingDur(ack))
+        addMsg('bot', ack, true)
       }
       await stepConversationExtras()
     }
@@ -1672,10 +1793,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     // Only attempt clarification if enabled for this question (default: on)
     const clarifyEnabled = qKey === 'q3' ? config.q3Clarify !== false : config.q4Clarify !== false
     if (clarifyEnabled && state.current.clarifyCount < 2 && shouldClarify(val)) {
-      const cq = await buildClarify(val, qKey)
+      const cq = await showTypingDuring(buildClarify(val, qKey), 800)
       if (cq) {
         state.current.clarifyCount++
-        await showTyping(1100)
         addMsg('bot', cq, true)
         showClarifyInput(qKey, val)
         return
@@ -1699,17 +1819,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const wrap = document.createElement('div')
     wrap.className = 'flex gap-2 items-end w-full mt-1.5'
 
-    const ta = document.createElement('textarea')
+    const ta = document.createElement('textarea'); ta.lang = activeLang.current
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
-    ta.style.cssText = `
-      background:' + C.inputBg + ';
-      border:1.5px solid ${config.theme.primaryColor}28;
-      color:' + C.text + ';outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;
-    `
+    ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
     ta.oninput  = () => {
@@ -1725,7 +1840,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.textContent = '→'
     sendBtn.disabled = true
     sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
-    sendBtn.style.cssText = `background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:default;`
+    sendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:default;'
     ta.addEventListener('input', () => {
       const hasText = ta.value.trim().length > 0
       sendBtn.style.background = hasText ? config.theme.primaryColor : C.disabledBg
@@ -1753,17 +1868,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const wrap = document.createElement('div')
     wrap.className = 'flex gap-2 items-end w-full mt-1.5'
 
-    const ta = document.createElement('textarea')
+    const ta = document.createElement('textarea'); ta.lang = activeLang.current
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = tUI('clarifyPlaceholder', 'Feel free to add a bit more...')
-    ta.style.cssText = `
-      background:' + C.inputBg + ';
-      border:1.5px solid ${config.theme.primaryColor}28;
-      color:' + C.text + ';outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;
-    `
+    ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
     ta.oninput  = () => {
@@ -1779,7 +1889,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.textContent = '→'
     sendBtn.disabled = true
     sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
-    sendBtn.style.cssText = `background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:default;`
+    sendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:default;'
     ta.addEventListener('input', () => {
       const hasText = ta.value.trim().length > 0
       sendBtn.style.background = hasText ? config.theme.primaryColor : C.disabledBg
@@ -1819,17 +1929,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const row = document.createElement('div')
     row.className = 'flex gap-2 items-end w-full'
 
-    const ta = document.createElement('textarea')
+    const ta = document.createElement('textarea'); ta.lang = activeLang.current
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
     ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
-    ta.style.cssText = `
-      background:' + C.inputBg + ';
-      border:1.5px solid ${config.theme.primaryColor}28;
-      color:' + C.text + ';outline:none;font-family:inherit;
-      max-height:110px;transition:border-color 0.2s;
-    `
+    ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
     ta.oninput  = () => {
@@ -1845,7 +1950,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const sendBtn = document.createElement('button')
     sendBtn.textContent = '→'
     sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
-    sendBtn.style.cssText = `background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;`
+    sendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
     sendBtn.onclick = () => {
       const val = ta.value.trim()
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
@@ -1863,11 +1968,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     }
 
     const skipBtn = document.createElement('button')
-    skipBtn.textContent = 'Skip this question'
-    skipBtn.className = 'text-xs self-start transition-all px-2 py-1'
-    skipBtn.style.cssText = `color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;`
-    skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
-    skipBtn.onmouseleave = () => { skipBtn.style.color = C.textFaint }
+    skipBtn.textContent = tUI('skip', 'Skip')
+    skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
+    skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+    skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
+    skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
     skipBtn.onclick = () => {
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', 'Skip')
@@ -1954,12 +2059,58 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     return trans.psychographics[key].q || fallback
   }
 
+  // Translate adaptive follow-up prompts (experience, NPS, custom question)
+  function tFollowUp(followUpKey: string, score: number, sharedPrompt: string, perResponse?: Record<string, { prompt: string }>): string {
+    const pr = perResponse?.[score]
+    const englishPrompt = pr ? pr.prompt : sharedPrompt
+    if (activeLang.current === 'en' || !config.translations) return englishPrompt
+    const trans = config.translations[activeLang.current]
+    if (!trans?.followUps?.[followUpKey]) return englishPrompt
+    const fu = trans.followUps[followUpKey]
+    if (pr && fu.perResponse?.[score]) return fu.perResponse[score]
+    if (fu.sharedPrompt) return fu.sharedPrompt
+    return englishPrompt
+  }
+
+  // Translate opening flow open-end prompts
+  function tOpeningFlow(itemId: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.openingFlow?.[itemId] || fallback
+  }
+
+  // Translate demographic labels and options
+  function tDemoLabel_(key: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.demoLabels?.[key] || tUI('demo_' + key, fallback)
+  }
+  function tDemoOption(fieldKey: string, optIndex: number, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.demoOptions?.[fieldKey]?.[optIndex] || tUI('demo_opt_' + fallback.toLowerCase().replace(/\s+/g, '_'), fallback)
+  }
+
+  // Translate contact field labels
+  function tContactLabel(key: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.contactLabels?.[key] || fallback
+  }
+
+  // Translate contact transition
+  function tContactTransition(fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.contactTransition || tUI('transition_contact', fallback)
+  }
+
   const renderInput = useCallback(async (phase: string) => {
     if (phase !== 'start') return
 
     // Language selection — show before greeting if multiple languages enabled
     if (config.languages && config.languages.length > 1) {
-      await showTyping(600)
+      await showTyping(typingDur('Choose your language:'))
       addMsg('bot', 'Choose your language:')
 
       if (inputRef.current) {
@@ -1967,7 +2118,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-1.5 mt-1.5'
 
-          const { SUPPORTED_LANGUAGES } = require('@/lib/types')
           const enabledLangs = SUPPORTED_LANGUAGES.filter((l: any) => config.languages!.includes(l.code))
           let selectedLang: string | null = null
           let confirmBtn: HTMLButtonElement | null = null
@@ -2001,6 +2151,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           confirmBtn.onclick = () => {
             if (!selectedLang) return
             activeLang.current = selectedLang
+            // Set lang on containers so mobile browsers switch keyboard language
+            if (chatRef.current) chatRef.current.lang = selectedLang
+            if (inputRef.current) inputRef.current.lang = selectedLang
+            // Also set on closest survey wrapper if available
+            const surveyRoot = chatRef.current?.closest('[data-survey]') as HTMLElement | null
+            if (surveyRoot) surveyRoot.lang = selectedLang
             const langObj = enabledLangs.find((l: any) => l.code === selectedLang)
             addMsg('user', langObj?.nativeName || selectedLang)
             wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
@@ -2016,18 +2172,25 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     }
 
     // Greeting -- single message on mobile to keep buttons visible above fold
-    await showTyping(900)
-    addMsg('bot', t('greeting', config.greeting))
+    const greetingText = t('greeting', config.greeting)
+    await showTyping(typingDur(greetingText))
+    addMsg('bot', greetingText)
 
     // Ready prompt
-    await showTyping(600)
-    addMsg('bot', tUI('readyPrompt', 'Are you ready to share your feedback?'))
+    const readyDefault = config.readyPrompt || 'Are you ready to share your feedback?'
+    const readyText = t('readyPrompt', readyDefault) !== readyDefault ? t('readyPrompt', readyDefault) : tUI('readyPrompt', readyDefault)
+    await showTyping(typingDur(readyText))
+    addMsg('bot', readyText)
 
     if (!inputRef.current) return
     const row = document.createElement('div')
     row.className = 'flex gap-2 flex-wrap mt-1.5'
 
-    ;[[tUI('readyYes', "Yes, let's go! 👍"), 'yes'], [tUI('readyNo', 'Not right now'), 'no']].forEach(([label, val]) => {
+    const yesDefault = config.readyYes || "Yes, let's go! 👍"
+    const noDefault = config.readyNo || 'Not right now'
+    const yesLabel = t('readyYes', yesDefault) !== yesDefault ? t('readyYes', yesDefault) : tUI('readyYes', yesDefault)
+    const noLabel = t('readyNo', noDefault) !== noDefault ? t('readyNo', noDefault) : tUI('readyNo', noDefault)
+    ;[[yesLabel, 'yes'], [noLabel, 'no']].forEach(([label, val]) => {
       const btn = document.createElement('button')
       btn.className = 'px-4 py-2.5 rounded-full text-sm font-medium transition-all'
       btn.style.cssText = 'background:' + C.btnBg + ';border:1.5px solid ' + C.btnBdr + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
@@ -2039,8 +2202,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         addMsg('user', label)
         if (val === 'no') {
           clearInput()
-          await showTyping(800)
-          addMsg('bot', tUI('thankYouAck', 'No problem at all -- thanks for your time! 😊'))
+          const noThanks = tUI('thankYouAck', 'No problem at all -- thanks for your time! 😊')
+          await showTyping(typingDur(noThanks))
+          addMsg('bot', noThanks)
           return
         }
 
@@ -2049,16 +2213,18 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           followUp: any,
           score: number,
           next: () => Promise<void>,
-          storageKey?: 'q1' | 'q2'
+          storageKey?: 'q1' | 'q2',
+          followUpKey?: string
         ) => {
           if (!followUp?.enabled) { await next(); return }
           const pr = followUp.mode === 'per-response'
             ? followUp.perResponse?.[score]
             : null
-          const prompt = pr ? pr.prompt : (followUp.sharedPrompt || '')
-          if (!prompt.trim()) { await next(); return }
+          const englishPrompt = pr ? pr.prompt : (followUp.sharedPrompt || '')
+          if (!englishPrompt.trim()) { await next(); return }
+          const prompt = followUpKey ? tFollowUp(followUpKey, score, followUp.sharedPrompt || '', followUp.perResponse) : englishPrompt
           clearInput()
-          await showTyping(900)
+          await showTyping(typingDur(prompt))
           addMsg('bot', prompt, true)
           state.current.currentQuestion = prompt
           showLikertFollowUpInput(next, storageKey)
@@ -2071,8 +2237,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             return
           }
           clearInput()
-          await showTyping(800)
-          addMsg('bot', t('q3', config.q3))
+          const q3Text = t('q3', config.q3)
+          await showTyping(typingDur(q3Text))
+          addMsg('bot', q3Text)
           state.current.currentQuestion = config.q3
           if (config.q3Required === false) {
             showTextInputOptional('q3')
@@ -2084,9 +2251,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         // Parameterized experience rating — calls next() when done
         const doExperienceRating = async (next: () => Promise<void>) => {
           clearInput()
-          await showTyping(900)
-          addMsg('bot', t('ratingPrompt', config.ratingPrompt))
-          await showTyping(300)
+          const ratingText = t('ratingPrompt', config.ratingPrompt)
+          await showTyping(typingDur(ratingText))
+          addMsg('bot', ratingText)
+          await showTyping(400)
           if (!inputRef.current) return
           const expWrap = document.createElement('div')
           expWrap.className = 'flex flex-col gap-1.5 mt-1.5'
@@ -2108,14 +2276,14 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             state.current.sentiment = pct >= 0.6 ? 'positive' : pct <= 0.4 ? 'negative' : 'neutral'
             savePartial()
             addMsg('user', r.emoji + ' ' + tRatingLabel(r.label))
-            await showLikertFollowUp(config.experienceFollowUp, r.score, next, 'q2')
+            await showLikertFollowUp(config.experienceFollowUp, r.score, next, 'q2', 'experienceFollowUp')
           }
           config.ratingScale.forEach((r: any) => {
             const tLabel = tRatingLabel(r.label)
             const rb = document.createElement('button')
             rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             rb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
-            rb.innerHTML = '<span style="font-size:1.25rem">' + r.emoji + '</span><span style="font-size:0.5625rem;font-weight:600;color:' + C.textMute + ';text-align:center;white-space:nowrap">' + tLabel + '</span>'
+            rb.innerHTML = '<span style="font-size:1.25rem">' + r.emoji + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>'
             rb.onmouseenter = () => { if (!confirmMode || expSel !== r) { rb.style.borderColor = config.theme.primaryColor; rb.style.background = C.btnHoverBg } }
             rb.onmouseleave = () => { if (!confirmMode || expSel !== r) { rb.style.borderColor = C.inputBdr; rb.style.background = C.btnBg } }
             rb.onclick = async () => {
@@ -2148,10 +2316,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         // Parameterized NPS — calls next() when done
         const doNPS = async (next: () => Promise<void>) => {
           clearInput()
-          await showTyping(1000)
           const npsPrompt = config.npsPrompt || 'How likely are you to recommend us to a friend or someone you know?'
-          addMsg('bot', t('npsPrompt', npsPrompt))
-          await showTyping(300)
+          const npsText = t('npsPrompt', npsPrompt)
+          await showTyping(typingDur(npsText))
+          addMsg('bot', npsText)
+          await showTyping(400)
           if (!inputRef.current) return
           const stars = [
             { stars: '😞',  label: '1 - No',         score: 1 },
@@ -2176,14 +2345,14 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             state.current.sentiment = s.score >= 4 ? 'positive' : s.score >= 3 ? 'neutral' : 'negative'
             savePartial()
             addMsg('user', s.stars + ' ' + tNpsLabel(s.label))
-            await showLikertFollowUp(config.npsFollowUp, s.score, next, 'q1')
+            await showLikertFollowUp(config.npsFollowUp, s.score, next, 'q1', 'npsFollowUp')
           }
           stars.forEach(s => {
             const tLabel = tNpsLabel(s.label)
             const sb = document.createElement('button')
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             sb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
-            sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center">' + tLabel + '</span>'
+            sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>'
             sb.onmouseenter = () => { if (!confirmMode || npsSel !== s) { sb.style.borderColor = config.theme.primaryColor; sb.style.background = C.btnHoverBg } }
             sb.onmouseleave = () => { if (!confirmMode || npsSel !== s) { sb.style.borderColor = C.inputBdr; sb.style.background = C.btnBg } }
             sb.onclick = async () => {
@@ -2216,26 +2385,27 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         // Opening open-end — calls next() when done
         const doOpeningOpenEnd = async (item: OpeningFlowItem, next: () => Promise<void>) => {
           clearInput()
-          await showTyping(900)
-          const prompt = item.prompt || 'In your own words, tell us about your experience.'
+          const rawPrompt = item.prompt || 'In your own words, tell us about your experience.'
+          const prompt = tOpeningFlow(item.id, rawPrompt)
+          await showTyping(typingDur(prompt))
           addMsg('bot', prompt)
           if (!inputRef.current) return
           const oeWrap = document.createElement('div')
           oeWrap.className = 'flex flex-col gap-2 mt-1.5'
           const oeRow = document.createElement('div')
           oeRow.className = 'flex gap-2 items-end w-full'
-          const ta = document.createElement('textarea')
+          const ta = document.createElement('textarea'); ta.lang = activeLang.current
           ta.cols = 1
           ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
           ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
-          ta.style.cssText = `background:' + C.inputBg + ';border:1.5px solid ${config.theme.primaryColor}28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;`
+          ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;'
           ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
           ta.onblur  = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
           const oeSendBtn = document.createElement('button')
           oeSendBtn.textContent = '→'
           oeSendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
-          oeSendBtn.style.cssText = `background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;`
+          oeSendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
           ta.oninput = () => {
             ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
             oeSendBtn.style.background = ta.value.trim() ? config.theme.primaryColor : C.disabledBg
@@ -2254,10 +2424,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           oeWrap.appendChild(oeRow)
           const oeSkipBtn = document.createElement('button')
           oeSkipBtn.textContent = tUI('skip', 'Skip')
-          oeSkipBtn.className = 'text-xs self-start px-2 py-1'
-          oeSkipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
-          oeSkipBtn.onmouseenter = () => { oeSkipBtn.style.color = C.textMid }
-          oeSkipBtn.onmouseleave = () => { oeSkipBtn.style.color = C.textFaint }
+          oeSkipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
+          oeSkipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+          oeSkipBtn.onmouseenter = () => { oeSkipBtn.style.borderColor = C.text; oeSkipBtn.style.color = C.text }
+          oeSkipBtn.onmouseleave = () => { oeSkipBtn.style.borderColor = C.textMute; oeSkipBtn.style.color = C.textMid }
           oeSkipBtn.onclick = async () => {
             oeWrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
             clearInput(); await next()

@@ -625,6 +625,38 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
         </div>
       </Section>
 
+      {/* Ready prompt */}
+      <Section title="Ready prompt" description="Shown after the greeting to confirm the respondent wants to proceed. Leave blank for defaults.">
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className={labelCls}>Prompt text</label>
+            <Input
+              value={c.readyPrompt || ''}
+              onChange={v => updateConfig({ readyPrompt: v })}
+              placeholder="Are you ready to share your feedback?"
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className={labelCls}>Yes button</label>
+              <Input
+                value={c.readyYes || ''}
+                onChange={v => updateConfig({ readyYes: v })}
+                placeholder="Yes, let's go! 👍"
+              />
+            </div>
+            <div className="flex-1">
+              <label className={labelCls}>No button</label>
+              <Input
+                value={c.readyNo || ''}
+                onChange={v => updateConfig({ readyNo: v })}
+                placeholder="Not right now"
+              />
+            </div>
+          </div>
+        </div>
+      </Section>
+
       {/* NPS */}
       {npsEnabled && (
         <Section

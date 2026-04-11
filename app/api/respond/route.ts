@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Update campaign respondent if this was a final submit via campaign link
-        const recipientGuidUpdate = (body as any).recipient_guid
+        const recipientGuidUpdate = body.recipient_guid
         if (isFinal && recipientGuidUpdate) {
           try {
             await supabase
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Update campaign respondent status if this came via a campaign link ─────
-  const recipientGuid = (body as any).recipient_guid
+  const recipientGuid = body.recipient_guid
   if (isFinal && recipientGuid && response) {
     try {
       await supabase

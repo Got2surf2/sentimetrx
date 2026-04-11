@@ -117,8 +117,11 @@ ${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. 
     }
 
     // Replace {{LINK}} placeholder with actual link markup (if link configured)
+    // Sanitize linkUrl and linkText to prevent XSS
+    const safeUrl = (linkUrl || '').replace(/["<>]/g, '').replace(/^javascript:/i, '')
+    const safeText = (linkText || 'our website').replace(/[<>&"]/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] || c))
     const deflection = hasLink
-      ? text.replace('{{LINK}}', `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer">${linkText || 'our website'}</a>`)
+      ? text.replace('{{LINK}}', `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeText}</a>`)
       : text.replace(/\{\{LINK\}\}/g, '')
 
     return NextResponse.json({ deflection })

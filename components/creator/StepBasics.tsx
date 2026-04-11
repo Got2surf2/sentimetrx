@@ -44,9 +44,9 @@ const PRESETS = [
 
 
 // ── Main ──────────────────────────────────────────────────────
-interface Props extends StepProps { onNext: () => void }
+interface Props extends StepProps { onNext: () => void; onTranslatingChange?: (v: boolean) => void }
 
-export default function StepBasics({ draft, update, updateConfig, onNext }: Props) {
+export default function StepBasics({ draft, update, updateConfig, onNext, onTranslatingChange }: Props) {
   const theme   = draft.config.theme
   const canNext = draft.name.trim() && draft.bot_name.trim()
   const presetIndustry = (draft.config.industry || (draft as any).industry || '') as Industry | ''
@@ -249,6 +249,28 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         <p className="text-gray-400 text-xs">The name and emoji respondents see in the chat.</p>
       </Section>
 
+      {/* Header text */}
+      <Section title="Header text" description="Customize the subtitle and status text shown in the survey header bar.">
+        <div className="flex flex-col gap-2">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Subtitle (below bot name)</label>
+            <Input
+              value={draft.config.headerSubtitle || ''}
+              onChange={v => updateConfig({ headerSubtitle: v })}
+              placeholder={draft.name || 'Study name (default)'}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Status line (with green dot)</label>
+            <Input
+              value={draft.config.headerStatus || ''}
+              onChange={v => updateConfig({ headerStatus: v })}
+              placeholder="Ready for your feedback"
+            />
+          </div>
+        </div>
+      </Section>
+
       {/* Color theme */}
       <Section title="Color theme">
         <div className="grid grid-cols-4 gap-2 mb-3">
@@ -294,14 +316,14 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
           <button
             type="button"
             onClick={() => updateConfig({ confirmBeforeRecord: draft.config.confirmBeforeRecord === true ? false : true })}
-            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.confirmBeforeRecord ? 'bg-orange-500' : 'bg-gray-200'}`}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${!draft.config.confirmBeforeRecord ? 'bg-orange-500' : 'bg-gray-200'}`}
           >
-            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.confirmBeforeRecord ? 'translate-x-5' : 'translate-x-0'}`} />
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${!draft.config.confirmBeforeRecord ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
           <span className="text-sm text-gray-600">
-            {draft.config.confirmBeforeRecord
-              ? <><strong className="text-gray-800">Tap then confirm</strong> — respondent selects an option, then presses Confirm</>
-              : <><strong className="text-gray-800">Instant capture</strong> — single tap records the answer immediately</>}
+            {!draft.config.confirmBeforeRecord
+              ? <><strong className="text-gray-800">Instant capture</strong> — single tap records the answer immediately</>
+              : <><strong className="text-gray-800">Tap then confirm</strong> — respondent selects an option, then presses Confirm</>}
           </span>
         </div>
       </Section>
@@ -375,12 +397,12 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         <div className="flex gap-2 flex-wrap">
           {[
             { value: 0.25, label: '0.25s', desc: 'Minimal' },
-            { value: 0.5,  label: '0.5s',  desc: 'Quick' },
-            { value: 1.0,  label: '1s',    desc: 'Default' },
+            { value: 0.5,  label: '0.5s',  desc: 'Default' },
+            { value: 1.0,  label: '1s',    desc: 'Deliberate' },
             { value: 1.5,  label: '1.5s',  desc: 'Relaxed' },
             { value: 2.0,  label: '2s',    desc: 'Slow' },
           ].map(function(opt) {
-            var current = draft.config.typingSpeed ?? 1.0
+            var current = draft.config.typingSpeed ?? 0.5
             var active = current === opt.value
             return (
               <button
@@ -404,7 +426,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
       </Section>
 
       {/* Multi-language */}
-      <LanguageSection draft={draft} updateConfig={updateConfig} />
+      <LanguageSection draft={draft} updateConfig={updateConfig} onTranslatingChange={onTranslatingChange} />
 
       <NavButtons onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Opening" />
     </div>
@@ -412,55 +434,78 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
 }
 
 // ── Language picker + translate ──────────────────────────────
-function LanguageSection({ draft, updateConfig }: Pick<Props, 'draft' | 'updateConfig'>) {
+function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Props, 'draft' | 'updateConfig' | 'onTranslatingChange'>) {
   const langs = draft.config.languages || ['en']
   const [translating, setTranslating] = useState<string | null>(null)
   const [error, setError]             = useState<string | null>(null)
 
+  // Notify parent when translating state changes
+  useEffect(() => { onTranslatingChange?.(translating !== null) }, [translating, onTranslatingChange])
+
   function toggleLang(code: string) {
     if (code === 'en') return // English is always enabled
-    const next = langs.includes(code) ? langs.filter(c => c !== code) : [...langs, code]
+    const wasEnabled = langs.includes(code)
+    const next = wasEnabled ? langs.filter(c => c !== code) : [...langs, code]
     // Remove translations for unchecked languages
     const translations = { ...(draft.config.translations || {}) }
     for (const k of Object.keys(translations)) { if (!next.includes(k)) delete translations[k] }
+    const updatedConfig = { ...draft.config, languages: next, translations }
     updateConfig({ languages: next, translations })
+    // Auto-translate when adding a new language
+    if (!wasEnabled) translateLang(code, updatedConfig)
   }
 
-  async function translateLang(code: string) {
+  async function translateLang(code: string, configOverride?: typeof draft.config) {
     const lang = SUPPORTED_LANGUAGES.find(l => l.code === code)
     if (!lang) return
     setTranslating(code)
     setError(null)
     try {
+      const cfgToUse = configOverride || draft.config
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: draft.config,
+          config: cfgToUse,
           targetLanguage: code,
           targetLanguageName: lang.name,
         }),
+        signal: AbortSignal.timeout(35000),
       })
-      if (!res.ok) throw new Error('Translation failed')
+      if (!res.ok) throw new Error('Translation failed — please try again')
       const data = await res.json()
-      const translations = { ...(draft.config.translations || {}), [code]: data.translation }
+      const translations = { ...(cfgToUse.translations || {}), [code]: data.translation }
       updateConfig({ translations })
     } catch (err: any) {
-      setError(err.message || 'Translation failed')
+      if (err.name === 'TimeoutError') {
+        setError('Translation timed out — try clicking Translate again')
+      } else {
+        setError(err.message || 'Translation failed')
+      }
     } finally {
       setTranslating(null)
     }
   }
 
+  function isTranslationStale(code: string): boolean {
+    const trans = draft.config.translations?.[code]
+    if (!trans) return true
+    const psychoKeys = (draft.config.psychographicBank || []).map(p => p.key)
+    const questionIds = (draft.config.questions || []).filter(q => q.enabled !== false && q.type !== 'hidden').map(q => q.id)
+    if (psychoKeys.length > 0 && psychoKeys.some(k => !trans.psychographics?.[k])) return true
+    if (questionIds.length > 0 && questionIds.some(id => !trans.questions?.[id])) return true
+    return false
+  }
+
   async function translateAll() {
-    const toTranslate = langs.filter(c => c !== 'en' && !draft.config.translations?.[c])
+    const toTranslate = langs.filter(c => c !== 'en' && (!draft.config.translations?.[c] || isTranslationStale(c)))
     for (const code of toTranslate) {
       await translateLang(code)
     }
   }
 
   const nonEnLangs = langs.filter(c => c !== 'en')
-  const untranslated = nonEnLangs.filter(c => !draft.config.translations?.[c])
+  const untranslated = nonEnLangs.filter(c => !draft.config.translations?.[c] || isTranslationStale(c))
 
   return (
     <Section title="Languages" description="Enable multiple languages. Respondents choose their language before starting the survey. Translations are AI-generated from your English content.">
@@ -507,12 +552,21 @@ function LanguageSection({ draft, updateConfig }: Pick<Props, 'draft' | 'updateC
           <div className="flex items-center gap-2 flex-wrap">
             {nonEnLangs.map(code => {
               const lang = SUPPORTED_LANGUAGES.find(l => l.code === code)
-              const hasTranslation = !!draft.config.translations?.[code]
+              const trans = draft.config.translations?.[code]
+              const hasTranslation = !!trans
+              // Check if translation is stale (missing psychographics or questions that exist in config)
+              const psychoKeys = (draft.config.psychographicBank || []).map(p => p.key)
+              const questionIds = (draft.config.questions || []).filter(q => q.enabled !== false && q.type !== 'hidden').map(q => q.id)
+              const missingPsycho = hasTranslation && psychoKeys.length > 0 && psychoKeys.some(k => !trans?.psychographics?.[k])
+              const missingQuestions = hasTranslation && questionIds.length > 0 && questionIds.some(id => !trans?.questions?.[id])
+              const isStale = missingPsycho || missingQuestions
               return (
                 <div key={code} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
                   <span className="text-sm font-medium text-gray-700">{lang?.nativeName || code}</span>
-                  {hasTranslation ? (
+                  {hasTranslation && !isStale ? (
                     <span className="text-green-500 text-xs font-bold">✓</span>
+                  ) : hasTranslation && isStale ? (
+                    <span className="text-amber-500 text-xs font-bold" title="Translation is incomplete — click Redo">!</span>
                   ) : (
                     <button
                       type="button"
@@ -529,9 +583,9 @@ function LanguageSection({ draft, updateConfig }: Pick<Props, 'draft' | 'updateC
                       type="button"
                       onClick={() => translateLang(code)}
                       disabled={translating !== null}
-                      className="text-xs text-gray-400 hover:text-gray-600 underline"
+                      className={'text-xs underline ' + (isStale ? 'text-amber-500 hover:text-amber-600 font-semibold' : 'text-gray-400 hover:text-gray-600')}
                     >
-                      {translating === code ? '...' : 'Redo'}
+                      {translating === code ? '...' : isStale ? 'Redo (incomplete)' : 'Redo'}
                     </button>
                   )}
                 </div>
@@ -550,6 +604,22 @@ function LanguageSection({ draft, updateConfig }: Pick<Props, 'draft' | 'updateC
             </button>
           )}
           {error && <p className="text-xs text-red-500">{error}</p>}
+
+          {/* Auto-translate responses toggle */}
+          <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => updateConfig({ autoTranslateResponses: !draft.config.autoTranslateResponses })}
+              className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.autoTranslateResponses ? 'bg-orange-500' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.autoTranslateResponses ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+            <span className="text-sm text-gray-600">
+              {draft.config.autoTranslateResponses
+                ? <><strong className="text-gray-800">Auto-translate responses</strong> — non-English answers are translated to English on submission (originals preserved)</>
+                : <><strong className="text-gray-800">Keep original language</strong> — responses are saved as-is in the respondent&apos;s language</>}
+            </span>
+          </div>
         </div>
       )}
     </Section>

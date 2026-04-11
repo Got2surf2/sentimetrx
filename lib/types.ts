@@ -164,6 +164,15 @@ export interface OpeningFlowItem {
 export interface StudyConfig {
   greeting:           string
 
+  // Header text (shown in the survey widget header bar)
+  headerSubtitle?:    string           // default: study name — text below bot name in header
+  headerStatus?:      string           // default: 'Ready for your feedback' — status line with green dot
+
+  // Ready prompt (shown after greeting, before survey begins)
+  readyPrompt?:       string           // default 'Are you ready to share your feedback?'
+  readyYes?:          string           // default "Yes, let's go! 👍"
+  readyNo?:           string           // default 'Not right now'
+
   // NPS (shown first)
   npsEnabled?:        boolean          // default true
   npsPrompt?:         string           // default 'How likely are you to recommend us...'
@@ -249,17 +258,19 @@ export interface StudyConfig {
     customQuestions?:  { enabled: boolean; text: string }
     psychographics?:   { enabled: boolean; text: string }
     demographics?:     { enabled: boolean; text: string }
+    contact?:          { enabled: boolean; text: string }
   }
 
   // Accessibility
   surveyFontSize?:    number           // base font size in px for survey widget (default 18)
 
-  // Typing animation duration multiplier (1.0 = default ~1s, 0.25 = minimal, 2.0 = slow)
-  typingSpeed?:       number           // default 1.0
+  // Typing animation duration multiplier (0.5 = default, 0.25 = minimal, 1.0 = deliberate, 2.0 = slow)
+  typingSpeed?:       number           // default 0.5
 
   // Multi-language support
   languages?:         string[]         // enabled language codes, e.g. ['en', 'es', 'fr']
   translations?:      Record<string, StudyTranslation> // keyed by language code
+  autoTranslateResponses?: boolean     // default false — auto-translate non-English responses back to English on submission
 
   // Demographics
   demoFields?:        DemoField[]      // configurable demographic questions (default: age, gender, zip)
@@ -572,8 +583,21 @@ export interface StudyTranslation {
   npsPrompt?:      string
   closingMessage?: string
   closingCard?:    string
+  readyPrompt?:    string
+  readyYes?:       string
+  readyNo?:        string
+  contactTransition?: string
   questions?:      Record<string, { prompt: string; options?: string[]; likertLabels?: string[] }>  // keyed by question ID
   psychographics?: Record<string, { q: string; opts: string[] }>          // keyed by psycho key
+  // Adaptive follow-up prompts
+  followUps?:      Record<string, { sharedPrompt?: string; perResponse?: Record<string, string> }>
+  // Opening flow open-end prompts (keyed by item ID)
+  openingFlow?:    Record<string, string>
+  // Demographic field labels & option labels
+  demoLabels?:     Record<string, string>       // keyed by field key → translated label
+  demoOptions?:    Record<string, string[]>      // keyed by field key → translated option display labels
+  // Contact field labels
+  contactLabels?:  Record<string, string>        // keyed by field key → translated label
   // UI chrome strings
   ui?: {
     readyPrompt?:    string   // "Are you ready to share your feedback?"
@@ -624,13 +648,14 @@ export var US_STATES: [string, string][] = [
 
 // Default contact fields bank
 export var CONTACT_BANK: ContactField[] = [
-  { key: 'email',     label: 'Email Address',  type: 'email',    enabled: false, placeholder: 'you@example.com' },
-  { key: 'phone',     label: 'Phone Number',   type: 'phone',    enabled: false, placeholder: '+1 (555) 123-4567' },
-  { key: 'address1',  label: 'Street Address',  type: 'text',     enabled: false, placeholder: '123 Main St' },
-  { key: 'address2',  label: 'Apt / Suite',     type: 'text',     enabled: false, placeholder: 'Apt 4B' },
-  { key: 'city',      label: 'City',            type: 'text',     enabled: false, placeholder: 'City' },
-  { key: 'state',     label: 'State',           type: 'us_state', enabled: false },
-  { key: 'zip_code',  label: 'ZIP Code',        type: 'zip_code', enabled: false, placeholder: '12345' },
+  { key: 'name',      label: 'Full Name',       type: 'text',     enabled: false, placeholder: 'Jane Smith' },
+  { key: 'email',     label: 'Email Address',    type: 'email',    enabled: false, placeholder: 'you@example.com' },
+  { key: 'phone',     label: 'Phone Number',     type: 'phone',    enabled: false, placeholder: '+1 (555) 123-4567' },
+  { key: 'address1',  label: 'Street Address',   type: 'text',     enabled: false, placeholder: '123 Main St' },
+  { key: 'address2',  label: 'Apt / Suite',      type: 'text',     enabled: false, placeholder: 'Apt 4B' },
+  { key: 'city',      label: 'City',             type: 'text',     enabled: false, placeholder: 'City' },
+  { key: 'state',     label: 'State',            type: 'us_state', enabled: false },
+  { key: 'zip_code',  label: 'ZIP Code',         type: 'zip_code', enabled: false, placeholder: '12345' },
 ]
 
 // Contact field validation
@@ -700,10 +725,13 @@ export type Sentiment = 'positive' | 'neutral' | 'negative'
 export interface SurveyPayload {
   agent:            string
   timestamp:        string
+  language?:        string                  // language code the survey was conducted in (e.g. 'hi', 'es')
   npsRecommend:     { score: number; label: string }
   experienceRating: { score: number; label: string; sentiment: Sentiment }
   openEnded:        { q1: string; q2: string; q3: string; q4: string }
+  openEndedOriginal?: { q1: string; q2: string; q3: string; q4: string }  // original non-English responses before translation
   customAnswers?:   Record<string, string | string[]>   // keyed by SurveyQuestion.id
+  customAnswersOriginal?: Record<string, string | string[]>  // original non-English before translation
   psychographics:    Record<string, string>
   demographics:      Record<string, string>
   contactInfo?:      Record<string, string>
@@ -711,11 +739,12 @@ export interface SurveyPayload {
 }
 
 export interface SubmitResponseBody {
-  study_guid:   string
-  payload:      Partial<SurveyPayload>
-  duration_sec: number
-  session_id?:  string
-  status?:      'incomplete' | 'complete'
+  study_guid:      string
+  payload:         Partial<SurveyPayload>
+  duration_sec:    number
+  session_id?:     string
+  status?:         'incomplete' | 'complete'
+  recipient_guid?: string
 }
 
 // -- Campaign Manager types -----------------------------------

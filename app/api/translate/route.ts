@@ -30,6 +30,69 @@ export async function POST(req: NextRequest) {
   if (config.npsPrompt) contentToTranslate.npsPrompt = config.npsPrompt
   if (config.closingMessage) contentToTranslate.closingMessage = config.closingMessage
   if (config.closingCard) contentToTranslate.closingCard = config.closingCard
+  if (config.readyPrompt) contentToTranslate.readyPrompt = config.readyPrompt
+  if (config.readyYes) contentToTranslate.readyYes = config.readyYes
+  if (config.readyNo) contentToTranslate.readyNo = config.readyNo
+
+  // Adaptive follow-up prompts (experience rating & NPS)
+  const followUpsToTranslate: Record<string, any> = {}
+  for (const key of ['experienceFollowUp', 'npsFollowUp'] as const) {
+    const fu = config[key]
+    if (!fu?.enabled) continue
+    const entry: any = {}
+    if (fu.sharedPrompt) entry.sharedPrompt = fu.sharedPrompt
+    if (fu.perResponse) {
+      entry.perResponse = {} as Record<string, string>
+      for (const [score, pr] of Object.entries(fu.perResponse)) {
+        if ((pr as any).prompt) entry.perResponse[score] = (pr as any).prompt
+      }
+    }
+    followUpsToTranslate[key] = entry
+  }
+
+  // Custom question follow-ups
+  for (const q of (config.questions || [])) {
+    if (q.enabled === false || !q.followUp?.enabled) continue
+    const entry: any = {}
+    if (q.followUp.sharedPrompt) entry.sharedPrompt = q.followUp.sharedPrompt
+    if (q.followUp.perResponse) {
+      entry.perResponse = {} as Record<string, string>
+      for (const [score, pr] of Object.entries(q.followUp.perResponse)) {
+        if ((pr as any).prompt) entry.perResponse[score] = (pr as any).prompt
+      }
+    }
+    followUpsToTranslate['question_' + q.id] = entry
+  }
+
+  // Opening flow open-end prompts
+  const openingFlowToTranslate: Record<string, string> = {}
+  for (const item of (config.openingFlow || [])) {
+    if (item.type === 'open_end' && item.prompt) {
+      openingFlowToTranslate[item.id] = item.prompt
+    }
+  }
+
+  // Demographic field labels
+  const demoLabelsToTranslate: Record<string, string> = {}
+  const demoOptionsToTranslate: Record<string, string[]> = {}
+  for (const df of (config.demoFields || [])) {
+    if (!df.enabled) continue
+    demoLabelsToTranslate[df.key] = df.label
+    if (df.type === 'select' && df.options?.length) {
+      demoOptionsToTranslate[df.key] = df.options.map((o: any) => o[1])
+    }
+  }
+
+  // Contact field labels
+  const contactLabelsToTranslate: Record<string, string> = {}
+  for (const cf of (config.contactFields || [])) {
+    if (!cf.enabled) continue
+    contactLabelsToTranslate[cf.key] = cf.label
+    if (cf.placeholder) contactLabelsToTranslate[cf.key + '_placeholder'] = cf.placeholder
+  }
+  if (config.contactTransition?.enabled !== false && config.contactTransition?.text) {
+    contentToTranslate.contactTransition = config.contactTransition.text
+  }
 
   // Custom questions
   const questionsToTranslate: Record<string, { prompt: string; options?: string[]; likertLabels?: string[] }> = {}
@@ -100,6 +163,21 @@ export async function POST(req: NextRequest) {
   if (trans.contact?.enabled !== false)
     transitionStrings.contact = trans.contact?.text || ''
 
+  const payload: Record<string, any> = {
+    strings: contentToTranslate,
+    questions: questionsToTranslate,
+    psychographics: psychoToTranslate,
+    ui: uiStrings,
+    ratingLabels,
+    npsLabels,
+    transitions: transitionStrings,
+  }
+  if (Object.keys(followUpsToTranslate).length > 0) payload.followUps = followUpsToTranslate
+  if (Object.keys(openingFlowToTranslate).length > 0) payload.openingFlow = openingFlowToTranslate
+  if (Object.keys(demoLabelsToTranslate).length > 0) payload.demoLabels = demoLabelsToTranslate
+  if (Object.keys(demoOptionsToTranslate).length > 0) payload.demoOptions = demoOptionsToTranslate
+  if (Object.keys(contactLabelsToTranslate).length > 0) payload.contactLabels = contactLabelsToTranslate
+
   const prompt = `Translate the following survey content from English to ${targetLanguageName || targetLanguage}.
 Return a JSON object with the exact same structure and keys, but with translated values.
 Keep merge tags like {{first_name}} and {{survey_link}} unchanged.
@@ -108,15 +186,7 @@ Keep emoji characters unchanged (do not remove or replace them).
 Maintain the same tone — warm, conversational, professional.
 
 Content to translate:
-${JSON.stringify({
-  strings: contentToTranslate,
-  questions: questionsToTranslate,
-  psychographics: psychoToTranslate,
-  ui: uiStrings,
-  ratingLabels,
-  npsLabels,
-  transitions: transitionStrings,
-}, null, 2)}
+${JSON.stringify(payload, null, 2)}
 
 Return ONLY valid JSON, no markdown, no explanation.`
 
@@ -130,9 +200,10 @@ Return ONLY valid JSON, no markdown, no explanation.`
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 6000,
+        max_tokens: 8000,
         messages: [{ role: 'user', content: prompt }],
       }),
+      signal: AbortSignal.timeout(30000),
     })
 
     if (!response.ok) throw new Error('Anthropic API error: ' + response.status)
@@ -157,8 +228,17 @@ Return ONLY valid JSON, no markdown, no explanation.`
       npsPrompt: parsed.strings?.npsPrompt,
       closingMessage: parsed.strings?.closingMessage,
       closingCard: parsed.strings?.closingCard,
+      readyPrompt: parsed.strings?.readyPrompt,
+      readyYes: parsed.strings?.readyYes,
+      readyNo: parsed.strings?.readyNo,
+      contactTransition: parsed.strings?.contactTransition,
       questions: parsed.questions,
       psychographics: parsed.psychographics,
+      followUps: parsed.followUps,
+      openingFlow: parsed.openingFlow,
+      demoLabels: parsed.demoLabels,
+      demoOptions: parsed.demoOptions,
+      contactLabels: parsed.contactLabels,
       ui: {
         ...parsed.ui,
         ratingLabels: parsed.ratingLabels,

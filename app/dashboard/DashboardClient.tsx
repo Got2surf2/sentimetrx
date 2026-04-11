@@ -56,32 +56,6 @@ function QRCode({ url }: { url: string }) {
   return <img src={src} alt="QR code" className="w-40 h-40 rounded-lg border border-gray-200" />
 }
 
-function DeployModal({ study, onClose }: { study: Study; onClose: () => void }) {
-  const url = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai') + '/s/' + (study.slug || study.guid || study.id)
-  const [copied, setCopied] = useState(false)
-  const copy = () => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-gray-800 text-base">{'Publish -- ' + study.name}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-        </div>
-        <div className="flex gap-5 items-start">
-          <QRCode url={url} />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 mb-2 font-medium">Survey URL</p>
-            <div className="bg-gray-50 rounded-lg p-3 break-all text-xs text-gray-700 mb-3 border border-gray-200">{url}</div>
-            <button onClick={copy} className="w-full py-2 rounded-lg text-white text-sm font-medium transition-all hover:opacity-90" style={{ background: HERMES }}>
-              {copied ? '✓ Copied!' : 'Copy link'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // -- Confirm modal --------------------------------------------------------------
 function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
   return (
@@ -107,8 +81,6 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
 }) {
   const [busy,       setBusy]       = useState(false)
   const [confirm,    setConfirm]    = useState<{ msg: string; action: () => void } | null>(null)
-  const [deployOpen, setDeployOpen] = useState(false)
-  const [deleteConf, setDeleteConf] = useState(false)
   const [vis,        setVis]        = useState(study.visibility)
   const [status,     setStatus]     = useState(study.status)
   const [refreshing, setRefreshing] = useState(false)
@@ -178,7 +150,6 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
   return (
     <>
       {confirm    && <ConfirmModal message={confirm.msg} onConfirm={() => { confirm.action(); setConfirm(null) }} onCancel={() => setConfirm(null)} />}
-      {deployOpen && <DeployModal study={study} onClose={() => setDeployOpen(false)} />}
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden" style={{ position: 'relative' }}>
 
@@ -256,88 +227,103 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
 
           {/* GUID — click to copy */}
           <button
-            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); (e.target as HTMLElement).textContent = '✓ Copied!' ; setTimeout(() => { (e.target as HTMLElement).textContent = 'GUID: ' + study.guid }, 1500) }}
+            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); (e.currentTarget as HTMLElement).textContent = '✓ Copied!' ; setTimeout(() => { (e.currentTarget as HTMLElement).textContent = 'GUID: ' + study.guid }, 1500) }}
             className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
             title="Click to copy study GUID">
             GUID: {study.guid}
           </button>
 
-          {/* Action pills — 3 rows */}
-          <div className="flex flex-col gap-1.5 mt-auto pt-2 border-t border-gray-100">
-            {/* Row 1: Data — pale orange */}
-            <div className="flex items-center gap-1.5 flex-wrap" style={{ minHeight: 30 }}>
-              <Link href={'/studies/' + study.id + '/analytics'}
-                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+          {/* Copy survey link */}
+          {status === 'active' && (
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                const url = window.location.origin + '/s/' + (study.slug || study.guid)
+                navigator.clipboard.writeText(url)
+                const span = e.currentTarget.querySelector('span')
+                if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/s/' + (study.slug || study.guid) }, 1500) }
+              }}
+              className="text-xs text-gray-300 hover:text-green-600 truncate text-left transition-colors flex items-center gap-1.5"
+              title="Click to copy survey link">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              <span>/s/{study.slug || study.guid}</span>
+            </button>
+          )}
+
+          {/* Action pills — 3-column grid */}
+          <div className="grid grid-cols-3 gap-1.5 mt-auto pt-2 border-t border-gray-100">
+            {/* Row 1: Analytics, Responses, Campaigns */}
+            <Link href={'/studies/' + study.id + '/analytics'}
+              className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+              style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+              Analytics
+            </Link>
+            <Link href={'/studies/' + study.id + '/responses'}
+              className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+              style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+              Responses
+            </Link>
+            {campaignsEnabled ? (
+              <Link href={'/studies/' + study.id + '/campaigns'}
+                className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                 style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                Analytics
+                Campaigns
               </Link>
+            ) : (
               <button onClick={handleExport}
-                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+                className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                 style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                 Export
               </button>
-              <Link href={'/studies/' + study.id + '/responses'}
-                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
-                style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                Responses
-              </Link>
+            )}
+
+            {/* Row 2: Export (if campaigns shown above), Close/Reopen, Delete */}
+            {canEdit && (<>
               {campaignsEnabled && (
-                <Link href={'/studies/' + study.id + '/campaigns'}
-                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
-                  style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                  Campaigns
-                </Link>
+                <button onClick={handleExport}
+                  className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                  style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                  Export
+                </button>
               )}
-            </div>
+              <button
+                onClick={() => setConfirm({
+                  msg: 'Are you sure you want to ' + (status === 'active' ? 'close' : status === 'closed' ? 'reopen' : 'activate') + ' this study?',
+                  action: () => do_patch({ status: status === 'active' ? 'closed' : 'active' })
+                })}
+                disabled={busy}
+                className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
+                style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                {status === 'active' ? 'Close' : 'Reopen'}
+              </button>
+              <button onClick={() => setConfirm({ msg: 'Delete "' + study.name + '"? This cannot be undone.', action: () => onDelete(study.id) })}
+                disabled={busy}
+                className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
+                style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                Delete
+              </button>
+            </>)}
 
-            {/* Row 2: Actions — deploy green, close/delete red */}
-            {canEdit && (
-              <div className="flex items-center gap-1.5 flex-wrap" style={{ minHeight: 30 }}>
-                <button onClick={() => status === 'active' ? setDeployOpen(true) : undefined}
-                  disabled={status !== 'active'}
-                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-40"
-                  style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
-                  Publish
-                </button>
-                <button
-                  onClick={() => setConfirm({
-                    msg: 'Are you sure you want to ' + (status === 'active' ? 'close' : status === 'closed' ? 'reopen' : 'activate') + ' this study?',
-                    action: () => do_patch({ status: status === 'active' ? 'closed' : 'active' })
-                  })}
-                  disabled={busy}
-                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
-                  style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-                  {status === 'active' ? 'Close' : 'Reopen'}
-                </button>
-                <button onClick={() => setConfirm({ msg: 'Delete "' + study.name + '"? This cannot be undone.', action: () => onDelete(study.id) })}
-                  disabled={busy}
-                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
-                  style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-                  Delete
-                </button>
-              </div>
-            )}
-
-            {/* Row 3: Meta — gray */}
-            {canEdit && (
-              <div className="flex items-center gap-1.5 flex-wrap" style={{ minHeight: 30 }}>
-                <Link href={'/studies/' + study.id + '/edit'}
-                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
-                  style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
-                  Edit
-                </Link>
-                <button onClick={() => onDuplicate(study)}
-                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
-                  style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
-                  Duplicate
-                </button>
-                <button onClick={() => do_patch({ visibility: vis === 'public' ? 'private' : 'public' })} disabled={busy}
-                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
-                  style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
-                  {vis === 'public' ? 'Make Private' : 'Make Public'}
-                </button>
-              </div>
-            )}
+            {/* Row 3: Edit, Duplicate, Make Public/Private */}
+            {canEdit && (<>
+              <Link href={'/studies/' + study.id + '/edit'}
+                className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
+                Edit
+              </Link>
+              <button onClick={() => onDuplicate(study)}
+                className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
+                Duplicate
+              </button>
+              <button onClick={() => do_patch({ visibility: vis === 'public' ? 'private' : 'public' })} disabled={busy}
+                className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
+                style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
+                {vis === 'public' ? 'Private' : 'Public'}
+              </button>
+            </>)}
           </div>
         </div>
       </div>

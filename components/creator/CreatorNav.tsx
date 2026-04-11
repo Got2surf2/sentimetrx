@@ -15,6 +15,7 @@ export function getStepCompletion(draft: StudyDraft): boolean[] {
     true,                                                // 5 Psychographics (optional — always complete once visited)
     true,                                                // 6 Demographics (optional — always complete once visited)
     true,                                                // 7 Contact Info (optional — always complete once visited)
+    true,                                                // 8 Closing (optional — defaults provided)
   ]
 }
 
@@ -31,6 +32,7 @@ export const CREATOR_STEP_LABELS = [
   'Psycho',
   'Demo',
   'Contact',
+  'Closing',
   'Review',
 ] as const
 
@@ -43,6 +45,7 @@ const CREATOR_STEP_ICONS = [
   '\uD83E\uDDE0', // Psycho — brain
   '\uD83D\uDC64', // Demo — person
   '\uD83D\uDCE7', // Contact — envelope
+  '\uD83D\uDC4B', // Closing — waving goodbye
   '\u2714',     // Review — checkmark
 ] as const
 
@@ -55,6 +58,7 @@ const CREATOR_STEP_TOOLTIPS = [
   'Psychographics — attitudes & values',
   'Demographics — age, gender, etc.',
   'Contact Info — email, phone, address',
+  'Closing — thank-you message & card',
   'Review & Publish',
 ] as const
 
@@ -67,6 +71,7 @@ interface CreatorNavProps {
   onImport?:      (draft: StudyDraft) => void
   saving:         boolean
   freeNav?:       boolean
+  translating?:   boolean   // true while a language translation is in progress
 }
 
 export default function CreatorNav({
@@ -78,14 +83,35 @@ export default function CreatorNav({
   onImport,
   saving,
   freeNav = false,
+  translating = false,
 }: CreatorNavProps) {
   const completion = getStepCompletion(draft)
   const allDone    = completion.every(Boolean)
-  const canPublish = allDone && !saving
+  // New studies: require visiting Review step (8) before pill publish works
+  // Edit studies (freeNav=true): pill always available
+  const hasVisitedReview = freeNav || highestVisited >= 9
+  const canPublish = allDone && !saving && !translating && hasVisitedReview
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   function handleExport() {
-    const exportData = { name: draft.name, bot_name: draft.bot_name, bot_emoji: draft.bot_emoji, slug: draft.slug, config: draft.config }
+    // Explicitly materialize boolean defaults so nothing is lost as undefined across instances
+    const c = draft.config
+    const fullConfig = {
+      ...c,
+      npsEnabled:            c.npsEnabled ?? true,
+      experienceEnabled:     c.experienceEnabled ?? true,
+      q3Enabled:             c.q3Enabled ?? true,
+      q4Enabled:             c.q4Enabled ?? true,
+      confirmBeforeRecord:   c.confirmBeforeRecord ?? false,
+      allowMultipleResponses: c.allowMultipleResponses ?? true,
+      showBranding:          c.showBranding ?? true,
+      useAIClarify:          c.useAIClarify ?? false,
+      surveyFontSize:        c.surveyFontSize ?? 18,
+      typingSpeed:           c.typingSpeed ?? 0.5,
+      autoTranslateResponses: c.autoTranslateResponses ?? false,
+      psychoCount:           c.psychoCount ?? 3,
+    }
+    const exportData = { name: draft.name, bot_name: draft.bot_name, bot_emoji: draft.bot_emoji, slug: draft.slug, config: fullConfig }
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -102,7 +128,7 @@ export default function CreatorNav({
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result as string)
-        if (!parsed.config || !parsed.config.greeting === undefined) {
+        if (!parsed.config || parsed.config.greeting === undefined) {
           alert('Invalid study JSON — missing config or greeting field.')
           return
         }
@@ -181,7 +207,7 @@ export default function CreatorNav({
         type="button"
         disabled={!canPublish}
         onClick={() => { if (canPublish) onPublish() }}
-        title={canPublish ? 'Publish this study' : 'Complete all required steps to publish'}
+        title={canPublish ? 'Publish this study' : translating ? 'Translation in progress...' : !hasVisitedReview ? 'Complete Review step first' : 'Complete all required steps to publish'}
         className={
           'flex-shrink-0 flex items-center gap-1 px-3 py-1 ' +
           'rounded-full text-xs font-bold transition-all ' +

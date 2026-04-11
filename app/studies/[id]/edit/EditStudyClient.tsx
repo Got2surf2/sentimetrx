@@ -10,6 +10,7 @@ import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepDemographics from '@/components/creator/StepDemographics'
 import StepContactInfo from '@/components/creator/StepContactInfo'
+import StepClosing from '@/components/creator/StepClosing'
 import StepReview from '@/components/creator/StepReview'
 import MigrationBanner from '@/components/creator/MigrationBanner'
 import type { StudyDraft } from '@/lib/studyDraft'
@@ -38,8 +39,9 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     slug:      study.slug || undefined,
     config:    study.config,
   })
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
+  const [saving,      setSaving]      = useState(false)
+  const [translating, setTranslating] = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
   const router = useRouter()
 
   const update = useCallback((partial: Partial<StudyDraft>) => {
@@ -85,11 +87,12 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
           <CreatorNav
             draft={draft}
             currentStep={step}
-            highestVisited={8}
+            highestVisited={9}
             onStepClick={goTo}
             onPublish={() => handleSave('active')}
             onImport={(imported) => setDraft(prev => ({ ...prev, name: imported.name || prev.name, bot_name: imported.bot_name || prev.bot_name, bot_emoji: imported.bot_emoji || prev.bot_emoji, slug: imported.slug || prev.slug, config: imported.config }))}
             saving={saving}
+            translating={translating}
             freeNav={true}
           />
         </div>
@@ -110,7 +113,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
           onStudyTypeAdded={(updatedConfig) => updateConfig(updatedConfig)}
         />
 
-        {step === 0 && <StepBasics       {...stepProps} onNext={() => goTo(1)} />}
+        {step === 0 && <StepBasics       {...stepProps} onNext={() => goTo(1)} onTranslatingChange={setTranslating} />}
         {step === 1 && <StepOpening      {...stepProps} onNext={() => goTo(2)} onBack={() => goTo(0)} />}
         {step === 2 && <StepConversation {...stepProps} onNext={() => goTo(3)} onBack={() => goTo(1)} />}
         {step === 3 && <StepClarifiers {...stepProps} onNext={() => goTo(4)} onBack={() => goTo(2)} />}
@@ -118,10 +121,11 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
         {step === 5 && <StepPsychographics {...stepProps} onNext={() => goTo(6)} onBack={() => goTo(4)} />}
         {step === 6 && <StepDemographics {...stepProps} onNext={() => goTo(7)} onBack={() => goTo(5)} />}
         {step === 7 && <StepContactInfo {...stepProps} onNext={() => goTo(8)} onBack={() => goTo(6)} />}
-        {step === 8 && (
+        {step === 8 && <StepClosing {...stepProps} onNext={() => goTo(9)} onBack={() => goTo(7)} />}
+        {step === 9 && (
           <StepReview
             {...stepProps}
-            onBack={() => goTo(7)}
+            onBack={() => goTo(8)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}

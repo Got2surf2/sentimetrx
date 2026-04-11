@@ -29,12 +29,32 @@ type Tab = 'setup' | 'respondents' | 'emails' | 'send'
 // -- File parser (CSV, TSV, JSON, Excel) ----------------------
 type ParsedData = { headers: string[]; rows: Record<string, string>[] }
 
+function splitDelimitedLine(line: string, delimiter: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; continue }
+      if (ch === '"') { inQuotes = false; continue }
+      current += ch
+    } else {
+      if (ch === '"') { inQuotes = true; continue }
+      if (ch === delimiter) { result.push(current.trim()); current = ''; continue }
+      current += ch
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+
 function parseDelimited(text: string, delimiter: string): ParsedData {
   const lines = text.split(/\r?\n/).filter(l => l.trim())
   if (lines.length === 0) return { headers: [], rows: [] }
-  const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''))
+  const headers = splitDelimitedLine(lines[0], delimiter)
   const rows = lines.slice(1).map(line => {
-    const vals = line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''))
+    const vals = splitDelimitedLine(line, delimiter)
     const row: Record<string, string> = {}
     headers.forEach((h, i) => { row[h] = vals[i] || '' })
     return row
@@ -572,17 +592,46 @@ function MergeTagBar({ tags, onInsert, target }: {
   )
 }
 
+// HTML entity escaper for user-controlled values in email templates
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+function escAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 // -- Template structure → HTML generator -------------------------
 interface EmailBlock {
-  type: 'text' | 'heading'
+  type: 'text' | 'heading' | 'image' | 'numbered_step' | 'divider' | 'spacer' | 'signature' | 'button'
   content: string
+  // image fields
+  imageUrl?: string
+  imageAlt?: string
+  imageWidth?: string       // e.g. '100%' or '200px'
+  imageAlign?: 'left' | 'center' | 'right'
+  imageLink?: string        // optional clickable link
+  // numbered_step fields
+  stepNumber?: number
+  stepHeading?: string
+  // signature fields
+  signatureName?: string
+  signatureTitle?: string
+  signatureImageUrl?: string
+  // button fields
+  buttonUrl?: string
+  buttonColor?: string
 }
 interface TemplateStructure {
   headerColor: string
   headerText: string
+  headerLogoUrl: string     // logo image URL for header
+  headerLogoWidth: string   // logo width e.g. '150px'
+  headerLayout: 'text' | 'logo' | 'logo-text' | 'dual-logo'  // header layout style
+  headerLogoUrl2: string    // second logo for dual-logo layout
   greeting: string
   blocks: EmailBlock[]
   ctaText: string
+  ctaColor: string          // button color (defaults to headerColor)
   closing: string
 }
 
@@ -591,9 +640,14 @@ function parseStructureFromHtml(html: string): TemplateStructure {
   const struct: TemplateStructure = {
     headerColor: '#E8632A',
     headerText: '',
+    headerLogoUrl: '',
+    headerLogoWidth: '150px',
+    headerLayout: 'text',
+    headerLogoUrl2: '',
     greeting: '',
     blocks: [],
     ctaText: 'Take the Survey',
+    ctaColor: '',
     closing: '',
   }
   // Extract header text
@@ -602,7 +656,32 @@ function parseStructureFromHtml(html: string): TemplateStructure {
   // Extract header color
   const gradMatch = html.match(/background:\s*linear-gradient\([^,]+,\s*(#[0-9a-f]+)/i)
   if (gradMatch) struct.headerColor = gradMatch[1]
-  // Extract paragraphs
+  // Extract header logo
+  const headerLogoMatch = html.match(/data-block="header-logo"[^>]*src="([^"]+)"/i)
+  if (headerLogoMatch) {
+    struct.headerLogoUrl = headerLogoMatch[1]
+    struct.headerLayout = struct.headerText ? 'logo-text' : 'logo'
+  }
+  // Extract CTA button color
+  const ctaBtnMatch = html.match(/<a[^>]*style="[^"]*background:\s*(#[0-9a-f]+)/i)
+  if (ctaBtnMatch) struct.ctaColor = ctaBtnMatch[1]
+  // Extract numbered steps
+  const stepMatches = Array.from(html.matchAll(/data-block="step"[^>]*>[\s\S]*?<td[^>]*style="[^"]*font-size:\s*28px[^"]*"[^>]*>(\d+)<\/td>[\s\S]*?<strong[^>]*>(.*?)<\/strong>[\s\S]*?<\/div>\s*([\s\S]*?)<\/td>/gi))
+  const steps: EmailBlock[] = []
+  for (const m of stepMatches) {
+    steps.push({ type: 'numbered_step', content: m[3]?.replace(/<[^>]+>/g, '').trim() || '', stepNumber: parseInt(m[1]), stepHeading: m[2]?.replace(/<[^>]+>/g, '').trim() || '' })
+  }
+  // Extract image blocks
+  const imgMatches = Array.from(html.matchAll(/data-block="image"[^>]*>[\s\S]*?<img[^>]*src="([^"]+)"[^>]*(?:alt="([^"]*)")?/gi))
+  for (const m of imgMatches) {
+    struct.blocks.push({ type: 'image', content: '', imageUrl: m[1], imageAlt: m[2] || '' })
+  }
+  // Extract signature blocks
+  const sigMatch = html.match(/data-block="signature"[\s\S]*?<strong[^>]*>(.*?)<\/strong>[\s\S]*?<span[^>]*>(.*?)<\/span>/i)
+  if (sigMatch) {
+    struct.blocks.push({ type: 'signature', content: '', signatureName: sigMatch[1].replace(/<[^>]+>/g, ''), signatureTitle: sigMatch[2].replace(/<[^>]+>/g, '') })
+  }
+  // Extract paragraphs (skip ones already captured as steps/signatures)
   const pMatches = html.match(/<p[^>]*>(.*?)<\/p>/gi) || []
   for (const p of pMatches) {
     const text = p.replace(/<[^>]+>/g, '').trim()
@@ -613,11 +692,16 @@ function parseStructureFromHtml(html: string): TemplateStructure {
       struct.blocks.push({ type: 'text', content: text })
     }
   }
+  // Add steps in order
+  if (steps.length > 0) {
+    // Insert steps before closing text blocks
+    struct.blocks.splice(struct.blocks.length, 0, ...steps)
+  }
   // Extract CTA text
   const ctaMatch = html.match(/<a[^>]*>([^<]+)<\/a>/i)
   if (ctaMatch) struct.ctaText = ctaMatch[1].trim()
   // Last block is closing if short
-  if (struct.blocks.length > 0 && struct.blocks[struct.blocks.length - 1].content.length < 60) {
+  if (struct.blocks.length > 0 && struct.blocks[struct.blocks.length - 1].type === 'text' && struct.blocks[struct.blocks.length - 1].content.length < 60) {
     struct.closing = struct.blocks.pop()!.content
   }
   // Defaults
@@ -629,20 +713,68 @@ function parseStructureFromHtml(html: string): TemplateStructure {
 }
 
 function buildHtmlFromStructure(s: TemplateStructure): string {
-  const blocks = s.blocks.map(b =>
-    b.type === 'heading'
-      ? `    <h2 style="margin:0 0 12px;font-size:16px;color:#1a1a1a">${b.content}</h2>`
-      : `    <p>${b.content}</p>`
-  ).join('\n')
+  const btnColor = s.ctaColor || s.headerColor
+  const blocks = s.blocks.map(b => {
+    switch (b.type) {
+      case 'heading':
+        return `    <h2 style="margin:0 0 12px;font-size:18px;color:#1a1a1a;font-weight:700">${escHtml(b.content)}</h2>`
+      case 'image': {
+        const w = b.imageWidth || '100%'
+        const align = b.imageAlign || 'center'
+        const alignStyle = align === 'center' ? 'margin:0 auto;display:block' : align === 'right' ? 'margin-left:auto;display:block' : ''
+        const img = `<img src="${escAttr(b.imageUrl || '')}" alt="${escAttr(b.imageAlt || '')}" style="max-width:100%;width:${w};height:auto;border-radius:8px;${alignStyle}" data-block="image" />`
+        return `    <div style="margin:16px 0;text-align:${align}">${b.imageLink ? `<a href="${escAttr(b.imageLink)}" style="text-decoration:none">${img}</a>` : img}</div>`
+      }
+      case 'numbered_step':
+        return `    <table data-block="step" cellpadding="0" cellspacing="0" style="width:100%;margin:12px 0;border-collapse:collapse"><tr>
+      <td style="width:44px;vertical-align:top;padding-right:12px"><div style="width:36px;height:36px;border-radius:50%;background:${btnColor};color:white;font-size:28px;font-weight:700;text-align:center;line-height:36px">${b.stepNumber || 1}</div></td>
+      <td style="vertical-align:top"><div style="font-size:14px"><strong style="color:#1a1a1a">${escHtml(b.stepHeading || '')}</strong></div>${b.content ? `<div style="color:#6b7280;font-size:13px;margin-top:2px">${escHtml(b.content)}</div>` : ''}</td>
+    </tr></table>`
+      case 'divider':
+        return `    <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0" />`
+      case 'spacer':
+        return `    <div style="height:${parseInt(b.content) || 24}px"></div>`
+      case 'button': {
+        const bColor = b.buttonColor || btnColor
+        return `    <p style="margin:20px 0;text-align:center"><a href="${escAttr(b.buttonUrl || '{{survey_link}}')}" style="display:inline-block;background:${bColor};color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${escHtml(b.content || 'Click Here')}</a></p>`
+      }
+      case 'signature': {
+        const sigImg = b.signatureImageUrl ? `<img src="${escAttr(b.signatureImageUrl)}" alt="signature" style="max-width:160px;height:auto;margin-top:8px" />` : ''
+        return `    <div data-block="signature" style="margin:20px 0;padding-top:16px;border-top:1px solid #e5e7eb">
+      ${sigImg}
+      <div style="margin-top:4px"><strong style="color:#1a1a1a;font-size:14px">${escHtml(b.signatureName || '')}</strong></div>
+      <span style="color:#6b7280;font-size:13px">${escHtml(b.signatureTitle || '')}</span>
+    </div>`
+      }
+      default:
+        return `    <p style="margin:0 0 12px;line-height:1.6">${b.content}</p>`
+    }
+  }).join('\n')
+
+  // Build header based on layout
+  let headerContent = ''
+  if (s.headerLayout === 'logo' && s.headerLogoUrl) {
+    headerContent = `<img data-block="header-logo" src="${s.headerLogoUrl}" alt="Logo" style="max-width:${s.headerLogoWidth || '150px'};height:auto" />`
+  } else if (s.headerLayout === 'logo-text' && s.headerLogoUrl) {
+    headerContent = `<img data-block="header-logo" src="${s.headerLogoUrl}" alt="Logo" style="max-width:${s.headerLogoWidth || '150px'};height:auto;margin-bottom:12px" />\n    <h1 style="color:white;margin:0;font-size:20px">${s.headerText}</h1>`
+  } else if (s.headerLayout === 'dual-logo' && s.headerLogoUrl) {
+    headerContent = `<table cellpadding="0" cellspacing="0" style="width:100%"><tr>
+      <td style="text-align:left"><img data-block="header-logo" src="${s.headerLogoUrl}" alt="Logo" style="max-width:${s.headerLogoWidth || '150px'};height:auto" /></td>
+      <td style="text-align:right"><img data-block="header-logo-2" src="${s.headerLogoUrl2 || ''}" alt="Logo 2" style="max-width:${s.headerLogoWidth || '150px'};height:auto" /></td>
+    </tr></table>`
+  } else {
+    headerContent = `<h1 style="color:white;margin:0;font-size:20px">${s.headerText}</h1>`
+  }
+
   return `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
   <div style="background:linear-gradient(135deg,${s.headerColor},${s.headerColor}cc);padding:24px;border-radius:12px 12px 0 0">
-    <h1 style="color:white;margin:0;font-size:20px">${s.headerText}</h1>
+    ${headerContent}
   </div>
   <div style="background:#f9f9f9;padding:24px;border-radius:0 0 12px 12px;border:1px solid #e5e7eb">
-    <p>${s.greeting}</p>
+    <p style="margin:0 0 12px;line-height:1.6">${s.greeting}</p>
 ${blocks}
-    <p style="margin:24px 0">
-      <a href="{{survey_link}}" style="display:inline-block;background:${s.headerColor};color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">${s.ctaText}</a>
+    <p style="margin:24px 0;text-align:center">
+      <a href="{{survey_link}}" style="display:inline-block;background:${btnColor};color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${s.ctaText}</a>
     </p>
     <p style="color:#6b7280;font-size:14px">${s.closing}</p>
   </div>
@@ -665,7 +797,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
   const [scheduleMode, setScheduleMode] = useState<'delay' | 'datetime'>('delay')
   const [showPreview, setShowPreview] = useState(true)
   const [editorMode, setEditorMode] = useState<'builder' | 'html'>('builder')
-  const [tmplStruct, setTmplStruct] = useState<TemplateStructure>({ headerColor: '#E8632A', headerText: '', greeting: '', blocks: [], ctaText: '', closing: '' })
+  const [tmplStruct, setTmplStruct] = useState<TemplateStructure>({ headerColor: '#E8632A', headerText: '', headerLogoUrl: '', headerLogoWidth: '150px', headerLayout: 'text', headerLogoUrl2: '', greeting: '', blocks: [], ctaText: '', ctaColor: '', closing: '' })
   const subjectRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
@@ -739,12 +871,47 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
     updateStruct({ blocks })
   }
 
-  const addBlock = () => {
-    updateStruct({ blocks: [...tmplStruct.blocks, { type: 'text', content: '' }] })
+  const addBlock = (type: EmailBlock['type'] = 'text') => {
+    const newBlock: EmailBlock = { type, content: '' }
+    if (type === 'numbered_step') {
+      const existingSteps = tmplStruct.blocks.filter(b => b.type === 'numbered_step').length
+      newBlock.stepNumber = existingSteps + 1
+      newBlock.stepHeading = ''
+    }
+    if (type === 'image') {
+      newBlock.imageUrl = ''
+      newBlock.imageAlt = ''
+      newBlock.imageWidth = '100%'
+      newBlock.imageAlign = 'center'
+    }
+    if (type === 'signature') {
+      newBlock.signatureName = ''
+      newBlock.signatureTitle = ''
+    }
+    if (type === 'button') {
+      newBlock.content = 'Click Here'
+      newBlock.buttonUrl = '{{survey_link}}'
+      newBlock.buttonColor = ''
+    }
+    if (type === 'spacer') newBlock.content = '24'
+    updateStruct({ blocks: [...tmplStruct.blocks, newBlock] })
   }
 
   const removeBlock = (i: number) => {
     updateStruct({ blocks: tmplStruct.blocks.filter((_, j) => j !== i) })
+  }
+
+  const moveBlock = (i: number, dir: -1 | 1) => {
+    const blocks = [...tmplStruct.blocks]
+    const target = i + dir
+    if (target < 0 || target >= blocks.length) return
+    ;[blocks[i], blocks[target]] = [blocks[target], blocks[i]]
+    updateStruct({ blocks })
+  }
+
+  const updateBlockField = (i: number, patch: Partial<EmailBlock>) => {
+    const blocks = tmplStruct.blocks.map((b, j) => j === i ? { ...b, ...patch } : b)
+    updateStruct({ blocks })
   }
 
   const insertTagIntoField = (setter: (v: string) => void, value: string, tag: string) => {
@@ -754,7 +921,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
   const saveEmail = async (emailId: string) => {
     setSaving(true)
     try {
-      await fetch('/api/campaigns/' + campaignId + '/emails', {
+      const res = await fetch('/api/campaigns/' + campaignId + '/emails', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -764,6 +931,7 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
           send_at: scheduleMode === 'datetime' ? (sendAt || null) : null,
         }),
       })
+      if (!res.ok) throw new Error('Failed to save email')
       setEmails(prev => prev.map(e => e.id === emailId ? {
         ...e, subject, body_html: bodyHtml, send_to: sendTo as CampaignEmail['send_to'],
         send_delay_hours: scheduleMode === 'datetime' ? 0 : delayHours,
@@ -843,17 +1011,44 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
               {editorMode === 'builder' ? (
                 <div className="grid grid-cols-2 gap-4">
                   {/* Form side */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 overflow-y-auto pr-1" style={{ maxHeight: 600 }}>
                     {/* Header */}
                     <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Header banner</label>
-                      <div className="flex gap-2">
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1.5">Header banner</label>
+                      <div className="flex gap-2 mb-2">
                         <input type="color" value={tmplStruct.headerColor} onChange={e => updateStruct({ headerColor: e.target.value })}
                           className="w-8 h-8 rounded border border-gray-200 cursor-pointer p-0" title="Banner color" />
+                        <select value={tmplStruct.headerLayout} onChange={e => updateStruct({ headerLayout: e.target.value as TemplateStructure['headerLayout'] })}
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400">
+                          <option value="text">Text only</option>
+                          <option value="logo">Logo only</option>
+                          <option value="logo-text">Logo + text</option>
+                          <option value="dual-logo">Two logos</option>
+                        </select>
+                      </div>
+                      {(tmplStruct.headerLayout === 'text' || tmplStruct.headerLayout === 'logo-text') && (
                         <input value={tmplStruct.headerText} onChange={e => updateStruct({ headerText: e.target.value })}
                           placeholder="Header text (e.g. {{campaign_name}})"
-                          className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
-                      </div>
+                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 mb-1.5" />
+                      )}
+                      {tmplStruct.headerLayout !== 'text' && (
+                        <div className="space-y-1.5">
+                          <input value={tmplStruct.headerLogoUrl} onChange={e => updateStruct({ headerLogoUrl: e.target.value })}
+                            placeholder="Logo image URL"
+                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                          {tmplStruct.headerLayout === 'dual-logo' && (
+                            <input value={tmplStruct.headerLogoUrl2} onChange={e => updateStruct({ headerLogoUrl2: e.target.value })}
+                              placeholder="Second logo URL"
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                          )}
+                          <div className="flex gap-2">
+                            <input value={tmplStruct.headerLogoWidth} onChange={e => updateStruct({ headerLogoWidth: e.target.value })}
+                              placeholder="Logo width (e.g. 150px)"
+                              className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                            <span className="text-[10px] text-gray-400 self-center">max width</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Greeting */}
@@ -869,43 +1064,173 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
                         ))}
                       </div>
                       <input value={tmplStruct.greeting} onChange={e => updateStruct({ greeting: e.target.value })}
-                        placeholder="Hi {{first_name}},"
+                        placeholder="Dear {{first_name}},"
                         className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
                     </div>
 
-                    {/* Body blocks */}
+                    {/* Content blocks */}
                     <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Body paragraphs</label>
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Content blocks</label>
                       {tmplStruct.blocks.map((block, i) => (
-                        <div key={i} className="flex gap-1 mb-1.5">
-                          <textarea value={block.content} onChange={e => updateBlock(i, e.target.value)}
-                            placeholder="Write a paragraph..."
-                            rows={2} className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 resize-y" />
-                          <button type="button" onClick={() => removeBlock(i)}
-                            className="text-gray-300 hover:text-red-400 text-sm px-1 self-start mt-1" title="Remove">x</button>
+                        <div key={i} className="mb-2 bg-white border border-gray-200 rounded-lg p-2.5 relative group">
+                          {/* Block header with type badge + controls */}
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                              style={{ background: block.type === 'text' ? '#f3f4f6' : block.type === 'image' ? '#dbeafe' : block.type === 'numbered_step' ? '#fef3c7' : block.type === 'heading' ? '#f3e8ff' : block.type === 'divider' ? '#f3f4f6' : block.type === 'signature' ? '#ecfdf5' : block.type === 'button' ? '#fce7f3' : '#f3f4f6',
+                                color: block.type === 'text' ? '#6b7280' : block.type === 'image' ? '#2563eb' : block.type === 'numbered_step' ? '#d97706' : block.type === 'heading' ? '#7c3aed' : block.type === 'divider' ? '#9ca3af' : block.type === 'signature' ? '#059669' : block.type === 'button' ? '#db2777' : '#6b7280' }}>
+                              {block.type === 'numbered_step' ? 'Step' : block.type === 'text' ? 'Paragraph' : block.type.charAt(0).toUpperCase() + block.type.slice(1)}
+                            </span>
+                            <div className="flex items-center gap-0.5">
+                              <button type="button" onClick={() => moveBlock(i, -1)} disabled={i === 0}
+                                className="text-gray-300 hover:text-gray-600 text-xs px-1 disabled:opacity-30" title="Move up">&uarr;</button>
+                              <button type="button" onClick={() => moveBlock(i, 1)} disabled={i === tmplStruct.blocks.length - 1}
+                                className="text-gray-300 hover:text-gray-600 text-xs px-1 disabled:opacity-30" title="Move down">&darr;</button>
+                              <button type="button" onClick={() => removeBlock(i)}
+                                className="text-gray-300 hover:text-red-400 text-xs px-1 ml-1" title="Remove">&times;</button>
+                            </div>
+                          </div>
+
+                          {/* Block-type-specific fields */}
+                          {block.type === 'text' && (
+                            <textarea value={block.content} onChange={e => updateBlock(i, e.target.value)}
+                              placeholder="Write a paragraph..."
+                              rows={2} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 resize-y" />
+                          )}
+                          {block.type === 'heading' && (
+                            <input value={block.content} onChange={e => updateBlock(i, e.target.value)}
+                              placeholder="Section heading..."
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 font-semibold" />
+                          )}
+                          {block.type === 'image' && (
+                            <div className="space-y-1.5">
+                              <input value={block.imageUrl || ''} onChange={e => updateBlockField(i, { imageUrl: e.target.value })}
+                                placeholder="Image URL (https://...)"
+                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                              <div className="flex gap-2">
+                                <input value={block.imageAlt || ''} onChange={e => updateBlockField(i, { imageAlt: e.target.value })}
+                                  placeholder="Alt text"
+                                  className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                                <select value={block.imageWidth || '100%'} onChange={e => updateBlockField(i, { imageWidth: e.target.value })}
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400">
+                                  <option value="100%">Full width</option>
+                                  <option value="75%">75%</option>
+                                  <option value="50%">50%</option>
+                                  <option value="200px">Small (200px)</option>
+                                  <option value="120px">Icon (120px)</option>
+                                </select>
+                                <select value={block.imageAlign || 'center'} onChange={e => updateBlockField(i, { imageAlign: e.target.value as EmailBlock['imageAlign'] })}
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400">
+                                  <option value="left">Left</option>
+                                  <option value="center">Center</option>
+                                  <option value="right">Right</option>
+                                </select>
+                              </div>
+                              <input value={block.imageLink || ''} onChange={e => updateBlockField(i, { imageLink: e.target.value })}
+                                placeholder="Link URL (optional — makes image clickable)"
+                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                            </div>
+                          )}
+                          {block.type === 'numbered_step' && (
+                            <div className="space-y-1.5">
+                              <div className="flex gap-2">
+                                <input type="number" min={1} value={block.stepNumber || 1} onChange={e => updateBlockField(i, { stepNumber: parseInt(e.target.value) || 1 })}
+                                  className="w-14 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 text-center font-bold" />
+                                <input value={block.stepHeading || ''} onChange={e => updateBlockField(i, { stepHeading: e.target.value })}
+                                  placeholder="Step heading (bold)"
+                                  className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 font-semibold" />
+                              </div>
+                              <textarea value={block.content} onChange={e => updateBlock(i, e.target.value)}
+                                placeholder="Step description (optional)..."
+                                rows={2} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 resize-y" />
+                            </div>
+                          )}
+                          {block.type === 'signature' && (
+                            <div className="space-y-1.5">
+                              <input value={block.signatureName || ''} onChange={e => updateBlockField(i, { signatureName: e.target.value })}
+                                placeholder="Name (e.g. John Smith)"
+                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 font-semibold" />
+                              <input value={block.signatureTitle || ''} onChange={e => updateBlockField(i, { signatureTitle: e.target.value })}
+                                placeholder="Title (e.g. Director of Research)"
+                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                              <input value={block.signatureImageUrl || ''} onChange={e => updateBlockField(i, { signatureImageUrl: e.target.value })}
+                                placeholder="Signature image URL (optional)"
+                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                            </div>
+                          )}
+                          {block.type === 'button' && (
+                            <div className="space-y-1.5">
+                              <div className="flex gap-2">
+                                <input value={block.content} onChange={e => updateBlock(i, e.target.value)}
+                                  placeholder="Button label"
+                                  className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400 font-semibold" />
+                                <input type="color" value={block.buttonColor || tmplStruct.ctaColor || tmplStruct.headerColor}
+                                  onChange={e => updateBlockField(i, { buttonColor: e.target.value })}
+                                  className="w-8 h-8 rounded border border-gray-200 cursor-pointer p-0" title="Button color" />
+                              </div>
+                              <input value={block.buttonUrl || ''} onChange={e => updateBlockField(i, { buttonUrl: e.target.value })}
+                                placeholder="Button URL (default: {{survey_link}})"
+                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                            </div>
+                          )}
+                          {block.type === 'spacer' && (
+                            <div className="flex items-center gap-2">
+                              <input type="range" min={8} max={64} value={parseInt(block.content) || 24}
+                                onChange={e => updateBlock(i, e.target.value)}
+                                className="flex-1" />
+                              <span className="text-[10px] text-gray-400 w-10">{block.content || 24}px</span>
+                            </div>
+                          )}
+                          {block.type === 'divider' && (
+                            <div className="text-[10px] text-gray-400">Horizontal line separator</div>
+                          )}
                         </div>
                       ))}
-                      <div className="flex gap-2">
-                        <button type="button" onClick={addBlock}
-                          className="text-[10px] text-orange-500 font-semibold hover:text-orange-600">+ Add paragraph</button>
+
+                      {/* Add block dropdown */}
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {([
+                          { type: 'text' as const, label: '+ Paragraph', color: '#6b7280' },
+                          { type: 'heading' as const, label: '+ Heading', color: '#7c3aed' },
+                          { type: 'image' as const, label: '+ Image', color: '#2563eb' },
+                          { type: 'numbered_step' as const, label: '+ Step', color: '#d97706' },
+                          { type: 'button' as const, label: '+ Button', color: '#db2777' },
+                          { type: 'divider' as const, label: '+ Divider', color: '#9ca3af' },
+                          { type: 'spacer' as const, label: '+ Spacer', color: '#9ca3af' },
+                          { type: 'signature' as const, label: '+ Signature', color: '#059669' },
+                        ]).map(item => (
+                          <button key={item.type} type="button" onClick={() => addBlock(item.type)}
+                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold transition-all hover:opacity-80"
+                            style={{ border: '1px dashed ' + item.color + '60', color: item.color }}>
+                            {item.label}
+                          </button>
+                        ))}
                       </div>
-                      <MergeTagBar tags={mergeTags} onInsert={tag => {
-                        if (tmplStruct.blocks.length > 0) {
-                          const last = tmplStruct.blocks.length - 1
-                          updateBlock(last, tmplStruct.blocks[last].content + tag)
-                        } else {
-                          updateStruct({ blocks: [{ type: 'text', content: tag }] })
-                        }
-                      }} target="body" />
+                      <div className="mt-2">
+                        <MergeTagBar tags={mergeTags} onInsert={tag => {
+                          if (tmplStruct.blocks.length > 0) {
+                            const lastTextIdx = tmplStruct.blocks.map((b, i) => b.type === 'text' || b.type === 'numbered_step' ? i : -1).filter(i => i >= 0).pop()
+                            if (lastTextIdx !== undefined && lastTextIdx >= 0) {
+                              updateBlock(lastTextIdx, tmplStruct.blocks[lastTextIdx].content + tag)
+                            }
+                          } else {
+                            updateStruct({ blocks: [{ type: 'text', content: tag }] })
+                          }
+                        }} target="body" />
+                      </div>
                     </div>
 
                     {/* CTA button */}
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Button text</label>
-                      <input value={tmplStruct.ctaText} onChange={e => updateStruct({ ctaText: e.target.value })}
-                        placeholder="Take the Survey"
-                        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
-                      <p className="text-[10px] text-gray-400 mt-0.5">Automatically links to the survey URL</p>
+                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Primary survey button</label>
+                      <div className="flex gap-2">
+                        <input type="color" value={tmplStruct.ctaColor || tmplStruct.headerColor}
+                          onChange={e => updateStruct({ ctaColor: e.target.value })}
+                          className="w-8 h-8 rounded border border-gray-200 cursor-pointer p-0" title="Button color" />
+                        <input value={tmplStruct.ctaText} onChange={e => updateStruct({ ctaText: e.target.value })}
+                          placeholder="Take the Survey"
+                          className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-orange-400" />
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1">Always links to the survey URL. Add extra buttons via content blocks above.</p>
                     </div>
 
                     {/* Closing */}
@@ -918,9 +1243,9 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
                   </div>
 
                   {/* Preview side */}
-                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-white sticky top-0">
                     <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-400 uppercase">Live Preview</div>
-                    <div className="p-3 text-sm overflow-y-auto" style={{ maxHeight: 500 }}
+                    <div className="p-3 text-sm overflow-y-auto" style={{ maxHeight: 600 }}
                       dangerouslySetInnerHTML={{ __html: previewHtml(buildHtmlFromStructure(tmplStruct)) }} />
                   </div>
                 </div>
@@ -1099,57 +1424,38 @@ function ReminderModal({ campaignId, emails, statusCounts, onSendResult, onClose
 }
 
 function getDefaultTemplate(sequence: number): { subject: string; body_html: string } {
-  if (sequence === 0) {
-    return {
-      subject: "We'd love your feedback, {{first_name}}",
-      body_html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
-  <div style="background:linear-gradient(135deg,#E8632A,#c44d1a);padding:24px;border-radius:12px 12px 0 0">
-    <h1 style="color:white;margin:0;font-size:20px">{{campaign_name}}</h1>
-  </div>
-  <div style="background:#f9f9f9;padding:24px;border-radius:0 0 12px 12px;border:1px solid #e5e7eb">
-    <p>Hi {{first_name}},</p>
-    <p>We value your input and would love to hear your thoughts. This brief survey takes just a few minutes.</p>
-    <p style="margin:24px 0">
-      <a href="{{survey_link}}" style="display:inline-block;background:#E8632A;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Take the Survey</a>
-    </p>
-    <p style="color:#6b7280;font-size:14px">Thank you for your time!</p>
-  </div>
-</div>`,
-    }
+  const struct0: TemplateStructure = {
+    headerColor: '#E8632A', headerText: '{{campaign_name}}', headerLogoUrl: '', headerLogoWidth: '150px',
+    headerLayout: 'text', headerLogoUrl2: '', greeting: 'Dear {{first_name}},',
+    ctaText: 'Take the Survey', ctaColor: '#E8632A', closing: 'Thank you for your time!',
+    blocks: [
+      { type: 'text', content: 'We need your advice. Please give 1 to 2 minutes and answer a few questions.' },
+      { type: 'numbered_step', content: 'Click the button below to answer this survey. Share YOUR OPINIONS to help us better understand your experience.', stepNumber: 1, stepHeading: 'Click the survey link below' },
+      { type: 'numbered_step', content: 'Click SUBMIT to send your replies. We will not know who responded; only what advice and opinions were shared.', stepNumber: 2, stepHeading: 'Submit your responses' },
+      { type: 'numbered_step', content: "That's it. All we are asking for today is your time — and your advice.", stepNumber: 3, stepHeading: "You're done!" },
+    ],
   }
-  if (sequence === 1) {
-    return {
-      subject: 'Quick reminder: your feedback matters, {{first_name}}',
-      body_html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
-  <div style="background:linear-gradient(135deg,#E8632A,#c44d1a);padding:24px;border-radius:12px 12px 0 0">
-    <h1 style="color:white;margin:0;font-size:20px">Reminder: {{campaign_name}}</h1>
-  </div>
-  <div style="background:#f9f9f9;padding:24px;border-radius:0 0 12px 12px;border:1px solid #e5e7eb">
-    <p>Hi {{first_name}},</p>
-    <p>We noticed you haven't had a chance to complete our survey yet. Your feedback is important to us and helps shape our future direction.</p>
-    <p style="margin:24px 0">
-      <a href="{{survey_link}}" style="display:inline-block;background:#E8632A;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Take the Survey</a>
-    </p>
-    <p style="color:#6b7280;font-size:14px">This should only take a few minutes. Thank you!</p>
-  </div>
-</div>`,
-    }
+  const struct1: TemplateStructure = {
+    headerColor: '#E8632A', headerText: 'Reminder: {{campaign_name}}', headerLogoUrl: '', headerLogoWidth: '150px',
+    headerLayout: 'text', headerLogoUrl2: '', greeting: 'Hi {{first_name}},',
+    ctaText: 'Take the Survey', ctaColor: '#E8632A', closing: 'This should only take a few minutes. Thank you!',
+    blocks: [
+      { type: 'text', content: "We noticed you haven't had a chance to complete our survey yet. Your feedback is important to us and helps shape our future direction." },
+    ],
   }
+  const struct2: TemplateStructure = {
+    headerColor: '#E8632A', headerText: 'Final Reminder: {{campaign_name}}', headerLogoUrl: '', headerLogoWidth: '150px',
+    headerLayout: 'text', headerLogoUrl2: '', greeting: 'Hi {{first_name}},',
+    ctaText: 'Take the Survey Now', ctaColor: '#E8632A', closing: 'Thank you for considering!',
+    blocks: [
+      { type: 'text', content: "This is a final reminder about our survey. We're closing it soon and would really appreciate hearing from you before then." },
+    ],
+  }
+  const structs = [struct0, struct1, struct2]
+  const s = structs[Math.min(sequence, structs.length - 1)]
   return {
-    subject: 'Last chance to share your thoughts, {{first_name}}',
-    body_html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
-  <div style="background:linear-gradient(135deg,#E8632A,#c44d1a);padding:24px;border-radius:12px 12px 0 0">
-    <h1 style="color:white;margin:0;font-size:20px">Final Reminder: {{campaign_name}}</h1>
-  </div>
-  <div style="background:#f9f9f9;padding:24px;border-radius:0 0 12px 12px;border:1px solid #e5e7eb">
-    <p>Hi {{first_name}},</p>
-    <p>This is a final reminder about our survey. We're closing it soon and would really appreciate hearing from you before then.</p>
-    <p style="margin:24px 0">
-      <a href="{{survey_link}}" style="display:inline-block;background:#E8632A;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Take the Survey Now</a>
-    </p>
-    <p style="color:#6b7280;font-size:14px">Thank you for considering!</p>
-  </div>
-</div>`,
+    subject: sequence === 0 ? "We'd love your feedback, {{first_name}}" : sequence === 1 ? 'Quick reminder: your feedback matters, {{first_name}}' : 'Last chance to share your thoughts, {{first_name}}',
+    body_html: buildHtmlFromStructure(s),
   }
 }
 
