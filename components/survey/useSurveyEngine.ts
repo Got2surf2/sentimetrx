@@ -3,6 +3,7 @@
 import { useCallback, useRef } from 'react'
 import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey } from '@/lib/types'
 import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
+import { pickBrandColor } from '@/components/survey/SurveyWidget'
 
 // ============================================================
 // useSurveyEngine
@@ -202,14 +203,15 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       av.textContent = study.bot_emoji
       const bub = document.createElement('div')
       bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed'
-      bub.style.cssText = 'background:' + C.bubbleBg + ';color:' + C.text + ';border:1px solid ' + C.bubbleBdr + ';'
+      bub.style.cssText = 'background:' + C.bubbleBg + ';color:' + C.text + ';border:1px solid ' + C.bubbleBdr + ';white-space:pre-wrap;'
       // Use innerHTML if text contains links, textContent otherwise (safer)
       if (text.includes('<a ')) {
         bub.innerHTML = text
         // Style links to match theme
         bub.querySelectorAll('a').forEach(a => {
-          a.style.color = config.theme.accentColor || config.theme.primaryColor
+          a.style.color = '#00b4d8'
           a.style.textDecoration = 'underline'
+          a.style.fontWeight = '600'
           a.setAttribute('target', '_blank')
           a.setAttribute('rel', 'noopener noreferrer')
         })
@@ -249,7 +251,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     av.textContent = study.bot_emoji
     const bub = document.createElement('div')
     bub.className = 'px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1.5'
-    bub.style.cssText = 'background:' + C.bubbleBg + ';border:1px solid ' + C.bubbleBdr + ';--dot-color:' + config.theme.primaryColor + ';'
+    bub.style.cssText = 'background:' + C.bubbleBg + ';border:1px solid ' + C.bubbleBdr + ';--dot-color:' + C.text + ';color:' + C.text + ';'
     ;[0, 200, 400].forEach(delay => {
       const dot = document.createElement('span')
       dot.className = 'typing-dot'
@@ -290,7 +292,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       av.textContent = study.bot_emoji
       const bub = document.createElement('div')
       bub.className = 'px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1.5'
-      bub.style.cssText = 'background:' + C.bubbleBg + ';border:1px solid ' + C.bubbleBdr + ';--dot-color:' + config.theme.primaryColor + ';'
+      bub.style.cssText = 'background:' + C.bubbleBg + ';border:1px solid ' + C.bubbleBdr + ';--dot-color:' + C.text + ';color:' + C.text + ';'
       ;[0, 200, 400].forEach(delay => {
         const dot = document.createElement('span')
         dot.className = 'typing-dot'
@@ -402,7 +404,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed'
         bub.style.cssText = 'background:' + C.bubbleBg + ';color:' + C.text + ';border:1px solid ' + C.bubbleBdr + ';'
         // Style the link within the AI-generated response
-        bub.innerHTML = data.deflection.replace(/<a /g, '<a style="color:' + config.theme.primaryColor + ';text-decoration:underline;font-weight:500" ')
+        bub.innerHTML = data.deflection.replace(/<a /g, '<a style="color:#00b4d8;text-decoration:underline;font-weight:600" ')
         wrap.append(av, bub)
         chatRef.current.appendChild(wrap)
         scrollBottom()
@@ -630,8 +632,16 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     card.innerHTML = `
       <div class="text-4xl mb-2">${study.bot_emoji}</div>
       <div class="text-white font-semibold text-lg mb-1">${tUI('allDone', 'All done!')}</div>
-      <div class="text-white/75 text-sm leading-snug">${cardSubtitle}</div>
+      <div class="text-white/75 text-sm leading-snug" style="white-space:pre-wrap">${cardSubtitle}</div>
     `
+    // Style links in the card to be visible and clickable
+    card.querySelectorAll('a').forEach(a => {
+      a.style.color = '#00b4d8'
+      a.style.textDecoration = 'underline'
+      a.style.fontWeight = '600'
+      a.setAttribute('target', '_blank')
+      a.setAttribute('rel', 'noopener noreferrer')
+    })
     chatRef.current.appendChild(card)
     scrollBottom()
     clearInput()
@@ -698,8 +708,8 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
     var submitBtn = document.createElement('button')
     submitBtn.textContent = tUI('submitFeedback', 'Submit my feedback') + ' \u2192'
-    submitBtn.className = 'mt-1 rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
-    submitBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;'
+    submitBtn.className = 'rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
+    submitBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;margin-top:4px;'
     submitBtn.onclick = async function() {
       wrap.querySelectorAll('select,input,button').forEach(function(el) { (el as any).disabled = true })
       for (var ei = 0; ei < fieldElements.length; ei++) {
@@ -781,8 +791,8 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
     var continueBtn = document.createElement('button')
     continueBtn.textContent = tUI('continue', 'Continue') + ' \u2192'
-    continueBtn.className = 'mt-1 rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
-    continueBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;'
+    continueBtn.className = 'rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
+    continueBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;margin-top:4px;'
     continueBtn.onclick = async function() {
       // Validate
       var hasError = false
@@ -920,8 +930,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     skipBtn.textContent = tUI('skip', 'Skip')
     skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
     skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
-    skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
-    skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
     const submit = async () => {
       const v = ta.value.trim()
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
@@ -1225,6 +1233,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-1.5 mt-1.5'
           const btns: HTMLButtonElement[] = []
+          const optScroll = document.createElement('div')
+          optScroll.className = 'flex flex-col gap-1.5'
+          optScroll.style.cssText = 'max-height:40vh;overflow-y:auto;'
           opts.forEach(opt => {
             const btn = document.createElement('button')
             btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2.5'
@@ -1253,19 +1264,21 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
                 icon.textContent = '✓'
               }
               doneBtn.textContent = selected.size > 0 ? tUI('done', 'Done') : q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
-              doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : C.disabledBg
-              doneBtn.style.color      = selected.size > 0 ? '#fff' : C.textMute
+              doneBtn.style.background = selected.size > 0 ? 'transparent' : C.disabledBg
+              doneBtn.style.color      = selected.size > 0 ? C.text : C.textMute
+              doneBtn.style.borderColor = selected.size > 0 ? C.text : 'transparent'
               doneBtn.style.display    = selected.size > 0 ? 'block' : q.required ? 'block' : 'none'
             }
             btns.push(btn)
-            wrap.appendChild(btn)
+            optScroll.appendChild(btn)
           })
+          wrap.appendChild(optScroll)
           const btnRow = document.createElement('div')
-          btnRow.className = 'flex items-center gap-3 mt-1'
+          btnRow.className = 'flex items-center gap-3 pt-2'
           const doneBtn = document.createElement('button')
           doneBtn.textContent = q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
           doneBtn.className = 'px-4 py-2 rounded-xl text-sm font-semibold transition-all'
-          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
+          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:2px solid transparent;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
           doneBtn.onclick = () => {
             if (selected.size === 0 && q.required) return
             wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
@@ -1335,8 +1348,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;margin-left:4px;'
-            skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
-            skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
             skipBtn.onclick = () => { wrap.querySelectorAll('select,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.append(sel, goBtn, skipBtn)
           } else {
@@ -1522,8 +1533,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all'
             skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;margin-left:4px;'
-            skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
-            skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
             skipBtn.onclick = () => { wrap.querySelectorAll('input,button').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
             wrap.appendChild(skipBtn)
           }
@@ -1667,6 +1676,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           const selected = new Set<string>()
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-1.5 mt-1.5'
+          const optScroll = document.createElement('div')
+          optScroll.className = 'flex flex-col gap-1.5'
+          optScroll.style.cssText = 'max-height:40vh;overflow-y:auto;'
           opts.forEach(opt => {
             const btn = document.createElement('button')
             btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2.5'
@@ -1687,18 +1699,20 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
                 icon.style.background = '#22c55e'; icon.style.color = '#fff'; icon.textContent = '✓'
               }
               doneBtn.textContent = selected.size > 0 ? tUI('done', 'Done') : q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
-              doneBtn.style.background = selected.size > 0 ? config.theme.primaryColor : C.disabledBg
-              doneBtn.style.color      = selected.size > 0 ? '#fff' : C.textMute
+              doneBtn.style.background = selected.size > 0 ? 'transparent' : C.disabledBg
+              doneBtn.style.color      = selected.size > 0 ? C.text : C.textMute
+              doneBtn.style.borderColor = selected.size > 0 ? C.text : 'transparent'
               doneBtn.style.display    = selected.size > 0 ? 'block' : q.required ? 'block' : 'none'
             }
-            wrap.appendChild(btn)
+            optScroll.appendChild(btn)
           })
+          wrap.appendChild(optScroll)
           const btnRow = document.createElement('div')
-          btnRow.className = 'flex items-center gap-3 mt-1'
+          btnRow.className = 'flex items-center gap-3 pt-2'
           const doneBtn = document.createElement('button')
           doneBtn.textContent = q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done')
           doneBtn.className = 'px-4 py-2 rounded-xl text-sm font-semibold transition-all'
-          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
+          doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:2px solid transparent;cursor:pointer;font-family:inherit;display:' + (q.required ? 'block' : 'none') + ';'
           doneBtn.onclick = () => {
             if (selected.size === 0 && q.required) return
             wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
@@ -1971,8 +1985,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     skipBtn.textContent = tUI('skip', 'Skip')
     skipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
     skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
-    skipBtn.onmouseenter = () => { skipBtn.style.borderColor = C.text; skipBtn.style.color = C.text }
-    skipBtn.onmouseleave = () => { skipBtn.style.borderColor = C.textMute; skipBtn.style.color = C.textMid }
     skipBtn.onclick = () => {
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', 'Skip')
@@ -2426,8 +2438,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           oeSkipBtn.textContent = tUI('skip', 'Skip')
           oeSkipBtn.className = 'rounded-full text-sm font-medium px-4 py-2 transition-all self-start'
           oeSkipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
-          oeSkipBtn.onmouseenter = () => { oeSkipBtn.style.borderColor = C.text; oeSkipBtn.style.color = C.text }
-          oeSkipBtn.onmouseleave = () => { oeSkipBtn.style.borderColor = C.textMute; oeSkipBtn.style.color = C.textMid }
           oeSkipBtn.onclick = async () => {
             oeWrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
             clearInput(); await next()

@@ -23,6 +23,31 @@ interface Props { study: Study; orgName?: string }
 // chrome like the avatar) are intentionally kept in px — they are layout
 // measurements, not text, and should not inflate with font size.
 
+// Pick Sarina blue or Hermes orange based on background color — whichever contrasts better
+export function pickBrandColor(bgHex: string): string {
+  const SARINA_BLUE = '#00b4d8'
+  const HERMES_ORANGE = '#E8632A'
+  const hex = (bgHex || '#1a1a2e').replace('#', '')
+  const r = parseInt(hex.slice(0, 2), 16) || 0
+  const g = parseInt(hex.slice(2, 4), 16) || 0
+  const b = parseInt(hex.slice(4, 6), 16) || 0
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  let hue = 0
+  if (max !== min) {
+    const d = max - min
+    if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) * 60
+    else if (max === g) hue = ((b - r) / d + 2) * 60
+    else hue = ((r - g) / d + 4) * 60
+  }
+  const isBlueish = hue >= 160 && hue <= 260
+  const isOrangeish = (hue >= 0 && hue <= 50) || hue >= 340
+  if (isBlueish) return HERMES_ORANGE
+  if (isOrangeish) return SARINA_BLUE
+  if (lum < 0.45) return SARINA_BLUE
+  return HERMES_ORANGE
+}
+
 export default function SurveyWidget({ study, orgName = '' }: Props) {
   const chatRef    = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLDivElement>(null)
@@ -121,7 +146,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
   if (status === 'checking') {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.backgroundColor, fontSize: baseFontSize }}>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8, ['--dot-color' as any]: theme.primaryColor || '#00b4d8' }}>
           {[0, 150, 300].map(d => (
             <span key={d} className="typing-dot" style={{ animationDelay: `${d}ms` }} />
           ))}
@@ -226,28 +251,10 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
           </div>
         </div>
         {liveConfig.showBranding !== false && (() => {
-          // Compute a complementary accent that contrasts against the header
-          const pc = theme.primaryColor || '#1a1a2e'
-          const r = parseInt(pc.slice(1, 3), 16) || 0
-          const g = parseInt(pc.slice(3, 5), 16) || 0
-          const b = parseInt(pc.slice(5, 7), 16) || 0
-          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-          // Compute hue of primary color
-          const max = Math.max(r, g, b), min = Math.min(r, g, b)
-          let h = 0
-          if (max !== min) {
-            const d = max - min
-            if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60
-            else if (max === g) h = ((b - r) / d + 2) * 60
-            else h = ((r - g) / d + 4) * 60
-          }
-          // Shift hue by 180° for complement, use muted gold-champagne tone
-          const compHue = (h + 150) % 360
-          // Dark bg → light complementary; light bg → deep complementary
-          const brandColor = lum < 0.45
-            ? `hsl(${compHue}, 35%, 75%)`
-            : `hsl(${compHue}, 40%, 30%)`
-          const byColor = lum < 0.45 ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)'
+          const brandColor = pickBrandColor(theme.primaryColor || '#1a1a2e')
+          const hdrHex = (theme.primaryColor || '#1a1a2e').replace('#', '')
+          const hdrLum = (0.299 * (parseInt(hdrHex.slice(0, 2), 16) || 0) + 0.587 * (parseInt(hdrHex.slice(2, 4), 16) || 0) + 0.114 * (parseInt(hdrHex.slice(4, 6), 16) || 0)) / 255
+          const byColor = hdrLum < 0.45 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)'
           return (
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1, gap: 2 }}>
               <span style={{ color: byColor, fontSize: '0.5rem', fontWeight: 500, letterSpacing: '0.06em' }}>by</span>

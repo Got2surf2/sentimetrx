@@ -15,7 +15,7 @@ export default function StepClosing({ draft, updateConfig, onNext, onBack }: Pro
           <Input
             value={c.closingMessage || `Thank you so much -- ${draft.bot_name || 'the bot'} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`}
             onChange={v => updateConfig({ closingMessage: v })}
-            multiline rows={3}
+            multiline rows={3} enableLinks
           />
         </Field>
       </Section>
@@ -25,7 +25,7 @@ export default function StepClosing({ draft, updateConfig, onNext, onBack }: Pro
           <Input
             value={c.closingCard || 'Your responses have been saved. Thank you for your time.'}
             onChange={v => updateConfig({ closingCard: v })}
-            multiline rows={2}
+            multiline rows={2} enableLinks
           />
         </Field>
       </Section>
