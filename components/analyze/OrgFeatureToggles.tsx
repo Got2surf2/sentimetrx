@@ -6,7 +6,7 @@ import { INDUSTRY_LABELS } from '@/lib/industryDefaults'
 
 interface Props {
   orgId:           string
-  initialFeatures: { analyze?: boolean; primaryIndustries?: Industry[] }
+  initialFeatures: { analyze?: boolean; campaigns?: boolean; primaryIndustries?: Industry[] }
 }
 
 export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
@@ -44,7 +44,7 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
     }
   }
 
-  async function toggle(key: 'analyze') {
+  async function toggle(key: 'analyze' | 'campaigns') {
     const next = { ...features, [key]: !features[key], primaryIndustries }
     setFeatures(next)
     await saveFeatures(next)
@@ -82,6 +82,25 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
           <ToggleSwitch
             enabled={!!features.analyze}
             onToggle={() => toggle('analyze')}
+            disabled={saving}
+          />
+        </div>
+      </div>
+
+      {/* Campaign Manager Toggle */}
+      <div className="flex items-center justify-between py-2 border-b border-gray-200 pb-4">
+        <div>
+          <p className="text-sm font-medium text-gray-800">Campaign Manager</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Enables email campaign management for distributing surveys to respondent lists
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {saving && <span className="text-xs text-gray-400">Saving...</span>}
+          {status === 'saved' && <span className="text-xs text-green-600">Saved</span>}
+          <ToggleSwitch
+            enabled={!!features.campaigns}
+            onToggle={() => toggle('campaigns')}
             disabled={saving}
           />
         </div>

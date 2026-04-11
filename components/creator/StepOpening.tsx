@@ -596,6 +596,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
               onChange={v => updateConfig({ greeting: v })}
               placeholder={`Hi there — I'm ${draft.bot_name || 'your bot'} ${draft.bot_emoji || '👋'} I'm here to collect your feedback. It'll only take a few minutes!`}
               multiline rows={3}
+              enableLinks
             />
           </div>
           <div className="flex items-center gap-2 flex-wrap">

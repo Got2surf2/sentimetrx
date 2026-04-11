@@ -9,6 +9,7 @@ import StepClarifiers from '@/components/creator/StepClarifiers'
 import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepDemographics from '@/components/creator/StepDemographics'
+import StepContactInfo from '@/components/creator/StepContactInfo'
 import StepReview from '@/components/creator/StepReview'
 import MigrationBanner from '@/components/creator/MigrationBanner'
 import type { StudyDraft } from '@/lib/studyDraft'
@@ -84,7 +85,7 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
           <CreatorNav
             draft={draft}
             currentStep={step}
-            highestVisited={7}
+            highestVisited={8}
             onStepClick={goTo}
             onPublish={() => handleSave('active')}
             onImport={(imported) => setDraft(prev => ({ ...prev, name: imported.name || prev.name, bot_name: imported.bot_name || prev.bot_name, bot_emoji: imported.bot_emoji || prev.bot_emoji, slug: imported.slug || prev.slug, config: imported.config }))}
@@ -116,10 +117,11 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
         {step === 4 && <StepQuestions {...stepProps} onNext={() => goTo(5)} onBack={() => goTo(3)} />}
         {step === 5 && <StepPsychographics {...stepProps} onNext={() => goTo(6)} onBack={() => goTo(4)} />}
         {step === 6 && <StepDemographics {...stepProps} onNext={() => goTo(7)} onBack={() => goTo(5)} />}
-        {step === 7 && (
+        {step === 7 && <StepContactInfo {...stepProps} onNext={() => goTo(8)} onBack={() => goTo(6)} />}
+        {step === 8 && (
           <StepReview
             {...stepProps}
-            onBack={() => goTo(6)}
+            onBack={() => goTo(7)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}

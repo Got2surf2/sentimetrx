@@ -14,6 +14,7 @@ export function getStepCompletion(draft: StudyDraft): boolean[] {
     true,                                                // 4 Custom Questions (optional — always complete once visited)
     true,                                                // 5 Psychographics (optional — always complete once visited)
     true,                                                // 6 Demographics (optional — always complete once visited)
+    true,                                                // 7 Contact Info (optional — always complete once visited)
   ]
 }
 
@@ -29,7 +30,32 @@ export const CREATOR_STEP_LABELS = [
   'Questions',
   'Psycho',
   'Demo',
+  'Contact',
   'Review',
+] as const
+
+const CREATOR_STEP_ICONS = [
+  '\u2699',     // Basics — gear
+  '\uD83D\uDC4B', // Opening — wave
+  '\uD83D\uDCAC', // Conversation — speech bubble
+  '\uD83E\uDD14', // Clarifiers — thinking
+  '\u2753',     // Questions — question mark
+  '\uD83E\uDDE0', // Psycho — brain
+  '\uD83D\uDC64', // Demo — person
+  '\uD83D\uDCE7', // Contact — envelope
+  '\u2714',     // Review — checkmark
+] as const
+
+const CREATOR_STEP_TOOLTIPS = [
+  'Study Basics — name, bot, theme',
+  'Opening — greeting & NPS',
+  'Conversation — open-ended questions',
+  'Clarifiers — follow-up settings',
+  'Custom Questions — additional questions',
+  'Psychographics — attitudes & values',
+  'Demographics — age, gender, etc.',
+  'Contact Info — email, phone, address',
+  'Review & Publish',
 ] as const
 
 interface CreatorNavProps {
@@ -90,7 +116,7 @@ export default function CreatorNav({
   }
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
 
       {/* Step pills */}
       {CREATOR_STEP_LABELS.map((label, i) => {
@@ -128,19 +154,21 @@ export default function CreatorNav({
             type="button"
             disabled={!isClickable}
             onClick={() => { if (isClickable) onStepClick(i) }}
+            title={CREATOR_STEP_TOOLTIPS[i]}
             className={
-              'flex items-center gap-1 px-2 py-1 rounded-full ' +
+              'flex items-center gap-1 rounded-full ' +
               'text-xs font-semibold whitespace-nowrap transition-all ' +
+              (isActive ? 'px-3 py-1 ' : 'px-1.5 py-1 ') +
               pillCls
             }
           >
-            <span className={
-              'w-3.5 h-3.5 rounded-full flex items-center justify-center ' +
-              'text-xs font-bold flex-shrink-0 leading-none ' + dotCls
-            }>
-              {isActive ? String(i + 1) : !hasBeenVisited ? String(i + 1) : isDone ? '✓' : '✗'}
-            </span>
-            <span className="hidden md:inline">{label}</span>
+            <span className="text-sm flex-shrink-0 leading-none">{CREATOR_STEP_ICONS[i]}</span>
+            {isActive && <span>{label}</span>}
+            {!isActive && hasBeenVisited && (
+              <span className={'w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold flex-shrink-0 leading-none ' + dotCls}>
+                {isDone ? '✓' : '✗'}
+              </span>
+            )}
           </button>
         )
       })}
@@ -211,7 +239,7 @@ export default function CreatorNav({
           title="Download study design summary as PowerPoint"
           className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 hover:text-gray-700 transition-all cursor-pointer"
         >
-          <span>Generate Design Deck</span>
+          <span>PPTX Gen</span>
         </button>
       )}
 

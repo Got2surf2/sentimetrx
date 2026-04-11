@@ -275,6 +275,11 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
 
   if (chartType === 'bar') {
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
+    var valueField = config.value
+    // Average mode: use aggregated group_stats
+    if (opts?.barMode === 'average' && valueField) {
+      return <BarAggInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} valueField={valueField} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
+    }
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />
     var rawEntries = Object.entries(summary.counts)
     // Smart axes: order by remapping, then detected scale, then alphabetical (Item 20)
@@ -670,6 +675,71 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
   var isStackedCount = barMode !== 'percent'
   return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(cats) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+}
+
+// ─── Bar Aggregated Inner (average/sum of numeric value by category) ─────
+
+function BarAggInner({ analytics, schema, datasetId, catField, valueField, smartAxes, colors, orient }: {
+  analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; valueField: string; smartAxes?: boolean; colors?: string[]; orient?: string
+}) {
+  var spec = { op: 'group_stats', groupField: catField, valueField: valueField }
+  var agg = useAggregation(datasetId, spec)
+  if (!agg.loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Computing averages...</div>
+  if (!agg.data || !agg.data.groups) return <EmptyChart msg="No data for aggregation." />
+
+  // API returns { groups: { "cat_value": { n, mean, ... } } } as an object
+  var groupsObj = agg.data.groups as Record<string, { n: number; mean: number; median: number; min: number; max: number }>
+  var groupKeys = Object.keys(groupsObj)
+  if (groupKeys.length === 0) return <EmptyChart msg="No groups found." />
+
+  var groups = groupKeys.map(function(k) { return { group: k, ...groupsObj[k] } })
+
+  // Sort by smart order or by mean descending
+  var catFieldObj = schema.find(function(f) { return f.field === catField })
+  var catRemap = catFieldObj?.remapping
+  var sortedGroups = smartAxes
+    ? smartOrder(groups.map(function(g) { return g.group }), catRemap).map(function(k) { return groups.find(function(g) { return g.group === k }) }).filter(Boolean) as typeof groups
+    : groups.slice().sort(function(a, b) { return b.mean - a.mean })
+
+  var cats = sortedGroups.slice(0, 30).map(function(g) { return g.group })
+  var vals = sortedGroups.slice(0, 30).map(function(g) { return Math.round(g.mean * 100) / 100 })
+  var catLabel = flByName(catField, schema)
+  var valLabel = 'Avg ' + flByName(valueField, schema)
+  var isH = orient === 'h'
+  var primaryColor = (colors || CHART_COLORS)[0] || '#e8622a'
+
+  // Ordinal gradient like regular bar
+  var isOrdField = (catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(cats)
+  var barColors: string | string[] = primaryColor
+  if (isOrdField && cats.length >= 3) {
+    var ordGrad = ['#059669','#34D399','#94A3B8','#F97316','#DC2626']
+    barColors = cats.map(function(_, i) {
+      var frac = cats.length <= 1 ? 0 : i / (cats.length - 1)
+      if (frac < 0.15) return ordGrad[0]
+      if (frac < 0.38) return ordGrad[1]
+      if (frac < 0.62) return ordGrad[2]
+      if (frac < 0.82) return ordGrad[3]
+      return ordGrad[4]
+    })
+  }
+
+  var hoverTpl = isH ? '%{x:.2f}<extra>%{y}</extra>' : '%{y:.2f}<extra>%{x}</extra>'
+  var trace: any = {
+    type: 'bar',
+    marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } },
+    text: vals.map(function(v) { return String(v) }),
+    textposition: 'outside',
+    textfont: { size: 11 },
+    hovertemplate: hoverTpl,
+  }
+  if (isH) { trace.y = cats; trace.x = vals; trace.orientation = 'h' }
+  else { trace.x = cats; trace.y = vals }
+
+  return <PlotlyChart traces={[trace]} layout={{
+    xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(cats) : {}) },
+    yaxis: { title: isH ? catLabel : valLabel },
+    barcornerradius: 4,
+  }} />
 }
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
@@ -1463,7 +1533,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   // Display options — restore from sessionStorage
   var _displayKey = 'chartDisplay_' + datasetId
   var _savedDisplay = readSession<any>(_displayKey)
-  var [barMode, setBarMode] = useState<'count' | 'percent'>(_savedDisplay?.barMode || 'count')
+  var [barMode, setBarMode] = useState<'count' | 'percent' | 'average'>(_savedDisplay?.barMode || 'count')
   var [barStack, setBarStack] = useState(_savedDisplay?.barStack || false)
   var [barOrient, setBarOrient] = useState<'v' | 'h'>(_savedDisplay?.barOrient || 'v')
   var [smartAxes, setSmartAxes] = useState(_savedDisplay?.smartAxes !== undefined ? _savedDisplay.smartAxes : true)
@@ -1909,6 +1979,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
               <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
                 <button onClick={function() { setBarMode('count') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'count' ? T.bgCard : 'transparent', color: barMode === 'count' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'count' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Count</button>
                 <button onClick={function() { setBarMode('percent') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'percent' ? T.bgCard : 'transparent', color: barMode === 'percent' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'percent' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Percentage</button>
+                {currentConfig.value && <button onClick={function() { setBarMode('average') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'average' ? T.bgCard : 'transparent', color: barMode === 'average' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'average' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Average</button>}
               </div>
               <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
                 <button onClick={function() { setBarOrient('v') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barOrient === 'v' ? T.bgCard : 'transparent', color: barOrient === 'v' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barOrient === 'v' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Vertical</button>

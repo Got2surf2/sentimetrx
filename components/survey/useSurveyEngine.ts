@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem } from '@/lib/types'
+import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey } from '@/lib/types'
+import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS } from '@/lib/types'
 
 // ============================================================
 // useSurveyEngine
@@ -12,6 +13,7 @@ import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem } fr
 
 interface Props {
   study: Study
+  orgName?: string
   chatRef:    React.RefObject<HTMLDivElement>
   inputRef:   React.RefObject<HTMLDivElement>
   scrollBottom: () => void
@@ -33,13 +35,15 @@ interface State {
   psychoIdx:       number
   psychoAnswers:   Record<string, string>
   demographics:    Record<string, string>
+  contactInfo:     Record<string, string>
   startTime:       number
   openingAnswers:  Record<string, string>
   lastUserMsg:     string
   conversationLog: Array<{ who: 'bot' | 'user'; text: string; ai?: boolean }>
+  skipNextAck:     boolean
 }
 
-export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false }: Props) {
+export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
   // Adaptive colors — white text on dark bg, dark text on light bg
@@ -68,10 +72,12 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     currentQuestion: '',
     psychoQuestions: [], psychoIdx: 0, psychoAnswers: {},
     demographics: {},
+    contactInfo: {},
     startTime: Date.now(),
     openingAnswers: {},
     lastUserMsg: '',
     conversationLog: [],
+    skipNextAck: false,
   })
 
   // ── Session ID — persists for this browser tab, new on new visit ──────────
@@ -104,11 +110,17 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
   }
 
   // ── Hidden fields — read URL params and inject into customAnswers ─────────
+  // Capture campaign recipient GUID from URL (?rid=xxx)
+  const recipientGuid = useRef<string | null>(null)
   const hiddenFieldsPopulated = useRef(false)
   if (!hiddenFieldsPopulated.current) {
     hiddenFieldsPopulated.current = true
     try {
       const params = new URLSearchParams(window.location.search)
+      // Capture campaign recipient tracking ID
+      const rid = params.get('rid')
+      if (rid) recipientGuid.current = rid
+      // Populate hidden field values from URL params
       const hiddenQuestions = (config.questions ?? []).filter(q => q.type === 'hidden')
       for (const q of hiddenQuestions) {
         const key = q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
@@ -149,6 +161,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         if (Object.keys(s.customAnswers).length) partialPayload.customAnswers = s.customAnswers
         if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
         if (Object.values(s.demographics).some(function(v) { return !!v })) partialPayload.demographics = s.demographics
+        if (Object.values(s.contactInfo).some(function(v) { return !!v })) partialPayload.contactInfo = s.contactInfo
 
         var duration_sec = Math.round((Date.now() - s.startTime) / 1000)
         fetch('/api/respond', {
@@ -189,7 +202,19 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       const bub = document.createElement('div')
       bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed'
       bub.style.cssText = 'background:' + C.bubbleBg + ';color:' + C.text + ';border:1px solid ' + C.bubbleBdr + ';'
-      bub.textContent = text
+      // Use innerHTML if text contains links, textContent otherwise (safer)
+      if (text.includes('<a ')) {
+        bub.innerHTML = text
+        // Style links to match theme
+        bub.querySelectorAll('a').forEach(a => {
+          a.style.color = config.theme.accentColor || config.theme.primaryColor
+          a.style.textDecoration = 'underline'
+          a.setAttribute('target', '_blank')
+          a.setAttribute('rel', 'noopener noreferrer')
+        })
+      } else {
+        bub.textContent = text
+      }
       wrap.append(av, bub)
     } else {
       const bub = document.createElement('div')
@@ -204,7 +229,9 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     scrollBottom()
   }, [chatRef, config, study.bot_emoji, scrollBottom])
 
+  const typingSpeed = config.typingSpeed ?? 1.0
   const showTyping = useCallback((dur = 1000): Promise<void> => {
+    dur = Math.round(dur * typingSpeed)
     return new Promise(res => {
       if (!chatRef.current) { res(); return }
       // Reduced motion: skip the animation, use a minimal pause for readability
@@ -251,30 +278,30 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     // Decline / refusal / negative
     if (isDecline(t) || /^(no|nope|nah|not really|nothing|i don'?t know|idk|unsure|not sure|can'?t think)/.test(t)) {
       const opts = [
-        'No worries at all -- thanks for being honest.',
-        'Totally fine -- appreciate you letting me know.',
-        'That\'s okay -- thanks for taking the time.',
-        'Understood -- let\'s keep going.',
+        tUI('ackDecline1', 'No worries at all -- thanks for being honest.'),
+        tUI('ackDecline2', 'Totally fine -- appreciate you letting me know.'),
+        tUI('ackDecline3', 'That\'s okay -- thanks for taking the time.'),
+        tUI('ackDecline4', 'Understood -- let\'s keep going.'),
       ]
       return opts[Math.floor(Math.random() * opts.length)]
     }
     // Very short response (1-3 words that aren't a decline)
     if (t.split(/\s+/).length <= 3) {
-      return 'Got it -- thanks for sharing that.'
+      return tUI('ackShort', 'Got it -- thanks for sharing that.')
     }
     // Positive / enthusiastic
     if (/\b(love|great|awesome|amazing|fantastic|excellent|wonderful|best|happy|impressed)\b/.test(t)) {
-      return 'That\'s wonderful to hear -- thank you for sharing!'
+      return tUI('ackPositive', 'That\'s wonderful to hear -- thank you for sharing!')
     }
     // Negative / frustrated
     if (/\b(terrible|awful|worst|horrible|hate|frustrated|angry|disappointed|annoying|unacceptable)\b/.test(t)) {
-      return 'We really appreciate you sharing that -- it helps us understand what needs to change.'
+      return tUI('ackNegative', 'We really appreciate you sharing that -- it helps us understand what needs to change.')
     }
     // Default for substantive feedback
     const opts = [
-      'Got it -- that\'s genuinely helpful.',
-      'Thank you -- that\'s really useful feedback.',
-      'Appreciate you sharing that -- it makes a difference.',
+      tUI('ackDefault1', 'Got it -- that\'s genuinely helpful.'),
+      tUI('ackDefault2', 'Thank you -- that\'s really useful feedback.'),
+      tUI('ackDefault3', 'Appreciate you sharing that -- it makes a difference.'),
     ]
     return opts[Math.floor(Math.random() * opts.length)]
   }
@@ -292,18 +319,20 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
   // AI-powered deflection: detects questions/off-topic and generates contextual redirect
   const checkDeflect = async (text: string, questionAsked: string) => {
     const qr = config.questionRedirect
-    if (!qr?.enabled || !qr.linkUrl) return false
+    if (!qr?.enabled) return false
     try {
       const res = await fetch('/api/deflect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          studyName:     study.bot_name,
-          orgName:       study.name,
+          studyName:     orgName || study.name,
+          orgName:       orgName || study.name,
           questionAsked,
           answer:        text,
-          linkText:      qr.linkText || 'our website',
-          linkUrl:       qr.linkUrl,
+          linkText:      qr.linkText || '',
+          linkUrl:       qr.linkUrl || '',
+          customMessage: qr.message || '',
+          language:      activeLang.current !== 'en' ? activeLang.current : undefined,
         }),
       })
       if (!res.ok) return false
@@ -350,7 +379,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         if (kw === 'default') continue
         if (t.includes(kw)) return q as string
       }
-      return pool.default || null
+      // Use translated default clarifier if available
+      return tUI('clarifierDefault', pool.default || 'Could you tell me a bit more about that?')
     }
 
     // Only use AI if enabled in study config
@@ -365,7 +395,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          studyName:       study.bot_name,
+          studyName:       orgName || study.name,
           studyPurpose:    config.greeting,
           questionAsked:   s.currentQuestion,
           questionKey:     qKey,
@@ -374,6 +404,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           experienceScore: s.rating || 3,
           npsScore:        s.npsScore || 3,
           priorAnswers,
+          language:        activeLang.current !== 'en' ? activeLang.current : undefined,
         }),
       })
       if (!res.ok) throw new Error('API error')
@@ -399,21 +430,25 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
   // -- Submit ------------------------------------------------
 
   const submitResponse = async () => {
+    // Cancel any pending partial save to prevent it from overwriting the complete status
+    if (savePartialTimer.current) { clearTimeout(savePartialTimer.current); savePartialTimer.current = null }
     const s = state.current
-    const payload: SurveyPayload = {
+    const payload: Partial<SurveyPayload> = {
       agent:            study.bot_name,
       timestamp:        new Date().toISOString(),
-      experienceRating: {
-        score:     s.rating!,
-        label:     s.ratingLabel!,
-        sentiment: s.sentiment!,
-      },
-      npsRecommend:  { score: s.npsScore!, label: s.npsLabel! },
-      openEnded:     s.answers,
-      customAnswers: s.customAnswers,
-      psychographics:    s.psychoAnswers,
-      demographics:      s.demographics,
-      conversationLog:   s.conversationLog,
+      openEnded:        s.answers,
+      customAnswers:    s.customAnswers,
+      psychographics:   s.psychoAnswers,
+      demographics:     s.demographics,
+      contactInfo:      s.contactInfo,
+      conversationLog:  s.conversationLog,
+    }
+    // Only include scores if they were actually collected
+    if (s.rating != null) {
+      payload.experienceRating = { score: s.rating, label: s.ratingLabel!, sentiment: s.sentiment! }
+    }
+    if (s.npsScore != null) {
+      payload.npsRecommend = { score: s.npsScore, label: s.npsLabel! }
     }
 
     // Add device fingerprint to payload for server-side duplicate check
@@ -431,32 +466,87 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           duration_sec,
           session_id:   sessionId.current,
           status:       'complete',
+          recipient_guid: recipientGuid.current || undefined,
         }),
       })
-      // Mark device as having completed this survey
       if (res.ok) {
+        // Mark device as having completed this survey
         try { localStorage.setItem('sentimetrx_completed_' + study.guid, new Date().toISOString()) } catch {}
+        // Clear session so next survey attempt from same tab gets a fresh session_id
+        try { sessionStorage.removeItem('sentimetrx_session_' + study.guid) } catch {}
+      } else {
+        const errBody = await res.json().catch(() => ({}))
+        console.error('Response save failed:', res.status, errBody)
+        // Retry once after a short delay
+        try {
+          const retry = await fetch('/api/respond', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              study_guid:   study.guid,
+              payload:      fullPayload,
+              duration_sec,
+              session_id:   sessionId.current,
+              status:       'complete',
+              recipient_guid: recipientGuid.current || undefined,
+            }),
+          })
+          if (retry.ok) {
+            try { localStorage.setItem('sentimetrx_completed_' + study.guid, new Date().toISOString()) } catch {}
+            try { sessionStorage.removeItem('sentimetrx_session_' + study.guid) } catch {}
+          } else {
+            console.error('Response save retry failed:', retry.status)
+          }
+        } catch (retryErr) {
+          console.error('Response save retry error:', retryErr)
+        }
       }
     } catch (err) {
       console.error('Failed to submit response:', err)
     }
   }
 
+  // -- Section ordering ----------------------------------------
+  const sectionOrder: SectionKey[] = config.sectionOrder || ['customQuestions', 'psychographics', 'demographics', 'contact']
+  const sectionIdx = useRef(0)
+  const sectionRunners = useRef<Record<string, () => Promise<void>>>({} as any)
+
+  const advanceSection = useCallback(async () => {
+    sectionIdx.current++
+    while (sectionIdx.current < sectionOrder.length) {
+      const key = sectionOrder[sectionIdx.current]
+      const runner = sectionRunners.current[key]
+      if (runner) { await runner(); return }
+      sectionIdx.current++
+    }
+    // All sections done
+    await sectionRunners.current._done?.()
+  }, [sectionOrder])
+
   // -- Flow Steps --------------------------------------------
 
   const stepDone = useCallback(async () => {
     await showTyping(1000)
-    addMsg('bot', config.closingMessage || `Thank you so much -- ${study.bot_name} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`)
+    const closingMsgFallback = config.closingMessage || `Thank you so much -- ${study.bot_name} really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛`
+    const closingMsgTranslated = t('closingMessage', closingMsgFallback)
+    // If t() returned the English fallback unchanged and we're not in English, use built-in
+    addMsg('bot', closingMsgTranslated === closingMsgFallback && activeLang.current !== 'en'
+      ? tUI('closingMessageDefault', closingMsgFallback)
+      : closingMsgTranslated)
     await showTyping(600)
 
     if (!chatRef.current) return
     const card = document.createElement('div')
     card.className = 'rounded-2xl p-5 text-center my-1'
     card.style.background = config.theme.headerGradient
-    const cardSubtitle = config.closingCard || 'Your responses have been saved. Thank you for your time.'
+    const closingCardFallback = config.closingCard || 'Your responses have been saved. Thank you for your time.'
+    const closingCardTranslated = t('closingCard', closingCardFallback)
+    const cardSubtitle = closingCardTranslated === closingCardFallback && activeLang.current !== 'en'
+      ? tUI('closingCardDefault', closingCardFallback)
+      : closingCardTranslated
     card.innerHTML = `
       <div class="text-4xl mb-2">${study.bot_emoji}</div>
-      <div class="text-white font-semibold text-lg mb-1">All done!</div>
+      <div class="text-white font-semibold text-lg mb-1">${tUI('allDone', 'All done!')}</div>
       <div class="text-white/75 text-sm leading-snug">${cardSubtitle}</div>
     `
     chatRef.current.appendChild(card)
@@ -476,13 +566,13 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       ]
     }
     var activeFields = demoFields.filter(function(f) { return f.enabled })
-    if (activeFields.length === 0) { await stepDone(); return }
+    if (activeFields.length === 0) { await advanceSection(); return }
 
     clearInput()
     const demoTransition = config.sectionTransitions?.demographics
     if (demoTransition?.enabled !== false) {
       await showTyping(800)
-      const msg = demoTransition?.text || 'Almost done -- a couple of optional questions about you. Completely up to you.'
+      const msg = tTransition('demographics', demoTransition?.text || 'Almost done -- a couple of optional questions about you. Completely up to you.')
       addMsg('bot', msg)
       await showTyping(Math.max(2000, msg.length * 40))
     } else {
@@ -499,15 +589,16 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
     for (var fi = 0; fi < activeFields.length; fi++) {
       var df = activeFields[fi]
+      var tDemoLabel = tUI('demo_' + df.key, df.label)
       if (df.type === 'select' && df.options && df.options.length > 0) {
         var sel = document.createElement('select')
         sel.style.cssText = selectStyle
         var ph = document.createElement('option')
-        ph.value = ''; ph.textContent = df.label + '...'
+        ph.value = ''; ph.textContent = tDemoLabel + '...'
         sel.appendChild(ph)
         for (var oi = 0; oi < df.options.length; oi++) {
           var opt = document.createElement('option')
-          opt.value = df.options[oi][0]; opt.textContent = df.options[oi][1]
+          opt.value = df.options[oi][0]; opt.textContent = tUI('demo_opt_' + df.options[oi][0], df.options[oi][1])
           sel.appendChild(opt)
         }
         wrap.appendChild(sel)
@@ -515,7 +606,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       } else {
         var inp = document.createElement('input')
         inp.type = 'text'
-        inp.placeholder = df.label + ' (optional)'
+        inp.placeholder = tDemoLabel + ' (' + tUI('optional', 'optional') + ')'
         inp.style.cssText = selectStyle + 'border-radius:10px;'
         wrap.appendChild(inp)
         fieldElements.push({ key: df.key, el: inp })
@@ -523,7 +614,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     }
 
     var submitBtn = document.createElement('button')
-    submitBtn.textContent = 'Submit my feedback \u2192'
+    submitBtn.textContent = tUI('submitFeedback', 'Submit my feedback') + ' \u2192'
     submitBtn.className = 'mt-1 rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
     submitBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;'
     submitBtn.onclick = async function() {
@@ -533,21 +624,129 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       }
       savePartial()
       clearInput()
-      await stepDone()
+      await advanceSection()
     }
 
     wrap.appendChild(submitBtn)
     inputRef.current.appendChild(wrap)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDone])
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, advanceSection])
+
+  const stepContactInfo = useCallback(async () => {
+    var contactFields = config.contactFields
+    if (!contactFields) { await advanceSection(); return }
+    var activeFields = contactFields.filter(function(f) { return f.enabled })
+    if (activeFields.length === 0) { await advanceSection(); return }
+
+    clearInput()
+    var contactTransition = config.contactTransition
+    if (contactTransition?.enabled !== false) {
+      await showTyping(800)
+      var msg = tTransition('contact', contactTransition?.text || "If you'd like us to follow up, please share your contact details below. Completely optional.")
+      addMsg('bot', msg)
+      await showTyping(Math.max(2000, msg.length * 40))
+    } else {
+      await showTyping(350)
+    }
+
+    if (!inputRef.current) return
+    var wrap = document.createElement('div')
+    wrap.className = 'flex flex-col gap-1.5 mt-1.5'
+
+    var baseStyle = 'padding:10px 13px;border-radius:10px;font-size:0.844rem;color:' + C.textMid + ';background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;outline:none;font-family:inherit;'
+    var errorStyle = 'font-size:0.75rem;color:#ef4444;margin-top:2px;display:none;'
+
+    var fieldElements: { key: string; type: string; el: HTMLSelectElement | HTMLInputElement; errorEl: HTMLDivElement; required: boolean }[] = []
+
+    for (var fi = 0; fi < activeFields.length; fi++) {
+      var cf = activeFields[fi]
+      var fieldWrap = document.createElement('div')
+
+      if (cf.type === 'us_state') {
+        var sel = document.createElement('select')
+        sel.style.cssText = baseStyle + 'cursor:pointer;appearance:none;'
+        var ph = document.createElement('option')
+        ph.value = ''; ph.textContent = cf.label + (cf.required ? ' *' : '') + '...'
+        sel.appendChild(ph)
+        for (var si = 0; si < US_STATES.length; si++) {
+          var opt = document.createElement('option')
+          opt.value = US_STATES[si][0]; opt.textContent = US_STATES[si][1]
+          sel.appendChild(opt)
+        }
+        fieldWrap.appendChild(sel)
+        var errDiv1 = document.createElement('div')
+        errDiv1.style.cssText = errorStyle
+        fieldWrap.appendChild(errDiv1)
+        fieldElements.push({ key: cf.key, type: cf.type, el: sel, errorEl: errDiv1, required: !!cf.required })
+      } else {
+        var inp = document.createElement('input')
+        inp.type = cf.type === 'email' ? 'email' : cf.type === 'phone' ? 'tel' : 'text'
+        inp.placeholder = (cf.placeholder || cf.label) + (cf.required ? ' *' : ' (optional)')
+        inp.style.cssText = baseStyle
+        if (cf.type === 'phone') inp.inputMode = 'tel'
+        if (cf.type === 'zip_code') inp.inputMode = 'numeric'
+        fieldWrap.appendChild(inp)
+        var errDiv2 = document.createElement('div')
+        errDiv2.style.cssText = errorStyle
+        fieldWrap.appendChild(errDiv2)
+        fieldElements.push({ key: cf.key, type: cf.type, el: inp, errorEl: errDiv2, required: !!cf.required })
+      }
+
+      wrap.appendChild(fieldWrap)
+    }
+
+    var continueBtn = document.createElement('button')
+    continueBtn.textContent = tUI('continue', 'Continue') + ' \u2192'
+    continueBtn.className = 'mt-1 rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
+    continueBtn.style.cssText = 'background:' + config.theme.primaryColor + ';color:#fff;border:none;cursor:pointer;font-family:inherit;'
+    continueBtn.onclick = async function() {
+      // Validate
+      var hasError = false
+      for (var vi = 0; vi < fieldElements.length; vi++) {
+        var fe = fieldElements[vi]
+        var val = fe.el.value.trim()
+        fe.errorEl.style.display = 'none'
+
+        if (fe.required && !val) {
+          fe.errorEl.textContent = fe.key.charAt(0).toUpperCase() + fe.key.slice(1) + ' is required'
+          fe.errorEl.style.display = 'block'
+          hasError = true
+          continue
+        }
+
+        if (val) {
+          var validationError = validateContactField(fe.type as any, val)
+          if (validationError) {
+            fe.errorEl.textContent = validationError
+            fe.errorEl.style.display = 'block'
+            hasError = true
+          }
+        }
+      }
+      if (hasError) return
+
+      wrap.querySelectorAll('select,input,button').forEach(function(el) { (el as any).disabled = true })
+      for (var ci = 0; ci < fieldElements.length; ci++) {
+        var value = fieldElements[ci].el.value.trim()
+        if (value) state.current.contactInfo[fieldElements[ci].key] = value
+      }
+      savePartial()
+      clearInput()
+      await advanceSection()
+    }
+
+    wrap.appendChild(continueBtn)
+    inputRef.current.appendChild(wrap)
+    scrollBottom()
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, advanceSection])
 
   const stepPsychoQ = useCallback(async () => {
     const s = state.current
-    if (s.psychoIdx >= s.psychoQuestions.length) { await stepDemographics(); return }
+    if (s.psychoIdx >= s.psychoQuestions.length) { await advanceSection(); return }
     clearInput()
     const q = s.psychoQuestions[s.psychoIdx]
     await showTyping(750)
-    addMsg('bot', q.q)
+    addMsg('bot', tPsycho(q.key, 'q', q.q) as string)
 
     if (!inputRef.current) return
     const col = document.createElement('div')
@@ -555,15 +754,18 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     let psychoSel: string | null = null
     let psychoConfirmBtn: HTMLButtonElement | null = null
     const psychoBtns: HTMLButtonElement[] = []
+    const tOpts = tPsycho(q.key, 'opts', q.opts) as string[]
     const commitPsycho = (opt: string) => {
       col.querySelectorAll('button').forEach((b: any) => b.disabled = true)
       addMsg('user', opt)
-      state.current.psychoAnswers[q.key] = opt
+      // Store original English key for analytics consistency
+      const origIdx = tOpts.indexOf(opt)
+      state.current.psychoAnswers[q.key] = origIdx >= 0 && q.opts[origIdx] ? q.opts[origIdx] : opt
       state.current.psychoIdx++
       savePartial()
       stepPsychoQ()
     }
-    q.opts.forEach(opt => {
+    tOpts.forEach(opt => {
       const btn = document.createElement('button')
       btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
       btn.style.cssText = 'background:' + C.btnBg + ';border:1.5px solid ' + C.inputBdr + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
@@ -585,7 +787,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     })
     if (confirmMode) {
       psychoConfirmBtn = document.createElement('button')
-      psychoConfirmBtn.textContent = 'Confirm'
+      psychoConfirmBtn.textContent = tUI('confirm', 'Confirm')
       psychoConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
       psychoConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
       psychoConfirmBtn.onclick = () => { if (psychoSel) commitPsycho(psychoSel) }
@@ -594,7 +796,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     inputRef.current.appendChild(col)
     scrollBottom()
     if (confirmMode) scrollInputBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, stepDemographics])
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, advanceSection])
 
 
 
@@ -614,7 +816,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
-    ta.placeholder = 'Share your thoughts...'
+    ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
     ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + C.inputBdr + ';color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = C.inputBdr }
@@ -630,7 +832,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
     sendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
     const skipBtn = document.createElement('button')
-    skipBtn.textContent = 'Skip'
+    skipBtn.textContent = tUI('skip', 'Skip')
     skipBtn.className = 'text-xs self-start px-2 py-1'
     skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
     skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
@@ -646,6 +848,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       clearInput()
       // Smart deflection: if respondent asked a question or went off-topic, redirect and skip clarifier
       if (v && !isDecline(v) && await checkDeflect(v, state.current.currentQuestion || '')) {
+        state.current.skipNextAck = true
         await next()
         return
       }
@@ -681,7 +884,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
-    ta.placeholder = 'Feel free to add a bit more...'
+    ta.placeholder = tUI('clarifyPlaceholder', 'Feel free to add a bit more...')
     ta.style.cssText = `background:' + C.inputBg + ';border:1.5px solid ${config.theme.primaryColor}28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;`
     ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
     ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -700,8 +903,10 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       }
       savePartialRef.current()
       clearInput()
-      // AI deflection: detect questions/off-topic and respond contextually
-      if (val && !isDecline(val)) await checkDeflect(val, state.current.currentQuestion || '')
+      // AI deflection: detect questions/off-topic and respond contextually — deflection serves as the ack
+      if (val && !isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
+        state.current.skipNextAck = true
+      }
       await next()
     }
     wrap.append(ta, sendBtn)
@@ -718,7 +923,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     const psychoTransition = config.sectionTransitions?.psychographics
     if (psychoTransition?.enabled !== false) {
       await showTyping(900)
-      const msg = psychoTransition?.text || 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.'
+      const msg = tTransition('psychographics', psychoTransition?.text || 'Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.')
       addMsg('bot', msg)
       await showTyping(Math.max(2000, msg.length * 40))
     } else {
@@ -729,14 +934,14 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
   const stepCustomQuestions = useCallback(async () => {
     const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition && q.enabled !== false && q.type !== 'hidden')
-    if (allQuestions.length === 0) { await stepPsychoIntro(); return }
+    if (allQuestions.length === 0) { await advanceSection(); return }
 
     // Show transition message if enabled
     const cqTransition = config.sectionTransitions?.customQuestions
     if (cqTransition?.enabled) {
       clearInput()
       await showTyping(800)
-      const msg = cqTransition.text || 'Now for a few more specific questions.'
+      const msg = tTransition('customQuestions', cqTransition.text || 'Now for a few more specific questions.')
       addMsg('bot', msg)
       await showTyping(Math.max(2000, msg.length * 40))
     }
@@ -754,12 +959,46 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
     const customAnswers: Record<string, string | string[]> = {}
 
+    // Skip logic evaluator
+    function evaluateSkipLogic(q: typeof questions[0], answer: string | string[]): string | null {
+      if (!q.skipLogic || q.skipLogic.length === 0) return null
+      const answerStr = Array.isArray(answer) ? answer.join(',') : answer
+      for (const rule of q.skipLogic) {
+        if (!rule.skipTo) continue
+        const ruleVal = Array.isArray(rule.value) ? rule.value[0] : rule.value
+        let match = false
+        switch (rule.condition) {
+          case 'equals': match = answerStr === ruleVal; break
+          case 'not_equals': match = answerStr !== ruleVal; break
+          case 'any_of': match = (Array.isArray(rule.value) ? rule.value : [ruleVal]).some(v => answerStr.includes(v)); break
+          case 'none_of': match = !(Array.isArray(rule.value) ? rule.value : [ruleVal]).some(v => answerStr.includes(v)); break
+          case 'greater_than': match = parseFloat(answerStr) > parseFloat(ruleVal); break
+          case 'less_than': match = parseFloat(answerStr) < parseFloat(ruleVal); break
+        }
+        if (match) return rule.skipTo
+      }
+      return null
+    }
+
     // confirmMode is defined at the hook top level
 
-    for (const q of questions) {
+    let qi = 0
+    while (qi < questions.length) {
+      const q = questions[qi]
       clearInput()
+
+      // ── message — display only, no response expected ─────────
+      if (q.type === 'message') {
+        const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
+        await showTyping(Math.max(600, tPrompt.length * 30))
+        addMsg('bot', tPrompt)
+        await showTyping(Math.max(400, tPrompt.length * 20))
+        continue
+      }
+
+      const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
       await showTyping(800)
-      addMsg('bot', q.prompt)
+      addMsg('bot', tPrompt)
       state.current.currentQuestion = q.prompt
 
       await new Promise<void>(resolve => {
@@ -804,7 +1043,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     ta.cols = 1
           ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
-          ta.placeholder = 'Share your thoughts...'
+          ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
           ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + C.inputBdr + ';color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;width:0;min-width:0;box-sizing:border-box;'
           ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
           ta.onblur  = () => { ta.style.borderColor = C.inputBdr }
@@ -830,7 +1069,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           wrap.appendChild(row)
           if (!q.required) {
             const skipBtn = document.createElement('button')
-            skipBtn.textContent = 'Skip'
+            skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.className = 'text-xs self-start px-2 py-1'
             skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
             skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
@@ -845,7 +1084,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
         // ── radio ───────────────────────────────────────────────
         } else if (q.type === 'radio') {
-          const opts = q.options ?? []
+          const opts = tQuestion(q.id, 'options', q.options ?? []) as string[]
           const col = document.createElement('div')
           col.className = 'flex flex-col gap-1.5 mt-1.5'
           const confirm = confirmMode
@@ -881,7 +1120,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           })
           if (confirm) {
             confirmBtn = document.createElement('button')
-            confirmBtn.textContent = 'Confirm'
+            confirmBtn.textContent = tUI('confirm', 'Confirm')
             confirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
             confirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             confirmBtn.onclick = () => {
@@ -901,7 +1140,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
         // ── checkbox ────────────────────────────────────────────
         } else if (q.type === 'checkbox') {
-          const opts = q.options ?? []
+          const opts = tQuestion(q.id, 'options', q.options ?? []) as string[]
           const selected = new Set<string>()
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-1.5 mt-1.5'
@@ -940,7 +1179,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             wrap.appendChild(btn)
           })
           const doneBtn = document.createElement('button')
-          doneBtn.textContent = selected.size > 0 ? 'Done' : q.required ? 'Select at least one' : 'Skip'
+          doneBtn.textContent = selected.size > 0 ? tUI('done', 'Done') : q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('skip', 'Skip')
           doneBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
           doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
           doneBtn.onclick = () => {
@@ -959,7 +1198,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
         // ── dropdown ────────────────────────────────────────────
         } else if (q.type === 'dropdown') {
-          const opts = q.options ?? []
+          const opts = tQuestion(q.id, 'options', q.options ?? []) as string[]
           const wrap = document.createElement('div')
           wrap.className = 'flex gap-2 mt-1.5 items-center'
           const sel = document.createElement('select')
@@ -967,7 +1206,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           sel.style.cssText = 'background:' + C.bubbleBdr + ';border:1.5px solid ' + C.disabledBg + ';color:' + C.text + ';font-family:inherit;'
           const placeholder = document.createElement('option')
           placeholder.value = ''
-          placeholder.textContent = 'Select an option...'
+          placeholder.textContent = tUI('selectOption', 'Select an option...')
           placeholder.disabled = true
           placeholder.selected = true
           sel.appendChild(placeholder)
@@ -995,7 +1234,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           }
           if (!q.required) {
             const skipBtn = document.createElement('button')
-            skipBtn.textContent = 'Skip'
+            skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-size:0.75rem;font-family:inherit;margin-left:4px;'
             skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
             skipBtn.onmouseleave = () => { skipBtn.style.color = C.textFaint }
@@ -1011,6 +1250,13 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         // ── likert ──────────────────────────────────────────────
         } else if (q.type === 'likert') {
           const scale = q.likertScale ?? []
+          // Translate likert labels: stored translation → built-in rating labels → original
+          const storedLabels = ((): string[] | null => {
+            if (activeLang.current === 'en' || !config.translations) return null
+            const tr = config.translations[activeLang.current]?.questions?.[q.id]
+            return tr?.likertLabels || null
+          })()
+          const tLikertLabels = storedLabels || scale.map((s: any) => tRatingLabel(s.label))
           const likertConfirm = confirmMode
           let selectedScore: typeof scale[0] | null = null
           let likertConfirmBtn: HTMLButtonElement | null = null
@@ -1024,7 +1270,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             likertWrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
             const selBtn = allLikertBtns[scale.indexOf(s)]
             if (selBtn) { selBtn.style.borderColor = config.theme.primaryColor; selBtn.style.background = config.theme.primaryColor + '20' }
-            addMsg('user', (s.emoji || '') + ' ' + s.label)
+            const tLabel = tLikertLabels[scale.indexOf(s)] || s.label
+            addMsg('user', (s.emoji || '') + ' ' + tLabel)
             customAnswers[q.id] = String(s.score)
             if (q.followUp?.enabled) {
               const fu = q.followUp
@@ -1043,11 +1290,13 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             resolve()
           }
 
-          scale.forEach(s => {
+          scale.forEach((s, si) => {
+            const tLabel = tLikertLabels[si] || s.label
             const sb = document.createElement('button')
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             sb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
-            sb.innerHTML = '<span style="font-size:1.125rem">' + (s.emoji || '⭐') + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center">' + s.label + '</span>'
+            var emojiSize = scale.length > 1 ? (0.9 + (s.score - 1) / (scale.length - 1) * 0.6) : 1.125
+            sb.innerHTML = '<span style="font-size:' + emojiSize.toFixed(2) + 'rem">' + (s.emoji || '⭐') + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center">' + tLabel + '</span>'
             sb.onmouseenter = () => { if (!likertConfirm || selectedScore !== s) { sb.style.borderColor = config.theme.primaryColor; sb.style.background = C.btnHoverBg } }
             sb.onmouseleave = () => { if (!likertConfirm || selectedScore !== s) { sb.style.borderColor = C.inputBdr; sb.style.background = C.btnBg } }
             sb.onclick = async () => {
@@ -1067,7 +1316,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           likertWrap.appendChild(row)
           if (likertConfirm) {
             likertConfirmBtn = document.createElement('button')
-            likertConfirmBtn.textContent = 'Confirm'
+            likertConfirmBtn.textContent = tUI('confirm', 'Confirm')
             likertConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
             likertConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             likertConfirmBtn.onclick = async () => { if (selectedScore) await commitLikert(selectedScore) }
@@ -1120,7 +1369,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           ratingWrap.appendChild(ratingRow)
           if (ratingConfirm) {
             ratingConfirmBtn = document.createElement('button')
-            ratingConfirmBtn.textContent = 'Confirm'
+            ratingConfirmBtn.textContent = tUI('confirm', 'Confirm')
             ratingConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
             ratingConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
             ratingConfirmBtn.onclick = () => {
@@ -1170,7 +1419,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           wrap.append(inp, goBtn)
           if (!q.required) {
             const skipBtn = document.createElement('button')
-            skipBtn.textContent = 'Skip'
+            skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-size:0.75rem;font-family:inherit;margin-left:4px;'
             skipBtn.onmouseenter = () => { skipBtn.style.color = C.textMid }
             skipBtn.onmouseleave = () => { skipBtn.style.color = C.textFaint }
@@ -1183,25 +1432,59 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           scrollBottom()
         }
       })
+
+      // Evaluate skip logic after the question is answered
+      const answer = customAnswers[q.id]
+      if (answer != null && answer !== '') {
+        const skipTarget = evaluateSkipLogic(q, answer)
+        if (skipTarget === '_end') {
+          break // End survey early
+        }
+        if (skipTarget) {
+          const targetIdx = questions.findIndex(tq => tq.id === skipTarget)
+          if (targetIdx > qi) {
+            qi = targetIdx
+            continue // Jump to target question
+          }
+        }
+      }
+      qi++
     }
 
     // Store all custom answers in state
     state.current.customAnswers = customAnswers
     savePartial()
-    await stepPsychoIntro()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, stepPsychoIntro])
+    await advanceSection()
+  }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, advanceSection])
 
   // Run conversation-position extras (questions shown after Q4, before custom-Q phase)
   const stepConversationExtras = useCallback(async () => {
     const extras = (config.questions ?? []).filter(q => q.conversationPosition && q.enabled !== false && q.type !== 'hidden')
-    if (extras.length === 0) { await stepCustomQuestions(); return }
+    if (extras.length === 0) {
+      // Start the section dispatcher from the first section
+      sectionIdx.current = 0
+      const firstRunner = sectionRunners.current[sectionOrder[0]]
+      if (firstRunner) { await firstRunner(); return }
+      await stepDone(); return
+    }
 
     const customAnswers: Record<string, string | string[]> = { ...state.current.customAnswers }
 
     for (const q of extras) {
       clearInput()
+
+      // ── message — display only, no response expected ─────────
+      if (q.type === 'message') {
+        const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
+        await showTyping(Math.max(600, tPrompt.length * 30))
+        addMsg('bot', tPrompt)
+        await showTyping(Math.max(400, tPrompt.length * 20))
+        continue
+      }
+
+      const tPrompt = tQuestion(q.id, 'prompt', q.prompt) as string
       await showTyping(800)
-      addMsg('bot', q.prompt)
+      addMsg('bot', tPrompt)
       state.current.currentQuestion = q.prompt
 
       await new Promise<void>(resolve => {
@@ -1216,7 +1499,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           ta.cols = 1
           ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
-          ta.placeholder = 'Share your thoughts...'
+          ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
           ta.style.cssText = `background:' + C.inputBg + ';border:1.5px solid ${config.theme.primaryColor}28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;`
           ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
           ta.onblur  = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -1243,7 +1526,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           wrap.appendChild(row)
           if (!q.required) {
             const skipBtn = document.createElement('button')
-            skipBtn.textContent = 'Skip'
+            skipBtn.textContent = tUI('skip', 'Skip')
             skipBtn.className = 'text-xs self-start px-2 py-1'
             skipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
             skipBtn.onclick = () => { wrap.querySelectorAll('button,textarea').forEach((el: any) => el.disabled = true); customAnswers[q.id] = ''; clearInput(); resolve() }
@@ -1255,7 +1538,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           scrollBottom()
 
         } else if (q.type === 'radio') {
-          const opts = q.options ?? []
+          const opts = tQuestion(q.id, 'options', q.options ?? []) as string[]
           const col = document.createElement('div')
           col.className = 'flex flex-col gap-1.5 mt-1.5'
           opts.forEach(opt => {
@@ -1277,7 +1560,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           scrollBottom()
 
         } else if (q.type === 'checkbox') {
-          const opts = q.options ?? []
+          const opts = tQuestion(q.id, 'options', q.options ?? []) as string[]
           const selected = new Set<string>()
           const wrap = document.createElement('div')
           wrap.className = 'flex flex-col gap-1.5 mt-1.5'
@@ -1306,7 +1589,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             wrap.appendChild(btn)
           })
           const doneBtn = document.createElement('button')
-          doneBtn.textContent = q.required ? 'Select at least one' : 'Done / Skip'
+          doneBtn.textContent = q.required ? tUI('selectAtLeastOne', 'Select at least one') : tUI('done', 'Done') + ' / ' + tUI('skip', 'Skip')
           doneBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all'
           doneBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
           doneBtn.onclick = () => {
@@ -1328,26 +1611,39 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
     state.current.customAnswers = { ...state.current.customAnswers, ...customAnswers }
     savePartial()
-    await stepCustomQuestions()
-  }, [addMsg, clearInput, config, inputRef, savePartial, scrollBottom, showTyping, state, stepCustomQuestions])
+    // Start the section dispatcher
+    sectionIdx.current = 0
+    const firstRunner = sectionRunners.current[sectionOrder[0]]
+    if (firstRunner) await firstRunner()
+    else await stepDone()
+  }, [addMsg, clearInput, config, inputRef, savePartial, scrollBottom, showTyping, state, sectionOrder, stepDone])
 
   const stepConversationExtrasRef = useRef(stepConversationExtras)
   stepConversationExtrasRef.current = stepConversationExtras
 
-  const progressFlow = useCallback(async (qKey: 'q3' | 'q4') => {
+  // Register section runners for the section ordering dispatcher
+  sectionRunners.current = {
+    customQuestions: stepCustomQuestions,
+    psychographics: stepPsychoIntro,
+    demographics: stepDemographics,
+    contact: stepContactInfo,
+    _done: stepDone,
+  } as any
+
+  const progressFlow = useCallback(async (qKey: 'q3' | 'q4', skipAck?: boolean) => {
+    // Also check flag set by deflection in clarify/likert handlers
+    if (state.current.skipNextAck) { skipAck = true; state.current.skipNextAck = false }
     const lastMsg = state.current.lastUserMsg || ''
     if (qKey === 'q3') {
       // Skip Q4 if disabled
       if (config.q4Enabled === false) {
-        await showTyping(700)
-        addMsg('bot', smartAck(lastMsg), true)
+        if (!skipAck) { await showTyping(700); addMsg('bot', smartAck(lastMsg), true) }
         await stepConversationExtras()
         return
       }
-      await showTyping(700)
-      addMsg('bot', smartAck(lastMsg), true)
+      if (!skipAck) { await showTyping(700); addMsg('bot', smartAck(lastMsg), true) }
       await showTyping(800)
-      addMsg('bot', config.q4)
+      addMsg('bot', t('q4', config.q4))
       state.current.currentQuestion = config.q4
       // q4: optional by default, required if q4Required === true
       if (config.q4Required === true) {
@@ -1356,7 +1652,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         showTextInputOptional('q4')
       }
     } else {
-      if (!isDecline(lastMsg)) {
+      if (!skipAck && !isDecline(lastMsg)) {
         await showTyping(700)
         addMsg('bot', smartAck(lastMsg), true)
       }
@@ -1370,7 +1666,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     clearInput()
     // Smart deflection: if respondent asked a question, redirect and skip clarifier
     if (!isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
-      await progressFlow(qKey)
+      await progressFlow(qKey, true)
       return
     }
     // Only attempt clarification if enabled for this question (default: on)
@@ -1407,7 +1703,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
-    ta.placeholder = 'Share your thoughts here...'
+    ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
     ta.style.cssText = `
       background:' + C.inputBg + ';
       border:1.5px solid ${config.theme.primaryColor}28;
@@ -1461,7 +1757,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
-    ta.placeholder = 'Feel free to add a bit more...'
+    ta.placeholder = tUI('clarifyPlaceholder', 'Feel free to add a bit more...')
     ta.style.cssText = `
       background:' + C.inputBg + ';
       border:1.5px solid ${config.theme.primaryColor}28;
@@ -1498,8 +1794,8 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
       savePartialRef.current()
       clearInput()
       // AI deflection: detect questions/off-topic and respond contextually
-      if (!isDecline(val)) await checkDeflect(val, state.current.currentQuestion || '')
-      await progressFlowRef.current(qKey)
+      const deflected = !isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')
+      await progressFlowRef.current(qKey, deflected || undefined)
     }
 
     wrap.append(ta, sendBtn)
@@ -1527,7 +1823,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
     ta.cols = 1
     ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
     ta.rows = 1
-    ta.placeholder = 'Share your thoughts, or skip...'
+    ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
     ta.style.cssText = `
       background:' + C.inputBg + ';
       border:1.5px solid ${config.theme.primaryColor}28;
@@ -1589,22 +1885,149 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
 
   // -- Main renderInput dispatcher ---------------------------
 
+  // Active language for multi-language surveys
+  const activeLang = useRef<string>('en')
+
+  // Get translated content for the active language
+  function t(key: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    if (!trans) return fallback
+    return (trans as any)[key] || fallback
+  }
+
+  function tQuestion(qId: string, field: 'prompt' | 'options' | 'likertLabels', fallback: string | string[]): any {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    if (!trans?.questions?.[qId]) return fallback
+    if (field === 'options') return trans.questions[qId].options || fallback
+    if (field === 'likertLabels') return trans.questions[qId].likertLabels || fallback
+    return trans.questions[qId].prompt || fallback
+  }
+
+  function tUI(key: string, fallback: string): string {
+    if (activeLang.current === 'en') return fallback
+    // Check stored translation first
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui && (trans.ui as any)[key]) return (trans.ui as any)[key]
+    // Fall back to built-in translations
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.[key]) return builtin[key]
+    return fallback
+  }
+
+  function tRatingLabel(englishLabel: string): string {
+    if (activeLang.current === 'en') return englishLabel
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui?.ratingLabels?.[englishLabel]) return trans.ui.ratingLabels[englishLabel]
+    // Fall back to built-in rating labels if available
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.['rating_' + englishLabel]) return builtin['rating_' + englishLabel]
+    return englishLabel
+  }
+
+  function tNpsLabel(englishLabel: string): string {
+    if (activeLang.current === 'en') return englishLabel
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui?.npsLabels?.[englishLabel]) return trans.ui.npsLabels[englishLabel]
+    // Fall back to built-in NPS labels
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.['nps_' + englishLabel]) return builtin['nps_' + englishLabel]
+    return englishLabel
+  }
+
+  function tTransition(sectionKey: string, fallback: string): string {
+    if (activeLang.current === 'en') return fallback
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui?.transitions?.[sectionKey]) return trans.ui.transitions[sectionKey]
+    // Fall back to built-in transition translations
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.['transition_' + sectionKey]) return builtin['transition_' + sectionKey]
+    return fallback
+  }
+
+  function tPsycho(key: string, field: 'q' | 'opts', fallback: string | string[]): any {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    if (!trans?.psychographics?.[key]) return fallback
+    if (field === 'opts') return trans.psychographics[key].opts || fallback
+    return trans.psychographics[key].q || fallback
+  }
+
   const renderInput = useCallback(async (phase: string) => {
     if (phase !== 'start') return
 
+    // Language selection — show before greeting if multiple languages enabled
+    if (config.languages && config.languages.length > 1) {
+      await showTyping(600)
+      addMsg('bot', 'Choose your language:')
+
+      if (inputRef.current) {
+        await new Promise<void>(resolve => {
+          const wrap = document.createElement('div')
+          wrap.className = 'flex flex-col gap-1.5 mt-1.5'
+
+          const { SUPPORTED_LANGUAGES } = require('@/lib/types')
+          const enabledLangs = SUPPORTED_LANGUAGES.filter((l: any) => config.languages!.includes(l.code))
+          let selectedLang: string | null = null
+          let confirmBtn: HTMLButtonElement | null = null
+          const langBtns: HTMLButtonElement[] = []
+
+          enabledLangs.forEach((lang: any) => {
+            const btn = document.createElement('button')
+            btn.className = 'text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all'
+            btn.style.cssText = 'background:' + C.btnBg + ';border:1.5px solid ' + C.inputBdr + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
+            btn.textContent = lang.nativeName + (lang.name !== lang.nativeName ? ' (' + lang.name + ')' : '')
+            btn.onclick = () => {
+              selectedLang = lang.code
+              langBtns.forEach(b => { b.style.borderColor = C.inputBdr; b.style.background = C.btnBg })
+              btn.style.borderColor = config.theme.primaryColor
+              btn.style.background = config.theme.primaryColor + '20'
+              if (confirmBtn) {
+                confirmBtn.style.display = 'block'
+                confirmBtn.textContent = lang.confirmLabel
+                confirmBtn.style.background = config.theme.primaryColor
+                confirmBtn.style.color = '#fff'
+              }
+            }
+            langBtns.push(btn)
+            wrap.appendChild(btn)
+          })
+
+          confirmBtn = document.createElement('button')
+          confirmBtn.className = 'mt-1 rounded-full font-semibold text-sm py-2.5 px-6 self-start transition-all'
+          confirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
+          confirmBtn.textContent = tUI('confirm', 'Confirm')
+          confirmBtn.onclick = () => {
+            if (!selectedLang) return
+            activeLang.current = selectedLang
+            const langObj = enabledLangs.find((l: any) => l.code === selectedLang)
+            addMsg('user', langObj?.nativeName || selectedLang)
+            wrap.querySelectorAll('button').forEach((b: any) => b.disabled = true)
+            clearInput()
+            resolve()
+          }
+          wrap.appendChild(confirmBtn)
+
+          inputRef.current!.appendChild(wrap)
+          scrollBottom()
+        })
+      }
+    }
+
     // Greeting -- single message on mobile to keep buttons visible above fold
     await showTyping(900)
-    addMsg('bot', config.greeting)
+    addMsg('bot', t('greeting', config.greeting))
 
     // Ready prompt
     await showTyping(600)
-    addMsg('bot', 'Are you ready to share your feedback?')
+    addMsg('bot', tUI('readyPrompt', 'Are you ready to share your feedback?'))
 
     if (!inputRef.current) return
     const row = document.createElement('div')
     row.className = 'flex gap-2 flex-wrap mt-1.5'
 
-    ;[['Yes, let\'s go! 👍', 'yes'], ['Not right now', 'no']].forEach(([label, val]) => {
+    ;[[tUI('readyYes', "Yes, let's go! 👍"), 'yes'], [tUI('readyNo', 'Not right now'), 'no']].forEach(([label, val]) => {
       const btn = document.createElement('button')
       btn.className = 'px-4 py-2.5 rounded-full text-sm font-medium transition-all'
       btn.style.cssText = 'background:' + C.btnBg + ';border:1.5px solid ' + C.btnBdr + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
@@ -1617,7 +2040,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         if (val === 'no') {
           clearInput()
           await showTyping(800)
-          addMsg('bot', 'No problem at all -- thanks for your time! 😊')
+          addMsg('bot', tUI('thankYouAck', 'No problem at all -- thanks for your time! 😊'))
           return
         }
 
@@ -1649,7 +2072,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           }
           clearInput()
           await showTyping(800)
-          addMsg('bot', config.q3)
+          addMsg('bot', t('q3', config.q3))
           state.current.currentQuestion = config.q3
           if (config.q3Required === false) {
             showTextInputOptional('q3')
@@ -1662,7 +2085,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
         const doExperienceRating = async (next: () => Promise<void>) => {
           clearInput()
           await showTyping(900)
-          addMsg('bot', config.ratingPrompt)
+          addMsg('bot', t('ratingPrompt', config.ratingPrompt))
           await showTyping(300)
           if (!inputRef.current) return
           const expWrap = document.createElement('div')
@@ -1684,14 +2107,15 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             var pct = (r.score - minScore) / range
             state.current.sentiment = pct >= 0.6 ? 'positive' : pct <= 0.4 ? 'negative' : 'neutral'
             savePartial()
-            addMsg('user', r.emoji + ' ' + r.label)
+            addMsg('user', r.emoji + ' ' + tRatingLabel(r.label))
             await showLikertFollowUp(config.experienceFollowUp, r.score, next, 'q2')
           }
           config.ratingScale.forEach((r: any) => {
+            const tLabel = tRatingLabel(r.label)
             const rb = document.createElement('button')
             rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             rb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
-            rb.innerHTML = '<span style="font-size:1.25rem">' + r.emoji + '</span><span style="font-size:0.5625rem;font-weight:600;color:' + C.textMute + ';text-align:center;white-space:nowrap">' + r.label + '</span>'
+            rb.innerHTML = '<span style="font-size:1.25rem">' + r.emoji + '</span><span style="font-size:0.5625rem;font-weight:600;color:' + C.textMute + ';text-align:center;white-space:nowrap">' + tLabel + '</span>'
             rb.onmouseenter = () => { if (!confirmMode || expSel !== r) { rb.style.borderColor = config.theme.primaryColor; rb.style.background = C.btnHoverBg } }
             rb.onmouseleave = () => { if (!confirmMode || expSel !== r) { rb.style.borderColor = C.inputBdr; rb.style.background = C.btnBg } }
             rb.onclick = async () => {
@@ -1710,7 +2134,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           expWrap.appendChild(ratingRow)
           if (confirmMode) {
             expConfirmBtn = document.createElement('button')
-            expConfirmBtn.textContent = 'Confirm'
+            expConfirmBtn.textContent = tUI('confirm', 'Confirm')
             expConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
             expConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
             expConfirmBtn.onclick = async () => { if (expSel) await commitExp(expSel) }
@@ -1726,15 +2150,15 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           clearInput()
           await showTyping(1000)
           const npsPrompt = config.npsPrompt || 'How likely are you to recommend us to a friend or someone you know?'
-          addMsg('bot', npsPrompt)
+          addMsg('bot', t('npsPrompt', npsPrompt))
           await showTyping(300)
           if (!inputRef.current) return
           const stars = [
-            { stars: '⭐',         label: '1 - No',         score: 1 },
-            { stars: '⭐⭐',       label: '2 - Unlikely',   score: 2 },
-            { stars: '⭐⭐⭐',     label: '3 - Maybe',      score: 3 },
-            { stars: '⭐⭐⭐⭐',   label: '4 - Likely',     score: 4 },
-            { stars: '⭐⭐⭐⭐⭐', label: '5 - Definitely!', score: 5 },
+            { stars: '😞',  label: '1 - No',         score: 1 },
+            { stars: '😕',  label: '2 - Unlikely',   score: 2 },
+            { stars: '😐',  label: '3 - Maybe',      score: 3 },
+            { stars: '😊',  label: '4 - Likely',     score: 4 },
+            { stars: '🤩',  label: '5 - Definitely!', score: 5 },
           ]
           const npsWrap = document.createElement('div')
           npsWrap.className = 'flex flex-col gap-1.5 mt-1.5'
@@ -1751,14 +2175,15 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
             state.current.npsLabel = s.label
             state.current.sentiment = s.score >= 4 ? 'positive' : s.score >= 3 ? 'neutral' : 'negative'
             savePartial()
-            addMsg('user', s.stars + ' ' + s.label)
+            addMsg('user', s.stars + ' ' + tNpsLabel(s.label))
             await showLikertFollowUp(config.npsFollowUp, s.score, next, 'q1')
           }
           stars.forEach(s => {
+            const tLabel = tNpsLabel(s.label)
             const sb = document.createElement('button')
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             sb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
-            sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center">' + s.label + '</span>'
+            sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center">' + tLabel + '</span>'
             sb.onmouseenter = () => { if (!confirmMode || npsSel !== s) { sb.style.borderColor = config.theme.primaryColor; sb.style.background = C.btnHoverBg } }
             sb.onmouseleave = () => { if (!confirmMode || npsSel !== s) { sb.style.borderColor = C.inputBdr; sb.style.background = C.btnBg } }
             sb.onclick = async () => {
@@ -1777,7 +2202,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           npsWrap.appendChild(npsRow)
           if (confirmMode) {
             npsConfirmBtn = document.createElement('button')
-            npsConfirmBtn.textContent = 'Confirm'
+            npsConfirmBtn.textContent = tUI('confirm', 'Confirm')
             npsConfirmBtn.className = 'mt-1 px-4 py-2 rounded-xl text-sm font-semibold transition-all self-end'
             npsConfirmBtn.style.cssText = 'display:none;background:' + C.disabledBg + ';color:' + C.disabledTx + ';border:none;cursor:pointer;font-family:inherit;'
             npsConfirmBtn.onclick = async () => { if (npsSel) await commitNps(npsSel) }
@@ -1803,7 +2228,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           ta.cols = 1
           ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
           ta.rows = 1
-          ta.placeholder = 'Share your thoughts...'
+          ta.placeholder = tUI('sharePlaceholder', 'Share your thoughts...')
           ta.style.cssText = `background:' + C.inputBg + ';border:1.5px solid ${config.theme.primaryColor}28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;transition:border-color 0.2s;`
           ta.onfocus = () => { ta.style.borderColor = config.theme.primaryColor }
           ta.onblur  = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
@@ -1828,7 +2253,7 @@ export function useSurveyEngine({ study, chatRef, inputRef, scrollBottom, isLigh
           oeRow.append(ta, oeSendBtn)
           oeWrap.appendChild(oeRow)
           const oeSkipBtn = document.createElement('button')
-          oeSkipBtn.textContent = 'Skip'
+          oeSkipBtn.textContent = tUI('skip', 'Skip')
           oeSkipBtn.className = 'text-xs self-start px-2 py-1'
           oeSkipBtn.style.cssText = 'color:' + C.textFaint + ';background:none;border:none;cursor:pointer;font-family:inherit;'
           oeSkipBtn.onmouseenter = () => { oeSkipBtn.style.color = C.textMid }

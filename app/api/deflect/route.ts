@@ -11,8 +11,10 @@ interface DeflectRequest {
   orgName?:     string
   questionAsked: string   // the bot's question the respondent was answering
   answer:       string    // the respondent's answer (may be a question or off-topic)
-  linkText:     string    // e.g. "our website"
-  linkUrl:      string    // e.g. "https://example.com/faq"
+  linkText?:    string    // e.g. "our website" — optional
+  linkUrl?:     string    // e.g. "https://example.com/faq" — optional
+  customMessage?: string  // user-written deflection instruction or exact message
+  language?:    string    // language code for non-English surveys
 }
 
 export async function POST(req: NextRequest) {
@@ -27,31 +29,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { studyName, orgName, questionAsked, answer, linkText, linkUrl } = body
+  const { studyName, orgName, questionAsked, answer, linkText, linkUrl, customMessage, language } = body
+  const hasLink = !!(linkUrl && linkUrl.trim())
 
   if (!answer || answer.trim().length < 3) {
     return NextResponse.json({ deflection: null })
   }
 
-  const systemPrompt = `You are a friendly feedback survey bot for "${studyName}"${orgName ? ` (run by ${orgName})` : ''}. You can ONLY collect feedback — you cannot answer questions about the organization.
+  // If the user provided a custom message, use it directly (still need AI to detect if deflection is needed)
+  const linkInstruction = hasLink
+    ? `- Includes {{LINK}} where they can find answers\n- Use {{LINK}} exactly once`
+    : `- Do NOT include any links or URLs`
 
-A respondent was asked: "${questionAsked}"
-They replied: "${answer}"
+  const customInstruction = customMessage?.trim()
+    ? `\nIMPORTANT — Use this as your deflection message (adapt it naturally to what they said): "${customMessage.trim()}"`
+    : ''
 
-If they gave normal feedback (opinion, experience, suggestion, even if brief): respond with exactly NONE
+  const systemPrompt = `You are analyzing a respondent's reply in a feedback survey to decide if they went off-topic.
 
-If they asked a question, requested information, or went off-topic: respond with a SHORT, warm message (max 30 words) that:
-- Acknowledges what they said
-- Explains you're just collecting feedback
-- Includes {{LINK}} where they can find answers
+The survey question was: "${questionAsked}"
+The respondent replied: "${answer}"
 
-CRITICAL RULES:
-- Output ONLY the message the respondent will see, or NONE
-- Do NOT include any analysis, reasoning, classification, or thinking
-- Do NOT start with phrases like "The respondent is..." or "Yes, they are..."
-- Do NOT use dashes or separators between thoughts
-- Just write the friendly redirect message directly
-- Use {{LINK}} exactly once`
+DECISION:
+- If they gave ANY form of feedback — opinions, complaints, praise, suggestions, stories, emotions, even if brief, tangential, or passionate — respond with exactly: NONE
+- Rhetorical questions count as feedback (e.g. "Why can't they just fix it?" = complaint, not a question needing an answer)
+- Only deflect if they are CLEARLY asking for information, requesting help, or talking about something completely unrelated to the survey topic
+
+If deflection IS needed, write a SHORT (max 25 words), natural, human-sounding message that:
+- Feels like a real person, not a corporate bot
+- Gently steers back to the survey without being dismissive
+${hasLink ? linkInstruction : '- Do NOT include any links or URLs'}
+${customInstruction}
+
+RULES:
+- Output ONLY the redirect message, or NONE — nothing else
+- No analysis, no reasoning, no classification text
+- Do NOT mention the bot name, organization name, or survey name
+- Do NOT say "I'm just a survey bot" or "I'm just collecting feedback" — too robotic
+- Be warm and conversational, like a friendly interviewer
+${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. You MUST write your deflection message in ${language}. Do NOT respond in English.` : ''}`
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -90,15 +106,20 @@ CRITICAL RULES:
         text = parts.slice(1).join('—').trim()
       }
     }
-    // Strip leading analysis sentences like "Yes, they are asking..." or "The respondent is..."
+    // Strip leading analysis sentences and reasoning preamble
     text = text.replace(/^(Yes,?\s+)?(The respondent|They are|This is)[^.!?]*[.!?]\s*/gi, '')
+    text = text.replace(/^(Got it|Sure|Okay|I see|Understood|Right)[^.!?]*[.!?\-—:]\s*/gi, '')
+    text = text.replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
+    text = text.replace(/^(Let me|I'll|I will)[^.!?]*[.!?\-—:]\s*/gi, '')
 
     if (!text || text.length < 5 || text === 'NONE') {
       return NextResponse.json({ deflection: null })
     }
 
-    // Replace {{LINK}} placeholder with actual link markup
-    const deflection = text.replace('{{LINK}}', `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer">${linkText}</a>`)
+    // Replace {{LINK}} placeholder with actual link markup (if link configured)
+    const deflection = hasLink
+      ? text.replace('{{LINK}}', `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer">${linkText || 'our website'}</a>`)
+      : text.replace(/\{\{LINK\}\}/g, '')
 
     return NextResponse.json({ deflection })
 

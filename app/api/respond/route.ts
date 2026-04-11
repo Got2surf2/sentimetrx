@@ -13,9 +13,9 @@ import type { SubmitResponseBody, Sentiment } from '@/lib/types'
 //   2. Final submit (status='complete')   — marks response complete, checks device limits
 
 export async function POST(req: NextRequest) {
-  // Rate limit: 30 requests per minute per IP (covers partial saves + final submit)
+  // Rate limit: 120 requests per minute per IP (partial saves + final submit; multiple users may share an IP)
   var ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  var rl = checkRateLimit('respond:' + ip, 30, 60000)
+  var rl = checkRateLimit('respond:' + ip, 120, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   let body: SubmitResponseBody
 
@@ -33,14 +33,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  // For final submissions, require at least one score
-  if (isFinal && !isPartial) {
-    const hasNps        = payload.npsRecommend?.score != null
-    const hasExperience = payload.experienceRating?.score != null
-    if (!hasNps && !hasExperience) {
-      return NextResponse.json({ error: 'Incomplete survey payload' }, { status: 400 })
-    }
-  }
+  // Note: we no longer require NPS or experience scores for final submissions.
+  // Studies can have both NPS and experience rating disabled (e.g. open-ended only
+  // or custom questions only). The survey engine decides when the survey is complete;
+  // the API trusts the client's status field.
 
   const supabase = createServiceRoleClient()
 
@@ -122,6 +118,7 @@ export async function POST(req: NextRequest) {
     duration_sec:     duration_sec ?? null,
     ip_hash,
     status:           isPartial ? 'incomplete' : 'complete',
+    completed_at:     isPartial ? null : new Date().toISOString(),
   }
   if (fp_hash) rowData.fp_hash = fp_hash
   if (session_id) rowData.session_id = session_id
@@ -136,23 +133,53 @@ export async function POST(req: NextRequest) {
       .limit(1)
 
     if (existingSession && existingSession.length > 0) {
-      // Don't overwrite a completed response with a partial
-      if (existingSession[0].status === 'complete' && isPartial) {
-        return NextResponse.json({ success: true, response_id: existingSession[0].id, already_complete: true })
+      // Don't overwrite a completed response — insert a new row instead
+      if (existingSession[0].status === 'complete') {
+        if (isPartial) {
+          return NextResponse.json({ success: true, response_id: existingSession[0].id, already_complete: true })
+        }
+        // New complete submission for same session_id = new response (don't overwrite)
+        // Fall through to INSERT below with a fresh session_id
+        rowData.session_id = session_id + '_' + Date.now().toString(36)
+      } else {
+        // Update existing incomplete row
+        // For partial saves: add a WHERE guard so a late partial can't overwrite a completed row
+        let updateQuery = supabase
+          .from('responses')
+          .update(rowData)
+          .eq('id', existingSession[0].id)
+
+        if (isPartial) {
+          // Only update if the row is still incomplete — prevents race condition
+          // where a late partial save arrives after the final submit completed the row
+          updateQuery = updateQuery.eq('status', 'incomplete')
+        }
+
+        const { error: updateError } = await updateQuery
+
+        if (updateError) {
+          console.error('Response update error:', updateError)
+          return NextResponse.json({ error: 'Failed to update response' }, { status: 500 })
+        }
+
+        // Update campaign respondent if this was a final submit via campaign link
+        const recipientGuidUpdate = (body as any).recipient_guid
+        if (isFinal && recipientGuidUpdate) {
+          try {
+            await supabase
+              .from('campaign_respondents')
+              .update({
+                status: 'completed',
+                completed_at: new Date().toISOString(),
+                response_id: existingSession[0].id,
+              })
+              .eq('recipient_guid', recipientGuidUpdate)
+              .in('status', ['pending', 'sent', 'opened', 'clicked'])
+          } catch {}
+        }
+
+        return NextResponse.json({ success: true, response_id: existingSession[0].id })
       }
-
-      // Update existing row
-      const { error: updateError } = await supabase
-        .from('responses')
-        .update(rowData)
-        .eq('id', existingSession[0].id)
-
-      if (updateError) {
-        console.error('Response update error:', updateError)
-        return NextResponse.json({ error: 'Failed to update response' }, { status: 500 })
-      }
-
-      return NextResponse.json({ success: true, response_id: existingSession[0].id })
     }
   }
 
@@ -166,6 +193,22 @@ export async function POST(req: NextRequest) {
   if (insertError) {
     console.error('Response insert error:', insertError)
     return NextResponse.json({ error: 'Failed to save response' }, { status: 500 })
+  }
+
+  // ── Update campaign respondent status if this came via a campaign link ─────
+  const recipientGuid = (body as any).recipient_guid
+  if (isFinal && recipientGuid && response) {
+    try {
+      await supabase
+        .from('campaign_respondents')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          response_id: response.id,
+        })
+        .eq('recipient_guid', recipientGuid)
+        .in('status', ['pending', 'sent', 'opened', 'clicked'])
+    } catch {}
   }
 
   // Refresh materialized view asynchronously (don't block response)

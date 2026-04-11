@@ -25,6 +25,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
   const [qrDataUrl,   setQrDataUrl]   = useState<string | null>(null)
   const [error,       setError]       = useState<string | null>(null)
 
+
   // Generate QR code client-side using qrcode npm package
   useEffect(() => {
     QRCode.toDataURL(surveyUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#0a1628' } })
@@ -71,7 +72,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='deploy' />
-      <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: study.name, href: '/studies/' + study.id + '/edit'}, {label: 'Deploy'}]} />
+      <SubHeader crumbs={[{label: 'Dashboard', href: '/dashboard'}, {label: study.name, href: '/studies/' + study.id + '/edit'}, {label: 'Publish'}]} />
 
       <main className="max-w-2xl mx-auto px-6 py-10">
 

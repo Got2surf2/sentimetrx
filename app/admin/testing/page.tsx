@@ -1,0 +1,33 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import TestingClient from './TestingClient'
+
+export const dynamic = 'force-dynamic'
+
+export default async function TestingPage() {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: userData } = await supabase
+    .from('users')
+    .select('full_name, org_id, organizations(is_admin_org, logo_url, name, features)')
+    .eq('id', user.id)
+    .single()
+
+  const rawOrg = userData?.organizations
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const isAdmin = !!orgData?.is_admin_org
+  if (!isAdmin) redirect('/dashboard')
+
+  return (
+    <TestingClient
+      logoUrl={orgData?.logo_url || ''}
+      orgName={orgData?.name || ''}
+      fullName={userData?.full_name || ''}
+      userEmail={user.email!}
+      analyzeEnabled={!!orgData?.features?.analyze}
+      campaignsEnabled={!!orgData?.features?.campaigns}
+    />
+  )
+}

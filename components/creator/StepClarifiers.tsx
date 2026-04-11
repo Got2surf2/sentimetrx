@@ -205,12 +205,12 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
           <div>
             <div className="text-sm font-semibold text-gray-800">Enable AI deflection</div>
             <div className="text-xs text-gray-500 mt-0.5">
-              Uses Claude to detect questions and off-topic responses, then generates a tailored redirect with your link
+              Uses Claude to detect questions and off-topic responses, then generates a warm contextual redirect
             </div>
           </div>
           <button
             type="button"
-            onClick={() => updateConfig({ questionRedirect: { ...c.questionRedirect, enabled: !c.questionRedirect?.enabled, message: c.questionRedirect?.message || '', linkText: c.questionRedirect?.linkText || 'our website', linkUrl: c.questionRedirect?.linkUrl || '' } })}
+            onClick={() => updateConfig({ questionRedirect: { ...c.questionRedirect, enabled: !c.questionRedirect?.enabled, message: c.questionRedirect?.message || '', linkText: c.questionRedirect?.linkText || '', linkUrl: c.questionRedirect?.linkUrl || '' } })}
             className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (c.questionRedirect?.enabled ? 'bg-orange-500' : 'bg-gray-200')}
           >
             <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (c.questionRedirect?.enabled ? 'translate-x-5' : 'translate-x-0')} />
@@ -218,9 +218,23 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
         </div>
         {c.questionRedirect?.enabled && (
           <div className="flex flex-col gap-3 mt-2">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Deflection message (optional)</label>
+              <textarea
+                value={c.questionRedirect?.message || ''}
+                onChange={e => updateConfig({ questionRedirect: { ...c.questionRedirect!, message: e.target.value } })}
+                placeholder="e.g. Thanks for asking! I'm just here to gather your feedback. Let's continue with the survey."
+                rows={2}
+                className={inputCls}
+                style={{ resize: 'vertical', minHeight: 56 }}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Leave blank to let the AI generate a response. Or write your own — the AI will adapt it naturally to what the respondent said.
+              </p>
+            </div>
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Link text (shown in bot response)</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Link text (optional)</label>
                 <input
                   type="text"
                   value={c.questionRedirect?.linkText || ''}
@@ -230,7 +244,7 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Link URL</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Link URL (optional)</label>
                 <input
                   type="text"
                   value={c.questionRedirect?.linkUrl || ''}
@@ -240,10 +254,6 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
                 />
               </div>
             </div>
-            <p className="text-xs text-gray-400">
-              The bot will generate context-appropriate responses like: &quot;That&apos;s a great question! I&apos;m just here to collect feedback, but you can find that info at{' '}
-              <span className="text-blue-500 underline">{c.questionRedirect?.linkText || 'our website'}</span>.&quot;
-            </p>
           </div>
         )}
       </Section>

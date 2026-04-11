@@ -20,6 +20,7 @@ interface StudyStats {
 interface Props {
   logoUrl?: string; orgId?: string
   analyzeEnabled?: boolean
+  campaignsEnabled?: boolean
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   studies: Study[]; statsMap: Record<string, StudyStats>
 }
@@ -63,7 +64,7 @@ function DeployModal({ study, onClose }: { study: Study; onClose: () => void }) 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-gray-800 text-base">{'Deploy -- ' + study.name}</h3>
+          <h3 className="font-bold text-gray-800 text-base">{'Publish -- ' + study.name}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
         <div className="flex gap-5 items-start">
@@ -97,8 +98,8 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
 }
 
 // -- Study card -----------------------------------------------------------------
-function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDelete, onDuplicate, onRefresh }: {
-  study: Study; stats: StudyStats; isAdmin: boolean; userId: string
+function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabled, onPatch, onDelete, onDuplicate, onRefresh }: {
+  study: Study; stats: StudyStats; isAdmin: boolean; userId: string; campaignsEnabled?: boolean
   onPatch: (id: string, body: object) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDuplicate: (study: Study) => Promise<void>
@@ -253,6 +254,14 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
             </div>
           )}
 
+          {/* GUID — click to copy */}
+          <button
+            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); (e.target as HTMLElement).textContent = '✓ Copied!' ; setTimeout(() => { (e.target as HTMLElement).textContent = 'GUID: ' + study.guid }, 1500) }}
+            className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
+            title="Click to copy study GUID">
+            GUID: {study.guid}
+          </button>
+
           {/* Action pills — 3 rows */}
           <div className="flex flex-col gap-1.5 mt-auto pt-2 border-t border-gray-100">
             {/* Row 1: Data — pale orange */}
@@ -272,6 +281,13 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
                 style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                 Responses
               </Link>
+              {campaignsEnabled && (
+                <Link href={'/studies/' + study.id + '/campaigns'}
+                  className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all"
+                  style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                  Campaigns
+                </Link>
+              )}
             </div>
 
             {/* Row 2: Actions — deploy green, close/delete red */}
@@ -281,7 +297,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
                   disabled={status !== 'active'}
                   className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-40"
                   style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
-                  Deploy
+                  Publish
                 </button>
                 <button
                   onClick={() => setConfirm({
@@ -330,7 +346,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, onPatch, onDel
 }
 
 // -- Main dashboard -------------------------------------------------------------
-export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap, analyzeEnabled }: Props) {
+export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap, analyzeEnabled, campaignsEnabled }: Props) {
   const [studies,      setStudies]      = useState(initialStudies)
   const [ownerFilter,  setOwnerFilter]  = useState<OwnerFilter>('mine')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
@@ -388,6 +404,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
           fullName={user.fullName}
           currentPage="dashboard"
           analyzeEnabled={analyzeEnabled}
+          campaignsEnabled={campaignsEnabled}
         />
       </div>
       <SubHeader crumbs={[{ label: 'Dashboard' }]} isAdmin={user.isAdmin} orgId={orgId} showFilters />
@@ -460,6 +477,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
                 stats={statsMap[study.id] || { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: 'Avg Rating', lastResponse: null }}
                 isAdmin={!!user.isAdmin}
                 userId={user.userId}
+                campaignsEnabled={campaignsEnabled}
                 onPatch={handlePatch}
                 onDelete={handleDelete}
                 onDuplicate={handleDuplicate}

@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { useSurveyEngine } from './useSurveyEngine'
 import type { Study } from '@/lib/types'
 
-interface Props { study: Study }
+interface Props { study: Study; orgName?: string }
 
 // All font sizes use rem so they scale with the user's OS/browser
 // accessibility text-size settings. Conversions from the original px values
@@ -23,7 +23,7 @@ interface Props { study: Study }
 // chrome like the avatar) are intentionally kept in px — they are layout
 // measurements, not text, and should not inflate with font size.
 
-export default function SurveyWidget({ study }: Props) {
+export default function SurveyWidget({ study, orgName = '' }: Props) {
   const chatRef    = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
@@ -75,7 +75,7 @@ export default function SurveyWidget({ study }: Props) {
   // Detect reduced motion preference from device accessibility settings
   const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
 
-  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, chatRef, inputRef, scrollBottom, isLightBg, reducedMotion: prefersReducedMotion })
+  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, orgName, chatRef, inputRef, scrollBottom, isLightBg, reducedMotion: prefersReducedMotion })
 
   // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
   // are always the latest from the DB, not potentially stale server-rendered props

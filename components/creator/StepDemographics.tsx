@@ -122,7 +122,7 @@ export default function StepDemographics({ draft, updateConfig, onNext, onBack }
         </div>
       </Section>
 
-      <NavButtons onBack={onBack} onNext={onNext} nextLabel="Next: Review &amp; Publish" />
+      <NavButtons onBack={onBack} onNext={onNext} nextLabel="Next: Contact Info" />
     </div>
   )
 }

@@ -14,6 +14,7 @@ import StepClarifiers from '@/components/creator/StepClarifiers'
 import StepQuestions from '@/components/creator/StepQuestions'
 import StepPsychographics from '@/components/creator/StepPsychographics'
 import StepDemographics from '@/components/creator/StepDemographics'
+import StepContactInfo from '@/components/creator/StepContactInfo'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
 
@@ -118,14 +119,14 @@ export default function NewStudyPage() {
   // Nav publish button: jump to Review step so user sees the summary first.
   // The actual API call happens when they click Publish inside StepReview.
   function handleNavPublish() {
-    goTo(7)
+    goTo(8)
   }
 
   function handleWizardGenerated(generated: StudyDraft) {
     // Merge generated draft into state and jump to Review step
     setDraft(generated)
     setShowModal(false)
-    goTo(7)
+    goTo(8)
   }
 
   const stepProps = { draft, update, updateConfig }
@@ -154,7 +155,7 @@ export default function NewStudyPage() {
             highestVisited={highestVisited}
             onStepClick={goTo}
             onPublish={handleNavPublish}
-            onImport={(imported) => { setDraft({ ...imported, id: undefined }); setHighestVisited(7); goTo(7) }}
+            onImport={(imported) => { setDraft({ ...imported, id: undefined }); setHighestVisited(7); goTo(8) }}
             saving={saving}
             freeNav={false}
           />
@@ -218,9 +219,16 @@ export default function NewStudyPage() {
           />
         )}
         {step === 7 && (
+          <StepContactInfo
+            {...stepProps}
+            onNext={() => goTo(8)}
+            onBack={() => goTo(6)}
+          />
+        )}
+        {step === 8 && (
           <StepReview
             {...stepProps}
-            onBack={() => goTo(6)}
+            onBack={() => goTo(7)}
             onSaveDraft={() => handleSave('draft')}
             onPublish={() => handleSave('active')}
             saving={saving}

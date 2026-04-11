@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, type Industry } from '@/lib/industryDefaults'
+import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import EmojiPickerPopover from './EmojiPickerPopover'
 
 const HERMES = '#E8632A'
@@ -369,7 +370,188 @@ export default function StepBasics({ draft, update, updateConfig, onNext }: Prop
         </p>
       </Section>
 
+      {/* Typing animation speed */}
+      <Section title="Typing Animation Duration" description="How long the typing indicator bubble shows between bot messages.">
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { value: 0.25, label: '0.25s', desc: 'Minimal' },
+            { value: 0.5,  label: '0.5s',  desc: 'Quick' },
+            { value: 1.0,  label: '1s',    desc: 'Default' },
+            { value: 1.5,  label: '1.5s',  desc: 'Relaxed' },
+            { value: 2.0,  label: '2s',    desc: 'Slow' },
+          ].map(function(opt) {
+            var current = draft.config.typingSpeed ?? 1.0
+            var active = current === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={function() { updateConfig({ typingSpeed: opt.value }) }}
+                className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all"
+                style={{
+                  background: active ? '#fff4ef' : '#f9fafb',
+                  border: '1.5px solid ' + (active ? '#e8622a' : '#e5e7eb'),
+                  cursor: 'pointer',
+                  minWidth: 64,
+                }}
+              >
+                <span className="font-bold text-sm" style={{ color: active ? '#e8622a' : '#374151' }}>{opt.label}</span>
+                <span className="text-xs" style={{ color: active ? '#e8622a' : '#6b7280', fontWeight: active ? 600 : 400 }}>{opt.desc}</span>
+              </button>
+            )
+          })}
+        </div>
+      </Section>
+
+      {/* Multi-language */}
+      <LanguageSection draft={draft} updateConfig={updateConfig} />
+
       <NavButtons onNext={onNext} nextDisabled={!canNext} nextLabel="Next: Opening" />
     </div>
+  )
+}
+
+// ── Language picker + translate ──────────────────────────────
+function LanguageSection({ draft, updateConfig }: Pick<Props, 'draft' | 'updateConfig'>) {
+  const langs = draft.config.languages || ['en']
+  const [translating, setTranslating] = useState<string | null>(null)
+  const [error, setError]             = useState<string | null>(null)
+
+  function toggleLang(code: string) {
+    if (code === 'en') return // English is always enabled
+    const next = langs.includes(code) ? langs.filter(c => c !== code) : [...langs, code]
+    // Remove translations for unchecked languages
+    const translations = { ...(draft.config.translations || {}) }
+    for (const k of Object.keys(translations)) { if (!next.includes(k)) delete translations[k] }
+    updateConfig({ languages: next, translations })
+  }
+
+  async function translateLang(code: string) {
+    const lang = SUPPORTED_LANGUAGES.find(l => l.code === code)
+    if (!lang) return
+    setTranslating(code)
+    setError(null)
+    try {
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: draft.config,
+          targetLanguage: code,
+          targetLanguageName: lang.name,
+        }),
+      })
+      if (!res.ok) throw new Error('Translation failed')
+      const data = await res.json()
+      const translations = { ...(draft.config.translations || {}), [code]: data.translation }
+      updateConfig({ translations })
+    } catch (err: any) {
+      setError(err.message || 'Translation failed')
+    } finally {
+      setTranslating(null)
+    }
+  }
+
+  async function translateAll() {
+    const toTranslate = langs.filter(c => c !== 'en' && !draft.config.translations?.[c])
+    for (const code of toTranslate) {
+      await translateLang(code)
+    }
+  }
+
+  const nonEnLangs = langs.filter(c => c !== 'en')
+  const untranslated = nonEnLangs.filter(c => !draft.config.translations?.[c])
+
+  return (
+    <Section title="Languages" description="Enable multiple languages. Respondents choose their language before starting the survey. Translations are AI-generated from your English content.">
+      <div className="flex flex-wrap gap-2">
+        {SUPPORTED_LANGUAGES.map(lang => {
+          const checked = langs.includes(lang.code)
+          const isEn = lang.code === 'en'
+          return (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => toggleLang(lang.code)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+              style={{
+                background: checked ? '#fff4ef' : '#f9fafb',
+                border: '1.5px solid ' + (checked ? '#e8622a' : '#e5e7eb'),
+                cursor: isEn ? 'default' : 'pointer',
+                opacity: isEn ? 0.7 : 1,
+              }}
+              disabled={isEn}
+            >
+              <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                style={{
+                  borderColor: checked ? '#e8622a' : '#d1d5db',
+                  background: checked ? '#e8622a' : 'white',
+                  color: checked ? 'white' : 'transparent',
+                }}>
+                {checked ? '✓' : ''}
+              </span>
+              <span style={{ color: checked ? '#e8622a' : '#6b7280', fontWeight: checked ? 600 : 400 }}>
+                {lang.nativeName}
+              </span>
+              <span className="text-xs" style={{ color: '#9ca3af' }}>
+                {lang.name !== lang.nativeName ? lang.name : ''}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Translate controls */}
+      {nonEnLangs.length > 0 && (
+        <div className="flex flex-col gap-2 mt-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {nonEnLangs.map(code => {
+              const lang = SUPPORTED_LANGUAGES.find(l => l.code === code)
+              const hasTranslation = !!draft.config.translations?.[code]
+              return (
+                <div key={code} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                  <span className="text-sm font-medium text-gray-700">{lang?.nativeName || code}</span>
+                  {hasTranslation ? (
+                    <span className="text-green-500 text-xs font-bold">✓</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => translateLang(code)}
+                      disabled={translating !== null}
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full transition-all"
+                      style={{ background: '#e8622a', color: 'white', opacity: translating ? 0.5 : 1 }}
+                    >
+                      {translating === code ? 'Translating...' : 'Translate'}
+                    </button>
+                  )}
+                  {hasTranslation && (
+                    <button
+                      type="button"
+                      onClick={() => translateLang(code)}
+                      disabled={translating !== null}
+                      className="text-xs text-gray-400 hover:text-gray-600 underline"
+                    >
+                      {translating === code ? '...' : 'Redo'}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {untranslated.length > 1 && (
+            <button
+              type="button"
+              onClick={translateAll}
+              disabled={translating !== null}
+              className="self-start px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all"
+              style={{ background: translating ? '#ccc' : '#e8622a' }}
+            >
+              {translating ? 'Translating...' : `Translate all (${untranslated.length})`}
+            </button>
+          )}
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+      )}
+    </Section>
   )
 }

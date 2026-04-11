@@ -16,6 +16,7 @@ interface ClarifyRequest {
   npsScore:        number
   priorAnswers:    Record<string, string>
   industry?:       string
+  language?:       string
 }
 
 // ── Input guardrail ────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
   const {
     studyName, studyPurpose, questionAsked,
     answer, sentiment, experienceScore, npsScore,
-    priorAnswers,
+    priorAnswers, language,
   } = body
 
   // ── Input guardrail: skip before hitting the API ──────────────────────
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
     .map(([k, v]) => `${k}: "${v}"`)
     .join('\n')
 
-  const systemPrompt = `You are a conversational survey bot conducting a feedback survey for "${studyName}".
+  const systemPrompt = `You are a conversational survey bot conducting a feedback survey on behalf of the organization "${studyName}".
 Your purpose: ${studyPurpose}
 
 The respondent has:
@@ -95,7 +96,14 @@ Rules:
 - Only return SKIP if the answer is very detailed (3+ specific points). Short or vague answers should ALWAYS get a follow-up
 - If their answer is off-topic, nonsensical, inappropriate, or abusive, return exactly: SKIP
 - Never echo back offensive, harmful, or inappropriate content from the respondent
-- Respond with ONLY the question or SKIP -- no preamble, no quotes`
+
+CRITICAL OUTPUT FORMAT:
+- Your ENTIRE response must be ONLY the follow-up question itself, or SKIP
+- Do NOT include ANY reasoning, analysis, thinking, or commentary
+- Do NOT write phrases like "Got it", "Here's my follow-up", "I'll ask about...", "The respondent..."
+- Do NOT explain your thought process or rationale
+- Just output the bare question text — nothing else
+${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. You MUST write your follow-up question in ${language}. Do NOT respond in English.` : ''}`
 
   const userPrompt = `The survey asked: "${questionAsked}"
 The respondent answered: "${answer}"
@@ -129,7 +137,27 @@ Generate a targeted follow-up question or return SKIP.`
       return NextResponse.json({ question: null })
     }
 
-    const clean = text.replace(/^["']|["']$/g, '').trim()
+    let clean = text.replace(/^["']|["']$/g, '').trim()
+
+    // ── Strip leaked reasoning/preamble ────────────────────────────────
+    // Models sometimes prefix with "Got it — ...", "Here's my follow-up:", etc.
+    // Extract the last sentence that looks like a question.
+    clean = clean
+      .replace(/^(Got it|Sure|Okay|I see|Understood|Right|Interesting)[^.!?]*[.!?\-—:]\s*/gi, '')
+      .replace(/^(Here'?s?\s+(my|a|the)\s+follow[- ]?up[^.!?]*[.!?\-—:]\s*)/gi, '')
+      .replace(/^(The respondent|They('ve| have| are)|This (is|indicates))[^.!?]*[.!?\-—:]\s*/gi, '')
+      .replace(/^(Let me|I'll|I will|I want to)[^.!?]*[.!?\-—:]\s*/gi, '')
+      .trim()
+
+    // If there are multiple sentences, take the last one that ends with ?
+    if (clean.includes('. ') || clean.includes('? ')) {
+      const sentences = clean.split(/(?<=[.!?])\s+/)
+      const questionSentence = sentences.reverse().find((s: string) => s.trim().endsWith('?'))
+      if (questionSentence) clean = questionSentence.trim()
+    }
+
+    // Strip any remaining leading quotes or dashes
+    clean = clean.replace(/^[-—–]\s*/, '').replace(/^["']|["']$/g, '').trim()
 
     // ── Output guardrail: validate before returning ────────────────────
     if (!isOutputSafe(clean)) {

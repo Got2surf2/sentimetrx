@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import type { SurveyQuestion, LikertFollowUp, QuestionType, KeywordTrigger } from '@/lib/types'
-import { Section, NavButtons, TransitionMessagePanel } from './CreatorUI'
+import { Section, NavButtons, TransitionMessagePanel, Input as CreatorInput } from './CreatorUI'
 import { INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover, { RATING_SCALE_EMOJIS } from './EmojiPickerPopover'
 
@@ -23,6 +23,11 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   rating:   'Rating scale',
   numeric:  'Numeric input',
   hidden:   'Hidden field',
+  email:    'Email address',
+  phone:    'Phone number',
+  zip_code: 'ZIP code',
+  us_state: 'US state',
+  message:  'Message (no response)',
 }
 
 const TYPE_ICONS: Record<QuestionType, string> = {
@@ -35,6 +40,11 @@ const TYPE_ICONS: Record<QuestionType, string> = {
   rating:   '\uD83D\uDD22',
   numeric:  '\uD83D\uDCAC',
   hidden:   '\uD83D\uDD12',
+  email:    '\uD83D\uDCE7',
+  phone:    '\uD83D\uDCDE',
+  zip_code: '\uD83D\uDCEE',
+  us_state: '\uD83C\uDDFA\uD83C\uDDF8',
+  message:  '\uD83D\uDCAC',
 }
 
 const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors'
@@ -179,9 +189,11 @@ function LikertEditor({ scale, onChange }: {
   const update = (i: number, patch: Partial<{ emoji: string; label: string }>) => {
     onChange(scale.map((r, j) => j === i ? { ...r, ...patch } : r))
   }
+  const SCORE_EMOJI_DEFAULTS = ['😞', '😕', '😐', '🙂', '😊', '😍', '🤩']
   const addPoint = () => {
     const nextScore = scale.length + 1
-    onChange([...scale, { score: nextScore, emoji: '⭐', label: 'Score ' + nextScore }])
+    const emoji = SCORE_EMOJI_DEFAULTS[nextScore - 1] || '⭐'
+    onChange([...scale, { score: nextScore, emoji, label: 'Score ' + nextScore }])
   }
   const remove = (i: number) => onChange(scale.filter((_, j) => j !== i).map((r, j) => ({ ...r, score: j + 1 })))
 
@@ -195,6 +207,16 @@ function LikertEditor({ scale, onChange }: {
             onChange={v => update(i, { emoji: v })}
             curatedEmojis={RATING_SCALE_EMOJIS}
             size="sm"
+          />
+          <input type="text" value={r.emoji || ''} onChange={e => {
+              const val = e.target.value
+              // Take only the last emoji character(s) pasted/typed
+              const emojis = Array.from(val).filter(c => (c.codePointAt(0) || 0) > 255)
+              if (emojis.length > 0) update(i, { emoji: emojis[emojis.length - 1] })
+            }}
+            placeholder="paste"
+            title="Paste or type an emoji"
+            className="w-10 text-center text-base bg-transparent border-b border-gray-200 focus:border-orange-400 outline-none transition-colors"
           />
           <input type="text" value={r.label} onChange={e => update(i, { label: e.target.value })}
             placeholder={'Score ' + r.score + ' label'}
@@ -264,11 +286,12 @@ function RatingEditor({ min, max, onChange }: {
 
 // -- Question card --------------------------------------------
 function QuestionCard({
-  q, idx, total, onChange, onDelete, onMoveUp, onMoveDown
+  q, idx, total, allQuestions, onChange, onDelete, onMoveUp, onMoveDown
 }: {
   q: SurveyQuestion
   idx: number
   total: number
+  allQuestions: SurveyQuestion[]
   onChange: (q: SurveyQuestion) => void
   onDelete: () => void
   onMoveUp: () => void
@@ -387,10 +410,10 @@ function QuestionCard({
         <div className="px-4 py-4 flex flex-col gap-4">
           {/* Prompt */}
           <div>
-            <label className={labelCls}>Question prompt</label>
-            <textarea value={q.prompt} onChange={e => set({ prompt: e.target.value })}
-              placeholder="Enter your question..." rows={2}
-              className={inputCls + ' resize-none'} />
+            <label className={labelCls}>{q.type === 'message' ? 'Message text' : 'Question prompt'}</label>
+            <CreatorInput value={q.prompt} onChange={v => set({ prompt: v })}
+              placeholder={q.type === 'message' ? 'Enter message to show respondent...' : 'Enter your question...'} multiline rows={2}
+              enableLinks />
           </div>
 
           {/* Export label */}
@@ -467,6 +490,66 @@ function QuestionCard({
               <p className="text-xs text-gray-400">
                 Respondents type a number. Accepts any integer or decimal. Ana will treat responses as a numeric variable for statistical analysis.
               </p>
+            </div>
+          )}
+
+          {/* Skip logic — available for close-ended types */}
+          {(q.type === 'radio' || q.type === 'dropdown' || q.type === 'likert' || q.type === 'rating' || q.type === 'checkbox') && (
+            <div className="pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-2">
+                <label className={labelCls}>Skip Logic</label>
+                {(!q.skipLogic || q.skipLogic.length === 0) && (
+                  <button type="button" onClick={() => set({ skipLogic: [{ condition: 'equals', value: '', skipTo: '' }] })}
+                    className="text-[10px] font-semibold text-orange-500 hover:text-orange-600">+ Add rule</button>
+                )}
+              </div>
+              {(q.skipLogic || []).map((rule, ri) => {
+                const laterQuestions = allQuestions.filter((oq, oi) => oi > idx && oq.type !== 'hidden' && oq.enabled !== false)
+                const answerOptions = q.type === 'likert' ? (q.likertScale || []).map(s => s.label)
+                  : q.type === 'rating' ? Array.from({ length: (q.ratingMax || 5) - (q.ratingMin || 1) + 1 }, (_, i) => String((q.ratingMin || 1) + i))
+                  : (q.options || [])
+
+                const updateRule = (patch: Partial<typeof rule>) => {
+                  const rules = [...(q.skipLogic || [])]
+                  rules[ri] = { ...rules[ri], ...patch }
+                  set({ skipLogic: rules })
+                }
+                const removeRule = () => set({ skipLogic: (q.skipLogic || []).filter((_, j) => j !== ri) })
+
+                return (
+                  <div key={ri} className="flex items-center gap-2 mb-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                    <span className="text-[10px] text-gray-500 flex-shrink-0">If answer</span>
+                    <select value={rule.condition} onChange={e => updateRule({ condition: e.target.value as any })}
+                      className="text-[10px] border border-gray-200 rounded px-1.5 py-1 outline-none focus:border-orange-400 bg-white">
+                      <option value="equals">equals</option>
+                      <option value="not_equals">does not equal</option>
+                      {q.type !== 'checkbox' && <option value="any_of">is any of</option>}
+                      {(q.type === 'rating' || q.type === 'likert') && <option value="greater_than">greater than</option>}
+                      {(q.type === 'rating' || q.type === 'likert') && <option value="less_than">less than</option>}
+                    </select>
+                    <select value={Array.isArray(rule.value) ? rule.value[0] || '' : rule.value}
+                      onChange={e => updateRule({ value: e.target.value })}
+                      className="text-[10px] border border-gray-200 rounded px-1.5 py-1 outline-none focus:border-orange-400 bg-white flex-1 min-w-0">
+                      <option value="">-- value --</option>
+                      {answerOptions.map(opt => <option key={opt} value={opt}>{opt.length > 25 ? opt.slice(0, 25) + '...' : opt}</option>)}
+                    </select>
+                    <span className="text-[10px] text-gray-500 flex-shrink-0">skip to</span>
+                    <select value={rule.skipTo} onChange={e => updateRule({ skipTo: e.target.value })}
+                      className="text-[10px] border border-gray-200 rounded px-1.5 py-1 outline-none focus:border-orange-400 bg-white flex-1 min-w-0">
+                      <option value="">-- select --</option>
+                      {laterQuestions.map((oq, oi) => (
+                        <option key={oq.id} value={oq.id}>Q{allQuestions.indexOf(oq) + 1}: {(oq.prompt || '').slice(0, 30)}{(oq.prompt || '').length > 30 ? '...' : ''}</option>
+                      ))}
+                      <option value="_end">End survey</option>
+                    </select>
+                    <button type="button" onClick={removeRule} className="text-gray-300 hover:text-red-400 text-sm flex-shrink-0">x</button>
+                  </div>
+                )
+              })}
+              {q.skipLogic && q.skipLogic.length > 0 && q.skipLogic.length < 5 && (
+                <button type="button" onClick={() => set({ skipLogic: [...(q.skipLogic || []), { condition: 'equals', value: '', skipTo: '' }] })}
+                  className="text-[10px] font-semibold text-orange-500 hover:text-orange-600">+ Add another rule</button>
+              )}
             </div>
           )}
         </div>
@@ -979,6 +1062,7 @@ export default function StepQuestions({ draft, updateConfig, onNext, onBack }: P
               q={q}
               idx={i}
               total={questions.length}
+              allQuestions={questions}
               onChange={updated => updateQ(i, updated)}
               onDelete={() => deleteQ(i)}
               onMoveUp={() => moveUp(i)}

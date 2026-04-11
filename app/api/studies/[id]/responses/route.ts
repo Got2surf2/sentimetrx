@@ -1,5 +1,5 @@
 // app/api/studies/[id]/responses/route.ts
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface Params { params: { id: string } }
@@ -33,11 +33,10 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (!study) return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
 
-  // Verify ownership — creator or same org
-  const { data: userData } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
-  if (study.org_id !== userData?.org_id && study.created_by !== user.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  // RLS on the studies table already enforces org membership — if the select
+  // above succeeded, the user has access. Use service role for responses
+  // to avoid client_id mismatch issues with response-level RLS.
+  const service = createServiceRoleClient()
 
   const cfg = study?.config || {}
 
@@ -46,7 +45,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   let allDemoKeys:   string[] = []
 
   if (isCSV) {
-    const { data: allRows } = await supabase
+    const { data: allRows } = await service
       .from('responses').select('payload').eq('study_id', params.id)
 
     const psychoSet = new Set<string>()
@@ -66,11 +65,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   const statusF  = url.searchParams.get('status')
 
   // ── Build query ───────────────────────────────────────────────────────────
-  let query = supabase
+  let query = service
     .from('responses')
     .select('*', { count: 'exact' })
     .eq('study_id', params.id)
-    .order('completed_at', { ascending: false })
+    .order('completed_at', { ascending: false, nullsFirst: false })
 
   // Status filter — only applied when explicitly set via query param
   if (statusF) {
@@ -84,8 +83,14 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (sentiment) query = query.eq('sentiment', sentiment)
   if (minNps)    query = query.gte('nps_score', parseInt(minNps))
   if (maxNps)    query = query.lte('nps_score', parseInt(maxNps))
-  if (from)      query = query.gte('completed_at', from)
-  if (to)        query = query.lte('completed_at', to + 'T23:59:59Z')
+  // Date filters: include rows with null completed_at (incompletes) alongside date-matched rows
+  if (from && to) {
+    query = query.or(`and(completed_at.gte.${from},completed_at.lte.${to}T23:59:59Z),completed_at.is.null`)
+  } else if (from) {
+    query = query.or(`completed_at.gte.${from},completed_at.is.null`)
+  } else if (to) {
+    query = query.or(`completed_at.lte.${to}T23:59:59Z,completed_at.is.null`)
+  }
   if (!isCSV)    query = query.range(offset, offset + limit - 1)
   if (isCSV)     query = query.range(0, 49999)  // Supabase caps at 1000 by default — explicit range for CSV
 
@@ -265,13 +270,13 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!study) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
 
   const { data: profile } = await userClient
-    .from('profiles')
+    .from('users')
     .select('role, org_id')
     .eq('id', user.id)
     .single()
 
   const isOwner = study.created_by === user.id
-  const isAdmin = profile?.role === 'admin' && profile?.org_id === study.org_id
+  const isAdmin = (profile?.role === 'platform_admin' || profile?.role === 'owner') && profile?.org_id === study.org_id
   if (!isOwner && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()

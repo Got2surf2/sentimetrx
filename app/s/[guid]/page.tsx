@@ -69,11 +69,22 @@ export default async function SurveyPage({ params }: Props) {
     )
   }
 
+  // Fetch org name for AI prompts
+  let orgName = ''
+  if (study.org_id) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', study.org_id)
+      .single()
+    if (org) orgName = org.name
+  }
+
   const bg = study.config?.theme?.backgroundColor || '#0a1628'
 
   return (
     <main style={{ height: '100dvh', background: bg, overflow: 'hidden' }}>
-      <SurveyWidget study={study as Study} />
+      <SurveyWidget study={study as Study} orgName={orgName} />
     </main>
   )
 }

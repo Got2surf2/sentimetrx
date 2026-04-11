@@ -123,6 +123,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       logoUrl={orgData?.logo_url || ''}
       orgId={orgData?.id || ''}
       analyzeEnabled={!!orgData?.features?.analyze}
+      campaignsEnabled={!!orgData?.features?.campaigns || isAdmin}
       user={{
         email:      user.email!,
         fullName:   userData?.full_name ?? '',

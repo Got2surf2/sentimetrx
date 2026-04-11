@@ -11,7 +11,8 @@ interface Props {
   fullName?:       string
   crumbs?:         any
   analyzeEnabled?: boolean   // NEW -- true if org has features.analyze
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'test-spinner'
+  campaignsEnabled?: boolean // true if org has features.campaigns
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'test-spinner'
 }
 
 const HERMES = '#E8632A'
@@ -51,6 +52,12 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83D\uDCCB'} Question Library
             </Link>
+            <Link href="/admin/testing" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'test-spinner' ? 700 : 500, color: currentPage === 'test-spinner' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83E\uDDEA'} Testing Tools
+            </Link>
           </div>
         </>
       )}
@@ -58,7 +65,7 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
   )
 }
 
-export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled = true, currentPage }: Props) {
+export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled = true, campaignsEnabled = false, currentPage }: Props) {
 
   const navLink = (page: string, href: string, label: string) => {
     const active = currentPage === page
@@ -109,8 +116,9 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
 
       {/* Right: nav links */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
-        {navLink('dashboard', '/dashboard', 'Studies')}
         {analyzeEnabled && navLink('analyze', '/analyze', 'Analyze')}
+        {navLink('dashboard', '/dashboard', 'Studies')}
+        {(campaignsEnabled || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />
         <form action="/api/auth/signout" method="POST">

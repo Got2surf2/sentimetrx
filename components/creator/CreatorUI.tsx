@@ -1,6 +1,9 @@
 'use client'
 // components/creator/CreatorUI.tsx — light theme
 
+import { useRef } from 'react'
+import LinkToolbar from './LinkToolbar'
+
 const HERMES = '#E8632A'
 
 interface InputProps {
@@ -11,15 +14,18 @@ interface InputProps {
   className?:   string
   multiline?:   boolean
   rows?:        number
+  enableLinks?: boolean   // show floating link toolbar on text selection
 }
 
 const inputBase = 'w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors resize-none'
 
-export function Input({ value, onChange, placeholder, hint, className = '', multiline, rows = 3 }: InputProps) {
+export function Input({ value, onChange, placeholder, hint, className = '', multiline, rows = 3, enableLinks }: InputProps) {
+  const elRef = useRef<HTMLTextAreaElement & HTMLInputElement>(null)
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1" style={{ position: 'relative' }}>
       {multiline ? (
         <textarea
+          ref={elRef as any}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
@@ -28,6 +34,7 @@ export function Input({ value, onChange, placeholder, hint, className = '', mult
         />
       ) : (
         <input
+          ref={elRef as any}
           type="text"
           value={value}
           onChange={e => onChange(e.target.value)}
@@ -35,7 +42,9 @@ export function Input({ value, onChange, placeholder, hint, className = '', mult
           className={`${inputBase} ${className}`}
         />
       )}
+      {enableLinks && <LinkToolbar targetRef={elRef} value={value} onChange={onChange} />}
       {hint && <p className="text-gray-400 text-xs px-1">{hint}</p>}
+      {enableLinks && <p className="text-gray-300 text-xs px-1">Select text and click Add Link to insert a URL</p>}
     </div>
   )
 }

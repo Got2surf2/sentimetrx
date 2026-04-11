@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentimetRX Response Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; padding: 32px; }
+  .container { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 14px; margin-bottom: 24px; }
+  .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
+  input, select { width: 100%; padding: 10px 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+  input:focus, select:focus { border-color: #2d7d9a; }
+  .row { display: flex; gap: 12px; margin-bottom: 14px; }
+  .row > div { flex: 1; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 24px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: #2d7d9a; color: #fff; }
+  .btn-primary:hover { background: #236477; }
+  .btn-primary:disabled { background: #aaa; cursor: not-allowed; }
+  .btn-stop { background: #e74c3c; color: #fff; margin-left: 8px; }
+  .btn-stop:hover { background: #c0392b; }
+  .actions { display: flex; align-items: center; margin-top: 16px; }
+  #status { margin-top: 16px; font-size: 13px; color: #555; }
+  #log { max-height: 400px; overflow-y: auto; font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 12px; line-height: 1.6; padding: 16px; background: #1a1a2e; color: #a0e4a0; border-radius: 8px; margin-top: 16px; display: none; }
+  #log .err { color: #e74c3c; }
+  #log .info { color: #5dade2; }
+  #log .dim { color: #666; }
+  .progress { margin-top: 12px; }
+  .progress-bar { height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #2d7d9a; border-radius: 3px; transition: width 0.3s; width: 0%; }
+  .progress-label { font-size: 12px; color: #888; margin-top: 4px; text-align: right; }
+  .study-info { font-size: 13px; color: #555; padding: 12px; background: #f0f8fa; border-radius: 8px; margin-bottom: 14px; display: none; }
+  .study-info strong { color: #2d7d9a; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>SentimetRX Response Simulator</h1>
+  <p class="subtitle">Generate realistic test responses without needing humans</p>
+
+  <div class="card">
+    <div class="row">
+      <div style="flex:2">
+        <label>Study GUID</label>
+        <input type="text" id="guid" placeholder="Paste study GUID here..." />
+      </div>
+      <div>
+        <label>Count</label>
+        <input type="number" id="count" value="10" min="1" max="500" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Base URL</label>
+        <select id="baseUrl">
+          <option value="http://localhost:3000">localhost:3000</option>
+          <option value="https://sentimetrx-staging.vercel.app">Staging (Vercel)</option>
+        </select>
+      </div>
+      <div>
+        <label>Sentiment Mix</label>
+        <select id="mix">
+          <option value="realistic">Realistic (skew positive)</option>
+          <option value="uniform">Uniform (even spread)</option>
+          <option value="positive">Mostly positive</option>
+          <option value="negative">Mostly negative</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="studyInfo" class="study-info"></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="startBtn" onclick="start()">Generate Responses</button>
+      <button class="btn btn-stop" id="stopBtn" onclick="stop()" style="display:none">Stop</button>
+    </div>
+
+    <div class="progress" id="progressWrap" style="display:none">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel"></div>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<script>
+// ── Response data pools ─────────────────────────────────────────────────
+
+const POSITIVE = [
+  "Really impressed with the quality of service. The team went above and beyond.",
+  "Everything was smooth from start to finish. Would definitely come back.",
+  "Love the attention to detail. You can tell people here really care.",
+  "Had a fantastic experience — the staff was incredibly helpful and friendly.",
+  "One of the best experiences I've had. Keep doing what you're doing!",
+  "Very professional and welcoming. Made me feel valued as a customer.",
+  "The whole process was seamless. I appreciated how organized everything was.",
+  "Great atmosphere and wonderful people. Exceeded my expectations.",
+  "I was blown away by how responsive the team was to my needs.",
+  "Top-notch service. I've already recommended you to friends.",
+  "Your team made a complicated situation feel easy. Thank you!",
+  "I'm genuinely impressed. This is exactly how customer service should be.",
+  "Such a pleasant surprise. Everything about my visit was outstanding.",
+  "The quality keeps getting better. Really happy I chose you.",
+  "Couldn't be happier with how everything turned out. Well done.",
+]
+
+const NEUTRAL = [
+  "It was fine overall. Nothing spectacular but nothing bad either.",
+  "Decent experience. A few things could be improved but generally okay.",
+  "Pretty standard service. Met my expectations but didn't exceed them.",
+  "The basics were handled well. Some areas could use a bit more polish.",
+  "Not bad. I've had better experiences elsewhere but also much worse.",
+  "Average experience. The main thing got done which is what matters.",
+  "It was okay. Some staff were great, others seemed disengaged.",
+  "Satisfactory but room for improvement in a few areas.",
+  "Middle of the road. Nothing to write home about but no complaints.",
+  "Got what I needed done. Wouldn't say it was memorable though.",
+]
+
+const NEGATIVE = [
+  "Pretty disappointed with the experience. Felt rushed and overlooked.",
+  "The wait times were unacceptable. I almost left before being seen.",
+  "Communication was really poor. Nobody seemed to know what was going on.",
+  "I expected much better based on what I'd heard. Let down.",
+  "Several things went wrong and nobody seemed to care about fixing them.",
+  "Frustrating experience. Had to repeat myself multiple times.",
+  "The service didn't match the price at all. Felt overcharged.",
+  "Things were disorganized and chaotic. Needs serious improvement.",
+  "I left feeling worse than when I arrived. Very disappointing.",
+  "Not up to standard. I've been coming for years and quality has dropped.",
+]
+
+const SUGGESTIONS = [
+  "Would be nice to have an online booking system so I don't have to call.",
+  "Maybe add more options for evening availability? Hard to fit into work schedules.",
+  "A loyalty program or repeat customer discount would go a long way.",
+  "The parking situation needs work. It's really stressful finding a spot.",
+  "More transparency about pricing upfront would help set expectations.",
+  "Consider adding a feedback kiosk on-site so people can share thoughts in real time.",
+  "The website could use an update — it's hard to find basic information.",
+  "It'd be great to get text message reminders instead of just email.",
+  "Better signage inside would help first-time visitors navigate.",
+  "A mobile app would be really convenient for managing appointments.",
+]
+
+const DEMO = {
+  age: ['18-24','25-34','35-44','45-54','55-64','65+'],
+  gender: ['male','female','nonbinary','prefer_not'],
+  zip: ['10001','90210','60601','33101','98101','02101','30301','78701','85001','55401'],
+  income: ['under_25k','25k_50k','50k_75k','75k_100k','100k_150k','150k_plus','prefer_not'],
+  education: ['high_school','some_college','associates','bachelors','masters','doctoral','prefer_not'],
+  ethnicity: ['white','black','hispanic','asian','multi','other','prefer_not'],
+  employment: ['full_time','part_time','self_employed','student','retired','unemployed'],
+  marital: ['single','married','domestic','divorced','widowed'],
+  household: ['1','2','3','4','5_plus'],
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+const pick = arr => arr[Math.floor(Math.random() * arr.length)]
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+function weightedScore(weights) {
+  const total = weights.reduce((a, b) => a + b, 0)
+  let r = Math.random() * total
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]
+    if (r <= 0) return i + 1
+  }
+  return weights.length
+}
+
+function getWeights(mix) {
+  switch (mix) {
+    case 'positive': return [2, 5, 10, 40, 43]
+    case 'negative': return [30, 30, 20, 12, 8]
+    case 'uniform':  return [20, 20, 20, 20, 20]
+    default:         return [5, 10, 20, 35, 30]
+  }
+}
+
+function feedbackFor(score, max) {
+  const pct = score / max
+  if (pct >= 0.7) return pick(POSITIVE)
+  if (pct >= 0.4) return pick(NEUTRAL)
+  return pick(NEGATIVE)
+}
+
+function sentiment(score, max) {
+  const pct = score / max
+  if (pct >= 0.7) return 'positive'
+  if (pct >= 0.4) return 'neutral'
+  return 'negative'
+}
+
+// ── Logging ─────────────────────────────────────────────────────────────
+
+const logEl = document.getElementById('log')
+function log(msg, cls) {
+  logEl.style.display = 'block'
+  const div = document.createElement('div')
+  if (cls) div.className = cls
+  div.textContent = msg
+  logEl.appendChild(div)
+  logEl.scrollTop = logEl.scrollHeight
+}
+
+// ── Main logic ──────────────────────────────────────────────────────────
+
+let running = false
+let studyConfig = null
+
+async function fetchStudy(guid, baseUrl) {
+  const res = await fetch(`${baseUrl}/api/study/${guid}`)
+  if (!res.ok) throw new Error(`Study not found (${res.status})`)
+  return res.json()
+}
+
+function generatePayload(config, weights) {
+  const scale = config.ratingScale || [
+    { score: 1, label: 'Poor' },
+    { score: 2, label: 'Fair' },
+    { score: 3, label: 'Average' },
+    { score: 4, label: 'Good' },
+    { score: 5, label: 'Excellent' },
+  ]
+  const max = Math.max(...scale.map(r => r.score))
+
+  const nps = weightedScore(weights)
+  const exp = weightedScore(weights)
+  const npsOpt = scale.find(r => r.score === nps) || { score: nps, label: 'Score ' + nps }
+  const expOpt = scale.find(r => r.score === exp) || { score: exp, label: 'Score ' + exp }
+
+  const payload = {
+    agent: 'Simulator',
+    timestamp: new Date().toISOString(),
+  }
+
+  if (config.npsEnabled !== false) {
+    payload.npsRecommend = { score: nps, label: npsOpt.label }
+  }
+  if (config.experienceEnabled !== false) {
+    payload.experienceRating = { score: exp, label: expOpt.label, sentiment: sentiment(exp, max) }
+  }
+
+  // Open-ended
+  const oe = {}
+  if (config.q3Enabled !== false) oe.q3 = feedbackFor(exp, max)
+  if (config.q4Enabled !== false) oe.q4 = pick(SUGGESTIONS)
+  if (Math.random() < 0.7) oe.q1 = feedbackFor(nps, max)
+  payload.openEnded = oe
+
+  // Opening flow open-ends
+  if (config.openingFlow) {
+    const opens = config.openingFlow.filter(f => f.type === 'open_end')
+    if (opens.length) {
+      const oa = {}
+      opens.forEach(item => { oa[item.id] = feedbackFor(exp, max) })
+      payload.openingAnswers = oa
+    }
+  }
+
+  // Custom questions
+  if (config.questions) {
+    const ca = {}
+    config.questions.filter(q => q.enabled !== false && q.type !== 'hidden').forEach(q => {
+      if (q.type === 'open') ca[q.id] = pick([...POSITIVE, ...NEUTRAL, ...SUGGESTIONS])
+      else if ((q.type === 'radio' || q.type === 'dropdown') && q.options?.length) ca[q.id] = pick(q.options)
+      else if (q.type === 'checkbox' && q.options?.length) {
+        const n = Math.floor(Math.random() * Math.min(3, q.options.length)) + 1
+        ca[q.id] = [...q.options].sort(() => Math.random() - 0.5).slice(0, n)
+      }
+      else if (q.type === 'likert' || q.type === 'rating') ca[q.id] = String(weightedScore(weights))
+      else if (q.type === 'numeric') ca[q.id] = String(Math.floor(Math.random() * 100) + 1)
+    })
+    if (Object.keys(ca).length) payload.customAnswers = ca
+  }
+
+  // Psychographics
+  if (config.psychographicBank?.length) {
+    const ps = {}
+    const pool = [...config.psychographicBank]
+    const n = config.psychoCount || 3
+    for (let i = 0; i < n && pool.length; i++) {
+      const idx = Math.floor(Math.random() * pool.length)
+      const q = pool.splice(idx, 1)[0]
+      ps[q.key] = q.opts?.length ? pick(q.opts) : pick(['Strongly agree','Agree','Neutral','Disagree'])
+    }
+    payload.psychographics = ps
+  }
+
+  // Demographics
+  if (config.demographicFields) {
+    const dm = {}
+    config.demographicFields.filter(d => d.enabled).forEach(f => {
+      if (f.options?.length) dm[f.key] = pick(f.options)[0]
+      else if (DEMO[f.key]) dm[f.key] = pick(DEMO[f.key])
+      else dm[f.key] = pick(DEMO.zip)
+    })
+    if (Object.keys(dm).length) payload.demographics = dm
+  }
+
+  return { payload, exp, nps, duration: Math.floor(Math.random() * 510) + 90 }
+}
+
+async function start() {
+  const guid = document.getElementById('guid').value.trim()
+  const count = parseInt(document.getElementById('count').value) || 10
+  const baseUrl = document.getElementById('baseUrl').value
+  const mix = document.getElementById('mix').value
+  const weights = getWeights(mix)
+
+  if (!guid) { alert('Please paste a study GUID'); return }
+
+  running = true
+  logEl.innerHTML = ''
+  logEl.style.display = 'block'
+  document.getElementById('startBtn').disabled = true
+  document.getElementById('stopBtn').style.display = ''
+  document.getElementById('progressWrap').style.display = 'block'
+  document.getElementById('progressFill').style.width = '0%'
+
+  // Fetch study
+  log('Fetching study config...', 'info')
+  try {
+    const study = await fetchStudy(guid, baseUrl)
+    studyConfig = study.config
+    const info = document.getElementById('studyInfo')
+    const qs = (studyConfig.questions || []).filter(q => q.enabled !== false && q.type !== 'hidden').length
+    const ps = (studyConfig.psychographicBank || []).length
+    const dm = (studyConfig.demographicFields || []).filter(d => d.enabled).length
+    info.innerHTML = `<strong>${study.bot_name}</strong> &mdash; NPS: ${studyConfig.npsEnabled !== false ? 'on' : 'off'}, Experience: ${studyConfig.experienceEnabled !== false ? 'on' : 'off'}, Custom Qs: ${qs}, Psycho: ${ps}, Demo fields: ${dm}`
+    info.style.display = 'block'
+    log(`Found study: "${study.bot_name}"`, 'info')
+  } catch (err) {
+    log('ERROR: ' + err.message, 'err')
+    log('Make sure the server is running and the GUID is correct.', 'err')
+    cleanup(); return
+  }
+
+  // Submit responses
+  let success = 0, fail = 0
+  for (let i = 0; i < count; i++) {
+    if (!running) { log('Stopped by user.', 'info'); break }
+
+    const { payload, exp, nps, duration } = generatePayload(studyConfig, weights)
+    const sid = 'sim_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+    try {
+      const res = await fetch(`${baseUrl}/api/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ study_guid: guid, payload, duration_sec: duration, session_id: sid, status: 'complete' }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        success++
+        log(`${i+1}/${count}  exp:${exp}  nps:${nps}  ${duration}s  id:${data.response_id}`)
+      } else {
+        fail++
+        log(`${i+1}/${count}  FAILED ${res.status}: ${JSON.stringify(data)}`, 'err')
+      }
+    } catch (err) {
+      fail++
+      log(`${i+1}/${count}  NETWORK ERROR: ${err.message}`, 'err')
+    }
+
+    // Progress
+    const pct = Math.round(((i + 1) / count) * 100)
+    document.getElementById('progressFill').style.width = pct + '%'
+    document.getElementById('progressLabel').textContent = `${i+1} / ${count} (${success} saved, ${fail} failed)`
+
+    // Rate limit pacing
+    if (running && i < count - 1) {
+      if ((i + 1) % 25 === 0) {
+        log('Pausing for rate limit...', 'dim')
+        await sleep(3000)
+      } else {
+        await sleep(200)
+      }
+    }
+  }
+
+  // Summary
+  log('', 'dim')
+  log(`Done! ${success} saved, ${fail} failed.`, 'info')
+  if (fail > 0) {
+    log('Check: (1) server running? (2) study active? (3) DB migration applied?', 'err')
+  }
+  document.getElementById('status').innerHTML = `<strong>${success}</strong> responses saved` + (fail ? `, <strong style="color:#e74c3c">${fail}</strong> failed` : '')
+  cleanup()
+}
+
+function stop() { running = false }
+
+function cleanup() {
+  running = false
+  document.getElementById('startBtn').disabled = false
+  document.getElementById('stopBtn').style.display = 'none'
+}
+</script>
+</body>
+</html>

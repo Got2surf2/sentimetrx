@@ -13,8 +13,9 @@ interface Response {
   experience_score: number | null
   nps_score:        number | null
   payload:          any
-  completed_at:     string
+  completed_at:     string | null
   duration_sec:     number | null
+  status:           string | null
 }
 
 interface Props {
@@ -47,12 +48,13 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
   const [sentiment, setSentiment] = useState('')
   const [minNps,    setMinNps]    = useState('')
   const [maxNps,    setMaxNps]    = useState('')
+  const [statusFilter, setStatusFilter] = useState('')  // '' = all, 'complete', 'incomplete'
 
   const [offset,    setOffset]    = useState(0)
   const defaultFrom = () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) }
   const defaultTo   = () => new Date().toISOString().slice(0, 10)
-  const [dateFrom,  setDateFrom]  = useState(defaultFrom())
-  const [dateTo,    setDateTo]    = useState(defaultTo())
+  const [dateFrom,  setDateFrom]  = useState('')
+  const [dateTo,    setDateTo]    = useState('')
   const LIMIT = 25
 
   const allChecked  = responses.length > 0 && responses.every(r => checkedIds.has(r.id))
@@ -94,11 +96,12 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
   const fetchResponses = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams()
-    if (sentiment) params.set('sentiment', sentiment)
-    if (minNps)    params.set('min_nps',   minNps)
-    if (maxNps)    params.set('max_nps',   maxNps)
-    if (dateFrom)  params.set('from', dateFrom)
-    if (dateTo)    params.set('to',   dateTo)
+    if (sentiment)    params.set('sentiment', sentiment)
+    if (minNps)       params.set('min_nps',   minNps)
+    if (maxNps)       params.set('max_nps',   maxNps)
+    if (statusFilter) params.set('status',    statusFilter)
+    if (dateFrom)     params.set('from', dateFrom)
+    if (dateTo)       params.set('to',   dateTo)
     params.set('limit',  String(LIMIT))
     params.set('offset', String(offset))
     const res  = await fetch(`/api/studies/${studyId}/responses?${params}`)
@@ -106,7 +109,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
     setResponses(json.data || [])
     setTotal(json.count || 0)
     setLoading(false)
-  }, [studyId, sentiment, minNps, maxNps, dateFrom, dateTo, offset])
+  }, [studyId, sentiment, minNps, maxNps, statusFilter, dateFrom, dateTo, offset])
 
   useEffect(() => { fetchResponses() }, [fetchResponses])
 
@@ -116,7 +119,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
     setOffset(0)
   }
 
-  const clearFilters = () => { setSentiment(''); setMinNps(''); setMaxNps(''); setDateFrom(defaultFrom()); setDateTo(defaultTo()); setOffset(0) }
+  const clearFilters = () => { setSentiment(''); setMinNps(''); setMaxNps(''); setStatusFilter(''); setDateFrom(defaultFrom()); setDateTo(defaultTo()); setOffset(0) }
   const hasFilter = sentiment || minNps || maxNps
 
 
@@ -167,6 +170,14 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
         {/* Filters — auto-apply, no button needed */}
         <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6 shadow-sm">
           <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Status</label>
+              <select value={statusFilter} onChange={handleFilterChange(setStatusFilter)} className={selCls}>
+                <option value="">All</option>
+                <option value="complete">Complete</option>
+                <option value="incomplete">Incomplete</option>
+              </select>
+            </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Sentiment</label>
               <select value={sentiment} onChange={handleFilterChange(setSentiment)} className={selCls}>
@@ -249,12 +260,14 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                           {!allChecked && someChecked && <span className="text-orange-400 text-xs font-bold leading-none">−</span>}
                         </button>
                       </th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
+                      <th className="px-2 py-3 w-8" />
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sentiment</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Exp.</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">NPS</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">First response</th>
-                      <th className="px-5 py-3" />
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Duration</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -266,8 +279,19 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                             {checkedIds.has(r.id) && <span className="text-white text-xs font-bold leading-none">✓</span>}
                           </button>
                         </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-600 whitespace-nowrap">
-                          {new Date(r.completed_at).toLocaleDateString()}
+                        <td className="px-2 py-3.5">
+                          {r.payload?.conversationLog?.length > 0
+                            ? <button onClick={e => { e.stopPropagation(); setSelected(r) }} title="View conversation" className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-orange-100 transition-all" style={{ color: HERMES }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                              </button>
+                            : <span className="w-6 h-6 flex items-center justify-center text-gray-200"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            r.status === 'incomplete' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                          }`}>
+                            {r.status === 'incomplete' ? 'partial' : 'complete'}
+                          </span>
                         </td>
                         <td className="px-5 py-3.5">
                           <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${sentimentBadge(r.sentiment)}`}>
@@ -279,10 +303,11 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                         <td className="px-5 py-3.5 text-sm text-gray-500 max-w-xs truncate">
                           {r.payload?.openEnded?.q1 || '—'}
                         </td>
-                        <td className="px-5 py-3.5 text-right">
-                          {r.payload?.conversationLog?.length > 0
-                            ? <span className="text-xs font-medium" style={{ color: HERMES }}>View →</span>
-                            : <span className="text-xs text-gray-300">—</span>}
+                        <td className="px-5 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                          {r.completed_at ? new Date(r.completed_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-sm text-gray-400 whitespace-nowrap">
+                          {r.duration_sec ? (r.duration_sec < 60 ? r.duration_sec + 's' : Math.round(r.duration_sec / 60) + 'm') : '—'}
                         </td>
                       </tr>
                     ))}
@@ -543,6 +568,74 @@ function ConversationModal({ response, studyId, studyConfig, botName, botEmoji, 
             <div className="font-semibold text-base" style={{ color: doneCardText }}>All done!</div>
             <div className="text-xs mt-0.5" style={{ color: doneCardSub }}>{studyConfig?.closingCard || 'Your responses have been saved. Thank you for your time.'}</div>
           </div>
+
+          {/* Response data summary */}
+          {(() => {
+            const p = response.payload || {}
+            const sections: { title: string; entries: [string, string][] }[] = []
+
+            // Open-ended answers
+            const oe = p.openEnded || {}
+            const oeEntries: [string, string][] = []
+            if (oe.q1) oeEntries.push([studyConfig?.q1ExportLabel || 'Q1', oe.q1])
+            if (oe.q2) oeEntries.push([studyConfig?.q2ExportLabel || 'Q2', oe.q2])
+            if (oe.q3) oeEntries.push([studyConfig?.q3ExportLabel || 'Q3', oe.q3])
+            if (oe.q4) oeEntries.push([studyConfig?.q4ExportLabel || 'Q4', oe.q4])
+            if (oeEntries.length) sections.push({ title: 'Open-Ended', entries: oeEntries })
+
+            // Custom answers
+            const ca = p.customAnswers || {}
+            const caEntries: [string, string][] = []
+            const configQs = studyConfig?.questions || []
+            Object.entries(ca).forEach(([qId, val]) => {
+              const q = configQs.find((cq: any) => cq.id === qId)
+              const label = q?.exportLabel || q?.prompt?.slice(0, 40) || qId
+              caEntries.push([label, Array.isArray(val) ? (val as string[]).join(', ') : String(val)])
+            })
+            if (caEntries.length) sections.push({ title: 'Custom Questions', entries: caEntries })
+
+            // Psychographics
+            const ps = p.psychographics || {}
+            const psEntries: [string, string][] = Object.entries(ps).map(([k, v]) => {
+              const pq = (studyConfig?.psychographicBank || []).find((q: any) => q.key === k)
+              return [pq?.exportLabel || pq?.q?.slice(0, 40) || k, String(v)]
+            })
+            if (psEntries.length) sections.push({ title: 'Psychographics', entries: psEntries })
+
+            // Demographics
+            const dm = p.demographics || {}
+            const dmEntries: [string, string][] = Object.entries(dm)
+              .filter(([, v]) => !!v)
+              .map(([k, v]) => [k.charAt(0).toUpperCase() + k.slice(1), String(v)])
+            if (dmEntries.length) sections.push({ title: 'Demographics', entries: dmEntries })
+
+            // Contact info
+            const ci = p.contactInfo || {}
+            const ciEntries: [string, string][] = Object.entries(ci)
+              .filter(([, v]) => !!v)
+              .map(([k, v]) => [k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' '), String(v)])
+            if (ciEntries.length) sections.push({ title: 'Contact Info', entries: ciEntries })
+
+            if (sections.length === 0) return null
+
+            return (
+              <div className="mt-2 rounded-2xl overflow-hidden" style={{ border: `1px solid ${borderColor}`, background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)' }}>
+                {sections.map((sec, si) => (
+                  <div key={si} style={{ borderTop: si > 0 ? `1px solid ${borderColor}` : 'none' }}>
+                    <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: mutedText, background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.03)' }}>
+                      {sec.title}
+                    </div>
+                    {sec.entries.map(([label, val], ei) => (
+                      <div key={ei} className="px-3 py-1.5 flex gap-2" style={{ borderTop: `1px solid ${borderColor}` }}>
+                        <span className="text-xs font-medium flex-shrink-0" style={{ color: subtleText, minWidth: 80 }}>{label}</span>
+                        <span className="text-xs" style={{ color: isLight ? '#1e293b' : 'rgba(255,255,255,0.8)' }}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
         </div>
 
         {/* Bottom bar */}

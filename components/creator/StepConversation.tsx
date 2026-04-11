@@ -84,7 +84,7 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           <>
             <Input value={c.q3} onChange={v => updateConfig({ q3: v })}
               placeholder="Is there anything specific you think we should do differently?"
-              multiline rows={2} />
+              multiline rows={2} enableLinks />
             <ExportLabelField
               value={c.q3ExportLabel || ''}
               onChange={v => updateConfig({ q3ExportLabel: v })}
@@ -119,7 +119,7 @@ export default function StepConversation({ draft, updateConfig, onNext, onBack }
           <>
             <Input value={c.q4} onChange={v => updateConfig({ q4: v })}
               placeholder="Is there anything else you'd like us to know?"
-              multiline rows={2} />
+              multiline rows={2} enableLinks />
             <ExportLabelField
               value={c.q4ExportLabel || ''}
               onChange={v => updateConfig({ q4ExportLabel: v })}

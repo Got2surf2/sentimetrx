@@ -27,7 +27,7 @@ export async function GET(
 
   const { data, error } = await supabase
     .from('studies')
-    .select('id, guid, bot_name, bot_emoji, status, config, name')
+    .select('id, guid, bot_name, bot_emoji, status, config, name, org_id')
     .eq('guid', guid)
     .limit(1)
 
@@ -41,10 +41,23 @@ export async function GET(
     return NextResponse.json({ error: 'Study is not active' }, { status: 403, headers: noCache })
   }
 
+  // Fetch org name for AI prompt context
+  let orgName = ''
+  if (study.org_id) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', study.org_id)
+      .single()
+    if (org) orgName = org.name
+  }
+
   return NextResponse.json({
     guid:      study.guid,
+    name:      study.name,
     bot_name:  study.bot_name,
     bot_emoji: study.bot_emoji,
     config:    study.config,
+    org_name:  orgName,
   }, { headers: noCache })
 }
