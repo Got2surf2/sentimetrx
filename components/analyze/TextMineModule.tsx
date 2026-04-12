@@ -861,9 +861,42 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       })
   }, [])
 
+  // Server-side theme counting for accurate full-dataset counts (avoids sampling bias).
+  // Falls back silently to client-side counts if the endpoint fails.
+  const fetchServerThemeCounts = useCallback(async function(themeModel: ThemeModel, fields: string[]) {
+    if (!themeModel?.themes?.length || !fields.length) return
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/theme-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
+          fields: fields,
+        }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!data.counts) return
+      const countMap: Record<string, { count: number; percentage: number }> = {}
+      for (const c of data.counts) countMap[c.id] = { count: c.count, percentage: c.percentage }
+      setThemes(function(prev) {
+        if (!prev) return prev
+        return {
+          ...prev,
+          themes: prev.themes.map(function(t) {
+            var sc = countMap[t.id]
+            return sc ? { ...t, count: sc.count, percentage: sc.percentage } : t
+          }),
+          samplingInfo: { sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows },
+        }
+      })
+      setSamplingInfo({ sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows })
+    } catch { /* fallback to client-side counts silently */ }
+  }, [datasetId, totalRows])
+
   // Fetch rows with sampling cap to avoid browser OOM on large datasets.
-  // Uses sampleMax=5000 — statistically representative for theme counting and comments.
-  // For datasets ≤5000 rows, all rows are returned (no sampling).
+  // Uses sampleMax=5000 for comment display, word cloud, and per-row theme assignment.
+  // Accurate theme counts come from the server-side theme-counts endpoint.
   const SAMPLE_CAP = 5000
   const fetchAllRows = useCallback(async function() {
     if (rowsLoaded || rowsLoading) return
@@ -878,11 +911,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       if (data.sampled) {
         setSamplingInfo({ sampled: allRows.length, total: data.totalRows || totalRows })
       }
-      // Recount saved themes against fresh rows
+      // Recount saved themes against fresh rows (client-side for immediate display)
       if (savedThemeModel && savedThemeModel.themes && allRows.length > 0) {
         const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
         const recounted = recountThemes(savedThemeModel.themes, allRows, field)
         setThemes({ ...savedThemeModel, themes: recounted })
+        // Then fetch accurate server-side counts on the full dataset
+        const fields = Array.isArray(field) ? field : (field ? [field] : [])
+        if (fields.length > 0) fetchServerThemeCounts({ ...savedThemeModel, themes: recounted }, fields)
       }
       setRowsLoaded(true)
     } catch (e: unknown) {
@@ -983,6 +1019,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setLastRunPct(samplePct)
       setSubTab('themes')
       setIsDirty(true)
+      // Fetch accurate server-side counts on full dataset
+      fetchServerThemeCounts(tm, effectiveFields)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
     }
@@ -1006,6 +1044,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setThemeSource(source)
     setThemeLibName(libName)
     setSamplingInfo({ sampled: total, total })
+    // Fetch accurate server-side counts on full dataset
+    fetchServerThemeCounts(tm, effectiveFields)
     setLastRunPct(null)
     setShowThemeEditor(false)
     setSubTab('themes')
