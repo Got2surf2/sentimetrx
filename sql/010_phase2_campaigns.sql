@@ -35,3 +35,6 @@ CREATE TABLE IF NOT EXISTS shared_links (
 
 CREATE INDEX IF NOT EXISTS idx_shared_links_token ON shared_links(token);
 CREATE INDEX IF NOT EXISTS idx_shared_links_target ON shared_links(target_id);
+
+-- Track when a shared link was last accessed
+ALTER TABLE shared_links ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ;

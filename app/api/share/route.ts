@@ -1,6 +1,7 @@
 // app/api/share/route.ts
-// POST — create a shareable link for a study or campaign
-// GET  — validate a share token and return data
+// POST   — create a shareable link for a study or campaign
+// GET    — validate a share token and return data, or list active links
+// DELETE — revoke a share link by token
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     const { data: links } = await service
       .from('shared_links')
-      .select('token, expires_at, created_at')
+      .select('token, expires_at, created_at, last_accessed_at')
       .eq('type', listType)
       .eq('target_id', listTargetId)
       .gt('expires_at', new Date().toISOString())
@@ -72,6 +73,7 @@ export async function GET(req: NextRequest) {
       token: l.token,
       expires_at: l.expires_at,
       created_at: l.created_at,
+      last_accessed_at: l.last_accessed_at,
     }))
 
     return NextResponse.json({ links: items })
@@ -87,11 +89,19 @@ export async function GET(req: NextRequest) {
     .eq('token', token)
     .single()
 
-  if (!link) return NextResponse.json({ error: 'Invalid share link' }, { status: 404 })
+  if (!link) {
+    return new NextResponse(JSON.stringify({ error: 'Invalid share link' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+    })
+  }
 
   if (new Date(link.expires_at) < new Date()) {
     return NextResponse.json({ error: 'This share link has expired' }, { status: 410 })
   }
+
+  // Record access timestamp (fire-and-forget)
+  service.from('shared_links').update({ last_accessed_at: new Date().toISOString() }).eq('token', token).then(() => {})
 
   // Fetch the data based on type
   if (link.type === 'study') {
@@ -115,10 +125,12 @@ export async function GET(req: NextRequest) {
     const ratingLabel = config.experienceRatingLabel || null
     const npsEnabled = config.npsEnabled !== false
     const experienceEnabled = config.experienceEnabled !== false
+    const ratingPrompt = config.ratingPrompt || null
+    const npsPrompt = config.npsPrompt || null
 
     return NextResponse.json({
       type: 'study', study, responses: responses || [], expires_at: link.expires_at,
-      ratingScale, ratingLabel, npsEnabled, experienceEnabled,
+      ratingScale, ratingLabel, npsEnabled, experienceEnabled, ratingPrompt, npsPrompt,
     })
   }
 
@@ -147,4 +159,33 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
+}
+
+export async function DELETE(req: NextRequest) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const token = req.nextUrl.searchParams.get('token')
+  if (!token) return NextResponse.json({ error: 'token required' }, { status: 400 })
+
+  const service = createServiceRoleClient()
+
+  // Delete and return the deleted row to confirm it was found
+  const { data, error } = await service
+    .from('shared_links')
+    .delete()
+    .eq('token', token)
+    .select('id')
+
+  if (error) {
+    console.error('[share] delete error:', error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: 'Link not found' }, { status: 404 })
+  }
+
+  return NextResponse.json({ deleted: true })
 }

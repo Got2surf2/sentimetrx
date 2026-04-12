@@ -27,7 +27,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
   const [shareExpiry, setShareExpiry] = useState<'24h' | '7d' | '30d'>('7d')
   const [shareLoading,setShareLoading]= useState(false)
   const [shareCopied, setShareCopied] = useState<string | null>(null)
-  const [shareLinks,  setShareLinks]  = useState<{ url: string; token: string; expires_at: string; created_at: string }[]>([])
+  const [shareLinks,  setShareLinks]  = useState<{ url: string; token: string; expires_at: string; created_at: string; last_accessed_at: string | null }[]>([])
   const [shareLinksLoaded, setShareLinksLoaded] = useState(false)
 
 
@@ -226,27 +226,42 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
             {/* Existing links */}
             {shareLinksLoaded && shareLinks.length > 0 && (
               <div className="mb-4">
-                <label className="text-xs font-medium text-gray-500 block mb-1.5">Active links</label>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {shareLinks.map(link => {
-                    const diffH = Math.round((new Date(link.expires_at).getTime() - Date.now()) / 3600000)
-                    const timeLeft = diffH < 24 ? diffH + 'h left' : Math.round(diffH / 24) + 'd left'
-                    return (
-                      <div key={link.token} className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] text-gray-400 font-mono truncate">{link.url}</p>
-                          <p className="text-[9px] text-gray-500">
-                            Created {new Date(link.created_at).toLocaleDateString()} · {timeLeft}
-                          </p>
+                <label className="text-xs font-medium text-gray-500 block mb-1.5">Active links ({shareLinks.length})</label>
+                <div className="relative">
+                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 160 }}>
+                    {shareLinks.map(link => {
+                      const diffH = Math.round((new Date(link.expires_at).getTime() - Date.now()) / 3600000)
+                      const timeLeft = diffH < 24 ? diffH + 'h left' : Math.round(diffH / 24) + 'd left'
+                      return (
+                        <div key={link.token} className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] text-gray-400 font-mono truncate">{link.url}</p>
+                            <p className="text-[9px] text-gray-500">
+                              Created {new Date(link.created_at).toLocaleDateString()} · {timeLeft}
+                              {link.last_accessed_at && <> · Viewed {new Date(link.last_accessed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</>}
+                              {!link.last_accessed_at && <> · Never viewed</>}
+                            </p>
+                          </div>
+                          <button onClick={() => { navigator.clipboard.writeText(link.url); setShareCopied(link.url); setTimeout(() => setShareCopied(null), 2000) }}
+                            className={'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ' +
+                              (shareCopied === link.url ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 hover:bg-slate-600 text-white')}>
+                            {shareCopied === link.url ? 'Copied!' : 'Copy'}
+                          </button>
+                          <button onClick={async () => {
+                            const res = await fetch('/api/share?token=' + encodeURIComponent(link.token), { method: 'DELETE' })
+                            if (res.ok) setShareLinks(prev => prev.filter(l => l.token !== link.token))
+                          }}
+                            className="px-2 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                            title="Delete link">
+                            &times;
+                          </button>
                         </div>
-                        <button onClick={() => { navigator.clipboard.writeText(link.url); setShareCopied(link.url); setTimeout(() => setShareCopied(null), 2000) }}
-                          className={'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ' +
-                            (shareCopied === link.url ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 hover:bg-slate-600 text-white')}>
-                          {shareCopied === link.url ? 'Copied!' : 'Copy'}
-                        </button>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
+                  {shareLinks.length > 3 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent pointer-events-none rounded-b-lg" />
+                  )}
                 </div>
               </div>
             )}
@@ -265,7 +280,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                   const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type: 'study', target_id: study.id, expires_in: shareExpiry }) })
                   const data = await res.json()
-                  if (res.ok) setShareLinks(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString() }, ...prev])
+                  if (res.ok) setShareLinks(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString(), last_accessed_at: null }, ...prev])
                 } finally { setShareLoading(false) }
               }} className="px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#E8632A' }}>

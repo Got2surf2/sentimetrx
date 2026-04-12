@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { detectScale } from '@/lib/scaleUtils'
 
 const HERMES = '#E8632A'
+const SARINA = '#00b4d8'
 
 export default function SharedDashboard({ params }: { params: { token: string } }) {
   const [data, setData] = useState<any>(null)
@@ -14,7 +16,7 @@ export default function SharedDashboard({ params }: { params: { token: string } 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
     try {
-      const r = await fetch('/api/share?token=' + params.token)
+      const r = await fetch('/api/share?token=' + params.token, { cache: 'no-store' })
       const d = await r.json()
       if (d.error) setError(d.error)
       else { setData(d); setLastRefreshed(new Date()) }
@@ -42,6 +44,7 @@ export default function SharedDashboard({ params }: { params: { token: string } 
 
   if (data.type === 'study') return <SharedStudyDashboard study={data.study} responses={data.responses} expiresAt={data.expires_at}
     ratingScale={data.ratingScale} ratingLabel={data.ratingLabel} npsEnabled={data.npsEnabled} experienceEnabled={data.experienceEnabled}
+    ratingPrompt={data.ratingPrompt} npsPrompt={data.npsPrompt}
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
   if (data.type === 'campaign') return <SharedCampaignDashboard campaign={data.campaign} stats={data.stats} expiresAt={data.expires_at}
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
@@ -161,71 +164,146 @@ function RefreshBar({ lastRefreshed, refreshing, onRefresh }: { lastRefreshed: D
   )
 }
 
-function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, ratingLabel, npsEnabled, experienceEnabled, lastRefreshed, refreshing, onRefresh }: {
+// Detect if a prompt suggests a satisfaction/quality/sentiment measure
+function isSatisfactionPrompt(prompt: string): boolean {
+  if (!prompt) return false
+  const lower = prompt.toLowerCase()
+  const keywords = [
+    'satisf', 'experience', 'quality', 'recommend', 'likely', 'rate', 'rating',
+    'happy', 'pleased', 'how would you', 'how do you feel', 'how was', 'how did',
+    'impression', 'opinion', 'agree', 'disagree', 'excellent', 'poor',
+    'good', 'bad', 'best', 'worst', 'enjoy', 'disappoint', 'overall',
+  ]
+  return keywords.some(kw => lower.includes(kw))
+}
+
+function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, ratingLabel, npsEnabled, experienceEnabled, ratingPrompt, npsPrompt, lastRefreshed, refreshing, onRefresh }: {
   study: any; responses: any[]; expiresAt: string
   ratingScale?: any[]; ratingLabel?: string | null; npsEnabled?: boolean; experienceEnabled?: boolean
+  ratingPrompt?: string | null; npsPrompt?: string | null
   lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
 }) {
   const total = responses.length
   const complete = responses.filter((r: any) => r.status !== 'incomplete').length
 
-  // Determine scoring model from the data
+  // Determine primary rating from the data
   const expScores = responses.map((r: any) => r.experience_score).filter((v: any) => v != null)
   const npsScores = responses.map((r: any) => r.nps_score).filter((v: any) => v != null)
-  const hasExp = experienceEnabled !== false && expScores.length > 0
-  const hasNps = npsEnabled !== false && npsScores.length > 0
+  const hasExp = expScores.length > 0
+  const hasNps = npsScores.length > 0
+  const hasSentiment = responses.some((r: any) => r.sentiment)
 
-  // Detect if this is an NPS field (0-10 scale or label contains "nps")
-  const scaleMax = ratingScale && ratingScale.length > 0
-    ? Math.max(...ratingScale.map((r: any) => r.score))
-    : (hasExp ? Math.max(...expScores) : 5)
-  const labelLower = (ratingLabel || '').toLowerCase()
-  const isNps = scaleMax >= 10 || labelLower.includes('nps')
-
-  // Primary score metric
-  const primaryScores = hasExp ? expScores : npsScores
-  const avgScore = primaryScores.length > 0
-    ? Math.round(primaryScores.reduce((a: number, b: number) => a + b, 0) / primaryScores.length * 10) / 10
-    : 0
-  const scoreLabel = ratingLabel || (isNps ? 'NPS' : 'Avg Rating')
+  // Pick whichever score field has data. If both exist, NPS is the primary
+  // rating if npsEnabled and experience is disabled, otherwise experience is primary.
+  const npsPrimary = hasNps && (!hasExp || experienceEnabled === false)
+  const primaryScores = npsPrimary ? npsScores : (hasExp ? expScores : npsScores)
   const scored = primaryScores.length
 
+  const avgScore = scored > 0
+    ? Math.round(primaryScores.reduce((a: number, b: number) => a + b, 0) / scored * 10) / 10
+    : 0
+  // Always use the alias label if provided
+  const scoreLabel = ratingLabel || (npsPrimary ? 'NPS' : 'Avg Rating')
+  // Only use Promoter/Passive/Detractor labels when the alias is explicitly "NPS"
+  const aliasIsNps = (ratingLabel || '').toLowerCase().includes('nps') || (!ratingLabel && npsPrimary)
+
   // Build score breakdown bars
-  // For NPS: Promoters (9-10), Passives (7-8), Detractors (0-6)
-  // For non-NPS: show each value individually, sorted by ratingScale or smart order
   type BreakdownBar = { label: string; value: number; color: string }
   let breakdownBars: BreakdownBar[] = []
   let breakdownTitle = scoreLabel + ' Breakdown'
+  const activePrompt = npsPrimary ? (npsPrompt || ratingPrompt) : (ratingPrompt || npsPrompt)
+  const promptSuggestsSatisfaction = isSatisfactionPrompt(activePrompt || '')
 
-  if (isNps) {
+  // Traffic light gradient (green → yellow → red) for satisfaction-type measures
+  const trafficLight = (count: number, idx: number) => {
+    const positiveToNegative = ['#22c55e', '#86efac', '#fde68a', '#fca5a5', '#ef4444']
+    return positiveToNegative[Math.round(idx / Math.max(count - 1, 1) * (positiveToNegative.length - 1))]
+  }
+  // Brand gradient (Sarina blue → Hermes orange) for non-satisfaction measures
+  const brandGradient = (count: number, idx: number) => {
+    const t = count > 1 ? idx / (count - 1) : 0
+    return `rgb(${Math.round(t * 232)},${Math.round(180 + t * (99 - 180))},${Math.round(216 + t * (42 - 216))})`
+  }
+
+  if (aliasIsNps) {
+    // Alias is NPS: use Promoter/Passive/Detractor labels
+    if (hasSentiment) {
+      const topCount = responses.filter((r: any) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
+      const midCount = responses.filter((r: any) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
+      const botCount = responses.filter((r: any) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
+      breakdownBars = [
+        { label: 'Promoters', value: topCount, color: '#22c55e' },
+        { label: 'Passives', value: midCount, color: '#f59e0b' },
+        { label: 'Detractors', value: botCount, color: '#ef4444' },
+      ]
+    } else if (hasNps) {
+      const topCount = npsScores.filter((s: number) => s >= 9).length
+      const midCount = npsScores.filter((s: number) => s >= 7 && s <= 8).length
+      const botCount = npsScores.filter((s: number) => s <= 6).length
+      breakdownBars = [
+        { label: 'Promoters', value: topCount, color: '#22c55e' },
+        { label: 'Passives', value: midCount, color: '#f59e0b' },
+        { label: 'Detractors', value: botCount, color: '#ef4444' },
+      ]
+    }
+  } else if (hasExp && ratingScale && ratingScale.length > 0) {
+    // Non-NPS with ratingScale config — use labels, detect direction for color coding
+    const labels = ratingScale.map((r: any) => r.label).filter(Boolean)
+    const detected = detectScale(labels)
+    const hasDirection = !!detected
+
+    // Order: use detected ordinal scale order (low→high), else sort by score descending
+    let ordered: any[]
+    if (detected) {
+      // detected is in low→high order; reverse for display (best first)
+      const labelOrder = [...detected].reverse()
+      ordered = labelOrder.map(label => ratingScale.find((r: any) => r.label === label)).filter(Boolean)
+      // Add any unmatched items at the end
+      const matched = new Set(ordered.map((r: any) => r.score))
+      for (const r of ratingScale) { if (!matched.has(r.score)) ordered.push(r) }
+    } else {
+      ordered = [...ratingScale].sort((a: any, b: any) => b.score - a.score)
+    }
+
+    // Colors: traffic light if direction known OR prompt suggests satisfaction; brand colors otherwise
+    const useTrafficLight = hasDirection || promptSuggestsSatisfaction
+
+    breakdownBars = ordered.map((opt: any, i: number) => ({
+      label: (opt.emoji ? opt.emoji + ' ' : '') + opt.label,
+      value: expScores.filter((s: number) => s === opt.score).length,
+      color: useTrafficLight ? trafficLight(ordered.length, i) : brandGradient(ordered.length, i),
+    }))
+  } else if (hasExp) {
+    // Non-NPS, no ratingScale config — show numeric values
+    const vals: Record<number, number> = {}
+    for (const s of expScores) vals[s] = (vals[s] || 0) + 1
+    const sortedVals = Object.keys(vals).map(Number).sort((a, b) => b - a)
+    breakdownBars = sortedVals.map((v, i) => ({
+      label: String(v),
+      value: vals[v],
+      color: promptSuggestsSatisfaction ? trafficLight(sortedVals.length, i) : brandGradient(sortedVals.length, i),
+    }))
+  } else if (npsPrimary && hasNps) {
+    // NPS data but alias isn't "NPS" — show score distribution
+    const vals: Record<number, number> = {}
+    for (const s of npsScores) vals[s] = (vals[s] || 0) + 1
+    const sortedVals = Object.keys(vals).map(Number).sort((a, b) => b - a)
+    breakdownBars = sortedVals.map((v, i) => ({
+      label: String(v),
+      value: vals[v],
+      color: promptSuggestsSatisfaction ? trafficLight(sortedVals.length, i) : brandGradient(sortedVals.length, i),
+    }))
+  } else if (hasSentiment) {
+    // No scores at all but sentiment exists
+    breakdownTitle = 'Sentiment Breakdown'
     const topCount = responses.filter((r: any) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
     const midCount = responses.filter((r: any) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
     const botCount = responses.filter((r: any) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
     breakdownBars = [
-      { label: 'Promoters', value: topCount, color: '#22c55e' },
-      { label: 'Passives', value: midCount, color: '#f59e0b' },
-      { label: 'Detractors', value: botCount, color: '#ef4444' },
+      { label: 'Positive', value: topCount, color: '#22c55e' },
+      { label: 'Neutral', value: midCount, color: '#f59e0b' },
+      { label: 'Negative', value: botCount, color: '#ef4444' },
     ]
-  } else if (hasExp && ratingScale && ratingScale.length > 0) {
-    // Use ratingScale labels, sorted by score (low to high for display, but we show high first)
-    const sorted = [...ratingScale].sort((a: any, b: any) => b.score - a.score)
-    const barColors = ['#22c55e', '#86efac', '#fde68a', '#fca5a5', '#ef4444']
-    breakdownBars = sorted.map((opt: any, i: number) => ({
-      label: (opt.emoji ? opt.emoji + ' ' : '') + opt.label,
-      value: expScores.filter((s: number) => s === opt.score).length,
-      color: barColors[Math.min(i, barColors.length - 1)],
-    }))
-  } else if (hasExp) {
-    // No ratingScale config — show numeric values high to low
-    const vals: Record<number, number> = {}
-    for (const s of expScores) vals[s] = (vals[s] || 0) + 1
-    const sortedVals = Object.keys(vals).map(Number).sort((a, b) => b - a)
-    const barColors = ['#22c55e', '#86efac', '#fde68a', '#fca5a5', '#ef4444']
-    breakdownBars = sortedVals.map((v, i) => ({
-      label: String(v),
-      value: vals[v],
-      color: barColors[Math.min(i, barColors.length - 1)],
-    }))
   }
 
   return (
@@ -264,22 +342,28 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
         <ResponsesOverTimeChart responses={responses} />
 
         {/* Score breakdown */}
-        {scored > 0 && breakdownBars.length > 0 && (
+        {breakdownBars.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-            <h3 className="font-semibold text-sm text-gray-800 mb-3">{breakdownTitle}</h3>
+            <h3 className="font-semibold text-sm text-gray-800">{breakdownTitle}</h3>
+            {activePrompt && <p className="text-[11px] text-gray-400 mb-3">{activePrompt}</p>}
+            {!activePrompt && <div className="mb-3" />}
             <div className="space-y-2">
-              {breakdownBars.map(s => (
-                <div key={s.label} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 w-36 flex-shrink-0">{s.label}</span>
-                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: (scored > 0 ? s.value / scored * 100 : 0) + '%', background: s.color }} />
+              {breakdownBars.map(s => {
+                const denom = breakdownBars.reduce((sum, b) => sum + b.value, 0)
+                return (
+                  <div key={s.label} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500 w-36 flex-shrink-0">{s.label}</span>
+                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: (denom > 0 ? s.value / denom * 100 : 0) + '%', background: s.color }} />
+                    </div>
+                    <span className="text-xs font-semibold text-gray-700 w-16 text-right">{s.value} ({denom > 0 ? Math.round(s.value / denom * 100) : 0}%)</span>
                   </div>
-                  <span className="text-xs font-semibold text-gray-700 w-16 text-right">{s.value} ({scored > 0 ? Math.round(s.value / scored * 100) : 0}%)</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
+
 
         {/* Footer */}
         <div className="text-center text-xs text-gray-400 mt-6">

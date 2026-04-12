@@ -77,7 +77,7 @@ function ShareModal({ type, targetId, onClose }: { type: 'study' | 'campaign'; t
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [existing, setExisting] = useState<{ url: string; token: string; expires_at: string; created_at: string }[]>([])
+  const [existing, setExisting] = useState<{ url: string; token: string; expires_at: string; created_at: string; last_accessed_at: string | null }[]>([])
   const [loadingExisting, setLoadingExisting] = useState(true)
 
   // Load existing active links on mount
@@ -100,7 +100,7 @@ function ShareModal({ type, targetId, onClose }: { type: 'study' | 'campaign'; t
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create link'); return }
-      setExisting(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString() }, ...prev])
+      setExisting(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString(), last_accessed_at: null }, ...prev])
     } catch { setError('Network error') }
     finally { setLoading(false) }
   }
@@ -109,6 +109,13 @@ function ShareModal({ type, targetId, onClose }: { type: 'study' | 'campaign'; t
     navigator.clipboard.writeText(url)
     setCopied(url)
     setTimeout(() => setCopied(null), 2000)
+  }
+
+  const handleDelete = async (token: string) => {
+    const res = await fetch('/api/share?token=' + encodeURIComponent(token), { method: 'DELETE' })
+    if (res.ok) {
+      setExisting(prev => prev.filter(l => l.token !== token))
+    }
   }
 
   const formatExpiry = (iso: string) => {
@@ -132,25 +139,37 @@ function ShareModal({ type, targetId, onClose }: { type: 'study' | 'campaign'; t
           <div className="text-xs text-gray-400 mb-4">Loading links...</div>
         ) : existing.length > 0 && (
           <div className="mb-4">
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">Active links</label>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {existing.map(link => (
-                <div key={link.token} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-gray-600 font-mono truncate">{link.url}</p>
-                    <p className="text-[9px] text-gray-400">
-                      Created {new Date(link.created_at).toLocaleDateString()} · {formatExpiry(link.expires_at)}
-                    </p>
+            <label className="text-xs font-medium text-gray-600 block mb-1.5">Active links ({existing.length})</label>
+            <div className="relative">
+              <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 160 }}>
+                {existing.map(link => (
+                  <div key={link.token} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-gray-600 font-mono truncate">{link.url}</p>
+                      <p className="text-[9px] text-gray-400">
+                        Created {new Date(link.created_at).toLocaleDateString()} · {formatExpiry(link.expires_at)}
+                        {link.last_accessed_at && <> · Viewed {new Date(link.last_accessed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</>}
+                        {!link.last_accessed_at && <> · Never viewed</>}
+                      </p>
+                    </div>
+                    <button onClick={() => handleCopy(link.url)}
+                      className="text-[10px] px-2.5 py-1 rounded-md font-medium flex-shrink-0 transition-all"
+                      style={copied === link.url
+                        ? { background: '#dcfce7', color: '#16a34a' }
+                        : { background: '#fff4ef', color: HERMES }}>
+                      {copied === link.url ? 'Copied!' : 'Copy'}
+                    </button>
+                    <button onClick={() => handleDelete(link.token)}
+                      className="text-[10px] px-2 py-1 rounded-md font-medium flex-shrink-0 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                      title="Delete link">
+                      &times;
+                    </button>
                   </div>
-                  <button onClick={() => handleCopy(link.url)}
-                    className="text-[10px] px-2.5 py-1 rounded-md font-medium flex-shrink-0 transition-all"
-                    style={copied === link.url
-                      ? { background: '#dcfce7', color: '#16a34a' }
-                      : { background: '#fff4ef', color: HERMES }}>
-                    {copied === link.url ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
+              {existing.length > 3 && (
+                <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent pointer-events-none rounded-b-lg" />
+              )}
             </div>
           </div>
         )}
