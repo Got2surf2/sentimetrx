@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
-import { computeAnalytics } from '@/lib/analyticsCompute'
+import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic  = 'force-dynamic'
 export const maxDuration = 30
@@ -124,7 +124,12 @@ export async function POST(req: Request, { params }: Params) {
 
     if (stateRow && stateRow.schema_config?.fields?.length > 0) {
       try {
-        const analytics = await computeAnalytics(service, dataset.id, stateRow.schema_config)
+        // Use SQL-based compute if flat table is populated (handles 500K+ rows)
+        const flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dataset.id)
+        const hasFlat = (flatCheck.count || 0) > 0
+        const analytics = hasFlat
+          ? await computeAnalyticsSQL(service, dataset.id, stateRow.schema_config)
+          : await computeAnalytics(service, dataset.id, stateRow.schema_config)
         await service
           .from('dataset_state')
           .update({ analytics, updated_at: syncTimestamp, updated_by: user.id })

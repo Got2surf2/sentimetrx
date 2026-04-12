@@ -47,6 +47,36 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token')
+  const listType = req.nextUrl.searchParams.get('list_type')
+  const listTargetId = req.nextUrl.searchParams.get('list_target_id')
+
+  // List active links for a target (requires auth)
+  if (listType && listTargetId) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const service = createServiceRoleClient()
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+
+    const { data: links } = await service
+      .from('shared_links')
+      .select('token, expires_at, created_at')
+      .eq('type', listType)
+      .eq('target_id', listTargetId)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+
+    const items = (links || []).map(l => ({
+      url: `${baseUrl}/shared/${l.token}`,
+      token: l.token,
+      expires_at: l.expires_at,
+      created_at: l.created_at,
+    }))
+
+    return NextResponse.json({ links: items })
+  }
+
   if (!token) return NextResponse.json({ error: 'token required' }, { status: 400 })
 
   const service = createServiceRoleClient()
@@ -79,7 +109,17 @@ export async function GET(req: NextRequest) {
       .select('sentiment, experience_score, nps_score, status, completed_at, duration_sec')
       .eq('study_id', link.target_id)
 
-    return NextResponse.json({ type: 'study', study, responses: responses || [], expires_at: link.expires_at })
+    // Extract config details for intelligent labeling
+    const config = study.config || {}
+    const ratingScale = config.ratingScale || []
+    const ratingLabel = config.experienceRatingLabel || null
+    const npsEnabled = config.npsEnabled !== false
+    const experienceEnabled = config.experienceEnabled !== false
+
+    return NextResponse.json({
+      type: 'study', study, responses: responses || [], expires_at: link.expires_at,
+      ratingScale, ratingLabel, npsEnabled, experienceEnabled,
+    })
   }
 
   if (link.type === 'campaign') {

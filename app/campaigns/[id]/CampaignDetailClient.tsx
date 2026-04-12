@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import Link from 'next/link'
@@ -1266,8 +1266,8 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
               )}
 
               {/* Settings row */}
-              <div className="flex gap-3">
-                <div className="flex-1">
+              <div className="flex gap-3 flex-wrap">
+                <div className="flex-1 min-w-[140px]">
                   <label className="text-xs font-medium text-gray-600 block mb-1">Send to</label>
                   <select value={sendTo} onChange={e => setSendTo(e.target.value)}
                     className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400">
@@ -1276,17 +1276,36 @@ function EmailTemplateEditor({ campaignId, emails: initial, hiddenFields, respon
                     <option value="incompletes">Incompletes only</option>
                   </select>
                 </div>
-                <div className="w-28">
-                  <label className="text-xs font-medium text-gray-600 block mb-1">Delay (hours)</label>
-                  <input type="number" min={0} value={delayHours} onChange={e => setDelayHours(parseInt(e.target.value) || 0)}
-                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
+                <div className="w-32">
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Timing</label>
+                  <select value={scheduleMode} onChange={e => setScheduleMode(e.target.value as 'delay' | 'datetime')}
+                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400">
+                    <option value="delay">Delay-based</option>
+                    <option value="datetime">Specific date</option>
+                  </select>
                 </div>
-                <div className="w-28">
-                  <label className="text-xs font-medium text-gray-600 block mb-1">Send time</label>
-                  <input type="time" value={sendTime} onChange={e => setSendTime(e.target.value)}
-                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
-                  <p className="text-[9px] text-gray-400 mt-0.5">{sendTime ? 'ET' : 'Any time'}</p>
-                </div>
+                {scheduleMode === 'delay' ? (
+                  <>
+                    <div className="w-28">
+                      <label className="text-xs font-medium text-gray-600 block mb-1">Delay (hours)</label>
+                      <input type="number" min={0} value={delayHours} onChange={e => setDelayHours(parseInt(e.target.value) || 0)}
+                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
+                    </div>
+                    <div className="w-28">
+                      <label className="text-xs font-medium text-gray-600 block mb-1">Send time</label>
+                      <input type="time" value={sendTime} onChange={e => setSendTime(e.target.value)}
+                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
+                      <p className="text-[9px] text-gray-400 mt-0.5">{sendTime ? 'ET' : 'Any time'}</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-52">
+                    <label className="text-xs font-medium text-gray-600 block mb-1">Send at</label>
+                    <input type="datetime-local" value={sendAt} onChange={e => setSendAt(e.target.value)}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
+                    <p className="text-[9px] text-gray-400 mt-0.5">Eastern Time</p>
+                  </div>
+                )}
               </div>
               <button onClick={() => saveEmail(email.id)} disabled={saving}
                 className="text-xs px-4 py-1.5 rounded-lg text-white font-medium disabled:opacity-50"
@@ -1460,6 +1479,153 @@ function getDefaultTemplate(sequence: number): { subject: string; body_html: str
 }
 
 // -- Main component -------------------------------------------
+// -- Campaign share modal --------------------------------
+function CampaignShareModal({ campaignId, onClose }: { campaignId: string; onClose: () => void }) {
+  const [expiry, setExpiry] = useState<'24h' | '7d' | '30d'>('7d')
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
+  const [existing, setExisting] = useState<{ url: string; token: string; expires_at: string; created_at: string }[]>([])
+  const [loadingExisting, setLoadingExisting] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/share?list_type=campaign&list_target_id=' + campaignId)
+      .then(r => r.json())
+      .then(d => setExisting(d.links || []))
+      .catch(() => {})
+      .finally(() => setLoadingExisting(false))
+  }, [campaignId])
+
+  const generate = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'campaign', target_id: campaignId, expires_in: expiry }) })
+      const data = await res.json()
+      if (res.ok) setExisting(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString() }, ...prev])
+    } finally { setLoading(false) }
+  }
+
+  const handleCopy = (url: string) => {
+    navigator.clipboard.writeText(url)
+    setCopied(url)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const formatExpiry = (iso: string) => {
+    const diffH = Math.round((new Date(iso).getTime() - Date.now()) / 3600000)
+    if (diffH < 0) return 'Expired'
+    if (diffH < 24) return diffH + 'h left'
+    return Math.round(diffH / 24) + 'd left'
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+        <h3 className="font-bold text-gray-800 text-sm mb-1">Share Campaign Dashboard</h3>
+        <p className="text-xs text-gray-500 mb-4">View-only links anyone can access — no login required.</p>
+
+        {loadingExisting ? (
+          <div className="text-xs text-gray-400 mb-4">Loading links...</div>
+        ) : existing.length > 0 && (
+          <div className="mb-4">
+            <label className="text-xs font-medium text-gray-600 block mb-1.5">Active links</label>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {existing.map(link => (
+                <div key={link.token} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-gray-600 font-mono truncate">{link.url}</p>
+                    <p className="text-[9px] text-gray-400">
+                      Created {new Date(link.created_at).toLocaleDateString()} · {formatExpiry(link.expires_at)}
+                    </p>
+                  </div>
+                  <button onClick={() => handleCopy(link.url)}
+                    className="text-[10px] px-2.5 py-1 rounded-md font-medium flex-shrink-0 transition-all"
+                    style={copied === link.url ? { background: '#dcfce7', color: '#16a34a' } : { background: '#fff4ef', color: HERMES }}>
+                    {copied === link.url ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="border-t border-gray-100 pt-3">
+          <label className="text-xs font-medium text-gray-600 block mb-1.5">Create new link</label>
+          <div className="flex gap-2 mb-3">
+            {([['24h', '24 hours'], ['7d', '7 days'], ['30d', '30 days']] as const).map(([val, label]) => (
+              <button key={val} onClick={() => setExpiry(val)}
+                className={'flex-1 text-xs py-2 rounded-lg font-medium border transition-all ' +
+                  (expiry === val ? 'text-white border-transparent' : 'text-gray-500 border-gray-200 hover:border-orange-300')}
+                style={expiry === val ? { background: HERMES } : {}}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-3 justify-end">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium">Done</button>
+            <button onClick={generate} disabled={loading}
+              className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              style={{ background: HERMES }}>
+              {loading ? 'Creating...' : 'Create Link'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// -- Campaign schedule card -----------------------------
+function CampaignScheduleCard({ campaignId, campaignStatus }: { campaignId: string; campaignStatus: string }) {
+  const [launchDate, setLaunchDate] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const handleSchedule = async () => {
+    if (!launchDate) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/campaigns/' + campaignId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'scheduled', scheduled_at: new Date(launchDate).toISOString() }),
+      })
+      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
+    } finally { setSaving(false) }
+  }
+
+  const alreadySent = campaignStatus === 'active' || campaignStatus === 'completed'
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <h3 className="font-semibold text-sm text-gray-800 mb-1">Campaign Schedule</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        {alreadySent
+          ? 'This campaign has already been sent.'
+          : 'Set a launch date and time. Email delays are offset from this time.'}
+      </p>
+      {!alreadySent && (
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="text-xs font-medium text-gray-600 block mb-1">Launch date & time</label>
+            <input type="datetime-local" value={launchDate} onChange={e => setLaunchDate(e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400" />
+            <p className="text-[9px] text-gray-400 mt-0.5">Eastern Time</p>
+          </div>
+          <button onClick={handleSchedule} disabled={saving || !launchDate}
+            className="text-xs px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50 hover:opacity-90"
+            style={{ background: HERMES }}>
+            {saved ? 'Scheduled!' : saving ? 'Saving...' : 'Schedule'}
+          </button>
+        </div>
+      )}
+      {alreadySent && (
+        <div className="text-xs text-green-600 font-medium">Campaign is {campaignStatus}.</div>
+      )}
+    </div>
+  )
+}
+
 export default function CampaignDetailClient({ user, campaign: initialCampaign, emails, respondents: initialRespondents, totalRespondents, logoUrl = '', analyzeEnabled, campaignsEnabled }: Props) {
   const [campaign, setCampaign] = useState(initialCampaign)
   const [tab, setTab] = useState<Tab>('setup')
@@ -1475,6 +1641,7 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
   const [recipientStatusFilter, setRecipientStatusFilter] = useState('')
   const [recipientPage, setRecipientPage] = useState(0)
   const [showReminderModal, setShowReminderModal] = useState(false)
+  const [showShare, setShowShare] = useState(false)
 
   const statusCounts = { total: 0, pending: 0, sent: 0, opened: 0, clicked: 0, completed: 0, bounced: 0, unsubscribed: 0 }
   for (const r of respondents) {
@@ -1559,6 +1726,9 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
           />
         )}
 
+        {/* Share modal */}
+        {showShare && <CampaignShareModal campaignId={campaign.id} onClose={() => setShowShare(false)} />}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex-1 min-w-0">
@@ -1578,16 +1748,22 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
               <span className="text-[10px] text-gray-300">{respondents.length} recipients · {emails.length} emails</span>
             </div>
           </div>
-          <button
-            onClick={async () => {
-              if (!confirm('Delete "' + campaign.name + '"? This cannot be undone.')) return
-              const res = await fetch('/api/campaigns/' + campaign.id, { method: 'DELETE' })
-              if (res.ok) window.location.href = '/campaigns'
-            }}
-            className="text-xs px-3 py-1.5 rounded-lg font-medium border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors flex-shrink-0"
-          >
-            Delete
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => setShowShare(true)}
+              className="text-xs px-3 py-1.5 rounded-lg font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors">
+              Share
+            </button>
+            <button
+              onClick={async () => {
+                if (!confirm('Delete "' + campaign.name + '"? This cannot be undone.')) return
+                const res = await fetch('/api/campaigns/' + campaign.id, { method: 'DELETE' })
+                if (res.ok) window.location.href = '/campaigns'
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg font-medium border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
+            >
+              Delete
+            </button>
+          </div>
         </div>
 
         {/* Step pills — campaign flow */}
@@ -1640,6 +1816,9 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
                 Edit Settings
               </button>
             </div>
+            {/* Campaign schedule */}
+            <CampaignScheduleCard campaignId={campaign.id} campaignStatus={campaign.status} />
+
             <div className="bg-white rounded-2xl border border-gray-200 p-5">
               <h3 className="font-semibold text-sm text-gray-800 mb-3">Quick Status</h3>
               <div className="grid grid-cols-2 gap-3">

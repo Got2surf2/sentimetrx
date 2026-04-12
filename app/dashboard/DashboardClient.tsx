@@ -2,7 +2,7 @@
 
 import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import { useRouter } from 'next/navigation'
@@ -71,6 +71,118 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
   )
 }
 
+// -- Share modal ----------------------------------------------------------------
+function ShareModal({ type, targetId, onClose }: { type: 'study' | 'campaign'; targetId: string; onClose: () => void }) {
+  const [expiry, setExpiry] = useState<'24h' | '7d' | '30d'>('7d')
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [existing, setExisting] = useState<{ url: string; token: string; expires_at: string; created_at: string }[]>([])
+  const [loadingExisting, setLoadingExisting] = useState(true)
+
+  // Load existing active links on mount
+  useEffect(() => {
+    fetch('/api/share?list_type=' + type + '&list_target_id=' + targetId)
+      .then(r => r.json())
+      .then(d => setExisting(d.links || []))
+      .catch(() => {})
+      .finally(() => setLoadingExisting(false))
+  }, [type, targetId])
+
+  const generate = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, target_id: targetId, expires_in: expiry }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to create link'); return }
+      setExisting(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString() }, ...prev])
+    } catch { setError('Network error') }
+    finally { setLoading(false) }
+  }
+
+  const handleCopy = (url: string) => {
+    navigator.clipboard.writeText(url)
+    setCopied(url)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const formatExpiry = (iso: string) => {
+    const d = new Date(iso)
+    const now = new Date()
+    const diffMs = d.getTime() - now.getTime()
+    if (diffMs < 0) return 'Expired'
+    const diffH = Math.round(diffMs / 3600000)
+    if (diffH < 24) return diffH + 'h left'
+    return Math.round(diffH / 24) + 'd left'
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+        <h3 className="font-bold text-gray-800 text-sm mb-1">Share Dashboard</h3>
+        <p className="text-xs text-gray-500 mb-4">View-only links anyone can access — no login required.</p>
+
+        {/* Existing links */}
+        {loadingExisting ? (
+          <div className="text-xs text-gray-400 mb-4">Loading links...</div>
+        ) : existing.length > 0 && (
+          <div className="mb-4">
+            <label className="text-xs font-medium text-gray-600 block mb-1.5">Active links</label>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {existing.map(link => (
+                <div key={link.token} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-gray-600 font-mono truncate">{link.url}</p>
+                    <p className="text-[9px] text-gray-400">
+                      Created {new Date(link.created_at).toLocaleDateString()} · {formatExpiry(link.expires_at)}
+                    </p>
+                  </div>
+                  <button onClick={() => handleCopy(link.url)}
+                    className="text-[10px] px-2.5 py-1 rounded-md font-medium flex-shrink-0 transition-all"
+                    style={copied === link.url
+                      ? { background: '#dcfce7', color: '#16a34a' }
+                      : { background: '#fff4ef', color: HERMES }}>
+                    {copied === link.url ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Create new */}
+        <div className="border-t border-gray-100 pt-3">
+          <label className="text-xs font-medium text-gray-600 block mb-1.5">Create new link</label>
+          <div className="flex gap-2 mb-3">
+            {([['24h', '24 hours'], ['7d', '7 days'], ['30d', '30 days']] as const).map(([val, label]) => (
+              <button key={val} onClick={() => setExpiry(val)}
+                className={'flex-1 text-xs py-2 rounded-lg font-medium border transition-all ' +
+                  (expiry === val ? 'text-white border-transparent' : 'text-gray-500 border-gray-200 hover:border-orange-300')}
+                style={expiry === val ? { background: HERMES } : {}}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+          <div className="flex gap-3 justify-end">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium">Done</button>
+            <button onClick={generate} disabled={loading}
+              className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              style={{ background: HERMES }}>
+              {loading ? 'Creating...' : 'Create Link'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // -- Study card -----------------------------------------------------------------
 function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabled, onPatch, onDelete, onDuplicate, onRefresh }: {
   study: Study; stats: StudyStats; isAdmin: boolean; userId: string; campaignsEnabled?: boolean
@@ -85,6 +197,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
   const [status,     setStatus]     = useState(study.status)
   const [refreshing, setRefreshing] = useState(false)
   const [stats,      setStats]      = useState(initialStats)
+  const [showShare,  setShowShare]  = useState(false)
 
   const canEdit  = study.created_by === userId || isAdmin
   const theme    = study.config?.theme || {}
@@ -150,6 +263,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
   return (
     <>
       {confirm    && <ConfirmModal message={confirm.msg} onConfirm={() => { confirm.action(); setConfirm(null) }} onCancel={() => setConfirm(null)} />}
+      {showShare  && <ShareModal type="study" targetId={study.id} onClose={() => setShowShare(false)} />}
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden" style={{ position: 'relative' }}>
 
@@ -306,7 +420,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
               </button>
             </>)}
 
-            {/* Row 3: Edit, Duplicate, Make Public/Private */}
+            {/* Row 3: Edit, Duplicate, Share */}
             {canEdit && (<>
               <Link href={'/studies/' + study.id + '/edit'}
                 className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
@@ -318,10 +432,10 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
                 style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                 Duplicate
               </button>
-              <button onClick={() => do_patch({ visibility: vis === 'public' ? 'private' : 'public' })} disabled={busy}
-                className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
-                style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
-                {vis === 'public' ? 'Private' : 'Public'}
+              <button onClick={() => setShowShare(true)}
+                className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
+                Share
               </button>
             </>)}
           </div>

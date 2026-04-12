@@ -129,9 +129,38 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================================
+-- 5. Theme keyword matching (server-side theme counting)
+-- ============================================================
+CREATE OR REPLACE FUNCTION count_theme_matches(
+  p_dataset_id uuid,
+  p_field_keys text[],
+  p_keywords text[]
+)
+RETURNS bigint AS $$
+DECLARE
+  pattern text;
+  total bigint;
+BEGIN
+  -- Build a single regex pattern: \m(kw1|kw2|kw3) (word boundary match, case-insensitive)
+  pattern := '\m(' || array_to_string(p_keywords, '|') || ')';
+
+  SELECT count(DISTINCT drf.id) INTO total
+  FROM dataset_rows_flat drf,
+       LATERAL unnest(p_field_keys) AS fk(key)
+  WHERE drf.dataset_id = p_dataset_id
+    AND drf.data ->> fk.key IS NOT NULL
+    AND drf.data ->> fk.key != ''
+    AND drf.data ->> fk.key ~* pattern;
+
+  RETURN total;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ============================================================
 -- Done! Verify:
 -- ============================================================
 SELECT 'crosstab_counts' AS func, 'ready' AS status
 UNION ALL SELECT 'group_numeric_stats', 'ready'
 UNION ALL SELECT 'date_series_stats', 'ready'
-UNION ALL SELECT 'sample_row_pairs', 'ready';
+UNION ALL SELECT 'sample_row_pairs', 'ready'
+UNION ALL SELECT 'count_theme_matches', 'ready';

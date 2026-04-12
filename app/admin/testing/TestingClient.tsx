@@ -189,6 +189,8 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
   const [leakReps, setLeakReps] = useState(5)
   const [leakProgress, setLeakProgress] = useState({ done: 0, total: 0, leaked: 0 })
   const leakStop = useRef(false)
+  const [customComments, setCustomComments] = useState('')
+  const [useCustom, setUseCustom] = useState(false)
 
   // Load tester
   const [simCount, setSimCount] = useState(10)
@@ -333,15 +335,20 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
 
   const runLeakageTest = useCallback(async () => {
     if (!studyConfig || studyQuestions.length === 0) { alert('Load a study with questions first'); return }
+
+    // Build test corpus: custom comments if provided, otherwise defaults
+    const customLines = customComments.split('\n').map(l => l.trim()).filter(Boolean)
+    const testResponses = useCustom && customLines.length > 0 ? customLines : SAMPLE_RESPONSES
+
     leakStop.current = false
     setLeakRunning(true)
     setLeakResults([])
-    const total = SAMPLE_RESPONSES.length * leakReps
+    const total = testResponses.length * leakReps
     setLeakProgress({ done: 0, total, leaked: 0 })
 
     let done = 0, leaked = 0
 
-    for (const sampleAnswer of SAMPLE_RESPONSES) {
+    for (const sampleAnswer of testResponses) {
       if (leakStop.current) break
       for (let rep = 0; rep < leakReps; rep++) {
         if (leakStop.current) break
@@ -386,7 +393,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
     }
 
     setLeakRunning(false)
-  }, [studyConfig, studyQuestions, studyOrgName, studyName, leakReps])
+  }, [studyConfig, studyQuestions, studyOrgName, studyName, leakReps, customComments, useCustom])
 
   // ── Load tester (simulator) ─────────────────────────────────────────
 
@@ -691,6 +698,42 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
                 Tests both the prompt quality and the server-side stripping.
               </p>
 
+              {/* Source toggle */}
+              <div className="flex items-center gap-3 mb-3">
+                <button onClick={() => setUseCustom(false)} disabled={leakRunning}
+                  className={'text-xs px-3 py-1.5 rounded-lg font-medium border transition-all ' +
+                    (!useCustom ? 'text-white border-transparent' : 'text-gray-500 border-gray-200 hover:border-orange-300')}
+                  style={!useCustom ? { background: HERMES } : {}}>
+                  Default samples ({SAMPLE_RESPONSES.length})
+                </button>
+                <button onClick={() => setUseCustom(true)} disabled={leakRunning}
+                  className={'text-xs px-3 py-1.5 rounded-lg font-medium border transition-all ' +
+                    (useCustom ? 'text-white border-transparent' : 'text-gray-500 border-gray-200 hover:border-orange-300')}
+                  style={useCustom ? { background: HERMES } : {}}>
+                  Paste custom comments
+                </button>
+              </div>
+
+              {/* Custom comments textarea */}
+              {useCustom && (
+                <div className="mb-3">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">
+                    Paste comments (one per line)
+                  </label>
+                  <textarea
+                    value={customComments}
+                    onChange={e => setCustomComments(e.target.value)}
+                    disabled={leakRunning}
+                    rows={6}
+                    placeholder={"The service was excellent\nI had a terrible experience\nNothing special to report\nThe staff was very helpful but slow"}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400 resize-y font-mono disabled:opacity-50"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {customComments.split('\n').filter(l => l.trim()).length} comments entered
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-3 mb-4 items-end">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1">Reps per response</label>
@@ -703,7 +746,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
                   </select>
                 </div>
                 <div className="text-xs text-gray-400">
-                  {SAMPLE_RESPONSES.length} sample responses &times; {leakReps} reps = {SAMPLE_RESPONSES.length * leakReps} API calls
+                  {(useCustom ? customComments.split('\n').filter(l => l.trim()).length : SAMPLE_RESPONSES.length)} responses &times; {leakReps} reps = {(useCustom ? customComments.split('\n').filter(l => l.trim()).length : SAMPLE_RESPONSES.length) * leakReps} API calls
                 </div>
               </div>
 

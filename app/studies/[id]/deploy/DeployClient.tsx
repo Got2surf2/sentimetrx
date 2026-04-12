@@ -24,7 +24,21 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
   const [toggling,    setToggling]    = useState(false)
   const [qrDataUrl,   setQrDataUrl]   = useState<string | null>(null)
   const [error,       setError]       = useState<string | null>(null)
+  const [shareExpiry, setShareExpiry] = useState<'24h' | '7d' | '30d'>('7d')
+  const [shareLoading,setShareLoading]= useState(false)
+  const [shareCopied, setShareCopied] = useState<string | null>(null)
+  const [shareLinks,  setShareLinks]  = useState<{ url: string; token: string; expires_at: string; created_at: string }[]>([])
+  const [shareLinksLoaded, setShareLinksLoaded] = useState(false)
 
+
+  // Load existing share links
+  useEffect(() => {
+    fetch('/api/share?list_type=study&list_target_id=' + study.id)
+      .then(r => r.json())
+      .then(d => setShareLinks(d.links || []))
+      .catch(() => {})
+      .finally(() => setShareLinksLoaded(true))
+  }, [study.id])
 
   // Generate QR code client-side using qrcode npm package
   useEffect(() => {
@@ -199,6 +213,64 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
               {!qrDataUrl && (
                 <p className="text-gray-500 text-xs">Generating QR code...</p>
               )}
+            </div>
+          </div>
+
+          {/* Share dashboard */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6">
+            <h2 className="font-semibold text-white mb-1">Share dashboard</h2>
+            <p className="text-gray-400 text-sm mb-4">
+              View-only links to share response metrics with clients — no login required.
+            </p>
+
+            {/* Existing links */}
+            {shareLinksLoaded && shareLinks.length > 0 && (
+              <div className="mb-4">
+                <label className="text-xs font-medium text-gray-500 block mb-1.5">Active links</label>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {shareLinks.map(link => {
+                    const diffH = Math.round((new Date(link.expires_at).getTime() - Date.now()) / 3600000)
+                    const timeLeft = diffH < 24 ? diffH + 'h left' : Math.round(diffH / 24) + 'd left'
+                    return (
+                      <div key={link.token} className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] text-gray-400 font-mono truncate">{link.url}</p>
+                          <p className="text-[9px] text-gray-500">
+                            Created {new Date(link.created_at).toLocaleDateString()} · {timeLeft}
+                          </p>
+                        </div>
+                        <button onClick={() => { navigator.clipboard.writeText(link.url); setShareCopied(link.url); setTimeout(() => setShareCopied(null), 2000) }}
+                          className={'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ' +
+                            (shareCopied === link.url ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 hover:bg-slate-600 text-white')}>
+                          {shareCopied === link.url ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Create new */}
+            <div className="flex items-center gap-3">
+              <select value={shareExpiry} onChange={e => setShareExpiry(e.target.value as any)}
+                className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-gray-300 outline-none">
+                <option value="24h">Expires in 24 hours</option>
+                <option value="7d">Expires in 7 days</option>
+                <option value="30d">Expires in 30 days</option>
+              </select>
+              <button disabled={shareLoading} onClick={async () => {
+                setShareLoading(true)
+                try {
+                  const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'study', target_id: study.id, expires_in: shareExpiry }) })
+                  const data = await res.json()
+                  if (res.ok) setShareLinks(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString() }, ...prev])
+                } finally { setShareLoading(false) }
+              }} className="px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all hover:opacity-90 disabled:opacity-50"
+                style={{ background: '#E8632A' }}>
+                {shareLoading ? 'Creating...' : 'Create new link'}
+              </button>
             </div>
           </div>
 

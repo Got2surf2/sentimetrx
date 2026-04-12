@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 const HERMES = '#E8632A'
 
@@ -8,17 +8,21 @@ export default function SharedDashboard({ params }: { params: { token: string } 
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
 
-  useEffect(() => {
-    fetch('/api/share?token=' + params.token)
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) setError(d.error)
-        else setData(d)
-      })
-      .catch(() => setError('Failed to load'))
-      .finally(() => setLoading(false))
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    try {
+      const r = await fetch('/api/share?token=' + params.token)
+      const d = await r.json()
+      if (d.error) setError(d.error)
+      else { setData(d); setLastRefreshed(new Date()) }
+    } catch { setError('Failed to load') }
+    finally { setLoading(false); setRefreshing(false) }
   }, [params.token])
+
+  useEffect(() => { fetchData() }, [fetchData])
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -36,21 +40,193 @@ export default function SharedDashboard({ params }: { params: { token: string } 
     </div>
   )
 
-  if (data.type === 'study') return <SharedStudyDashboard study={data.study} responses={data.responses} expiresAt={data.expires_at} />
-  if (data.type === 'campaign') return <SharedCampaignDashboard campaign={data.campaign} stats={data.stats} expiresAt={data.expires_at} />
+  if (data.type === 'study') return <SharedStudyDashboard study={data.study} responses={data.responses} expiresAt={data.expires_at}
+    ratingScale={data.ratingScale} ratingLabel={data.ratingLabel} npsEnabled={data.npsEnabled} experienceEnabled={data.experienceEnabled}
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
+  if (data.type === 'campaign') return <SharedCampaignDashboard campaign={data.campaign} stats={data.stats} expiresAt={data.expires_at}
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
   return null
 }
 
-function SharedStudyDashboard({ study, responses, expiresAt }: { study: any; responses: any[]; expiresAt: string }) {
+// -- Responses over time bar chart (CSS-only, no deps) --
+function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
+  // Get all timestamps
+  const timestamps = responses
+    .map((r: any) => r.completed_at)
+    .filter(Boolean)
+    .map((t: string) => new Date(t))
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  if (timestamps.length < 2) return null
+
+  // Determine scale: if range < 3 days use hourly, otherwise daily
+  const rangeMs = timestamps[timestamps.length - 1].getTime() - timestamps[0].getTime()
+  const rangeDays = rangeMs / (1000 * 60 * 60 * 24)
+  const useHourly = rangeDays < 3
+
+  // Bucket responses
+  const buckets: Record<string, { complete: number; incomplete: number }> = {}
+
+  for (const r of responses) {
+    if (!r.completed_at) continue
+    const d = new Date(r.completed_at)
+    const key = useHourly
+      ? d.toISOString().slice(0, 13) // YYYY-MM-DDTHH
+      : d.toISOString().slice(0, 10) // YYYY-MM-DD
+    if (!buckets[key]) buckets[key] = { complete: 0, incomplete: 0 }
+    if (r.status === 'incomplete') buckets[key].incomplete++
+    else buckets[key].complete++
+  }
+
+  const sortedKeys = Object.keys(buckets).sort()
+  if (sortedKeys.length === 0) return null
+
+  const maxVal = Math.max(...sortedKeys.map(k => buckets[k].complete + buckets[k].incomplete))
+
+  // Format labels
+  const formatLabel = (key: string) => {
+    if (useHourly) {
+      const d = new Date(key + ':00:00Z')
+      return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric' })
+    }
+    const d = new Date(key + 'T00:00:00Z')
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric' })
+  }
+
+  // Show at most 20 bars, evenly sampled if more
+  let displayKeys = sortedKeys
+  if (sortedKeys.length > 20) {
+    const step = Math.ceil(sortedKeys.length / 20)
+    displayKeys = sortedKeys.filter((_, i) => i % step === 0)
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+      <h3 className="font-semibold text-sm text-gray-800 mb-1">Responses Over Time</h3>
+      <div className="flex items-center gap-4 mb-3">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-sm" style={{ background: '#22c55e' }} />
+          <span className="text-[10px] text-gray-500">Complete</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f59e0b' }} />
+          <span className="text-[10px] text-gray-500">Incomplete</span>
+        </div>
+        <span className="text-[10px] text-gray-400 ml-auto">
+          {useHourly ? 'Hourly' : 'Daily'}
+        </span>
+      </div>
+      <div className="flex items-end gap-1" style={{ height: 120 }}>
+        {displayKeys.map(key => {
+          const b = buckets[key]
+          const total = b.complete + b.incomplete
+          const h = maxVal > 0 ? (total / maxVal) * 100 : 0
+          const completeH = total > 0 ? (b.complete / total) * h : 0
+          const incompleteH = h - completeH
+          return (
+            <div key={key} className="flex-1 flex flex-col items-center justify-end" style={{ height: '100%' }}>
+              <div className="text-[8px] text-gray-500 font-semibold mb-0.5">{total}</div>
+              <div className="w-full flex flex-col justify-end" style={{ height: h + '%', minHeight: total > 0 ? 4 : 0 }}>
+                {incompleteH > 0 && (
+                  <div className="w-full rounded-t-sm" style={{ height: (incompleteH / h * 100) + '%', background: '#f59e0b', minHeight: 2 }} />
+                )}
+                {completeH > 0 && (
+                  <div className="w-full" style={{ height: (completeH / h * 100) + '%', background: '#22c55e', minHeight: 2, borderRadius: incompleteH > 0 ? 0 : '2px 2px 0 0' }} />
+                )}
+              </div>
+              <div className="text-[8px] text-gray-400 mt-1 text-center leading-tight" style={{ maxWidth: '100%', wordBreak: 'break-word' }}>
+                {formatLabel(key)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function RefreshBar({ lastRefreshed, refreshing, onRefresh }: { lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void }) {
+  const timeStr = lastRefreshed
+    ? lastRefreshed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : null
+  return (
+    <div className="flex items-center justify-end gap-2 mb-2">
+      {timeStr && <span className="text-[10px] text-gray-400">Last refreshed {timeStr}</span>}
+      <button onClick={onRefresh} disabled={refreshing}
+        className="text-[10px] px-2 py-1 rounded-md font-medium transition-all disabled:opacity-50"
+        style={{ background: '#fff4ef', color: HERMES }}>
+        {refreshing ? 'Refreshing...' : 'Refresh'}
+      </button>
+    </div>
+  )
+}
+
+function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, ratingLabel, npsEnabled, experienceEnabled, lastRefreshed, refreshing, onRefresh }: {
+  study: any; responses: any[]; expiresAt: string
+  ratingScale?: any[]; ratingLabel?: string | null; npsEnabled?: boolean; experienceEnabled?: boolean
+  lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
+}) {
   const total = responses.length
   const complete = responses.filter((r: any) => r.status !== 'incomplete').length
-  const promoters = responses.filter((r: any) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
-  const passives = responses.filter((r: any) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
-  const detractors = responses.filter((r: any) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
-  const scores = responses.map((r: any) => r.experience_score).filter(Boolean)
-  const avgScore = scores.length > 0 ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length * 10) / 10 : 0
-  const npsScores = responses.map((r: any) => r.nps_score).filter(Boolean)
-  const avgNps = npsScores.length > 0 ? Math.round(npsScores.reduce((a: number, b: number) => a + b, 0) / npsScores.length * 10) / 10 : 0
+
+  // Determine scoring model from the data
+  const expScores = responses.map((r: any) => r.experience_score).filter((v: any) => v != null)
+  const npsScores = responses.map((r: any) => r.nps_score).filter((v: any) => v != null)
+  const hasExp = experienceEnabled !== false && expScores.length > 0
+  const hasNps = npsEnabled !== false && npsScores.length > 0
+
+  // Detect if this is an NPS field (0-10 scale or label contains "nps")
+  const scaleMax = ratingScale && ratingScale.length > 0
+    ? Math.max(...ratingScale.map((r: any) => r.score))
+    : (hasExp ? Math.max(...expScores) : 5)
+  const labelLower = (ratingLabel || '').toLowerCase()
+  const isNps = scaleMax >= 10 || labelLower.includes('nps')
+
+  // Primary score metric
+  const primaryScores = hasExp ? expScores : npsScores
+  const avgScore = primaryScores.length > 0
+    ? Math.round(primaryScores.reduce((a: number, b: number) => a + b, 0) / primaryScores.length * 10) / 10
+    : 0
+  const scoreLabel = ratingLabel || (isNps ? 'NPS' : 'Avg Rating')
+  const scored = primaryScores.length
+
+  // Build score breakdown bars
+  // For NPS: Promoters (9-10), Passives (7-8), Detractors (0-6)
+  // For non-NPS: show each value individually, sorted by ratingScale or smart order
+  type BreakdownBar = { label: string; value: number; color: string }
+  let breakdownBars: BreakdownBar[] = []
+  let breakdownTitle = scoreLabel + ' Breakdown'
+
+  if (isNps) {
+    const topCount = responses.filter((r: any) => r.sentiment === 'promoter' || r.sentiment === 'positive').length
+    const midCount = responses.filter((r: any) => r.sentiment === 'passive' || r.sentiment === 'neutral').length
+    const botCount = responses.filter((r: any) => r.sentiment === 'detractor' || r.sentiment === 'negative').length
+    breakdownBars = [
+      { label: 'Promoters', value: topCount, color: '#22c55e' },
+      { label: 'Passives', value: midCount, color: '#f59e0b' },
+      { label: 'Detractors', value: botCount, color: '#ef4444' },
+    ]
+  } else if (hasExp && ratingScale && ratingScale.length > 0) {
+    // Use ratingScale labels, sorted by score (low to high for display, but we show high first)
+    const sorted = [...ratingScale].sort((a: any, b: any) => b.score - a.score)
+    const barColors = ['#22c55e', '#86efac', '#fde68a', '#fca5a5', '#ef4444']
+    breakdownBars = sorted.map((opt: any, i: number) => ({
+      label: (opt.emoji ? opt.emoji + ' ' : '') + opt.label,
+      value: expScores.filter((s: number) => s === opt.score).length,
+      color: barColors[Math.min(i, barColors.length - 1)],
+    }))
+  } else if (hasExp) {
+    // No ratingScale config — show numeric values high to low
+    const vals: Record<number, number> = {}
+    for (const s of expScores) vals[s] = (vals[s] || 0) + 1
+    const sortedVals = Object.keys(vals).map(Number).sort((a, b) => b - a)
+    const barColors = ['#22c55e', '#86efac', '#fde68a', '#fca5a5', '#ef4444']
+    breakdownBars = sortedVals.map((v, i) => ({
+      label: String(v),
+      value: vals[v],
+      color: barColors[Math.min(i, barColors.length - 1)],
+    }))
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -64,56 +240,62 @@ function SharedStudyDashboard({ study, responses, expiresAt }: { study: any; res
           <p className="text-xs text-gray-400">Shared dashboard · Expires {new Date(expiresAt).toLocaleDateString()}</p>
         </div>
 
+        <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} />
+
         {/* Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <div className="text-2xl font-bold" style={{ color: HERMES }}>{total}</div>
             <div className="text-xs text-gray-500">Responses</div>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{complete > 0 ? Math.round(complete / total * 100) : 0}%</div>
+            <div className="text-2xl font-bold text-green-600">{total > 0 ? Math.round(complete / total * 100) : 0}%</div>
             <div className="text-xs text-gray-500">Complete</div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold" style={{ color: HERMES }}>{avgScore}</div>
-            <div className="text-xs text-gray-500">Avg Rating</div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">{avgNps}</div>
-            <div className="text-xs text-gray-500">Avg NPS</div>
-          </div>
+          {scored > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-2xl font-bold" style={{ color: HERMES }}>{avgScore}</div>
+              <div className="text-xs text-gray-500">{scoreLabel}</div>
+            </div>
+          )}
         </div>
 
-        {/* Sentiment breakdown */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-          <h3 className="font-semibold text-sm text-gray-800 mb-3">Sentiment Breakdown</h3>
-          <div className="space-y-2">
-            {[
-              { label: 'Promoters', value: promoters, color: '#22c55e' },
-              { label: 'Passives', value: passives, color: '#f59e0b' },
-              { label: 'Detractors', value: detractors, color: '#ef4444' },
-            ].map(s => (
-              <div key={s.label} className="flex items-center gap-3">
-                <span className="text-xs text-gray-500 w-20">{s.label}</span>
-                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: (total > 0 ? s.value / total * 100 : 0) + '%', background: s.color }} />
+        {/* Responses over time chart */}
+        <ResponsesOverTimeChart responses={responses} />
+
+        {/* Score breakdown */}
+        {scored > 0 && breakdownBars.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h3 className="font-semibold text-sm text-gray-800 mb-3">{breakdownTitle}</h3>
+            <div className="space-y-2">
+              {breakdownBars.map(s => (
+                <div key={s.label} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-36 flex-shrink-0">{s.label}</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: (scored > 0 ? s.value / scored * 100 : 0) + '%', background: s.color }} />
+                  </div>
+                  <span className="text-xs font-semibold text-gray-700 w-16 text-right">{s.value} ({scored > 0 ? Math.round(s.value / scored * 100) : 0}%)</span>
                 </div>
-                <span className="text-xs font-semibold text-gray-700 w-16 text-right">{s.value} ({total > 0 ? Math.round(s.value / total * 100) : 0}%)</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Footer */}
         <div className="text-center text-xs text-gray-400 mt-6">
-          Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span>
+          Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span> — to learn more go to{' '}
+          <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
+            className="font-semibold underline" style={{ color: HERMES }}>datanautix.com</a>
         </div>
       </div>
     </div>
   )
 }
 
-function SharedCampaignDashboard({ campaign, stats, expiresAt }: { campaign: any; stats: any; expiresAt: string }) {
+function SharedCampaignDashboard({ campaign, stats, expiresAt, lastRefreshed, refreshing, onRefresh }: {
+  campaign: any; stats: any; expiresAt: string
+  lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
+}) {
   const delivered = stats.sent + stats.opened + stats.clicked + stats.completed + stats.unsubscribed
   const deliveryRate = stats.total > 0 ? Math.round(delivered / stats.total * 100) : 0
   const completionRate = stats.total > 0 ? Math.round(stats.completed / stats.total * 100) : 0
@@ -125,6 +307,8 @@ function SharedCampaignDashboard({ campaign, stats, expiresAt }: { campaign: any
           <h1 className="text-xl font-bold text-gray-800 mb-1">{campaign.name}</h1>
           <p className="text-xs text-gray-400">Campaign dashboard · Expires {new Date(expiresAt).toLocaleDateString()}</p>
         </div>
+
+        <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
@@ -186,7 +370,9 @@ function SharedCampaignDashboard({ campaign, stats, expiresAt }: { campaign: any
         )}
 
         <div className="text-center text-xs text-gray-400 mt-6">
-          Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span>
+          Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span> — to learn more go to{' '}
+          <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
+            className="font-semibold underline" style={{ color: HERMES }}>datanautix.com</a>
         </div>
       </div>
     </div>
