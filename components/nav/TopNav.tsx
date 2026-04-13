@@ -107,27 +107,26 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
             <span className="text-orange-100 text-sm font-medium truncate max-w-[120px] hidden sm:block">{orgName}</span>
           </>
         )}
-        {displayName && (
+        {displayName && !datasetName && (
           <>
             <span className="text-orange-200/40 text-sm hidden lg:block">·</span>
             <span className="text-orange-200 text-xs truncate max-w-[180px] hidden lg:block">{displayName}</span>
           </>
         )}
+        {datasetName && (
+          <>
+            <span className="text-orange-200/60 text-sm hidden sm:block">|</span>
+            <span style={{
+              background: '#2563eb', color: 'white', fontSize: 11, fontWeight: 700,
+              padding: '3px 12px', borderRadius: 20, whiteSpace: 'nowrap',
+              overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220,
+              flexShrink: 1, minWidth: 0,
+            }} className="hidden sm:block" title={datasetName}>
+              {datasetName}
+            </span>
+          </>
+        )}
       </div>
-
-      {/* Center: dataset name pill */}
-      {datasetName && (
-        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', maxWidth: '40%', pointerEvents: 'none' }}>
-          <div style={{
-            background: '#2563eb', color: 'white', fontSize: 12, fontWeight: 700,
-            padding: '4px 16px', borderRadius: 20, whiteSpace: 'nowrap',
-            overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
-            boxShadow: '0 2px 8px rgba(37,99,235,.3)',
-          }} title={datasetName}>
-            {datasetName}
-          </div>
-        </div>
-      )}
 
       {/* Right: nav links */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
