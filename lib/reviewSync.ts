@@ -37,12 +37,14 @@ export async function syncReviewSource(
   if (srcErr || !source) throw new Error('Review source not found: ' + (srcErr?.message || sourceId))
   if (!source.dataset_id) throw new Error('Review source has no linked dataset')
 
-  // 2. Load selected locations that need syncing (prioritise unsynced, then oldest)
+  // 2. Load selected locations that need syncing
+  // Skip locations that errored recently (within last 10 minutes) to avoid retry loops
   const { data: locations, error: locErr } = await service
     .from('review_source_locations')
     .select('*')
     .eq('review_source_id', sourceId)
     .eq('selected', true)
+    .is('error_message', null)
     .order('last_synced_at', { ascending: true, nullsFirst: true })
     .limit(LOCATIONS_PER_BATCH)
 

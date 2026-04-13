@@ -181,8 +181,8 @@ export async function fetchReviews(
 }
 
 async function pollForReviews(getPath: string, taskId: string): Promise<DfsReview[] | null> {
-  const maxAttempts = 20
-  const pollInterval = 3000 // 20 x 3s = 60s max wait per task
+  const maxAttempts = 15
+  const pollInterval = 3000 // 15 x 3s = 45s max wait per task
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await sleep(pollInterval)
     const result = await get(getPath + taskId)

@@ -86,7 +86,12 @@ export default function LocationManager({ sourceId }: Props) {
       try {
         abortRef.current = new AbortController()
         const res = await fetch('/api/review-sources/' + sourceId + '/sync', { method: 'POST', signal: abortRef.current.signal })
-        const data = await res.json()
+        const text = await res.text()
+        let data: any
+        try { data = JSON.parse(text) } catch {
+          setSyncResult('Sync error: Server returned non-JSON — ' + text.slice(0, 200))
+          break
+        }
         if (!res.ok) {
           setSyncResult('Sync error: ' + (data.error || 'Unknown error'))
           break
@@ -144,7 +149,12 @@ export default function LocationManager({ sourceId }: Props) {
     setSyncResult(null)
     try {
       const res = await fetch('/api/review-sources/' + sourceId + '/sync', { method: 'POST' })
-      const data = await res.json()
+      const text = await res.text()
+      let data: any
+      try { data = JSON.parse(text) } catch {
+        setSyncResult('Sync failed: Server returned non-JSON — ' + text.slice(0, 200))
+        return
+      }
       if (res.ok) {
         const remaining = data.locations_remaining || 0
         setSyncResult('Synced ' + data.synced + ' new reviews. Total: ' + data.total.toLocaleString() + (remaining > 0 ? ' (' + remaining + ' locations remaining)' : ''))
@@ -248,8 +258,20 @@ export default function LocationManager({ sourceId }: Props) {
       )}
 
       {errorCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 flex flex-col gap-1">
-          <p className="font-semibold">{errorCount} location(s) failed:</p>
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold">{errorCount} location(s) failed:</p>
+            <button onClick={async function() {
+              await fetch('/api/review-sources/' + sourceId + '/locations', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clear_errors: true }),
+              })
+              loadSource()
+            }} className="text-xs font-semibold px-3 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50">
+              Retry Failed
+            </button>
+          </div>
           {locations.filter(function(l) { return l.error_message }).map(function(l) {
             return <p key={l.id} className="text-red-500">{l.name}: {l.error_message}</p>
           })}

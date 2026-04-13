@@ -1,0 +1,42 @@
+// app/api/review-sources/[sourceId]/locations/route.ts
+// PATCH — clear error messages on failed locations so they can be retried
+
+import { NextResponse } from 'next/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
+
+interface Params { params: { sourceId: string } }
+
+export async function PATCH(req: Request, { params }: Params) {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { data: userData } = await supabase
+      .from('users').select('org_id').eq('id', user.id).single()
+    if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+
+    const service = createServiceRoleClient()
+
+    const { data: source } = await service
+      .from('review_sources').select('id').eq('id', params.sourceId).eq('org_id', userData.org_id).single()
+    if (!source) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    const body = await req.json()
+
+    if (body.clear_errors) {
+      await service
+        .from('review_source_locations')
+        .update({ error_message: null })
+        .eq('review_source_id', params.sourceId)
+        .not('error_message', 'is', null)
+      return NextResponse.json({ ok: true })
+    }
+
+    return NextResponse.json({ error: 'No action specified' }, { status: 400 })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
+  }
+}
