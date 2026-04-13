@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
+import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 import { existsSync, readFileSync } from 'fs'
 import { pickBestComments, extractHighlightPhrases } from '@/lib/export/scoreComments'
@@ -308,7 +309,10 @@ async function generateNarratives(
     const s = f.summary
     if (!s) return `${f.label} (${f.type}): no data available`
     if (s.type === 'categorical') {
-      const top5 = Object.entries(s.counts || {})
+      const aliasedC = f.valueAliases && Object.keys(f.valueAliases).length > 0
+        ? aliasedCounts(f.field, s.counts || {}, [{ field: f.field, valueAliases: f.valueAliases }])
+        : (s.counts || {})
+      const top5 = Object.entries(aliasedC)
         .sort((a: any, b: any) => b[1] - a[1]).slice(0, 5)
         .map(([k, v]: any) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
       return `${f.label} (categorical, n=${s.nonNull}): top responses — ${top5} | unique values: ${s.uniqueCount}`
@@ -399,6 +403,7 @@ interface SelectedField {
   type:       string
   summary:    any
   remapping?: Record<string, number>
+  valueAliases?: Record<string, string>
   section?:   string   // 'psychographic' | 'demographic' | 'core' | undefined
   prompt?:    string   // original survey question text
   liveSample?: string[] // evenly-sampled verbatims from allRows — replaces stale analytics snapshot
@@ -660,7 +665,10 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
     // Auto snapshot
     const snapFields = fields.filter(f => f.type === 'categorical' && f.summary?.counts)
     snapFields.slice(0, 5).forEach(function(f, i) {
-      const counts = f.summary.counts as Record<string, number>
+      const countsRaw = f.summary.counts as Record<string, number>
+      const counts = f.valueAliases && Object.keys(f.valueAliases).length > 0
+        ? aliasedCounts(f.field, countsRaw, [{ field: f.field, valueAliases: f.valueAliases }])
+        : countsRaw
       const total_ = Object.values(counts).reduce((s: number, v: any) => s + v, 0)
       const topKey = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || ''
       const topPct_ = total_ > 0 ? Math.round(counts[topKey] / total_ * 100) : 0
@@ -760,7 +768,11 @@ function buildCategoricalSlide(pptx: any, datasetName: string, f: SelectedField,
   logo(slide)
 
   const s          = f.summary
-  const rawCounts  = (s?.counts || {}) as Record<string, number>
+  const rawCountsOrig = (s?.counts || {}) as Record<string, number>
+  // Apply value aliases to counts keys so bar labels show aliased names
+  const rawCounts  = f.valueAliases && Object.keys(f.valueAliases).length > 0
+    ? aliasedCounts(f.field, rawCountsOrig, [{ field: f.field, valueAliases: f.valueAliases }])
+    : rawCountsOrig
   const allKeys    = Object.keys(rawCounts)
   const total      = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
   const isOrdinal  = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
@@ -1689,7 +1701,10 @@ function buildPieSlide(pptx: any, datasetName: string, f: SelectedField, ai: Fie
   logo(slide)
 
   const s         = f.summary
-  const rawCounts = (s?.counts || {}) as Record<string, number>
+  const rawCountsOrig2 = (s?.counts || {}) as Record<string, number>
+  const rawCounts = f.valueAliases && Object.keys(f.valueAliases).length > 0
+    ? aliasedCounts(f.field, rawCountsOrig2, [{ field: f.field, valueAliases: f.valueAliases }])
+    : rawCountsOrig2
   const allKeys   = Object.keys(rawCounts)
   const total     = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
 
@@ -2072,7 +2087,7 @@ export async function POST(req: Request, { params }: Params) {
     .map(function(fieldName) {
       const schemaField = (schema?.fields || []).find((f: any) => f.field === fieldName)
       if (!schemaField) return null
-      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping, section: schemaField.section || undefined, prompt: schemaField.prompt }
+      return { field: fieldName, label: schemaField.label || fieldName, type: schemaField.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: schemaField.remapping, valueAliases: schemaField.valueAliases, section: schemaField.section || undefined, prompt: schemaField.prompt }
     })
     .filter(Boolean) as SelectedField[]
 

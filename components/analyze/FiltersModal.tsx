@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import type { Filters, SerializedFilters } from '@/lib/filterUtils'
+import { resolveAlias } from '@/lib/aliasUtils'
 
 var T = {
   bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
@@ -15,7 +16,7 @@ var T = {
   blue: '#2563eb', blueBg: '#eff6ff',
 }
 
-interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number }
+interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number; valueAliases?: Record<string, string> }
 
 interface Props {
   schema: SchemaField[]
@@ -147,7 +148,7 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var lbl = fieldLabel(field)
                 var fmtChipDate = function(ts: number) { var d = new Date(ts); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
                 var desc = f.type === 'cat'
-                  ? Array.from(f.values).slice(0, 2).join(', ') + (f.values.size > 2 ? ' +' + (f.values.size - 2) : '')
+                  ? Array.from(f.values).slice(0, 2).map(function(v) { return resolveAlias(field, v, schema) }).join(', ') + (f.values.size > 2 ? ' +' + (f.values.size - 2) : '')
                   : f.type === 'daterange'
                     ? fmtChipDate(f.values[0]) + ' \u2013 ' + fmtChipDate(f.values[1])
                     : f.values[0] + ' \u2013 ' + f.values[1]
@@ -208,7 +209,7 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                         return (
                           <button key={v} onClick={function() { toggleVal(v) }}
                             style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, cursor: 'pointer', fontWeight: sel ? 600 : 400, transition: 'all .1s' }}>
-                            {v}
+                            {resolveAlias(f.field, v, schema)}
                           </button>
                         )
                       })}

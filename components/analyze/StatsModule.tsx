@@ -1648,7 +1648,24 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
       .then(function(r) { return r.json() })
       .then(function(data) {
         if (!cancelled) {
-          setRows(data.rows || [])
+          // Apply value aliases to categorical fields so stats show aliased labels
+          var loadedRows = data.rows || []
+          var schemaFields = schema.fields || []
+          var aliasMap: Record<string, Record<string, string>> = {}
+          schemaFields.forEach(function(f: any) {
+            if (f.valueAliases && Object.keys(f.valueAliases).length > 0) aliasMap[f.field] = f.valueAliases
+          })
+          if (Object.keys(aliasMap).length > 0) {
+            loadedRows.forEach(function(row: any) {
+              for (var field in aliasMap) {
+                var val = row[field]
+                if (val != null && aliasMap[field][String(val)]) {
+                  row[field] = aliasMap[field][String(val)]
+                }
+              }
+            })
+          }
+          setRows(loadedRows)
           setSamplingMeta({
             sampled:    !!data.sampled,
             sampleSize: data.sampleSize ?? (data.rows || []).length,

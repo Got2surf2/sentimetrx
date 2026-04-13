@@ -15,6 +15,7 @@ import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest } from '@/lib/statsUtils'
 import { smartOrder } from '@/lib/scaleUtils'
+import { resolveAlias } from '@/lib/aliasUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
@@ -223,17 +224,30 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
   function getValues(field: string): string[] {
     // Use analytics fieldSummaries for authoritative value list (covers all rows, not just sample)
     var summary = analytics?.fieldSummaries?.[field]
-    if (summary?.values) return summary.values as string[]
-    if (summary?.topN) return summary.topN as string[]
-    var s = schema.find(function(f) { return f.field === field })
-    if (s && s.values) return s.values
-    // Fallback: extract from sampled rows
-    var vals = new Set<string>()
-    parsedData.forEach(function(r) {
-      var v = r[field]
-      if (v != null && String(v).trim() !== '') vals.add(String(v))
-    })
-    return Array.from(vals).sort()
+    var raw: string[] | null = null
+    if (summary?.values) raw = summary.values as string[]
+    else if (summary?.topN) raw = summary.topN as string[]
+    else {
+      var s = schema.find(function(f) { return f.field === field })
+      if (s && s.values) raw = s.values
+    }
+    if (!raw) {
+      // Fallback: extract from sampled rows (already aliased at load time)
+      var vals = new Set<string>()
+      parsedData.forEach(function(r) {
+        var v = r[field]
+        if (v != null && String(v).trim() !== '') vals.add(String(v))
+      })
+      return Array.from(vals).sort()
+    }
+    // Apply value aliases so breakdown values match aliased row data
+    var sf = schema.find(function(f) { return f.field === field })
+    var aliases = (sf as any)?.valueAliases
+    if (aliases && Object.keys(aliases).length > 0) {
+      var seen = new Set<string>()
+      return raw.map(function(v) { return aliases[v] || v }).filter(function(v) { if (seen.has(v)) return false; seen.add(v); return true })
+    }
+    return raw
   }
 
   function handleFieldClick(f: string) {

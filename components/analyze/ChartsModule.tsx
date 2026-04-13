@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
+import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import LottieLoader from '@/components/ui/LottieLoader'
 
@@ -267,28 +268,7 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
 
 // ─── Chart Renderers (receive field values as params) ─────────────────────
 
-// Resolve value aliases: returns the alias if one exists, otherwise the original value
-function resolveAlias(field: string, value: string, schema: SchemaField[]): string {
-  var f = schema.find(function(s) { return s.field === field })
-  if (f && (f as any).valueAliases) {
-    var alias = (f as any).valueAliases[value]
-    if (alias) return alias
-  }
-  return value
-}
-
-// Transform a counts object by applying value aliases to all keys
-function aliasedCounts(field: string, counts: Record<string, number>, schema: SchemaField[]): Record<string, number> {
-  var f = schema.find(function(s) { return s.field === field })
-  var aliases = (f as any)?.valueAliases
-  if (!aliases || Object.keys(aliases).length === 0) return counts
-  var out: Record<string, number> = {}
-  Object.entries(counts).forEach(function(e) {
-    var key = aliases[e[0]] || e[0]
-    out[key] = (out[key] || 0) + e[1]
-  })
-  return out
-}
+// resolveAlias and aliasedCounts imported from @/lib/aliasUtils
 
 function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }): React.ReactNode {
   var rawFs = analytics.fieldSummaries
@@ -686,6 +666,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
   }
   cats = cats.slice(0, 30)
+  var catLabels = cats.map(function(c) { return resolveAlias(catField, c, schema) })
   // Order color (stack/group) values by frequency descending — for themes this gives natural order
   var colorArr = Array.from(colorVals).sort(function(a, b) { return (colorTotals[b] || 0) - (colorTotals[a] || 0) })
 
@@ -700,19 +681,20 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
       })
     }
     var colPct = colorGrandTotal > 0 ? Math.round((colorTotals[col] || 0) / colorGrandTotal * 100) : 0
+    var colLabel = resolveAlias(colorByField, col, schema)
     var stackHoverTpl = isH
-      ? (isBarPercent ? '%{x:.0f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
-      : (isBarPercent ? '%{y:.0f}%<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + col + '<extra></extra>')
-    var trace: any = { type: 'bar', name: col + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: stackHoverTpl }
-    if (isH) { trace.y = cats; trace.x = ys; trace.orientation = 'h' }
-    else { trace.x = cats; trace.y = ys }
+      ? (isBarPercent ? '%{x:.0f}%<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
+      : (isBarPercent ? '%{y:.0f}%<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
+    var trace: any = { type: 'bar', name: colLabel + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: stackHoverTpl }
+    if (isH) { trace.y = catLabels; trace.x = ys; trace.orientation = 'h' }
+    else { trace.x = catLabels; trace.y = ys }
     return trace
   })
 
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
   var isStackedCount = barMode !== 'percent'
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(cats) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Bar Aggregated Inner (average/sum of numeric value by category) ─────
@@ -898,7 +880,8 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
   var totalND = Object.values(groups).reduce(function(a, arr) { return a + arr.length }, 0)
   var traces = keys.map(function(k, i) {
     var pct = totalND > 0 ? Math.round(groups[k].length / totalND * 100) : 0
-    return { type: 'box' as const, y: groups[k], name: k + ' (' + pct + '%)', marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
+    var kLabel = resolveAlias(splitByField, k, schema)
+    return { type: 'box' as const, y: groups[k], name: kLabel + ' (' + pct + '%)', marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
   })
   return <PlotlyChart traces={traces} layout={{ yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
 }
@@ -921,7 +904,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
     var aggGroups = aggData.groups as Record<string, { n: number; mean: number; median: number; min: number; max: number }>
     Object.entries(aggGroups).forEach(function(e) {
       totalKPI += e[1].n
-      stats.push({ label: e[0], avg: e[1].mean, median: e[1].median, min: e[1].min, max: e[1].max, n: e[1].n })
+      stats.push({ label: resolveAlias(splitByField, e[0], schema), avg: e[1].mean, median: e[1].median, min: e[1].min, max: e[1].max, n: e[1].n })
     })
   } else {
     var groups: Record<string, number[]> = {}
@@ -935,7 +918,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
     totalKPI = Object.values(groups).reduce(function(s, v) { return s + v.length }, 0)
     Object.keys(groups).forEach(function(grp) {
       var vs = groups[grp].slice().sort(function(a, b) { return a - b })
-      stats.push({ label: grp, avg: vs.reduce(function(a, b) { return a + b }, 0) / vs.length, median: vs[Math.floor(vs.length / 2)], min: vs[0], max: vs[vs.length - 1], n: vs.length })
+      stats.push({ label: resolveAlias(splitByField, grp, schema), avg: vs.reduce(function(a, b) { return a + b }, 0) / vs.length, median: vs[Math.floor(vs.length / 2)], min: vs[0], max: vs[vs.length - 1], n: vs.length })
     })
   }
 
@@ -1433,7 +1416,9 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   var rArr = smartOrder(Array.from(rSet), rowFieldObj?.remapping)
   var cArr = smartOrder(Array.from(cSet), colFieldObj?.remapping)
   var z = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
-  return <PlotlyChart traces={[{ type: 'heatmap', x: cArr, y: rArr, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema), ...catXAxis(cArr) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
+  var rLabels = rArr.map(function(v) { return resolveAlias(rowField, v, schema) })
+  var cLabels = cArr.map(function(v) { return resolveAlias(colField, v, schema) })
+  return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
 }
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {

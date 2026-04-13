@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { pickBestComments } from '@/lib/export/scoreComments'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
+import { aliasedCounts } from '@/lib/aliasUtils'
 import { buildKwRegex } from '@/lib/themeUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 
@@ -33,7 +34,7 @@ interface Narratives {
 }
 interface SelectedField {
   field: string; label: string; type: string; summary: any
-  remapping?: Record<string, number>; section?: string; prompt?: string
+  remapping?: Record<string, number>; valueAliases?: Record<string, string>; section?: string; prompt?: string
   liveSample?: string[] // evenly-sampled verbatims from allRows — replaces stale analytics snapshot
 }
 
@@ -64,7 +65,10 @@ async function generateNarratives(
     const s = f.summary
     if (!s) return `${f.label} (${f.type}): no data`
     if (s.type === 'categorical') {
-      const top5 = Object.entries(s.counts || {}).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5)
+      const aliased = f.valueAliases && Object.keys(f.valueAliases).length > 0
+        ? aliasedCounts(f.field, s.counts || {}, [{ field: f.field, valueAliases: f.valueAliases }])
+        : (s.counts || {})
+      const top5 = Object.entries(aliased).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5)
         .map(([k, v]: any) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
       return `${f.label} (categorical, n=${s.nonNull}): top — ${top5}`
     }
@@ -199,7 +203,10 @@ function buildSummarySlide(ctx: SlideCtx, totalRows: number, bullets: string[], 
 
 function buildCategoricalSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight): string {
   ctx.manifest.push({ title: f.label, icon: '📊', section: f.section })
-  const counts = f.summary?.counts as Record<string, number> || {}
+  const countsRaw = f.summary?.counts as Record<string, number> || {}
+  const counts = f.valueAliases && Object.keys(f.valueAliases).length > 0
+    ? aliasedCounts(f.field, countsRaw, [{ field: f.field, valueAliases: f.valueAliases }])
+    : countsRaw
   const allKeys = Object.keys(counts)
   const total  = Object.values(counts).reduce((s: number, v: any) => s + Number(v), 0) || 1
 
@@ -862,7 +869,7 @@ export async function POST(req: Request, { params }: Params) {
     .map(fieldName => {
       const sf = (schema?.fields || []).find((f: any) => f.field === fieldName)
       if (!sf) return null
-      return { field: fieldName, label: sf.label || fieldName, type: sf.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: sf.remapping, section: sf.section || undefined, prompt: sf.prompt }
+      return { field: fieldName, label: sf.label || fieldName, type: sf.type, summary: analytics.fieldSummaries[fieldName] || null, remapping: sf.remapping, valueAliases: sf.valueAliases, section: sf.section || undefined, prompt: sf.prompt }
     }).filter(Boolean) as SelectedField[]
 
   if (selectedFields.length === 0) {
