@@ -1482,17 +1482,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   var kws = new Set((t.keywords || []).map(function(k) { return k.toLowerCase() }))
                                   var field = activeField || (themes ? themes.fieldName : '')
                                   var posTotal = 0; var negTotal = 0
+                                  var WINDOW = 4
                                   filteredRows.forEach(function(row) {
                                     var text = String(row[field] || '').toLowerCase()
                                     if (!text) return
-                                    var hasKw = false
-                                    kws.forEach(function(k) { if (text.includes(k)) hasKw = true })
-                                    if (!hasKw) return
                                     var words = text.split(/\W+/)
-                                    words.forEach(function(w) {
-                                      if (posWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'positive' }; posTotal++ }
-                                      else if (negWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'negative' }; negTotal++ }
-                                    })
+                                    // Find keyword positions, then only check opinion words within window
+                                    for (var wi = 0; wi < words.length; wi++) {
+                                      if (!kws.has(words[wi])) continue
+                                      for (var wj = Math.max(0, wi - WINDOW); wj < Math.min(words.length, wi + WINDOW + 1); wj++) {
+                                        if (wj === wi) continue
+                                        var w = words[wj]
+                                        if (posWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'positive' }; posTotal++ }
+                                        else if (negWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'negative' }; negTotal++ }
+                                      }
+                                    }
                                   })
                                   var topOps = Object.entries(opCounts).sort(function(a, b) { return b[1].c - a[1].c }).slice(0, 5)
                                   var sentTotal = posTotal + negTotal

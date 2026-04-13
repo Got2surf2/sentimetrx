@@ -10,7 +10,7 @@ type Params = { params: { datasetId: string } }
 async function authCheck(supabase: ReturnType<typeof createClient>) {
   var { data: { user } } = await supabase.auth.getUser()
   if (!user) return { user: null, orgId: null }
-  var { data: profile } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
+  var { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
   return { user: user, orgId: profile?.org_id || null }
 }
 
