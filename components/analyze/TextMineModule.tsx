@@ -522,7 +522,9 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   }
 
   return (
-    <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      {/* Sticky header + controls */}
+      <div style={{ padding: '24px 24px 0', flexShrink: 0 }}>
       {/* Header */}
       <div style={{ marginBottom: 22 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
@@ -588,7 +590,10 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
           </div>
         </div>
       </div>
+      </div>{/* end sticky header */}
 
+      {/* Scrollable results area */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
       {/* Stats cards — By Group or By Theme */}
       {compStats && breakdownFields.length > 0 && (function() {
         if (viewMode === 'group') {
@@ -662,6 +667,8 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
           <p style={{ fontSize: 13, margin: 0 }}>Select one or more fields above to start comparing themes across segments.</p>
         </div>
       )}
+
+      </div>{/* end scrollable results area */}
 
       {/* ── Summarize Findings Modal ──────────────────────────────────────── */}
       {showSummary && (
