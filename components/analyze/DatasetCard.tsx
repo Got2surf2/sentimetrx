@@ -264,14 +264,27 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       {/* 3. Stats row */}
       {isReviews && (function() {
         var analytics = dataset.state?.analytics as any
-        var reviewTextSummary = analytics?.fieldSummaries?.review_text
+        // Try multiple field names for the review text summary
+        var fs = analytics?.fieldSummaries || {}
+        var reviewTextSummary = fs.review_text || fs.Review || fs.comment || fs.Comment || fs.text || null
+        // For open-ended fields, nonNull = rows with actual text content
         var withComments = reviewTextSummary?.nonNull || 0
-        var ratingOnly = dataset.row_count - withComments
+        // If nonNull is 0 but we have rows, check if avgWordCount > 0 (means there IS text data)
+        if (withComments === 0 && reviewTextSummary?.avgWordCount > 0) {
+          withComments = dataset.row_count  // analytics not computed correctly, assume all have text
+        }
+        var ratingOnly = Math.max(0, dataset.row_count - withComments)
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#6b7280', flexWrap: 'wrap' }}>
             <span><strong style={{ color: '#111827' }}>{dataset.row_count.toLocaleString()}</strong> reviews</span>
-            <span><strong style={{ color: '#059669' }}>{withComments.toLocaleString()}</strong> with comments</span>
-            <span><strong style={{ color: '#d97706' }}>{ratingOnly.toLocaleString()}</strong> rating only</span>
+            {withComments > 0 ? (
+              <>
+                <span><strong style={{ color: '#059669' }}>{withComments.toLocaleString()}</strong> with comments</span>
+                <span><strong style={{ color: '#d97706' }}>{ratingOnly.toLocaleString()}</strong> rating only</span>
+              </>
+            ) : (
+              <span style={{ color: '#9ca3af' }}>Open dataset to compute comment stats</span>
+            )}
           </div>
         )
       })()}
