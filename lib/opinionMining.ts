@@ -68,31 +68,35 @@ export function extractOpinions(
       if (!lower.includes(target)) continue
       totalMentions++
 
-      // Split into sentences for better context
+      // Split into sentences, then into clauses (split on but/however/although/yet/though/comma)
       const sentences = text.split(/[.!?]+/).filter(function(s) { return s.toLowerCase().includes(target) })
 
       for (const sentence of sentences) {
-        const words = sentence.toLowerCase().replace(/[^a-z\s'-]/g, '').split(/\s+/)
-        // Find all positions of the target word
-        for (let i = 0; i < words.length; i++) {
-          if (words[i] !== target && !words[i].startsWith(target)) continue
-          // Check window around the target
-          const start = Math.max(0, i - windowSize)
-          const end = Math.min(words.length, i + windowSize + 1)
-          for (let j = start; j < end; j++) {
-            if (j === i) continue
-            const w = words[j]
-            if (w.length < 3) continue
-            const sentiment = getSentiment(w)
-            if (!sentiment) continue
-            if (!opinionCounts[w]) {
-              opinionCounts[w] = { count: 0, sentiment, samples: [] }
-            }
-            opinionCounts[w].count++
-            if (opinionCounts[w].samples.length < 3) {
-              const trimmed = sentence.trim().slice(0, 120)
-              if (!opinionCounts[w].samples.includes(trimmed)) {
-                opinionCounts[w].samples.push(trimmed)
+        // Split into clauses on contrast words and commas to avoid cross-clause contamination
+        const clauses = sentence.split(/\b(?:but|however|although|yet|though|while|whereas)\b|,/i)
+        const targetClauses = clauses.filter(function(c) { return c.toLowerCase().includes(target) })
+
+        for (const clause of targetClauses) {
+          const words = clause.toLowerCase().replace(/[^a-z\s'-]/g, '').split(/\s+/)
+          for (let i = 0; i < words.length; i++) {
+            if (words[i] !== target && !words[i].startsWith(target)) continue
+            const start = Math.max(0, i - windowSize)
+            const end = Math.min(words.length, i + windowSize + 1)
+            for (let j = start; j < end; j++) {
+              if (j === i) continue
+              const w = words[j]
+              if (w.length < 3) continue
+              const sentiment = getSentiment(w)
+              if (!sentiment) continue
+              if (!opinionCounts[w]) {
+                opinionCounts[w] = { count: 0, sentiment, samples: [] }
+              }
+              opinionCounts[w].count++
+              if (opinionCounts[w].samples.length < 3) {
+                const trimmed = sentence.trim().slice(0, 120)
+                if (!opinionCounts[w].samples.includes(trimmed)) {
+                  opinionCounts[w].samples.push(trimmed)
+                }
               }
             }
           }

@@ -903,9 +903,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [datasetId, totalRows])
 
   // Fetch rows with sampling cap to avoid browser OOM on large datasets.
-  // Uses sampleMax=5000 for comment display, word cloud, and per-row theme assignment.
+  // 50K threshold is safe for modern browsers. Below this, no sampling occurs.
   // Accurate theme counts come from the server-side theme-counts endpoint.
-  const SAMPLE_CAP = 15000
+  const SAMPLE_CAP = 50000
   const fetchAllRows = useCallback(async function() {
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
@@ -1499,8 +1499,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   filteredRows.forEach(function(row) {
                                     var text = String(row[field] || '').toLowerCase()
                                     if (!text) return
-                                    var words = text.split(/\W+/)
-                                    // Find keyword positions, then only check opinion words within window
+                                    // Split into clauses to avoid cross-clause contamination
+                                    var clauses = text.split(/\b(?:but|however|although|yet|though|while|whereas)\b|[,]/i)
+                                    clauses.forEach(function(clause) {
+                                    var words = clause.trim().split(/\W+/)
                                     for (var wi = 0; wi < words.length; wi++) {
                                       if (!kws.has(words[wi])) continue
                                       for (var wj = Math.max(0, wi - WINDOW); wj < Math.min(words.length, wi + WINDOW + 1); wj++) {
@@ -1510,6 +1512,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                         else if (negWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'negative' }; negTotal++ }
                                       }
                                     }
+                                    }) // end clauses.forEach
                                   })
                                   var topOps = Object.entries(opCounts).sort(function(a, b) { return b[1].c - a[1].c }).slice(0, 5)
                                   var sentTotal = posTotal + negTotal
