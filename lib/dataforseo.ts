@@ -291,20 +291,19 @@ export async function fetchReviewsBatch(
 }
 
 function parseReviewItem(item: any): DfsReview | null {
-  if (!item) return null
-  // Handle different field names across Reviews API vs Business Data API
-  const reviewId = item.review_id || item.id || item.review_url || null
-  if (!reviewId) return null
+  if (!item || !item.review_text) return null
+  // Generate a stable ID from profile + timestamp if no review_id field
+  const reviewId = item.review_id || item.id || (item.profile_name + ':' + item.timestamp) || String(item.rank_absolute)
   return {
     review_id: String(reviewId),
-    profile_name: item.profile_name || item.author_name || item.author || 'Anonymous',
-    rating: typeof item.rating === 'number' ? item.rating : (item.rating?.value ?? item.review_rating ?? 0),
-    review_text: item.review_text || item.text || item.snippet || null,
-    timestamp: item.timestamp || item.time || item.date || '',
-    owner_answer: item.owner_answer || item.owner_response || null,
+    profile_name: item.profile_name || item.author_name || 'Anonymous',
+    rating: typeof item.rating === 'number' ? item.rating : (item.rating?.value ?? 0),
+    review_text: item.review_text || null,
+    timestamp: item.timestamp || '',
+    owner_answer: item.owner_answer || null,
     owner_timestamp: item.owner_timestamp || null,
-    review_url: item.review_url || item.url || null,
-    review_likes: item.helpful_votes || item.review_likes || (item.rating?.votes_count ?? 0),
+    review_url: item.review_url || item.profile_url || null,
+    review_likes: item.reviews_count || 0,
   }
 }
 
