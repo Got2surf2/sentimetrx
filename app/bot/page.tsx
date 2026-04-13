@@ -78,6 +78,7 @@ export default function BotPage() {
     <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <header style={{
+        position: 'sticky', top: 0, zIndex: 10,
         background: 'linear-gradient(135deg, #0a1628, #1a2d4a)',
         padding: '16px 24px',
         display: 'flex',
@@ -156,6 +157,7 @@ export default function BotPage() {
                   .replace(/- /g, '&bull; ')
                   .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">$1</a>')
                   .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color:inherit;text-decoration:underline">$1</a>')
+                  .replace(/(?<!href="https?:\/\/)(?<!\/)((?:[a-zA-Z0-9-]+\.)+(?:com|org|net|ai|io)(?:\/[^\s<)]*)?)/g, (m) => m.includes('href=') ? m : `<a href="https://${m}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">${m}</a>`)
               }}
             />
           </div>
