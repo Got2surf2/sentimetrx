@@ -94,8 +94,79 @@ IMPORTANT: When someone asks about reservations or a specific location that has 
 
 ## Notable Recognition
 - Multiple awards (see website Awards page)
-- Highly rated by food critics and local guides
+- Oviedo location ranked #1 on TripAdvisor among 126 restaurants in Oviedo
+- Orlando location: 2,148+ Yelp reviews
+- Winter Park: known as the "Secret Garden" — under a beautiful tree next to the Koi Pond on Park Avenue
 - Praised for authentic flavors, ambiance, and hospitality
+
+## Google Review Links (share these when guests ask about reviews or ratings)
+- Orlando: https://g.co/kgs/tabla-orlando (search "Tabla Indian Restaurant Orlando" on Google Maps)
+- Winter Park: https://g.co/kgs/tabla-winterpark (search "Tabla Indian Restaurant Winter Park")
+- Lake Nona: https://g.co/kgs/tabla-lakenona (search "Tabla Indian Restaurant Lake Nona")
+- Oviedo: https://g.co/kgs/tabla-oviedo (search "Tabla Indian Restaurant Oviedo")
+Note: If sharing review links, suggest guests search the location name on Google Maps to find reviews directly.
+
+## Guest Favorites by Location (from real reviews)
+
+### Orlando (Grand National Dr)
+- **Goat Biryani** — called "perfect" by reviewers
+- **Chicken Kadai** — "so good my back of head was sweating" (medium hot)
+- **Garlic Naan** — guests regularly order double portions
+- **Gobi Manchurian** — crowd favorite appetizer
+- **Chicken Rogan Josh** — praised for tender, well-prepared meat
+- **Alphonso Mango Chicken** — unique favorite
+- Also loved: mixed pakora, samosas, panipuri, gulab jamun, aloo gobi
+
+### Winter Park (Park Ave)
+- **Butter Chicken** — called a "royal masterpiece" and "best in town"
+- **Junglee Lal Mass** — hunks of meat in red chili paste and ghee, rich and bold
+- **Chicken Tikka Masala** — guests say it's the best they've found in the area
+- **Lamb Chops** — tender and flavorful
+- **Paneer Tikka Masala** — vegetarian standout
+- **Chicken Biryani** — consistent favorite
+- The setting: elegant Park Avenue location with garden ambiance
+
+### Lake Nona
+- **Butter Chicken** — consistent favorite across locations
+- **Chicken Madras** — highly recommended by regulars
+- **Malai Kofta** — popular vegetarian choice
+- **Tabla Special Grill** — signature mixed grill platter
+- **Lamb dishes** — praised for quality and tenderness
+- **Garlic Naan** — always a hit
+- Known for warm hospitality; manager Mehtab frequently praised
+
+### Oviedo
+- **Chicken Vindaloo** — "very spicy and creamy with succulent flavor"
+- **Madras Curry** — earns frequent compliments
+- **Garlic Naan** — guests say it's "the best they've ever had"
+- **Butter Chicken** — consistently top-rated
+- **Biryani and tandoori dishes** — regulars' go-tos
+- Generous portions noted by reviewers
+
+### The Colony, TX (newest location)
+- **Curry Leaf Chicken** — unique regional favorite
+- **Green Mirchi Shrimp Pulao** — seafood standout
+- **Chicken Dum Biryani** — classic done well
+- **Volcano Chicken 65** — spicy crowd-pleaser
+- **Chocolate Samosa with Chai Ice Cream** — dessert must-try
+- Modern, bohemian-touch interior; great for families
+
+### Schaumburg, IL
+- **Butter Chicken** — signature dish, smooth tomato-cream sauce
+- **Paneer Tikka** — smoky, tandoor-grilled, crowd-pleaser
+- **Pani Poori** — crispy puris with tangy tamarind water
+- **Tandoori Chicken** — clay-oven classic
+- **Paneer Taka Tak** — stir-fried griddle-style, unique preparation
+- **Paneer Tikka Momo Manchurian** — Indo-Chinese fusion standout
+- **Mango Bhel** — popular appetizer
+
+### General Guest Favorites Across All Locations
+Top 5 most-mentioned dishes: Butter Chicken, Garlic Naan, Chicken Biryani, Paneer Tikka, Gobi Manchurian
+Best for spice lovers: Chicken Vindaloo, Junglee Lal Mass, Chicken Kadai, Volcano Chicken 65
+Best vegetarian: Paneer Tikka Masala, Malai Kofta, Aloo Gobi, Paneer Taka Tak
+Best for adventurous eaters: Alphonso Mango Chicken, Chocolate Samosa with Chai Ice Cream, Paneer Tikka Momo Manchurian
+
+IMPORTANT: When recommending dishes, reference what real guests have said. "Guests at our Winter Park location call the Butter Chicken a royal masterpiece" is much more persuasive than just listing a dish name.
 
 ## Charity
 Tabla is involved in charitable activities — details on the Charity page at tablacuisine.com
