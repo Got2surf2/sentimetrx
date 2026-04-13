@@ -85,7 +85,7 @@
       .replace(/- /g, '&bull; ')
       .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">$1</a>')
       .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color:inherit;text-decoration:underline">$1</a>')
-      .replace(/(?<![\/\w])((?:[a-zA-Z0-9-]+\.)+(?:com|org|net|ai|io)(?:\/[^\s<)]*)?)/g, function(m) { return m.indexOf('href=') !== -1 ? m : '<a href="https://' + m + '" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">' + m + '</a>'; });
+      .replace(/(?<![/@\w".])((?:[a-zA-Z0-9-]+\.)+(?:com|org|net|ai|io)(?:\/[^\s<)]*)?)/g, '<a href="https://$1" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">$1</a>');
   }
 
   function render() {
