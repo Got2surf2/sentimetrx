@@ -12,7 +12,7 @@ interface Props {
   crumbs?:         any
   analyzeEnabled?: boolean   // NEW -- true if org has features.analyze
   campaignsEnabled?: boolean // true if org has features.campaigns
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'test-spinner'
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'test-spinner'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
@@ -132,6 +132,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
       <div className="flex items-center gap-0.5 flex-shrink-0">
         {analyzeEnabled && navLink('analyze', '/analyze', 'Analyze')}
         {navLink('dashboard', '/dashboard', 'Studies')}
+        {navLink('townhall', '/townhall', 'Town Hall')}
         {(campaignsEnabled || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />

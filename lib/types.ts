@@ -838,3 +838,99 @@ export interface CampaignStats {
   bounced:    number
   unsubscribed: number
 }
+
+// -- Town Hall ------------------------------------------------
+
+export interface TownHallGuideTopic {
+  id:                string
+  label:             string
+  description:       string
+  opening_question:  string
+  follow_up_angles:  string[]
+  response_target:   number
+}
+
+export interface TownHallConfig {
+  context: {
+    org_name:          string
+    event_description: string
+    tone:              string
+    sensitive_topics:  string[]
+    priority_areas:    string[]
+  }
+  engine: {
+    topic_assignment:              'round_robin' | 'random'
+    theme_detection_interval:      number
+    theme_detection_window:        number
+    max_turns_per_participant:     number
+    default_response_target:       number
+    max_active_themes:             number
+    ai_timeout_ms:                 number
+  }
+  session_end: {
+    mode:                        'manual' | 'timed' | 'inactivity'
+    duration_minutes:            number | null
+    inactivity_timeout_minutes:  number | null
+    closing_message:             string
+  }
+  display: {
+    welcome_message:   string
+    skip_label:        string
+    done_label:        string
+    thank_you_message: string
+  }
+}
+
+export type TownHallSessionStatus = 'setup' | 'active' | 'paused' | 'ended'
+export type TownHallThemeState = 'active' | 'detected' | 'paused' | 'completed' | 'dismissed'
+export type TownHallThemeSource = 'guide' | 'auto_detected' | 'custom'
+export type TownHallTurnSource = 'guide' | 'clarifier' | 'detected_theme' | 'custom'
+
+export interface TownHallSession {
+  id:                string
+  study_id:          string | null
+  org_id:            string
+  created_by:        string | null
+  name:              string
+  status:            TownHallSessionStatus
+  config:            TownHallConfig
+  discussion_guide:  TownHallGuideTopic[]
+  response_counter:  number
+  started_at:        string | null
+  ended_at:          string | null
+  created_at:        string
+  updated_at:        string
+}
+
+export interface TownHallTheme {
+  id:               string
+  session_id:       string
+  label:            string
+  description:      string | null
+  question:         string
+  follow_up_angles: string[]
+  state:            TownHallThemeState
+  source:           TownHallThemeSource
+  response_target:  number
+  response_count:   number
+  mention_count:    number
+  example_quote:    string | null
+  detected_at:      string | null
+  approved_at:      string | null
+  completed_at:     string | null
+  sort_order:       number
+  created_at:       string
+}
+
+export interface TownHallTurn {
+  id:             string
+  session_id:     string
+  participant_id: string
+  turn_number:    number
+  bot_message:    string
+  user_message:   string | null
+  theme_id:       string | null
+  source:         TownHallTurnSource
+  skipped:        boolean
+  created_at:     string
+}
