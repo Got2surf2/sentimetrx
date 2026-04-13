@@ -230,7 +230,7 @@ ${KNOWLEDGE_BASE}`,
 
     const data = await response.json()
     let text = data.content?.[0]?.text || 'Sorry, I had trouble generating a response. Please try again.'
-    text = trimIncomplete(text)
+    if (data.stop_reason === 'max_tokens') text = trimIncomplete(text)
 
     return NextResponse.json({ reply: text }, { headers: cors })
   } catch (err: any) {
