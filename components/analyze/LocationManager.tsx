@@ -99,13 +99,16 @@ export default function LocationManager({ sourceId }: Props) {
         totalReviews += data.synced || 0
         done += data.locations_synced || 0
         const errored = data.locations_errored || 0
+        const submitted = data.locations_submitted || 0
         const remaining = data.locations_remaining || 0
         const errors = data.errors || []
         setSyncProgress({ done: done, total: totalSelected, reviews: totalReviews })
 
-        // Show errors inline but keep going
+        // Show status
         if (errors.length > 0) {
           setSyncResult('Warning: ' + errors.join('; ').slice(0, 200))
+        } else if (submitted > 0 && data.locations_synced === 0) {
+          setSyncResult('Submitted ' + submitted + ' tasks to DataForSEO, waiting for results...')
         }
 
         if (remaining === 0) {
@@ -115,14 +118,14 @@ export default function LocationManager({ sourceId }: Props) {
           break
         }
 
-        // If this batch synced 0 locations AND had errors, something is systematically wrong — stop
-        if (data.locations_synced === 0 && errored > 0) {
+        // If nothing was synced, submitted, or is pending — only errors remain, stop
+        if (data.locations_synced === 0 && submitted === 0 && errored > 0) {
           setSyncResult('Download stopped — API errors: ' + errors.join('; ').slice(0, 300))
           break
         }
 
-        // Brief pause between batches
-        await new Promise(function(r) { setTimeout(r, 2000) })
+        // Wait before next call — DataForSEO needs 30-90s to process tasks
+        await new Promise(function(r) { setTimeout(r, 10000) })
       } catch (err: any) {
         if (err?.name === 'AbortError') {
           setSyncResult('Download stopped.')
