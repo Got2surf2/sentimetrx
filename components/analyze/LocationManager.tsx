@@ -89,11 +89,26 @@ export default function LocationManager({ sourceId }: Props) {
         }
         totalReviews += data.synced || 0
         done += data.locations_synced || 0
+        const errored = data.locations_errored || 0
         const remaining = data.locations_remaining || 0
+        const errors = data.errors || []
         setSyncProgress({ done: done, total: totalSelected, reviews: totalReviews })
 
+        // Show errors inline but keep going
+        if (errors.length > 0) {
+          setSyncResult('Warning: ' + errors.join('; ').slice(0, 200))
+        }
+
         if (remaining === 0) {
-          setSyncResult('Download complete! ' + totalReviews.toLocaleString() + ' reviews from ' + done + ' locations.')
+          const errTotal = totalSelected - done
+          setSyncResult('Download complete! ' + totalReviews.toLocaleString() + ' reviews from ' + done + ' locations.' +
+            (errTotal > 0 ? ' (' + errTotal + ' locations had errors)' : ''))
+          break
+        }
+
+        // If this batch synced 0 locations AND had errors, something is systematically wrong — stop
+        if (data.locations_synced === 0 && errored > 0) {
+          setSyncResult('Download stopped — API errors: ' + errors.join('; ').slice(0, 300))
           break
         }
 

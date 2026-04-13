@@ -149,39 +149,40 @@ export async function fetchReviews(
   depth: number = 700,
   sortBy: 'newest' | 'relevant' = 'newest',
 ): Promise<DfsReview[]> {
-  // Try Reviews API first, then Business Data API as fallback
-  // Reviews API uses keyword field with place_id: prefix
-  let postData: any
-  let endpoint = '/v3/reviews/google/task_post'
-  try {
-    postData = await post('/reviews/google/task_post', [{
-      keyword: 'place_id:' + placeId,
-      location_code: 2840,
-      language_code: 'en',
-      depth: Math.min(depth, 4490),
-      sort_by: sortBy,
-    }])
-  } catch (err: any) {
-    // Fallback to Business Data API
-    console.warn('[dataforseo] Reviews API failed, trying Business Data API:', err.message?.slice(0, 100))
-    endpoint = '/v3/business_data/google/reviews/task_post'
-    postData = await post('/business_data/google/reviews/task_post', [{
-      place_id: placeId,
-      depth: Math.min(depth, 4490),
-      sort_by: sortBy,
-      language_code: 'en',
-    }])
+  // Try three API paths in order:
+  // 1. Reviews API (keyword with place_id prefix)
+  // 2. Business Data API (place_id parameter)
+  // 3. Business Data API (keyword with place_id prefix)
+  const attempts = [
+    { path: '/reviews/google/task_post', getPath: '/reviews/google/task_get/', body: { keyword: 'place_id:' + placeId, location_code: 2840, language_code: 'en', depth: Math.min(depth, 4490), sort_by: sortBy } },
+    { path: '/business_data/google/reviews/task_post', getPath: '/business_data/google/reviews/task_get/', body: { place_id: placeId, depth: Math.min(depth, 4490), sort_by: sortBy, language_code: 'en' } },
+    { path: '/business_data/google/reviews/task_post', getPath: '/business_data/google/reviews/task_get/', body: { keyword: 'place_id:' + placeId, location_code: 2840, language_code: 'en', depth: Math.min(depth, 4490), sort_by: sortBy } },
+  ]
+
+  let lastError = ''
+  for (const attempt of attempts) {
+    try {
+      const postData = await post(attempt.path, [attempt.body])
+      const taskStatus = postData?.tasks?.[0]
+      if (!taskStatus?.id) {
+        lastError = `${attempt.path}: no task ID — ${taskStatus?.status_message || JSON.stringify(taskStatus)}`
+        continue
+      }
+      // Task created — poll for results
+      const reviews = await pollForReviews(attempt.getPath, taskStatus.id)
+      if (reviews !== null) return reviews
+      lastError = `${attempt.path}: task ${taskStatus.id} timed out`
+    } catch (err: any) {
+      lastError = `${attempt.path}: ${err.message?.slice(0, 150)}`
+      console.warn('[dataforseo] attempt failed:', lastError)
+    }
   }
+  throw new Error(`All review API attempts failed. Last: ${lastError}`)
+}
 
-  const taskId = postData?.tasks?.[0]?.id
-  if (!taskId) throw new Error(`Review task creation failed: ${JSON.stringify(postData?.tasks?.[0]?.status_message || postData?.tasks?.[0])}`)
-
-  // Determine the matching task_get path
-  const getPath = endpoint.includes('/reviews/google/') ? '/reviews/google/task_get/' : '/business_data/google/reviews/task_get/'
-
-  // 2. Poll for results (standard queue typically completes in 10-30s)
-  const maxAttempts = 12
-  const pollInterval = 3000 // 3s — total max wait ~36s per location
+async function pollForReviews(getPath: string, taskId: string): Promise<DfsReview[] | null> {
+  const maxAttempts = 15
+  const pollInterval = 3000
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await sleep(pollInterval)
     const result = await get(getPath + taskId)
@@ -192,14 +193,12 @@ export async function fetchReviews(
       const items = task.result[0]?.items || []
       return items.map(parseReviewItem).filter((r: DfsReview | null) => r !== null)
     }
-    // 40402 = task not ready yet — keep polling
-    if (task.status_code === 40402) continue
-    // Any other error
+    if (task.status_code === 40402) continue // not ready yet
     if (task.status_code >= 40000) {
-      throw new Error(`Review task failed (${task.status_code}): ${task.status_message}`)
+      throw new Error(`Task failed (${task.status_code}): ${task.status_message}`)
     }
   }
-  throw new Error(`Review task ${taskId} timed out after ${maxAttempts * pollInterval / 1000}s`)
+  return null // timed out
 }
 
 // Batch version: submit multiple place_ids at once, poll all

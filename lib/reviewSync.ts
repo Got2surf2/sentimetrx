@@ -112,13 +112,14 @@ export async function syncReviewSource(
     .from('datasets').select('row_count').eq('id', source.dataset_id).single()
   result.total = ds?.row_count || 0
 
-  // Count locations still needing sync (never synced)
+  // Count locations still needing sync (never synced AND no error)
   const { count: remaining } = await service
     .from('review_source_locations')
     .select('id', { count: 'exact', head: true })
     .eq('review_source_id', sourceId)
     .eq('selected', true)
     .is('last_synced_at', null)
+    .is('error_message', null)
   result.locations_remaining = remaining || 0
 
   // 6. Update source sync timestamps
