@@ -49,20 +49,22 @@ Phone: (407) 248-9400
 ## Locations (11 total)
 
 ### Florida
-- **Orlando** — 5847 Grand National Drive, FL 32819
-- **Winter Park** — 216 N Park Ave Suite H, FL 32789
-- **Lake Nona** — 9971 Tagore Place Suite 9, Orlando, FL 32832
-- **Oviedo** — 945 City Plaza Way Ste 1001, FL 32765
-- **Orlando Cafe** — 5829 Grand National Dr Suite A, FL 32819
+- **Orlando** — 5847 Grand National Drive, FL 32819 — Reserve: https://www.opentable.com/r/tabla-indian-restaurant-orlando-orlando
+- **Winter Park** — 216 N Park Ave Suite H, FL 32789 — Reserve: https://www.opentable.com/r/tabla-indian-restaurant-winter-park-winter-park
+- **Lake Nona** — 9971 Tagore Place Suite 9, Orlando, FL 32832 — Reserve: https://www.opentable.com/r/tabla-indian-restaurant-lake-nona-orlando
+- **Oviedo** — 945 City Plaza Way Ste 1001, FL 32765 — Reserve: https://www.opentable.com/r/tabla-indian-restaurant-oviedo
+- **Orlando Cafe** — 5829 Grand National Dr Suite A, FL 32819 (takeout/delivery only)
 - **Clermont** — 2447 S. Hwy 27, FL 34711
 
 ### Other States
 - **Schaumburg, IL** — 1091 N Salem Dr, IL 60194
 - **Richmond, KY** — 467 Eastern Bypass A, KY 40475
-- **The Colony, TX** — 4940 State Hwy 121 Ste 120, TX 75056
+- **The Colony, TX** — 4940 State Hwy 121 Ste 120, TX 75056 — Reserve: https://www.opentable.com/r/tabla-indian-restaurant-the-colony
 - **Eden Prairie, MN** — 16518 W 78th, MN 55346
 - **Grapevine, TX** — 1000 Texan Trail #130, TX 76051
 - **Lexington, KY** — 2270 Nicholasville Rd #120
+
+IMPORTANT: When someone asks about reservations or a specific location that has an OpenTable link, ALWAYS include the direct OpenTable reservation link in your response. Say something like "You can reserve a table here: [link]"
 
 ### Typical Hours
 - Monday-Friday: 11:30 AM – 3:00 PM (lunch), 4:00 PM – 9:00/11:00 PM (dinner)
