@@ -24,11 +24,14 @@ export default function BotPage() {
   const [loading, setLoading] = useState(false)
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const lastMsgRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Scroll to bottom after DOM renders the new message
+    // Scroll so the top of the latest message is visible
     requestAnimationFrame(() => {
-      if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+      if (lastMsgRef.current) {
+        lastMsgRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
     })
   }, [messages, loading])
 
@@ -104,7 +107,7 @@ export default function BotPage() {
         scrollBehavior: 'smooth' as const,
       }}>
         {messages.map((msg, i) => (
-          <div key={i} style={{
+          <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined} style={{
             display: 'flex',
             justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
             gap: 8,
