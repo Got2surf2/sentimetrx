@@ -39,6 +39,12 @@ const EXTRA_STOPS = new Set([
   'if','can','will','just','get','got','more','very','also','out','up','about','what',
   'how','all','one','new','when','would','could','should','than','then','even','still',
   'really','there','here','ever','only','other','each','both','such','same','been',
+  'some','many','much','few','several','most','any','another','every','lots','lot',
+  'thing','things','way','ways','time','times','back','make','made','like','went',
+  'come','came','came','take','took','know','knew','said','tell','told','going',
+  'want','wanted','try','tried','need','needed','see','saw','look','looked',
+  'think','thought','feel','felt','seem','seemed','let','put','keep','kept',
+  'give','gave','use','used','find','found','say','show','work','call','called',
 ])
 
 function isOpinionWord(word: string): boolean {
@@ -102,7 +108,7 @@ export function extractOpinions(
           const words = clause.toLowerCase().replace(/[^a-z\s'-]/g, '').split(/\s+/)
           var CONJUNCTIONS = new Set(['and', 'or', 'nor', 'also', 'plus', 'with'])
           for (let i = 0; i < words.length; i++) {
-            if (words[i] !== target && !words[i].startsWith(target)) continue
+            if (words[i] !== target) continue
             const start = Math.max(0, i - windowSize)
             const end = Math.min(words.length, i + windowSize + 1)
             for (let j = start; j < end; j++) {

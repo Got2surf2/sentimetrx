@@ -37,7 +37,7 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
   mono:    { name: 'Mono',    colors: ['#111827','#374151','#4b5563','#6b7280','#9ca3af','#d1d5db','#e5e7eb','#f3f4f6','#1f2937','#030712'] },
 }
 
-interface SchemaField { field: string; type: string; label?: string; section?: string; values?: string[]; min?: number; max?: number; remapping?: Record<string, number>; scoreField?: boolean; sqt?: string }
+interface SchemaField { field: string; type: string; label?: string; section?: string; values?: string[]; min?: number; max?: number; remapping?: Record<string, number>; valueAliases?: Record<string, string>; scoreField?: boolean; sqt?: string }
 interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
@@ -692,7 +692,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   })
 
   var catLabel = flByName(catField, schema)
-  var valLabel = barMode === 'percent' ? '% of ' + catLabel : 'Count'
+  var valLabel = barMode === 'percent' ? 'Percentage' : 'Count'
   var isStackedCount = barMode !== 'percent'
   return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }

@@ -1371,26 +1371,31 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                            <div>
-                              <div style={{ fontSize: 22, fontWeight: 800, color: T.accent, lineHeight: 1 }}>{(samplingInfo ? samplingInfo.sampled : totalResp).toLocaleString()}</div>
-                              <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>{samplingInfo ? 'Sampled' : 'Responses'}</div>
-                            </div>
-                            {samplingInfo && (
-                              <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: T.textMid, lineHeight: 1 }}>{samplingInfo.total.toLocaleString()}</div>
-                                <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Total</div>
+                          {(function() {
+                            var isSampled = samplingInfo && samplingInfo.sampled < samplingInfo.total
+                            return (<>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                                <div>
+                                  <div style={{ fontSize: 22, fontWeight: 800, color: T.accent, lineHeight: 1 }}>{totalResp.toLocaleString()}</div>
+                                  <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Comments</div>
+                                </div>
+                                {isSampled && (
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: T.textMid, lineHeight: 1 }}>{samplingInfo!.total.toLocaleString()}</div>
+                                    <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Total rows</div>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                          {samplingInfo && (
-                            <div>
-                              <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: 'hidden', marginBottom: 6 }}>
-                                <div style={{ height: '100%', width: Math.round(samplingInfo.sampled / samplingInfo.total * 100) + '%', background: T.accent, borderRadius: 2 }} />
-                              </div>
-                              <div style={{ fontSize: 11, color: T.textMute }}>{Math.round(samplingInfo.sampled / samplingInfo.total * 100)}% sample rate</div>
-                            </div>
-                          )}
+                              {isSampled && (
+                                <div>
+                                  <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: 'hidden', marginBottom: 6 }}>
+                                    <div style={{ height: '100%', width: Math.round(samplingInfo!.sampled / samplingInfo!.total * 100) + '%', background: T.accent, borderRadius: 2 }} />
+                                  </div>
+                                  <div style={{ fontSize: 11, color: T.textMute }}>{Math.round(samplingInfo!.sampled / samplingInfo!.total * 100)}% sample rate ({samplingInfo!.sampled.toLocaleString()} rows sampled)</div>
+                                </div>
+                              )}
+                            </>)
+                          })()}
                         </div>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
                           <div style={{ fontSize: 24, fontWeight: 800, color: T.blue, lineHeight: 1 }}>{displayThemes!.themes.length}</div>
