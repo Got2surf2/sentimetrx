@@ -297,23 +297,43 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       {(function() {
         var fields = dataset.state?.schema_config?.fields || []
         var analytics = dataset.state?.analytics as any
+        if (!analytics || !analytics.fieldSummaries) return null
+
+        // Find a score field: either explicit scoreField with remapping, or a rating/nps numeric field
         var scoreField = fields.find(function(f: any) { return f.scoreField && f.remapping && Object.keys(f.remapping).length > 0 })
-        if (!scoreField || !analytics || !analytics.fieldSummaries) return null
-        var summary = analytics.fieldSummaries[scoreField.field]
-        if (!summary || !summary.counts) return null
-        var remap = scoreField.remapping as Record<string, number>
-        var entries = Object.entries(summary.counts as Record<string, number>)
-        var total = entries.reduce(function(s, e) { return s + e[1] }, 0)
-        if (total === 0) return null
-        // Compute weighted average score
-        var weightedSum = 0; var mappedCount = 0
-        entries.forEach(function(e) { var num = remap[e[0]]; if (num != null) { weightedSum += num * e[1]; mappedCount += e[1] } })
-        if (mappedCount === 0) return null
-        var avgScore = weightedSum / mappedCount
-        var maxScore = Math.max.apply(null, Object.values(remap))
-        var minScore = Math.min.apply(null, Object.values(remap))
+        var ratingField = !scoreField ? fields.find(function(f: any) { return f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps') }) : null
+        var targetField = scoreField || ratingField
+        if (!targetField) return null
+
+        var summary = analytics.fieldSummaries[targetField.field]
+        if (!summary) return null
+
+        var avgScore: number, minScore: number, maxScore: number, mappedCount: number
+
+        if (scoreField && scoreField.remapping) {
+          // Categorical with remapping — compute weighted average
+          if (!summary.counts) return null
+          var remap = scoreField.remapping as Record<string, number>
+          var entries = Object.entries(summary.counts as Record<string, number>)
+          var total = entries.reduce(function(s, e) { return s + e[1] }, 0)
+          if (total === 0) return null
+          var weightedSum = 0; mappedCount = 0
+          entries.forEach(function(e) { var num = remap[e[0]]; if (num != null) { weightedSum += num * e[1]; mappedCount += e[1] } })
+          if (mappedCount === 0) return null
+          avgScore = weightedSum / mappedCount
+          maxScore = Math.max.apply(null, Object.values(remap))
+          minScore = Math.min.apply(null, Object.values(remap))
+        } else {
+          // Numeric field — use pre-computed avg directly
+          if (summary.avg == null || summary.nonNull === 0) return null
+          avgScore = typeof summary.avg === 'number' ? summary.avg : parseFloat(summary.avg)
+          if (isNaN(avgScore)) return null
+          minScore = summary.min ?? 0
+          maxScore = summary.max ?? 5
+          mappedCount = summary.nonNull || 0
+        }
         var pct = maxScore > minScore ? Math.round((avgScore - minScore) / (maxScore - minScore) * 100) : 50
-        var label = (scoreField.label || scoreField.field)
+        var label = (targetField.label || targetField.field)
         // SVG donut
         var r = 28, cx = 32, cy = 32, stroke = 7
         var circ = 2 * Math.PI * r
