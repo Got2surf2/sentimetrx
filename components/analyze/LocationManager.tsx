@@ -216,7 +216,7 @@ export default function LocationManager({ sourceId }: Props) {
   const totalPulled = locations.reduce(function(sum, l) { return sum + l.total_pulled }, 0)
   const selectedCount = locations.filter(function(l) { return l.selected }).length
   const syncedCount = locations.filter(function(l) { return l.selected && l.last_synced_at }).length
-  const errorCount = locations.filter(function(l) { return l.error_message }).length
+  const errorCount = locations.filter(function(l) { return l.error_message && !l.error_message.startsWith('pending_task:') }).length
   const unsyncedCount = selectedCount - syncedCount
 
   return (
@@ -320,7 +320,7 @@ export default function LocationManager({ sourceId }: Props) {
               Retry Failed
             </button>
           </div>
-          {locations.filter(function(l) { return l.error_message }).map(function(l) {
+          {locations.filter(function(l) { return l.error_message && !l.error_message.startsWith('pending_task:') }).map(function(l) {
             return <p key={l.id} className="text-red-500">{l.name}: {l.error_message}</p>
           })}
         </div>
@@ -330,7 +330,7 @@ export default function LocationManager({ sourceId }: Props) {
         {locations.map(function(loc) {
           return (
             <div key={loc.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm">
-              <div className={'w-2 h-2 rounded-full flex-shrink-0 ' + (loc.error_message ? 'bg-red-400' : loc.last_synced_at ? 'bg-green-400' : 'bg-gray-300')} />
+              <div className={'w-2 h-2 rounded-full flex-shrink-0 ' + (loc.error_message && !loc.error_message.startsWith('pending_task:') ? 'bg-red-400' : loc.error_message?.startsWith('pending_task:') ? 'bg-amber-400 animate-pulse' : loc.last_synced_at ? 'bg-green-400' : 'bg-gray-300')} />
               <div className="flex-1 min-w-0">
                 <p className="text-gray-700 truncate">{loc.name}</p>
                 <p className="text-xs text-gray-400 truncate">{loc.address || [loc.city, loc.state].filter(Boolean).join(', ')}</p>

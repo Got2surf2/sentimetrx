@@ -161,15 +161,21 @@ export async function syncReviewSource(
     .from('datasets').select('row_count').eq('id', source.dataset_id).single()
   result.total = ds?.row_count || 0
 
-  // Remaining = unsynced without errors AND without pending tasks
-  const { count: remaining } = await service
+  // Remaining = pending tasks (in progress) + unsynced without errors
+  const { count: pendingCount } = await service
+    .from('review_source_locations')
+    .select('id', { count: 'exact', head: true })
+    .eq('review_source_id', sourceId)
+    .eq('selected', true)
+    .like('error_message', TASK_PREFIX + '%')
+  const { count: unsyncedCount } = await service
     .from('review_source_locations')
     .select('id', { count: 'exact', head: true })
     .eq('review_source_id', sourceId)
     .eq('selected', true)
     .is('last_synced_at', null)
-  result.locations_remaining = remaining || 0
-  // Subtract pending tasks from remaining (they're in progress, not stuck)
+    .is('error_message', null)
+  result.locations_remaining = (pendingCount || 0) + (unsyncedCount || 0)
 
   await updateSourceTimestamps(service, source)
   if (allNewRows.length > 0) {
