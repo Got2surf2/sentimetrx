@@ -186,7 +186,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
                 value={keyword}
                 onChange={function(e) { setKeyword(e.target.value) }}
                 onKeyDown={function(e) { if (e.key === 'Enter') handleSearch() }}
-                placeholder='e.g. "Bonefish Grill" or "Starbucks Tampa"'
+                placeholder='e.g. "Starbucks Tampa"'
                 className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors"
               />
               <button

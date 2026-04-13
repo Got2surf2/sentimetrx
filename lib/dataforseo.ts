@@ -64,11 +64,14 @@ export interface DfsReview {
 // ---------------------------------------------------------------------------
 
 export async function searchLocations(keyword: string): Promise<DfsLocation[]> {
-  // Use the live endpoint for instant results in the UI
-  const data = await post('/business_data/google/my_business_info/live', [{
+  // Use Google Maps SERP to find all locations of a brand/chain
+  const data = await post('/serp/google/maps/live/advanced', [{
     keyword,
     location_code: 2840,       // United States
     language_code: 'en',
+    device: 'desktop',
+    os: 'windows',
+    depth: 700,                // max results
   }])
 
   const tasks = data?.tasks
@@ -77,25 +80,53 @@ export async function searchLocations(keyword: string): Promise<DfsLocation[]> {
   }
 
   const items = tasks[0].result?.[0]?.items || []
-  return items.map(parseBusinessItem).filter((l: DfsLocation | null) => l !== null)
+  return items
+    .filter((item: any) => item?.type === 'maps_search')
+    .map(parseBusinessItem)
+    .filter((l: DfsLocation | null) => l !== null)
 }
 
 function parseBusinessItem(item: any): DfsLocation | null {
   if (!item?.place_id) return null
-  const ai = item.address_info || {}
+  // Parse address string: "123 Main St, Tampa, FL 33602"
+  const addrParts = parseAddressString(item.address || '')
   return {
     place_id: item.place_id,
-    name: item.title || item.original_title || '',
+    name: item.title || '',
     address: item.address || null,
-    city: ai.city || null,
-    state: ai.region || null,
-    zip: ai.zip || null,
+    city: addrParts.city,
+    state: addrParts.state,
+    zip: addrParts.zip,
     rating: item.rating?.value ?? null,
     review_count: item.rating?.votes_count ?? 0,
     phone: item.phone || null,
     latitude: item.latitude ?? null,
     longitude: item.longitude ?? null,
   }
+}
+
+function parseAddressString(address: string): { city: string | null; state: string | null; zip: string | null } {
+  if (!address) return { city: null, state: null, zip: null }
+  // Typical format: "123 Main St, City, ST 12345" or "City, ST 12345, United States"
+  const parts = address.split(',').map(p => p.trim())
+  if (parts.length < 2) return { city: null, state: null, zip: null }
+  // Work backward from the end — last meaningful part often has state + zip
+  let stateZip = ''
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const match = parts[i].match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/)
+    if (match) {
+      const city = i > 0 ? parts[i - 1] : null
+      return { city, state: match[1], zip: match[2] }
+    }
+    // Just state code
+    const stateMatch = parts[i].match(/^([A-Z]{2})$/)
+    if (stateMatch) {
+      const city = i > 0 ? parts[i - 1] : null
+      return { city, state: stateMatch[1], zip: null }
+    }
+  }
+  // Fallback: second-to-last part is city
+  return { city: parts.length >= 3 ? parts[parts.length - 3] : parts[0], state: null, zip: null }
 }
 
 // ---------------------------------------------------------------------------

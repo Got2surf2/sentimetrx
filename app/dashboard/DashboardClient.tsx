@@ -521,7 +521,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
           isAdmin={user.isAdmin}
           userEmail={user.email}
           fullName={user.fullName}
-          currentPage="dashboard"
+          currentPage="analyze"
           analyzeEnabled={analyzeEnabled}
           campaignsEnabled={campaignsEnabled}
         />
