@@ -46,6 +46,7 @@ export default function LocationManager({ sourceId }: Props) {
   const [autoSyncing, setAutoSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number; reviews: number } | null>(null)
   const autoSyncRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(function() {
     loadSource()
@@ -81,7 +82,8 @@ export default function LocationManager({ sourceId }: Props) {
 
     while (autoSyncRef.current) {
       try {
-        const res = await fetch('/api/review-sources/' + sourceId + '/sync', { method: 'POST' })
+        abortRef.current = new AbortController()
+        const res = await fetch('/api/review-sources/' + sourceId + '/sync', { method: 'POST', signal: abortRef.current.signal })
         const data = await res.json()
         if (!res.ok) {
           setSyncResult('Sync error: ' + (data.error || 'Unknown error'))
@@ -115,7 +117,11 @@ export default function LocationManager({ sourceId }: Props) {
         // Brief pause between batches
         await new Promise(function(r) { setTimeout(r, 2000) })
       } catch (err: any) {
-        setSyncResult('Sync error: ' + (err?.message || 'Network error'))
+        if (err?.name === 'AbortError') {
+          setSyncResult('Download stopped.')
+        } else {
+          setSyncResult('Sync error: ' + (err?.message || 'Network error'))
+        }
         break
       }
     }
@@ -128,6 +134,7 @@ export default function LocationManager({ sourceId }: Props) {
 
   function stopAutoSync() {
     autoSyncRef.current = false
+    if (abortRef.current) abortRef.current.abort()
   }
 
   async function handleSync() {
@@ -233,14 +240,17 @@ export default function LocationManager({ sourceId }: Props) {
       )}
 
       {syncResult && (
-        <div className={'rounded-xl px-4 py-2 text-xs ' + (syncResult.includes('error') || syncResult.includes('failed') ? 'bg-red-50 border border-red-200 text-red-600' : 'bg-green-50 border border-green-200 text-green-700')}>
+        <div className={'rounded-xl px-4 py-2 text-xs ' + (syncResult.includes('error') || syncResult.includes('failed') || syncResult.includes('stopped') || syncResult.includes('Warning') ? 'bg-red-50 border border-red-200 text-red-600' : 'bg-green-50 border border-green-200 text-green-700')}>
           {syncResult}
         </div>
       )}
 
       {errorCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-xs text-red-600">
-          {errorCount} location(s) had errors during last sync
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 flex flex-col gap-1">
+          <p className="font-semibold">{errorCount} location(s) failed:</p>
+          {locations.filter(function(l) { return l.error_message }).map(function(l) {
+            return <p key={l.id} className="text-red-500">{l.name}: {l.error_message}</p>
+          })}
         </div>
       )}
 
