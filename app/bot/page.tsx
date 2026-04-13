@@ -16,12 +16,18 @@ const SUGGESTIONS = [
   'How does pricing work?',
 ]
 
+const INITIAL_MESSAGE: Message = { role: 'assistant', content: "Hi! I'm the Datanautix assistant. I can answer questions about our products — **Sarina** (conversational surveys), **Ana** (text analytics), and the **Datanautix Platform** (our integrated suite). What would you like to know?" }
+
 export default function BotPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi! I'm the Datanautix assistant. I can answer questions about our products — **Sarina** (conversational surveys), **Ana** (text analytics), and the **Datanautix Platform** (our integrated suite). What would you like to know?" },
-  ])
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const resetChat = () => {
+    setMessages([INITIAL_MESSAGE])
+    setInput('')
+    setLoading(false)
+  }
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
@@ -91,7 +97,18 @@ export default function BotPage() {
           <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>Datanautix Assistant</div>
           <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>Ask me anything about our products</div>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {messages.length > 1 && (
+            <button onClick={resetChat} style={{
+              padding: '5px 14px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.3)',
+              background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem',
+              fontWeight: 500, cursor: 'pointer', fontFamily: 'system-ui, sans-serif',
+              transition: 'all 0.15s',
+            }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; (e.target as HTMLElement).style.color = 'white' }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.7)' }}
+            >New Conversation</button>
+          )}
           <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
             style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', textDecoration: 'none' }}>
             datanautix.com

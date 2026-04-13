@@ -28,6 +28,8 @@
     '.nora-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#D4A843,#B8922F);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;color:#5C1010}',
     '.nora-hdr-title{color:#fff;font-weight:700;font-size:.9rem;font-family:Georgia,serif}',
     '.nora-hdr-sub{color:rgba(255,255,255,.45);font-size:.7rem}',
+    '.nora-reset{margin-left:auto;padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.7);font-size:.65rem;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}',
+    '.nora-reset:hover{background:rgba(255,255,255,.1);color:#fff}',
     '.nora-msgs{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.75rem;scroll-behavior:smooth}',
     '.nora-msgs::-webkit-scrollbar{width:4px}.nora-msgs::-webkit-scrollbar-thumb{background:#E8DDD0;border-radius:4px}',
     '.nora-msg{display:flex;gap:.5rem;max-width:88%}',
@@ -59,13 +61,15 @@
 
   var panel = document.createElement('div');
   panel.className = 'nora-panel';
-  panel.innerHTML = '<div class="nora-hdr"><div class="nora-av">N</div><div><div class="nora-hdr-title">Nora</div><div class="nora-hdr-sub">Tabla Cuisine Virtual Host</div></div></div><div class="nora-msgs" id="nora-msgs"></div><div class="nora-sug" id="nora-sug"></div><div class="nora-input"><textarea id="nora-inp" rows="1" placeholder="Ask Nora about Tabla..."></textarea><button class="nora-send" id="nora-send">&#8593;</button></div>';
+  panel.innerHTML = '<div class="nora-hdr"><div class="nora-av">N</div><div><div class="nora-hdr-title">Nora</div><div class="nora-hdr-sub">Tabla Cuisine Virtual Host</div></div><button class="nora-reset" id="nora-reset" style="display:none">New Conversation</button></div><div class="nora-msgs" id="nora-msgs"></div><div class="nora-sug" id="nora-sug"></div><div class="nora-input"><textarea id="nora-inp" rows="1" placeholder="Ask Nora about Tabla..."></textarea><button class="nora-send" id="nora-send">&#8593;</button></div>';
   document.body.appendChild(panel);
 
   var msgsEl = document.getElementById('nora-msgs');
   var sugEl = document.getElementById('nora-sug');
   var inp = document.getElementById('nora-inp');
   var sendBtn = document.getElementById('nora-send');
+  var resetBtn = document.getElementById('nora-reset');
+  var INITIAL_MSG = messages[0];
 
   function toggle() {
     var open = panel.classList.toggle('open');
@@ -107,6 +111,7 @@
       requestAnimationFrame(function() { msgsEl.scrollTop = msgsEl.scrollHeight; });
     }
     sugEl.style.display = messages.length > 1 ? 'none' : 'flex';
+    resetBtn.style.display = messages.length > 1 ? 'block' : 'none';
     updateSend();
   }
 
@@ -165,6 +170,13 @@
   }
 
   fab.addEventListener('click', toggle);
+  resetBtn.addEventListener('click', function() {
+    messages.length = 0;
+    messages.push(INITIAL_MSG);
+    loading = false;
+    inp.value = '';
+    render();
+  });
   sendBtn.addEventListener('click', function() { send(inp.value); });
   inp.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(inp.value); }

@@ -16,12 +16,18 @@ const SUGGESTIONS = [
   'Is there a cost for families?',
 ]
 
+const INITIAL_MESSAGE: Message = { role: 'assistant', content: "Hi, I'm Clara — your Craniometrix assistant. I'm here to help you learn about how we support dementia patients, caregivers, and providers through the GUIDE program. Are you a caregiver or a healthcare provider?" }
+
 export default function ClaraPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi, I'm Clara — your Craniometrix assistant. I'm here to help you learn about how we support dementia patients, caregivers, and providers through the GUIDE program. Are you a caregiver or a healthcare provider?" },
-  ])
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const resetChat = () => {
+    setMessages([INITIAL_MESSAGE])
+    setInput('')
+    setLoading(false)
+  }
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -91,7 +97,18 @@ export default function ClaraPage() {
           <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>Clara</div>
           <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>Craniometrix Assistant</div>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {messages.length > 1 && (
+            <button onClick={resetChat} style={{
+              padding: '5px 14px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.3)',
+              background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem',
+              fontWeight: 500, cursor: 'pointer', fontFamily: 'system-ui, sans-serif',
+              transition: 'all 0.15s',
+            }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; (e.target as HTMLElement).style.color = 'white' }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.7)' }}
+            >New Conversation</button>
+          )}
           <a href="https://www.craniometrix.com" target="_blank" rel="noopener noreferrer"
             style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', textDecoration: 'none' }}>
             craniometrix.com

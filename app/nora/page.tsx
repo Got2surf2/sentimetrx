@@ -16,12 +16,18 @@ const SUGGESTIONS = [
   'What is the Masala Club?',
 ]
 
+const INITIAL_MESSAGE: Message = { role: 'assistant', content: "Welcome to Tabla! I'm Nora, your virtual host. I can help you find a location, explore the menu, make a reservation, or learn about catering and events. What can I help you with?" }
+
 export default function NoraPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Welcome to Tabla! I'm Nora, your virtual host. I can help you find a location, explore the menu, make a reservation, or learn about catering and events. What can I help you with?" },
-  ])
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const resetChat = () => {
+    setMessages([INITIAL_MESSAGE])
+    setInput('')
+    setLoading(false)
+  }
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -91,7 +97,18 @@ export default function NoraPage() {
           <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem', fontFamily: 'Georgia, serif' }}>Nora</div>
           <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontFamily: 'system-ui, sans-serif' }}>Tabla Cuisine Virtual Host</div>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {messages.length > 1 && (
+            <button onClick={resetChat} style={{
+              padding: '5px 14px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.3)',
+              background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem',
+              fontWeight: 500, cursor: 'pointer', fontFamily: 'system-ui, sans-serif',
+              transition: 'all 0.15s',
+            }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; (e.target as HTMLElement).style.color = 'white' }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.7)' }}
+            >New Conversation</button>
+          )}
           <a href="https://www.tablacuisine.com" target="_blank" rel="noopener noreferrer"
             style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', textDecoration: 'none', fontFamily: 'system-ui, sans-serif' }}>
             tablacuisine.com

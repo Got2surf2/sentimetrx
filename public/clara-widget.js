@@ -29,6 +29,8 @@
     '.clara-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#8ae0e5,#5bbfc4);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;color:#2f3c4c}',
     '.clara-hdr-title{color:#fff;font-weight:700;font-size:.9rem}',
     '.clara-hdr-sub{color:rgba(255,255,255,.45);font-size:.7rem}',
+    '.clara-reset{margin-left:auto;padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.7);font-size:.65rem;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}',
+    '.clara-reset:hover{background:rgba(255,255,255,.1);color:#fff}',
     '.clara-msgs{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.75rem;scroll-behavior:smooth}',
     '.clara-msgs::-webkit-scrollbar{width:4px}.clara-msgs::-webkit-scrollbar-thumb{background:#d8eff0;border-radius:4px}',
     '.clara-msg{display:flex;gap:.5rem;max-width:88%}',
@@ -62,13 +64,15 @@
   // Panel
   var panel = document.createElement('div');
   panel.className = 'clara-panel';
-  panel.innerHTML = '<div class="clara-hdr"><div class="clara-av">C</div><div><div class="clara-hdr-title">Clara</div><div class="clara-hdr-sub">Craniometrix Assistant</div></div></div><div class="clara-msgs" id="clara-msgs"></div><div class="clara-sug" id="clara-sug"></div><div class="clara-input"><textarea id="clara-inp" rows="1" placeholder="Ask Clara about Craniometrix..."></textarea><button class="clara-send" id="clara-send">&#8593;</button></div>';
+  panel.innerHTML = '<div class="clara-hdr"><div class="clara-av">C</div><div><div class="clara-hdr-title">Clara</div><div class="clara-hdr-sub">Craniometrix Assistant</div></div><button class="clara-reset" id="clara-reset" style="display:none">New Conversation</button></div><div class="clara-msgs" id="clara-msgs"></div><div class="clara-sug" id="clara-sug"></div><div class="clara-input"><textarea id="clara-inp" rows="1" placeholder="Ask Clara about Craniometrix..."></textarea><button class="clara-send" id="clara-send">&#8593;</button></div>';
   document.body.appendChild(panel);
 
   var msgsEl = document.getElementById('clara-msgs');
   var sugEl = document.getElementById('clara-sug');
   var inp = document.getElementById('clara-inp');
   var sendBtn = document.getElementById('clara-send');
+  var resetBtn = document.getElementById('clara-reset');
+  var INITIAL_MSG = messages[0];
 
   function toggle() {
     var open = panel.classList.toggle('open');
@@ -110,6 +114,7 @@
       requestAnimationFrame(function() { msgsEl.scrollTop = msgsEl.scrollHeight; });
     }
     sugEl.style.display = messages.length > 1 ? 'none' : 'flex';
+    resetBtn.style.display = messages.length > 1 ? 'block' : 'none';
     updateSend();
   }
 
@@ -168,6 +173,13 @@
   }
 
   fab.addEventListener('click', toggle);
+  resetBtn.addEventListener('click', function() {
+    messages.length = 0;
+    messages.push(INITIAL_MSG);
+    loading = false;
+    inp.value = '';
+    render();
+  });
   sendBtn.addEventListener('click', function() { send(inp.value); });
   inp.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(inp.value); }
