@@ -19,6 +19,9 @@ export interface SyncResult {
   expected_reviews: number   // from Google's review_count
   with_comments: number
   without_comments: number
+  // Progress context for UI
+  pending_locations: string[]   // names of locations with pending tasks
+  processing_location: string | null  // name of the location currently being checked/submitted
 }
 
 const BATCH_SIZE = 10
@@ -42,6 +45,7 @@ export async function syncReviewSource(
     synced: 0, total: 0, locations_synced: 0, locations_remaining: 0,
     locations_errored: 0, locations_submitted: 0, errors: [],
     expected_reviews: 0, with_comments: 0, without_comments: 0,
+    pending_locations: [], processing_location: null,
   }
 
   const { data: source, error: srcErr } = await service
@@ -72,8 +76,10 @@ export async function syncReviewSource(
     .limit(BATCH_SIZE)
 
   if (pendingLocs && pendingLocs.length > 0) {
+    result.pending_locations = pendingLocs.map(function(l) { return l.name })
     for (const loc of pendingLocs) {
       try {
+        result.processing_location = loc.name
         const ref = parseTaskRef(loc.error_message!)
         const check = await checkReviewTask(ref)
 
@@ -132,6 +138,7 @@ export async function syncReviewSource(
   if (unsyncedLocs && unsyncedLocs.length > 0) {
     for (const loc of unsyncedLocs) {
       try {
+        result.processing_location = loc.name
         const isInitial = !loc.last_review_id
         // Use the location's review_count to set depth, capped at DataForSEO's 4490 max
         const depth = isInitial ? Math.min(Math.max(loc.review_count || 1000, 1000), 4490) : 200

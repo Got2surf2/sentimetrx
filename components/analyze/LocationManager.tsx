@@ -5,8 +5,24 @@
 // Auto-polls sync in batches when unsynced locations exist
 
 import { useState, useEffect, useRef } from 'react'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES = '#E8632A'
+
+function notifyCompletion(title: string, body: string) {
+  // Update page title
+  document.title = '\u2705 ' + title
+  // Browser notification (if permission granted)
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification(title, { body: body, icon: '/favicon.ico' })
+  }
+}
+
+function requestNotifyPermission() {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    Notification.requestPermission()
+  }
+}
 
 interface Location {
   id: string
@@ -44,9 +60,10 @@ export default function LocationManager({ sourceId }: Props) {
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
   const [autoSyncing, setAutoSyncing] = useState(false)
-  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number; reviews: number } | null>(null)
+  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number; reviews: number; currentLocation: string | null; pendingLocations: string[] } | null>(null)
   const autoSyncRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
+  const originalTitle = useRef(typeof document !== 'undefined' ? document.title : '')
 
   useEffect(function() {
     loadSource(true)
@@ -77,7 +94,8 @@ export default function LocationManager({ sourceId }: Props) {
 
     setAutoSyncing(true)
     autoSyncRef.current = true
-    setSyncProgress({ done: alreadySynced, total: totalSelected, reviews: 0 })
+    setSyncProgress({ done: alreadySynced, total: totalSelected, reviews: 0, currentLocation: null, pendingLocations: [] })
+    requestNotifyPermission()
 
     let totalReviews = 0
     let totalExpected = 0
@@ -108,7 +126,10 @@ export default function LocationManager({ sourceId }: Props) {
         const submitted = data.locations_submitted || 0
         const remaining = data.locations_remaining || 0
         const errors = data.errors || []
-        setSyncProgress({ done: done, total: totalSelected, reviews: totalReviews })
+        const currentLoc = data.processing_location || null
+        const pendingLocs = data.pending_locations || []
+        setSyncProgress({ done: done, total: totalSelected, reviews: totalReviews, currentLocation: currentLoc, pendingLocations: pendingLocs })
+        document.title = '\u23F3 Downloading ' + done + '/' + totalSelected + ' (' + totalReviews.toLocaleString() + ' reviews)'
 
         // Show status
         if (errors.length > 0) {
@@ -126,6 +147,7 @@ export default function LocationManager({ sourceId }: Props) {
           }
           if (errTotal > 0) summary += ' — ' + errTotal + ' locations had errors'
           setSyncResult(summary)
+          notifyCompletion('Download complete', totalReviews.toLocaleString() + ' reviews from ' + done + ' locations')
           break
         }
 
@@ -156,6 +178,7 @@ export default function LocationManager({ sourceId }: Props) {
 
     autoSyncRef.current = false
     setAutoSyncing(false)
+    document.title = originalTitle.current
     // Refresh location data
     loadSource()
   }
@@ -273,18 +296,37 @@ export default function LocationManager({ sourceId }: Props) {
         )}
       </div>
 
-      {/* Download progress bar */}
-      {(autoSyncing || syncProgress) && syncProgress && (
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>Downloading reviews... {syncProgress.done}/{syncProgress.total} locations ({syncProgress.reviews.toLocaleString()} reviews)</span>
-            <span>{Math.round((syncProgress.done / syncProgress.total) * 100)}%</span>
+      {/* Download progress */}
+      {autoSyncing && syncProgress && (
+        <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <LottieLoader size={36} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+                Downloading reviews... {syncProgress.done}/{syncProgress.total} locations
+              </div>
+              {syncProgress.currentLocation && (
+                <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                  Processing: <strong style={{ color: HERMES }}>{syncProgress.currentLocation}</strong>
+                </div>
+              )}
+              {!syncProgress.currentLocation && syncProgress.pendingLocations.length > 0 && (
+                <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                  Waiting for: {syncProgress.pendingLocations.slice(0, 3).join(', ')}{syncProgress.pendingLocations.length > 3 ? ' +' + (syncProgress.pendingLocations.length - 3) + ' more' : ''}
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: HERMES }}>{syncProgress.reviews.toLocaleString()}</div>
+              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' as const }}>Reviews</div>
+            </div>
           </div>
-          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-500" style={{
-              width: Math.round((syncProgress.done / syncProgress.total) * 100) + '%',
-              background: HERMES
-            }} />
+          <div style={{ height: 6, background: '#FED7AA', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+            <div style={{ height: '100%', borderRadius: 3, transition: 'width .5s ease', background: HERMES, width: Math.round((syncProgress.done / syncProgress.total) * 100) + '%' }} />
+          </div>
+          <div style={{ fontSize: 11, color: '#78716C', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{Math.round((syncProgress.done / syncProgress.total) * 100)}% complete</span>
+            <span style={{ fontStyle: 'italic' }}>You can navigate away — we'll notify you when it's done</span>
           </div>
         </div>
       )}
