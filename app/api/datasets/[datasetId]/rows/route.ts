@@ -92,7 +92,7 @@ export async function GET(req: Request, { params }: Params) {
         // Supabase JS doesn't support modulo, so use RPC or fetch with limit
       }
       // Fetch all rows then randomly sample to ensure all categories are represented
-      const FLAT_PAGE = 5000
+      const FLAT_PAGE = 1000  // Supabase default max rows per request
       const allRows: Record<string, unknown>[] = []
       let offset = 0
       let fetchMore = true
