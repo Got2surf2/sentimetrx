@@ -133,6 +133,17 @@ export async function DELETE(_req: Request, { params }: Params) {
 
   const service = createServiceRoleClient()
 
+  // Delete associated review source + locations + user_locations (google_reviews datasets)
+  const { data: reviewSources } = await service
+    .from('review_sources').select('id').eq('dataset_id', params.datasetId)
+  if (reviewSources?.length) {
+    for (const rs of reviewSources) {
+      await service.from('user_locations').delete().eq('review_source_id', rs.id)
+      await service.from('review_source_locations').delete().eq('review_source_id', rs.id)
+    }
+    await service.from('review_sources').delete().eq('dataset_id', params.datasetId)
+  }
+
   // Explicitly delete child records first (belt-and-suspenders with CASCADE)
   try { await service.from('dataset_rows_flat').delete().eq('dataset_id', params.datasetId) } catch {}
   await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)

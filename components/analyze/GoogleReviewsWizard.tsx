@@ -237,50 +237,80 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
               </button>
             </div>
 
-            <div style={{ maxHeight: 500, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: '#f9fafb', position: 'sticky', top: 0, zIndex: 1 }}>
-                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: '#6b7280', width: 36 }}>
-                      <input type="checkbox" checked={selected.size === locations.length} onChange={toggleAll}
-                        style={{ accentColor: HERMES, width: 15, height: 15, cursor: 'pointer' }} />
-                    </th>
-                    <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: '#6b7280' }}>Name</th>
-                    <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: '#6b7280' }}>Location</th>
-                    <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#6b7280', width: 60 }}>Rating</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontSize: 11, color: '#6b7280', width: 80 }}>Reviews</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {locations.map(function(loc) {
-                    var isSelected = selected.has(loc.place_id)
-                    return (
-                      <tr key={loc.place_id}
-                        onClick={function() { toggleLocation(loc.place_id) }}
-                        style={{ cursor: 'pointer', borderTop: '1px solid #f3f4f6', background: isSelected ? '#fff' : '#fafafa', opacity: isSelected ? 1 : 0.5, transition: 'all .1s' }}
-                        onMouseEnter={function(e) { (e.currentTarget as HTMLTableRowElement).style.background = '#fff4ef' }}
-                        onMouseLeave={function(e) { (e.currentTarget as HTMLTableRowElement).style.background = isSelected ? '#fff' : '#fafafa' }}>
-                        <td style={{ padding: '8px 12px' }}>
-                          <input type="checkbox" checked={isSelected} readOnly
-                            style={{ accentColor: HERMES, width: 15, height: 15, cursor: 'pointer' }} />
-                        </td>
-                        <td style={{ padding: '8px 8px', fontWeight: 600, color: '#111827' }}>
-                          {loc.name || 'Unknown'}
-                        </td>
-                        <td style={{ padding: '8px 8px', color: '#6b7280', fontSize: 12 }}>
-                          {[loc.city, loc.state].filter(Boolean).join(', ') || loc.address || '—'}
-                        </td>
-                        <td style={{ padding: '8px 8px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12 }}>
-                          {loc.rating != null ? loc.rating.toFixed(1) + ' \u2605' : '—'}
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6b7280', fontSize: 12 }}>
-                          {loc.review_count.toLocaleString()}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+            {/* Split panes: selected on top, unselected on bottom */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Selected pane */}
+              <div style={{ border: '1px solid #d1fae5', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ background: '#ecfdf5', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>Selected ({selectedLocations.length})</span>
+                  {selectedLocations.length > 0 && (
+                    <span style={{ fontSize: 11, color: '#6b7280' }}>{estimatedReviews.toLocaleString()} reviews</span>
+                  )}
+                </div>
+                <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {selectedLocations.length === 0 ? (
+                    <div style={{ padding: '24px 14px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No restaurants selected</div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <tbody>
+                        {selectedLocations.map(function(loc) {
+                          return (
+                            <tr key={loc.place_id}
+                              onClick={function() { toggleLocation(loc.place_id) }}
+                              style={{ cursor: 'pointer', borderTop: '1px solid #f0fdf4', transition: 'background .1s' }}
+                              onMouseEnter={function(e) { (e.currentTarget as HTMLTableRowElement).style.background = '#fef2f2' }}
+                              onMouseLeave={function(e) { (e.currentTarget as HTMLTableRowElement).style.background = '' }}>
+                              <td style={{ padding: '6px 14px', width: 28 }}>
+                                <input type="checkbox" checked readOnly style={{ accentColor: '#059669', width: 14, height: 14, cursor: 'pointer' }} />
+                              </td>
+                              <td style={{ padding: '6px 6px', fontWeight: 600, color: '#111827' }}>{loc.name || 'Unknown'}</td>
+                              <td style={{ padding: '6px 6px', color: '#6b7280', fontSize: 12 }}>{[loc.city, loc.state].filter(Boolean).join(', ') || loc.address || ''}</td>
+                              <td style={{ padding: '6px 6px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12, width: 55 }}>{loc.rating != null ? loc.rating.toFixed(1) + ' \u2605' : ''}</td>
+                              <td style={{ padding: '6px 14px', textAlign: 'right', color: '#6b7280', fontSize: 12, width: 70 }}>{loc.review_count.toLocaleString()}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Unselected pane */}
+              {(function() {
+                var unselectedLocs = locations.filter(function(l) { return !selected.has(l.place_id) })
+                if (unselectedLocs.length === 0) return null
+                return (
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+                    <div style={{ background: '#f9fafb', padding: '8px 14px' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>Available ({unselectedLocs.length})</span>
+                    </div>
+                    <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <tbody>
+                          {unselectedLocs.map(function(loc) {
+                            return (
+                              <tr key={loc.place_id}
+                                onClick={function() { toggleLocation(loc.place_id) }}
+                                style={{ cursor: 'pointer', borderTop: '1px solid #f3f4f6', opacity: 0.6, transition: 'all .1s' }}
+                                onMouseEnter={function(e) { var t = e.currentTarget as HTMLTableRowElement; t.style.background = '#ecfdf5'; t.style.opacity = '1' }}
+                                onMouseLeave={function(e) { var t = e.currentTarget as HTMLTableRowElement; t.style.background = ''; t.style.opacity = '0.6' }}>
+                                <td style={{ padding: '6px 14px', width: 28 }}>
+                                  <input type="checkbox" checked={false} readOnly style={{ accentColor: HERMES, width: 14, height: 14, cursor: 'pointer' }} />
+                                </td>
+                                <td style={{ padding: '6px 6px', fontWeight: 600, color: '#111827' }}>{loc.name || 'Unknown'}</td>
+                                <td style={{ padding: '6px 6px', color: '#6b7280', fontSize: 12 }}>{[loc.city, loc.state].filter(Boolean).join(', ') || loc.address || ''}</td>
+                                <td style={{ padding: '6px 6px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12, width: 55 }}>{loc.rating != null ? loc.rating.toFixed(1) + ' \u2605' : ''}</td>
+                                <td style={{ padding: '6px 14px', textAlign: 'right', color: '#6b7280', fontSize: 12, width: 70 }}>{loc.review_count.toLocaleString()}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
 

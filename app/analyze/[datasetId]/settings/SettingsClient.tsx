@@ -3,7 +3,7 @@
 // app/analyze/[datasetId]/settings/SettingsClient.tsx
 // Rename, visibility, schema editor, archive, delete
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
 import LocationManager from '@/components/analyze/LocationManager'
@@ -44,6 +44,20 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   const [trimming, setTrimming] = useState(false)
   const [trimResult, setTrimResult] = useState<string | null>(null)
   const [trimConfirm, setTrimConfirm] = useState(false)
+
+  // Google Reviews download status
+  const [downloadComplete, setDownloadComplete] = useState(dataset.source !== 'google_reviews')
+  useEffect(function() {
+    if (dataset.source !== 'google_reviews' || !reviewSourceId) return
+    fetch('/api/review-sources/' + reviewSourceId)
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        var locs = data.locations || []
+        var unsynced = locs.filter(function(l: any) { return l.selected && !l.last_synced_at && !l.error_message })
+        setDownloadComplete(unsynced.length === 0 && locs.length > 0)
+      })
+      .catch(function() {})
+  }, [dataset.source, reviewSourceId])
 
   // Append data state
   const fileRef = useRef<HTMLInputElement>(null)
@@ -227,9 +241,10 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
       </div>
 
       {/* Schema editor */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4" style={{ opacity: downloadComplete ? 1 : 0.5, pointerEvents: downloadComplete ? 'auto' : 'none' }}>
         <div>
           <h2 className="font-bold text-gray-800">Schema</h2>
+          {!downloadComplete && <p className="text-xs text-amber-600 mt-1">Schema editing available after all reviews are downloaded.</p>}
           <p className="text-sm text-gray-500 mt-0.5">
             Assign field types to control how each column is used in analysis.
             {dataset.row_count > 0 && (' ' + dataset.row_count.toLocaleString() + ' rows loaded.')}
@@ -238,8 +253,8 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         <SchemaEditor schema={schema} onChange={handleSaveSchema} />
       </div>
 
-      {/* Append data */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+      {/* Append data — not for google_reviews datasets */}
+      {dataset.source !== 'google_reviews' && <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
         <div>
           <h2 className="font-bold text-gray-800">Append Data</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -274,7 +289,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
           <p className="text-sm text-green-600 font-semibold">{appendDone.toLocaleString()} rows appended successfully. Analytics recomputed.</p>
         )}
         {appendError && <p className="text-xs text-red-500">{appendError}</p>}
-      </div>
+      </div>}
 
       {/* Trim data by date */}
       {schema.fields.some(function(f) { return f.type === 'date' }) && (

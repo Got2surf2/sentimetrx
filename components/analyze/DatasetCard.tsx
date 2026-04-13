@@ -262,13 +262,26 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       )}
 
       {/* 3. Stats row */}
+      {isReviews && (function() {
+        var analytics = dataset.state?.analytics as any
+        var reviewTextSummary = analytics?.fieldSummaries?.review_text
+        var withComments = reviewTextSummary?.nonNull || 0
+        var ratingOnly = dataset.row_count - withComments
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#6b7280', flexWrap: 'wrap' }}>
+            <span><strong style={{ color: '#111827' }}>{dataset.row_count.toLocaleString()}</strong> reviews</span>
+            <span><strong style={{ color: '#059669' }}>{withComments.toLocaleString()}</strong> with comments</span>
+            <span><strong style={{ color: '#d97706' }}>{ratingOnly.toLocaleString()}</strong> rating only</span>
+          </div>
+        )
+      })()}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ fontSize: 15, lineHeight: 1 }}>&#8803;</span>
           <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.row_count.toLocaleString()}</span>
           <span style={{ color: '#9ca3af' }}>rows</span>
         </div>
-        {fieldCount !== null && (
+        {fieldCount !== null && !isReviews && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ fontSize: 13, lineHeight: 1, color: '#9ca3af' }}>&#9783;</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>{fieldCount}</span>

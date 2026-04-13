@@ -120,7 +120,10 @@ export default function LocationManager({ sourceId }: Props) {
         if (remaining === 0) {
           const errTotal = totalSelected - done
           var summary = 'Download complete! ' + totalReviews.toLocaleString() + ' reviews from ' + done + ' locations.'
-          summary += ' (Expected: ~' + totalExpected.toLocaleString() + ' | With comments: ' + totalWithComments.toLocaleString() + ' | Rating only: ' + totalWithoutComments.toLocaleString() + ')'
+          summary += ' (With comments: ' + totalWithComments.toLocaleString() + ' | Rating only: ' + totalWithoutComments.toLocaleString() + ')'
+          if (totalExpected > totalReviews) {
+            summary += ' Note: ' + (totalExpected - totalReviews).toLocaleString() + ' older reviews exceed the per-location API limit of 4,490.'
+          }
           if (errTotal > 0) summary += ' — ' + errTotal + ' locations had errors'
           setSyncResult(summary)
           break
@@ -131,6 +134,13 @@ export default function LocationManager({ sourceId }: Props) {
           setSyncResult('Download stopped — API errors: ' + errors.join('; ').slice(0, 300))
           break
         }
+
+        // Refresh location data to show updated per-restaurant counts
+        try {
+          var refreshRes = await fetch('/api/review-sources/' + sourceId)
+          var refreshData = await refreshRes.json()
+          if (refreshData.locations) setLocations(refreshData.locations)
+        } catch {}
 
         // Wait before next call — DataForSEO needs 30-90s to process tasks
         await new Promise(function(r) { setTimeout(r, 10000) })
