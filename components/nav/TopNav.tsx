@@ -132,8 +132,8 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
       <div className="flex items-center gap-0.5 flex-shrink-0">
         {analyzeEnabled && navLink('analyze', '/analyze', 'Analyze')}
         {navLink('dashboard', '/dashboard', 'Studies')}
-        {navLink('townhall', '/townhall', 'Town Hall')}
         {(campaignsEnabled || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
+        {navLink('townhall', '/townhall', 'Town Hall')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />
         <form action="/api/auth/signout" method="POST">
