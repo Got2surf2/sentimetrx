@@ -1468,12 +1468,25 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 <div style={{ fontSize: 15, fontWeight: 800, color: T.text, marginBottom: 4 }}>{t.name}</div>
                                 {/* Description */}
                                 <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5, marginBottom: 10, minHeight: 32 }}>{t.description}</div>
-                                {/* Keywords (max 4) */}
+                                {/* Keywords (max 4) — click to see opinions */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 14 }}>
                                   {(t.keywords || []).slice(0, 4).map(function(k) {
-                                    return <span key={k} style={{ fontSize: 11, padding: '2px 8px', background: T.bg, color: T.textMid, borderRadius: 20, border: '1px solid ' + T.border }}>{k}</span>
+                                    return <span key={k} onClick={function(e) { e.stopPropagation(); setOpinionWord(opinionWord === k ? null : k) }}
+                                      style={{ fontSize: 11, padding: '2px 8px', background: opinionWord === k ? '#eff6ff' : T.bg, color: opinionWord === k ? '#2563eb' : T.textMid, borderRadius: 20, border: '1px solid ' + (opinionWord === k ? '#bfdbfe' : T.border), cursor: 'pointer', transition: 'all .1s' }}>{k}</span>
                                   })}
                                 </div>
+                                {/* Opinion popover for clicked keyword */}
+                                {opinionWord && (t.keywords || []).some(function(k) { return k === opinionWord }) && (
+                                  <div style={{ marginBottom: 10 }} onClick={function(e) { e.stopPropagation() }}>
+                                    <OpinionPopover
+                                      word={opinionWord}
+                                      rows={filteredRows}
+                                      fields={activeField || (themes ? themes.fieldName : '')}
+                                      onClose={function() { setOpinionWord(null) }}
+                                      onViewComments={function(w) { setOpinionWord(null); handleDrillTheme(t) }}
+                                    />
+                                  </div>
+                                )}
                                 {/* Opinions — top 3 opinion words for this theme's keywords */}
                                 {(function() {
                                   var posWords = new Set(['good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best','delicious','tasty','fresh','friendly','nice','lovely','clean','quick','fast','warm','crispy','tender','flavorful','juicy','rich','creamy','attentive','helpful','polite','outstanding','superb','incredible','comfortable','cozy','pleasant','enjoyable','reasonable','generous','authentic','exceptional','satisfying','refreshing','favorite','love','loved','recommend'])
@@ -1555,24 +1568,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     themeColors={themeColors}
                     parsedData={filteredRows}
                     activeField={activeField || themes!.fieldName}
-                    onWordClick={function(word, idx, type) {
-                      // Show opinion popover for any clicked word
+                    onWordClick={function(word) {
+                      // Single click: show opinion popover (toggle)
                       if (word) setOpinionWord(opinionWord === word ? null : word)
-                      // Also drill into theme if applicable
-                      if (themes) {
-                        if (type === 'theme') {
-                          var t = themes.themes[idx]
-                          if (t) handleDrillTheme(t)
-                        } else {
-                          var owner = idx >= 0 ? themes.themes[idx] : null
-                          if (!owner && word) {
-                            owner = themes.themes.find(function(th) {
-                              return (th.keywords || []).some(function(k) { return k.toLowerCase() === (word || '').toLowerCase() })
-                            }) || null
-                          }
-                          if (owner) handleDrillTheme(owner)
-                        }
-                      }
                     }}
                   />
                   {opinionWord && (
@@ -1582,6 +1580,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         rows={filteredRows}
                         fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                         onClose={function() { setOpinionWord(null) }}
+                        onViewComments={function(w) {
+                          setOpinionWord(null)
+                          if (themes) {
+                            var owner = themes.themes.find(function(th) {
+                              return (th.keywords || []).some(function(k) { return k.toLowerCase() === w.toLowerCase() })
+                            })
+                            if (owner) handleDrillTheme(owner)
+                            else handleDrillTheme({ id: '__search__', name: w, description: 'Comments containing "' + w + '"', keywords: [w], sentiment: 'mixed', count: 0, percentage: 0, relatedThemes: [] } as any)
+                          }
+                        }}
                       />
                     </div>
                   )}

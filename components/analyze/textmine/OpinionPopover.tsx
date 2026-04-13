@@ -17,9 +17,10 @@ interface Props {
   rows: Record<string, unknown>[]
   fields: string | string[]
   onClose: () => void
+  onViewComments?: (word: string) => void
 }
 
-export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
+export default function OpinionPopover({ word, rows, fields, onClose, onViewComments }: Props) {
   var result = useMemo(function() {
     return extractOpinions(rows, fields, word)
   }, [rows, fields, word])
@@ -83,6 +84,16 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
           )
         })}
       </div>
+
+      {/* Actions */}
+      {onViewComments && (
+        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginTop: 10, display: 'flex', gap: 8 }}>
+          <button onClick={function() { onViewComments(word) }}
+            style={{ flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 700, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer' }}>
+            View all "{word}" comments
+          </button>
+        </div>
+      )}
     </div>
   )
 }
