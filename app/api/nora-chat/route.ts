@@ -97,6 +97,79 @@ Phone: (407) 248-9400
 
 ## Charity
 Tabla is involved in charitable activities — details on the Charity page at tablacuisine.com
+
+## CATERING — Full Details
+
+### Contact
+- Phone: 407-726-4020
+- Email: events@tablacuisine.com
+- Website: tablacatering.com
+- Social: @tablaindiancatering
+- Minimum 60 guests. All pricing plus tax.
+
+### Catering Packages (per person)
+
+**Silver — $40/person**
+2 veg appetizers, 2 non-veg appetizers, 2 veg entrees, 1 dal, 2 non-veg entrees, jeera rice/pulao, naan (butter or garlic), raita, papad, pickle, salad, 2 desserts
+
+**Gold — $50/person**
+3 veg appetizers, 2 non-veg appetizers, 3 veg entrees, 1 dal, 3 non-veg entrees, jeera rice/pulao, naan (butter or garlic), raita, papad, pickle, salad, 3 desserts
+
+**Platinum — $60/person**
+3 veg appetizers, 3 non-veg appetizers, 3 veg entrees, 1 dal, 4 non-veg entrees, hakka noodles or pad thai (live), jeera rice/pulao rice, naan (butter or garlic), raita, papad, pickle, salad, 4 desserts
+
+### Upgrade Options ($300 per live station)
+- Live Stations: chat stations, dosa, tandoor breads, kabobs, grilled skewers
+- Fusion Menus: Indo-Chinese, Thai, Italian, Mediterranean, Mexican, Action Dinner Station
+- Fusion Desserts: live dessert stations, eggless pastries & cakes, martini glass or shot glass display
+- Ceremony Drinks: mocktail masala bar, fresh coconut bar, fresh sugarcane juice, fruit & cheese station
+- Wedding & Party Favors: Indian sweets, chocolate pops, nuts
+
+### Cuisine Types Available for Catering
+
+**North Indian** — The largest selection. Includes:
+- Veg Appetizers: samosas, pakoras, tikki, paneer tikka, kabobs, calzone bites, kaju rolls, methi rolls
+- Non-Veg Appetizers: chicken lollipops, lamb keema samosa, fish fry, chicken manchurian, chicken 65, tandoori wings
+- Non-Fried Veg: achari potli, paneer potli, hummus & vegetable shooters, falafel shooters, paneer shashlik, gobi skewers, mushroom tikka
+- Non-Fried Non-Veg: chicken tikka, tandoori chicken, reshmi kabob, lamb sheekh, lamb chops, tandoori lobster, fish tikka, tandoori shrimps, grilled herb tuna
+- Veg Entrees: paneer makhani, palak paneer, shahi paneer, malai kofta, dal makhani, kadai vegetables, navrattan korma, paneer tikka masala, and 60+ more options
+- Chicken Entrees: butter chicken, chicken tikka masala, chicken korma, kadai chicken, chicken vindaloo, chicken makhani, and 30+ more
+- Lamb Entrees: lamb rogan josh, lamb korma, lamb vindaloo, nihari gosht, haleem, goat korma, nawabi lamb chops, and 25+ more
+- Seafood Entrees: bombay fish curry, kerala fish fry, shrimp malai curry, masala crab curry, shrimp makhani, and 20+ more
+- Rice/Biryani: vegetable biryani, chicken biryani, lamb biryani, goat biryani, hyderabadi dum biryani, moti mahal biryani, noorjahan biryani, and more
+- Dal: dal makhani, dal tadka, dal bukhara, pahadi dal, and 15+ varieties
+
+**South Indian** — Dosa, idli, vada specialties:
+- Aloo bonda, masala vada, medu vada, kanchivaram masala idli, cocktail idlis, rawa idli, dollar uthappam, masala dosa, perrigu vada, thaiyer vada
+
+**Indo-Chinese** — Fusion favorites:
+- Gobi/vegetable manchurian, chilli gobi/paneer/baby corn, momos (vegetable, schezwan, manchurian, chilli garlic, paneer tikka, peri peri), honey gobi, chinese fluffy bao, sesame paneer, tofu/paneer lettuce wraps
+
+**Gujarati** — Regional specialties:
+- Khandvi, stuffed dhokla, methi gota, khaman, handwa, coconut patties, lilva kachori, fafda, fulwadi
+
+**Chaat Station** — Street food favorites:
+- Bhelpuri, pani poori (fountain), papdi chaat, dahi bhalla, aloo tikki chaat, raj kachori chaat, fruit chaat, palak chaat, mango bhel shooters, and 20+ varieties
+
+**Live Stations** — Interactive food experiences:
+- Dosa station, pav bhaji, falafel station, fajita station, pasta station, manchurian station, Indian bowls & wraps, aloo tikki burger station, Indian pizzas, noodles, pad thai, butter chicken melt station, kathi rolls, kabobs made live, gola station (assorted flavors)
+
+**Desserts** — Traditional and fusion:
+- Gulab jamun, rasmalai, kheer, jalebi, gajar halwa, kulfi (multiple flavors), chocolate fountain, Indian waffle station, mango breule, flan, indian snow cone station, assorted martini glass desserts, shahi tukda
+
+**Drinks** — Non-alcoholic:
+- Masala tea, madras coffee, lassi, thandai, falooda, rose milk, aam panna shots, jaljeera shots, shikanji, sugarcane juice, green coconut water
+
+**Soups** — Served with pastry puffs:
+- Hot n sour (veg/chicken), sweet corn, mulligatwany, tomato, rasam, lemon coriander
+
+### Catering Recommendations by Event Type
+- **Weddings**: Platinum package + live stations (dosa, chaat, kabob). Add ceremony drinks and wedding favors. Gujarati appetizers popular for Gujarati weddings.
+- **Corporate Events**: Gold package works well. Live chaat or pasta station adds interactive element.
+- **Birthday Parties**: Silver or Gold. Add chocolate fountain or Indian dessert station.
+- **Engagement/Mehndi**: Gold or Platinum with chaat station and mocktail bar.
+- **Religious Ceremonies**: Full vegetarian menu available across all packages. South Indian options popular for pujas.
+- **Large Galas (200+)**: Platinum with multiple live stations. Regional menus available on request.
 `
 
 export async function POST(req: NextRequest) {
