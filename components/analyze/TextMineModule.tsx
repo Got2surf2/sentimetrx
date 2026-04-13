@@ -1474,6 +1474,45 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     return <span key={k} style={{ fontSize: 11, padding: '2px 8px', background: T.bg, color: T.textMid, borderRadius: 20, border: '1px solid ' + T.border }}>{k}</span>
                                   })}
                                 </div>
+                                {/* Opinions — top 3 opinion words for this theme's keywords */}
+                                {(function() {
+                                  var posWords = new Set(['good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best','delicious','tasty','fresh','friendly','nice','lovely','clean','quick','fast','warm','crispy','tender','flavorful','juicy','rich','creamy','attentive','helpful','polite','outstanding','superb','incredible','comfortable','cozy','pleasant','enjoyable','reasonable','generous','authentic','exceptional','satisfying','refreshing','favorite','love','loved','recommend'])
+                                  var negWords = new Set(['bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale','rude','dirty','expensive','overpriced','small','loud','noisy','crowded','long','soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless','mediocre','disappointing','disgusting','uncomfortable','unfriendly','unprofessional','filthy','gross','lukewarm','watery','tough','chewy','rubbery','hard','old','late','wrong','missing','broken','ignored','waited','annoyed','frustrated','underwhelming','overrated'])
+                                  var opCounts: Record<string, { c: number; s: 'positive' | 'negative' }> = {}
+                                  var kws = new Set((t.keywords || []).map(function(k) { return k.toLowerCase() }))
+                                  var field = activeField || (themes ? themes.fieldName : '')
+                                  var posTotal = 0; var negTotal = 0
+                                  filteredRows.forEach(function(row) {
+                                    var text = String(row[field] || '').toLowerCase()
+                                    if (!text) return
+                                    var hasKw = false
+                                    kws.forEach(function(k) { if (text.includes(k)) hasKw = true })
+                                    if (!hasKw) return
+                                    var words = text.split(/\W+/)
+                                    words.forEach(function(w) {
+                                      if (posWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'positive' }; posTotal++ }
+                                      else if (negWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'negative' }; negTotal++ }
+                                    })
+                                  })
+                                  var topOps = Object.entries(opCounts).sort(function(a, b) { return b[1].c - a[1].c }).slice(0, 5)
+                                  var sentTotal = posTotal + negTotal
+                                  if (sentTotal === 0) return null
+                                  var posPct = Math.round(posTotal / sentTotal * 100)
+                                  return (
+                                    <div style={{ marginBottom: 10 }}>
+                                      <div style={{ display: 'flex', height: 4, borderRadius: 2, overflow: 'hidden', marginBottom: 6 }}>
+                                        <div style={{ width: posPct + '%', background: '#059669' }} />
+                                        <div style={{ flex: 1, background: '#dc2626' }} />
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                        {topOps.map(function(e) {
+                                          var isPos = e[1].s === 'positive'
+                                          return <span key={e[0]} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: isPos ? '#ecfdf5' : '#fef2f2', color: isPos ? '#059669' : '#dc2626', border: '1px solid ' + (isPos ? '#a7f3d0' : '#fecaca') }}>{e[0]} ({e[1].c})</span>
+                                        })}
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
                                 {/* Count + % + CI + mini bar */}
                                 <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
                                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>

@@ -3,8 +3,9 @@
 // Renders a word cloud in two modes: frequency (interactive toggle) and grouped by theme.
 // Words sized by corpus frequency. Theme-keyword words colored by their theme.
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
+import { extractOpinions } from '@/lib/opinionMining'
 
 const T = {
   bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
@@ -41,24 +42,47 @@ interface Props {
   onWordClick?: (word: string | null, themeIdx: number, type: string) => void
 }
 
-function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, onClick }: {
+function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, sentiment, colorBy, onClick }: {
   word: string; freq: number; themeIdx: number; dimmed: boolean
   themeColors: Record<number, typeof THEME_PALETTE[0]>; maxFreq: number
   totalResponses: number
+  sentiment?: { positive: number; negative: number; neutral: number }
+  colorBy?: 'theme' | 'sentiment'
   onClick?: () => void
 }) {
   const [hov, setHov] = useState(false)
-  const pal = (!dimmed && themeIdx >= 0) ? (themeColors[themeIdx] || THEME_PALETTE[0]) : null
+  const pal = (!dimmed && themeIdx >= 0 && colorBy !== 'sentiment') ? (themeColors[themeIdx] || THEME_PALETTE[0]) : null
   const size = 12 + Math.round((freq / Math.max(maxFreq, 1)) * 20)
   const pct = totalResponses > 0 ? Math.round(freq / totalResponses * 100) : 0
+
+  // Sentiment coloring
+  var sentColor = T.textMute
+  var sentBg = 'transparent'
+  if (colorBy === 'sentiment' && sentiment && !dimmed) {
+    var total = sentiment.positive + sentiment.negative + sentiment.neutral
+    if (total > 0) {
+      var posPct = sentiment.positive / total
+      var negPct = sentiment.negative / total
+      if (posPct > 0.6) { sentColor = '#059669'; sentBg = hov ? '#ecfdf5' : 'transparent' }
+      else if (negPct > 0.6) { sentColor = '#dc2626'; sentBg = hov ? '#fef2f2' : 'transparent' }
+      else if (posPct > 0.4) { sentColor = '#16a34a'; sentBg = hov ? '#f0fdf4' : 'transparent' }
+      else if (negPct > 0.4) { sentColor = '#ef4444'; sentBg = hov ? '#fef2f2' : 'transparent' }
+      else { sentColor = '#6b7280' }
+    }
+  }
+
+  var wordColor = colorBy === 'sentiment'
+    ? (dimmed ? '#d1d5db' : sentColor)
+    : (pal ? (hov ? pal.border : pal.text) : (dimmed ? '#d1d5db' : T.textMute))
+  var wordBg = colorBy === 'sentiment' ? sentBg : (pal && hov ? pal.light : 'transparent')
+
   return (
     <span
       onClick={onClick}
-      title={word + ': ' + freq + ' occurrences (' + pct + '% of responses)'}
+      title={word + ': ' + freq + ' occurrences (' + pct + '%)' + (sentiment ? ' | +' + sentiment.positive + ' -' + sentiment.negative : '')}
       style={{
         fontSize: size, fontWeight: freq > maxFreq * 0.5 ? 700 : 500,
-        color: pal ? (hov ? pal.border : pal.text) : (dimmed ? '#d1d5db' : T.textMute),
-        background: pal && hov ? pal.light : 'transparent',
+        color: wordColor, background: wordBg,
         padding: '1px 4px', borderRadius: 4, cursor: onClick ? 'pointer' : 'default',
         transition: 'all .15s', display: 'inline-flex', alignItems: 'baseline', gap: 2,
         opacity: dimmed ? 0.3 : 1,
@@ -74,6 +98,7 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
 
 export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick }: Props) {
   const [cloudMode, setCloudMode] = useState<'frequency' | 'grouped'>('grouped')
+  const [colorBy, setColorBy] = useState<'theme' | 'sentiment'>('theme')
   const [activeThemes, setActiveThemes] = useState<Set<number> | null>(null)
   const [hoveredTheme, setHoveredTheme] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
@@ -127,6 +152,35 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
 
   const maxFreq = Math.max(...allWords.map(function(w) { return w.freq }), 1)
 
+  // Compute per-word sentiment in a single pass (much faster than per-word extraction)
+  var wordSentiments = useMemo(function() {
+    var wordSet = new Set(allWords.map(function(w) { return w.word }))
+    var map: Record<string, { positive: number; negative: number; neutral: number }> = {}
+    wordSet.forEach(function(w) { map[w] = { positive: 0, negative: 0, neutral: 0 } })
+
+    // Import opinion word sets inline to avoid per-word extraction overhead
+    var posWords = new Set(['good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best','delicious','tasty','fresh','friendly','nice','lovely','clean','quick','fast','warm','crispy','tender','flavorful','juicy','rich','creamy','attentive','helpful','polite','outstanding','superb','incredible','comfortable','cozy','pleasant','enjoyable','reasonable','generous','authentic','consistent','exceptional','phenomenal','satisfying','refreshing','favorite','love','loved','recommend'])
+    var negWords = new Set(['bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale','rude','dirty','expensive','overpriced','small','loud','noisy','crowded','long','soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless','mediocre','disappointing','disgusting','uncomfortable','unfriendly','unprofessional','filthy','gross','lukewarm','watery','tough','chewy','rubbery','hard','old','late','wrong','missing','broken','ignored','waited','annoyed','frustrated','underwhelming','overrated'])
+
+    parsedData.forEach(function(row) {
+      var text = getRowText(row, fields).toLowerCase()
+      if (!text) return
+      var words = text.split(/\W+/)
+      for (var i = 0; i < words.length; i++) {
+        var w = words[i]
+        if (!wordSet.has(w)) continue
+        // Check 3-word window for opinion words
+        for (var j = Math.max(0, i - 3); j < Math.min(words.length, i + 4); j++) {
+          if (j === i) continue
+          var neighbor = words[j]
+          if (posWords.has(neighbor)) map[w].positive++
+          else if (negWords.has(neighbor)) map[w].negative++
+        }
+      }
+    })
+    return map
+  }, [parsedData.length, allWords.length])
+
   function toggleTheme(idx: number) {
     const all = new Set(themes.map(function(_, i) { return i }))
     const cur = activeThemes || all
@@ -175,6 +229,25 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
           {!showAll && visibleThemeIdxs.size < themes.length && (
             <span style={{ fontSize: 10, color: T.textFaint }}>({themes.length - visibleThemeIdxs.size} theme{themes.length - visibleThemeIdxs.size !== 1 ? 's' : ''} below {MIN_PCT}% hidden)</span>
           )}
+          <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
+            {(['theme', 'sentiment'] as const).map(function(mode) {
+            return (
+              <button
+                key={mode}
+                onClick={function() { setColorBy(mode) }}
+                style={{
+                  padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6,
+                  background: colorBy === mode ? T.bgCard : 'transparent',
+                  color: colorBy === mode ? (mode === 'sentiment' ? '#059669' : T.accent) : T.textMute,
+                  border: 'none', cursor: 'pointer',
+                  boxShadow: colorBy === mode ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                }}
+              >
+                {mode === 'theme' ? 'Theme' : 'Sentiment'}
+              </button>
+            )
+          })}
+          </div>
           <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
             {(['frequency', 'grouped'] as const).map(function(mode) {
             return (
@@ -237,7 +310,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
               let dimmed = false
               if (hoveredTheme !== null) dimmed = w.themeIdx !== hoveredTheme
               else if (activeThemes !== null) dimmed = w.themeIdx >= 0 && !activeThemes.has(w.themeIdx)
-              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} onClick={function() { if (onWordClick) onWordClick(w.word, w.themeIdx, w.themeIdx >= 0 ? 'keyword' : 'word') }} />
+              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} onClick={function() { if (onWordClick) onWordClick(w.word, w.themeIdx, w.themeIdx >= 0 ? 'keyword' : 'word') }} />
             })}
           </div>
         </div>
@@ -275,7 +348,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', alignItems: 'baseline' }}>
                     {tWords.map(function(w) {
-                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
+                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
                     })}
                   </div>
                 </div>
