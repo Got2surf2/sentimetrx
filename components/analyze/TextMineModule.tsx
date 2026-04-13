@@ -1495,11 +1495,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   var kws = new Set((t.keywords || []).map(function(k) { return k.toLowerCase() }))
                                   var field = activeField || (themes ? themes.fieldName : '')
                                   var posTotal = 0; var negTotal = 0
-                                  var WINDOW = 4
+                                  var WINDOW = 2
+                                  var CONJ = new Set(['and','or','nor','also','plus','with'])
                                   filteredRows.forEach(function(row) {
                                     var text = String(row[field] || '').toLowerCase()
                                     if (!text) return
-                                    // Split into clauses to avoid cross-clause contamination
                                     var clauses = text.split(/\b(?:but|however|although|yet|though|while|whereas)\b|[,]/i)
                                     clauses.forEach(function(clause) {
                                     var words = clause.trim().split(/\W+/)
@@ -1508,6 +1508,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       for (var wj = Math.max(0, wi - WINDOW); wj < Math.min(words.length, wi + WINDOW + 1); wj++) {
                                         if (wj === wi) continue
                                         var w = words[wj]
+                                        // Skip if conjunction between keyword and opinion
+                                        var blocked = false
+                                        for (var bk = Math.min(wi,wj)+1; bk < Math.max(wi,wj); bk++) { if (CONJ.has(words[bk])) { blocked = true; break } }
+                                        if (blocked) continue
                                         if (posWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'positive' }; posTotal++ }
                                         else if (negWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'negative' }; negTotal++ }
                                       }

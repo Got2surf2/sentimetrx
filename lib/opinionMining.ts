@@ -31,6 +31,25 @@ const NEUTRAL_OPINIONS = new Set([
   'moderate','mixed','fair','adequate','acceptable','sufficient','ordinary','average',
 ])
 
+// Extra stop words to exclude when looking for nouns near an adjective
+const EXTRA_STOPS = new Set([
+  'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from',
+  'is','was','are','were','be','been','has','have','had','do','did','does','i','we',
+  'you','they','it','this','that','my','our','your','their','its','not','no','so','as',
+  'if','can','will','just','get','got','more','very','also','out','up','about','what',
+  'how','all','one','new','when','would','could','should','than','then','even','still',
+  'really','there','here','ever','only','other','each','both','such','same','been',
+])
+
+function isOpinionWord(word: string): boolean {
+  return POSITIVE_OPINIONS.has(word) || NEGATIVE_OPINIONS.has(word) || NEUTRAL_OPINIONS.has(word)
+}
+
+function isSubjectWord(word: string): boolean {
+  // A subject/noun candidate: not a stop word, not an opinion word, 3+ chars
+  return word.length >= 3 && !EXTRA_STOPS.has(word) && !isOpinionWord(word)
+}
+
 export interface OpinionPair {
   opinion: string
   count: number
@@ -43,6 +62,7 @@ export interface OpinionResult {
   totalMentions: number
   opinions: OpinionPair[]
   sentimentSummary: { positive: number; negative: number; neutral: number }
+  mode: 'opinions' | 'nouns'  // opinions = target is a noun, nouns = target is an adjective
 }
 
 /**
@@ -53,10 +73,12 @@ export function extractOpinions(
   rows: Record<string, unknown>[],
   fields: string | string[],
   targetWord: string,
-  windowSize: number = 4,
+  windowSize: number = 2,
 ): OpinionResult {
   const fieldArr = Array.isArray(fields) ? fields : [fields]
   const target = targetWord.toLowerCase()
+  // If target is an adjective/opinion word, look for nouns it modifies instead
+  const targetIsOpinion = isOpinionWord(target)
   const opinionCounts: Record<string, { count: number; sentiment: 'positive' | 'negative' | 'neutral'; samples: string[] }> = {}
   let totalMentions = 0
 
@@ -78,6 +100,7 @@ export function extractOpinions(
 
         for (const clause of targetClauses) {
           const words = clause.toLowerCase().replace(/[^a-z\s'-]/g, '').split(/\s+/)
+          var CONJUNCTIONS = new Set(['and', 'or', 'nor', 'also', 'plus', 'with'])
           for (let i = 0; i < words.length; i++) {
             if (words[i] !== target && !words[i].startsWith(target)) continue
             const start = Math.max(0, i - windowSize)
@@ -86,6 +109,29 @@ export function extractOpinions(
               if (j === i) continue
               const w = words[j]
               if (w.length < 3) continue
+              // Skip if there's a conjunction between target and opinion word
+              var blocked = false
+              var lo = Math.min(i, j) + 1; var hi = Math.max(i, j)
+              for (var k = lo; k < hi; k++) {
+                if (CONJUNCTIONS.has(words[k])) { blocked = true; break }
+              }
+              if (blocked) continue
+              // If target is an adjective, look for nouns; otherwise look for opinion words
+              if (targetIsOpinion) {
+                if (!isSubjectWord(w)) continue
+                var nounSentiment = getSentiment(target) || 'neutral'
+                if (!opinionCounts[w]) {
+                  opinionCounts[w] = { count: 0, sentiment: nounSentiment, samples: [] }
+                }
+                opinionCounts[w].count++
+                if (opinionCounts[w].samples.length < 3) {
+                  const trimmed = sentence.trim().slice(0, 120)
+                  if (!opinionCounts[w].samples.includes(trimmed)) {
+                    opinionCounts[w].samples.push(trimmed)
+                  }
+                }
+                continue
+              }
               const sentiment = getSentiment(w)
               if (!sentiment) continue
               if (!opinionCounts[w]) {
@@ -114,7 +160,7 @@ export function extractOpinions(
   const sentimentSummary = { positive: 0, negative: 0, neutral: 0 }
   opinions.forEach(function(o) { sentimentSummary[o.sentiment] += o.count })
 
-  return { aspect: targetWord, totalMentions, opinions, sentimentSummary }
+  return { aspect: targetWord, totalMentions, opinions, sentimentSummary, mode: targetIsOpinion ? 'nouns' : 'opinions' }
 }
 
 function getSentiment(word: string): 'positive' | 'negative' | 'neutral' | null {

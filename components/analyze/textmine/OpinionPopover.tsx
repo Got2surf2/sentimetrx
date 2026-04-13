@@ -85,7 +85,9 @@ export default function OpinionPopover({ word, rows, fields, onClose, onViewComm
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>Opinions about "{word}"</h3>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>
+              {result.mode === 'nouns' ? 'What people call "' + word + '"' : 'Opinions about "' + word + '"'}
+            </h3>
           </div>
           <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'\u00D7'}</button>
         </div>

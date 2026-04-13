@@ -162,21 +162,29 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     var posWords = new Set(['good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best','delicious','tasty','fresh','friendly','nice','lovely','clean','quick','fast','warm','crispy','tender','flavorful','juicy','rich','creamy','attentive','helpful','polite','outstanding','superb','incredible','comfortable','cozy','pleasant','enjoyable','reasonable','generous','authentic','consistent','exceptional','phenomenal','satisfying','refreshing','favorite','love','loved','recommend'])
     var negWords = new Set(['bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale','rude','dirty','expensive','overpriced','small','loud','noisy','crowded','long','soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless','mediocre','disappointing','disgusting','uncomfortable','unfriendly','unprofessional','filthy','gross','lukewarm','watery','tough','chewy','rubbery','hard','old','late','wrong','missing','broken','ignored','waited','annoyed','frustrated','underwhelming','overrated'])
 
+    var conjSet = new Set(['and','or','nor','also','plus','with'])
     parsedData.forEach(function(row) {
       var text = getRowText(row, fields).toLowerCase()
       if (!text) return
-      var words = text.split(/\W+/)
+      // Split on clause boundaries first
+      var clauses = text.split(/\b(?:but|however|although|yet|though|while|whereas)\b|[,]/i)
+      clauses.forEach(function(clause) {
+      var words = clause.trim().split(/\W+/)
       for (var i = 0; i < words.length; i++) {
         var w = words[i]
         if (!wordSet.has(w)) continue
-        // Check 3-word window for opinion words
-        for (var j = Math.max(0, i - 3); j < Math.min(words.length, i + 4); j++) {
+        for (var j = Math.max(0, i - 2); j < Math.min(words.length, i + 3); j++) {
           if (j === i) continue
+          // Skip if conjunction between
+          var blocked = false
+          for (var bk = Math.min(i,j)+1; bk < Math.max(i,j); bk++) { if (conjSet.has(words[bk])) { blocked = true; break } }
+          if (blocked) continue
           var neighbor = words[j]
           if (posWords.has(neighbor)) map[w].positive++
           else if (negWords.has(neighbor)) map[w].negative++
         }
       }
+      }) // end clauses
     })
     return map
   }, [parsedData.length, allWords.length])
