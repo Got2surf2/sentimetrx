@@ -142,7 +142,7 @@ export default function CreatorNav({
   }
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+    <div className="flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', paddingRight: 16 }}>
 
       {/* Step pills */}
       {CREATOR_STEP_LABELS.map((label, i) => {

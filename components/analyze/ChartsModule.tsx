@@ -192,7 +192,7 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
     if (!ref.current || !traces.length) return
     var baseX = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
     var baseY = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
-    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 24, r: 60, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
+    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 40, r: 80, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
     var merged = Object.assign({}, base, layout || {})
     // Deep merge axes so caller's title/tickangle don't lose grid settings
     merged.xaxis = Object.assign({}, baseX, layout?.xaxis || {})
@@ -278,8 +278,8 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'bar') {
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
     var valueField = config.value
-    // Average mode: use aggregated group_stats
-    if (opts?.barMode === 'average' && valueField) {
+    // When a numeric value field is assigned, always use aggregation (average by default)
+    if (valueField) {
       return <BarAggInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} valueField={valueField} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
     }
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />

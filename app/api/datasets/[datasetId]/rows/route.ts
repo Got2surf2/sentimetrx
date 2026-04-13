@@ -91,24 +91,29 @@ export async function GET(req: Request, { params }: Params) {
         query = query.filter('row_index', 'eq.mod', sampleStep.toString() + '.0') as any
         // Supabase JS doesn't support modulo, so use RPC or fetch with limit
       }
-      // Supabase JS client doesn't support modulo filters — use paginated fetch with step
+      // Fetch all rows then randomly sample to ensure all categories are represented
       const FLAT_PAGE = 5000
       const allRows: Record<string, unknown>[] = []
       let offset = 0
       let fetchMore = true
       while (fetchMore) {
-        let q = service.from('dataset_rows_flat').select('data, row_index').eq('dataset_id', params.datasetId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
+        let q = service.from('dataset_rows_flat').select('data').eq('dataset_id', params.datasetId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
         const { data: flatRows, error: flatErr } = await q
         if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
         if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
         for (let i = 0; i < flatRows.length; i++) {
-          if (!doSample || flatRows[i].row_index % sampleStep === 0) {
-            allRows.push(projectRow(flatRows[i].data, fieldSet))
-          }
+          allRows.push(projectRow(flatRows[i].data, fieldSet))
         }
-        if (doSample && allRows.length >= sampleMax!) { fetchMore = false; break }
         if (flatRows.length < FLAT_PAGE) fetchMore = false
         offset += FLAT_PAGE
+      }
+      // Random sampling: Fisher-Yates shuffle then take first sampleMax
+      if (doSample && allRows.length > sampleMax!) {
+        for (let i = allRows.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          var tmp = allRows[i]; allRows[i] = allRows[j]; allRows[j] = tmp
+        }
+        allRows.length = sampleMax!
       }
       return NextResponse.json({
         rows: allRows, page: 1, pageSize: allRows.length, totalRows, totalPages: 1,
@@ -119,8 +124,6 @@ export async function GET(req: Request, { params }: Params) {
     }
 
     // ── Fallback: batched table (legacy path for datasets without flat rows)
-    const sampleStep = doSample ? Math.ceil(totalRows / sampleMax!) : 1
-    let globalIdx = 0
     const allRows: Record<string, unknown>[] = []
     let bulkPage = 0
     const BULK_FETCH = 200
@@ -136,12 +139,19 @@ export async function GET(req: Request, { params }: Params) {
       for (let bi = 0; bi < batches.length; bi++) {
         const batchRows = batches[bi].rows || []
         for (let ri = 0; ri < batchRows.length; ri++) {
-          if (!doSample || globalIdx % sampleStep === 0) allRows.push(projectRow(batchRows[ri], fieldSet))
-          globalIdx++
+          allRows.push(projectRow(batchRows[ri], fieldSet))
         }
       }
       if (batches.length < BULK_FETCH) hasMore = false
       bulkPage++
+    }
+    // Random sampling
+    if (doSample && allRows.length > sampleMax!) {
+      for (let i = allRows.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        var tmp2 = allRows[i]; allRows[i] = allRows[j]; allRows[j] = tmp2
+      }
+      allRows.length = sampleMax!
     }
 
     return NextResponse.json({

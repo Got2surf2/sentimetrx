@@ -219,11 +219,11 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  function getValues(field: string) {
+  function getValues(field: string): string[] {
     // Use analytics fieldSummaries for authoritative value list (covers all rows, not just sample)
     var summary = analytics?.fieldSummaries?.[field]
-    if (summary?.values) return summary.values
-    if (summary?.topN) return summary.topN
+    if (summary?.values) return summary.values as string[]
+    if (summary?.topN) return summary.topN as string[]
     var s = schema.find(function(f) { return f.field === field })
     if (s && s.values) return s.values
     // Fallback: extract from sampled rows
@@ -288,10 +288,10 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer' }}>
                   <input
                     type="checkbox"
-                    checked={vals.every(function(v) { return selectedValues.has(v) })}
+                    checked={vals.every(function(v) { return selectedValues.has(String(v)) })}
                     onChange={function() {
-                      const all = vals.every(function(v) { return selectedValues.has(v) })
-                      setSelectedValues(all ? new Set() : new Set(vals))
+                      const all = vals.every(function(v) { return selectedValues.has(String(v)) })
+                      setSelectedValues(all ? new Set<string>() : new Set<string>(vals))
                     }}
                     style={{ width: 13, height: 13, accentColor: T.amber }}
                   />
