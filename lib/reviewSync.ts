@@ -16,8 +16,8 @@ export interface SyncResult {
 }
 
 // How many locations to process per invocation (must fit in Vercel's 60s timeout)
-// Each location takes ~10-20s to fetch reviews from DataForSEO
-const LOCATIONS_PER_BATCH = 3
+// Each location can take up to 60s to poll DataForSEO, so process 1 at a time
+const LOCATIONS_PER_BATCH = 1
 const CHUNK_SIZE = 50
 
 /**

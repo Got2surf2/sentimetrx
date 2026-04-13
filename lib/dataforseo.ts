@@ -181,8 +181,8 @@ export async function fetchReviews(
 }
 
 async function pollForReviews(getPath: string, taskId: string): Promise<DfsReview[] | null> {
-  const maxAttempts = 15
-  const pollInterval = 3000
+  const maxAttempts = 20
+  const pollInterval = 3000 // 20 x 3s = 60s max wait per task
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await sleep(pollInterval)
     const result = await get(getPath + taskId)
@@ -193,7 +193,8 @@ async function pollForReviews(getPath: string, taskId: string): Promise<DfsRevie
       const items = task.result[0]?.items || []
       return items.map(parseReviewItem).filter((r: DfsReview | null) => r !== null)
     }
-    if (task.status_code === 40402) continue // not ready yet
+    // 40402 = not ready, 40602 = still in queue — keep polling
+    if (task.status_code === 40402 || task.status_code === 40602) continue
     if (task.status_code >= 40000) {
       throw new Error(`Task failed (${task.status_code}): ${task.status_message}`)
     }

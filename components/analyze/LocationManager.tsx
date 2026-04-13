@@ -49,19 +49,21 @@ export default function LocationManager({ sourceId }: Props) {
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(function() {
-    loadSource()
+    loadSource(true)
   }, [sourceId])
 
-  function loadSource() {
+  function loadSource(autoStart?: boolean) {
     fetch('/api/review-sources/' + sourceId)
       .then(function(r) { return r.json() })
       .then(function(data) {
         setSource(data.source)
         setLocations(data.locations || [])
-        // Auto-start sync if there are unsynced locations
-        const unsynced = (data.locations || []).filter(function(l: Location) { return l.selected && !l.last_synced_at })
-        if (unsynced.length > 0 && !autoSyncRef.current) {
-          startAutoSync(data.locations || [])
+        // Only auto-start on initial mount, never on refresh after stop
+        if (autoStart) {
+          const unsynced = (data.locations || []).filter(function(l: Location) { return l.selected && !l.last_synced_at && !l.error_message })
+          if (unsynced.length > 0 && !autoSyncRef.current) {
+            startAutoSync(data.locations || [])
+          }
         }
       })
       .catch(function() {})
