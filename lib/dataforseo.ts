@@ -144,19 +144,21 @@ function parseAddressString(address: string): { city: string | null; state: stri
 // Fetch reviews — standard async queue (cheaper, used for bulk pulls)
 // ---------------------------------------------------------------------------
 
-export async function fetchReviews(
+// Submit a review task — returns the task ID and API path, does NOT wait for results
+export interface ReviewTaskRef {
+  taskId: string
+  getPath: string
+}
+
+export async function submitReviewTask(
   placeId: string,
   depth: number = 700,
   sortBy: 'newest' | 'relevant' = 'newest',
-): Promise<DfsReview[]> {
-  // Try three API paths in order:
-  // 1. Reviews API (keyword with place_id prefix)
-  // 2. Business Data API (place_id parameter)
-  // 3. Business Data API (keyword with place_id prefix)
+): Promise<ReviewTaskRef> {
+  // Try API paths in order until one accepts the task
   const attempts = [
     { path: '/reviews/google/task_post', getPath: '/reviews/google/task_get/', body: { keyword: 'place_id:' + placeId, location_code: 2840, language_code: 'en', depth: Math.min(depth, 4490), sort_by: sortBy } },
     { path: '/business_data/google/reviews/task_post', getPath: '/business_data/google/reviews/task_get/', body: { place_id: placeId, depth: Math.min(depth, 4490), sort_by: sortBy, language_code: 'en' } },
-    { path: '/business_data/google/reviews/task_post', getPath: '/business_data/google/reviews/task_get/', body: { keyword: 'place_id:' + placeId, location_code: 2840, language_code: 'en', depth: Math.min(depth, 4490), sort_by: sortBy } },
   ]
 
   let lastError = ''
@@ -164,42 +166,55 @@ export async function fetchReviews(
     try {
       const postData = await post(attempt.path, [attempt.body])
       const taskStatus = postData?.tasks?.[0]
-      if (!taskStatus?.id) {
-        lastError = `${attempt.path}: no task ID — ${taskStatus?.status_message || JSON.stringify(taskStatus)}`
-        continue
+      if (taskStatus?.id) {
+        return { taskId: taskStatus.id, getPath: attempt.getPath }
       }
-      // Task created — poll for results
-      const reviews = await pollForReviews(attempt.getPath, taskStatus.id)
-      if (reviews !== null) return reviews
-      lastError = `${attempt.path}: task ${taskStatus.id} timed out`
+      lastError = `${attempt.path}: ${taskStatus?.status_message || 'no task ID'}`
     } catch (err: any) {
       lastError = `${attempt.path}: ${err.message?.slice(0, 150)}`
-      console.warn('[dataforseo] attempt failed:', lastError)
     }
   }
-  throw new Error(`All review API attempts failed. Last: ${lastError}`)
+  throw new Error(`Failed to submit review task: ${lastError}`)
 }
 
-async function pollForReviews(getPath: string, taskId: string): Promise<DfsReview[] | null> {
-  const maxAttempts = 15
-  const pollInterval = 3000 // 15 x 3s = 45s max wait per task
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await sleep(pollInterval)
-    const result = await get(getPath + taskId)
-    const task = result?.tasks?.[0]
-    if (!task) continue
+// Check if a previously submitted task has results ready
+export type TaskCheckResult =
+  | { status: 'ready'; reviews: DfsReview[] }
+  | { status: 'pending' }
+  | { status: 'error'; message: string }
 
-    if (task.status_code === 20000 && task.result?.length) {
-      const items = task.result[0]?.items || []
-      return items.map(parseReviewItem).filter((r: DfsReview | null) => r !== null)
-    }
-    // 40402 = not ready, 40602 = still in queue — keep polling
-    if (task.status_code === 40402 || task.status_code === 40602) continue
-    if (task.status_code >= 40000) {
-      throw new Error(`Task failed (${task.status_code}): ${task.status_message}`)
-    }
+export async function checkReviewTask(ref: ReviewTaskRef): Promise<TaskCheckResult> {
+  const result = await get(ref.getPath + ref.taskId)
+  const task = result?.tasks?.[0]
+  if (!task) return { status: 'pending' }
+
+  if (task.status_code === 20000 && task.result?.length) {
+    const items = task.result[0]?.items || []
+    return { status: 'ready', reviews: items.map(parseReviewItem).filter((r: DfsReview | null) => r !== null) as DfsReview[] }
   }
-  return null // timed out
+  if (task.status_code === 40402 || task.status_code === 40602) {
+    return { status: 'pending' }
+  }
+  if (task.status_code >= 40000) {
+    return { status: 'error', message: `(${task.status_code}): ${task.status_message}` }
+  }
+  return { status: 'pending' }
+}
+
+// Legacy wrapper — submits and polls (only use for small one-off calls, NOT in serverless)
+export async function fetchReviews(
+  placeId: string,
+  depth: number = 700,
+  sortBy: 'newest' | 'relevant' = 'newest',
+): Promise<DfsReview[]> {
+  const ref = await submitReviewTask(placeId, depth, sortBy)
+  for (let i = 0; i < 15; i++) {
+    await sleep(3000)
+    const result = await checkReviewTask(ref)
+    if (result.status === 'ready') return result.reviews
+    if (result.status === 'error') throw new Error(result.message)
+  }
+  throw new Error('Review task timed out')
 }
 
 // Batch version: submit multiple place_ids at once, poll all
