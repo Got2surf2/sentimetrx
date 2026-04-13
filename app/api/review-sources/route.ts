@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
     const body = await req.json()
-    const { brand_name, locations, dataset_name, sync_frequency_hours } = body
+    const { brand_name, locations, dataset_name, sync_frequency_hours, start_date, end_date } = body
 
     if (!brand_name?.trim()) return NextResponse.json({ error: 'brand_name is required' }, { status: 400 })
     if (!locations?.length) return NextResponse.json({ error: 'At least one location is required' }, { status: 400 })
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
       .from('datasets')
       .insert({
         name:        dsName,
-        description: `Google Reviews for ${brand_name.trim()} (${locations.length} locations)`,
+        description: JSON.stringify({ type: 'google_reviews', brand: brand_name.trim(), locations: locations.length, start_date: start_date || null, end_date: end_date || null }),
         source:      'google_reviews',
         org_id:      orgId,
         created_by:  user.id,

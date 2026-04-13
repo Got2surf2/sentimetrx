@@ -39,6 +39,10 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
   // Step 2: Selection
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
+  // Step 2b: Date range
+  const [startDate, setStartDate] = useState('')  // ISO date string, empty = no limit
+  const [endDate, setEndDate] = useState('')      // ISO date string, empty = today
+
   // Step 3: Confirm + Download
   const [datasetName, setDatasetName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -137,6 +141,8 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
           brand_name: keyword.trim(),
           dataset_name: datasetName.trim(),
           locations: selectedLocations,
+          start_date: startDate || null,
+          end_date: endDate || null,
         }),
       })
       const data = await res.json()
@@ -338,7 +344,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
               ['Brand',              keyword],
               ['Locations selected', selected.size + ' of ' + locations.length],
               ['Estimated reviews',  estimatedReviews.toLocaleString()],
-              ['Estimated cost',     '$' + (estimatedReviews * 0.000075 + selected.size * 0.00075).toFixed(2)],
+              ['Date range',         (startDate || 'All time') + ' \u2192 ' + (endDate || 'Today')],
               ['Sync frequency',     'Daily (automatic updates)'],
             ] as [string, string][]).map(function([label, val]) {
               return (
@@ -348,6 +354,21 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
                 </div>
               )
             })}
+            <div className="flex items-end gap-3 pt-2 border-t border-gray-100">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Reviews from</label>
+                <input type="date" value={startDate} onChange={function(e) { setStartDate(e.target.value) }}
+                  className="px-3 py-2 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400" style={{ width: 160 }} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Through</label>
+                <input type="date" value={endDate} onChange={function(e) { setEndDate(e.target.value) }}
+                  className="px-3 py-2 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400" style={{ width: 160 }} />
+              </div>
+              <button onClick={function() { setStartDate(''); setEndDate('') }}
+                className="text-xs text-gray-400 hover:text-gray-600 pb-2">Clear</button>
+            </div>
+            <p className="text-xs text-gray-400">Leave blank for all available reviews. Max 4,490 per location (API limit).</p>
           </div>
 
           {creating && (

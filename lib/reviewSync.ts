@@ -51,6 +51,17 @@ export async function syncReviewSource(
 
   const allNewRows: Record<string, unknown>[] = []
 
+  // Load date range from dataset description (if set)
+  const { data: dsData } = await service
+    .from('datasets').select('description').eq('id', source.dataset_id).single()
+  let dateStart: string | null = null
+  let dateEnd: string | null = null
+  try {
+    const meta = JSON.parse(dsData?.description || '{}')
+    dateStart = meta.start_date || null
+    dateEnd = meta.end_date || null
+  } catch {}
+
   // ── Phase 1: Check pending tasks ──────────────────────────────────────
   const { data: pendingLocs } = await service
     .from('review_source_locations')
@@ -67,7 +78,8 @@ export async function syncReviewSource(
         const check = await checkReviewTask(ref)
 
         if (check.status === 'ready') {
-          const newReviews = filterNewReviews(check.reviews, loc.last_review_id, loc.last_review_date)
+          var newReviews = filterNewReviews(check.reviews, loc.last_review_id, loc.last_review_date)
+          newReviews = filterByDateRange(newReviews, dateStart, dateEnd)
           result.expected_reviews += loc.review_count || 0
           for (const rev of newReviews) {
             if (rev.review_text) result.with_comments++
@@ -179,6 +191,17 @@ function parseTaskRef(s: string): ReviewTaskRef {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+function filterByDateRange(reviews: DfsReview[], startDate: string | null, endDate: string | null): DfsReview[] {
+  if (!startDate && !endDate) return reviews
+  return reviews.filter(function(rev) {
+    if (!rev.timestamp) return true
+    const d = rev.timestamp.split('T')[0]
+    if (startDate && d < startDate) return false
+    if (endDate && d > endDate) return false
+    return true
+  })
+}
+
 function filterNewReviews(reviews: DfsReview[], lastReviewId: string | null, lastReviewDate: string | null): DfsReview[] {
   if (!lastReviewId && !lastReviewDate) return reviews
   const out: DfsReview[] = []
