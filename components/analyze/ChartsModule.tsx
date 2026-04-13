@@ -312,8 +312,8 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'bar') {
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
     var valueField = config.value
-    // When a numeric value field is assigned, always use aggregation (average by default)
-    if (valueField) {
+    // When a value field is assigned AND mode is average (or any non-count/percent), use aggregation
+    if (valueField && opts?.barMode !== 'count' && opts?.barMode !== 'percent') {
       return <BarAggInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} valueField={valueField} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
     }
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />
@@ -737,7 +737,7 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
     ? smartOrder(groups.map(function(g) { return g.group }), catRemap).map(function(k) { return groups.find(function(g) { return g.group === k }) }).filter(Boolean) as typeof groups
     : groups.slice().sort(function(a, b) { return b.mean - a.mean })
 
-  var cats = sortedGroups.slice(0, 30).map(function(g) { return g.group })
+  var cats = sortedGroups.slice(0, 30).map(function(g) { return resolveAlias(catField, g.group, schema) })
   var vals = sortedGroups.slice(0, 30).map(function(g) { return Math.round(g.mean * 100) / 100 })
   var catLabel = flByName(catField, schema)
   var valLabel = 'Avg ' + flByName(valueField, schema)
@@ -2015,7 +2015,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
               <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
                 <button onClick={function() { setBarMode('count') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'count' ? T.bgCard : 'transparent', color: barMode === 'count' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'count' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Count</button>
                 <button onClick={function() { setBarMode('percent') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'percent' ? T.bgCard : 'transparent', color: barMode === 'percent' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'percent' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Percentage</button>
-                {currentConfig.value && <button onClick={function() { setBarMode('average') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'average' ? T.bgCard : 'transparent', color: barMode === 'average' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'average' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Average</button>}
+                {currentConfig.value && <button onClick={function() { setBarMode('average') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barMode === 'average' ? T.bgCard : 'transparent', color: barMode === 'average' ? '#059669' : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barMode === 'average' ? '0 1px 4px rgba(0,0,0,.08)' : 'none', fontStyle: barMode !== 'average' ? 'italic' : 'normal' }}>Average {barMode !== 'average' ? '\u2190' : ''}</button>}
               </div>
               <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
                 <button onClick={function() { setBarOrient('v') }} style={{ padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, background: barOrient === 'v' ? T.bgCard : 'transparent', color: barOrient === 'v' ? T.accent : T.textMute, border: 'none', cursor: 'pointer', boxShadow: barOrient === 'v' ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>Vertical</button>
