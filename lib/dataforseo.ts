@@ -291,7 +291,7 @@ export async function fetchReviewsBatch(
 }
 
 function parseReviewItem(item: any): DfsReview | null {
-  if (!item || !item.review_text) return null
+  if (!item) return null
   // Generate a stable ID from profile + timestamp if no review_id field
   const reviewId = item.review_id || item.id || (item.profile_name + ':' + item.timestamp) || String(item.rank_absolute)
   return {

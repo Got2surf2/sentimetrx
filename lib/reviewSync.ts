@@ -15,6 +15,10 @@ export interface SyncResult {
   locations_errored: number
   locations_submitted: number
   errors: string[]
+  // Per-sync stats
+  expected_reviews: number   // from Google's review_count
+  with_comments: number
+  without_comments: number
 }
 
 const BATCH_SIZE = 10
@@ -37,6 +41,7 @@ export async function syncReviewSource(
   const result: SyncResult = {
     synced: 0, total: 0, locations_synced: 0, locations_remaining: 0,
     locations_errored: 0, locations_submitted: 0, errors: [],
+    expected_reviews: 0, with_comments: 0, without_comments: 0,
   }
 
   const { data: source, error: srcErr } = await service
@@ -62,11 +67,13 @@ export async function syncReviewSource(
         const check = await checkReviewTask(ref)
 
         if (check.status === 'ready') {
-          console.log(`[reviewSync] ${loc.name}: got ${check.reviews.length} raw reviews`)
           const newReviews = filterNewReviews(check.reviews, loc.last_review_id, loc.last_review_date)
-          console.log(`[reviewSync] ${loc.name}: ${newReviews.length} new reviews after filter`)
+          result.expected_reviews += loc.review_count || 0
+          for (const rev of newReviews) {
+            if (rev.review_text) result.with_comments++
+            else result.without_comments++
+          }
           if (check.reviews.length === 0) {
-            // Task completed but returned no reviews — flag it
             result.errors.push(`${loc.name}: API returned 0 reviews (expected ~${loc.review_count})`)
           }
           const label = formatLocationLabel(loc.name, loc.city, loc.state)
@@ -114,7 +121,8 @@ export async function syncReviewSource(
     for (const loc of unsyncedLocs) {
       try {
         const isInitial = !loc.last_review_id
-        const depth = isInitial ? 700 : 100
+        // Use the location's review_count to set depth, capped at DataForSEO's 4490 max
+        const depth = isInitial ? Math.min(Math.max(loc.review_count || 1000, 1000), 4490) : 200
         const ref = await submitReviewTask(loc.place_id, depth, 'newest')
         // Store task ref so next call can check it
         await service.from('review_source_locations').update({

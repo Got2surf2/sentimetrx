@@ -80,6 +80,9 @@ export default function LocationManager({ sourceId }: Props) {
     setSyncProgress({ done: alreadySynced, total: totalSelected, reviews: 0 })
 
     let totalReviews = 0
+    let totalExpected = 0
+    let totalWithComments = 0
+    let totalWithoutComments = 0
     let done = alreadySynced
 
     while (autoSyncRef.current) {
@@ -98,6 +101,9 @@ export default function LocationManager({ sourceId }: Props) {
         }
         totalReviews += data.synced || 0
         done += data.locations_synced || 0
+        totalExpected += data.expected_reviews || 0
+        totalWithComments += data.with_comments || 0
+        totalWithoutComments += data.without_comments || 0
         const errored = data.locations_errored || 0
         const submitted = data.locations_submitted || 0
         const remaining = data.locations_remaining || 0
@@ -113,8 +119,10 @@ export default function LocationManager({ sourceId }: Props) {
 
         if (remaining === 0) {
           const errTotal = totalSelected - done
-          setSyncResult('Download complete! ' + totalReviews.toLocaleString() + ' reviews from ' + done + ' locations.' +
-            (errTotal > 0 ? ' (' + errTotal + ' locations had errors)' : ''))
+          var summary = 'Download complete! ' + totalReviews.toLocaleString() + ' reviews from ' + done + ' locations.'
+          summary += ' (Expected: ~' + totalExpected.toLocaleString() + ' | With comments: ' + totalWithComments.toLocaleString() + ' | Rating only: ' + totalWithoutComments.toLocaleString() + ')'
+          if (errTotal > 0) summary += ' — ' + errTotal + ' locations had errors'
+          setSyncResult(summary)
           break
         }
 

@@ -155,7 +155,9 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
 
   var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
   var numFields  = coreFields.filter(function(f) { return f.type === 'numeric' }).sort(asc2)
-  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' }).sort(asc2)
+  // Discrete numeric fields (ratings, scores with ≤10 unique values) also appear as categorical
+  var discreteNumeric = numFields.filter(function(f) { return f.min != null && f.max != null && (f.max - f.min) <= 10 })
+  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' }).concat(discreteNumeric).sort(asc2)
   var dateFields = coreFields.filter(function(f) { return f.type === 'date' }).sort(asc2)
   var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc2)
 

@@ -63,6 +63,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const [transferring,  setTransferring]  = useState(false)
 
   const isStudy    = dataset.source === 'study'
+  const isReviews  = dataset.source === 'google_reviews'
   const isArchived = dataset.status === 'archived'
   const fieldCount = dataset.state?.schema_config?.fields?.filter(function(f: { type: string }) {
     return f.type !== 'ignore'
@@ -101,7 +102,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     <div style={{
       background:    'white',
       border:        '1px solid #e8e8ec',
-      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : HERMES),
+      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : isReviews ? '#2563eb' : HERMES),
       borderRadius:  12,
       padding:       '16px',
       boxShadow:     '0 1px 4px rgba(0,0,0,.05)',
@@ -204,6 +205,8 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
         {isStudy ? (
           <Badge label={'Sarina: ' + (dataset.study_name || 'Linked')} color={HERMES} bg={HERMES_BG} border={HERMES_MID} />
+        ) : isReviews ? (
+          <Badge label={'\u2B50 Google Reviews'} color="#2563eb" bg="#eff6ff" border="#bfdbfe" />
         ) : (
           <Badge label="Upload" color="#6b7280" bg="#f9fafb" border="#e5e7eb" />
         )}
