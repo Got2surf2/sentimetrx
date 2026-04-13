@@ -54,8 +54,8 @@ Ana analyzes open-ended feedback across any source — surveys, reviews, emails,
 - Speed: 5,000 responses analyzed in under 2 minutes
 - Independently validated: UCF Rosen College study found Ana "performed almost as well as a team of professors and outperformed the graduate student — completing the analysis in less than 5% of the time"
 
-### SentimetRx — The Integrated Platform
-SentimetRx (sentimetrx.ai) is the integrated platform combining Sarina and Ana with additional capabilities:
+### Datanautix Platform — The Integrated Suite
+The Datanautix Platform (datanautix.com) is the integrated suite combining Sarina and Ana with additional capabilities:
 - AI Study Wizard that generates complete studies from industry + goals in seconds
 - Built-in email campaign manager (rich templates, merge tags, tracking, multi-sequence reminders)
 - Multi-language support (15 languages, one-click translation, auto-translate responses)
@@ -91,43 +91,12 @@ SentimetRx (sentimetrx.ai) is the integrated platform combining Sarina and Ana w
 - Executive summary & recommendations
 - Ongoing partnership & priority support
 
-## Case Studies & Results
-
-### Harlem Globetrotters
+## Proven Results
 - 10x more responses vs. traditional post-event email surveys
-- Sarina surveys via arena Jumbotron QR codes
-- 15-20% response rate within minutes
-- Ana delivered instant thematic analysis of fan sentiment
-
-### Orlando Magic
-- 15-20% in-venue response rate without staff prompting
-- Sarina QR code deployment throughout season
-- Ana tracked game-by-game sentiment trends on concessions, entertainment, atmosphere
-
-### Orlando Resort
-- Identified root cause in seconds vs. weeks of manual analysis
-- Challenge: Low-flow shower upgrade suspected for bathroom satisfaction drops
-- Ana pinpointed cleanliness issues on specific floor, saving costly unnecessary renovation
-
-### UCF Rosen College (Independent Academic Validation)
-- Ana completed analysis in less than 5% of the time taken by human experts
-- Near-identical quality to expert professors
-- Task: Analyze 4,000 open-ended hospitality reviews
-- Ana outperformed graduate students, nearly matched expert professors
-- Quote: "Ana performed almost as well as the team of professors and outperformed the graduate student in terms of deriving actionable insights from the data — in less than 5% of the time." — Dr. Fevzi Okumus, CFHLA Preeminent Chair Professor
-
-### JW Marriott
-- 10x more responses than post-stay email surveys
-- Sarina via QR code on key cards
-- Actionable feedback on service, dining, room quality within hours
-
-### Civic/Political Research
-- 2-minute average voter completion with higher depth than standard surveys
-- Sarina dialogue with thousands of voters
-- Ana surfaced thematic clusters and issue patterns by district/demographic
-
-## Clients
-Harlem Globetrotters, Orlando Magic, Red Lobster, Intrado, UCF Rosen College, MCO Airport, JW Marriott, Black Box Intelligence
+- 15-20% in-venue response rates without staff prompting
+- Identified root causes in seconds vs. weeks of manual analysis
+- Academically validated: independent university study found Ana "performed almost as well as a team of professors — in less than 5% of the time"
+- 2-minute average completion time with richer, more actionable data than static surveys
 
 ## Industries Served
 Sports & entertainment, hospitality (hotels, restaurants, resorts), higher education, healthcare, retail, political research & civic engagement, corporate customer experience, nonprofit, government, professional services
@@ -135,8 +104,8 @@ Sports & entertainment, hospitality (hotels, restaurants, resorts), higher educa
 ## Key Differentiators
 1. Conversational AI — not static forms. AI asks intelligent follow-ups in real-time.
 2. Complete platform — survey + campaigns + analytics + reporting in one tool. No need for SurveyMonkey + Mailchimp + text analytics tool.
-3. 10x response rates vs. traditional surveys (validated by multiple clients).
-4. Academically validated analytics — UCF study confirms near-expert quality.
+3. 10x response rates vs. traditional surveys (validated across deployments).
+4. Academically validated analytics — independent university study confirms near-expert quality.
 5. 15 languages with one-click AI translation.
 6. No technical expertise required — deploy with a QR code or link.
 7. Fraction of the cost of enterprise alternatives (Qualtrics, Medallia, etc.).
@@ -156,7 +125,7 @@ Q: Is Datanautix an NPS alternative?
 A: While NPS gives you a single number, Datanautix gives you the story behind it. We combine rich conversational responses with automatic theme identification to understand what's driving your scores.
 
 Q: How accurate is Ana?
-A: An independent UCF evaluation found Ana performed almost as well as a team of professors and completed analysis in under 5% of the time required by human teams.
+A: An independent academic evaluation found Ana performed almost as well as a team of professors and completed analysis in under 5% of the time required by human teams.
 
 Q: Do I need technical expertise?
 A: No. Sarina is deployed with a QR code or link — no app development or technical setup required for either tool.
@@ -189,7 +158,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
-        system: `You are the Datanautix AI assistant — a friendly, knowledgeable bot that answers questions about Datanautix and its products (Sarina, Ana, and SentimetRx).
+        system: `You are the Datanautix AI assistant — a friendly, knowledgeable bot that answers questions about Datanautix and its products (Sarina, Ana, and the Datanautix Platform).
 
 Use ONLY the knowledge base below to answer questions. If someone asks about something not covered, say you don't have that information and suggest they contact info@datanautix.com or book a call at calendly.com/sanjay-datanautix.
 

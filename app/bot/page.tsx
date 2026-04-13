@@ -10,7 +10,7 @@ interface Message {
 const SUGGESTIONS = [
   'What does Datanautix do?',
   'How is Sarina different from SurveyMonkey?',
-  'What results have your clients seen?',
+  'What results can I expect?',
   'Tell me about Ana text analytics',
   'What languages do you support?',
   'How does pricing work?',
@@ -18,7 +18,7 @@ const SUGGESTIONS = [
 
 export default function BotPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi! I'm the Datanautix AI assistant. I can answer questions about our products — **Sarina** (conversational surveys), **Ana** (text analytics), and **SentimetRx** (our integrated platform). What would you like to know?" },
+    { role: 'assistant', content: "Hi! I'm the Datanautix AI assistant. I can answer questions about our products — **Sarina** (conversational surveys), **Ana** (text analytics), and the **Datanautix Platform** (our integrated suite). What would you like to know?" },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -26,7 +26,10 @@ export default function BotPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+    // Scroll to bottom after DOM renders the new message
+    requestAnimationFrame(() => {
+      if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+    })
   }, [messages, loading])
 
   const sendMessage = async (text: string) => {
@@ -98,6 +101,7 @@ export default function BotPage() {
         flex: 1, overflowY: 'auto', padding: '20px 16px',
         display: 'flex', flexDirection: 'column', gap: 16,
         maxWidth: 800, width: '100%', margin: '0 auto',
+        scrollBehavior: 'smooth' as const,
       }}>
         {messages.map((msg, i) => (
           <div key={i} style={{
