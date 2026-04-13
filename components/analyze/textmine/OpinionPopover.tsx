@@ -4,6 +4,7 @@
 // Modal showing opinion words associated with a clicked aspect word
 
 import { useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { extractOpinions, type OpinionResult } from '@/lib/opinionMining'
 
 const SENT_COLORS = {
@@ -76,7 +77,8 @@ export default function OpinionPopover({ word, rows, fields, onClose, onViewComm
     )
   }
 
-  return (
+  // Render via portal to escape any ancestor transforms that break position:fixed
+  var modal = (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={onClose}>
       <div style={{ background: 'white', borderRadius: 16, padding: '24px 28px', boxShadow: '0 24px 64px rgba(0,0,0,.2)', maxWidth: 520, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
@@ -113,4 +115,9 @@ export default function OpinionPopover({ word, rows, fields, onClose, onViewComm
       </div>
     </div>
   )
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modal, document.body)
+  }
+  return modal
 }
