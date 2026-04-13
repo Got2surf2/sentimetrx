@@ -52,12 +52,28 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
 
   var activeTab = TABS.find(function(t) { return pathname.endsWith('/' + t.key) })?.key || 'textmine'
 
+  var [reviewSyncing, setReviewSyncing] = useState(false)
+
   async function handleSync() {
     try {
       var res = await fetch('/api/datasets/' + dataset.id + '/sync', { method: 'POST' })
       var data = await res.json()
       if (data.synced > 0) router.refresh()
     } catch {}
+  }
+
+  async function handleReviewSync() {
+    setReviewSyncing(true)
+    try {
+      // Find the review source for this dataset
+      var srcRes = await fetch('/api/review-sources')
+      var srcData = await srcRes.json()
+      var source = (srcData.sources || []).find(function(s: any) { return s.dataset_id === dataset.id })
+      if (!source) return
+      var res = await fetch('/api/review-sources/' + source.id + '/sync', { method: 'POST' })
+      var data = await res.json()
+      if (data.synced > 0) router.refresh()
+    } catch {} finally { setReviewSyncing(false) }
   }
 
   return (
@@ -147,11 +163,11 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           <span style={{
             fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
             borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
-            background: dataset.source === 'study' ? 'rgba(56,189,248,.25)' : 'rgba(255,255,255,.12)',
-            color: dataset.source === 'study' ? '#bae6fd' : 'rgba(255,255,255,.6)',
-            border: dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : '1px solid rgba(255,255,255,.2)',
+            background: dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : 'rgba(255,255,255,.12)',
+            color: dataset.source === 'study' ? '#bae6fd' : dataset.source === 'google_reviews' ? '#bfdbfe' : 'rgba(255,255,255,.6)',
+            border: dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : dataset.source === 'google_reviews' ? '1px solid rgba(96,165,250,.4)' : '1px solid rgba(255,255,255,.2)',
           }}>
-            {dataset.source === 'study' ? 'Sarina' : 'Upload'}
+            {dataset.source === 'study' ? 'Sarina' : dataset.source === 'google_reviews' ? 'Google Reviews' : 'Upload'}
           </span>
         </div>
 
@@ -162,6 +178,12 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             <button onClick={handleSync}
               style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: 'pointer' }}>
               Sync
+            </button>
+          )}
+          {dataset.source === 'google_reviews' && (
+            <button onClick={handleReviewSync} disabled={reviewSyncing}
+              style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: reviewSyncing ? 'wait' : 'pointer', opacity: reviewSyncing ? 0.6 : 1 }}>
+              {reviewSyncing ? 'Syncing...' : 'Sync Reviews'}
             </button>
           )}
         </div>

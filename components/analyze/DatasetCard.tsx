@@ -114,7 +114,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       position:      'relative' as const,
       minHeight:     220,
     }}
-    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(232,98,42,.12)' }}
+    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
     onMouseLeave={function(e) { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.05)' }}>
 
       {/* 1. Name + menu */}
@@ -342,7 +342,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             {dataset.org_name}
           </span>
         )}
-        {isStudy && dataset.last_synced_at && (
+        {(isStudy || isReviews) && dataset.last_synced_at && (
           <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>
             Synced {timeAgo(dataset.last_synced_at)}
           </span>
@@ -356,7 +356,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         style={{
           width: '100%', padding: '9px 0', borderRadius: 9, fontSize: 13, fontWeight: 700,
           color: isArchived ? '#9ca3af' : 'white',
-          background: isArchived ? '#f3f4f6' : HERMES,
+          background: isArchived ? '#f3f4f6' : isReviews ? '#2563eb' : HERMES,
           border: 'none', cursor: isArchived ? 'not-allowed' : 'pointer',
           transition: 'opacity .15s', fontFamily: 'inherit',
         }}
