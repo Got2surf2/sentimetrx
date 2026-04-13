@@ -7,6 +7,28 @@ import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
 
+const ALLOWED_ORIGINS = [
+  'https://www.datanautix.com',
+  'https://datanautix.com',
+]
+
+function corsHeaders(origin: string | null) {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+  }
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin
+  }
+  return headers
+}
+
+export async function OPTIONS(req: NextRequest) {
+  const origin = req.headers.get('origin')
+  return new NextResponse(null, { status: 204, headers: corsHeaders(origin) })
+}
+
 const KNOWLEDGE_BASE = `
 # DATANAUTIX — Complete Company Knowledge Base
 
@@ -132,16 +154,19 @@ A: No. Sarina is deployed with a QR code or link — no app development or techn
 `
 
 export async function POST(req: NextRequest) {
+  const origin = req.headers.get('origin')
+  const cors = corsHeaders(origin)
+
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
   const rl = checkRateLimit('bot-chat:' + ip, 30, 60000)
-  if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })
 
   let body: any
-  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors }) }
 
   const { messages } = body
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    return NextResponse.json({ error: 'messages required' }, { status: 400 })
+    return NextResponse.json({ error: 'messages required' }, { status: 400, headers: cors })
   }
 
   // Cap conversation length
@@ -177,9 +202,9 @@ ${KNOWLEDGE_BASE}`,
     const data = await response.json()
     const text = data.content?.[0]?.text || 'Sorry, I had trouble generating a response. Please try again.'
 
-    return NextResponse.json({ reply: text })
+    return NextResponse.json({ reply: text }, { headers: cors })
   } catch (err: any) {
     console.error('Bot chat error:', err)
-    return NextResponse.json({ reply: "I'm having trouble connecting right now. Please try again in a moment, or reach out to info@datanautix.com for help." })
+    return NextResponse.json({ reply: "I'm having trouble connecting right now. Please try again in a moment, or reach out to info@datanautix.com for help." }, { headers: cors })
   }
 }
