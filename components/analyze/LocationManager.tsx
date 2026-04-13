@@ -237,6 +237,7 @@ export default function LocationManager({ sourceId }: Props) {
   if (!source) return null
 
   const totalPulled = locations.reduce(function(sum, l) { return sum + l.total_pulled }, 0)
+  const totalEstimated = locations.filter(function(l) { return l.selected }).reduce(function(sum, l) { return sum + l.review_count }, 0)
   const selectedCount = locations.filter(function(l) { return l.selected }).length
   const syncedCount = locations.filter(function(l) { return l.selected && l.last_synced_at }).length
   const errorCount = locations.filter(function(l) { return l.error_message && !l.error_message.startsWith('pending_task:') }).length
@@ -248,7 +249,7 @@ export default function LocationManager({ sourceId }: Props) {
         <div>
           <h2 className="font-bold text-gray-800">Google Reviews — {source.brand_name}</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {syncedCount}/{selectedCount} locations synced · {totalPulled.toLocaleString()} reviews pulled
+            {syncedCount}/{selectedCount} locations synced · {totalPulled.toLocaleString()} of {totalEstimated.toLocaleString()} reviews pulled
             {source.last_synced_at && (
               <span> · Last synced {new Date(source.last_synced_at).toLocaleDateString()}</span>
             )}
@@ -318,7 +319,7 @@ export default function LocationManager({ sourceId }: Props) {
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 800, color: HERMES }}>{syncProgress.reviews.toLocaleString()}</div>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' as const }}>Reviews</div>
+              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600 }}>of {totalEstimated.toLocaleString()} reviews</div>
             </div>
           </div>
           <div style={{ height: 6, background: '#FED7AA', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
@@ -379,7 +380,7 @@ export default function LocationManager({ sourceId }: Props) {
               </div>
               <div className="flex items-center gap-3 flex-shrink-0 text-xs text-gray-400">
                 {loc.rating != null && <span className="text-yellow-600 font-semibold">{loc.rating} ★</span>}
-                <span>{loc.total_pulled.toLocaleString()} pulled</span>
+                <span>{loc.total_pulled.toLocaleString()} of {loc.review_count.toLocaleString()}</span>
                 {loc.last_synced_at && <span>{new Date(loc.last_synced_at).toLocaleDateString()}</span>}
               </div>
             </div>
