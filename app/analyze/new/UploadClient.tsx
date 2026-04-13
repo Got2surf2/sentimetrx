@@ -1,17 +1,19 @@
 'use client'
 
 // app/analyze/new/UploadClient.tsx
-// Three-step upload: parse → name → confirm + chunked upload + compute
+// Source selector → Upload (CSV) or Google Reviews wizard
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
+import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
 
 const HERMES     = '#E8632A'
 const CHUNK_SIZE = 50                   // rows per POST
 const MAX_BYTES  = 3 * 1024 * 1024     // 3 MB safety ceiling per POST
 
+type SourceMode = 'select' | 'upload' | 'google_reviews'
 type Step = 1 | 2 | 3
 
 interface ParsedFile {
@@ -175,6 +177,7 @@ function splitChunks(rows: Record<string, unknown>[]): Record<string, unknown>[]
 
 export default function UploadClient() {
   const router = useRouter()
+  const [sourceMode,  setSourceMode]  = useState<SourceMode>('select')
   const [step,        setStep]        = useState<Step>(1)
   const [parsed,      setParsed]      = useState<ParsedFile | null>(null)
   const [parseError,  setParseError]  = useState('')
@@ -333,13 +336,44 @@ export default function UploadClient() {
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
           <button onClick={function() { router.push('/analyze') }} className="hover:text-gray-600 transition-colors">Analyze</button>
           <span>/</span>
-          <span className="text-gray-700 font-medium">Upload Dataset</span>
+          <span className="text-gray-700 font-medium">New Dataset</span>
         </div>
-        <h1 className="text-2xl font-black text-gray-800">Upload a Dataset</h1>
+        <h1 className="text-2xl font-black text-gray-800">Create a Dataset</h1>
       </div>
+
+      {/* Source selector */}
+      {sourceMode === 'select' && (
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-500">Choose how to create your dataset</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button onClick={function() { setSourceMode('upload') }}
+              className="bg-white border-2 border-gray-200 rounded-2xl p-6 text-left hover:border-orange-400 hover:bg-orange-50 transition-all group">
+              <div className="text-3xl mb-3">📂</div>
+              <h3 className="font-bold text-gray-800 mb-1 group-hover:text-orange-700">Upload a File</h3>
+              <p className="text-xs text-gray-400">CSV, TSV, JSON, or SurveyMonkey export</p>
+            </button>
+            <button onClick={function() { setSourceMode('google_reviews') }}
+              className="bg-white border-2 border-gray-200 rounded-2xl p-6 text-left hover:border-orange-400 hover:bg-orange-50 transition-all group">
+              <div className="text-3xl mb-3">⭐</div>
+              <h3 className="font-bold text-gray-800 mb-1 group-hover:text-orange-700">Download Google Reviews</h3>
+              <p className="text-xs text-gray-400">Search for a brand, select locations, pull all reviews</p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Google Reviews wizard */}
+      {sourceMode === 'google_reviews' && (
+        <GoogleReviewsWizard onBack={function() { setSourceMode('select') }} />
+      )}
+
+      {/* Upload flow */}
+      {sourceMode === 'upload' && <>
 
       {/* Step indicator */}
       <div className="flex items-center gap-3">
+        <button onClick={function() { setSourceMode('select'); setStep(1); setParsed(null) }}
+          className="text-xs text-gray-400 hover:text-gray-600 mr-2">← Back</button>
         {([1, 2, 3] as Step[]).map(function(s) {
           const labels: Record<Step, string> = { 1: 'Upload', 2: 'Details', 3: 'Confirm' }
           const done = step > s; const current = step === s
@@ -523,6 +557,8 @@ export default function UploadClient() {
           </div>
         </div>
       )}
+
+      </>}
     </div>
   )
 }

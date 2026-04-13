@@ -59,7 +59,7 @@ export default async function TextMinePage({ params, searchParams }: Props) {
         schema={schema}
         analytics={analytics}
         savedThemeModel={themeModel}
-        datasetSource={(dataset?.source as 'upload' | 'study') || 'upload'}
+        datasetSource={(dataset?.source as 'upload' | 'study' | 'google_reviews') || 'upload'}
         anaLibrary={dataset?.ana_library || null}
         initialOpenEditor={!!searchParams?.editThemes}
       />

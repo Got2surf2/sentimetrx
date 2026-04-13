@@ -1,0 +1,165 @@
+// app/api/review-sources/route.ts
+// GET  /api/review-sources — list all review sources for user's org
+// POST /api/review-sources — create a new review source + dataset + kick off initial sync
+
+import { NextResponse } from 'next/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
+import { syncReviewSource } from '@/lib/reviewSync'
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
+
+export async function GET() {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { data: userData } = await supabase
+      .from('users')
+      .select('org_id, organizations(features)')
+      .eq('id', user.id)
+      .single()
+
+    const rawOrg  = userData?.organizations
+    const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+    if (!orgData?.features?.analyze) {
+      return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
+    }
+
+    const orgId = userData?.org_id
+    if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+
+    const service = createServiceRoleClient()
+    const { data: sources, error } = await service
+      .from('review_sources')
+      .select('*, review_source_locations(count)')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: false })
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ sources: sources || [] })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Failed to list sources' }, { status: 500 })
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { data: userData } = await supabase
+      .from('users')
+      .select('org_id, organizations(features)')
+      .eq('id', user.id)
+      .single()
+
+    const rawOrg  = userData?.organizations
+    const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+    if (!orgData?.features?.analyze) {
+      return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
+    }
+
+    const orgId = userData?.org_id
+    if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+
+    const body = await req.json()
+    const { brand_name, locations, dataset_name, sync_frequency_hours } = body
+
+    if (!brand_name?.trim()) return NextResponse.json({ error: 'brand_name is required' }, { status: 400 })
+    if (!locations?.length) return NextResponse.json({ error: 'At least one location is required' }, { status: 400 })
+
+    const service = createServiceRoleClient()
+
+    // 1. Create dataset
+    const dsName = (dataset_name || `${brand_name.trim()} Reviews`).trim()
+    const { data: dataset, error: dsErr } = await service
+      .from('datasets')
+      .insert({
+        name:        dsName,
+        description: `Google Reviews for ${brand_name.trim()} (${locations.length} locations)`,
+        source:      'google_reviews',
+        org_id:      orgId,
+        created_by:  user.id,
+        visibility:  'private',
+        status:      'active',
+        row_count:   0,
+      })
+      .select('id')
+      .single()
+
+    if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
+
+    // 2. Create dataset_state
+    await service.from('dataset_state').insert({
+      dataset_id:    dataset.id,
+      schema_config: emptySchemaConfig(),
+      theme_model:   emptyThemeModel(),
+      saved_charts:  [],
+      saved_stats:   [],
+      filter_state:  {},
+      updated_by:    user.id,
+    })
+
+    // 3. Create review source
+    const { data: source, error: srcErr } = await service
+      .from('review_sources')
+      .insert({
+        org_id:                orgId,
+        dataset_id:            dataset.id,
+        brand_name:            brand_name.trim(),
+        status:                'pending',
+        sync_frequency_hours:  sync_frequency_hours || 24,
+        created_by:            user.id,
+      })
+      .select('id')
+      .single()
+
+    if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 500 })
+
+    // 4. Insert all locations
+    const locationRows = locations.map(function(loc: any) {
+      return {
+        review_source_id: source.id,
+        place_id:         loc.place_id,
+        name:             loc.name || '',
+        address:          loc.address || null,
+        city:             loc.city || null,
+        state:            loc.state || null,
+        zip:              loc.zip || null,
+        rating:           loc.rating ?? null,
+        review_count:     loc.review_count || 0,
+        selected:         true,
+      }
+    })
+
+    const { error: locErr } = await service
+      .from('review_source_locations')
+      .insert(locationRows)
+
+    if (locErr) return NextResponse.json({ error: locErr.message }, { status: 500 })
+
+    // 5. Kick off initial sync (non-blocking — catch errors but don't fail creation)
+    syncReviewSource(source.id, service).catch(function(err) {
+      console.error('[review-sources] initial sync failed:', err)
+      service.from('review_sources').update({
+        status: 'error',
+        error_message: err?.message || 'Initial sync failed',
+      }).eq('id', source.id)
+    })
+
+    return NextResponse.json({
+      source_id:  source.id,
+      dataset_id: dataset.id,
+      locations:  locations.length,
+      status:     'pending',
+    }, { status: 201 })
+  } catch (err: any) {
+    console.error('[review-sources] create error:', err)
+    return NextResponse.json({ error: err?.message || 'Failed to create review source' }, { status: 500 })
+  }
+}

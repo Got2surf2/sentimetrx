@@ -59,7 +59,7 @@ interface Props {
   schema:            SchemaConfig
   analytics:         DatasetAnalytics | null
   savedThemeModel:   ThemeModel | null
-  datasetSource?:    'upload' | 'study'
+  datasetSource?:    'upload' | 'study' | 'google_reviews'
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
 }
@@ -779,7 +779,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [saved, setSaved] = useState(false)
 
   // Filter state (from global context)
-  var { filters, setFilters, setShowFilters } = useFilters()
+  var { filters, effectiveFilters, setFilters, setShowFilters } = useFilters()
 
   // Warn before leaving with unsaved changes
   useEffect(function() {
@@ -941,8 +941,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   // Apply global filters to rows
-  var filteredRows = applyFilters(rows, filters)
-  var activeFilterCount = filterCount(filters)
+  var filteredRows = applyFilters(rows, effectiveFilters)
+  var activeFilterCount = filterCount(effectiveFilters)
 
   // Recount theme hits against filtered data for display
   // Use effectiveFields if they actually find data, otherwise fall back to the field names stored in the theme model

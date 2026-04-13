@@ -65,7 +65,7 @@ export default async function DatasetLayout({ children, params }: Props) {
           dataset={{
             id:             dataset.id,
             name:           dataset.name,
-            source:         dataset.source as 'upload' | 'study',
+            source:         dataset.source as 'upload' | 'study' | 'google_reviews',
             visibility:     dataset.visibility as 'private' | 'public',
             status:         dataset.status as 'active' | 'archived',
             row_count:      dataset.row_count,

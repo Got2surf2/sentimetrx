@@ -9,7 +9,7 @@ import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 

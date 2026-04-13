@@ -1627,7 +1627,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
   var [samplingMeta, setSamplingMeta] = useState<{ sampled: boolean; sampleSize: number; totalRows: number } | null>(null)
-  var { filters } = useFilters()
+  var { effectiveFilters: filters } = useFilters()
 
   // Positive number = systematic sample cap. 0 = "all" but still capped at 5000 to prevent browser freeze.
   var STATS_HARD_CAP = 5000

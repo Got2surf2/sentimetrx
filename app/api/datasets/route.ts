@@ -70,7 +70,7 @@ export async function POST(req: Request) {
   const { name, description, source, study_id, visibility, ana_library } = body
 
   if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
-  if (!['upload', 'study'].includes(source)) {
+  if (!['upload', 'study', 'google_reviews'].includes(source)) {
     return NextResponse.json({ error: 'Invalid source' }, { status: 400 })
   }
 

@@ -1,0 +1,168 @@
+'use client'
+
+// components/analyze/LocationManager.tsx
+// Shows sync status per location, toggle on/off, manual sync trigger
+
+import { useState, useEffect } from 'react'
+
+const HERMES = '#E8632A'
+
+interface Location {
+  id: string
+  place_id: string
+  name: string
+  address: string | null
+  city: string | null
+  state: string | null
+  rating: number | null
+  review_count: number
+  selected: boolean
+  total_pulled: number
+  last_synced_at: string | null
+  error_message: string | null
+}
+
+interface Source {
+  id: string
+  brand_name: string
+  status: string
+  sync_frequency_hours: number
+  last_synced_at: string | null
+  next_sync_at: string | null
+  error_message: string | null
+}
+
+interface Props {
+  sourceId: string
+}
+
+export default function LocationManager({ sourceId }: Props) {
+  const [source, setSource] = useState<Source | null>(null)
+  const [locations, setLocations] = useState<Location[]>([])
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<string | null>(null)
+
+  useEffect(function() {
+    fetch('/api/review-sources/' + sourceId)
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        setSource(data.source)
+        setLocations(data.locations || [])
+      })
+      .catch(function() {})
+      .finally(function() { setLoading(false) })
+  }, [sourceId])
+
+  async function handleSync() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/review-sources/' + sourceId + '/sync', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setSyncResult('Synced ' + data.synced + ' new reviews. Total: ' + data.total.toLocaleString())
+        // Refresh locations
+        const refreshRes = await fetch('/api/review-sources/' + sourceId)
+        const refreshData = await refreshRes.json()
+        setSource(refreshData.source)
+        setLocations(refreshData.locations || [])
+      } else {
+        setSyncResult('Sync failed: ' + (data.error || 'Unknown error'))
+      }
+    } catch (err: any) {
+      setSyncResult('Sync failed: ' + (err?.message || 'Unknown error'))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function handlePauseResume() {
+    if (!source) return
+    const newStatus = source.status === 'active' ? 'paused' : 'active'
+    await fetch('/api/review-sources/' + sourceId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    })
+    setSource(function(prev) { return prev ? { ...prev, status: newStatus } : prev })
+  }
+
+  if (loading) return <div className="bg-white border border-gray-200 rounded-2xl p-6 text-sm text-gray-400">Loading locations...</div>
+  if (!source) return null
+
+  const totalPulled = locations.reduce(function(sum, l) { return sum + l.total_pulled }, 0)
+  const selectedCount = locations.filter(function(l) { return l.selected }).length
+  const errorCount = locations.filter(function(l) { return l.error_message }).length
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-bold text-gray-800">Google Reviews — {source.brand_name}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {selectedCount} locations · {totalPulled.toLocaleString()} reviews pulled
+            {source.last_synced_at && (
+              <span> · Last synced {new Date(source.last_synced_at).toLocaleDateString()}</span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handlePauseResume}
+            className={'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ' +
+              (source.status === 'active'
+                ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100')}>
+            {source.status === 'active' ? 'Pause Sync' : 'Resume Sync'}
+          </button>
+          <button onClick={handleSync} disabled={syncing}
+            className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all"
+            style={{ background: HERMES }}>
+            {syncing ? 'Syncing...' : 'Sync Now'}
+          </button>
+        </div>
+      </div>
+
+      {source.status === 'paused' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-700">
+          Automatic sync is paused. Click "Resume Sync" to re-enable.
+        </div>
+      )}
+
+      {source.error_message && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-xs text-red-600">{source.error_message}</div>
+      )}
+
+      {syncResult && (
+        <div className={'rounded-xl px-4 py-2 text-xs ' + (syncResult.includes('failed') ? 'bg-red-50 border border-red-200 text-red-600' : 'bg-green-50 border border-green-200 text-green-700')}>
+          {syncResult}
+        </div>
+      )}
+
+      {errorCount > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-xs text-red-600">
+          {errorCount} location(s) had errors during last sync
+        </div>
+      )}
+
+      <div style={{ maxHeight: 300, overflowY: 'auto' }} className="flex flex-col gap-1">
+        {locations.map(function(loc) {
+          return (
+            <div key={loc.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm">
+              <div className={'w-2 h-2 rounded-full flex-shrink-0 ' + (loc.error_message ? 'bg-red-400' : loc.last_synced_at ? 'bg-green-400' : 'bg-gray-300')} />
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-700 truncate">{loc.name}</p>
+                <p className="text-xs text-gray-400 truncate">{[loc.city, loc.state].filter(Boolean).join(', ')}</p>
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0 text-xs text-gray-400">
+                {loc.rating != null && <span className="text-yellow-600 font-semibold">{loc.rating} ★</span>}
+                <span>{loc.total_pulled.toLocaleString()} pulled</span>
+                {loc.last_synced_at && <span>{new Date(loc.last_synced_at).toLocaleDateString()}</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

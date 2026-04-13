@@ -11,7 +11,7 @@ import DatasetHeader from './DatasetHeader'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number; sqt?: string | null; scoreField?: boolean }
@@ -26,7 +26,7 @@ interface Props {
 }
 
 function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, children }: Props) {
-  const { filters, setFilters, showFilters, setShowFilters } = useFilters()
+  const { filters, setFilters, lockedFilters, setLockedFilters, showFilters, setShowFilters } = useFilters()
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [rowsLoaded, setRowsLoaded] = useState(false)
   const [loadingRows, setLoadingRows] = useState(false)
@@ -59,6 +59,21 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       })
       .catch(function() {})
   }, [datasetId])
+
+  // Load location-scoped access filter for google_reviews datasets
+  useEffect(function() {
+    if (dataset.source !== 'google_reviews') return
+    fetch('/api/datasets/' + datasetId + '/user-location-filter')
+      .then(function(r) { return r.ok ? r.json() : { locations: null } })
+      .then(function(data: { locations: string[] | null }) {
+        if (data.locations && data.locations.length > 0) {
+          setLockedFilters({
+            location: { type: 'cat', values: new Set(data.locations), excludeBlanks: true }
+          })
+        }
+      })
+      .catch(function() {})
+  }, [datasetId, dataset.source])
 
   // Fetch lightweight filter options when filter modal opens (not all rows)
   useEffect(function() {
@@ -107,7 +122,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
     })()
   }, [showFilters, rowsLoaded, loadingRows, datasetId])
 
-  const fCount = filterCount(filters)
+  const fCount = filterCount(filters) + filterCount(lockedFilters)
 
   // Save session handler
   const handleSaveSession = function() {

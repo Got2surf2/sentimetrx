@@ -57,7 +57,7 @@ interface SchemaField { field: string; type: string; label?: string; status?: st
 interface Props { datasetId: string; datasetName: string; onClose: () => void }
 
 export default function ExportModal({ datasetId, datasetName, onClose }: Props) {
-  const { filters } = useFilters()
+  const { effectiveFilters: filters } = useFilters()
   const activeFilterCount = filterCount(filters)
   const [step,         setStep]         = useState<Step>('mode')
   const [format,       setFormat]       = useState<Format>('pptx')

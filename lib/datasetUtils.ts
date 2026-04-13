@@ -272,6 +272,25 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
   return { fields, primaryTextField: 'q3_response', autoDetected: false, version: 1 }
 }
 
+export function buildGoogleReviewsSchema(): SchemaConfig {
+  const fields: SchemaFieldConfig[] = [
+    { field: 'review_id',        type: 'id' },
+    { field: 'author',           type: 'categorical', label: 'Author' },
+    { field: 'rating',           type: 'numeric',     sqt: 'rating',    label: 'Star Rating', min: 1, max: 5 },
+    { field: 'review_text',      type: 'open-ended',  sqt: 'open-text', label: 'Review' },
+    { field: 'review_date',      type: 'date',        label: 'Review Date' },
+    { field: 'location',         type: 'categorical', label: 'Location' },
+    { field: 'location_name',    type: 'categorical', label: 'Location Name' },
+    { field: 'location_address', type: 'ignore',      label: 'Address' },
+    { field: 'location_city',    type: 'categorical', label: 'City' },
+    { field: 'location_state',   type: 'categorical', label: 'State' },
+    { field: 'place_id',         type: 'id' },
+    { field: 'owner_response',   type: 'open-ended',  sqt: 'open-text', label: 'Owner Response' },
+    { field: 'review_likes',     type: 'numeric',     label: 'Helpful Votes' },
+  ]
+  return { fields, primaryTextField: 'review_text', autoDetected: false, version: 1 }
+}
+
 export function emptyThemeModel() {
   return { themes: [] as unknown[], aiGenerated: false, version: 1 }
 }

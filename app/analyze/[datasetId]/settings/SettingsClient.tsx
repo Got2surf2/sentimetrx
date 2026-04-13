@@ -6,21 +6,24 @@
 import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
+import LocationManager from '@/components/analyze/LocationManager'
+import UserLocationAssigner from '@/components/analyze/UserLocationAssigner'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
 
 interface Props {
-  dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'visibility' | 'status' | 'row_count'>
+  dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'source' | 'visibility' | 'status' | 'row_count'>
   schema:     SchemaConfig
   isOwner:    boolean
   isAdmin?:   boolean
   allOrgs?:   OrgOption[]
+  reviewSourceId?: string | null
 }
 
 const HERMES = '#E8632A'
 
-export default function SettingsClient({ dataset, schema: initialSchema, isOwner, isAdmin = false, allOrgs = [] }: Props) {
+export default function SettingsClient({ dataset, schema: initialSchema, isOwner, isAdmin = false, allOrgs = [], reviewSourceId = null }: Props) {
   const router = useRouter()
 
   const [name,        setName]        = useState(dataset.name)
@@ -265,6 +268,16 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         )}
         {appendError && <p className="text-xs text-red-500">{appendError}</p>}
       </div>
+
+      {/* Google Reviews: Location management */}
+      {dataset.source === 'google_reviews' && reviewSourceId && (
+        <LocationManager sourceId={reviewSourceId} />
+      )}
+
+      {/* Google Reviews: User location assignments (admin only) */}
+      {dataset.source === 'google_reviews' && reviewSourceId && (isOwner || isAdmin) && (
+        <UserLocationAssigner sourceId={reviewSourceId} />
+      )}
 
       {/* Admin: transfer to another org */}
       {isAdmin && allOrgs.length > 0 && (

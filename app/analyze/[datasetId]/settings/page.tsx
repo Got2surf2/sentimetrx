@@ -26,6 +26,8 @@ export default async function SettingsPage({ params }: Props) {
 
   const isAdmin = !!orgData?.is_admin_org
 
+  const service = isAdmin ? (await import('@/lib/supabase/server')).createServiceRoleClient() : null
+
   const [{ data: dataset }, { data: stateRow }] = await Promise.all([
     supabase
       .from('datasets')
@@ -43,11 +45,22 @@ export default async function SettingsPage({ params }: Props) {
 
   const isOwner = dataset.created_by === user.id
 
+  // If google_reviews dataset, look up the review_source_id
+  let reviewSourceId: string | null = null
+  if (dataset.source === 'google_reviews') {
+    const svc = service || (await import('@/lib/supabase/server')).createServiceRoleClient()
+    const { data: rs } = await svc
+      .from('review_sources')
+      .select('id')
+      .eq('dataset_id', params.datasetId)
+      .single()
+    reviewSourceId = rs?.id || null
+  }
+
   // Fetch all orgs for admin transfer dropdown
   let allOrgs: { id: string; name: string }[] = []
   if (isAdmin) {
-    const service = createServiceRoleClient()
-    const { data: orgs } = await service
+    const { data: orgs } = await (service || (await import('@/lib/supabase/server')).createServiceRoleClient())
       .from('organizations')
       .select('id, name')
       .neq('id', (dataset as any).org_id)
@@ -62,6 +75,7 @@ export default async function SettingsPage({ params }: Props) {
       isOwner={isOwner}
       isAdmin={isAdmin}
       allOrgs={allOrgs}
+      reviewSourceId={reviewSourceId}
     />
   )
 }

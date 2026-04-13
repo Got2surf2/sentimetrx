@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/cleanup-shared-links",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/review-sync",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

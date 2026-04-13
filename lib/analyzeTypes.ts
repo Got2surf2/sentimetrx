@@ -169,7 +169,7 @@ export interface Dataset {
   id:             string
   name:           string
   description:    string | null
-  source:         'upload' | 'study'
+  source:         'upload' | 'study' | 'google_reviews'
   study_id:       string | null
   org_id:         string
   client_id:      string | null
@@ -217,4 +217,41 @@ export interface PagedRowsResponse {
   totalRows:  number
   totalPages: number
   field?:     string    // if filtered to single field
+}
+
+// -- Google Reviews types --------------------------------------------------
+
+export interface ReviewSource {
+  id:                    string
+  org_id:                string
+  dataset_id:            string | null
+  brand_name:            string
+  status:                'pending' | 'searching' | 'active' | 'paused' | 'error'
+  sync_frequency_hours:  number
+  last_synced_at:        string | null
+  next_sync_at:          string | null
+  error_message:         string | null
+  created_by:            string
+  created_at:            string
+  updated_at:            string
+}
+
+export interface ReviewSourceLocation {
+  id:                string
+  review_source_id:  string
+  place_id:          string
+  name:              string
+  address:           string | null
+  city:              string | null
+  state:             string | null
+  zip:               string | null
+  rating:            number | null
+  review_count:      number
+  selected:          boolean
+  last_review_id:    string | null
+  last_review_date:  string | null
+  total_pulled:      number
+  last_synced_at:    string | null
+  error_message:     string | null
+  created_at:        string
 }
