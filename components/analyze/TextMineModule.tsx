@@ -207,23 +207,29 @@ function SamplingControl({ samplePct, setSamplePct, total, lastRunPct, onRerun }
 
 // ─── BreakdownSelector ────────────────────────────────────────────────────────
 
-function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schema, parsedData, selectedValues, setSelectedValues }: {
+function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schema, parsedData, analytics, selectedValues, setSelectedValues }: {
   catFields: string[]
   breakdownField: string | null
   setBreakdownField: (f: string | null) => void
   schema: SchemaField[]
   parsedData: Record<string, unknown>[]
+  analytics: any
   selectedValues: Set<string>
   setSelectedValues: (s: Set<string>) => void
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   function getValues(field: string) {
-    const s = schema.find(function(f) { return f.field === field })
+    // Use analytics fieldSummaries for authoritative value list (covers all rows, not just sample)
+    var summary = analytics?.fieldSummaries?.[field]
+    if (summary?.values) return summary.values
+    if (summary?.topN) return summary.topN
+    var s = schema.find(function(f) { return f.field === field })
     if (s && s.values) return s.values
-    const vals = new Set<string>()
+    // Fallback: extract from sampled rows
+    var vals = new Set<string>()
     parsedData.forEach(function(r) {
-      const v = r[field]
+      var v = r[field]
       if (v != null && String(v).trim() !== '') vals.add(String(v))
     })
     return Array.from(vals).sort()
@@ -897,7 +903,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Fetch rows with sampling cap to avoid browser OOM on large datasets.
   // Uses sampleMax=5000 for comment display, word cloud, and per-row theme assignment.
   // Accurate theme counts come from the server-side theme-counts endpoint.
-  const SAMPLE_CAP = 5000
+  const SAMPLE_CAP = 15000
   const fetchAllRows = useCallback(async function() {
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
