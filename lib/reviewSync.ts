@@ -62,7 +62,13 @@ export async function syncReviewSource(
         const check = await checkReviewTask(ref)
 
         if (check.status === 'ready') {
+          console.log(`[reviewSync] ${loc.name}: got ${check.reviews.length} raw reviews`)
           const newReviews = filterNewReviews(check.reviews, loc.last_review_id, loc.last_review_date)
+          console.log(`[reviewSync] ${loc.name}: ${newReviews.length} new reviews after filter`)
+          if (check.reviews.length === 0) {
+            // Task completed but returned no reviews — flag it
+            result.errors.push(`${loc.name}: API returned 0 reviews (expected ~${loc.review_count})`)
+          }
           const label = formatLocationLabel(loc.name, loc.city, loc.state)
           for (const rev of newReviews) {
             allNewRows.push(reviewToRow(rev, loc, label))
@@ -73,7 +79,7 @@ export async function syncReviewSource(
             last_review_date: newest ? newest.timestamp : loc.last_review_date,
             total_pulled: loc.total_pulled + newReviews.length,
             last_synced_at: new Date().toISOString(),
-            error_message: null,
+            error_message: check.reviews.length === 0 ? 'API returned 0 reviews' : null,
           }).eq('id', loc.id)
           result.locations_synced++
         } else if (check.status === 'error') {

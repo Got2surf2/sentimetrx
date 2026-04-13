@@ -189,8 +189,18 @@ export async function checkReviewTask(ref: ReviewTaskRef): Promise<TaskCheckResu
   if (!task) return { status: 'pending' }
 
   if (task.status_code === 20000 && task.result?.length) {
-    const items = task.result[0]?.items || []
-    return { status: 'ready', reviews: items.map(parseReviewItem).filter((r: DfsReview | null) => r !== null) as DfsReview[] }
+    const resultData = task.result[0]
+    const items = resultData?.items || []
+    console.log('[dataforseo] task ready — items:', items.length, 'sample keys:', items[0] ? Object.keys(items[0]).join(',') : 'none', 'reviews_count:', resultData?.reviews_count)
+    if (items.length === 0 && resultData?.reviews_count > 0) {
+      // Items empty but reviews exist — might be nested differently
+      console.warn('[dataforseo] reviews_count > 0 but items is empty. Full result keys:', Object.keys(resultData).join(','))
+    }
+    const reviews = items.map(parseReviewItem).filter((r: DfsReview | null) => r !== null) as DfsReview[]
+    if (items.length > 0 && reviews.length === 0) {
+      console.warn('[dataforseo] parseReviewItem filtered all items. Sample item:', JSON.stringify(items[0]).slice(0, 300))
+    }
+    return { status: 'ready', reviews }
   }
   if (task.status_code === 40402 || task.status_code === 40602) {
     return { status: 'pending' }
@@ -281,17 +291,20 @@ export async function fetchReviewsBatch(
 }
 
 function parseReviewItem(item: any): DfsReview | null {
-  if (!item?.review_id) return null
+  if (!item) return null
+  // Handle different field names across Reviews API vs Business Data API
+  const reviewId = item.review_id || item.id || item.review_url || null
+  if (!reviewId) return null
   return {
-    review_id: item.review_id,
-    profile_name: item.profile_name || 'Anonymous',
-    rating: item.rating?.value ?? 0,
-    review_text: item.review_text || null,
-    timestamp: item.timestamp || '',
-    owner_answer: item.owner_answer || null,
+    review_id: String(reviewId),
+    profile_name: item.profile_name || item.author_name || item.author || 'Anonymous',
+    rating: typeof item.rating === 'number' ? item.rating : (item.rating?.value ?? item.review_rating ?? 0),
+    review_text: item.review_text || item.text || item.snippet || null,
+    timestamp: item.timestamp || item.time || item.date || '',
+    owner_answer: item.owner_answer || item.owner_response || null,
     owner_timestamp: item.owner_timestamp || null,
-    review_url: item.review_url || null,
-    review_likes: item.rating?.votes_count ?? 0,
+    review_url: item.review_url || item.url || null,
+    review_likes: item.helpful_votes || item.review_likes || item.rating?.votes_count ?? 0,
   }
 }
 
