@@ -63,6 +63,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
+  // Handle restart: reset to setup, clear all turns and themes
+  if (body.restart) {
+    await db.from('townhall_turns').delete().eq('session_id', params.id)
+    await db.from('townhall_themes').delete().eq('session_id', params.id)
+    const { data, error } = await db
+      .from('townhall_sessions')
+      .update({ status: 'setup', started_at: null, ended_at: null, response_counter: 0 })
+      .eq('id', params.id)
+      .select('id, status, started_at, ended_at')
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  }
+
   // Only allow updating specific fields
   const allowed = ['name', 'config', 'discussion_guide', 'status']
   const updates: Record<string, unknown> = {}

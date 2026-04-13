@@ -78,14 +78,22 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     return () => clearInterval(interval)
   }, [fetchData])
 
-  const handleSessionAction = async (action: 'start' | 'end') => {
+  const handleSessionAction = async (action: 'start' | 'end' | 'restart') => {
     setActionLoading(action)
-    const newStatus = action === 'start' ? 'active' : 'ended'
-    await fetch('/api/townhall/sessions/' + sessionId, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    })
+    if (action === 'restart') {
+      await fetch('/api/townhall/sessions/' + sessionId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restart: true }),
+      })
+    } else {
+      const newStatus = action === 'start' ? 'active' : 'ended'
+      await fetch('/api/townhall/sessions/' + sessionId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+    }
     await fetchData()
     setActionLoading(null)
   }
@@ -196,6 +204,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                   style={{ background: '#ef4444' }}>
                   {actionLoading === 'end' ? 'Ending...' : 'End Session'}
+                </button>
+              )}
+              {isEnded && (
+                <button onClick={() => handleSessionAction('restart')} disabled={actionLoading === 'restart'}
+                  className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                  style={{ background: HERMES }}>
+                  {actionLoading === 'restart' ? 'Restarting...' : 'Restart Session'}
                 </button>
               )}
             </div>
