@@ -304,7 +304,7 @@ function parseReviewItem(item: any): DfsReview | null {
     owner_answer: item.owner_answer || item.owner_response || null,
     owner_timestamp: item.owner_timestamp || null,
     review_url: item.review_url || item.url || null,
-    review_likes: item.helpful_votes || item.review_likes || item.rating?.votes_count ?? 0,
+    review_likes: item.helpful_votes || item.review_likes || (item.rating?.votes_count ?? 0),
   }
 }
 
