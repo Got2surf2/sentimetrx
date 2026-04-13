@@ -18,7 +18,7 @@ const SUGGESTIONS = [
 
 export default function BotPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi! I'm the Datanautix AI assistant. I can answer questions about our products — **Sarina** (conversational surveys), **Ana** (text analytics), and the **Datanautix Platform** (our integrated suite). What would you like to know?" },
+    { role: 'assistant', content: "Hi! I'm the Datanautix assistant. I can answer questions about our products — **Sarina** (conversational surveys), **Ana** (text analytics), and the **Datanautix Platform** (our integrated suite). What would you like to know?" },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -88,7 +88,7 @@ export default function BotPage() {
           🤖
         </div>
         <div>
-          <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>Datanautix AI Assistant</div>
+          <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>Datanautix Assistant</div>
           <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>Ask me anything about our products</div>
         </div>
         <div style={{ marginLeft: 'auto' }}>
@@ -239,7 +239,7 @@ export default function BotPage() {
         <div style={{ textAlign: 'center', marginTop: 8 }}>
           <span style={{ color: '#9ca3af', fontSize: '0.6875rem' }}>
             Powered by <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
-              style={{ color: '#6b7280', fontWeight: 600, textDecoration: 'none' }}>Datanautix</a> AI
+              style={{ color: '#6b7280', fontWeight: 600, textDecoration: 'none' }}>Datanautix</a>
           </span>
         </div>
       </div>

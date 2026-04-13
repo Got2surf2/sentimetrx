@@ -18,7 +18,7 @@ const SUGGESTIONS = [
 
 export default function ClaraPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi, I'm Clara — the Craniometrix AI assistant. I'm here to help you learn about how we support dementia patients, caregivers, and providers through the GUIDE program. Are you a caregiver or a healthcare provider?" },
+    { role: 'assistant', content: "Hi, I'm Clara — your Craniometrix assistant. I'm here to help you learn about how we support dementia patients, caregivers, and providers through the GUIDE program. Are you a caregiver or a healthcare provider?" },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -89,7 +89,7 @@ export default function ClaraPage() {
         </div>
         <div>
           <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>Clara</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>Craniometrix AI Assistant</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>Craniometrix Assistant</div>
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <a href="https://www.craniometrix.com" target="_blank" rel="noopener noreferrer"
@@ -239,7 +239,7 @@ export default function ClaraPage() {
         <div style={{ textAlign: 'center', marginTop: 8 }}>
           <span style={{ color: '#9ca3af', fontSize: '0.6875rem' }}>
             Powered by <a href="https://www.craniometrix.com" target="_blank" rel="noopener noreferrer"
-              style={{ color: '#566476', fontWeight: 600, textDecoration: 'none' }}>Craniometrix</a> AI
+              style={{ color: '#566476', fontWeight: 600, textDecoration: 'none' }}>Craniometrix</a>
           </span>
         </div>
       </div>

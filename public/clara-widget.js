@@ -9,7 +9,7 @@
   ];
 
   var messages = [
-    { role: 'assistant', content: "Hi, I'm Clara — the Craniometrix AI assistant. I'm here to help you learn about how we support dementia patients, caregivers, and providers. Are you a caregiver or a healthcare provider?" }
+    { role: 'assistant', content: "Hi, I'm Clara — your Craniometrix assistant. I'm here to help you learn about how we support dementia patients, caregivers, and providers. Are you a caregiver or a healthcare provider?" }
   ];
   var loading = false;
 
@@ -62,7 +62,7 @@
   // Panel
   var panel = document.createElement('div');
   panel.className = 'clara-panel';
-  panel.innerHTML = '<div class="clara-hdr"><div class="clara-av">C</div><div><div class="clara-hdr-title">Clara</div><div class="clara-hdr-sub">Craniometrix AI Assistant</div></div></div><div class="clara-msgs" id="clara-msgs"></div><div class="clara-sug" id="clara-sug"></div><div class="clara-input"><textarea id="clara-inp" rows="1" placeholder="Ask Clara about Craniometrix..."></textarea><button class="clara-send" id="clara-send">&#8593;</button></div>';
+  panel.innerHTML = '<div class="clara-hdr"><div class="clara-av">C</div><div><div class="clara-hdr-title">Clara</div><div class="clara-hdr-sub">Craniometrix Assistant</div></div></div><div class="clara-msgs" id="clara-msgs"></div><div class="clara-sug" id="clara-sug"></div><div class="clara-input"><textarea id="clara-inp" rows="1" placeholder="Ask Clara about Craniometrix..."></textarea><button class="clara-send" id="clara-send">&#8593;</button></div>';
   document.body.appendChild(panel);
 
   var msgsEl = document.getElementById('clara-msgs');

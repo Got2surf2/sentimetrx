@@ -9,7 +9,7 @@
   ];
 
   var messages = [
-    { role: 'assistant', content: "Welcome to Tabla! I'm Nora, your AI host. I can help you find a location, explore the menu, make a reservation, or learn about catering. What can I help you with?" }
+    { role: 'assistant', content: "Welcome to Tabla! I'm Nora, your virtual host. I can help you find a location, explore the menu, make a reservation, or learn about catering. What can I help you with?" }
   ];
   var loading = false;
 
@@ -59,7 +59,7 @@
 
   var panel = document.createElement('div');
   panel.className = 'nora-panel';
-  panel.innerHTML = '<div class="nora-hdr"><div class="nora-av">N</div><div><div class="nora-hdr-title">Nora</div><div class="nora-hdr-sub">Tabla Cuisine AI Host</div></div></div><div class="nora-msgs" id="nora-msgs"></div><div class="nora-sug" id="nora-sug"></div><div class="nora-input"><textarea id="nora-inp" rows="1" placeholder="Ask Nora about Tabla..."></textarea><button class="nora-send" id="nora-send">&#8593;</button></div>';
+  panel.innerHTML = '<div class="nora-hdr"><div class="nora-av">N</div><div><div class="nora-hdr-title">Nora</div><div class="nora-hdr-sub">Tabla Cuisine Virtual Host</div></div></div><div class="nora-msgs" id="nora-msgs"></div><div class="nora-sug" id="nora-sug"></div><div class="nora-input"><textarea id="nora-inp" rows="1" placeholder="Ask Nora about Tabla..."></textarea><button class="nora-send" id="nora-send">&#8593;</button></div>';
   document.body.appendChild(panel);
 
   var msgsEl = document.getElementById('nora-msgs');

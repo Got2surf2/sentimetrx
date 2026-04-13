@@ -18,7 +18,7 @@ const SUGGESTIONS = [
 
 export default function NoraPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Welcome to Tabla! I'm Nora, your AI host. I can help you find a location, explore the menu, make a reservation, or learn about catering and events. What can I help you with?" },
+    { role: 'assistant', content: "Welcome to Tabla! I'm Nora, your virtual host. I can help you find a location, explore the menu, make a reservation, or learn about catering and events. What can I help you with?" },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -89,7 +89,7 @@ export default function NoraPage() {
         </div>
         <div>
           <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem', fontFamily: 'Georgia, serif' }}>Nora</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontFamily: 'system-ui, sans-serif' }}>Tabla Cuisine AI Host</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontFamily: 'system-ui, sans-serif' }}>Tabla Cuisine Virtual Host</div>
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <a href="https://www.tablacuisine.com" target="_blank" rel="noopener noreferrer"
@@ -241,7 +241,7 @@ export default function NoraPage() {
         <div style={{ textAlign: 'center', marginTop: 8 }}>
           <span style={{ color: '#9ca3af', fontSize: '0.6875rem' }}>
             Powered by <a href="https://www.tablacuisine.com" target="_blank" rel="noopener noreferrer"
-              style={{ color: '#8B6914', fontWeight: 600, textDecoration: 'none' }}>Tabla Cuisine</a> AI
+              style={{ color: '#8B6914', fontWeight: 600, textDecoration: 'none' }}>Tabla Cuisine</a>
           </span>
         </div>
       </div>
