@@ -13,6 +13,7 @@ interface Props {
   analyzeEnabled?: boolean   // NEW -- true if org has features.analyze
   campaignsEnabled?: boolean // true if org has features.campaigns
   currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'test-spinner'
+  datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
 const HERMES = '#E8632A'
@@ -65,7 +66,7 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
   )
 }
 
-export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled = true, campaignsEnabled = false, currentPage }: Props) {
+export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled = true, campaignsEnabled = false, currentPage, datasetName }: Props) {
 
   const navLink = (page: string, href: string, label: string) => {
     const active = currentPage === page
@@ -113,6 +114,20 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
           </>
         )}
       </div>
+
+      {/* Center: dataset name pill */}
+      {datasetName && (
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', maxWidth: '40%', pointerEvents: 'none' }}>
+          <div style={{
+            background: '#2563eb', color: 'white', fontSize: 12, fontWeight: 700,
+            padding: '4px 16px', borderRadius: 20, whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
+            boxShadow: '0 2px 8px rgba(37,99,235,.3)',
+          }} title={datasetName}>
+            {datasetName}
+          </div>
+        </div>
+      )}
 
       {/* Right: nav links */}
       <div className="flex items-center gap-0.5 flex-shrink-0">

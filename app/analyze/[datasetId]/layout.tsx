@@ -59,6 +59,7 @@ export default async function DatasetLayout({ children, params }: Props) {
         fullName={userData?.full_name  || ''}
         analyzeEnabled={true}
         currentPage="analyze"
+        datasetName={dataset.name}
       />
       <div style={{ paddingTop: 56, display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         <DatasetShell

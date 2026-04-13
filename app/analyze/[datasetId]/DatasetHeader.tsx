@@ -155,11 +155,8 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           )}
         </div>
 
-        {/* Dataset name + source pill */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0, minWidth: 0, maxWidth: 280 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'white', background: 'rgba(255,255,255,.2)', borderRadius: 20, padding: '3px 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }} title={dataset.name}>
-            {dataset.name}
-          </span>
+        {/* Source pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
           <span style={{
             fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
             borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
