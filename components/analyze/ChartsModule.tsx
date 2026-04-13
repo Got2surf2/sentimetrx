@@ -192,7 +192,7 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
     if (!ref.current || !traces.length) return
     var baseX = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
     var baseY = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
-    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 40, r: 80, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
+    var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 48, r: 90, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
     var merged = Object.assign({}, base, layout || {})
     // Deep merge axes so caller's title/tickangle don't lose grid settings
     merged.xaxis = Object.assign({}, baseX, layout?.xaxis || {})
@@ -269,8 +269,42 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
 
 // ─── Chart Renderers (receive field values as params) ─────────────────────
 
+// Resolve value aliases: returns the alias if one exists, otherwise the original value
+function resolveAlias(field: string, value: string, schema: SchemaField[]): string {
+  var f = schema.find(function(s) { return s.field === field })
+  if (f && (f as any).valueAliases) {
+    var alias = (f as any).valueAliases[value]
+    if (alias) return alias
+  }
+  return value
+}
+
+// Transform a counts object by applying value aliases to all keys
+function aliasedCounts(field: string, counts: Record<string, number>, schema: SchemaField[]): Record<string, number> {
+  var f = schema.find(function(s) { return s.field === field })
+  var aliases = (f as any)?.valueAliases
+  if (!aliases || Object.keys(aliases).length === 0) return counts
+  var out: Record<string, number> = {}
+  Object.entries(counts).forEach(function(e) {
+    var key = aliases[e[0]] || e[0]
+    out[key] = (out[key] || 0) + e[1]
+  })
+  return out
+}
+
 function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }): React.ReactNode {
-  var fs = analytics.fieldSummaries
+  var rawFs = analytics.fieldSummaries
+  // Apply value aliases to all field summary counts so every chart gets aliased labels
+  var fs: Record<string, FieldSummary> = {}
+  Object.entries(rawFs).forEach(function(entry) {
+    var key = entry[0], summary = entry[1] as any
+    if (summary.counts) {
+      var al = aliasedCounts(key, summary.counts, schema)
+      fs[key] = Object.assign({}, summary, { counts: al, topN: summary.topN ? summary.topN.map(function(v: string) { return resolveAlias(key, v, schema) }) : undefined })
+    } else {
+      fs[key] = summary
+    }
+  })
   var useSmartOrder = opts?.smartAxes !== false
   var pal = opts?.colors || CHART_COLORS
   var primaryColor = pal[0] || '#e8622a'
@@ -326,7 +360,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
         return ordGrad[4]
       })
     }
-    var trace: any = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? Math.round(v) + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, hovertemplate: hoverTpl }
+    var trace: any = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? Math.round(v) + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, cliponaxis: false, hovertemplate: hoverTpl }
     if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
     else { trace.x = cats; trace.y = displayVals }
 

@@ -913,6 +913,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       if (!r.ok) throw new Error('Failed to load rows')
       const data = await r.json()
       const allRows: Record<string, unknown>[] = data.rows || []
+      // Apply value aliases to categorical fields so comparisons/breakdowns show aliased labels
+      const schemaFields = schema.fields || []
+      const aliasMap: Record<string, Record<string, string>> = {}
+      schemaFields.forEach(function(f: any) {
+        if (f.valueAliases && Object.keys(f.valueAliases).length > 0) aliasMap[f.field] = f.valueAliases
+      })
+      if (Object.keys(aliasMap).length > 0) {
+        allRows.forEach(function(row) {
+          for (var field in aliasMap) {
+            var val = row[field]
+            if (val != null && aliasMap[field][String(val)]) {
+              row[field] = aliasMap[field][String(val)]
+            }
+          }
+        })
+      }
       setRows(allRows)
       if (data.sampled) {
         setSamplingInfo({ sampled: allRows.length, total: data.totalRows || totalRows })
