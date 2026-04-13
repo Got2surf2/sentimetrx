@@ -155,9 +155,7 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
 
   var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
   var numFields  = coreFields.filter(function(f) { return f.type === 'numeric' }).sort(asc2)
-  // Discrete numeric fields (ratings, scores with ≤10 unique values) also appear as categorical
-  var discreteNumeric = numFields.filter(function(f) { return f.min != null && f.max != null && (f.max - f.min) <= 10 })
-  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' }).concat(discreteNumeric).sort(asc2)
+  var catFields  = coreFields.filter(function(f) { return f.type === 'categorical' }).sort(asc2)
   var dateFields = coreFields.filter(function(f) { return f.type === 'date' }).sort(asc2)
   var openFields = coreFields.filter(function(f) { return f.type === 'open-ended' }).sort(asc2)
 
@@ -312,8 +310,13 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'bar') {
     var catField = config.category; if (!catField) return <EmptyChart msg="Assign a category field above." />
     var valueField = config.value
-    // When a value field is assigned AND mode is average (or any non-count/percent), use aggregation
+    // When a value field is assigned AND mode is average, use aggregation
+    var colorByField = config.colorBy
     if (valueField && opts?.barMode !== 'count' && opts?.barMode !== 'percent') {
+      if (colorByField) {
+        // Can't stack/group averages — ignore colorBy in average mode
+        return <><div style={{ fontSize: 11, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 12px', marginBottom: 8 }}>Color/Stack not available in Average mode. Showing averages by category only.</div><BarAggInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} valueField={valueField} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} /></>
+      }
       return <BarAggInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} valueField={valueField} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
     }
     var summary = fs[catField]; if (!summary || !summary.counts) return <EmptyChart msg="No data for this field." />
@@ -336,7 +339,6 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var isH = opts?.orient === 'h'
 
     // Stacked/grouped with colorBy
-    var colorByField = config.colorBy
     if (colorByField && fs[colorByField] && fs[colorByField].counts) {
       return <BarStackedInner analytics={analytics} schema={schema} datasetId={datasetId} catField={catField} colorByField={colorByField} barMode={opts?.barMode || 'count'} barStack={opts?.barStack || false} smartAxes={useSmartOrder} colors={pal} orient={opts?.orient || 'v'} />
     }
