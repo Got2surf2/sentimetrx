@@ -20,6 +20,7 @@ import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
+import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 const T = {
@@ -757,6 +758,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [drillGroup, setDrillGroup] = useState<string | null>(null)
   const [selectedThemes, setSelectedThemes] = useState<Theme[]>([])
   const [previousTab, setPreviousTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
+  const [opinionWord, setOpinionWord] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
 
   useEffect(function() {
@@ -1504,12 +1506,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 16 }}>Theme Clouds</h2>
                 {hasThemes && themes && rowsLoaded ? (
+                  <>
                   <WordCloud
                     themes={(displayThemes || themes).themes}
                     themeColors={themeColors}
                     parsedData={filteredRows}
                     activeField={activeField || themes!.fieldName}
                     onWordClick={function(word, idx, type) {
+                      // Show opinion popover for any clicked word
+                      if (word) setOpinionWord(opinionWord === word ? null : word)
+                      // Also drill into theme if applicable
                       if (themes) {
                         if (type === 'theme') {
                           var t = themes.themes[idx]
@@ -1526,6 +1532,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       }
                     }}
                   />
+                  {opinionWord && (
+                    <div style={{ marginTop: 12 }}>
+                      <OpinionPopover
+                        word={opinionWord}
+                        rows={filteredRows}
+                        fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
+                        onClose={function() { setOpinionWord(null) }}
+                      />
+                    </div>
+                  )}
+                  </>
                 ) : (
                   <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>Run a TextMine analysis first to see theme clouds.</div>
                 )}
