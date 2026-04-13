@@ -35,8 +35,8 @@ const DEFAULT_CONFIG: TownHallConfig = {
     sensitive_topics: [],
     priority_areas: [],
   },
+  opening_question: '',
   engine: {
-    topic_assignment: 'round_robin',
     theme_detection_interval: 5,
     theme_detection_window: 25,
     max_turns_per_participant: 8,
@@ -237,6 +237,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
 
   const handleSave = async () => {
     if (!name.trim()) { setError('Session name is required'); return }
+    if (!config.opening_question.trim()) { setError('Opening question is required'); return }
     if (guide.length === 0) { setError('Add at least one discussion topic'); return }
     if (guide.some(t => !t.label.trim() || !t.opening_question.trim())) {
       setError('All topics need a label and opening question'); return
@@ -266,7 +267,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   }
 
   const canProceed = () => {
-    if (step === 0) return !!name.trim()
+    if (step === 0) return !!name.trim() && !!config.opening_question.trim()
     if (step === 1) return guide.length > 0 && guide.every(t => t.label.trim() && t.opening_question.trim())
     return true
   }
@@ -337,6 +338,16 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div>
+                <Label sub="The broad question everyone starts with — AI will match their response to a discussion topic">Opening question</Label>
+                <Textarea
+                  value={config.opening_question}
+                  onChange={v => setConfig(c => ({ ...c, opening_question: v }))}
+                  placeholder="e.g. What's the most important issue facing our neighborhood right now?"
+                  rows={2}
+                />
+              </div>
+
+              <div>
                 <Label sub="How should the AI moderator sound?">Tone</Label>
                 <Input value={config.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm, respectful, community-focused" />
               </div>
@@ -398,15 +409,6 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                     <input type="number" min={5} max={500} value={config.engine.default_response_target}
                       onChange={e => updateEngine({ default_response_target: parseInt(e.target.value) || 30 })}
                       className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
-                  </div>
-                  <div>
-                    <Label>Topic assignment</Label>
-                    <select value={config.engine.topic_assignment}
-                      onChange={e => updateEngine({ topic_assignment: e.target.value as 'round_robin' | 'random' })}
-                      className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200">
-                      <option value="round_robin">Round Robin</option>
-                      <option value="random">Random</option>
-                    </select>
                   </div>
                   <div>
                     <Label>AI timeout (ms)</Label>
@@ -507,8 +509,8 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="text-sm font-bold text-gray-700 mb-2">Settings</h3>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                  <span className="text-gray-400">Topic assignment</span>
-                  <span className="text-gray-600">{config.engine.topic_assignment === 'round_robin' ? 'Round Robin' : 'Random'}</span>
+                  <span className="text-gray-400">Opening question</span>
+                  <span className="text-gray-600">{config.opening_question || '(not set)'}</span>
                   <span className="text-gray-400">Max turns</span>
                   <span className="text-gray-600">{config.engine.max_turns_per_participant}</span>
                   <span className="text-gray-400">End mode</span>

@@ -858,8 +858,8 @@ export interface TownHallConfig {
     sensitive_topics:  string[]
     priority_areas:    string[]
   }
+  opening_question: string
   engine: {
-    topic_assignment:              'round_robin' | 'random'
     theme_detection_interval:      number
     theme_detection_window:        number
     max_turns_per_participant:     number
