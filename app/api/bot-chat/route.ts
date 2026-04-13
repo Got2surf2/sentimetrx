@@ -153,6 +153,23 @@ Q: Do I need technical expertise?
 A: No. Sarina is deployed with a QR code or link — no app development or technical setup required for either tool.
 `
 
+function trimIncomplete(text: string): string {
+  const trimmed = text.trim()
+  if (/[.!?)"']$/.test(trimmed)) return trimmed
+  const lines = trimmed.split('\n')
+  if (lines.length > 1) {
+    const lastLine = lines[lines.length - 1].trim()
+    if (!/[.!?)"']$/.test(lastLine)) {
+      lines.pop()
+      const rejoined = lines.join('\n').trim()
+      if (rejoined.length > 0) return rejoined
+    }
+  }
+  const lastPunc = Math.max(trimmed.lastIndexOf('.'), trimmed.lastIndexOf('!'), trimmed.lastIndexOf('?'))
+  if (lastPunc > trimmed.length * 0.3) return trimmed.slice(0, lastPunc + 1).trim()
+  return trimmed
+}
+
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin')
   const cors = corsHeaders(origin)
@@ -212,7 +229,8 @@ ${KNOWLEDGE_BASE}`,
     if (!response.ok) throw new Error('API error: ' + response.status)
 
     const data = await response.json()
-    const text = data.content?.[0]?.text || 'Sorry, I had trouble generating a response. Please try again.'
+    let text = data.content?.[0]?.text || 'Sorry, I had trouble generating a response. Please try again.'
+    text = trimIncomplete(text)
 
     return NextResponse.json({ reply: text }, { headers: cors })
   } catch (err: any) {
