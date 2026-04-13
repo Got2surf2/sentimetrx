@@ -10,12 +10,14 @@ export interface SyncResult {
   synced: number
   total: number
   locations_synced: number
+  locations_remaining: number
   locations_errored: number
   errors: string[]
 }
 
-// How many locations to process per invocation (Vercel timeout safety)
-const LOCATIONS_PER_BATCH = 20
+// How many locations to process per invocation (must fit in Vercel's 60s timeout)
+// Each location takes ~10-20s to fetch reviews from DataForSEO
+const LOCATIONS_PER_BATCH = 3
 const CHUNK_SIZE = 50
 
 /**
@@ -27,7 +29,7 @@ export async function syncReviewSource(
   sourceId: string,
   service: SupabaseClient,
 ): Promise<SyncResult> {
-  const result: SyncResult = { synced: 0, total: 0, locations_synced: 0, locations_errored: 0, errors: [] }
+  const result: SyncResult = { synced: 0, total: 0, locations_synced: 0, locations_remaining: 0, locations_errored: 0, errors: [] }
 
   // 1. Load source
   const { data: source, error: srcErr } = await service
@@ -105,10 +107,19 @@ export async function syncReviewSource(
     result.synced = allNewRows.length
   }
 
-  // 5. Get updated total
+  // 5. Get updated total + remaining locations
   const { data: ds } = await service
     .from('datasets').select('row_count').eq('id', source.dataset_id).single()
   result.total = ds?.row_count || 0
+
+  // Count locations still needing sync (never synced)
+  const { count: remaining } = await service
+    .from('review_source_locations')
+    .select('id', { count: 'exact', head: true })
+    .eq('review_source_id', sourceId)
+    .eq('selected', true)
+    .is('last_synced_at', null)
+  result.locations_remaining = remaining || 0
 
   // 6. Update source sync timestamps
   const now = new Date().toISOString()

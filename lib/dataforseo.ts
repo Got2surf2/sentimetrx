@@ -16,8 +16,11 @@ async function post(path: string, body: unknown[]): Promise<any> {
     headers: { 'Authorization': authHeader(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`DataForSEO ${path} HTTP ${res.status}: ${await res.text()}`)
-  return res.json()
+  const text = await res.text()
+  if (!res.ok) throw new Error(`DataForSEO ${path} HTTP ${res.status}: ${text.slice(0, 200)}`)
+  try { return JSON.parse(text) } catch {
+    throw new Error(`DataForSEO ${path} returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`)
+  }
 }
 
 async function get(path: string): Promise<any> {
@@ -25,8 +28,11 @@ async function get(path: string): Promise<any> {
     method: 'GET',
     headers: { 'Authorization': authHeader() },
   })
-  if (!res.ok) throw new Error(`DataForSEO ${path} HTTP ${res.status}: ${await res.text()}`)
-  return res.json()
+  const text = await res.text()
+  if (!res.ok) throw new Error(`DataForSEO ${path} HTTP ${res.status}: ${text.slice(0, 200)}`)
+  try { return JSON.parse(text) } catch {
+    throw new Error(`DataForSEO ${path} returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -88,15 +94,16 @@ export async function searchLocations(keyword: string): Promise<DfsLocation[]> {
 
 function parseBusinessItem(item: any): DfsLocation | null {
   if (!item?.place_id) return null
-  // Parse address string: "123 Main St, Tampa, FL 33602"
-  const addrParts = parseAddressString(item.address || '')
+  // Use structured address_info if available, fall back to parsing address string
+  const ai = item.address_info || {}
+  const fallback = ai.city ? null : parseAddressString(item.address || '')
   return {
     place_id: item.place_id,
     name: item.title || '',
     address: item.address || null,
-    city: addrParts.city,
-    state: addrParts.state,
-    zip: addrParts.zip,
+    city: ai.city || fallback?.city || null,
+    state: ai.region || fallback?.state || null,
+    zip: ai.zip || fallback?.zip || null,
     rating: item.rating?.value ?? null,
     review_count: item.rating?.votes_count ?? 0,
     phone: item.phone || null,
@@ -142,23 +149,42 @@ export async function fetchReviews(
   depth: number = 700,
   sortBy: 'newest' | 'relevant' = 'newest',
 ): Promise<DfsReview[]> {
-  // 1. Post the task
-  const postData = await post('/business_data/google/reviews/task_post', [{
-    place_id: placeId,
-    depth: Math.min(depth, 4490),
-    sort_by: sortBy,
-    language_code: 'en',
-  }])
+  // Try Reviews API first, then Business Data API as fallback
+  // Reviews API uses keyword field with place_id: prefix
+  let postData: any
+  let endpoint = '/v3/reviews/google/task_post'
+  try {
+    postData = await post('/reviews/google/task_post', [{
+      keyword: 'place_id:' + placeId,
+      location_code: 2840,
+      language_code: 'en',
+      depth: Math.min(depth, 4490),
+      sort_by: sortBy,
+    }])
+  } catch (err: any) {
+    // Fallback to Business Data API
+    console.warn('[dataforseo] Reviews API failed, trying Business Data API:', err.message?.slice(0, 100))
+    endpoint = '/v3/business_data/google/reviews/task_post'
+    postData = await post('/business_data/google/reviews/task_post', [{
+      place_id: placeId,
+      depth: Math.min(depth, 4490),
+      sort_by: sortBy,
+      language_code: 'en',
+    }])
+  }
 
   const taskId = postData?.tasks?.[0]?.id
-  if (!taskId) throw new Error(`Review task creation failed: ${JSON.stringify(postData?.tasks?.[0])}`)
+  if (!taskId) throw new Error(`Review task creation failed: ${JSON.stringify(postData?.tasks?.[0]?.status_message || postData?.tasks?.[0])}`)
 
-  // 2. Poll for results (standard queue can take up to 2 minutes)
-  const maxAttempts = 30
-  const pollInterval = 5000 // 5s
+  // Determine the matching task_get path
+  const getPath = endpoint.includes('/reviews/google/') ? '/reviews/google/task_get/' : '/business_data/google/reviews/task_get/'
+
+  // 2. Poll for results (standard queue typically completes in 10-30s)
+  const maxAttempts = 12
+  const pollInterval = 3000 // 3s — total max wait ~36s per location
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await sleep(pollInterval)
-    const result = await get(`/business_data/google/reviews/task_get/${taskId}`)
+    const result = await get(getPath + taskId)
     const task = result?.tasks?.[0]
     if (!task) continue
 

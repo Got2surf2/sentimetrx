@@ -38,6 +38,13 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
   const [transferOrgId, setTransferOrgId] = useState('')
   const [error,       setError]       = useState('')
 
+  // Trim data state
+  const [trimField, setTrimField] = useState('')
+  const [trimDate, setTrimDate] = useState('')
+  const [trimming, setTrimming] = useState(false)
+  const [trimResult, setTrimResult] = useState<string | null>(null)
+  const [trimConfirm, setTrimConfirm] = useState(false)
+
   // Append data state
   const fileRef = useRef<HTMLInputElement>(null)
   const [appendFile, setAppendFile] = useState<File | null>(null)
@@ -268,6 +275,70 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         )}
         {appendError && <p className="text-xs text-red-500">{appendError}</p>}
       </div>
+
+      {/* Trim data by date */}
+      {schema.fields.some(function(f) { return f.type === 'date' }) && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
+          <div>
+            <h2 className="font-bold text-gray-800">Trim Data</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Remove rows where a date field is before a cutoff date. This permanently deletes the data.
+            </p>
+          </div>
+          <div className="flex items-end gap-3">
+            <div className="flex flex-col gap-1.5 flex-1">
+              <label className="text-xs font-semibold text-gray-600">Date field</label>
+              <select value={trimField} onChange={function(e) { setTrimField(e.target.value); setTrimConfirm(false) }}
+                className={inputCls}>
+                <option value="">Select a date field...</option>
+                {schema.fields.filter(function(f) { return f.type === 'date' }).map(function(f) {
+                  return <option key={f.field} value={f.field}>{f.label || f.field}</option>
+                })}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-600">Remove rows before</label>
+              <input type="date" value={trimDate} onChange={function(e) { setTrimDate(e.target.value); setTrimConfirm(false) }}
+                className={inputCls} style={{ width: 180 }} />
+            </div>
+            <button
+              onClick={async function() {
+                if (!trimField || !trimDate) return
+                if (!trimConfirm) { setTrimConfirm(true); return }
+                setTrimming(true); setTrimResult(null); setTrimConfirm(false)
+                try {
+                  var res = await fetch('/api/datasets/' + dataset.id + '/trim', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date_field: trimField, before_date: trimDate }),
+                  })
+                  var data = await res.json()
+                  if (res.ok) {
+                    setTrimResult('Removed ' + data.deleted.toLocaleString() + ' rows. ' + data.remaining.toLocaleString() + ' rows remaining.')
+                    router.refresh()
+                  } else {
+                    setTrimResult('Error: ' + (data.error || 'Failed'))
+                  }
+                } catch (err: any) {
+                  setTrimResult('Error: ' + (err?.message || 'Failed'))
+                } finally { setTrimming(false) }
+              }}
+              disabled={trimming || !trimField || !trimDate}
+              className={'px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-shrink-0 disabled:opacity-50 ' +
+                (trimConfirm ? 'bg-red-600 text-white hover:bg-red-700' : 'text-white hover:opacity-90')}
+              style={trimConfirm ? {} : { background: HERMES }}
+            >
+              {trimming ? 'Removing...' : trimConfirm ? 'Confirm Remove' : 'Remove'}
+            </button>
+          </div>
+          {trimConfirm && (
+            <p className="text-xs text-red-500">This will permanently delete all rows where <strong>{trimField}</strong> is before {trimDate}. Click "Confirm Remove" to proceed.</p>
+          )}
+          {trimResult && (
+            <p className={'text-xs ' + (trimResult.startsWith('Error') ? 'text-red-500' : 'text-green-600 font-semibold')}>{trimResult}</p>
+          )}
+        </div>
+      )}
 
       {/* Google Reviews: Location management */}
       {dataset.source === 'google_reviews' && reviewSourceId && (

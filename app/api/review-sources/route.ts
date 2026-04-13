@@ -5,7 +5,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
-import { syncReviewSource } from '@/lib/reviewSync'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -143,20 +142,17 @@ export async function POST(req: Request) {
 
     if (locErr) return NextResponse.json({ error: locErr.message }, { status: 500 })
 
-    // 5. Kick off initial sync (non-blocking — catch errors but don't fail creation)
-    syncReviewSource(source.id, service).catch(function(err) {
-      console.error('[review-sources] initial sync failed:', err)
-      service.from('review_sources').update({
-        status: 'error',
-        error_message: err?.message || 'Initial sync failed',
-      }).eq('id', source.id)
-    })
+    // 5. Mark source as active with immediate sync — cron or UI polling will pick it up
+    await service.from('review_sources').update({
+      status: 'active',
+      next_sync_at: new Date().toISOString(),
+    }).eq('id', source.id)
 
     return NextResponse.json({
       source_id:  source.id,
       dataset_id: dataset.id,
       locations:  locations.length,
-      status:     'pending',
+      status:     'active',
     }, { status: 201 })
   } catch (err: any) {
     console.error('[review-sources] create error:', err)
