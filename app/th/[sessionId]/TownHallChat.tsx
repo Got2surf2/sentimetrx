@@ -8,20 +8,18 @@ interface Message {
 }
 
 interface Props {
-  session: {
-    id: string
-    name: string
-    status: string
-    config: any
-  }
+  sessionId: string
 }
 
 const HERMES = '#E8632A'
 const BG = '#f9fafb'
 
-export default function TownHallChat({ session }: Props) {
-  const config = session.config || {}
-  const display = config.display || {}
+export default function TownHallChat({ sessionId }: Props) {
+  // Session state — fetched client-side
+  const [sessionName, setSessionName] = useState('')
+  const [sessionStatus, setSessionStatus] = useState<string | null>(null)
+  const [config, setConfig] = useState<any>(null)
+  const [fetchError, setFetchError] = useState(false)
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -36,6 +34,8 @@ export default function TownHallChat({ session }: Props) {
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
+  const display = config?.display || {}
+
   const scrollBottom = useCallback(() => {
     const el = chatRef.current
     if (!el) return
@@ -43,10 +43,8 @@ export default function TownHallChat({ session }: Props) {
     setTimeout(() => { el.scrollTop = el.scrollHeight }, 300)
   }, [])
 
-  // Auto-scroll on new messages
   useEffect(() => { scrollBottom() }, [messages, loading, scrollBottom])
 
-  // Focus input after loading
   useEffect(() => {
     if (!loading && joined && !finished) inputRef.current?.focus()
   }, [loading, joined, finished])
@@ -64,11 +62,43 @@ export default function TownHallChat({ session }: Props) {
     return () => vv.removeEventListener('resize', onResize)
   }, [])
 
+  // Fetch session status — poll until active
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    const checkSession = async () => {
+      try {
+        const res = await fetch('/api/townhall/status/' + sessionId)
+        if (!res.ok) { setFetchError(true); return }
+        const data = await res.json()
+        if (data.id) {
+          setSessionName(data.name)
+          setSessionStatus(data.status)
+          setConfig({ display: data.display, session_end: { closing_message: data.closing_message } })
+          // Stop polling once active or ended
+          if ((data.status === 'active' || data.status === 'ended') && interval) {
+            clearInterval(interval)
+          }
+        } else {
+          setFetchError(true)
+        }
+      } catch {
+        setFetchError(true)
+      }
+    }
+
+    checkSession()
+    // Poll every 3 seconds while waiting for session to start
+    interval = setInterval(checkSession, 3000)
+
+    return () => { if (interval) clearInterval(interval) }
+  }, [sessionId])
+
   // Join session
   const handleJoin = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/townhall/join/' + session.id, { method: 'POST' })
+      const res = await fetch('/api/townhall/join/' + sessionId, { method: 'POST' })
       const data = await res.json()
 
       if (data.error) {
@@ -114,7 +144,7 @@ export default function TownHallChat({ session }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: session.id,
+          session_id: sessionId,
           participant_id: participantId,
           message: skip ? '' : msg,
           turn_number: turnNumber,
@@ -129,7 +159,6 @@ export default function TownHallChat({ session }: Props) {
       setCurrentThemeId(data.theme_id)
       setCurrentSource(data.source)
 
-      // Small delay for natural feel
       await new Promise(r => setTimeout(r, 600 + Math.random() * 800))
 
       setMessages(prev => [...prev, { who: 'bot', text: data.bot_message }])
@@ -144,18 +173,16 @@ export default function TownHallChat({ session }: Props) {
     setLoading(false)
   }
 
-  // Handle "I'm done"
   const handleDone = () => {
     const thankYou = display.thank_you_message || 'Thank you for your time. Your voice matters.'
     setMessages(prev => [...prev, { who: 'bot', text: thankYou }])
     setFinished(true)
 
-    // Fire and forget — record the done action
     fetch('/api/townhall/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        session_id: session.id,
+        session_id: sessionId,
         participant_id: participantId,
         message: '[done]',
         turn_number: turnNumber,
@@ -165,7 +192,6 @@ export default function TownHallChat({ session }: Props) {
     }).catch(() => {})
   }
 
-  // Handle Enter key
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -173,13 +199,67 @@ export default function TownHallChat({ session }: Props) {
     }
   }
 
-  // Pre-join welcome screen
+  // Loading state while fetching session
+  if (sessionStatus === null && !fetchError) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG }}>
+        <p style={{ color: '#9ca3af', fontSize: 14 }}>Loading...</p>
+      </div>
+    )
+  }
+
+  // Session not found
+  if (fetchError) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG }}>
+        <p style={{ color: '#9ca3af', fontSize: 14 }}>Session not found.</p>
+      </div>
+    )
+  }
+
+  // Session not started yet — auto-polls until active
+  if (sessionStatus === 'setup' || sessionStatus === 'paused') {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, padding: 20 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>{'\uD83C\uDFE4'}</div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#374151', marginBottom: 4 }}>{sessionName}</h2>
+          <p style={{ color: '#9ca3af', fontSize: 14 }}>This session hasn't started yet. Please wait for the facilitator to begin.</p>
+          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#d1d5db', animation: 'th-bounce 1.2s ease-in-out infinite' }} />
+            <span style={{ fontSize: 12, color: '#d1d5db' }}>Waiting...</span>
+          </div>
+          <style>{`
+            @keyframes th-bounce {
+              0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+              30% { transform: translateY(-4px); opacity: 1; }
+            }
+          `}</style>
+        </div>
+      </div>
+    )
+  }
+
+  // Session ended
+  if (sessionStatus === 'ended' && !joined) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, padding: 20 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>{'\u2705'}</div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#374151', marginBottom: 4 }}>{sessionName}</h2>
+          <p style={{ color: '#9ca3af', fontSize: 14 }}>{config?.session_end?.closing_message || 'This session has ended. Thank you!'}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Pre-join welcome screen (session is active)
   if (!joined) {
     return (
       <div ref={wrapperRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: BG, padding: 24 }}>
         <div style={{ textAlign: 'center', maxWidth: 400 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>{'\uD83D\uDCAC'}</div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>{session.name}</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>{sessionName}</h1>
           <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, marginBottom: 24 }}>
             {display.welcome_message || 'Welcome! Share your thoughts anonymously — we\'ll have a short conversation to understand your perspective.'}
           </p>
@@ -213,7 +293,7 @@ export default function TownHallChat({ session }: Props) {
           {'\uD83D\uDCAC'}
         </div>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{session.name}</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{sessionName}</div>
           <div style={{ fontSize: 11, color: '#9ca3af' }}>Anonymous conversation</div>
         </div>
       </div>
@@ -245,7 +325,6 @@ export default function TownHallChat({ session }: Props) {
           </div>
         ))}
 
-        {/* Typing indicator */}
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
             <div style={{
@@ -336,7 +415,6 @@ export default function TownHallChat({ session }: Props) {
         </div>
       )}
 
-      {/* Typing animation keyframes */}
       <style>{`
         @keyframes th-bounce {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
