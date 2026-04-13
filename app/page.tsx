@@ -7,5 +7,5 @@ export default function Home({ searchParams }: { searchParams: { code?: string }
     redirect(`/auth/callback?code=${searchParams.code}`)
   }
 
-  redirect('/dashboard')
+  redirect('/analyze')
 }

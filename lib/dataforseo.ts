@@ -107,26 +107,30 @@ function parseBusinessItem(item: any): DfsLocation | null {
 
 function parseAddressString(address: string): { city: string | null; state: string | null; zip: string | null } {
   if (!address) return { city: null, state: null, zip: null }
-  // Typical format: "123 Main St, City, ST 12345" or "City, ST 12345, United States"
-  const parts = address.split(',').map(p => p.trim())
-  if (parts.length < 2) return { city: null, state: null, zip: null }
-  // Work backward from the end — last meaningful part often has state + zip
-  let stateZip = ''
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const match = parts[i].match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/)
-    if (match) {
-      const city = i > 0 ? parts[i - 1] : null
-      return { city, state: match[1], zip: match[2] }
-    }
-    // Just state code
-    const stateMatch = parts[i].match(/^([A-Z]{2})$/)
-    if (stateMatch) {
-      const city = i > 0 ? parts[i - 1] : null
-      return { city, state: stateMatch[1], zip: null }
-    }
+  // Search anywhere in the string for a US state code + optional zip
+  // Matches "FL 33602" or "FL" when preceded by comma/space context
+  const stateZipMatch = address.match(/,\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/)
+  if (stateZipMatch) {
+    const state = stateZipMatch[1]
+    const zip = stateZipMatch[2]
+    // City is the part before the state match
+    const beforeState = address.substring(0, stateZipMatch.index!)
+    const parts = beforeState.split(',').map(p => p.trim()).filter(Boolean)
+    const city = parts.length > 0 ? parts[parts.length - 1] : null
+    return { city, state, zip }
   }
-  // Fallback: second-to-last part is city
-  return { city: parts.length >= 3 ? parts[parts.length - 3] : parts[0], state: null, zip: null }
+  // Try just state code without zip: ", FL," or ", FL "
+  const stateOnly = address.match(/,\s*([A-Z]{2})\s*(?:,|$)/)
+  if (stateOnly) {
+    const state = stateOnly[1]
+    // Skip common non-state codes
+    if (['US', 'UK'].includes(state)) return { city: null, state: null, zip: null }
+    const beforeState = address.substring(0, stateOnly.index!)
+    const parts = beforeState.split(',').map(p => p.trim()).filter(Boolean)
+    const city = parts.length > 0 ? parts[parts.length - 1] : null
+    return { city, state, zip: null }
+  }
+  return { city: null, state: null, zip: null }
 }
 
 // ---------------------------------------------------------------------------

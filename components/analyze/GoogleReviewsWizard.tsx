@@ -78,13 +78,18 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
   // -- Step 2: Selection helpers ---------------------------------------------
 
   const stateGroups = locations.reduce(function(acc, loc) {
-    const st = loc.state || 'Unknown'
+    const st = (loc.state && loc.state.trim()) ? loc.state.trim() : 'Other'
     if (!acc[st]) acc[st] = []
     acc[st].push(loc)
     return acc
   }, {} as Record<string, Location[]>)
 
-  const sortedStates = Object.keys(stateGroups).sort()
+  // Sort states alphabetically but put "Other" at the end
+  const sortedStates = Object.keys(stateGroups).sort(function(a, b) {
+    if (a === 'Other') return 1
+    if (b === 'Other') return -1
+    return a.localeCompare(b)
+  })
 
   function toggleAll() {
     if (selected.size === locations.length) {
@@ -232,7 +237,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
               </button>
             </div>
 
-            <div style={{ maxHeight: 400, overflowY: 'auto' }} className="flex flex-col gap-2">
+            <div style={{ maxHeight: 500, overflowY: 'auto' }} className="flex flex-col gap-2">
               {sortedStates.map(function(state) {
                 const locs = stateGroups[state]
                 const stateSelected = locs.filter(function(l) { return selected.has(l.place_id) }).length
