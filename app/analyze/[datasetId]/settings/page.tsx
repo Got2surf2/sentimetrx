@@ -36,7 +36,7 @@ export default async function SettingsPage({ params }: Props) {
       .single(),
     supabase
       .from('dataset_state')
-      .select('schema_config, theme_model')
+      .select('schema_config, theme_model, analytics')
       .eq('dataset_id', params.datasetId)
       .single(),
   ])
@@ -68,10 +68,23 @@ export default async function SettingsPage({ params }: Props) {
     allOrgs = orgs || []
   }
 
+  // Enrich schema fields with values from analytics (so SchemaEditor can show value aliases)
+  const rawSchema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
+  const analytics = stateRow.analytics as any
+  if (analytics?.fieldSummaries && rawSchema.fields) {
+    for (const f of rawSchema.fields) {
+      if (!f.values || f.values.length === 0) {
+        const summary = analytics.fieldSummaries[f.field]
+        if (summary?.values) f.values = summary.values
+        else if (summary?.topN) f.values = summary.topN
+      }
+    }
+  }
+
   return (
     <SettingsClient
       dataset={dataset as any}
-      schema={stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }}
+      schema={rawSchema}
       isOwner={isOwner}
       isAdmin={isAdmin}
       allOrgs={allOrgs}
