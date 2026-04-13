@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing session_id or participant_id' }, { status: 400 })
   }
 
-  const supabase = createClient()
+  const supabase = createServiceRoleClient()
 
   // Fetch session
   const { data: session } = await supabase

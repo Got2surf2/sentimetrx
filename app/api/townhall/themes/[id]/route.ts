@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 // POST /api/townhall/themes/:id/approve (or dismiss, pause, resume, close)
@@ -39,7 +39,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   }
 
-  const { data, error } = await supabase
+  const db = createServiceRoleClient()
+
+  const { data, error } = await db
     .from('townhall_themes')
     .update(updates)
     .eq('id', params.id)

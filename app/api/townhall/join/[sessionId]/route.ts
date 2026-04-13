@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 // POST /api/townhall/join/:sessionId — participant joins, gets welcome + broad opening question
 export async function POST(req: NextRequest, { params }: { params: { sessionId: string } }) {
-  const supabase = createClient()
+  const supabase = createServiceRoleClient()
 
   // Fetch session
   const { data: session } = await supabase

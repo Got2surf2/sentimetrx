@@ -84,7 +84,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
             </Link>
           </div>
 
-          {/* Sessions list */}
+          {/* Sessions grid */}
           {loading ? (
             <div className="text-center py-20 text-gray-400 text-sm">Loading sessions...</div>
           ) : sessions.length === 0 ? (
@@ -99,43 +99,54 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
               </Link>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
               {sessions.map(s => {
                 const badge = STATUS_BADGE[s.status] || STATUS_BADGE.setup
                 const topicCount = s.discussion_guide?.length || 0
+                const statusColor = s.status === 'active' ? 'bg-green-100 text-green-700 border-green-200'
+                  : s.status === 'ended' ? 'bg-gray-100 text-gray-500 border-gray-200'
+                  : 'bg-yellow-50 text-yellow-700 border-yellow-200'
                 return (
                   <Link
                     key={s.id}
                     href={'/townhall/' + s.id}
-                    className="block bg-white rounded-xl border border-gray-200 p-5 hover:border-orange-300 hover:shadow-sm transition-all">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2.5 mb-1">
-                          <h3 className="font-semibold text-gray-900 truncate">{s.name}</h3>
-                          <span
-                            className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
-                            style={{ background: badge.bg, color: badge.text }}>
+                    className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden">
+
+                    {/* Color strip */}
+                    <div className="h-1.5 w-full" style={{ background: s.status === 'active' ? 'linear-gradient(135deg, #22c55e, #16a34a)' : s.status === 'ended' ? 'linear-gradient(135deg, #9ca3af, #6b7280)' : 'linear-gradient(135deg,' + HERMES + ',#c44d1a)' }} />
+
+                    <div className="p-4 flex flex-col gap-3 flex-1">
+                      {/* Title row */}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-lg leading-none">{'\uD83C\uDFE4'}</span>
+                          <h3 className="font-bold text-gray-800 text-sm truncate">{s.name}</h3>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' + statusColor}>
                             {badge.label}
                           </span>
+                          <span className="text-xs text-gray-400">{formatDate(s.created_at)}</span>
                         </div>
-                        <p className="text-xs text-gray-400">
-                          Created {formatDate(s.created_at)}
-                          {s.started_at && (' \u00B7 Started ' + formatTime(s.started_at))}
-                          {s.ended_at && (' \u00B7 Ended ' + formatTime(s.ended_at))}
-                        </p>
                       </div>
 
-                      <div className="flex items-center gap-5 text-center flex-shrink-0">
-                        <div>
-                          <div className="text-lg font-bold text-gray-900">{topicCount}</div>
+                      {/* Opening question preview */}
+                      {s.config?.opening_question && (
+                        <p className="text-xs text-gray-400 italic line-clamp-2">"{s.config.opening_question}"</p>
+                      )}
+
+                      {/* Stats row */}
+                      <div className="grid grid-cols-3 gap-1.5 mt-auto pt-2 border-t border-gray-100">
+                        <div className="text-center">
+                          <div className="text-base font-black" style={{ color: HERMES }}>{topicCount}</div>
                           <div className="text-[10px] text-gray-400 font-medium">Topics</div>
                         </div>
-                        <div>
-                          <div className="text-lg font-bold text-gray-900">{s.participants}</div>
-                          <div className="text-[10px] text-gray-400 font-medium">Participants</div>
+                        <div className="text-center">
+                          <div className="text-base font-black" style={{ color: HERMES }}>{s.participants}</div>
+                          <div className="text-[10px] text-gray-400 font-medium">Joined</div>
                         </div>
-                        <div>
-                          <div className="text-lg font-bold text-gray-900">{s.turns}</div>
+                        <div className="text-center">
+                          <div className="text-base font-black" style={{ color: HERMES }}>{s.turns}</div>
                           <div className="text-[10px] text-gray-400 font-medium">Turns</div>
                         </div>
                       </div>

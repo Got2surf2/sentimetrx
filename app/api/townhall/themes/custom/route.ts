@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 // POST /api/townhall/themes/custom — facilitator pushes a custom question
@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const { data, error } = await supabase
+  const db = createServiceRoleClient()
+
+  const { data, error } = await db
     .from('townhall_themes')
     .insert({
       session_id,

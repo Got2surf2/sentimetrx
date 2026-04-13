@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
 
@@ -8,7 +8,9 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
+  const db = createServiceRoleClient()
+
+  const { data, error } = await db
     .from('townhall_sessions')
     .select('id, name, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
     .order('created_at', { ascending: false })
@@ -19,7 +21,7 @@ export async function GET() {
   const sessionIds = (data || []).map(s => s.id)
   let stats: Record<string, { participants: number; turns: number }> = {}
   if (sessionIds.length > 0) {
-    const { data: turnData } = await supabase
+    const { data: turnData } = await db
       .from('townhall_turns')
       .select('session_id, participant_id')
       .in('session_id', sessionIds)
@@ -46,7 +48,9 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase
+  const db = createServiceRoleClient()
+
+  const { data: userData } = await db
     .from('users')
     .select('client_id, org_id')
     .eq('id', user.id)
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields: name, config, discussion_guide' }, { status: 400 })
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('townhall_sessions')
     .insert({
       org_id: userData?.org_id || userData?.client_id || '',

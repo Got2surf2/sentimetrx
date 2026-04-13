@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/townhall/sessions/:id — get session with themes + stats
@@ -7,7 +7,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: session, error } = await supabase
+  // Use service role to bypass RLS (auth already verified above)
+  const db = createServiceRoleClient()
+
+  const { data: session, error } = await db
     .from('townhall_sessions')
     .select('*')
     .eq('id', params.id)
@@ -16,14 +19,14 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (error || !session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   // Fetch themes
-  const { data: themes } = await supabase
+  const { data: themes } = await db
     .from('townhall_themes')
     .select('*')
     .eq('session_id', params.id)
     .order('sort_order', { ascending: true })
 
   // Fetch turn stats
-  const { data: turns } = await supabase
+  const { data: turns } = await db
     .from('townhall_turns')
     .select('participant_id, skipped, user_message, theme_id, source')
     .eq('session_id', params.id)
@@ -34,12 +37,6 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const avgWords = answered.length > 0
     ? Math.round(answered.reduce((sum, t) => sum + (t.user_message?.split(/\s+/).length || 0), 0) / answered.length)
     : 0
-
-  // Per-participant turn counts to find "in chat" vs "completed"
-  const participantTurns: Record<string, number> = {}
-  for (const t of allTurns) {
-    participantTurns[t.participant_id] = (participantTurns[t.participant_id] || 0) + 1
-  }
 
   const stats = {
     joined: participants.size,
@@ -60,6 +57,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Use service role to bypass RLS (auth already verified above)
+  const db = createServiceRoleClient()
+
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -77,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     updates.ended_at = new Date().toISOString()
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('townhall_sessions')
     .update(updates)
     .eq('id', params.id)
@@ -88,7 +88,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // When starting a session, seed the discussion guide topics into townhall_themes
   if (updates.status === 'active') {
-    const { data: session } = await supabase
+    const { data: session } = await db
       .from('townhall_sessions')
       .select('discussion_guide, config')
       .eq('id', params.id)
@@ -108,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }))
 
       if (guideThemes.length > 0) {
-        await supabase.from('townhall_themes').insert(guideThemes)
+        await db.from('townhall_themes').insert(guideThemes)
       }
     }
   }
