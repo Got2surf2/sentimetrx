@@ -2417,7 +2417,7 @@ export async function POST(req: Request, { params }: Params) {
         }
       }
     }
-    function getStripColor(quoteText: string): string | undefined {
+    const getStripColor = function(quoteText: string): string | undefined {
       if (!ratingField || quoteRatingMap.size === 0) return undefined
       // Try matching first 120 chars of the quote against the map
       const key = quoteText.replace(/[\u201C\u201D]/g, '').trim().slice(0, 120)
