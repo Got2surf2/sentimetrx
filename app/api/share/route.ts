@@ -159,15 +159,15 @@ export async function GET(req: NextRequest) {
   }
 
   if (link.type === 'townhall') {
-    const { data: session } = await db.from('townhall_sessions').select('id, name, status, config, started_at, ended_at').eq('id', link.target_id).single()
+    const { data: session } = await service.from('townhall_sessions').select('id, name, status, config, started_at, ended_at').eq('id', link.target_id).single()
     if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     const cfg = session.config as any
 
     // Fetch themes (non-dismissed)
-    const { data: themes } = await db.from('townhall_themes').select('id, label, description, source, state, keywords, sentiment, response_count, response_target, mention_count, example_quote').eq('session_id', link.target_id).neq('state', 'dismissed').order('response_count', { ascending: false })
+    const { data: themes } = await service.from('townhall_themes').select('id, label, description, source, state, keywords, sentiment, response_count, response_target, mention_count, example_quote').eq('session_id', link.target_id).neq('state', 'dismissed').order('response_count', { ascending: false })
 
     // Fetch turn stats (aggregated only — no individual data)
-    const { data: turns } = await db.from('townhall_turns').select('participant_id, skipped, user_message').eq('session_id', link.target_id)
+    const { data: turns } = await service.from('townhall_turns').select('participant_id, skipped, user_message').eq('session_id', link.target_id)
     const allTurns = turns || []
     const participants = new Set(allTurns.map((t: any) => t.participant_id))
     const answered = allTurns.filter((t: any) => !t.skipped && t.user_message)
