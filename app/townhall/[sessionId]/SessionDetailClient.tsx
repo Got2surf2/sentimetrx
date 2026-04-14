@@ -58,6 +58,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [customLabel, setCustomLabel] = useState('')
   const [customQuestion, setCustomQuestion] = useState('')
   const [customTarget, setCustomTarget] = useState(30)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -80,19 +81,20 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
   const handleSessionAction = async (action: 'start' | 'end' | 'restart') => {
     setActionLoading(action)
-    if (action === 'restart') {
-      await fetch('/api/townhall/sessions/' + sessionId, {
+    setError(null)
+    try {
+      const body = action === 'restart' ? { restart: true } : { status: action === 'start' ? 'active' : 'ended' }
+      const res = await fetch('/api/townhall/sessions/' + sessionId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ restart: true }),
+        body: JSON.stringify(body),
       })
-    } else {
-      const newStatus = action === 'start' ? 'active' : 'ended'
-      await fetch('/api/townhall/sessions/' + sessionId, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError('Failed to ' + action + ': ' + (data.error || res.status))
+      }
+    } catch (err: any) {
+      setError('Network error: ' + (err?.message || 'unknown'))
     }
     await fetchData()
     setActionLoading(null)
@@ -234,6 +236,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   Preview
                 </a>
               </div>
+            </div>
+          )}
+
+          {/* Error display */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 text-sm text-red-700">
+              {error}
             </div>
           )}
 
