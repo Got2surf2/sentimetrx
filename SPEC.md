@@ -218,18 +218,56 @@ Panels: Descriptives, Group Tests, Correlations, Insights
 
 **Limits**: 4,490 reviews per location (DataForSEO max), 10 locations per batch.
 
-### 5. Shared Dashboards
+### 5. AI Town Hall
+
+**Routes**: `/townhall/*`, `/th/[sessionId]`, `/api/townhall/*`
+
+AI-moderated group discussions. Participants join via link/QR and chat with a named AI bot. Facilitator pre-loads discussion guide topics.
+
+**Chat Engine** (`/api/townhall/chat`):
+- Opening question flow → AI matches response to best topic → follows thread → transitions
+- iMessage UI: blue user bubbles, gray bot bubbles, typing dots
+- Multi-language: language picker, bot messages auto-translated, user responses translated to English for analytics
+- Configurable bot name, emoji, opening/closing messages, canned post-session messages
+- Response targets per topic with auto-deactivation
+- Shared guardrails (`lib/guardrails.ts`)
+
+**Live Theme Detection** (`lib/townhallThemeDetection.ts`):
+- Manual trigger (facilitator clicks "Detect Themes") or auto (cron every 5 min)
+- Samples corpus, calls Claude Sonnet, deduplicates vs existing themes (>50% keyword overlap = skip)
+- Scores sentiment via lexicon (`lib/themeUtils.ts`)
+- Detected themes appear as `state='detected'` — facilitator approves/dismisses
+- Config: `engine.theme_detection_mode` (off/manual/auto) + interval
+
+**Admin Analytics Panel** (tab in facilitator console):
+- Per-theme: keywords, sentiment badges, match counts, percentages, top quotes, keyword frequency
+- Overall: sentiment breakdown, responses over time, distribution chart
+- Sessions API extended with `?analytics=true`
+
+**Post-Session Questions**:
+- Psychographic questions one-at-a-time (randomly sampled from shared `lib/psychoBank.ts`)
+- Demographic form (shared `DEMO_BANK` from `lib/types.ts`)
+- All canned messages auto-translated to participant's language
+- Responses stored in `townhall_participant_responses`
+
+**Full Edit Form**: 6 collapsible sections covering all ~25 config fields. Works in all session states.
+
+**Shared Links**: Token-based public viewer with theme cards, distribution, stats (no individual turns exposed).
+
+**DB Tables**: `townhall_sessions`, `townhall_themes` (keywords, sentiment, detection lifecycle), `townhall_turns` (user_message + user_message_en), `townhall_participant_responses`
+
+### 6. Shared Dashboards
 
 **Route**: `/shared/[token]`
 
-- Public study dashboard (response count, charts, latest responses)
-- Public campaign dashboard (send stats, open rates)
-- Public dataset export (charts, themes, insights)
+- **Study dashboard**: response count, rating charts, score breakdown
+- **Campaign dashboard**: delivery funnel, open/click rates, target progress
+- **Town Hall dashboard**: theme cards with sentiment/keywords, distribution, aggregated stats
 - No authentication required
-- Link expiry options, last-accessed tracking
-- Cache-busting for fresh data on each visit
+- Link expiry (24h/7d/30d), last-accessed tracking, refresh button
+- Cleanup cron daily at 3am UTC
 
-### 6. AI Features
+### 7. AI Features
 
 All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in localStorage) controls all analytics AI:
 
@@ -251,7 +289,7 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 - **Keyword expansion** — synonym detection for theme keywords (requires AI toggle ON)
 - **Comment scoring** — AI relevance scoring for theme quotes in exports (requires AI toggle ON)
 
-### 7. Admin & Settings
+### 8. Admin & Settings
 
 **Routes**: `/admin/*`, `/settings/team`
 
@@ -272,14 +310,15 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 | Datasets & Analytics | 14 | `/api/datasets/[id]/rows`, `/api/datasets/[id]/aggregate` |
 | Dataset Export | 3 | `/api/datasets/[id]/export/pptx`, `/api/datasets/[id]/export/html` |
 | Google Reviews | 9 | `/api/review-sources/search`, `/api/review-sources/[id]/sync` |
+| Town Hall | 10 | `/api/townhall/chat`, `/api/townhall/join/[id]`, `/api/townhall/themes/detect` |
 | AI Features | 6 | `/api/clarify`, `/api/deflect`, `/api/translate` |
-| Sharing | 2 | `/api/share` |
+| Sharing | 2 | `/api/share` (study, campaign, townhall) |
 | Chat/Bot | 3 | `/api/bot-chat`, `/api/nora-chat`, `/api/clara-chat` |
 | Org & Users | 8 | `/api/orgs`, `/api/invite`, `/api/settings/profile` |
 | Admin | 8 | `/api/admin/orgs`, `/api/admin/questions` |
-| Cron Jobs | 3 | `/api/cron/campaign-scheduler`, `/api/cron/review-sync` |
+| Cron Jobs | 4 | `/api/cron/campaign-scheduler`, `/api/cron/review-sync`, `/api/cron/townhall-theme-detection` |
 
-**Total**: ~80 API routes
+**Total**: ~91 API routes
 
 ---
 
@@ -290,7 +329,10 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 | `lib/aliasUtils.ts` | Value alias resolution (resolveAlias, aliasedCounts, buildAliasMap) |
 | `lib/scaleUtils.ts` | Ordinal scale detection, smart ordering, direction labels |
 | `lib/filterUtils.ts` | Filter application, serialization, count helpers |
-| `lib/themeUtils.ts` | Theme matching, keyword regex, lemma expansion, sentiment colors |
+| `lib/themeUtils.ts` | Theme matching, keyword regex, lemma expansion, lexicon sentiment scoring (no AI) |
+| `lib/psychoBank.ts` | Shared psychographic question bank (15 general-purpose questions) |
+| `lib/townhallThemeDetection.ts` | Server-side live theme detection for Town Hall sessions |
+| `lib/guardrails.ts` | Shared input/output validation (surveys + town halls) |
 | `lib/statsUtils.ts` | Significance testing (z-score, chi-square, effect sizes) |
 | `lib/opinionMining.ts` | Aspect-opinion extraction, clause splitting, stop words |
 | `lib/analyticsCompute.ts` | Field summary computation (counts, histograms, topN) |
