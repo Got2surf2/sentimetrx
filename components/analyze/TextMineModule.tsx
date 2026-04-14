@@ -756,6 +756,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [rowsLoaded, setRowsLoaded] = useState(false)
   const [rowsError, setRowsError] = useState<string | null>(null)
 
+  const [computing, setComputing] = useState(false)
+  const [displayThemes, setDisplayThemes] = useState<ThemeModel | null>(null)
   const [themes, setThemes] = useState<ThemeModel | null>(savedThemeModel || null)
   const [themeSource, setThemeSource] = useState<string | null>((savedThemeModel as any)?.themeSource || (savedThemeModel as any)?.source || null)
   const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
@@ -956,14 +958,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       if (data.sampled) {
         setSamplingInfo({ sampled: allRows.length, total: data.totalRows || totalRows })
       }
-      // Recount saved themes against fresh rows (client-side for immediate display)
+      // Saved themes will be recounted automatically by the useEffect when rows are set
+      // Fetch accurate server-side counts on the full dataset
       if (savedThemeModel && savedThemeModel.themes && allRows.length > 0) {
         const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
-        const recounted = recountThemes(savedThemeModel.themes, allRows, field)
-        setThemes({ ...savedThemeModel, themes: recounted })
-        // Then fetch accurate server-side counts on the full dataset
         const fields = Array.isArray(field) ? field : (field ? [field] : [])
-        if (fields.length > 0) fetchServerThemeCounts({ ...savedThemeModel, themes: recounted }, fields)
+        if (fields.length > 0) fetchServerThemeCounts(savedThemeModel, fields)
       }
       setRowsLoaded(true)
     } catch (e: unknown) {
@@ -989,13 +989,24 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var filteredRows = applyFilters(rows, effectiveFilters)
   var activeFilterCount = filterCount(effectiveFilters)
 
-  // Recount theme hits against filtered data for display
-  // Use effectiveFields if they actually find data, otherwise fall back to the field names stored in the theme model
+  // Recount theme hits against filtered data — deferred to let UI paint loading state
   var _recountFields = effectiveFields.length > 0 ? effectiveFields
     : (themes?.fieldNames || (themes?.fieldName ? [themes.fieldName] : []))
-  var displayThemes: ThemeModel | null = themes && filteredRows.length > 0 && _recountFields.length > 0
-    ? { ...themes, themes: recountThemes(themes.themes, filteredRows, _recountFields).filter(function(t) { return t.name && t.name.trim() }) }
-    : themes ? { ...themes, themes: themes.themes.filter(function(t) { return t.name && t.name.trim() }) } : null
+  useEffect(function() {
+    if (!themes) { setDisplayThemes(null); return }
+    if (filteredRows.length === 0 || _recountFields.length === 0) {
+      setDisplayThemes({ ...themes, themes: themes.themes.filter(function(t) { return t.name && t.name.trim() }) })
+      return
+    }
+    setComputing(true)
+    // Use setTimeout to let the "computing" spinner paint before heavy work
+    var timer = setTimeout(function() {
+      var recounted = recountThemes(themes.themes, filteredRows, _recountFields).filter(function(t) { return t.name && t.name.trim() })
+      setDisplayThemes({ ...themes, themes: recounted })
+      setComputing(false)
+    }, 20)
+    return function() { clearTimeout(timer) }
+  }, [themes, filteredRows.length, _recountFields.join(','), activeFilterCount])
 
   // Stats for active fields (on filtered data)
   var activeFieldRows = filteredRows.filter(function(r) {
@@ -1047,9 +1058,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         throw new Error(errMsg)
       }
       if (!data.themes) throw new Error('No themes returned')
-      var recounted = recountThemes(data.themes, filteredRows, effectiveFields)
+      // Don't recount here — the useEffect will pick up the theme change and recount with loading indicator
       var tm: ThemeModel = {
-        themes: recounted,
+        themes: data.themes,
         summary: data.summary || '',
         fieldName: effectiveFields[0],
         fieldNames: effectiveFields,
@@ -1074,10 +1085,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   function applyIndustryThemes(themeArr: Theme[], libName: string, source: string) {
     if (!effectiveFields.length || !filteredRows.length) return
-    var recounted = recountThemes(themeArr, filteredRows, effectiveFields)
+    // Don't recount here — the useEffect will pick up the theme change and recount with loading indicator
     var total = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
     var tm: ThemeModel = {
-      themes: recounted,
+      themes: themeArr,
       summary: 'Industry library: ' + libName,
       fieldName: effectiveFields[0],
       fieldNames: effectiveFields,
@@ -1232,6 +1243,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
+              {computing && !rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Computing themes…</span>}
               {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
                   {themeSource === 'ai' ? '\u29E1 AI Mined' : '\u2261 ' + (themeLibName || 'Industry')}
