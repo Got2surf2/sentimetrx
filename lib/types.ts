@@ -883,6 +883,12 @@ export interface TownHallConfig {
     skip_label:        string
     done_label:        string
   }
+  // Canned bot messages — facilitator writes in English, auto-translated for participants
+  messages?: {
+    post_session_intro?:   string   // before psycho questions (default: "Almost done — a few quick optional questions.")
+    post_session_demo?:    string   // before demo form (default: "A couple of optional questions about you.")
+    post_session_thanks?:  string   // after submitting (default: "Thanks for sharing!")
+  }
   // Post-session demographic & psychographic questions (optional)
   demoFields?:         DemoField[]
   psychographicBank?:  PsychoQuestion[]

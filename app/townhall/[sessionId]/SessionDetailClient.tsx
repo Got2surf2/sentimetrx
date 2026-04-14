@@ -322,6 +322,15 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <EInput value={(editConfig.context.sensitive_topics || []).join(', ')} onChange={v => updateContext({ sensitive_topics: v.split(',').map(s => s.trim()).filter(Boolean) })} />
                 <ELabel>Priority Areas <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
                 <EInput value={(editConfig.context.priority_areas || []).join(', ')} onChange={v => updateContext({ priority_areas: v.split(',').map(s => s.trim()).filter(Boolean) })} />
+                <div className="border-t border-gray-100 pt-3 mt-3">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Bot Messages <span className="font-normal normal-case">(auto-translated for participants)</span></p>
+                  <ELabel>Post-Session Intro <span className="font-normal text-gray-400">(before optional questions)</span></ELabel>
+                  <EInput value={(editConfig.messages?.post_session_intro) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_intro: v } })} placeholder="Almost done — a few quick optional questions..." />
+                  <ELabel>Before Demographics <span className="font-normal text-gray-400">(before demo form)</span></ELabel>
+                  <EInput value={(editConfig.messages?.post_session_demo) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_demo: v } })} placeholder="A couple of optional questions about you." />
+                  <ELabel>Post-Session Thanks <span className="font-normal text-gray-400">(after submitting)</span></ELabel>
+                  <EInput value={(editConfig.messages?.post_session_thanks) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_thanks: v } })} placeholder="Thanks for sharing!" />
+                </div>
               </EditSection>
 
               {/* ── 2. Discussion Guide ────────────────────────────────── */}

@@ -3,6 +3,28 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
+// Translate text to a target language via Claude (for non-English participants)
+async function translateText(text: string, targetLang: string): Promise<string> {
+  if (!text || targetLang === 'en') return text
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return text
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 500,
+        system: 'Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone and formatting.',
+        messages: [{ role: 'user', content: text }],
+      }),
+      signal: AbortSignal.timeout(4000),
+    })
+    if (!res.ok) return text
+    const data = await res.json()
+    return (data.content?.[0]?.text || text).trim()
+  } catch { return text }
+}
+
 // GET /api/townhall/join/:sessionId — check session status (public, no auth)
 export async function GET(_req: NextRequest, { params }: { params: { sessionId: string } }) {
   const supabase = createServiceRoleClient()
@@ -38,6 +60,12 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     display: config?.display || {},
     opening_message: openingMsg,
     closing_message: closingMsg,
+    // Canned bot messages (facilitator configurable)
+    bot_messages: {
+      post_session_intro:  config?.messages?.post_session_intro  || 'Almost done — a few quick optional questions to help us understand who we heard from today.',
+      post_session_demo:   config?.messages?.post_session_demo   || 'A couple of optional questions about you.',
+      post_session_thanks: config?.messages?.post_session_thanks || 'Thanks for sharing! Your input helps us understand our community better.',
+    },
     // Post-session question config (for rendering after chat ends)
     demoFields: config?.demoFields || [],
     psychographicBank: config?.psychographicBank || [],
@@ -81,14 +109,38 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   const participantId = 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 
   // Use opening_message (new) or fall back to legacy welcome + opening_question
-  const botMessage = config?.opening_message
+  const openingEn = config?.opening_message
     || ((config?.display?.welcome_message || 'Welcome! Share your thoughts anonymously.') + '\n\n' + (config?.opening_question || 'What\'s on your mind?'))
+
+  // Translate opening + canned messages for non-English participants
+  const botMessage = language !== 'en' ? await translateText(openingEn, language) : openingEn
+
+  // Translate canned post-session messages
+  const msgs = config?.messages || {}
+  const introEn = msgs.post_session_intro || 'Almost done — a few quick optional questions to help us understand who we heard from today.'
+  const demoEn  = msgs.post_session_demo  || 'A couple of optional questions about you.'
+  const thanksEn = msgs.post_session_thanks || 'Thanks for sharing! Your input helps us understand our community better.'
+  const closingEn = config?.closing_message || config?.session_end?.closing_message || 'Thank you for participating!'
+
+  let translatedMessages = { post_session_intro: introEn, post_session_demo: demoEn, post_session_thanks: thanksEn }
+  let translatedClosing = closingEn
+  if (language !== 'en') {
+    // Batch translate all messages in one call for efficiency
+    const batch = [introEn, demoEn, thanksEn, closingEn]
+    const batchText = batch.map((t, i) => '[' + (i + 1) + '] ' + t).join('\n')
+    const translated = await translateText(batchText, language)
+    const lines = translated.split('\n').map(l => l.replace(/^\[\d+\]\s*/, '').trim()).filter(Boolean)
+    if (lines.length >= 4) {
+      translatedMessages = { post_session_intro: lines[0], post_session_demo: lines[1], post_session_thanks: lines[2] }
+      translatedClosing = lines[3]
+    }
+  }
 
   await supabase.from('townhall_turns').insert({
     session_id: session.id,
     participant_id: participantId,
     turn_number: 1,
-    bot_message: botMessage,
+    bot_message: openingEn,  // Store English version for analytics
     user_message: null,
     user_message_en: null,
     language,
@@ -100,6 +152,8 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   return NextResponse.json({
     participant_id: participantId,
     bot_message: botMessage,
+    closing_message: translatedClosing,
+    bot_messages: translatedMessages,
     theme_id: null,
     source: 'opening',
     is_final: false,

@@ -47,6 +47,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const [psychoIdx, setPsychoIdx] = useState(0)
   const [psychoAnswers, setPsychoAnswers] = useState<Record<string, string>>({})
   const [demoAnswers, setDemoAnswers] = useState<Record<string, string>>({})
+  const [botMessages, setBotMessages] = useState({ post_session_intro: '', post_session_demo: '', post_session_thanks: '' })
 
   const finished = phase !== 'chat'
 
@@ -88,6 +89,7 @@ export default function TownHallChat({ sessionId }: Props) {
       setDisplay(d.display || {})
       setClosingMsg(d.closing_message || '')
       if (d.opening_message) setDisplay((prev: any) => ({ ...prev, opening_message: d.opening_message }))
+      if (d.bot_messages) setBotMessages(d.bot_messages)
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
       if (d.psychographicBank) setPsychoBank(d.psychographicBank)
       if (d.psychoCount != null) setPsychoCount(d.psychoCount)
@@ -125,6 +127,9 @@ export default function TownHallChat({ sessionId }: Props) {
         setMessages([{ who: 'bot', text: d.error }]); setPhase('done'); setLoading(false); return
       }
       setPid(d.participant_id); setTurn(d.turn_number); setThemeId(d.theme_id)
+      // Store translated messages from join response
+      if (d.bot_messages) setBotMessages(d.bot_messages)
+      if (d.closing_message) setClosingMsg(d.closing_message)
       setJoined(true)
       // Show typing dots, then reveal message
       setLoading(true)
@@ -160,20 +165,23 @@ export default function TownHallChat({ sessionId }: Props) {
 
   // Start post-session flow: transition → psycho → demo → done
   const startPostSession = useCallback(async () => {
-    const hasQuestions = psychoBank.length > 0 || demoFields.length > 0
-    if (!hasQuestions) {
+    const hasPsycho = psychoBank.length > 0 && psychoCount > 0
+    const hasDemo = demoFields.length > 0
+    if (!hasPsycho && !hasDemo) {
       setPhase('done')
       return
     }
-    setPhase('transition')
-    const transMsg = 'Almost done — just a few quick optional questions to help us understand who we heard from today.'
-    setLoading(true)
-    await typingDelay(transMsg)
-    setLoading(false)
-    setMessages(p => [...p, { who: 'bot', text: transMsg }])
 
-    // Pick random psycho questions
-    if (psychoBank.length > 0 && psychoCount > 0) {
+    // Show intro message before first post-session question
+    setPhase('transition')
+    const introMsg = botMessages.post_session_intro || 'Almost done — a few quick optional questions to help us understand who we heard from today.'
+    setLoading(true)
+    await typingDelay(introMsg)
+    setLoading(false)
+    setMessages(p => [...p, { who: 'bot', text: introMsg }])
+
+    if (hasPsycho) {
+      // Pick random psycho questions
       const pool = [...psychoBank]
       const picked: PsychoQuestion[] = []
       const n = Math.min(psychoCount, pool.length)
@@ -184,12 +192,13 @@ export default function TownHallChat({ sessionId }: Props) {
       setPsychoQuestions(picked)
       setPsychoIdx(0)
       setPhase('psycho')
-    } else if (demoFields.length > 0) {
+    } else if (hasDemo) {
+      // Skip straight to demo — intro message already shown above
       setPhase('demo')
     } else {
       setPhase('done')
     }
-  }, [psychoBank, psychoCount, demoFields])
+  }, [psychoBank, psychoCount, demoFields, botMessages])
 
   const handleDone = async () => {
     const msg = closingMsg || display.thank_you_message || 'Thank you for your time. Your voice matters.'
@@ -212,7 +221,7 @@ export default function TownHallChat({ sessionId }: Props) {
         body: JSON.stringify({ session_id: sessionId, participant_id: pid, psychographics: psycho, demographics: demo }),
       })
     } catch { /* silently fail — don't block the thank-you screen */ }
-    const thankMsg = 'Thanks for sharing! Your input helps us understand our community better.'
+    const thankMsg = botMessages.post_session_thanks || 'Thanks for sharing! Your input helps us understand our community better.'
     setLoading(true)
     await typingDelay(thankMsg)
     setLoading(false)
@@ -359,8 +368,9 @@ export default function TownHallChat({ sessionId }: Props) {
                 } else if (demoFields.length > 0) {
                   setPhase('demo')
                   setLoading(true)
-                  await typingDelay('A few more quick questions:')
-                  setMessages(p => [...p, { who: 'bot', text: 'A few more quick questions:' }])
+                  const demoMsg = botMessages.post_session_demo || 'A couple of optional questions about you.'
+                  await typingDelay(demoMsg)
+                  setMessages(p => [...p, { who: 'bot', text: demoMsg }])
                   setLoading(false)
                 } else {
                   submitPostSession({ ...psychoAnswers, [q.key]: opt }, {})
