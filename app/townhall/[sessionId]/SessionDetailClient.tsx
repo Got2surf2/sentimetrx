@@ -340,9 +340,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <ELabel>Tone</ELabel>
                 <EInput value={editConfig.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm and professional" />
                 <ELabel>Sensitive Topics <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
-                <EInput value={(editConfig.context.sensitive_topics || []).join(', ')} onChange={v => updateContext({ sensitive_topics: v.split(',').map(s => s.trim()).filter(Boolean) })} />
+                <EInputCSV value={editConfig.context.sensitive_topics || []} onChange={v => updateContext({ sensitive_topics: v })} />
                 <ELabel>Priority Areas <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
-                <EInput value={(editConfig.context.priority_areas || []).join(', ')} onChange={v => updateContext({ priority_areas: v.split(',').map(s => s.trim()).filter(Boolean) })} />
+                <EInputCSV value={editConfig.context.priority_areas || []} onChange={v => updateContext({ priority_areas: v })} />
                 <div className="border-t border-gray-100 pt-3 mt-3">
                   <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Bot Messages <span className="font-normal normal-case">(auto-translated for participants)</span></p>
                   <ELabel>Post-Session Intro <span className="font-normal text-gray-400">(before optional questions)</span></ELabel>
@@ -366,7 +366,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       <EInput value={t.label} onChange={v => updateGuideTopic(i, { label: v })} placeholder="Topic label" />
                       <EInput value={t.description || ''} onChange={v => updateGuideTopic(i, { description: v })} placeholder="Description (context for AI)" />
                       <ETextarea value={t.opening_question} onChange={v => updateGuideTopic(i, { opening_question: v })} placeholder="Opening question" rows={2} />
-                      <EInput value={(t.follow_up_angles || []).join(', ')} onChange={v => updateGuideTopic(i, { follow_up_angles: v.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="Follow-up angles (comma-separated)" />
+                      <EInputCSV value={t.follow_up_angles || []} onChange={v => updateGuideTopic(i, { follow_up_angles: v })} placeholder="Follow-up angles (comma-separated)" />
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400">Target:</span>
                         <input type="number" min={5} max={500} value={t.response_target} onChange={e => updateGuideTopic(i, { response_target: parseInt(e.target.value) || 30 })}
@@ -803,4 +803,13 @@ function ETextarea({ value, onChange, rows, placeholder }: { value: string; onCh
 function ENumber({ value, onChange, min, max }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
   return <input type="number" value={value} onChange={e => onChange(parseInt(e.target.value) || 0)} min={min} max={max}
     className="w-20 px-2 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+}
+
+// Comma-separated value input — only parses to array on blur, not on every keystroke (preserves spaces while typing)
+function EInputCSV({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
+  const [raw, setRaw] = useState(value.join(', '))
+  useEffect(() => { setRaw(value.join(', ')) }, [value.join(',')])
+  return <input type="text" value={raw} onChange={e => setRaw(e.target.value)} placeholder={placeholder}
+    onBlur={() => onChange(raw.split(',').map(s => s.trim()).filter(Boolean))}
+    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
 }
