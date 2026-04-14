@@ -576,6 +576,46 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 </div>
               )}
 
+              {/* ── AI SUGGESTED (show above active if any exist) ── */}
+              {!isSetup && suggestedTopics.length > 0 && (
+                <div className="bg-white rounded-xl border-2 border-orange-300 p-5 animate-pulse-subtle">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse" />
+                    <h3 className="text-sm font-bold text-orange-600">AI Suggested</h3>
+                    <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{suggestedTopics.length} new</span>
+                  </div>
+                  <div className="space-y-3">
+                    {suggestedTopics.map(t => (
+                      <div key={t.id} className="border border-orange-100 rounded-lg p-3 bg-orange-50/50">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-semibold text-gray-700">{t.label}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 font-medium">AI Detected</span>
+                        </div>
+                        {t.description && <p className="text-xs text-gray-500 mb-2">{t.description}</p>}
+                        {(t as any).keywords?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {((t as any).keywords || []).slice(0, 5).map((kw: string) => (
+                              <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{kw}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => handleThemeAction(t.id, 'approve')}
+                            className="text-[11px] font-semibold px-3 py-1 rounded-lg text-white hover:opacity-90"
+                            style={{ background: '#22c55e' }}>
+                            Approve
+                          </button>
+                          <button onClick={() => handleThemeAction(t.id, 'dismiss')}
+                            className="text-[11px] font-medium px-3 py-1 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* ── ACTIVE TOPICS ──────────────────────────────── */}
               <div className="bg-white rounded-xl border border-green-200 p-5">
                 <div className="flex items-center gap-2 mb-3">
@@ -623,35 +663,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <p className="text-xs text-gray-400">No active topics.</p>
                 )}
               </div>
-
-              {/* ── AI SUGGESTED ───────────────────────────────── */}
-              {suggestedTopics.length > 0 && (
-                <div className="bg-white rounded-xl border border-orange-200 p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                    <h3 className="text-sm font-bold text-orange-600">AI Suggested</h3>
-                    <span className="text-[10px] text-orange-400">{suggestedTopics.length} awaiting review</span>
-                  </div>
-                  <div className="space-y-3">
-                    {suggestedTopics.map(t => (
-                      <div key={t.id} className="border border-orange-100 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-semibold text-gray-700">{t.label}</span>
-                          <span className="text-[10px] text-orange-500 font-medium">{t.mention_count} mentions</span>
-                        </div>
-                        {t.example_quote && <p className="text-xs text-gray-400 italic mb-1">"{t.example_quote}"</p>}
-                        <p className="text-xs text-gray-500 mb-2">{t.question}</p>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleThemeAction(t.id, 'approve', { response_target: cfg?.engine?.default_response_target || 30 })}
-                            disabled={!!actionLoading} className="px-3 py-1 rounded-lg text-xs font-medium text-white hover:opacity-90" style={{ background: '#22c55e' }}>Approve</button>
-                          <button onClick={() => handleThemeAction(t.id, 'dismiss')}
-                            disabled={!!actionLoading} className="px-3 py-1 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50">Dismiss</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* ── COMPLETED ─────────────────────────────────── */}
               {completedTopics.length > 0 && (
