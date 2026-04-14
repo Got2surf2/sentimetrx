@@ -1206,6 +1206,9 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
     slide.addText(ai.keyFinding, { x: PAD, y: leftStartY + 1.14, w: leftW, h: 0.44, fontSize: 13, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
   }
 
+  // Relevant themes (declared here so narrative can reference it for bottom reserve)
+  const relThemes = themes.slice(0, 4)
+
   // Narrative — give it all remaining space above themes/implication
   if (ai.narrative) {
     const narY = leftStartY + (ai.keyFinding ? 1.65 : 0.92)
@@ -1215,9 +1218,6 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
     const maxNarChars = Math.round(narH * 5 * 50)
     insightBox(slide, pptx, PAD, narY, leftW, narH, trimNatural(ai.narrative, Math.min(maxNarChars, 350)), DN.teal, DN.tealPale)
   }
-
-  // Relevant themes
-  const relThemes = themes.slice(0, 4)
   if (relThemes.length > 0) {
     const thY = H - (ai.implication ? 1.30 : 0.72)
     lbl(slide, 'THEMES IDENTIFIED', PAD, thY, leftW)
