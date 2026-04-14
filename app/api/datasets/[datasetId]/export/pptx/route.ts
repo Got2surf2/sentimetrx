@@ -20,7 +20,7 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
 // ── Generator version ────────────────────────────────────────────────────────
-const STORYTIME_VERSION = '1.1.0'  // bump on each release
+const STORYTIME_VERSION = '1.2.0'  // bump on each release
 
 interface Params { params: { datasetId: string } }
 
@@ -149,6 +149,18 @@ function trimNatural(s: string, max: number): string {
 
 function pct(v: number, total: number) { return total > 0 ? Math.round(v / total * 100) : 0 }
 
+// Color for a numeric rating value on a min–max scale (green=high, red=low)
+function ratingColor(val: number, min: number, max: number): string {
+  const range = max - min
+  if (range <= 0) return DN.teal
+  const frac = (val - min) / range
+  if (frac >= 0.8)  return '059669'  // green
+  if (frac >= 0.6)  return '34D399'  // light green
+  if (frac >= 0.4)  return 'D97706'  // amber
+  if (frac >= 0.2)  return 'F97316'  // orange
+  return 'DC2626'                     // red
+}
+
 // KPI card: big number + label, optional sub — all elements bounded within h
 function kpiCard(slide: any, pptx: any, x: number, y: number, w: number, h: number, value: string, label: string, sub?: string, bg_ = DN.slateLight, valColor = DN.navy) {
   rect(slide, pptx, x, y, w, h, bg_, 0.08, DN.divider)
@@ -185,9 +197,9 @@ function insightBox(slide: any, pptx: any, x: number, y: number, w: number, h: n
 }
 
 // Quote card — opening " is inline with the first word of the comment
-function quoteCard(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string) {
+function quoteCard(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string, stripColor?: string) {
   rect(slide, pptx, x, y, w, h, DN.white, 0.07, DN.divider)
-  solidRect(slide, pptx, x, y, 0.05, h, DN.teal)
+  solidRect(slide, pptx, x, y, 0.05, h, stripColor || DN.teal)
   slide.addText([
     { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
     { text: trimNatural(text, 220), options: { fontSize: 10, color: DN.navyLight, italic: true } },
@@ -260,9 +272,9 @@ function buildHighlightedRuns(text: string, keywords: string[]): { text: string;
 }
 
 // quoteCard variant that bolds + colors the theme keywords within the text
-function quoteCardHighlighted(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string, keywords: string[]) {
+function quoteCardHighlighted(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string, keywords: string[], stripColor?: string) {
   rect(slide, pptx, x, y, w, h, DN.white, 0.07, DN.divider)
-  solidRect(slide, pptx, x, y, 0.05, h, DN.teal)
+  solidRect(slide, pptx, x, y, 0.05, h, stripColor || DN.teal)
   const trimmed  = trimNatural(text, 240)
   const runs     = buildHighlightedRuns(trimmed, keywords)
   const textRuns = [
@@ -857,20 +869,23 @@ function buildCategoricalSlide(pptx: any, datasetName: string, f: SelectedField,
     }
   }
 
-  // Insight text — AI if good, else auto-computed. Trim to fit box (~300 chars).
+  // Insight text — AI if good, else auto-computed. Only keyFinding in box.
   const hasRealAI = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
   const insightText = trimNatural(hasRealAI
-    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
-    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, bot2), 300)
+    ? ai.keyFinding
+    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, bot2), 200)
 
-  const insightH = Math.max(0.5, H - leftY - 0.55)
+  const hasImpl = hasRealAI && !!ai.implication
+  const insightBottom = hasImpl ? H - 0.80 : H - 0.38
+  const insightH = Math.max(0.4, insightBottom - leftY - 0.18)
   insightBox(slide, pptx, PAD, leftY + 0.1, leftW, insightH, insightText, DN.teal, DN.tealPale)
 
-  // Implication strip
-  if (hasRealAI && ai.implication) {
-    solidRect(slide, pptx, PAD, H - 0.72, leftW, 0.44, DN.orangePale)
-    solidRect(slide, pptx, PAD, H - 0.72, 0.06, 0.44, DN.orange)
-    slide.addText('→ ' + ai.implication, { x: PAD + 0.13, y: H - 0.72 + 0.04, w: leftW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
+  // Implication strip — pinned above footer, below insight box
+  if (hasImpl) {
+    const implY = insightBottom + 0.06
+    solidRect(slide, pptx, PAD, implY, leftW, 0.40, DN.orangePale)
+    solidRect(slide, pptx, PAD, implY, 0.06, 0.40, DN.orange)
+    slide.addText('→ ' + ai.implication, { x: PAD + 0.13, y: implY + 0.03, w: leftW - 0.18, h: 0.34, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
   }
 
   // Vertical divider
@@ -963,19 +978,18 @@ function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai:
 
   // ── Insight text (needed for both branches to anchor insight Y) ───────────────
   const hasRealAI   = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
-  const rawInsight = hasRealAI
-    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
+  // Only show keyFinding in the bottom insight box (narrative is too long to combine)
+  const insightText = hasRealAI
+    ? trimNatural(ai.keyFinding, 150)
     : (posInRange >= 0.65
         ? 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the upper range — strong performance.'
         : posInRange <= 0.35
           ? 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the lower range — opportunity for improvement.'
           : 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the mid range.')
-  // Trim insight text to fit the box (~0.78" tall at fontSize 11.5 ≈ 4 lines ≈ 300 chars)
-  const insightText = trimNatural(rawInsight, 300)
   const withImpl  = hasRealAI && !!ai.implication
-  const insH      = 0.78
-  const implH     = 0.44
-  const insightY  = FY - 0.12 - (withImpl ? insH + 0.08 + implH : insH)
+  const insH      = 0.52
+  const implH     = 0.40
+  const insightY  = FY - 0.12 - (withImpl ? insH + 0.06 + implH : insH)
 
   if (isDiscrete) {
     // ── Discrete integer: full-width horizontal bar chart (same layout as categorical) ──
@@ -1134,7 +1148,7 @@ function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai:
   footer(slide, pptx, datasetName)
 }
 
-function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[]) {
+function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, ai: FieldInsight, audience: string, themes: any[], getStripColor?: (text: string) => string | undefined) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, f.label, DN.tealDark, 'Open-ended verbatim responses')
@@ -1195,9 +1209,11 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   // Narrative — give it all remaining space above themes/implication
   if (ai.narrative) {
     const narY = leftStartY + (ai.keyFinding ? 1.65 : 0.92)
-    const bottomReserve = (themes.length > 0 ? 0.72 : 0) + (ai.implication ? 0.58 : 0) + 0.38
-    const narH = Math.max(0.6, H - narY - bottomReserve - 0.08)
-    insightBox(slide, pptx, PAD, narY, leftW, narH, trimNatural(ai.narrative, 400), DN.teal, DN.tealPale)
+    const bottomReserve = (relThemes.length > 0 ? 0.72 : 0) + (ai.implication ? 0.58 : 0) + 0.38
+    const narH = Math.max(0.5, H - narY - bottomReserve - 0.08)
+    // ~12 chars per inch width at fontSize 11.5, ~5.5 lines per inch height → estimate max chars
+    const maxNarChars = Math.round(narH * 5 * 50)
+    insightBox(slide, pptx, PAD, narY, leftW, narH, trimNatural(ai.narrative, Math.min(maxNarChars, 350)), DN.teal, DN.tealPale)
   }
 
   // Relevant themes
@@ -1226,7 +1242,7 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   if (quotes.length > 0) {
     const qh = Math.min(0.9, (CH - 0.24) / quotes.length - 0.1)
     quotes.forEach(function(q, i) {
-      quoteCard(slide, pptx, rightX, CY + 0.24 + i * (qh + 0.1), rightW, qh, q)
+      quoteCard(slide, pptx, rightX, CY + 0.24 + i * (qh + 0.1), rightW, qh, q, getStripColor?.(q))
     })
   } else {
     slide.addText('No verbatim responses available for this field.', {
@@ -1441,7 +1457,7 @@ function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fie
 async function buildThemeSlides(
   pptx: any, datasetName: string, themes: any[], fieldLabel?: string,
   allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[],
-  usedComments?: Set<string>, apiKey?: string,
+  usedComments?: Set<string>, apiKey?: string, getStripColor?: (text: string) => string | undefined,
 ) {
   if (!themes || themes.length === 0) return
 
@@ -1589,7 +1605,7 @@ async function buildThemeSlides(
       cleaned.forEach(function(hc, i) {
         // Use AI-extracted phrases for highlighting; fall back to theme keywords
         const highlightTerms = hc.phrases && hc.phrases.length > 0 ? hc.phrases : (t.keywords || [])
-        quoteCardHighlighted(slide, pptx, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, trimNatural(hc.text, maxChars), highlightTerms)
+        quoteCardHighlighted(slide, pptx, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, trimNatural(hc.text, maxChars), highlightTerms, getStripColor?.(hc.text))
       })
     } else {
       slide.addText('No verbatim responses matched this theme.', {
@@ -1766,13 +1782,13 @@ function buildPieSlide(pptx: any, datasetName: string, f: SelectedField, ai: Fie
   // ── Compute insight geometry first so bars know available height ──────────
   const hasRealAI   = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
   const insightText = trimNatural(hasRealAI
-    ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
+    ? ai.keyFinding
     : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2,
-        pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total)), 300)
+        pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total)), 150)
   const withImpl  = hasRealAI && !!ai.implication
-  const insH      = 0.78
-  const implH     = 0.44
-  const insightY  = FY - 0.12 - (withImpl ? insH + 0.08 + implH : insH)
+  const insH      = 0.52
+  const implH     = 0.40
+  const insightY  = FY - 0.12 - (withImpl ? insH + 0.06 + implH : insH)
 
   // ── Full-width horizontal bar chart ───────────────────────────────────────
   const headerY   = CY + 0.90      // column header row
@@ -2382,6 +2398,39 @@ export async function POST(req: Request, { params }: Params) {
     }
     const displayRows = hasFilters || rowsSampled ? allRows.length : (analytics?.totalRows || dataset.row_count || 0)
 
+    // ── Rating-based strip color for quote cards ─────────────────────────
+    // Find the primary numeric (rating) field to color-code quote card left strips
+    const ratingField = selectedFields.find(f => f.type === 'numeric' && f.summary?.min != null)
+    const ratingKey = ratingField ? (rowKeyMap[normalize(ratingField.field)] || ratingField.field) : ''
+    const ratingMin = ratingField?.summary?.min ?? 0
+    const ratingMax = ratingField?.summary?.max ?? 5
+    // Build a lookup: first 120 chars of OE text → rating value
+    const quoteRatingMap = new Map<string, number>()
+    if (ratingField && allRows.length > 0) {
+      const oeKeys = selectedFields.filter(f => f.type === 'open-ended').map(f => rowKeyMap[normalize(f.field)] || f.field)
+      for (const row of allRows) {
+        const rv = parseFloat(String(row[ratingKey] ?? ''))
+        if (isNaN(rv)) continue
+        for (const oek of oeKeys) {
+          const txt = String(row[oek] || '').trim()
+          if (txt.length >= 30) quoteRatingMap.set(txt.slice(0, 120), rv)
+        }
+      }
+    }
+    function getStripColor(quoteText: string): string | undefined {
+      if (!ratingField || quoteRatingMap.size === 0) return undefined
+      // Try matching first 120 chars of the quote against the map
+      const key = quoteText.replace(/[\u201C\u201D]/g, '').trim().slice(0, 120)
+      const rv = quoteRatingMap.get(key)
+      if (rv != null) return ratingColor(rv, ratingMin, ratingMax)
+      // Fuzzy: check if any map key starts with the first 60 chars
+      const prefix = key.slice(0, 60)
+      for (const [k, v] of quoteRatingMap) {
+        if (k.startsWith(prefix)) return ratingColor(v, ratingMin, ratingMax)
+      }
+      return undefined
+    }
+
     // 1: Title
     buildTitleSlide(pptx, datasetName, reportTitle || narratives.reportTitle || '', displayRows, analytics.computedAt)
 
@@ -2490,14 +2539,14 @@ export async function POST(req: Request, { params }: Params) {
           ? computeFieldThemes(f.field, sortedThemes)
           : sortedThemes
         // a) Overview slide (AI narrative + theme bar chart)
-        buildOpenEndedSlide(pptx, datasetName, f, ai, audience, fieldThemes.slice(0, 8))
+        buildOpenEndedSlide(pptx, datasetName, f, ai, audience, fieldThemes.slice(0, 8), getStripColor)
         // b) Theme grid overview (multiple themes per page)
         if (includeThemeSlides && fieldThemes.length > 0) {
           buildThemeGridSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined)
         }
         // c) Per-theme detail slides with verbatims on the right
         if (includeThemeSlides && fieldThemes.length > 0) {
-          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (apiKey || undefined))
+          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (apiKey || undefined), getStripColor)
         }
       }
     }
