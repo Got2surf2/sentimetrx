@@ -1,7 +1,8 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
 
-// GET /api/townhall/sessions/:id — get session with themes + stats
+// GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -55,7 +56,93 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     survey_responses: responseCount || 0,
   }
 
-  return NextResponse.json({ session, themes: themes || [], stats })
+  const wantsAnalytics = _req.nextUrl.searchParams.get('analytics') === 'true'
+
+  if (!wantsAnalytics) {
+    return NextResponse.json({ session, themes: themes || [], stats })
+  }
+
+  // ── Analytics mode: enrich themes with keyword matching, sentiment, quotes ──
+  const { data: allTurnsWithText } = await db
+    .from('townhall_turns')
+    .select('user_message_en, user_message, theme_id, created_at, skipped')
+    .eq('session_id', params.id)
+    .order('created_at', { ascending: true })
+
+  const responsesWithText = (allTurnsWithText || []).filter(t => !t.skipped && (t.user_message_en || t.user_message))
+  const allResponseTexts = responsesWithText.map(t => (t.user_message_en || t.user_message || '').trim()).filter(Boolean)
+
+  // Per-theme analytics
+  const enrichedThemes = (themes || []).map(function(t: any) {
+    const keywords: string[] = t.keywords || []
+    const regexes = keywords.slice(0, 15).map(function(kw: string) {
+      try { return buildKwRegex(kw) } catch { return null }
+    }).filter(Boolean) as RegExp[]
+
+    let matchCount = 0, totalPos = 0, totalNeg = 0
+    const matchedQuotes: string[] = []
+    const kwFreq: Record<string, number> = {}
+
+    for (const text of allResponseTexts) {
+      const lower = text.toLowerCase()
+      if (regexes.length > 0 && regexes.some(function(re) { return re.test(lower) })) {
+        matchCount++
+        const score = lexiconScore(text)
+        totalPos += score.pos
+        totalNeg += score.neg
+        if (matchedQuotes.length < 5) matchedQuotes.push(text.slice(0, 300))
+        // Count individual keyword hits
+        for (var ki = 0; ki < keywords.length; ki++) {
+          try {
+            if (buildKwRegex(keywords[ki]).test(lower)) kwFreq[keywords[ki]] = (kwFreq[keywords[ki]] || 0) + 1
+          } catch {}
+        }
+      }
+    }
+
+    const sentiment = matchCount > 0 ? classifySentiment(totalPos, totalNeg) : (t.sentiment || 'neutral')
+    const percentage = allResponseTexts.length > 0 ? Math.round(matchCount / allResponseTexts.length * 100) : 0
+    const topKeywords = Object.entries(kwFreq).sort(function(a, b) { return b[1] - a[1] }).slice(0, 10).map(function(e) { return { word: e[0], count: e[1] } })
+
+    return {
+      ...t,
+      sentiment,
+      match_count: matchCount,
+      percentage,
+      example_quotes: matchedQuotes,
+      top_keywords: topKeywords,
+    }
+  })
+
+  // Overall sentiment breakdown
+  let overallPos = 0, overallNeg = 0, overallNeutral = 0, overallMixed = 0
+  for (const text of allResponseTexts) {
+    const score = lexiconScore(text)
+    const sent = classifySentiment(score.pos, score.neg)
+    if (sent === 'positive') overallPos++
+    else if (sent === 'negative') overallNeg++
+    else if (sent === 'mixed') overallMixed++
+    else overallNeutral++
+  }
+
+  // Responses over time (hourly buckets)
+  const buckets: Record<string, number> = {}
+  for (const t of responsesWithText) {
+    const hr = new Date(t.created_at).toISOString().slice(0, 13) + ':00'
+    buckets[hr] = (buckets[hr] || 0) + 1
+  }
+  const responsesOverTime = Object.entries(buckets).sort().map(function(e) { return { bucket: e[0], count: e[1] } })
+
+  return NextResponse.json({
+    session,
+    themes: enrichedThemes,
+    stats,
+    analytics: {
+      sentiment_breakdown: { positive: overallPos, negative: overallNeg, mixed: overallMixed, neutral: overallNeutral },
+      responses_over_time: responsesOverTime,
+      total_responses: allResponseTexts.length,
+    },
+  })
 }
 
 // PATCH /api/townhall/sessions/:id — update session config or status

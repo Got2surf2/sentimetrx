@@ -867,12 +867,12 @@ export interface TownHallConfig {
   opening_question?: string  // deprecated — use opening_message
   languages?: string[]
   engine: {
-    theme_detection_interval:      number
-    theme_detection_window:        number
-    max_turns_per_participant:     number
-    default_response_target:       number
-    max_active_themes:             number
-    ai_timeout_ms:                 number
+    theme_detection_mode:             'off' | 'manual' | 'auto'
+    theme_detection_interval_minutes: number   // for auto mode — how often to run detection
+    max_turns_per_participant:        number
+    default_response_target:          number
+    max_active_themes:                number
+    ai_timeout_ms:                    number
   }
   session_end: {
     mode:                        'manual' | 'timed' | 'inactivity'

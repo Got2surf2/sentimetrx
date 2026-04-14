@@ -48,6 +48,8 @@ export default function SharedDashboard({ params }: { params: { token: string } 
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
   if (data.type === 'campaign') return <SharedCampaignDashboard campaign={data.campaign} stats={data.stats} expiresAt={data.expires_at}
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
+  if (data.type === 'townhall') return <SharedTownHallDashboard session={data.session} themes={data.themes} stats={data.stats} expiresAt={data.expires_at}
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
   return null
 }
 
@@ -457,6 +459,123 @@ function SharedCampaignDashboard({ campaign, stats, expiresAt, lastRefreshed, re
           Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span> — to learn more go to{' '}
           <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
             className="font-semibold underline" style={{ color: HERMES }}>datanautix.com</a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Shared Town Hall Dashboard ────────────────────────────────────────────────
+
+const TH_COLORS = ['#0F7173', '#E8B84B', '#7C3AED', '#059669', '#E85A1A', '#1A5070', '#0891B2', '#DB2777']
+const sentColorMap: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280' }
+const sentBgMap: Record<string, string> = { positive: '#f0fdf4', negative: '#fef2f2', mixed: '#fffbeb', neutral: '#f9fafb' }
+
+function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefreshed, refreshing, onRefresh }: {
+  session: any; themes: any[]; stats: any; expiresAt: string
+  lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
+}) {
+  return (
+    <div style={{ minHeight: '100dvh', background: '#f9fafb', padding: 20 }}>
+      <div style={{ maxWidth: 900, margin: '0 auto' }}>
+        <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} expiresAt={expiresAt} />
+
+        {/* Header */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-2xl">{session.bot_emoji || '\uD83D\uDCAC'}</span>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">{session.name}</h1>
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span className="capitalize">{session.status}</span>
+                {session.started_at && <span>Started {new Date(session.started_at).toLocaleDateString()}</span>}
+                {session.ended_at && <span>Ended {new Date(session.ended_at).toLocaleDateString()}</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {[
+            { label: 'Participants', value: stats.participants },
+            { label: 'Responses', value: stats.responses },
+            { label: 'Avg Words', value: stats.avg_words },
+          ].map((s: any) => (
+            <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-2xl font-bold text-gray-800">{s.value}</div>
+              <div className="text-xs text-gray-400 font-semibold uppercase">{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Themes */}
+        {themes.length > 0 && (
+          <div className="mb-4">
+            <h2 className="text-sm font-bold text-gray-700 mb-3 uppercase">Themes ({themes.length})</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {themes.map((t: any, i: number) => {
+                const color = TH_COLORS[i % TH_COLORS.length]
+                return (
+                  <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div style={{ background: color, height: 4 }} />
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-gray-800">{t.label}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
+                          style={{ background: sentBgMap[t.sentiment] || sentBgMap.neutral, color: sentColorMap[t.sentiment] || sentColorMap.neutral }}>
+                          {t.sentiment}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div style={{ width: Math.min(t.percentage, 100) + '%', background: color }} className="h-full rounded-full" />
+                        </div>
+                        <span className="text-xs font-bold" style={{ color }}>{t.percentage}%</span>
+                      </div>
+                      {t.keywords?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {t.keywords.slice(0, 5).map((kw: string) => (
+                            <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{kw}</span>
+                          ))}
+                        </div>
+                      )}
+                      {t.example_quote && (
+                        <p className="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2 line-clamp-2">
+                          {'\u201C'}{t.example_quote.slice(0, 120)}{t.example_quote.length > 120 ? '...' : ''}{'\u201D'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Distribution */}
+        {themes.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+            <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Distribution</h3>
+            <div className="space-y-2">
+              {[...themes].sort((a: any, b: any) => b.percentage - a.percentage).map((t: any, i: number) => {
+                const color = TH_COLORS[i % TH_COLORS.length]
+                return (
+                  <div key={i} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-700 font-medium w-28 truncate">{t.label}</span>
+                    <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                      <div style={{ width: Math.min(t.percentage, 100) + '%', background: color }} className="h-full rounded-full" />
+                    </div>
+                    <span className="text-xs font-bold w-10 text-right" style={{ color }}>{t.percentage}%</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="text-center text-xs text-gray-400 mt-6">
+          Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span> — <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: HERMES }}>datanautix.com</a>
         </div>
       </div>
     </div>

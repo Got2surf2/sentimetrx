@@ -6,6 +6,7 @@ import Link from 'next/link'
 import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig, DemoField, PsychoQuestion } from '@/lib/types'
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
+import TownHallAnalyticsPanel from '@/components/townhall/TownHallAnalyticsPanel'
 
 interface Props {
   sessionId: string
@@ -56,6 +57,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [session, setSession] = useState<TownHallSession | null>(null)
   const [themes, setThemes] = useState<TownHallTheme[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
+  const [activeTab, setActiveTab] = useState<'topics' | 'analytics'>('topics')
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -235,6 +237,25 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 {'\u270F\uFE0F'} Edit
               </button>
             )}
+            {!editing && (
+              <button onClick={async () => {
+                try {
+                  const res = await fetch('/api/share', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'townhall', target_id: sessionId, expires_in: '7d' }),
+                  })
+                  const d = await res.json()
+                  if (d.url) {
+                    await navigator.clipboard.writeText(d.url)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 3000)
+                  }
+                } catch { setError('Failed to create share link') }
+              }}
+                className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
+                {copied ? '\u2705 Copied!' : '\uD83D\uDD17 Share'}
+              </button>
+            )}
             {isSetup && (
               <button onClick={() => handleSessionAction('start')} disabled={actionLoading === 'start'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
@@ -390,6 +411,19 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div><ELabel>Default Response Target</ELabel><ENumber value={editConfig.engine.default_response_target} onChange={v => updateEngine({ default_response_target: v })} min={5} max={500} /></div>
                 </div>
                 <div><ELabel>AI Timeout (ms)</ELabel><ENumber value={editConfig.engine.ai_timeout_ms} onChange={v => updateEngine({ ai_timeout_ms: v })} min={3000} max={30000} /></div>
+                <ELabel>Theme Detection Mode</ELabel>
+                <div className="flex gap-2 mb-2">
+                  {(['off', 'manual', 'auto'] as const).map(m => (
+                    <button key={m} onClick={() => updateEngine({ theme_detection_mode: m })}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+                      style={{ background: editConfig.engine.theme_detection_mode === m ? '#fff4ef' : '#f9fafb', borderColor: editConfig.engine.theme_detection_mode === m ? HERMES : '#e5e7eb', color: editConfig.engine.theme_detection_mode === m ? HERMES : '#6b7280' }}>
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                {editConfig.engine.theme_detection_mode === 'auto' && (
+                  <div><ELabel>Detection Interval (minutes)</ELabel><ENumber value={editConfig.engine.theme_detection_interval_minutes} onChange={v => updateEngine({ theme_detection_interval_minutes: v })} min={5} max={60} /></div>
+                )}
               </EditSection>
 
               {/* ── 4. Session End ──────────────────────────────────────── */}
@@ -510,8 +544,26 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
           </div>
         )}
 
-        {/* ── MAIN CONTENT (not editing) ─────────────────────────── */}
+        {/* Tab switcher */}
         {!editing && (
+          <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1 w-fit">
+            {(['topics', 'analytics'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize"
+                style={{ background: activeTab === tab ? 'white' : 'transparent', color: activeTab === tab ? HERMES : '#6b7280', boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── ANALYTICS TAB ────────────────────────────────────────── */}
+        {!editing && activeTab === 'analytics' && (
+          <TownHallAnalyticsPanel sessionId={sessionId} />
+        )}
+
+        {/* ── TOPICS TAB (main content) ────────────────────────────── */}
+        {!editing && activeTab === 'topics' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* Left 2/3: Topics — single unified list */}
             <div className="lg:col-span-2 space-y-4">
@@ -653,6 +705,36 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Theme detection button */}
+              {isActive && (session.config as any)?.engine?.theme_detection_mode !== 'off' && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-semibold text-gray-700">Theme Detection</span>
+                    {(session.config as any)?.engine?.theme_detection_mode === 'auto' && (
+                      <span className="text-[10px] text-gray-400 ml-2">Auto every {(session.config as any)?.engine?.theme_detection_interval_minutes || 10} min</span>
+                    )}
+                  </div>
+                  <button onClick={async () => {
+                    setActionLoading('detect')
+                    try {
+                      const res = await fetch('/api/townhall/themes/detect', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: sessionId }),
+                      })
+                      const d = await res.json()
+                      if (d.error) setError(d.error)
+                    } catch { setError('Detection failed') }
+                    setActionLoading(null)
+                    await fetchData()
+                  }}
+                    disabled={actionLoading === 'detect'}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                    style={{ background: '#7c3aed' }}>
+                    {actionLoading === 'detect' ? 'Detecting...' : '\u29E1 Detect Themes'}
+                  </button>
                 </div>
               )}
             </div>

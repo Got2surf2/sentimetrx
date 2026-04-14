@@ -42,8 +42,8 @@ const DEFAULT_CONFIG: TownHallConfig = {
   opening_message: 'Welcome! Share your thoughts anonymously — we\'ll have a short conversation to understand your perspective.\n\nWhat\'s on your mind?',
   closing_message: 'Thank you for your time. Your voice matters.',
   engine: {
-    theme_detection_interval: 5,
-    theme_detection_window: 25,
+    theme_detection_mode: 'manual',
+    theme_detection_interval_minutes: 10,
     max_turns_per_participant: 8,
     default_response_target: 30,
     max_active_themes: 8,

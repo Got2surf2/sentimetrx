@@ -1,5 +1,5 @@
 // app/api/share/route.ts
-// POST   — create a shareable link for a study or campaign
+// POST   — create a shareable link for a study, campaign, or townhall session
 // GET    — validate a share token and return data, or list active links
 // DELETE — revoke a share link by token
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
   const { type, target_id, expires_in } = body
   if (!type || !target_id) return NextResponse.json({ error: 'type and target_id required' }, { status: 400 })
-  if (!['study', 'campaign'].includes(type)) return NextResponse.json({ error: 'type must be study or campaign' }, { status: 400 })
+  if (!['study', 'campaign', 'townhall'].includes(type)) return NextResponse.json({ error: 'type must be study, campaign, or townhall' }, { status: 400 })
 
   // Calculate expiry
   const expiryHours: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
@@ -156,6 +156,36 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ type: 'campaign', campaign, stats: counts, expires_at: link.expires_at })
+  }
+
+  if (link.type === 'townhall') {
+    const { data: session } = await db.from('townhall_sessions').select('id, name, status, config, started_at, ended_at').eq('id', link.target_id).single()
+    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    const cfg = session.config as any
+
+    // Fetch themes (non-dismissed)
+    const { data: themes } = await db.from('townhall_themes').select('id, label, description, source, state, keywords, sentiment, response_count, response_target, mention_count, example_quote').eq('session_id', link.target_id).neq('state', 'dismissed').order('response_count', { ascending: false })
+
+    // Fetch turn stats (aggregated only — no individual data)
+    const { data: turns } = await db.from('townhall_turns').select('participant_id, skipped, user_message').eq('session_id', link.target_id)
+    const allTurns = turns || []
+    const participants = new Set(allTurns.map((t: any) => t.participant_id))
+    const answered = allTurns.filter((t: any) => !t.skipped && t.user_message)
+    const totalResponses = answered.length
+    const avgWords = totalResponses > 0 ? Math.round(answered.reduce((s: number, t: any) => s + (t.user_message?.split(/\s+/).length || 0), 0) / totalResponses) : 0
+
+    return NextResponse.json({
+      type: 'townhall',
+      session: { name: session.name, bot_emoji: cfg?.bot_emoji || '', status: session.status, started_at: session.started_at, ended_at: session.ended_at },
+      themes: (themes || []).map((t: any) => ({
+        label: t.label, source: t.source, state: t.state, keywords: t.keywords || [],
+        sentiment: t.sentiment || 'neutral', response_count: t.response_count || 0,
+        percentage: totalResponses > 0 ? Math.round((t.mention_count || t.response_count || 0) / totalResponses * 100) : 0,
+        example_quote: t.example_quote || '',
+      })),
+      stats: { participants: participants.size, responses: totalResponses, avg_words: avgWords },
+      expires_at: link.expires_at,
+    })
   }
 
   return NextResponse.json({ error: 'Unknown type' }, { status: 400 })

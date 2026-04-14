@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/review-sync",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/townhall-theme-detection",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

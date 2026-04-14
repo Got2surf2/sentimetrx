@@ -32,7 +32,7 @@ const NEG_WORDS = new Set([
  * Score a block of text for sentiment using the lexicon.
  * Returns { positive, negative } word counts.
  */
-function lexiconScore(text: string): { pos: number; neg: number } {
+export function lexiconScore(text: string): { pos: number; neg: number } {
   const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/)
   var pos = 0, neg = 0
   for (var i = 0; i < words.length; i++) {
