@@ -478,7 +478,7 @@ function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefres
   return (
     <div style={{ minHeight: '100dvh', background: '#f9fafb', padding: 20 }}>
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} expiresAt={expiresAt} />
+        <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} />
 
         {/* Header */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
