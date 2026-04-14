@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
 import type { TownHallSession, TownHallTheme, TownHallGuideTopic } from '@/lib/types'
+import { SUPPORTED_LANGUAGES } from '@/lib/types'
 
 interface Props {
   sessionId: string
@@ -66,6 +67,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [editSlug, setEditSlug] = useState('')
   const [editOpening, setEditOpening] = useState('')
   const [editGuide, setEditGuide] = useState<TownHallGuideTopic[]>([])
+  const [editLanguages, setEditLanguages] = useState<string[]>(['en'])
   const [saving, setSaving] = useState(false)
 
   // Custom question state
@@ -102,6 +104,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setEditBotEmoji(cfg?.bot_emoji || '\uD83D\uDCAC')
     setEditOpening(cfg?.opening_question || '')
     setEditGuide(session.discussion_guide || [])
+    setEditLanguages(cfg?.languages || ['en'])
     setEditing(true)
   }
 
@@ -112,7 +115,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setSaving(true)
     setError(null)
     const cfg = session.config as any
-    const updatedConfig = { ...cfg, bot_name: editBotName, bot_emoji: editBotEmoji, opening_question: editOpening }
+    const updatedConfig = { ...cfg, bot_name: editBotName, bot_emoji: editBotEmoji, opening_question: editOpening, languages: editLanguages }
     try {
       const res = await fetch('/api/townhall/sessions/' + sessionId, {
         method: 'PATCH',
@@ -221,10 +224,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
           </div>
 
           <div className="flex items-center gap-2">
-            {(isSetup || isEnded) && !editing && (
+            {!editing && (
               <button onClick={startEdit}
                 className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
-                Edit
+                {'\u270F\uFE0F'} Edit
               </button>
             )}
             {isSetup && (
@@ -299,6 +302,29 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Bot Emoji</label>
                 <input type="text" value={editBotEmoji} onChange={e => setEditBotEmoji(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Languages</label>
+              <p className="text-[10px] text-gray-400 mb-2">Participants choose their language before joining. Responses are auto-translated to English.</p>
+              <div className="flex flex-wrap gap-1.5">
+                {SUPPORTED_LANGUAGES.map(l => {
+                  const enabled = editLanguages.includes(l.code)
+                  return (
+                    <button key={l.code} onClick={() => {
+                      setEditLanguages(prev => enabled ? prev.filter(c => c !== l.code) : [...prev, l.code])
+                    }}
+                      className="text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors"
+                      style={{
+                        background: enabled ? '#fff4ef' : 'white',
+                        color: enabled ? HERMES : '#9ca3af',
+                        borderColor: enabled ? HERMES + '60' : '#e5e7eb',
+                      }}>
+                      {l.nativeName} {l.nativeName !== l.name ? '(' + l.name + ')' : ''}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
