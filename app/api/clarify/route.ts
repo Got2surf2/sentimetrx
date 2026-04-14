@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { isInputSafe, isOutputSafe, extractQuestion } from '@/lib/guardrails'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,35 +18,6 @@ interface ClarifyRequest {
   priorAnswers:    Record<string, string>
   industry?:       string
   language?:       string
-}
-
-// ── Input guardrail ────────────────────────────────────────────────────────
-// Rough signal patterns that suggest the answer is off-topic or harmful.
-// If any match, skip clarification entirely rather than sending to the API.
-const SKIP_PATTERNS = [
-  /\b(fuck|shit|cunt|bitch|asshole|bastard)\b/i,         // profanity
-  /\b(kill|murder|rape|bomb|attack|shoot)\b/i,           // violence
-  /\b(nude|naked|sex|porn|dick|cock|pussy|tits)\b/i,     // sexual
-  /\b(n[i1]gg|sp[i1]c|ch[i1]nk|k[i1]ke|f[a4]gg)\w*/i,  // slurs (common variants)
-  /https?:\/\//i,                                         // URLs (spam/phishing)
-  /.{600,}/,                                              // extremely long (>600 chars)
-]
-
-function isAnswerSafe(answer: string): boolean {
-  if (!answer || answer.trim().length < 2) return false
-  return !SKIP_PATTERNS.some(pattern => pattern.test(answer))
-}
-
-// ── Output guardrail ───────────────────────────────────────────────────────
-// Validate the generated question before returning it to the client.
-function isOutputSafe(text: string): boolean {
-  if (!text || text.length < 5 || text.length > 200) return false
-  // Must look like a question (contain a question word or end with ?)
-  const looksLikeQuestion = /\?$/.test(text) || /\b(what|why|how|which|who|when|could|can|would|tell|describe)\b/i.test(text)
-  if (!looksLikeQuestion) return false
-  // Must not echo back problematic content
-  if (SKIP_PATTERNS.some(p => p.test(text))) return false
-  return true
 }
 
 export async function POST(req: NextRequest) {
@@ -68,7 +40,7 @@ export async function POST(req: NextRequest) {
   } = body
 
   // ── Input guardrail: skip before hitting the API ──────────────────────
-  if (!isAnswerSafe(answer)) {
+  if (!isInputSafe(answer)) {
     return NextResponse.json({ question: null })
   }
 
@@ -137,27 +109,7 @@ Generate a targeted follow-up question or return SKIP.`
       return NextResponse.json({ question: null })
     }
 
-    let clean = text.replace(/^["']|["']$/g, '').trim()
-
-    // ── Strip leaked reasoning/preamble ────────────────────────────────
-    // Models sometimes prefix with "Got it — ...", "Here's my follow-up:", etc.
-    // Extract the last sentence that looks like a question.
-    clean = clean
-      .replace(/^(Got it|Sure|Okay|I see|Understood|Right|Interesting)[^.!?]*[.!?\-—:]\s*/gi, '')
-      .replace(/^(Here'?s?\s+(my|a|the)\s+follow[- ]?up[^.!?]*[.!?\-—:]\s*)/gi, '')
-      .replace(/^(The respondent|They('ve| have| are)|This (is|indicates))[^.!?]*[.!?\-—:]\s*/gi, '')
-      .replace(/^(Let me|I'll|I will|I want to)[^.!?]*[.!?\-—:]\s*/gi, '')
-      .trim()
-
-    // If there are multiple sentences, take the last one that ends with ?
-    if (clean.includes('. ') || clean.includes('? ')) {
-      const sentences = clean.split(/(?<=[.!?])\s+/)
-      const questionSentence = sentences.reverse().find((s: string) => s.trim().endsWith('?'))
-      if (questionSentence) clean = questionSentence.trim()
-    }
-
-    // Strip any remaining leading quotes or dashes
-    clean = clean.replace(/^[-—–]\s*/, '').replace(/^["']|["']$/g, '').trim()
+    const clean = extractQuestion(text)
 
     // ── Output guardrail: validate before returning ────────────────────
     if (!isOutputSafe(clean)) {

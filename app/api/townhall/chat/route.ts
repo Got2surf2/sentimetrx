@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { isInputSafe, isOutputClean, cleanAiOutput } from '@/lib/guardrails'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,21 +12,6 @@ interface ChatRequest {
   turn_number: number
   theme_id: string | null
   skipped?: boolean
-}
-
-// Input guardrails
-const SKIP_PATTERNS = [
-  /\b(fuck|shit|cunt|bitch|asshole|bastard)\b/i,
-  /\b(kill|murder|rape|bomb|attack|shoot)\b/i,
-  /\b(nude|naked|sex|porn|dick|cock|pussy|tits)\b/i,
-  /\b(n[i1]gg|sp[i1]c|ch[i1]nk|k[i1]ke|f[a4]gg)\w*/i,
-  /https?:\/\//i,
-  /.{1200,}/,
-]
-
-function isInputSafe(text: string): boolean {
-  if (!text || text.trim().length < 1) return false
-  return !SKIP_PATTERNS.some(p => p.test(text))
 }
 
 // POST /api/townhall/chat — participant sends a message, gets next bot message
@@ -62,6 +48,22 @@ export async function POST(req: NextRequest) {
       bot_message: config?.session_end?.closing_message || 'This session has ended. Thank you for participating.',
       is_final: true, theme_id: null, source: null, turn_number: turn_number + 1,
     })
+  }
+
+  // Input guardrail: check for harmful content before processing
+  if (message && !skipped && !isInputSafe(message, 1200)) {
+    // Store the turn but don't send to AI — redirect warmly
+    await supabase.from('townhall_turns')
+      .update({ user_message: '[filtered]', skipped: true })
+      .eq('session_id', session_id).eq('participant_id', participant_id).eq('turn_number', turn_number)
+
+    const redirectMsg = 'I appreciate you sharing — let\'s keep the conversation focused on the topic. What else is on your mind?'
+    const nextTurn = turn_number + 1
+    await supabase.from('townhall_turns').insert({
+      session_id, participant_id, turn_number: nextTurn, bot_message: redirectMsg,
+      user_message: null, theme_id, source: 'clarifier', skipped: false,
+    })
+    return NextResponse.json({ bot_message: redirectMsg, theme_id, source: 'clarifier', is_final: false, turn_number: nextTurn })
   }
 
   // Update the current turn with the user's response
@@ -200,17 +202,6 @@ function wrapUp(config: any) {
   })
 }
 
-function cleanAiOutput(text: string): string {
-  return text
-    .replace(/^(Got it|Sure|Okay|I see|Understood|Right|Interesting)[^.!?]*[.!?\-—:]\s*/gi, '')
-    .replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
-    .replace(/^(The participant|They('ve| have| are))[^.!?]*[.!?\-—:]\s*/gi, '')
-    .replace(/^(Based on|Given|Since)[^.!?]*[.!?\-—:]\s*/gi, '')
-    .replace(/^[-—–]\s*/, '')
-    .replace(/^["']|["']$/g, '')
-    .trim()
-}
-
 async function callClaude(system: string, user: string, timeoutMs = 3000): Promise<string> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -331,7 +322,7 @@ async function generateClarifier(config: any, message: string, turns: any[]): Pr
   const user = `The participant just said: "${message}"\n\nThis was a short response. Ask a warm, natural follow-up to draw out more detail. Maximum 30 words. Just the question.`
 
   const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000)
-  return result || 'Could you tell me a bit more about that?'
+  return (result && isOutputClean(result)) ? result : 'Could you tell me a bit more about that?'
 }
 
 // ── Generate natural transition to next topic ────────────────────────────
@@ -354,5 +345,5 @@ ${nextTopic.follow_up_angles?.length ? 'Angles to consider: ' + nextTopic.follow
 Acknowledge what they've shared so far, then smoothly shift to the new topic. Maximum 40 words. Just the message.`
 
   const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000)
-  return result || ('Let me ask you about something else — ' + nextTopic.question)
+  return (result && isOutputClean(result)) ? result : ('Let me ask you about something else — ' + nextTopic.question)
 }
