@@ -882,6 +882,10 @@ export interface TownHallConfig {
     done_label:        string
     thank_you_message: string
   }
+  // Post-session demographic & psychographic questions (optional)
+  demoFields?:         DemoField[]
+  psychographicBank?:  PsychoQuestion[]
+  psychoCount?:        number   // how many psycho questions to randomly show (default 3)
 }
 
 export type TownHallSessionStatus = 'setup' | 'active' | 'paused' | 'ended'

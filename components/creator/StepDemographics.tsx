@@ -3,21 +3,9 @@
 import { useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Section, NavButtons, TransitionMessagePanel } from './CreatorUI'
+import { DEMO_BANK } from '@/lib/types'
 
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
-
-var DEMO_BANK: { key: string; label: string; type: 'select' | 'text'; options?: [string, string][]; enabled: boolean }[] = [
-  { key: 'age',        label: 'Age Range',         type: 'select', enabled: true,  options: [['18-24','18-24'],['25-34','25-34'],['35-44','35-44'],['45-54','45-54'],['55-64','55-64'],['65+','65 or over']] },
-  { key: 'gender',     label: 'Gender',            type: 'select', enabled: true,  options: [['male','Male'],['female','Female'],['nonbinary','Non-binary'],['other','Prefer to self-describe'],['prefer_not','Prefer not to say']] },
-  { key: 'zip',        label: 'ZIP / Postal Code', type: 'text',   enabled: true  },
-  { key: 'income',     label: 'Household Income',  type: 'select', enabled: false, options: [['under_25k','Under $25,000'],['25k_50k','$25,000–$49,999'],['50k_75k','$50,000–$74,999'],['75k_100k','$75,000–$99,999'],['100k_150k','$100,000–$149,999'],['150k_plus','$150,000 or more'],['prefer_not','Prefer not to say']] },
-  { key: 'education',  label: 'Education Level',   type: 'select', enabled: false, options: [['high_school','High school or less'],['some_college','Some college'],['associates','Associate degree'],['bachelors','Bachelor\'s degree'],['masters','Master\'s degree'],['doctoral','Doctoral or professional'],['prefer_not','Prefer not to say']] },
-  { key: 'ethnicity',  label: 'Ethnicity',         type: 'select', enabled: false, options: [['white','White'],['black','Black or African American'],['hispanic','Hispanic or Latino'],['asian','Asian'],['native','Native American or Alaska Native'],['pacific','Native Hawaiian or Pacific Islander'],['multi','Two or more races'],['other','Other'],['prefer_not','Prefer not to say']] },
-  { key: 'employment', label: 'Employment Status',  type: 'select', enabled: false, options: [['full_time','Full-time'],['part_time','Part-time'],['self_employed','Self-employed'],['student','Student'],['retired','Retired'],['unemployed','Not employed'],['prefer_not','Prefer not to say']] },
-  { key: 'marital',    label: 'Marital Status',     type: 'select', enabled: false, options: [['single','Single'],['married','Married'],['domestic','Domestic partnership'],['divorced','Divorced'],['widowed','Widowed'],['prefer_not','Prefer not to say']] },
-  { key: 'household',  label: 'Household Size',     type: 'select', enabled: false, options: [['1','1 person'],['2','2 people'],['3','3 people'],['4','4 people'],['5_plus','5 or more']] },
-  { key: 'state',      label: 'State / Region',     type: 'text',   enabled: false },
-]
 
 function getMergedFields(currentFields: any[] | undefined) {
   var merged = DEMO_BANK.map(function(bk) {
