@@ -2425,10 +2425,11 @@ export async function POST(req: Request, { params }: Params) {
       if (rv != null) return ratingColor(rv, ratingMin, ratingMax)
       // Fuzzy: check if any map key starts with the first 60 chars
       const prefix = key.slice(0, 60)
-      for (const [k, v] of quoteRatingMap) {
-        if (k.startsWith(prefix)) return ratingColor(v, ratingMin, ratingMax)
-      }
-      return undefined
+      let fuzzyResult: string | undefined
+      quoteRatingMap.forEach(function(v, k) {
+        if (!fuzzyResult && k.startsWith(prefix)) fuzzyResult = ratingColor(v, ratingMin, ratingMax)
+      })
+      return fuzzyResult
     }
 
     // 1: Title
