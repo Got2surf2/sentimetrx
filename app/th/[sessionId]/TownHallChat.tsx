@@ -121,7 +121,7 @@ export default function TownHallChat({ sessionId }: Props) {
       const d = await r.json()
       if (d.error) {
         if (d.status === 'setup') { setStatus('setup'); setLoading(false); return }
-        setMessages([{ who: 'bot', text: d.error }]); setFinished(true); setLoading(false); return
+        setMessages([{ who: 'bot', text: d.error }]); setPhase('done'); setLoading(false); return
       }
       setPid(d.participant_id); setTurn(d.turn_number); setThemeId(d.theme_id)
       setJoined(true)
