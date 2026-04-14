@@ -80,11 +80,21 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
   const [impactOEFields,     setImpactOEFields]     = useState<Set<string>>(new Set())
   const [impactScoreFields,  setImpactScoreFields]  = useState<Set<string>>(new Set())
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
+  const [aiEnabled,    setAiEnabled]    = useState(false)
   const [shareState,   setShareState]   = useState<ShareState>('idle')
   const [shareUrl,     setShareUrl]     = useState('')
   const [shareExpiry,  setShareExpiry]  = useState('')
   const [shareError,   setShareError]   = useState('')
   const [shareCopied,  setShareCopied]  = useState(false)
+
+  // Read AI toggle from localStorage (syncs with DatasetHeader toggle)
+  useEffect(function() {
+    try { setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1') } catch {}
+    const interval = setInterval(function() {
+      try { setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1') } catch {}
+    }, 2000)
+    return function() { clearInterval(interval) }
+  }, [])
 
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
@@ -169,13 +179,20 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
       const f = fields.find(function(f) { return f.field === fk })
       return f?.label || fk
     })
-    const msgs = [
-      'Generating Executive Summary…',
-      'Running AI analysis…',
-      ...fieldLabels.map(function(l, i) { return 'Building slide ' + (i + 3) + ' — ' + l.slice(0, 40) + '…' }),
-      'Compiling comment slides…',
-      format === 'html' ? 'Finalizing HTML presentation…' : 'Finalizing PowerPoint…',
-    ]
+    const msgs = aiEnabled
+      ? [
+          'Generating Executive Summary…',
+          'Running AI analysis…',
+          ...fieldLabels.map(function(l, i) { return 'Building slide ' + (i + 3) + ' — ' + l.slice(0, 40) + '…' }),
+          'Compiling comment slides…',
+          format === 'html' ? 'Finalizing HTML presentation…' : 'Finalizing PowerPoint…',
+        ]
+      : [
+          'Building data slides…',
+          ...fieldLabels.map(function(l, i) { return 'Building slide ' + (i + 2) + ' — ' + l.slice(0, 40) + '…' }),
+          'Compiling comment slides…',
+          format === 'html' ? 'Finalizing HTML presentation…' : 'Finalizing PowerPoint…',
+        ]
     let msgIdx = 0
     setProgressMsg(msgs[0])
     const msgInterval = setInterval(function() {
@@ -184,7 +201,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     }, 3500)
 
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds) }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled }
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
       if (impactOEFields.size > 0) body.impactOEFields = Array.from(impactOEFields)
       if (impactScoreFields.size > 0) body.impactScoreFields = Array.from(impactScoreFields)
@@ -501,6 +518,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
               label={(format === 'html' ? '🌐 Generate HTML Presentation' : '📊 Generate PowerPoint') + ' (' + selected.size + ' fields)'}
               onGenerate={function() { handleGenerate('quick') }}
               onCancel={onClose}
+              aiOff={!aiEnabled}
             />
           </>
         )}
@@ -564,6 +582,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
               label={format === 'html' ? '🌐 Build Custom HTML Presentation' : '🎯 Build Custom PowerPoint'}
               onGenerate={function() { handleGenerate('builder') }}
               onCancel={onClose}
+              aiOff={!aiEnabled}
             />
           </>
         )}
@@ -1037,17 +1056,25 @@ function ErrorBox({ message }: { message: string }) {
   )
 }
 
-function ModalFooter({ disabled, label, onGenerate, onCancel }: { disabled: boolean; label: string; onGenerate: () => void; onCancel: () => void }) {
+function ModalFooter({ disabled, label, onGenerate, onCancel, aiOff }: { disabled: boolean; label: string; onGenerate: () => void; onCancel: () => void; aiOff?: boolean }) {
   return (
-    <div style={{ borderTop: '1px solid ' + S.border, padding: '12px 20px', display: 'flex', gap: 10, flexShrink: 0, background: S.bg }}>
-      <button onClick={onGenerate} disabled={disabled}
-        style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 700, color: 'white', background: disabled ? S.textFaint : HERMES, border: 'none', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background .15s' }}>
-        {label}
-      </button>
-      <button onClick={onCancel}
-        style={{ padding: '10px 16px', fontSize: 12, fontWeight: 600, color: S.textMid, background: S.white, border: '1px solid ' + S.border, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
-        Cancel
-      </button>
+    <div style={{ borderTop: '1px solid ' + S.border, padding: '12px 20px', flexShrink: 0, background: S.bg }}>
+      {aiOff && (
+        <div style={{ marginBottom: 8, padding: '7px 12px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 6, fontSize: 11, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 14 }}>{'\u26A0\uFE0F'}</span>
+          <span><strong>AI is off.</strong> Export will use data-only charts and auto-generated text — no AI narratives, summaries, or smart quotes. Turn on AI in the header to enable full reports.</span>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button onClick={onGenerate} disabled={disabled}
+          style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 700, color: 'white', background: disabled ? S.textFaint : HERMES, border: 'none', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background .15s' }}>
+          {label}
+        </button>
+        <button onClick={onCancel}
+          style={{ padding: '10px 16px', fontSize: 12, fontWeight: 600, color: S.textMid, background: S.white, border: '1px solid ' + S.border, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }

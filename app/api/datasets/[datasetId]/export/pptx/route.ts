@@ -2018,6 +2018,7 @@ export async function POST(req: Request, { params }: Params) {
   const hasFilters = Object.keys(rawFilters).length > 0
   const reportTitle: string             = body.reportTitle || ''
   const impactOEFields: string[]       = body.impactOEFields || []
+  const skipAI: boolean                = body.skipAI === true
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -2316,7 +2317,7 @@ export async function POST(req: Request, { params }: Params) {
     keyTakeaways: [],
     fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '', watchout: '' }])),
   }
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = skipAI ? undefined : process.env.ANTHROPIC_API_KEY
   if (apiKey) {
     try { narratives = await generateNarratives(apiKey, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error('[export/pptx] AI error:', e) }
@@ -2467,7 +2468,7 @@ export async function POST(req: Request, { params }: Params) {
         }
         // c) Per-theme detail slides with verbatims on the right
         if (includeThemeSlides && fieldThemes.length > 0) {
-          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, apiKey || undefined)
+          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (apiKey || undefined))
         }
       }
     }

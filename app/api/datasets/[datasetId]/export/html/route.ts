@@ -812,6 +812,7 @@ export async function POST(req: Request, { params }: Params) {
   const includeThemeSlides:  boolean  = body.includeThemeSlides !== false
   const selectedThemeIds:    string[] = body.selectedThemeIds || []
   const rawFilters: Record<string, any> = body.filters || {}
+  const skipAI:              boolean  = body.skipAI === true
   const hasFilters = Object.keys(rawFilters).length > 0
 
   if (selectedFieldNames.length === 0) {
@@ -1009,7 +1010,7 @@ export async function POST(req: Request, { params }: Params) {
     reportTitle: '', executiveSummary: [], keyTakeaways: [],
     fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])),
   }
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = skipAI ? undefined : process.env.ANTHROPIC_API_KEY
   if (apiKey) {
     try { narratives = await generateNarratives(apiKey, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error('[export/html] AI error:', e) }
@@ -1074,7 +1075,7 @@ export async function POST(req: Request, { params }: Params) {
     // After each open-ended slide, add per-theme detail slides with field-specific counts
     if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
       const fieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes
-      const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], apiKey || undefined)
+      const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], skipAI ? undefined : (apiKey || undefined))
       themeSlides.forEach(ts => slides.push(ts))
     }
   }

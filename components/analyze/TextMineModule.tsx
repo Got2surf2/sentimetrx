@@ -1732,7 +1732,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           initialData={themes ? { themes: themes.themes, libName: themeLibName, source: themeSource } : null}
           industryThemes={industryThemes}
           datasetId={datasetId}
-          apiKey={apiKey}
+          apiKey={aiEnabled ? apiKey : undefined}
         />
       )}
       {showThemeEditor && industryThemes == null && (
