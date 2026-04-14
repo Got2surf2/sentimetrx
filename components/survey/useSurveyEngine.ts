@@ -47,22 +47,25 @@ interface State {
 export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
-  // Adaptive colors — white text on dark bg, dark text on light bg
+  // iMessage-style colors — always light background with gray bot bubbles / blue user bubbles
+  const IMSG_BLUE = '#007AFF'
+  const IMSG_GRAY = '#E9E9EB'
   const C = {
-    text:       isLightBg ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.9)',
-    textMid:    isLightBg ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.82)',
-    textMute:   isLightBg ? 'rgba(0,0,0,0.4)'  : 'rgba(255,255,255,0.4)',
-    textFaint:  isLightBg ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.3)',
-    bubbleBg:   isLightBg ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)',
-    bubbleBdr:  isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)',
-    inputBg:    isLightBg ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
-    inputBdr:   isLightBg ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)',
-    btnBg:      isLightBg ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.10)',
-    btnBdr:     isLightBg ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)',
-    btnHoverBg: isLightBg ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.18)',
-    btnHoverBdr: isLightBg ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.28)',
-    disabledBg: isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)',
-    disabledTx: isLightBg ? 'rgba(0,0,0,0.3)'  : 'rgba(255,255,255,0.4)',
+    text:       'rgba(0,0,0,0.85)',
+    textMid:    'rgba(0,0,0,0.65)',
+    textMute:   'rgba(0,0,0,0.4)',
+    textFaint:  'rgba(0,0,0,0.25)',
+    bubbleBg:   IMSG_GRAY,
+    bubbleBdr:  'transparent',
+    userBubbleBg: IMSG_BLUE,
+    inputBg:    'rgba(0,0,0,0.04)',
+    inputBdr:   'rgba(0,0,0,0.12)',
+    btnBg:      'rgba(0,0,0,0.05)',
+    btnBdr:     'rgba(0,0,0,0.15)',
+    btnHoverBg: 'rgba(0,0,0,0.10)',
+    btnHoverBdr: 'rgba(0,0,0,0.22)',
+    disabledBg: 'rgba(0,0,0,0.08)',
+    disabledTx: 'rgba(0,0,0,0.3)',
   }
   const state  = useRef<State>({
     rating: null, ratingLabel: null, sentiment: null,
@@ -199,11 +202,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (who === 'bot') {
       const av = document.createElement('div')
       av.className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0'
-      av.style.background = config.theme.botAvatarGradient
+      av.style.cssText = 'background:#C7C7CC;'
       av.textContent = study.bot_emoji
       const bub = document.createElement('div')
       bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed'
-      bub.style.cssText = 'background:' + C.bubbleBg + ';color:' + C.text + ';border:1px solid ' + C.bubbleBdr + ';white-space:pre-wrap;'
+      bub.style.cssText = 'background:' + C.bubbleBg + ';color:#000;white-space:pre-wrap;'
       // Use innerHTML if text contains links, textContent otherwise (safer)
       if (text.includes('<a ')) {
         bub.innerHTML = text
@@ -222,7 +225,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     } else {
       const bub = document.createElement('div')
       bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-br-sm text-sm leading-relaxed font-medium'
-      bub.style.cssText = `background:${config.theme.primaryColor};color:#fff;`
+      bub.style.cssText = 'background:' + C.userBubbleBg + ';color:#fff;'
       bub.textContent = text
       wrap.appendChild(bub)
       state.current.lastUserMsg = text
@@ -247,11 +250,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     t.className = 'flex items-end gap-2 self-start'
     const av = document.createElement('div')
     av.className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0'
-    av.style.background = config.theme.botAvatarGradient
+    av.style.cssText = 'background:#C7C7CC;'
     av.textContent = study.bot_emoji
     const bub = document.createElement('div')
     bub.className = 'px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1.5'
-    bub.style.cssText = 'background:' + C.bubbleBg + ';border:1px solid ' + C.bubbleBdr + ';--dot-color:' + C.text + ';color:' + C.text + ';'
+    bub.style.cssText = 'background:' + C.bubbleBg + ';--dot-color:#8E8E93;color:#000;'
     ;[0, 200, 400].forEach(delay => {
       const dot = document.createElement('span')
       dot.className = 'typing-dot'
@@ -288,11 +291,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       t.className = 'flex items-end gap-2 self-start'
       const av = document.createElement('div')
       av.className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0'
-      av.style.background = config.theme.botAvatarGradient
+      av.style.cssText = 'background:#C7C7CC;'
       av.textContent = study.bot_emoji
       const bub = document.createElement('div')
       bub.className = 'px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1.5'
-      bub.style.cssText = 'background:' + C.bubbleBg + ';border:1px solid ' + C.bubbleBdr + ';--dot-color:' + C.text + ';color:' + C.text + ';'
+      bub.style.cssText = 'background:' + C.bubbleBg + ';--dot-color:#8E8E93;color:#000;'
       ;[0, 200, 400].forEach(delay => {
         const dot = document.createElement('span')
         dot.className = 'typing-dot'
@@ -398,11 +401,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         wrap.className = 'msg-animate flex items-end gap-2 self-start max-w-[80%]'
         const av = document.createElement('div')
         av.className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0'
-        av.style.background = config.theme.botAvatarGradient
+        av.style.cssText = 'background:#C7C7CC;'
         av.textContent = study.bot_emoji
         const bub = document.createElement('div')
         bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed'
-        bub.style.cssText = 'background:' + C.bubbleBg + ';color:' + C.text + ';border:1px solid ' + C.bubbleBdr + ';'
+        bub.style.cssText = 'background:' + C.bubbleBg + ';color:#000;'
         // Style the link within the AI-generated response
         bub.innerHTML = data.deflection.replace(/<a /g, '<a style="color:#00b4d8;text-decoration:underline;font-weight:600" ')
         wrap.append(av, bub)

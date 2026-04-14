@@ -312,8 +312,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <EInput value={editConfig.context.org_name} onChange={v => updateContext({ org_name: v })} />
                 <ELabel>Event Description</ELabel>
                 <ETextarea value={editConfig.context.event_description} onChange={v => updateContext({ event_description: v })} rows={2} />
-                <ELabel>Opening Question</ELabel>
-                <ETextarea value={editConfig.opening_question} onChange={v => updateConfig({ opening_question: v })} rows={2} />
+                <ELabel>Opening Message</ELabel>
+                <ETextarea value={editConfig.opening_message} onChange={v => updateConfig({ opening_message: v })} rows={3} placeholder="Welcome text + opening question shown when a participant joins" />
+                <ELabel>Closing Message</ELabel>
+                <ETextarea value={editConfig.closing_message} onChange={v => updateConfig({ closing_message: v })} rows={2} placeholder="Shown when the session ends or a participant finishes" />
                 <ELabel>Tone</ELabel>
                 <EInput value={editConfig.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm and professional" />
                 <ELabel>Sensitive Topics <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
@@ -399,19 +401,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 {editConfig.session_end.mode === 'inactivity' && (
                   <div><ELabel>Inactivity Timeout (minutes)</ELabel><ENumber value={editConfig.session_end.inactivity_timeout_minutes || 10} onChange={v => updateSessionEnd({ inactivity_timeout_minutes: v })} min={1} max={120} /></div>
                 )}
-                <ELabel>Closing Message</ELabel>
-                <ETextarea value={editConfig.session_end.closing_message} onChange={v => updateSessionEnd({ closing_message: v })} rows={2} />
               </EditSection>
 
-              {/* ── 5. Participant Display ──────────────────────────────── */}
-              <EditSection title="Participant Display" sectionKey="display" open={openSections} toggle={toggleSection}>
-                <ELabel>Welcome Message</ELabel>
-                <ETextarea value={editConfig.display.welcome_message} onChange={v => updateDisplay({ welcome_message: v })} rows={2} />
-                <ELabel>Thank You Message</ELabel>
-                <ETextarea value={editConfig.display.thank_you_message} onChange={v => updateDisplay({ thank_you_message: v })} rows={2} />
+              {/* ── 5. Button Labels ───────────────────────────────────── */}
+              <EditSection title="Button Labels" sectionKey="display" open={openSections} toggle={toggleSection}>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><ELabel>Skip Button Label</ELabel><EInput value={editConfig.display.skip_label} onChange={v => updateDisplay({ skip_label: v })} /></div>
-                  <div><ELabel>Done Button Label</ELabel><EInput value={editConfig.display.done_label} onChange={v => updateDisplay({ done_label: v })} /></div>
+                  <div><ELabel>Skip Button</ELabel><EInput value={editConfig.display.skip_label} onChange={v => updateDisplay({ skip_label: v })} /></div>
+                  <div><ELabel>Done Button</ELabel><EInput value={editConfig.display.done_label} onChange={v => updateDisplay({ done_label: v })} /></div>
                 </div>
               </EditSection>
 

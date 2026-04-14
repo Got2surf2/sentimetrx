@@ -25,6 +25,9 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
   }
 
   const config = session.config as any
+  // Legacy compat: fall back to old field names if new ones aren't set
+  const openingMsg = config?.opening_message || ((config?.display?.welcome_message || '') + (config?.opening_question ? '\n\n' + config.opening_question : '')) || 'Welcome! Share your thoughts anonymously.'
+  const closingMsg = config?.closing_message || config?.session_end?.closing_message || config?.display?.thank_you_message || 'Thank you for participating!'
   return NextResponse.json({
     found: true,
     name: session.name,
@@ -33,7 +36,8 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     bot_emoji: config?.bot_emoji || '\uD83D\uDCAC',
     languages: config?.languages || [],
     display: config?.display || {},
-    closing_message: config?.session_end?.closing_message || null,
+    opening_message: openingMsg,
+    closing_message: closingMsg,
     // Post-session question config (for rendering after chat ends)
     demoFields: config?.demoFields || [],
     psychographicBank: config?.psychographicBank || [],
@@ -76,9 +80,9 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   const language = body.language || 'en'
   const participantId = 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 
-  const welcome = config?.display?.welcome_message || 'Welcome! Share your thoughts anonymously.'
-  const openingQuestion = config?.opening_question || 'What\'s on your mind?'
-  const botMessage = welcome + '\n\n' + openingQuestion
+  // Use opening_message (new) or fall back to legacy welcome + opening_question
+  const botMessage = config?.opening_message
+    || ((config?.display?.welcome_message || 'Welcome! Share your thoughts anonymously.') + '\n\n' + (config?.opening_question || 'What\'s on your mind?'))
 
   await supabase.from('townhall_turns').insert({
     session_id: session.id,

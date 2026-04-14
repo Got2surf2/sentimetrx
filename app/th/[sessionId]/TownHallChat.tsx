@@ -87,6 +87,7 @@ export default function TownHallChat({ sessionId }: Props) {
       setLanguages(d.languages || [])
       setDisplay(d.display || {})
       setClosingMsg(d.closing_message || '')
+      if (d.opening_message) setDisplay((prev: any) => ({ ...prev, opening_message: d.opening_message }))
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
       if (d.psychographicBank) setPsychoBank(d.psychographicBank)
       if (d.psychoCount != null) setPsychoCount(d.psychoCount)
@@ -191,7 +192,7 @@ export default function TownHallChat({ sessionId }: Props) {
   }, [psychoBank, psychoCount, demoFields])
 
   const handleDone = async () => {
-    const msg = display.thank_you_message || 'Thank you for your time. Your voice matters.'
+    const msg = closingMsg || display.thank_you_message || 'Thank you for your time. Your voice matters.'
     setLoading(true)
     await typingDelay(msg)
     setLoading(false)
@@ -283,7 +284,7 @@ export default function TownHallChat({ sessionId }: Props) {
           <div style={{ fontSize: 48, marginBottom: 16 }}>{'\uD83D\uDCAC'}</div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>{sessionName}</h1>
           <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, marginBottom: 24 }}>
-            {display.welcome_message || 'Welcome! Share your thoughts anonymously.'}
+            {display.opening_message || display.welcome_message || 'Welcome! Share your thoughts anonymously.'}
           </p>
           <button onClick={handleJoin} disabled={loading}
             style={{ background: IMSG_BLUE, color: 'white', border: 'none', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>

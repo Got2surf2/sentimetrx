@@ -224,10 +224,9 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      background: theme.backgroundColor,
+      background: '#FFFFFF',
       overflow: 'hidden',
       fontSize: baseFontSize,
-      // Desktop card style via inline media won't work — handled by page wrapper
     }}>
       {/* Fixed header — never scrolls */}
       <div style={{
@@ -270,7 +269,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
       <div
         ref={chatRef}
         className="survey-chat"
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, '--scrollbar-color': isLightBg ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.2)' } as any}
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, background: '#FFFFFF', '--scrollbar-color': 'rgba(0,0,0,0.15)' } as any}
       />
 
       {/* Input area — fixed height, max-height to prevent psycho buttons overflowing */}
@@ -280,8 +279,8 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
           flexShrink: 0,
           padding: '10px 12px',
           paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
-          background: theme.backgroundColor + 'f0',
-          borderTop: '1px solid ' + (isLightBg ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'),
+          background: '#F6F6F6',
+          borderTop: '1px solid #E0E0E0',
           maxHeight: '50vh',
           overflowY: 'auto',
           overflowX: 'hidden',

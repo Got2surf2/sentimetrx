@@ -39,7 +39,8 @@ const DEFAULT_CONFIG: TownHallConfig = {
     sensitive_topics: [],
     priority_areas: [],
   },
-  opening_question: '',
+  opening_message: 'Welcome! Share your thoughts anonymously — we\'ll have a short conversation to understand your perspective.\n\nWhat\'s on your mind?',
+  closing_message: 'Thank you for your time. Your voice matters.',
   engine: {
     theme_detection_interval: 5,
     theme_detection_window: 25,
@@ -52,13 +53,10 @@ const DEFAULT_CONFIG: TownHallConfig = {
     mode: 'manual',
     duration_minutes: 90,
     inactivity_timeout_minutes: 30,
-    closing_message: 'Thanks for participating. Your input is really valuable.',
   },
   display: {
-    welcome_message: 'Welcome! Share your thoughts anonymously — we\'ll have a short conversation to understand your perspective.',
     skip_label: 'I\'d rather not answer that',
     done_label: 'I\'m done sharing',
-    thank_you_message: 'Thank you for your time. Your voice matters.',
   },
 }
 
@@ -242,7 +240,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
 
   const handleSave = async () => {
     if (!name.trim()) { setError('Session name is required'); return }
-    if (!config.opening_question.trim()) { setError('Opening question is required'); return }
+    if (!config.opening_message.trim()) { setError('Opening message is required'); return }
     if (guide.length === 0) { setError('Add at least one discussion topic'); return }
     if (guide.some(t => !t.label.trim() || !t.opening_question.trim())) {
       setError('All topics need a label and opening question'); return
@@ -272,7 +270,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   }
 
   const canProceed = () => {
-    if (step === 0) return !!name.trim() && !!config.opening_question.trim()
+    if (step === 0) return !!name.trim() && !!config.opening_message.trim()
     if (step === 1) return guide.length > 0 && guide.every(t => t.label.trim() && t.opening_question.trim())
     return true
   }
@@ -364,11 +362,21 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div>
-                <Label sub="The broad question everyone starts with — AI will match their response to a discussion topic">Opening question</Label>
+                <Label sub="Welcome text + opening question shown when a participant joins">Opening Message</Label>
                 <Textarea
-                  value={config.opening_question}
-                  onChange={v => setConfig(c => ({ ...c, opening_question: v }))}
-                  placeholder="e.g. What's the most important issue facing our neighborhood right now?"
+                  value={config.opening_message}
+                  onChange={v => setConfig(c => ({ ...c, opening_message: v }))}
+                  placeholder="e.g. Welcome! We'd love to hear your thoughts.\n\nWhat's the most important issue facing our neighborhood right now?"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label sub="Shown when the session ends or a participant finishes">Closing Message</Label>
+                <Textarea
+                  value={config.closing_message}
+                  onChange={v => setConfig(c => ({ ...c, closing_message: v }))}
+                  placeholder="Thank you for your time. Your voice matters."
                   rows={2}
                 />
               </div>
@@ -512,33 +520,19 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                         className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
                     </div>
                   )}
-                  <div>
-                    <Label>Closing message</Label>
-                    <Textarea value={config.session_end.closing_message} onChange={v => updateEnd({ closing_message: v })} />
-                  </div>
                 </div>
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <h3 className="text-sm font-bold text-gray-700 mb-4">Participant Display</h3>
-                <div className="space-y-3">
+                <h3 className="text-sm font-bold text-gray-700 mb-4">Button Labels</h3>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Welcome message</Label>
-                    <Textarea value={config.display.welcome_message} onChange={v => updateDisplay({ welcome_message: v })} />
+                    <Label>Skip button text</Label>
+                    <Input value={config.display.skip_label} onChange={v => updateDisplay({ skip_label: v })} />
                   </div>
                   <div>
-                    <Label>Thank you message</Label>
-                    <Textarea value={config.display.thank_you_message} onChange={v => updateDisplay({ thank_you_message: v })} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Skip button text</Label>
-                      <Input value={config.display.skip_label} onChange={v => updateDisplay({ skip_label: v })} />
-                    </div>
-                    <div>
-                      <Label>Done button text</Label>
-                      <Input value={config.display.done_label} onChange={v => updateDisplay({ done_label: v })} />
-                    </div>
+                    <Label>Done button text</Label>
+                    <Input value={config.display.done_label} onChange={v => updateDisplay({ done_label: v })} />
                   </div>
                 </div>
               </div>
@@ -631,7 +625,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 <h3 className="text-sm font-bold text-gray-700 mb-2">Settings</h3>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
                   <span className="text-gray-400">Opening question</span>
-                  <span className="text-gray-600">{config.opening_question || '(not set)'}</span>
+                  <span className="text-gray-600">{config.opening_message || '(not set)'}</span>
                   <span className="text-gray-400">Max turns</span>
                   <span className="text-gray-600">{config.engine.max_turns_per_participant}</span>
                   <span className="text-gray-400">End mode</span>

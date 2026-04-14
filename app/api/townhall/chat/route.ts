@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   // If session ended, return closing message
   if (session.status === 'ended') {
     return NextResponse.json({
-      bot_message: config?.session_end?.closing_message || 'This session has ended. Thank you for participating.',
+      bot_message: config?.closing_message || config?.session_end?.closing_message || 'This session has ended. Thank you for participating.',
       is_final: true, theme_id: null, source: null, turn_number: turn_number + 1,
     })
   }
@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
 
 function wrapUp(config: any) {
   return NextResponse.json({
-    bot_message: config?.display?.thank_you_message || 'Thank you for sharing your thoughts. Your input is really valuable.',
+    bot_message: config?.closing_message || config?.display?.thank_you_message || 'Thank you for sharing your thoughts. Your input is really valuable.',
     is_final: true, theme_id: null, source: null, turn_number: 999,
   })
 }

@@ -860,7 +860,11 @@ export interface TownHallConfig {
     sensitive_topics:  string[]
     priority_areas:    string[]
   }
-  opening_question: string
+  opening_message: string    // combined welcome + opening question — shown on join
+  closing_message: string    // shown when session ends or participant finishes
+  // Legacy compat: opening_question, display.welcome_message, display.thank_you_message,
+  // session_end.closing_message are all collapsed into opening_message + closing_message
+  opening_question?: string  // deprecated — use opening_message
   languages?: string[]
   engine: {
     theme_detection_interval:      number
@@ -874,13 +878,10 @@ export interface TownHallConfig {
     mode:                        'manual' | 'timed' | 'inactivity'
     duration_minutes:            number | null
     inactivity_timeout_minutes:  number | null
-    closing_message:             string
   }
   display: {
-    welcome_message:   string
     skip_label:        string
     done_label:        string
-    thank_you_message: string
   }
   // Post-session demographic & psychographic questions (optional)
   demoFields?:         DemoField[]
