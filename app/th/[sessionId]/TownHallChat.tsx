@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { SUPPORTED_LANGUAGES } from '@/lib/types'
 
 interface Message { who: 'bot' | 'user'; text: string }
 interface Props { sessionId: string }
@@ -23,6 +24,8 @@ export default function TownHallChat({ sessionId }: Props) {
   const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'ended' | 'notfound'>('loading')
   const [display, setDisplay] = useState<any>({})
   const [closingMsg, setClosingMsg] = useState('')
+  const [languages, setLanguages] = useState<string[]>([])
+  const [selectedLang, setSelectedLang] = useState<string | null>(null)
 
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
@@ -68,6 +71,7 @@ export default function TownHallChat({ sessionId }: Props) {
       setSessionName(d.name || '')
       setBotName(d.bot_name || 'Town Hall')
       setBotEmoji(d.bot_emoji || '\uD83D\uDCAC')
+      setLanguages(d.languages || [])
       setDisplay(d.display || {})
       setClosingMsg(d.closing_message || '')
       if (d.status === 'active') {
@@ -92,7 +96,12 @@ export default function TownHallChat({ sessionId }: Props) {
   const handleJoin = async () => {
     setLoading(true)
     try {
-      const r = await fetch('/api/townhall/join/' + sessionId, { method: 'POST' })
+      const lang = selectedLang || 'en'
+      const r = await fetch('/api/townhall/join/' + sessionId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language: lang }),
+      })
       const d = await r.json()
       if (d.error) {
         if (d.status === 'setup') { setStatus('setup'); setLoading(false); return }
@@ -120,7 +129,7 @@ export default function TownHallChat({ sessionId }: Props) {
     try {
       const r = await fetch('/api/townhall/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: skip ? '' : msg, turn_number: turn, theme_id: themeId, skipped: !!skip }),
+        body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: skip ? '' : msg, turn_number: turn, theme_id: themeId, skipped: !!skip, language: selectedLang || 'en' }),
       })
       const d = await r.json()
       setTurn(d.turn_number); setThemeId(d.theme_id)
@@ -170,6 +179,35 @@ export default function TownHallChat({ sessionId }: Props) {
         <p style={{ color: '#9ca3af', fontSize: 14 }}>{closingMsg || 'This session has ended. Thank you!'}</p>
       </Screen>
     )
+  }
+
+  // Language selection — multiple languages configured and not yet selected
+  if (!joined && languages.length > 1 && !selectedLang) {
+    const langOptions = SUPPORTED_LANGUAGES.filter(l => languages.includes(l.code))
+    return (
+      <div ref={wrapRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: BG, padding: 24 }}>
+        <div style={{ textAlign: 'center', maxWidth: 400, width: '100%' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>{botEmoji}</div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>{sessionName}</h1>
+          <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>Choose your language:</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 280, margin: '0 auto' }}>
+            {langOptions.map(l => (
+              <button key={l.code} onClick={() => setSelectedLang(l.code)}
+                style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid #E0E0E0', background: 'white', fontSize: 15, fontWeight: 500, color: '#111827', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{l.nativeName}</span>
+                {l.nativeName !== l.name && <span style={{ fontSize: 12, color: '#9ca3af' }}>{l.name}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Auto-select English if single language or none configured
+  if (!selectedLang && languages.length <= 1) {
+    if (typeof window !== 'undefined') setTimeout(() => setSelectedLang(languages[0] || 'en'), 0)
+    return <Screen>Loading...</Screen>
   }
 
   if (!joined) {

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
+import { SUPPORTED_LANGUAGES } from '@/lib/types'
 
 interface Props {
   logoUrl?: string
@@ -419,6 +420,31 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
           {/* Step 2: Settings */}
           {step === 2 && (
             <div className="space-y-6">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-4">Languages</h3>
+                <p className="text-xs text-gray-400 mb-3">Select the languages participants can use. If multiple are selected, participants will choose their language before joining.</p>
+                <div className="flex flex-wrap gap-2">
+                  {SUPPORTED_LANGUAGES.map(l => {
+                    const enabled = (config.languages || []).includes(l.code)
+                    return (
+                      <button key={l.code} onClick={() => {
+                        const current = config.languages || []
+                        const next = enabled ? current.filter((c: string) => c !== l.code) : [...current, l.code]
+                        setConfig(c => ({ ...c, languages: next }))
+                      }}
+                        className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                        style={{
+                          background: enabled ? '#fff4ef' : 'white',
+                          color: enabled ? HERMES : '#9ca3af',
+                          borderColor: enabled ? HERMES + '60' : '#e5e7eb',
+                        }}>
+                        {l.nativeName} {l.nativeName !== l.name ? '(' + l.name + ')' : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="text-sm font-bold text-gray-700 mb-4">Conversation Settings</h3>
                 <div className="grid grid-cols-2 gap-4">

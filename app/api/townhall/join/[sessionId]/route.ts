@@ -31,6 +31,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     status: session.status,
     bot_name: config?.bot_name || 'Town Hall',
     bot_emoji: config?.bot_emoji || '\uD83D\uDCAC',
+    languages: config?.languages || [],
     display: config?.display || {},
     closing_message: config?.session_end?.closing_message || null,
   })
@@ -64,7 +65,11 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     }, { status: 400 })
   }
 
+  let body: { language?: string } = {}
+  try { body = await req.json() } catch { /* no body is fine */ }
+
   const config = session.config as any
+  const language = body.language || 'en'
   const participantId = 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 
   const welcome = config?.display?.welcome_message || 'Welcome! Share your thoughts anonymously.'
@@ -77,6 +82,8 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     turn_number: 1,
     bot_message: botMessage,
     user_message: null,
+    user_message_en: null,
+    language,
     theme_id: null,
     source: 'guide',
     skipped: false,

@@ -861,6 +861,7 @@ export interface TownHallConfig {
     priority_areas:    string[]
   }
   opening_question: string
+  languages?: string[]
   engine: {
     theme_detection_interval:      number
     theme_detection_window:        number
@@ -926,14 +927,16 @@ export interface TownHallTheme {
 }
 
 export interface TownHallTurn {
-  id:             string
-  session_id:     string
-  participant_id: string
-  turn_number:    number
-  bot_message:    string
-  user_message:   string | null
-  theme_id:       string | null
-  source:         TownHallTurnSource
-  skipped:        boolean
-  created_at:     string
+  id:              string
+  session_id:      string
+  participant_id:  string
+  turn_number:     number
+  bot_message:     string
+  user_message:    string | null
+  user_message_en: string | null
+  language:        string
+  theme_id:        string | null
+  source:          TownHallTurnSource
+  skipped:         boolean
+  created_at:      string
 }

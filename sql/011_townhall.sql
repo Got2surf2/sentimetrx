@@ -72,6 +72,8 @@ CREATE TABLE townhall_turns (
   turn_number       INT NOT NULL,
   bot_message       TEXT NOT NULL,
   user_message      TEXT,
+  user_message_en   TEXT,
+  language          TEXT DEFAULT 'en',
   theme_id          UUID REFERENCES townhall_themes(id) ON DELETE SET NULL,
   source            TEXT DEFAULT 'guide'
                     CHECK (source IN ('guide','clarifier','detected_theme','custom')),

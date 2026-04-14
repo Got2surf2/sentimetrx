@@ -12,6 +12,7 @@ interface ChatRequest {
   turn_number: number
   theme_id: string | null
   skipped?: boolean
+  language?: string
 }
 
 // POST /api/townhall/chat — participant sends a message, gets next bot message
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   let body: ChatRequest
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { session_id, participant_id, message, turn_number, theme_id, skipped } = body
+  const { session_id, participant_id, message, turn_number, theme_id, skipped, language } = body
 
   if (!session_id || !participant_id) {
     return NextResponse.json({ error: 'Missing session_id or participant_id' }, { status: 400 })
@@ -61,16 +62,35 @@ export async function POST(req: NextRequest) {
     const nextTurn = turn_number + 1
     await supabase.from('townhall_turns').insert({
       session_id, participant_id, turn_number: nextTurn, bot_message: redirectMsg,
-      user_message: null, theme_id, source: 'clarifier', skipped: false,
+      user_message: null, user_message_en: null, language: language || 'en', theme_id, source: 'clarifier', skipped: false,
     })
     return NextResponse.json({ bot_message: redirectMsg, theme_id, source: 'clarifier', is_final: false, turn_number: nextTurn })
   }
 
+  // Translate non-English responses to English for analysis
+  let messageEn: string | null = null
+  if (message && !skipped && language && language !== 'en') {
+    try {
+      const transResult = await callClaude(
+        'You are a translator. Translate the following text to English. Return ONLY the translation, nothing else.',
+        message,
+        3000
+      )
+      if (transResult && transResult.length > 2) messageEn = transResult
+    } catch { /* translation failed — store without, theme detection will work on original */ }
+  }
+
   // Update the current turn with the user's response
   if (message || skipped) {
+    const turnUpdate: Record<string, unknown> = {
+      user_message: skipped ? null : message,
+      user_message_en: skipped ? null : (messageEn || message),
+      language: language || 'en',
+      skipped: !!skipped,
+    }
     await supabase
       .from('townhall_turns')
-      .update({ user_message: skipped ? null : message, skipped: !!skipped })
+      .update(turnUpdate)
       .eq('session_id', session_id)
       .eq('participant_id', participant_id)
       .eq('turn_number', turn_number)
@@ -142,7 +162,7 @@ export async function POST(req: NextRequest) {
 
   if (isOpeningResponse && message && !skipped) {
     // ── OPENING RESPONSE: Match to best topic ────────────────────────────
-    const matchResult = await matchResponseToTopic(config, message, allTopics)
+    const matchResult = await matchResponseToTopic(config, message, language, allTopics)
     resolvedThemeId = matchResult.themeId
     aiSource = resolvedThemeId ? 'guide' : 'clarifier'
     botMessage = matchResult.followUp
@@ -151,7 +171,7 @@ export async function POST(req: NextRequest) {
     // ── CLARIFIER: Short answer, dig deeper on same topic ────────────────
     resolvedThemeId = theme_id
     aiSource = 'clarifier'
-    botMessage = await generateClarifier(config, message, turns)
+    botMessage = await generateClarifier(config, message, turns, language)
 
   } else {
     // ── NEXT TOPIC: Move to an unvisited topic ───────────────────────────
@@ -167,7 +187,7 @@ export async function POST(req: NextRequest) {
     const nextTopic = available[0]
     resolvedThemeId = nextTopic.id
     aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
-    botMessage = await generateTransition(config, message, turns, nextTopic)
+    botMessage = await generateTransition(config, message, language, turns, nextTopic)
   }
 
   const nextTurnNumber = turn_number + 1
@@ -179,6 +199,8 @@ export async function POST(req: NextRequest) {
     turn_number: nextTurnNumber,
     bot_message: botMessage,
     user_message: null,
+    user_message_en: null,
+    language: language || 'en',
     theme_id: resolvedThemeId,
     source: aiSource,
     skipped: false,
@@ -241,11 +263,14 @@ function buildConversationContext(turns: any[]): string {
     .join('\n\n')
 }
 
-function baseSystemPrompt(config: any): string {
+function baseSystemPrompt(config: any, language?: string): string {
   const orgName = config?.context?.org_name || 'the organization'
   const eventDesc = config?.context?.event_description || ''
   const tone = config?.context?.tone || 'warm and conversational'
   const sensitive = config?.context?.sensitive_topics?.join(', ') || 'none'
+  const langInstruction = language && language !== 'en'
+    ? `\n\nIMPORTANT: The participant is using ${language}. You MUST respond ONLY in ${language}. Do NOT respond in English.`
+    : ''
 
   return `You are an AI moderator facilitating a town hall discussion on behalf of ${orgName}.
 ${eventDesc ? `\nEVENT: ${eventDesc}` : ''}
@@ -257,7 +282,7 @@ RULES:
 - Never sound robotic or like a survey form
 - Never mention AI, algorithms, or that you are a bot
 - NEVER ask about: ${sensitive}
-- Just output the message text — no reasoning, labels, quotes, or JSON`
+- Just output the message text — no reasoning, labels, quotes, or JSON${langInstruction}`
 }
 
 // ── Match opening response to best guide topic ───────────────────────────
@@ -265,6 +290,7 @@ RULES:
 async function matchResponseToTopic(
   config: any,
   response: string,
+  language: string | undefined,
   topics: { id: string; label: string; description: string | null; question: string; follow_up_angles: string[] }[]
 ): Promise<{ themeId: string | null; followUp: string }> {
   if (topics.length === 0) {
@@ -273,7 +299,7 @@ async function matchResponseToTopic(
 
   const topicList = topics.map((t, i) => `${i + 1}. "${t.label}" — ${t.description || t.question}`).join('\n')
 
-  const system = baseSystemPrompt(config) + `
+  const system = baseSystemPrompt(config, language) + `
 
 DISCUSSION TOPICS:
 ${topicList}
@@ -316,8 +342,8 @@ Return ONLY a JSON object (no other text):
 
 // ── Generate clarifier for short responses ───────────────────────────────
 
-async function generateClarifier(config: any, message: string, turns: any[]): Promise<string> {
-  const system = baseSystemPrompt(config) + `\n\n${buildConversationContext(turns) ? `CONVERSATION SO FAR:\n${buildConversationContext(turns)}` : ''}`
+async function generateClarifier(config: any, message: string, turns: any[], language?: string): Promise<string> {
+  const system = baseSystemPrompt(config, language) + `\n\n${buildConversationContext(turns) ? `CONVERSATION SO FAR:\n${buildConversationContext(turns)}` : ''}`
 
   const user = `The participant just said: "${message}"\n\nThis was a short response. Ask a warm, natural follow-up to draw out more detail. Maximum 30 words. Just the question.`
 
@@ -330,12 +356,13 @@ async function generateClarifier(config: any, message: string, turns: any[]): Pr
 async function generateTransition(
   config: any,
   lastMessage: string | undefined,
+  language: string | undefined,
   turns: any[],
   nextTopic: { label: string; description?: string | null; question: string; follow_up_angles?: string[] }
 ): Promise<string> {
   const convo = buildConversationContext(turns)
 
-  const system = baseSystemPrompt(config) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`
+  const system = baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`
 
   const user = `The participant has finished discussing the previous topic. Now transition naturally to a new topic: "${nextTopic.label}"
 
