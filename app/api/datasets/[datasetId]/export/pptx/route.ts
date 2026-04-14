@@ -19,6 +19,9 @@ import { computeThemeImpact } from '@/lib/themeImpact'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
+// ── Generator version ────────────────────────────────────────────────────────
+const STORYTIME_VERSION = '1.1.0'  // bump on each release
+
 interface Params { params: { datasetId: string } }
 
 // ── Datanautix brand palette ──────────────────────────────────────────────────
@@ -515,7 +518,7 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
       bg: DN.tealPale, vc: DN.teal,
     },
     { v: fields.length.toString(),   l: 'Fields Analyzed',  sub: `${openCount} open · ${catCount} cat · ${numCount} num`, bg: DN.slateLight, vc: DN.navy },
-    { v: dateStr, l: 'Report Generated', sub: audience + ' edition', bg: DN.slateCard, vc: DN.teal },
+    { v: dateStr, l: 'Report Generated', sub: audience + ' edition · v' + STORYTIME_VERSION, bg: DN.slateCard, vc: DN.teal },
   ]
   scopeCards.forEach(function(sc, i) {
     const cx = PAD + i * (cardW + 0.15)
@@ -655,11 +658,16 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
   solidRect(slide, pptx, PAD, colY + 0.24, leftW, 0.025, DN.gold, 62)
 
   const realBullets = bullets.filter(b => b && b.length > 10)
+  // Dynamic bullet spacing: fit within available height (footer at H - 0.38)
+  const bulletAvail = H - 0.38 - 0.12 - (colY + 0.34)
+  const bulletCount = Math.min(realBullets.length, 5)
+  const bulletH = bulletCount > 0 ? Math.min(0.7, (bulletAvail / bulletCount) - 0.04) : 0.7
   if (realBullets.length > 0) {
-    realBullets.slice(0, 5).forEach(function(b, i) {
-      const by = colY + 0.34 + i * 0.74
-      solidRect(slide, pptx, PAD, by + 0.08, 0.05, 0.05, DN.teal)
-      slide.addText(b, { x: PAD + 0.12, y: by, w: leftW - 0.14, h: 0.7, fontSize: 11, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.25, autoFit: true })
+    realBullets.slice(0, bulletCount).forEach(function(b, i) {
+      const by = colY + 0.34 + i * (bulletH + 0.04)
+      // Align dot vertically with first line of text (top of box + ~0.14")
+      solidRect(slide, pptx, PAD, by + 0.14, 0.05, 0.05, DN.teal)
+      slide.addText(b, { x: PAD + 0.12, y: by, w: leftW - 0.14, h: bulletH, fontSize: 11, color: DN.white, valign: 'top', wrap: true, lineSpacingMultiple: 1.25, autoFit: true })
     })
   } else {
     // Auto snapshot
@@ -679,40 +687,52 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
     })
   }
 
-  // Right: themes + takeaways
+  // Right: themes + takeaways — dynamically sized to fit within page
+  const rightAvail = H - 0.38 - 0.12 - colY  // total available height on right side (above footer)
+  const hasTakeaways = takeaways.length > 0
+  const maxThemes = Math.min(themes.length, 5)
+  const maxTA     = Math.min(takeaways.length, 3)
+  // Reserve space for takeaways: header (0.30) + cards
+  const taReserve = hasTakeaways ? 0.30 + maxTA * 0.56 : 0
+  // Themes get remaining space
+  const themeAvail = rightAvail - taReserve - (hasTakeaways ? 0.14 : 0) - 0.30  // minus theme header
+  const thH = maxThemes > 0 ? Math.min(0.52, (themeAvail - 0.06 * (maxThemes - 1)) / maxThemes) : 0
+  const thGap = 0.06
+
   if (themes.length > 0) {
     slide.addText('TOP THEMES', { x: rightX, y: colY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
     solidRect(slide, pptx, rightX, colY + 0.24, rightW, 0.025, DN.gold, 62)
-    const maxThemes = Math.min(themes.length, 5)
-    const thH = 0.62
     themes.slice(0, maxThemes).forEach(function(t: any, i: number) {
-      const ty = colY + 0.34 + i * (thH + 0.08)
+      const ty = colY + 0.30 + i * (thH + thGap)
       const hasData  = (t.count || 0) > 0
       const hitPct   = Math.round((t.percentage || 0) * 10) / 10
       solidRect(slide, pptx, rightX, ty, rightW, thH, DN.navyMid)
       if (hasData) solidRect(slide, pptx, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal, 75)
       solidRect(slide, pptx, rightX, ty, 0.05, thH, hasData ? DN.teal : DN.slate)
-      slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.85, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle', autoFit: true })
+      slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.04, w: rightW - 0.85, h: thH - 0.08, fontSize: 10, bold: true, color: DN.white, valign: 'middle', autoFit: true })
       if (hasData) {
-        slide.addText(hitPct + '%', { x: rightX + rightW - 0.72, y: ty + 0.06, w: 0.66, h: thH - 0.12, fontSize: 12, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
+        slide.addText(hitPct + '%', { x: rightX + rightW - 0.72, y: ty + 0.04, w: 0.66, h: thH - 0.08, fontSize: 11, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
       } else {
-        slide.addText('Insufficient data', { x: rightX + rightW - 1.1, y: ty + 0.06, w: 1.04, h: thH - 0.12, fontSize: 8, color: DN.slate, align: 'right', valign: 'middle', italic: true })
+        slide.addText('Insufficient data', { x: rightX + rightW - 1.1, y: ty + 0.04, w: 1.04, h: thH - 0.08, fontSize: 8, color: DN.slate, align: 'right', valign: 'middle', italic: true })
       }
     })
   }
 
-  if (takeaways.length > 0) {
-    const taY = themes.length > 0 ? colY + 0.34 + Math.min(themes.length, 5) * 0.7 + 0.2 : colY + 0.34
+  if (hasTakeaways) {
+    const taY = themes.length > 0 ? colY + 0.30 + maxThemes * (thH + thGap) + 0.14 : colY + 0.34
+    const taCardH = Math.min(0.52, (H - 0.38 - 0.12 - taY - 0.30) / maxTA - 0.04)
     slide.addText('RECOMMENDED ACTIONS', { x: rightX, y: taY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
     solidRect(slide, pptx, rightX, taY + 0.24, rightW, 0.025, DN.gold, 62)
-    takeaways.slice(0, 3).forEach(function(ta, i) {
-      const ty = taY + 0.34 + i * 0.68
-      solidRect(slide, pptx, rightX, ty, rightW, 0.58, DN.navyMid)
-      solidRect(slide, pptx, rightX, ty, 0.05, 0.58, i === 0 ? DN.gold : DN.teal)
+    takeaways.slice(0, maxTA).forEach(function(ta, i) {
+      const ty = taY + 0.30 + i * (taCardH + 0.04)
+      solidRect(slide, pptx, rightX, ty, rightW, taCardH, DN.navyMid)
+      solidRect(slide, pptx, rightX, ty, 0.05, taCardH, i === 0 ? DN.gold : DN.teal)
       // Number badge
-      solidRect(slide, pptx, rightX + 0.12, ty + 0.09, 0.34, 0.34, i === 0 ? DN.gold : DN.teal)
-      slide.addText(String(i + 1), { x: rightX + 0.12, y: ty + 0.09, w: 0.34, h: 0.34, fontSize: 12, bold: true, color: i === 0 ? DN.navy : DN.white, align: 'center', valign: 'middle' })
-      slide.addText(ta, { x: rightX + 0.56, y: ty + 0.04, w: rightW - 0.64, h: 0.50, fontSize: 10, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
+      const badgeS = Math.min(0.30, taCardH * 0.6)
+      const badgeY = ty + (taCardH - badgeS) / 2
+      solidRect(slide, pptx, rightX + 0.10, badgeY, badgeS, badgeS, i === 0 ? DN.gold : DN.teal)
+      slide.addText(String(i + 1), { x: rightX + 0.10, y: badgeY, w: badgeS, h: badgeS, fontSize: 11, bold: true, color: i === 0 ? DN.navy : DN.white, align: 'center', valign: 'middle' })
+      slide.addText(ta, { x: rightX + 0.50, y: ty + 0.03, w: rightW - 0.58, h: taCardH - 0.06, fontSize: 9, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
     })
   }
 
@@ -837,11 +857,11 @@ function buildCategoricalSlide(pptx: any, datasetName: string, f: SelectedField,
     }
   }
 
-  // Insight text — AI if good, else auto-computed
+  // Insight text — AI if good, else auto-computed. Trim to fit box (~300 chars).
   const hasRealAI = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
-  const insightText = hasRealAI
+  const insightText = trimNatural(hasRealAI
     ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
-    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, bot2)
+    : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2, bot2), 300)
 
   const insightH = Math.max(0.5, H - leftY - 0.55)
   insightBox(slide, pptx, PAD, leftY + 0.1, leftW, insightH, insightText, DN.teal, DN.tealPale)
@@ -943,13 +963,15 @@ function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai:
 
   // ── Insight text (needed for both branches to anchor insight Y) ───────────────
   const hasRealAI   = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
-  const insightText = hasRealAI
+  const rawInsight = hasRealAI
     ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
     : (posInRange >= 0.65
         ? 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the upper range — strong performance.'
         : posInRange <= 0.35
           ? 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the lower range — opportunity for improvement.'
           : 'Average of ' + (s?.avg != null ? Math.round(s.avg) : '—') + ' sits in the mid range.')
+  // Trim insight text to fit the box (~0.78" tall at fontSize 11.5 ≈ 4 lines ≈ 300 chars)
+  const insightText = trimNatural(rawInsight, 300)
   const withImpl  = hasRealAI && !!ai.implication
   const insH      = 0.78
   const implH     = 0.44
@@ -1170,17 +1192,18 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
     slide.addText(ai.keyFinding, { x: PAD, y: leftStartY + 1.14, w: leftW, h: 0.44, fontSize: 13, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
   }
 
-  // Narrative
+  // Narrative — give it all remaining space above themes/implication
   if (ai.narrative) {
     const narY = leftStartY + (ai.keyFinding ? 1.65 : 0.92)
-    const narH = Math.min(1.1, H - narY - (themes.length > 0 ? 1.0 : 0.45) - (ai.implication ? 0.65 : 0.1))
-    insightBox(slide, pptx, PAD, narY, leftW, narH, ai.narrative, DN.teal, DN.tealPale)
+    const bottomReserve = (themes.length > 0 ? 0.72 : 0) + (ai.implication ? 0.58 : 0) + 0.38
+    const narH = Math.max(0.6, H - narY - bottomReserve - 0.08)
+    insightBox(slide, pptx, PAD, narY, leftW, narH, trimNatural(ai.narrative, 400), DN.teal, DN.tealPale)
   }
 
   // Relevant themes
   const relThemes = themes.slice(0, 4)
   if (relThemes.length > 0) {
-    const thY = H - (ai.implication ? 1.55 : 0.9)
+    const thY = H - (ai.implication ? 1.30 : 0.72)
     lbl(slide, 'THEMES IDENTIFIED', PAD, thY, leftW)
     const pillW = (leftW - 0.1 * (relThemes.length - 1)) / relThemes.length
     relThemes.forEach(function(t: any, i: number) {
@@ -1556,11 +1579,17 @@ async function buildThemeSlides(
     if (comments.length > 0) {
       const availH = CH - 0.38
       const qGap   = 0.08
-      const qh     = (availH - qGap * (comments.length - 1)) / comments.length
-      comments.forEach(function(hc, i) {
+      // Strip newlines and collapse whitespace so quotes don't waste vertical space
+      const cleaned = comments.map(function(hc) {
+        return { ...hc, text: hc.text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim() }
+      })
+      const qh     = (availH - qGap * (cleaned.length - 1)) / cleaned.length
+      // Dynamic trim: shorter quotes when cards are small
+      const maxChars = qh >= 1.0 ? 200 : qh >= 0.8 ? 160 : 120
+      cleaned.forEach(function(hc, i) {
         // Use AI-extracted phrases for highlighting; fall back to theme keywords
         const highlightTerms = hc.phrases && hc.phrases.length > 0 ? hc.phrases : (t.keywords || [])
-        quoteCardHighlighted(slide, pptx, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, hc.text, highlightTerms)
+        quoteCardHighlighted(slide, pptx, rightX, ly + 0.32 + i * (qh + qGap), rightW, qh, trimNatural(hc.text, maxChars), highlightTerms)
       })
     } else {
       slide.addText('No verbatim responses matched this theme.', {
@@ -1736,10 +1765,10 @@ function buildPieSlide(pptx: any, datasetName: string, f: SelectedField, ai: Fie
 
   // ── Compute insight geometry first so bars know available height ──────────
   const hasRealAI   = ai.keyFinding && ai.keyFinding !== f.label && ai.keyFinding !== f.field
-  const insightText = hasRealAI
+  const insightText = trimNatural(hasRealAI
     ? ai.keyFinding + (ai.narrative ? '\n\n' + ai.narrative : '')
     : autoInsight(f.label, orderedKeys, rawCounts, total, isOrdinal, top2,
-        pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total))
+        pct(rawCounts[orderedKeys[orderedKeys.length - 1] || ''] || 0, total)), 300)
   const withImpl  = hasRealAI && !!ai.implication
   const insH      = 0.78
   const implH     = 0.44
