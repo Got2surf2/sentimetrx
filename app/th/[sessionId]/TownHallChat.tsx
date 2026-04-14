@@ -8,6 +8,12 @@ interface Props { sessionId: string }
 const HERMES = '#E8632A'
 const BG = '#f9fafb'
 
+// Mimic agent typing — 30ms per char, clamped 400–1800ms (matches survey engine)
+function typingDelay(text: string) {
+  const dur = Math.max(400, Math.min(1800, text.length * 30))
+  return new Promise(r => setTimeout(r, dur))
+}
+
 export default function TownHallChat({ sessionId }: Props) {
   // Session info — fetched via GET /api/townhall/join/:id
   const [sessionName, setSessionName] = useState('')
@@ -88,7 +94,12 @@ export default function TownHallChat({ sessionId }: Props) {
         setMessages([{ who: 'bot', text: d.error }]); setFinished(true); setLoading(false); return
       }
       setPid(d.participant_id); setTurn(d.turn_number); setThemeId(d.theme_id)
-      setJoined(true); setMessages([{ who: 'bot', text: d.bot_message }])
+      setJoined(true)
+      // Show typing dots, then reveal message
+      setLoading(true)
+      await typingDelay(d.bot_message)
+      setLoading(false)
+      setMessages([{ who: 'bot', text: d.bot_message }])
       if (d.is_final) setFinished(true)
     } catch { setMessages([{ who: 'bot', text: 'Something went wrong. Please try again.' }]) }
     setLoading(false)
@@ -108,15 +119,20 @@ export default function TownHallChat({ sessionId }: Props) {
       })
       const d = await r.json()
       setTurn(d.turn_number); setThemeId(d.theme_id)
-      await new Promise(r => setTimeout(r, 600 + Math.random() * 800))
+      // Typing dots are already showing (loading=true) — wait for realistic duration
+      await typingDelay(d.bot_message)
       setMessages(p => [...p, { who: 'bot', text: d.bot_message }])
       if (d.is_final) setFinished(true)
     } catch { setMessages(p => [...p, { who: 'bot', text: 'Something went wrong. Let me try again — what were you saying?' }]) }
     setLoading(false)
   }
 
-  const handleDone = () => {
-    setMessages(p => [...p, { who: 'bot', text: display.thank_you_message || 'Thank you for your time. Your voice matters.' }])
+  const handleDone = async () => {
+    const msg = display.thank_you_message || 'Thank you for your time. Your voice matters.'
+    setLoading(true)
+    await typingDelay(msg)
+    setLoading(false)
+    setMessages(p => [...p, { who: 'bot', text: msg }])
     setFinished(true)
     fetch('/api/townhall/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: '[done]', turn_number: turn, theme_id: themeId, skipped: true }),
