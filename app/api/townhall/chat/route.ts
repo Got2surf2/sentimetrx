@@ -36,13 +36,40 @@ export async function POST(req: NextRequest) {
   // Fetch session
   const { data: session } = await supabase
     .from('townhall_sessions')
-    .select('id, status, config, response_counter')
+    .select('id, status, config, response_counter, started_at')
     .eq('id', session_id)
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   const config = session.config as any
+
+  // Auto-end check: timed mode (duration exceeded) or inactivity mode (no recent turns)
+  if (session.status === 'active' && config?.session_end?.mode !== 'manual') {
+    let shouldEnd = false
+    if (config.session_end.mode === 'timed' && session.started_at) {
+      const elapsed = (Date.now() - new Date(session.started_at).getTime()) / 60000
+      if (elapsed >= (config.session_end.duration_minutes || 90)) shouldEnd = true
+    }
+    if (config.session_end.mode === 'inactivity') {
+      const { data: lastTurn } = await supabase
+        .from('townhall_turns')
+        .select('created_at')
+        .eq('session_id', session_id)
+        .not('user_message', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (lastTurn) {
+        const idle = (Date.now() - new Date(lastTurn.created_at).getTime()) / 60000
+        if (idle >= (config.session_end.inactivity_timeout_minutes || 30)) shouldEnd = true
+      }
+    }
+    if (shouldEnd) {
+      await supabase.from('townhall_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', session_id)
+      session.status = 'ended'
+    }
+  }
 
   // If session ended, return closing message
   if (session.status === 'ended') {
@@ -123,7 +150,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Check turn cap
-  const maxTurns = config?.engine?.max_turns_per_participant || 8
+  const maxTurns = config?.engine?.max_turns_per_participant || 20
   if (turn_number >= maxTurns) {
     return wrapUp(config)
   }
@@ -141,7 +168,7 @@ export async function POST(req: NextRequest) {
   // Fetch all active themes
   const { data: activeThemes } = await supabase
     .from('townhall_themes')
-    .select('id, label, description, question, follow_up_angles, source, response_count, response_target')
+    .select('id, label, description, question, follow_up_angles, keywords, source, response_count, response_target')
     .eq('session_id', session_id)
     .eq('state', 'active')
     .order('response_count', { ascending: true })
@@ -184,8 +211,24 @@ export async function POST(req: NextRequest) {
       return wrapUp(config)
     }
 
-    // Pick the topic with fewest responses (even coverage)
-    const nextTopic = available[0]
+    // Smart probing: if the participant's response matches keywords of an available
+    // auto-detected or custom theme, prioritize that theme over the default queue.
+    // This makes the conversation feel natural — following the participant's interests.
+    let nextTopic = available[0]  // default: fewest responses
+    if (message && !skipped) {
+      const lower = message.toLowerCase()
+      for (const t of available) {
+        if (t.id === theme_id) continue  // don't repeat same topic
+        const kws: string[] = (t as any).keywords || []
+        if (kws.length > 0 && kws.some(function(kw) {
+          return lower.includes(kw.toLowerCase())
+        })) {
+          nextTopic = t
+          break
+        }
+      }
+    }
+
     resolvedThemeId = nextTopic.id
     aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
     botMessage = await generateTransition(config, message, language, turns, nextTopic)

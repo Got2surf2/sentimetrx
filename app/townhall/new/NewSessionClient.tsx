@@ -44,7 +44,7 @@ const DEFAULT_CONFIG: TownHallConfig = {
   engine: {
     theme_detection_mode: 'manual',
     theme_detection_interval_minutes: 10,
-    max_turns_per_participant: 8,
+    max_turns_per_participant: 20,
     default_response_target: 30,
     max_active_themes: 8,
     ai_timeout_ms: 3000,
