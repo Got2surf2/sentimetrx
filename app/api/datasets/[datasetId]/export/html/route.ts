@@ -3,6 +3,7 @@
 // Same request body as /export/pptx — returns text/html file download.
 
 import { NextResponse } from 'next/server'
+import { callAI } from '@/lib/ai'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { pickBestComments } from '@/lib/export/scoreComments'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
@@ -99,17 +100,14 @@ ${fields.map(f => {
   }
 }`
 
-  const controller = new AbortController()
-  const t = setTimeout(() => controller.abort(), 45000)
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3500, messages: [{ role: 'user', content: prompt }] }),
-    signal: controller.signal,
-  }).finally(() => clearTimeout(t))
-  if (!res.ok) throw new Error('AI call failed: ' + res.status)
-  const data = await res.json()
-  const raw  = (data.content?.[0]?.text || '').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'')
+  const result = await callAI({
+    tier: 'advanced',
+    maxTokens: 3500,
+    timeoutMs: 45000,
+    messages: [{ role: 'user', content: prompt }],
+    apiKey,
+  })
+  const raw = result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'')
   try { return JSON.parse(raw) }
   catch { return { reportTitle: '', executiveSummary: [], keyTakeaways: [], fieldInsights: Object.fromEntries(fields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])) } }
 }

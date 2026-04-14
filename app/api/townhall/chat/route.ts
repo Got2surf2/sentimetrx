@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isInputSafe, isOutputClean, cleanAiOutput } from '@/lib/guardrails'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
@@ -225,33 +226,16 @@ function wrapUp(config: any) {
 }
 
 async function callClaude(system: string, user: string, timeoutMs = 3000): Promise<string> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 200,
-        system,
-        messages: [{ role: 'user', content: user }],
-      }),
-      signal: controller.signal,
+    const result = await callAI({
+      tier: 'fast',
+      maxTokens: 200,
+      timeoutMs,
+      system,
+      messages: [{ role: 'user', content: user }],
     })
-
-    clearTimeout(timeout)
-    if (!response.ok) throw new Error('API error: ' + response.status)
-
-    const data = await response.json()
-    return cleanAiOutput(data.content?.[0]?.text?.trim() || '')
+    return cleanAiOutput(result.text?.trim() || '')
   } catch {
-    clearTimeout(timeout)
     return ''
   }
 }

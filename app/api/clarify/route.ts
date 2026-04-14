@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isInputSafe, isOutputSafe, extractQuestion } from '@/lib/guardrails'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,27 +84,14 @@ The respondent answered: "${answer}"
 Generate a targeted follow-up question or return SKIP.`
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
-        max_tokens: 80,
-        system:     systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
+    const result = await callAI({
+      tier: 'fast',
+      maxTokens: 80,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
     })
 
-    if (!response.ok) {
-      throw new Error(`Anthropic API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    const text = data.content?.[0]?.text?.trim() || 'SKIP'
+    const text = result.text?.trim() || 'SKIP'
 
     if (text === 'SKIP') {
       return NextResponse.json({ question: null })

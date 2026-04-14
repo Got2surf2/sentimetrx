@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
@@ -302,17 +303,12 @@ export async function POST(req: NextRequest) {
   const recentMessages = messages.slice(-20)
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 350,
-        system: `You are Nora, the Tabla Cuisine virtual host. You're warm, welcoming, and passionate about great food — like a friendly host at the restaurant. Never refer to yourself as "AI" or "artificial intelligence."
+    const result = await callAI({
+      tier: 'fast',
+      maxTokens: 350,
+      timeoutMs: 15000,
+      messages: recentMessages,
+      system: `You are Nora, the Tabla Cuisine virtual host. You're warm, welcoming, and passionate about great food — like a friendly host at the restaurant. Never refer to yourself as "AI" or "artificial intelligence."
 
 HARD LIMIT: Keep responses concise but ALWAYS finish your thought. Never leave a sentence incomplete or trailing off. If you're listing items, complete the list. Better to recommend fewer dishes with complete sentences than more dishes that get cut off.
 
@@ -363,16 +359,10 @@ LEAD CAPTURE: When the conversation reaches a natural handoff point (they want t
 ACCURACY: Don't invent menu items or prices not in the knowledge base. For specific menu questions, suggest checking the menu on tablacuisine.com or the Tabla app. Point unknowns to info@tablacuisine.com or (407) 248-9400.
 
 ${KNOWLEDGE_BASE}`,
-        messages: recentMessages,
-      }),
-      signal: AbortSignal.timeout(15000),
     })
 
-    if (!response.ok) throw new Error('API error: ' + response.status)
-
-    const data = await response.json()
-    let text = data.content?.[0]?.text || 'Sorry, I had trouble generating a response. Please try again.'
-    if (data.stop_reason === 'max_tokens') text = trimIncomplete(text)
+    let text = result.text || 'Sorry, I had trouble generating a response. Please try again.'
+    if (result.stopReason === 'max_tokens') text = trimIncomplete(text)
 
     return NextResponse.json({ reply: text }, { headers: cors })
   } catch (err: any) {

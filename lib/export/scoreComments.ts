@@ -3,6 +3,8 @@
 // Given a theme and candidate comments, scores each comment 1-5 for relevance,
 // then returns the best ones. Falls back to keyword-only if AI is unavailable.
 
+import { callAI } from '@/lib/ai'
+
 export interface ScoredComment {
   text: string
   score: number   // 1-5 relevance to theme
@@ -63,29 +65,15 @@ Return ONLY a JSON array of scores in order, one per comment. Example for 3 comm
 No explanation, no markdown, just the array.`
 
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8000) // 8s max per theme
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 200,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: controller.signal,
+    const result = await callAI({
+      tier: 'fast',
+      maxTokens: 200,
+      timeoutMs: 8000,
+      messages: [{ role: 'user', content: prompt }],
+      apiKey,
     })
-    clearTimeout(timeout)
 
-    if (!res.ok) throw new Error(`API ${res.status}`)
-
-    const data = await res.json()
-    const rawText = (data.content || []).map((b: any) => b.text || '').join('')
-    const clean = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
+    const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
 
     const scores: number[] = JSON.parse(clean)
 
@@ -220,29 +208,15 @@ Return a JSON array of arrays: [["phrase1", "phrase2"], ["phrase1"], ...]
 One inner array per comment, in order. No markdown, no explanation, just the JSON.`
 
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000)
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: controller.signal,
+    const result = await callAI({
+      tier: 'fast',
+      maxTokens: 800,
+      timeoutMs: 10000,
+      messages: [{ role: 'user', content: prompt }],
+      apiKey,
     })
-    clearTimeout(timeout)
 
-    if (!res.ok) throw new Error(`API ${res.status}`)
-
-    const data = await res.json()
-    const rawText = (data.content || []).map((b: any) => b.text || '').join('')
-    const clean = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
+    const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     const parsed: string[][] = JSON.parse(clean)
 
     if (!Array.isArray(parsed) || parsed.length !== comments.length) {

@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { callAI } from '@/lib/ai'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -59,36 +60,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Description too long' }, { status: 400 })
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
-
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system:     SYSTEM_PROMPT,
-        messages: [{
-          role:    'user',
-          content: `Study description: "${description}"\n\nGenerate starter values for this study.`,
-        }],
-      }),
+    const aiResult = await callAI({
+      tier: 'advanced',
+      maxTokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{
+        role: 'user',
+        content: `Study description: "${description}"\n\nGenerate starter values for this study.`,
+      }],
     })
 
-    if (!response.ok) {
-      const err = await response.text()
-      console.error('[study-suggest] Anthropic error:', err)
-      return NextResponse.json({ error: 'AI request failed' }, { status: 502 })
-    }
-
-    const data   = await response.json()
-    const raw    = data.content?.[0]?.text?.trim() || ''
+    const raw = aiResult.text?.trim() || ''
 
     // Strip any accidental markdown fences
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()

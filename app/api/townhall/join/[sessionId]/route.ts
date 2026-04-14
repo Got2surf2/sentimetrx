@@ -1,27 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
-// Translate text to a target language via Claude (for non-English participants)
+// Translate text to a target language (for non-English participants)
 async function translateText(text: string, targetLang: string): Promise<string> {
   if (!text || targetLang === 'en') return text
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return text
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001', max_tokens: 500,
-        system: 'Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone and formatting.',
-        messages: [{ role: 'user', content: text }],
-      }),
-      signal: AbortSignal.timeout(4000),
+    const result = await callAI({
+      tier: 'fast',
+      maxTokens: 500,
+      timeoutMs: 4000,
+      system: 'Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone and formatting.',
+      messages: [{ role: 'user', content: text }],
     })
-    if (!res.ok) return text
-    const data = await res.json()
-    return (data.content?.[0]?.text || text).trim()
+    return result.text?.trim() || text
   } catch { return text }
 }
 

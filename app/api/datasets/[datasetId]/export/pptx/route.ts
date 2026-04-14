@@ -3,6 +3,7 @@
 // Body: { fields: string[], audience: 'executive'|'stakeholder'|'full' }
 
 import { NextResponse } from 'next/server'
+import { callAI } from '@/lib/ai'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
@@ -385,18 +386,15 @@ ${fields.map(f => {
   }
 }`
 
-  const controller = new AbortController()
-  const aiTimeout  = setTimeout(() => controller.abort(), 38000)  // 38s cap — leave room for PPTX build
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3500, messages: [{ role: 'user', content: prompt }] }),
-    signal: controller.signal,
-  }).finally(() => clearTimeout(aiTimeout))
+  const result = await callAI({
+    tier: 'advanced',
+    maxTokens: 3500,
+    timeoutMs: 38000,
+    messages: [{ role: 'user', content: prompt }],
+    apiKey,
+  })
 
-  if (!res.ok) throw new Error('AI call failed: ' + res.status)
-  const data = await res.json()
-  const raw  = (data.content?.[0]?.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
+  const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
 
   try {
     return JSON.parse(raw)

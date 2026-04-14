@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { callAI } from '@/lib/ai'
 
 interface Props { params: { datasetId: string } }
 
@@ -48,29 +49,20 @@ Do NOT include:
 Return a flat JSON array: ["term1", "term2", ...]`
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 500,
+    let aiResult
+    try {
+      aiResult = await callAI({
+        tier: 'fast',
+        maxTokens: 500,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
-      }),
-    })
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}))
-      const errMsg = (errData as any)?.error?.message || 'API error'
-      return NextResponse.json({ error: errMsg }, { status: res.status })
+        apiKey,
+      })
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message || 'API error' }, { status: e.status || 500 })
     }
 
-    const data = await res.json()
-    const rawText = (data.content || []).map((b: any) => b.text || '').join('')
+    const rawText = aiResult.text
     const clean = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
 
     let expanded: string[]
@@ -83,16 +75,16 @@ Return a flat JSON array: ["term1", "term2", ...]`
 
     // Dedupe, lowercase, limit to 20
     const seen = new Set<string>()
-    const result: string[] = []
+    const deduped: string[] = []
     for (const kw of expanded) {
       const k = String(kw).toLowerCase().trim()
-      if (k && !seen.has(k) && result.length < 20) {
+      if (k && !seen.has(k) && deduped.length < 20) {
         seen.add(k)
-        result.push(k)
+        deduped.push(k)
       }
     }
 
-    return NextResponse.json({ keywords: result })
+    return NextResponse.json({ keywords: deduped })
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 })
   }

@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { callAI } from '@/lib/ai'
 
 interface Props { params: { datasetId: string } }
 
@@ -64,36 +65,23 @@ export async function POST(request: Request, { params }: Props) {
     '"summary":"2-3 sentences.","fieldName":"' + fieldLabel + '"}'
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+    let result
+    try {
+      result = await callAI({
+        tier: 'standard',
+        maxTokens: 4000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
-      }),
-    })
-
-    if (!res.ok) {
-      let errMsg = 'Unknown error'
-      try {
-        const errData = await res.json()
-        errMsg = errData?.error?.message || errMsg
-      } catch { /* ignore */ }
-      if (res.status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + errMsg }, { status: 401 })
-      if (res.status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + errMsg }, { status: 429 })
-      return NextResponse.json({ error: 'API_' + res.status + ': ' + errMsg }, { status: res.status })
+        apiKey,
+      })
+    } catch (e: any) {
+      const status = e.status || 500
+      if (status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + e.message }, { status: 401 })
+      if (status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + e.message }, { status: 429 })
+      return NextResponse.json({ error: 'API_' + status + ': ' + e.message }, { status })
     }
 
-    const data = await res.json()
-    const rawText = (data.content || []).map(function(b: { text?: string }) {
-      return b.text || ''
-    }).join('')
+    const rawText = result.text
 
     const clean = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     let parsed: { themes?: unknown[]; summary?: string; fieldName?: string }

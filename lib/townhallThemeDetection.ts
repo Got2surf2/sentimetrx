@@ -4,6 +4,7 @@
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
+import { callAI } from '@/lib/ai'
 
 // Even-sample N items from an array
 function evenSample<T>(arr: T[], n: number): T[] {
@@ -26,8 +27,7 @@ function keywordOverlap(existing: string[], candidate: string[]): number {
  */
 export async function detectThemesForSession(sessionId: string): Promise<{ inserted: number; skipped: number; error?: string }> {
   const supabase = createServiceRoleClient()
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return { inserted: 0, skipped: 0, error: 'No ANTHROPIC_API_KEY configured' }
+  // AI provider is resolved automatically from env vars by callAI()
 
   // 1. Fetch session config
   const { data: session } = await supabase
@@ -81,26 +81,17 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
     'Return ONLY valid JSON:\n' +
     '{"themes":[{"name":"Theme Name","description":"One sentence.","keywords":["word1","word2"],"question":"A probing question to ask participants about this theme.","follow_up_angles":["angle1","angle2"],"example_quote":"Best representative quote from the responses."}]}'
 
-  // 6. Call Claude Sonnet
+  // 6. Call AI for theme detection
   let aiThemes: any[] = []
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 20000)
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks.',
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: controller.signal,
+    const result = await callAI({
+      tier: 'standard',
+      maxTokens: 4000,
+      timeoutMs: 20000,
+      system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks.',
+      messages: [{ role: 'user', content: prompt }],
     })
-    clearTimeout(timeout)
-    if (!res.ok) return { inserted: 0, skipped: 0, error: 'AI call failed: ' + res.status }
-    const data = await res.json()
-    const raw = (data.content?.[0]?.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
+    const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
     aiThemes = parsed.themes || []
   } catch (e: any) {

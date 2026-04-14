@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,24 +47,13 @@ ${JSON.stringify(allTexts, null, 2)}
 Return ONLY valid JSON, no markdown, no explanation.`
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    const result = await callAI({
+      tier: 'fast',
+      maxTokens: 4000,
+      messages: [{ role: 'user', content: prompt }],
     })
 
-    if (!response.ok) throw new Error('Anthropic API error: ' + response.status)
-
-    const data = await response.json()
-    let text = data.content?.[0]?.text?.trim() || ''
+    let text = result.text?.trim() || ''
     text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()
 
     const parsed = JSON.parse(text)

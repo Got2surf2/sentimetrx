@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,32 +34,23 @@ export async function POST(req: Request) {
   }
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
-        messages: [{ role: 'user', content: prompt }],
+    let result
+    try {
+      result = await callAI({
+        tier: 'standard',
+        maxTokens: 1500,
         system: 'You are an organizational insights storyteller. Write clear, direct narratives for non-statisticians. No jargon. No bullet points unless separating field sections.',
-      }),
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      const errMsg = data.error?.message || 'API error'
-      if (res.status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + errMsg }, { status: 401 })
-      if (res.status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + errMsg }, { status: 429 })
-      return NextResponse.json({ error: errMsg }, { status: res.status })
+        messages: [{ role: 'user', content: prompt }],
+        apiKey,
+      })
+    } catch (e: any) {
+      const status = e.status || 500
+      if (status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + e.message }, { status: 401 })
+      if (status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + e.message }, { status: 429 })
+      return NextResponse.json({ error: e.message }, { status })
     }
 
-    const text = (data.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
-    return NextResponse.json({ text })
+    return NextResponse.json({ text: result.text })
   } catch (e: unknown) {
     return NextResponse.json({ error: 'Failed to call AI: ' + (e instanceof Error ? e.message : String(e)) }, { status: 500 })
   }

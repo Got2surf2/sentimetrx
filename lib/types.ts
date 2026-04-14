@@ -11,6 +11,11 @@ export interface OrgFeatures {
   campaigns?: boolean
   primaryIndustries?: Industry[]
   defaultEmailProvider?: EmailProviderType
+  aiProvider?: {
+    provider: 'anthropic' | 'openai' | 'azure-openai'
+    azureEndpoint?: string
+    azureApiVersion?: string
+  }
 }
 // -- Likert / rating scale ------------------------------------
 
