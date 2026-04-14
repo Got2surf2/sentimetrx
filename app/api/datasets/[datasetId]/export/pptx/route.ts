@@ -83,7 +83,7 @@ function hdr(slide: any, pptx: any, title: string, _color = DN.navy, subtitle?: 
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
   slide.addText(title, {
     x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: subtitle ? 0.5 : HH - 0.18,
-    fontSize: subtitle ? 17 : 20, bold: true, color: DN.white, valign: 'middle', wrap: true,
+    fontSize: subtitle ? 17 : 20, bold: true, color: DN.white, valign: 'middle', wrap: true, autoFit: true,
   })
   if (subtitle) {
     slide.addText(subtitle, {
@@ -155,9 +155,9 @@ function kpiCard(slide: any, pptx: any, x: number, y: number, w: number, h: numb
   const lblH    = Math.min(0.22, (y + h - metaTop) * (hasSub ? 0.40 : 1.0))
   // Give sub all remaining space so long responses aren't clipped
   const subH    = hasSub ? Math.max(0, y + h - metaTop - lblH - 0.04) : 0
-  slide.addText(value, { x: x + 0.14, y: y + 0.06, w: w - 0.28, h: valH, fontSize: Math.min(26, Math.max(16, 26 - value.length * 1.2)), bold: true, color: valColor, valign: 'middle' })
-  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 9.5, bold: true, color: DN.slateDark, wrap: true })
-  if (sub && subH > 0.06) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH, fontSize: 8.5, color: DN.slate, wrap: true, lineSpacingMultiple: 1.2 })
+  slide.addText(value, { x: x + 0.14, y: y + 0.06, w: w - 0.28, h: valH, fontSize: Math.min(26, Math.max(16, 26 - value.length * 1.2)), bold: true, color: valColor, valign: 'middle', autoFit: true })
+  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 9.5, bold: true, color: DN.slateDark, wrap: true, autoFit: true })
+  if (sub && subH > 0.06) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH, fontSize: 8.5, color: DN.slate, wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
 }
 
 // KPI card on dark (navy) background
@@ -169,16 +169,16 @@ function kpiCardDark(slide: any, pptx: any, x: number, y: number, w: number, h: 
   const metaTop  = y + valH + 0.08
   const lblH     = Math.min(0.24, (y + h - metaTop) * (hasSub ? 0.55 : 1.0))
   const subH_    = hasSub ? Math.max(0, Math.min(0.20, y + h - metaTop - lblH - 0.02)) : 0
-  slide.addText(value, { x: x + 0.14, y: y + 0.08, w: w - 0.28, h: valH, fontSize: Math.min(28, Math.max(18, 28 - value.length * 1.2)), bold: true, color: DN.gold, valign: 'middle' })
-  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 9.5, bold: true, color: 'A8C8D8', wrap: true })
-  if (sub && subH_ > 0.08) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH_, fontSize: 8.5, color: DN.slate })
+  slide.addText(value, { x: x + 0.14, y: y + 0.08, w: w - 0.28, h: valH, fontSize: Math.min(28, Math.max(18, 28 - value.length * 1.2)), bold: true, color: DN.gold, valign: 'middle', autoFit: true })
+  slide.addText(label, { x: x + 0.14, y: metaTop, w: w - 0.28, h: lblH, fontSize: 9.5, bold: true, color: 'A8C8D8', wrap: true, autoFit: true })
+  if (sub && subH_ > 0.08) slide.addText(sub, { x: x + 0.14, y: metaTop + lblH, w: w - 0.28, h: subH_, fontSize: 8.5, color: DN.slate, autoFit: true })
 }
 
 // Insight box with left accent stripe
 function insightBox(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string, accentColor = DN.teal, bgColor = DN.slateLight) {
   rect(slide, pptx, x, y, w, h, bgColor, 0.07, accentColor)
   solidRect(slide, pptx, x, y, 0.06, h, accentColor)
-  slide.addText(text, { x: x + 0.16, y: y + 0.1, w: w - 0.24, h: h - 0.2, fontSize: 11.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
+  slide.addText(text, { x: x + 0.16, y: y + 0.1, w: w - 0.24, h: h - 0.2, fontSize: 11.5, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true })
 }
 
 // Quote card — opening " is inline with the first word of the comment
@@ -187,9 +187,9 @@ function quoteCard(slide: any, pptx: any, x: number, y: number, w: number, h: nu
   solidRect(slide, pptx, x, y, 0.05, h, DN.teal)
   slide.addText([
     { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
-    { text: trimNatural(text, 280), options: { fontSize: 10, color: DN.navyLight, italic: true } },
+    { text: trimNatural(text, 220), options: { fontSize: 10, color: DN.navyLight, italic: true } },
     { text: '\u201D', options: { fontSize: 16, bold: true, color: DN.tealLight } },
-  ], { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4 })
+  ], { x: x + 0.12, y: y + 0.10, w: w - 0.22, h: h - 0.16, valign: 'top', wrap: true, lineSpacingMultiple: 1.4, autoFit: true })
 }
 
 // Splits text into alternating normal/highlighted runs.
@@ -260,7 +260,7 @@ function buildHighlightedRuns(text: string, keywords: string[]): { text: string;
 function quoteCardHighlighted(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string, keywords: string[]) {
   rect(slide, pptx, x, y, w, h, DN.white, 0.07, DN.divider)
   solidRect(slide, pptx, x, y, 0.05, h, DN.teal)
-  const trimmed  = trimNatural(text, 320)
+  const trimmed  = trimNatural(text, 240)
   const runs     = buildHighlightedRuns(trimmed, keywords)
   const textRuns = [
     { text: '\u201C', options: { fontSize: 16, bold: true, color: DN.tealLight } },
@@ -270,7 +270,7 @@ function quoteCardHighlighted(slide: any, pptx: any, x: number, y: number, w: nu
     ),
     { text: '\u201D', options: { fontSize: 16, bold: true, color: DN.tealLight } },
   ]
-  slide.addText(textRuns, { x: x + 0.12, y: y + 0.06, w: w - 0.22, h: h - 0.12, valign: 'middle', wrap: true, lineSpacingMultiple: 1.4 })
+  slide.addText(textRuns, { x: x + 0.12, y: y + 0.06, w: w - 0.22, h: h - 0.12, valign: 'middle', wrap: true, lineSpacingMultiple: 1.4, autoFit: true })
 }
 
 // ── AI narrative generation ───────────────────────────────────────────────────
@@ -464,7 +464,7 @@ function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, to
   const subtitle  = reportTitle ? datasetName : ''
   slide.addText(mainTitle, {
     x: PAD + 0.18, y: 2.0, w: W - 4.0, h: 1.4,
-    fontSize: 28, bold: true, color: DN.white, wrap: true, valign: 'top', lineSpacingMultiple: 1.2,
+    fontSize: 28, bold: true, color: DN.white, wrap: true, valign: 'top', lineSpacingMultiple: 1.2, autoFit: true,
   })
   if (subtitle) {
     slide.addText(subtitle, {
@@ -540,7 +540,7 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
     const badgeLabel = sec ? sec : f.type
     solidRect(slide, pptx, x, y + 0.07, 0.07, 0.20, tc)
     // Label — leave room for the badge
-    slide.addText(f.label || f.field, { x: x + 0.16, y, w: colW2 - badgeW - 0.26, h: 0.34, fontSize: 12, color: DN.navyLight, bold: false, valign: 'middle' })
+    slide.addText(f.label || f.field, { x: x + 0.16, y, w: colW2 - badgeW - 0.26, h: 0.34, fontSize: 12, color: DN.navyLight, bold: false, valign: 'middle', autoFit: true })
     // Section/type badge — right-aligned, no-wrap
     slide.addText(badgeLabel, { x: x + colW2 - badgeW, y, w: badgeW - 0.06, h: 0.34, fontSize: 9.5, color: tc, bold: true, align: 'right', valign: 'middle' })
   }
@@ -595,7 +595,7 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
     const tx = note.accentColor ? PAD + 0.14 : PAD + 0.12
     slide.addText(note.text, {
       x: tx, y: note.y + 0.03, w: noteW - 0.24, h: note.h - 0.06,
-      fontSize: 8, color: note.textColor, italic: true, wrap: true, valign: 'middle',
+      fontSize: 8, color: note.textColor, italic: true, wrap: true, valign: 'middle', autoFit: true,
     })
   }
 
@@ -659,7 +659,7 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
     realBullets.slice(0, 5).forEach(function(b, i) {
       const by = colY + 0.34 + i * 0.74
       solidRect(slide, pptx, PAD, by + 0.08, 0.05, 0.05, DN.teal)
-      slide.addText(b, { x: PAD + 0.12, y: by, w: leftW - 0.14, h: 0.7, fontSize: 11, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.25 })
+      slide.addText(b, { x: PAD + 0.12, y: by, w: leftW - 0.14, h: 0.7, fontSize: 11, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.25, autoFit: true })
     })
   } else {
     // Auto snapshot
@@ -674,8 +674,8 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
       const topPct_ = total_ > 0 ? Math.round(counts[topKey] / total_ * 100) : 0
       const fy = colY + 0.34 + i * 0.74
       solidRect(slide, pptx, PAD, fy + 0.12, 0.05, 0.05, DN.gold)
-      slide.addText(f.label || f.field, { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.28, fontSize: 10, bold: true, color: DN.slate })
-      slide.addText(topPct_ + '% — ' + topKey, { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.44, fontSize: 12, bold: true, color: DN.white, wrap: true, lineSpacingMultiple: 1.2 })
+      slide.addText(f.label || f.field, { x: PAD + 0.12, y: fy, w: leftW - 0.14, h: 0.28, fontSize: 10, bold: true, color: DN.slate, autoFit: true })
+      slide.addText(topPct_ + '% — ' + topKey, { x: PAD + 0.12, y: fy + 0.28, w: leftW - 0.14, h: 0.44, fontSize: 12, bold: true, color: DN.white, wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
     })
   }
 
@@ -692,7 +692,7 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
       solidRect(slide, pptx, rightX, ty, rightW, thH, DN.navyMid)
       if (hasData) solidRect(slide, pptx, rightX, ty, Math.max(0.08, rightW * Math.min(hitPct / 100, 1)), thH, DN.teal, 75)
       solidRect(slide, pptx, rightX, ty, 0.05, thH, hasData ? DN.teal : DN.slate)
-      slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.85, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle' })
+      slide.addText(trunc(t.name, 32), { x: rightX + 0.12, y: ty + 0.06, w: rightW - 0.85, h: thH - 0.12, fontSize: 11, bold: true, color: DN.white, valign: 'middle', autoFit: true })
       if (hasData) {
         slide.addText(hitPct + '%', { x: rightX + rightW - 0.72, y: ty + 0.06, w: 0.66, h: thH - 0.12, fontSize: 12, bold: true, color: DN.gold, align: 'right', valign: 'middle' })
       } else {
@@ -712,7 +712,7 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
       // Number badge
       solidRect(slide, pptx, rightX + 0.12, ty + 0.09, 0.34, 0.34, i === 0 ? DN.gold : DN.teal)
       slide.addText(String(i + 1), { x: rightX + 0.12, y: ty + 0.09, w: 0.34, h: 0.34, fontSize: 12, bold: true, color: i === 0 ? DN.navy : DN.white, align: 'center', valign: 'middle' })
-      slide.addText(ta, { x: rightX + 0.56, y: ty + 0.04, w: rightW - 0.64, h: 0.50, fontSize: 10, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2 })
+      slide.addText(ta, { x: rightX + 0.56, y: ty + 0.04, w: rightW - 0.64, h: 0.50, fontSize: 10, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
     })
   }
 
@@ -850,7 +850,7 @@ function buildCategoricalSlide(pptx: any, datasetName: string, f: SelectedField,
   if (hasRealAI && ai.implication) {
     solidRect(slide, pptx, PAD, H - 0.72, leftW, 0.44, DN.orangePale)
     solidRect(slide, pptx, PAD, H - 0.72, 0.06, 0.44, DN.orange)
-    slide.addText('→ ' + ai.implication, { x: PAD + 0.13, y: H - 0.72 + 0.04, w: leftW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+    slide.addText('→ ' + ai.implication, { x: PAD + 0.13, y: H - 0.72 + 0.04, w: leftW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
   }
 
   // Vertical divider
@@ -885,7 +885,7 @@ function buildCategoricalSlide(pptx: any, datasetName: string, f: SelectedField,
     slide.addText(trunc(key, 48), {
       x: chartX, y: ry, w: labelW, h: rowH,
       fontSize: isTop ? 12.5 : 12, bold: isTop,
-      color: isTop ? DN.navy : DN.navyLight, valign: 'middle', wrap: true,
+      color: isTop ? DN.navy : DN.navyLight, valign: 'middle', wrap: true, autoFit: true,
     })
 
     // Bar track
@@ -1082,7 +1082,7 @@ function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai:
     if (hasRealAI) {
       slide.addText(ai.keyFinding, {
         x: rightX, y: narY, w: rightW, h: 0.46,
-        fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2,
+        fontSize: 12.5, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2, autoFit: true,
       })
       if (ai.narrative) {
         insightBox(slide, pptx, rightX, narY + 0.54, rightW, Math.min(1.3, insightY - narY - 1.1), ai.narrative, DN.teal, DN.tealPale)
@@ -1094,7 +1094,7 @@ function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai:
     if (hasRealAI && ai.implication) {
       solidRect(slide, pptx, rightX, insightY - 0.56, rightW, 0.44, DN.orangePale)
       solidRect(slide, pptx, rightX, insightY - 0.56, 0.06, 0.44, DN.orange)
-      slide.addText('→ ' + ai.implication, { x: rightX + 0.13, y: insightY - 0.52, w: rightW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+      slide.addText('→ ' + ai.implication, { x: rightX + 0.13, y: insightY - 0.52, w: rightW - 0.18, h: 0.36, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
     }
   }
 
@@ -1104,7 +1104,7 @@ function buildNumericSlide(pptx: any, datasetName: string, f: SelectedField, ai:
     const implY = insightY + insH + 0.08
     solidRect(slide, pptx, PAD, implY, W - PAD * 2, implH, DN.goldPale)
     solidRect(slide, pptx, PAD, implY, 0.05, implH, DN.gold)
-    slide.addText('→ ' + ai.implication, { x: PAD + 0.12, y: implY + 0.04, w: W - PAD * 2 - 0.18, h: implH - 0.08, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+    slide.addText('→ ' + ai.implication, { x: PAD + 0.12, y: implY + 0.04, w: W - PAD * 2 - 0.18, h: implH - 0.08, fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
   } else {
     insightBox(slide, pptx, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
   }
@@ -1125,7 +1125,7 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   // Target quote length: long enough to fill the box but short enough to not overflow
   // Each quote box is roughly CH/5 tall ≈ 0.8". At ~10pt that fits ~120 chars comfortably.
   const TARGET_MIN = 80
-  const TARGET_MAX = 280
+  const TARGET_MAX = 220
   // Sort by how close each quote is to the ideal range (prefer quotes that fill the box)
   const candidates = samplePool
     .filter((q: string) => q && q.trim().length >= TARGET_MIN)
@@ -1155,7 +1155,7 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
     solidRect(slide, pptx, PAD, CY, 0.05, 0.48, DN.teal)
     slide.addText('\u201C' + promptText + '\u201D', {
       x: PAD + 0.12, y: CY + 0.04, w: leftW - 0.18, h: 0.40,
-      fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, lineSpacingMultiple: 1.3,
+      fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, lineSpacingMultiple: 1.3, autoFit: true,
     })
     leftStartY = CY + 0.56
   }
@@ -1167,7 +1167,7 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   // Key finding
   if (ai.keyFinding) {
     lbl(slide, 'HEADLINE FINDING', PAD, leftStartY + 0.92, leftW)
-    slide.addText(ai.keyFinding, { x: PAD, y: leftStartY + 1.14, w: leftW, h: 0.44, fontSize: 13, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2 })
+    slide.addText(ai.keyFinding, { x: PAD, y: leftStartY + 1.14, w: leftW, h: 0.44, fontSize: 13, bold: true, color: DN.teal, wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
   }
 
   // Narrative
@@ -1194,7 +1194,7 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   if (ai.implication) {
     solidRect(slide, pptx, PAD, H - 0.78, leftW, 0.48, DN.orangePale)
     solidRect(slide, pptx, PAD, H - 0.78, 0.07, 0.48, DN.orange)
-    slide.addText('→ ' + ai.implication, { x: PAD + 0.14, y: H - 0.78 + 0.04, w: leftW - 0.2, h: 0.4, fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true })
+    slide.addText('→ ' + ai.implication, { x: PAD + 0.14, y: H - 0.78 + 0.04, w: leftW - 0.2, h: 0.4, fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
   }
 
   // Right panel: quotes
@@ -1298,9 +1298,9 @@ function buildCommentsSlide(
 
     // Comment text
     const textH = cardH - 0.08 - (hasDemos ? demoRowH + 0.06 : 0) - 0.24
-    slide.addText(trunc(c.text, 340), {
+    slide.addText(trunc(c.text, 220), {
       x: cx + 0.14, y: cy + 0.24, w: cardW - 0.22, h: textH,
-      fontSize: 12, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3,
+      fontSize: 12, color: DN.navyLight, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true,
     })
 
     // Closing curly-quote mark
@@ -1389,10 +1389,10 @@ function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fie
         slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), { x: cx + cardW - sw - 0.08, y: cy + 0.12, w: sw, h: 0.22, fontSize: 7.5, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle' })
       }
       const nameH = cardH <= 2.0 ? 0.30 : 0.40
-      slide.addText(t.name || '', { x: cx + 0.14, y: cy + 0.14, w: cardW - (sent ? 1.0 : 0.28), h: nameH, fontSize: cardH <= 2.0 ? 10 : 12, bold: true, color: DN.navy, valign: 'top', wrap: true })
+      slide.addText(t.name || '', { x: cx + 0.14, y: cy + 0.14, w: cardW - (sent ? 1.0 : 0.28), h: nameH, fontSize: cardH <= 2.0 ? 10 : 12, bold: true, color: DN.navy, valign: 'top', wrap: true, autoFit: true })
       const descY = cy + 0.14 + nameH + 0.04
       const descH = cardH <= 2.0 ? 0.40 : 0.58
-      if (t.description) slide.addText(t.description, { x: cx + 0.14, y: descY, w: cardW - 0.28, h: descH, fontSize: 8, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3 })
+      if (t.description) slide.addText(t.description, { x: cx + 0.14, y: descY, w: cardW - 0.28, h: descH, fontSize: 8, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true })
       const keywords: string[] = (t.keywords || []).slice(0, 3)
       const kwY = descY + descH + 0.04; let kwX = cx + 0.14
       keywords.forEach(function(k: string) {
@@ -1483,7 +1483,7 @@ async function buildThemeSlides(
 
     slide.addText(t.name || '', {
       x: lx, y: ly + 0.12, w: leftW, h: 0.52,
-      fontSize: 18, bold: true, color: DN.navy, valign: 'top', wrap: true,
+      fontSize: 18, bold: true, color: DN.navy, valign: 'top', wrap: true, autoFit: true,
     })
 
     const sent = t.sentiment || ''
@@ -1499,7 +1499,7 @@ async function buildThemeSlides(
     if (t.description) {
       slide.addText(t.description, {
         x: lx, y: ly + 1.08, w: leftW, h: 1.0,
-        fontSize: 10, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.4,
+        fontSize: 10, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.4, autoFit: true,
       })
     }
 
@@ -1672,7 +1672,7 @@ function buildSectionDivider(pptx: any, title: string, subtitle: string, fieldCo
   // Title
   slide.addText(title, {
     x: PAD + 0.18, y: 2.05, w: W - 4.0, h: 1.1,
-    fontSize: 36, bold: true, color: DN.white, wrap: true,
+    fontSize: 36, bold: true, color: DN.white, wrap: true, autoFit: true,
   })
 
   // Gold divider
@@ -1795,7 +1795,7 @@ function buildPieSlide(pptx: any, datasetName: string, f: SelectedField, ai: Fie
     // Label — no excessive truncation; label column is 2.8" wide
     slide.addText(trunc(key, 44), {
       x: labelX, y: ry, w: labelW, h: rowH,
-      fontSize: isTop ? 11 : 10, bold: isTop, color: isTop ? DN.navy : DN.navyLight, valign: 'middle',
+      fontSize: isTop ? 11 : 10, bold: isTop, color: isTop ? DN.navy : DN.navyLight, valign: 'middle', autoFit: true,
     })
 
     // Bar track + fill — tall, prominent
@@ -1825,7 +1825,7 @@ function buildPieSlide(pptx: any, datasetName: string, f: SelectedField, ai: Fie
     solidRect(slide, pptx, PAD, implY, 0.05, implH, DN.gold)
     slide.addText('→ ' + ai.implication, {
       x: PAD + 0.12, y: implY + 0.04, w: W - PAD * 2 - 0.18, h: implH - 0.08,
-      fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true,
+      fontSize: 8.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true,
     })
   } else {
     insightBox(slide, pptx, PAD, insightY, W - PAD * 2, insH, insightText, DN.teal, DN.tealPale)
@@ -1913,7 +1913,7 @@ function buildThemeImpactSlide(
     + 'The themes collectively explain ' + r2Pct + '% of what drives ' + targetLabel + ' scores — the rest comes from factors not captured in the written responses.'
   slide.addText(interpText, {
     x: PAD + 0.14, y: interpY + 0.04, w: W - PAD * 2 - 0.24, h: 0.44,
-    fontSize: 8, color: DN.navyLight, italic: true, wrap: true, valign: 'middle', lineSpacingMultiple: 1.3,
+    fontSize: 8, color: DN.navyLight, italic: true, wrap: true, valign: 'middle', lineSpacingMultiple: 1.3, autoFit: true,
   })
 
   // Legend line
@@ -1980,7 +1980,7 @@ function buildClosingSlide(pptx: any, datasetName: string, takeaways: string[]) 
     slide.addText(ta, {
       x: PAD + 0.88, y: ty + 0.06, w: W - 4.4, h: cardH - 0.12,
       fontSize: 13.5, color: DN.white, bold: false, wrap: true,
-      valign: 'middle', lineSpacingMultiple: 1.3,
+      valign: 'middle', lineSpacingMultiple: 1.3, autoFit: true,
     })
   })
 
