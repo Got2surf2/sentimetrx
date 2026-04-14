@@ -22,6 +22,8 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     found: true,
     name: session.name,
     status: session.status,
+    bot_name: config?.bot_name || 'Town Hall',
+    bot_emoji: config?.bot_emoji || '\uD83D\uDCAC',
     display: config?.display || {},
     closing_message: config?.session_end?.closing_message || null,
   })

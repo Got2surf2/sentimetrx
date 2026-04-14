@@ -28,6 +28,8 @@ const DEFAULT_TOPIC: () => TownHallGuideTopic = () => ({
 })
 
 const DEFAULT_CONFIG: TownHallConfig = {
+  bot_name: 'Town Hall',
+  bot_emoji: '\uD83D\uDCAC',
   context: {
     org_name: '',
     event_description: '',
@@ -320,6 +322,17 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               <div>
                 <Label>Session name</Label>
                 <Input value={name} onChange={setName} placeholder="e.g. Neighborhood Planning Town Hall — April 2026" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Bot name</Label>
+                  <Input value={config.bot_name} onChange={v => setConfig(c => ({ ...c, bot_name: v }))} placeholder="e.g. CommunityBot" />
+                </div>
+                <div>
+                  <Label>Bot emoji</Label>
+                  <Input value={config.bot_emoji} onChange={v => setConfig(c => ({ ...c, bot_emoji: v }))} placeholder="e.g. 💬" />
+                </div>
               </div>
 
               <div>

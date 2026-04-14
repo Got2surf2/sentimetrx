@@ -5,8 +5,9 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 interface Message { who: 'bot' | 'user'; text: string }
 interface Props { sessionId: string }
 
-const HERMES = '#E8632A'
-const BG = '#f9fafb'
+const IMSG_BLUE = '#007AFF'
+const IMSG_GRAY = '#E9E9EB'
+const BG = '#FFFFFF'
 
 // Mimic agent typing — 30ms per char, clamped 400–1800ms (matches survey engine)
 function typingDelay(text: string) {
@@ -17,6 +18,8 @@ function typingDelay(text: string) {
 export default function TownHallChat({ sessionId }: Props) {
   // Session info — fetched via GET /api/townhall/join/:id
   const [sessionName, setSessionName] = useState('')
+  const [botName, setBotName] = useState('Town Hall')
+  const [botEmoji, setBotEmoji] = useState('\uD83D\uDCAC')
   const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'ended' | 'notfound'>('loading')
   const [display, setDisplay] = useState<any>({})
   const [closingMsg, setClosingMsg] = useState('')
@@ -63,6 +66,8 @@ export default function TownHallChat({ sessionId }: Props) {
       const d = await r.json()
       if (!d.found) { setStatus('notfound'); return }
       setSessionName(d.name || '')
+      setBotName(d.bot_name || 'Town Hall')
+      setBotEmoji(d.bot_emoji || '\uD83D\uDCAC')
       setDisplay(d.display || {})
       setClosingMsg(d.closing_message || '')
       if (d.status === 'active') {
@@ -177,7 +182,7 @@ export default function TownHallChat({ sessionId }: Props) {
             {display.welcome_message || 'Welcome! Share your thoughts anonymously.'}
           </p>
           <button onClick={handleJoin} disabled={loading}
-            style={{ background: HERMES, color: 'white', border: 'none', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+            style={{ background: IMSG_BLUE, color: 'white', border: 'none', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
             {loading ? 'Joining...' : 'Join the conversation'}
           </button>
         </div>
@@ -187,35 +192,52 @@ export default function TownHallChat({ sessionId }: Props) {
 
   return (
     <div ref={wrapRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: BG }}>
-      <div style={{ padding: '12px 16px', background: 'white', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <div style={{ width: 36, height: 36, borderRadius: '50%', background: HERMES, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 16 }}>{'\uD83D\uDCAC'}</div>
-        <div><div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{sessionName}</div><div style={{ fontSize: 11, color: '#9ca3af' }}>Anonymous conversation</div></div>
+      {/* iMessage-style header */}
+      <div style={{ padding: '10px 16px 10px', background: '#F6F6F6', borderBottom: '1px solid #E0E0E0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column' }}>
+        <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 2 }}>{botEmoji}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#000' }}>{botName}</div>
       </div>
-      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+      {/* Chat area */}
+      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {messages.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
-            <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: m.who === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px', background: m.who === 'user' ? HERMES : 'white', color: m.who === 'user' ? 'white' : '#374151', fontSize: 14, lineHeight: 1.5, boxShadow: m.who === 'bot' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
+            <div style={{
+              maxWidth: '75%', padding: '9px 14px',
+              borderRadius: m.who === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+              background: m.who === 'user' ? IMSG_BLUE : IMSG_GRAY,
+              color: m.who === 'user' ? 'white' : '#000',
+              fontSize: 16, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>{m.text}</div>
           </div>
         ))}
-        {loading && <div style={{ display: 'flex', justifyContent: 'flex-start' }}><div style={{ padding: '10px 18px', borderRadius: '16px 16px 16px 4px', background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', display: 'flex', gap: 4, alignItems: 'center' }}><Dots /></div></div>}
+        {loading && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div style={{ padding: '12px 18px', borderRadius: '18px 18px 18px 4px', background: IMSG_GRAY, display: 'flex', gap: 5, alignItems: 'center' }}>
+              <Dots />
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Input area */}
       {!finished ? (
-        <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e7eb', background: 'white', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+        <div style={{ padding: '8px 10px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="Type your thoughts..." disabled={loading} rows={1}
-              style={{ flex: 1, resize: 'none', border: '1px solid #e5e7eb', borderRadius: 12, padding: '10px 14px', fontSize: 14, outline: 'none', maxHeight: 120, lineHeight: 1.4, background: loading ? '#f9fafb' : 'white' }}
+            <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="iMessage" disabled={loading} rows={1}
+              style={{ flex: 1, resize: 'none', border: '1px solid #C7C7CC', borderRadius: 20, padding: '9px 14px', fontSize: 16, outline: 'none', maxHeight: 120, lineHeight: 1.4, background: loading ? '#F6F6F6' : 'white' }}
               onInput={e => { const t = e.target as HTMLTextAreaElement; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' }} />
             <button onClick={() => handleSend()} disabled={loading || !input.trim()}
-              style={{ width: 40, height: 40, borderRadius: 12, border: 'none', background: input.trim() ? HERMES : '#e5e7eb', color: 'white', fontSize: 18, cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{'\u2191'}</button>
+              style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: input.trim() ? IMSG_BLUE : '#C7C7CC', color: 'white', fontSize: 16, cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>{'\u2191'}</button>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <button onClick={() => handleSend(undefined, true)} disabled={loading} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{display.skip_label || "I'd rather not answer that"}</button>
-            <span style={{ color: '#e5e7eb', fontSize: 12 }}>|</span>
-            <button onClick={handleDone} disabled={loading} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{display.done_label || "I'm done sharing"}</button>
+            <button onClick={() => handleSend(undefined, true)} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{display.skip_label || "I'd rather not answer that"}</button>
+            <span style={{ color: '#D1D1D6', fontSize: 12 }}>|</span>
+            <button onClick={handleDone} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{display.done_label || "I'm done sharing"}</button>
           </div>
         </div>
       ) : (
-        <div style={{ padding: '16px 12px', borderTop: '1px solid #e5e7eb', background: 'white', textAlign: 'center', flexShrink: 0 }}><p style={{ color: '#9ca3af', fontSize: 13 }}>Conversation ended</p></div>
+        <div style={{ padding: '16px 12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', textAlign: 'center', flexShrink: 0 }}><p style={{ color: '#8E8E93', fontSize: 13 }}>Conversation ended</p></div>
       )}
       <style>{`@keyframes th-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }`}</style>
     </div>
@@ -228,9 +250,9 @@ function Screen({ children }: { children: React.ReactNode }) {
 
 function Dots() {
   return (
-    <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-      {[0, 1, 2].map(i => <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#d1d5db', animation: 'th-dot 1.2s ease-in-out infinite', animationDelay: (i * 0.2) + 's' }} />)}
-      <style>{`@keyframes th-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }`}</style>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+      {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: '#8E8E93', animation: 'th-dot 1.4s ease-in-out infinite', animationDelay: (i * 0.2) + 's' }} />)}
+      <style>{`@keyframes th-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.3; } 30% { transform: translateY(-4px); opacity: 0.8; } }`}</style>
     </div>
   )
 }
