@@ -425,20 +425,33 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 <p className="text-xs text-gray-400 mb-3">Select the languages participants can use. If multiple are selected, participants will choose their language before joining.</p>
                 <div className="flex flex-wrap gap-2">
                   {SUPPORTED_LANGUAGES.map(l => {
-                    const enabled = (config.languages || []).includes(l.code)
+                    const checked = (config.languages || []).includes(l.code)
+                    const isEn = l.code === 'en'
                     return (
-                      <button key={l.code} onClick={() => {
+                      <button key={l.code} type="button" disabled={isEn} onClick={() => {
                         const current = config.languages || []
-                        const next = enabled ? current.filter((c: string) => c !== l.code) : [...current, l.code]
+                        const next = checked ? current.filter((c: string) => c !== l.code) : [...current, l.code]
                         setConfig(c => ({ ...c, languages: next }))
                       }}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
                         style={{
-                          background: enabled ? '#fff4ef' : 'white',
-                          color: enabled ? HERMES : '#9ca3af',
-                          borderColor: enabled ? HERMES + '60' : '#e5e7eb',
+                          background: checked ? '#fff4ef' : '#f9fafb',
+                          border: '1.5px solid ' + (checked ? HERMES : '#e5e7eb'),
+                          cursor: isEn ? 'default' : 'pointer',
+                          opacity: isEn ? 0.7 : 1,
                         }}>
-                        {l.nativeName} {l.nativeName !== l.name ? '(' + l.name + ')' : ''}
+                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                          style={{
+                            borderColor: checked ? HERMES : '#d1d5db',
+                            background: checked ? HERMES : 'white',
+                            color: checked ? 'white' : 'transparent',
+                          }}>
+                          {checked ? '\u2713' : ''}
+                        </span>
+                        <span style={{ color: checked ? HERMES : '#6b7280', fontWeight: checked ? 600 : 400 }}>
+                          {l.nativeName}
+                        </span>
+                        {l.name !== l.nativeName && <span className="text-xs" style={{ color: '#9ca3af' }}>{l.name}</span>}
                       </button>
                     )
                   })}
