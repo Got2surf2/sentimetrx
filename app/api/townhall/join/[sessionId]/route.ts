@@ -7,13 +7,20 @@ export const dynamic = 'force-dynamic'
 export async function GET(_req: NextRequest, { params }: { params: { sessionId: string } }) {
   const supabase = createServiceRoleClient()
 
-  const { data: session, error } = await supabase
-    .from('townhall_sessions')
-    .select('id, name, status, config')
-    .eq('id', params.sessionId)
-    .single()
+  // Resolve by slug first, then by UUID
+  const identifier = params.sessionId
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)
 
-  if (error || !session) {
+  let session: any = null
+  if (!isUUID) {
+    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config').eq('slug', identifier.toLowerCase()).single()
+    session = data
+  }
+  if (!session) {
+    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config').eq('id', identifier).single()
+    session = data
+  }
+  if (!session) {
     return NextResponse.json({ found: false }, { status: 404 })
   }
 
@@ -33,13 +40,20 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
 export async function POST(req: NextRequest, { params }: { params: { sessionId: string } }) {
   const supabase = createServiceRoleClient()
 
-  const { data: session, error } = await supabase
-    .from('townhall_sessions')
-    .select('id, status, config')
-    .eq('id', params.sessionId)
-    .single()
+  // Resolve by slug or UUID
+  const identifier = params.sessionId
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)
 
-  if (error || !session) {
+  let session: any = null
+  if (!isUUID) {
+    const { data } = await supabase.from('townhall_sessions').select('id, status, config').eq('slug', identifier.toLowerCase()).single()
+    session = data
+  }
+  if (!session) {
+    const { data } = await supabase.from('townhall_sessions').select('id, status, config').eq('id', identifier).single()
+    session = data
+  }
+  if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 

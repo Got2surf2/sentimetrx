@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     .eq('id', user.id)
     .single()
 
-  let body: { name: string; config: TownHallConfig; discussion_guide: TownHallGuideTopic[] }
+  let body: { name: string; slug?: string; config: TownHallConfig; discussion_guide: TownHallGuideTopic[] }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { name, config, discussion_guide } = body
@@ -64,17 +64,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields: name, config, discussion_guide' }, { status: 400 })
   }
 
+  // Validate slug if provided
+  let slug: string | null = null
+  if (body.slug && typeof body.slug === 'string' && body.slug.trim()) {
+    slug = body.slug.toLowerCase().trim()
+    const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/
+    if (!SLUG_REGEX.test(slug)) {
+      return NextResponse.json({ error: 'Link must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
+    }
+    const { data: conflict } = await db.from('townhall_sessions').select('id').eq('slug', slug).limit(1)
+    if (conflict && conflict.length > 0) {
+      return NextResponse.json({ error: 'This link is already taken' }, { status: 409 })
+    }
+  }
+
+  const insertData: Record<string, unknown> = {
+    org_id: userData?.org_id || userData?.client_id || '',
+    created_by: user.id,
+    name,
+    config,
+    discussion_guide,
+    status: 'setup',
+  }
+  if (slug) insertData.slug = slug
+
   const { data, error } = await db
     .from('townhall_sessions')
-    .insert({
-      org_id: userData?.org_id || userData?.client_id || '',
-      created_by: user.id,
-      name,
-      config,
-      discussion_guide,
-      status: 'setup',
-    })
-    .select('id')
+    .insert(insertData)
+    .select('id, slug')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

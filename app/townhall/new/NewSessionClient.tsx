@@ -202,6 +202,7 @@ function TagsInput({ value, onChange, placeholder }: { value: string[]; onChange
 export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEnabled, user }: Props) {
   const router = useRouter()
   const [name, setName] = useState('')
+  const [slug, setSlug] = useState('')
   const [config, setConfig] = useState<TownHallConfig>({
     ...DEFAULT_CONFIG,
     context: { ...DEFAULT_CONFIG.context, org_name: user.clientName || '' },
@@ -252,7 +253,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
       const res = await fetch('/api/townhall/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), config, discussion_guide: guide }),
+        body: JSON.stringify({ name: name.trim(), slug: slug.trim() || undefined, config, discussion_guide: guide }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -322,6 +323,16 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               <div>
                 <Label>Session name</Label>
                 <Input value={name} onChange={setName} placeholder="e.g. Neighborhood Planning Town Hall — April 2026" />
+              </div>
+
+              <div>
+                <Label sub="Custom link — lowercase letters, numbers, and hyphens">Participant link</Label>
+                <div className="flex items-center gap-0">
+                  <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/th/</span>
+                  <input type="text" value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="e.g. neighborhood-meeting"
+                    className="flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400" />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

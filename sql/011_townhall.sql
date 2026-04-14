@@ -13,6 +13,7 @@ CREATE TABLE townhall_sessions (
   org_id            UUID NOT NULL,
   created_by        UUID REFERENCES users(id) ON DELETE SET NULL,
   name              TEXT NOT NULL,
+  slug              TEXT UNIQUE,
   status            TEXT DEFAULT 'setup'
                     CHECK (status IN ('setup','active','paused','ended')),
   config            JSONB NOT NULL DEFAULT '{}',

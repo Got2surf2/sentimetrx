@@ -77,8 +77,26 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json(data)
   }
 
+  // Validate slug if provided
+  if (body.slug !== undefined) {
+    if (body.slug) {
+      const slug = String(body.slug).toLowerCase().trim()
+      const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/
+      if (!SLUG_REGEX.test(slug)) {
+        return NextResponse.json({ error: 'Link must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
+      }
+      const { data: conflict } = await db.from('townhall_sessions').select('id').eq('slug', slug).neq('id', params.id).limit(1)
+      if (conflict && conflict.length > 0) {
+        return NextResponse.json({ error: 'This link is already taken' }, { status: 409 })
+      }
+      body.slug = slug
+    } else {
+      body.slug = null
+    }
+  }
+
   // Only allow updating specific fields
-  const allowed = ['name', 'config', 'discussion_guide', 'status']
+  const allowed = ['name', 'config', 'discussion_guide', 'status', 'slug']
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]

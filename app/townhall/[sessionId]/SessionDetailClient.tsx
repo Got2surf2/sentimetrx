@@ -63,6 +63,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [editName, setEditName] = useState('')
   const [editBotName, setEditBotName] = useState('')
   const [editBotEmoji, setEditBotEmoji] = useState('')
+  const [editSlug, setEditSlug] = useState('')
   const [editOpening, setEditOpening] = useState('')
   const [editGuide, setEditGuide] = useState<TownHallGuideTopic[]>([])
   const [saving, setSaving] = useState(false)
@@ -96,6 +97,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     if (!session) return
     const cfg = session.config as any
     setEditName(session.name)
+    setEditSlug(session.slug || '')
     setEditBotName(cfg?.bot_name || 'Town Hall')
     setEditBotEmoji(cfg?.bot_emoji || '\uD83D\uDCAC')
     setEditOpening(cfg?.opening_question || '')
@@ -115,7 +117,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       const res = await fetch('/api/townhall/sessions/' + sessionId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, config: updatedConfig, discussion_guide: editGuide }),
+        body: JSON.stringify({ name: editName, slug: editSlug.trim() || null, config: updatedConfig, discussion_guide: editGuide }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -179,7 +181,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setActionLoading(null)
   }
 
-  const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/th/' + sessionId : ''
+  const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/th/' + (session?.slug || sessionId) : ''
   const copyLink = () => { navigator.clipboard.writeText(participantUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) }
 
   if (loading) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, user }}><div className="text-center py-20 text-gray-400 text-sm">Loading...</div></Shell>
@@ -275,6 +277,16 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               <label className="text-xs font-semibold text-gray-500 block mb-1">Session Name</label>
               <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Participant Link</label>
+              <div className="flex items-center">
+                <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/th/</span>
+                <input type="text" value={editSlug} onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder="e.g. neighborhood-meeting"
+                  className="flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

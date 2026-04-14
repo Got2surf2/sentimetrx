@@ -894,6 +894,7 @@ export interface TownHallSession {
   org_id:            string
   created_by:        string | null
   name:              string
+  slug:              string | null
   status:            TownHallSessionStatus
   config:            TownHallConfig
   discussion_guide:  TownHallGuideTopic[]
