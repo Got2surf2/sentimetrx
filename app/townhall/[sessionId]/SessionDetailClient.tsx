@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
-import type { TownHallSession, TownHallTheme, TownHallGuideTopic } from '@/lib/types'
-import { SUPPORTED_LANGUAGES } from '@/lib/types'
+import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig, DemoField, PsychoQuestion } from '@/lib/types'
+import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
+import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 
 interface Props {
   sessionId: string
@@ -22,6 +23,7 @@ interface Stats {
   skip_rate: number
   avg_words: number
   avg_turns: number
+  survey_responses: number
 }
 
 const HERMES = '#E8632A'
@@ -59,22 +61,29 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Edit mode state
+  // Edit mode state — full config editing
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
-  const [editBotName, setEditBotName] = useState('')
-  const [editBotEmoji, setEditBotEmoji] = useState('')
   const [editSlug, setEditSlug] = useState('')
-  const [editOpening, setEditOpening] = useState('')
+  const [editConfig, setEditConfig] = useState<TownHallConfig | null>(null)
   const [editGuide, setEditGuide] = useState<TownHallGuideTopic[]>([])
-  const [editLanguages, setEditLanguages] = useState<string[]>(['en'])
   const [saving, setSaving] = useState(false)
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['basics']))
 
   // Custom question state
   const [showCustom, setShowCustom] = useState(false)
   const [customLabel, setCustomLabel] = useState('')
   const [customQuestion, setCustomQuestion] = useState('')
   const [customTarget, setCustomTarget] = useState(30)
+
+  const toggleSection = (key: string) => setOpenSections(prev => {
+    const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
+  })
+  const updateConfig = (partial: Partial<TownHallConfig>) => setEditConfig(c => c ? { ...c, ...partial } : c)
+  const updateContext = (partial: Partial<TownHallConfig['context']>) => setEditConfig(c => c ? { ...c, context: { ...c.context, ...partial } } : c)
+  const updateEngine = (partial: Partial<TownHallConfig['engine']>) => setEditConfig(c => c ? { ...c, engine: { ...c.engine, ...partial } } : c)
+  const updateSessionEnd = (partial: Partial<TownHallConfig['session_end']>) => setEditConfig(c => c ? { ...c, session_end: { ...c.session_end, ...partial } } : c)
+  const updateDisplay = (partial: Partial<TownHallConfig['display']>) => setEditConfig(c => c ? { ...c, display: { ...c.display, ...partial } } : c)
 
   const fetchData = useCallback(async () => {
     try {
@@ -94,33 +103,29 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     return () => clearInterval(interval)
   }, [fetchData])
 
-  // Start editing — populate form with current values
+  // Start editing — deep-copy current config
   const startEdit = () => {
     if (!session) return
-    const cfg = session.config as any
+    const cfg = session.config as TownHallConfig
     setEditName(session.name)
     setEditSlug(session.slug || '')
-    setEditBotName(cfg?.bot_name || 'Town Hall')
-    setEditBotEmoji(cfg?.bot_emoji || '\uD83D\uDCAC')
-    setEditOpening(cfg?.opening_question || '')
-    setEditGuide(session.discussion_guide || [])
-    setEditLanguages(cfg?.languages || ['en'])
+    setEditConfig(JSON.parse(JSON.stringify(cfg)))
+    setEditGuide(JSON.parse(JSON.stringify(session.discussion_guide || [])))
+    setOpenSections(new Set(['basics']))
     setEditing(true)
   }
 
   const cancelEdit = () => { setEditing(false) }
 
   const saveEdit = async () => {
-    if (!session) return
+    if (!session || !editConfig) return
     setSaving(true)
     setError(null)
-    const cfg = session.config as any
-    const updatedConfig = { ...cfg, bot_name: editBotName, bot_emoji: editBotEmoji, opening_question: editOpening, languages: editLanguages }
     try {
       const res = await fetch('/api/townhall/sessions/' + sessionId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, slug: editSlug.trim() || null, config: updatedConfig, discussion_guide: editGuide }),
+        body: JSON.stringify({ name: editName, slug: editSlug.trim() || null, config: editConfig, discussion_guide: editGuide }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -274,107 +279,202 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         {/* ── EDIT MODE ──────────────────────────────────────────── */}
         {editing && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 space-y-5">
-            <h3 className="text-sm font-bold text-gray-700">Edit Session</h3>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Session Name</label>
-              <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Participant Link</label>
-              <div className="flex items-center">
-                <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/th/</span>
-                <input type="text" value={editSlug} onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  placeholder="e.g. neighborhood-meeting"
-                  className="flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-700">Edit Session</h3>
+              <div className="flex gap-2">
+                <button onClick={saveEdit} disabled={saving}
+                  className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+                  style={{ background: HERMES }}>
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button onClick={cancelEdit} className="px-4 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-50 border border-gray-200">Cancel</button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-500 block mb-1">Bot Name</label>
-                <input type="text" value={editBotName} onChange={e => setEditBotName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 block mb-1">Bot Emoji</label>
-                <input type="text" value={editBotEmoji} onChange={e => setEditBotEmoji(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
-              </div>
-            </div>
+            {editConfig && (<div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
 
-            <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Languages</label>
-              <p className="text-[10px] text-gray-400 mb-2">Participants choose their language before joining. Responses are auto-translated to English.</p>
-              <div className="flex flex-wrap gap-2">
-                {SUPPORTED_LANGUAGES.map(l => {
-                  const checked = editLanguages.includes(l.code)
-                  const isEn = l.code === 'en'
-                  return (
-                    <button key={l.code} type="button" disabled={isEn} onClick={() => {
-                      setEditLanguages(prev => checked ? prev.filter(c => c !== l.code) : [...prev, l.code])
-                    }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
-                      style={{
-                        background: checked ? '#fff4ef' : '#f9fafb',
-                        border: '1.5px solid ' + (checked ? HERMES : '#e5e7eb'),
-                        cursor: isEn ? 'default' : 'pointer',
-                        opacity: isEn ? 0.7 : 1,
-                      }}>
-                      <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
-                        style={{
-                          borderColor: checked ? HERMES : '#d1d5db',
-                          background: checked ? HERMES : 'white',
-                          color: checked ? 'white' : 'transparent',
-                        }}>
-                        {checked ? '\u2713' : ''}
-                      </span>
-                      <span style={{ color: checked ? HERMES : '#6b7280', fontWeight: checked ? 600 : 400 }}>
-                        {l.nativeName}
-                      </span>
-                      {l.name !== l.nativeName && <span className="text-xs" style={{ color: '#9ca3af' }}>{l.name}</span>}
+              {/* ── 1. Basics ──────────────────────────────────────────── */}
+              <EditSection title="Basics" sectionKey="basics" open={openSections} toggle={toggleSection}>
+                <ELabel>Session Name</ELabel>
+                <EInput value={editName} onChange={setEditName} />
+                <ELabel>Participant Link</ELabel>
+                <div className="flex items-center">
+                  <span className="text-sm text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2">/th/</span>
+                  <input type="text" value={editSlug} onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="e.g. neighborhood-meeting"
+                    className="flex-1 px-3 py-2 rounded-r-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><ELabel>Bot Name</ELabel><EInput value={editConfig.bot_name} onChange={v => updateConfig({ bot_name: v })} /></div>
+                  <div><ELabel>Bot Emoji</ELabel><EInput value={editConfig.bot_emoji} onChange={v => updateConfig({ bot_emoji: v })} /></div>
+                </div>
+                <ELabel>Organization Name</ELabel>
+                <EInput value={editConfig.context.org_name} onChange={v => updateContext({ org_name: v })} />
+                <ELabel>Event Description</ELabel>
+                <ETextarea value={editConfig.context.event_description} onChange={v => updateContext({ event_description: v })} rows={2} />
+                <ELabel>Opening Question</ELabel>
+                <ETextarea value={editConfig.opening_question} onChange={v => updateConfig({ opening_question: v })} rows={2} />
+                <ELabel>Tone</ELabel>
+                <EInput value={editConfig.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm and professional" />
+                <ELabel>Sensitive Topics <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
+                <EInput value={(editConfig.context.sensitive_topics || []).join(', ')} onChange={v => updateContext({ sensitive_topics: v.split(',').map(s => s.trim()).filter(Boolean) })} />
+                <ELabel>Priority Areas <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
+                <EInput value={(editConfig.context.priority_areas || []).join(', ')} onChange={v => updateContext({ priority_areas: v.split(',').map(s => s.trim()).filter(Boolean) })} />
+              </EditSection>
+
+              {/* ── 2. Discussion Guide ────────────────────────────────── */}
+              <EditSection title={'Discussion Guide (' + editGuide.length + ' topics)'} sectionKey="guide" open={openSections} toggle={toggleSection}>
+                <div className="space-y-3">
+                  {editGuide.map((t, i) => (
+                    <div key={t.id} className="border border-gray-100 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Topic {i + 1}</span>
+                        <button onClick={() => removeGuideTopic(i)} className="text-[10px] text-red-400 hover:text-red-600">Remove</button>
+                      </div>
+                      <EInput value={t.label} onChange={v => updateGuideTopic(i, { label: v })} placeholder="Topic label" />
+                      <EInput value={t.description || ''} onChange={v => updateGuideTopic(i, { description: v })} placeholder="Description (context for AI)" />
+                      <ETextarea value={t.opening_question} onChange={v => updateGuideTopic(i, { opening_question: v })} placeholder="Opening question" rows={2} />
+                      <EInput value={(t.follow_up_angles || []).join(', ')} onChange={v => updateGuideTopic(i, { follow_up_angles: v.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="Follow-up angles (comma-separated)" />
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400">Target:</span>
+                        <input type="number" min={5} max={500} value={t.response_target} onChange={e => updateGuideTopic(i, { response_target: parseInt(e.target.value) || 30 })}
+                          className="w-20 px-2 py-1 rounded border border-gray-200 text-xs" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={addGuideTopic}
+                  className="mt-3 w-full py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600">
+                  + Add Topic
+                </button>
+              </EditSection>
+
+              {/* ── 3. Conversation Settings ───────────────────────────── */}
+              <EditSection title="Conversation Settings" sectionKey="engine" open={openSections} toggle={toggleSection}>
+                <ELabel>Languages</ELabel>
+                <p className="text-[10px] text-gray-400 mb-2">Participants choose their language before joining. Responses are auto-translated to English.</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {SUPPORTED_LANGUAGES.map(l => {
+                    const checked = (editConfig.languages || []).includes(l.code)
+                    const isEn = l.code === 'en'
+                    return (
+                      <button key={l.code} type="button" disabled={isEn} onClick={() => {
+                        const prev = editConfig.languages || ['en']
+                        updateConfig({ languages: checked ? prev.filter(c => c !== l.code) : [...prev, l.code] })
+                      }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                        style={{ background: checked ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (checked ? HERMES : '#e5e7eb'), cursor: isEn ? 'default' : 'pointer', opacity: isEn ? 0.7 : 1 }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                          style={{ borderColor: checked ? HERMES : '#d1d5db', background: checked ? HERMES : 'white', color: checked ? 'white' : 'transparent' }}>
+                          {checked ? '\u2713' : ''}
+                        </span>
+                        <span style={{ color: checked ? HERMES : '#6b7280', fontWeight: checked ? 600 : 400 }}>{l.nativeName}</span>
+                        {l.name !== l.nativeName && <span className="text-xs" style={{ color: '#9ca3af' }}>{l.name}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><ELabel>Max Turns / Participant</ELabel><ENumber value={editConfig.engine.max_turns_per_participant} onChange={v => updateEngine({ max_turns_per_participant: v })} min={3} max={50} /></div>
+                  <div><ELabel>Default Response Target</ELabel><ENumber value={editConfig.engine.default_response_target} onChange={v => updateEngine({ default_response_target: v })} min={5} max={500} /></div>
+                </div>
+                <div><ELabel>AI Timeout (ms)</ELabel><ENumber value={editConfig.engine.ai_timeout_ms} onChange={v => updateEngine({ ai_timeout_ms: v })} min={3000} max={30000} /></div>
+              </EditSection>
+
+              {/* ── 4. Session End ──────────────────────────────────────── */}
+              <EditSection title="Session End" sectionKey="session_end" open={openSections} toggle={toggleSection}>
+                <ELabel>End Mode</ELabel>
+                <div className="flex gap-2 mb-3">
+                  {(['manual', 'timed', 'inactivity'] as const).map(m => (
+                    <button key={m} onClick={() => updateSessionEnd({ mode: m })}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+                      style={{ background: editConfig.session_end.mode === m ? '#fff4ef' : '#f9fafb', borderColor: editConfig.session_end.mode === m ? HERMES : '#e5e7eb', color: editConfig.session_end.mode === m ? HERMES : '#6b7280' }}>
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
                     </button>
-                  )
-                })}
-              </div>
-            </div>
+                  ))}
+                </div>
+                {editConfig.session_end.mode === 'timed' && (
+                  <div><ELabel>Duration (minutes)</ELabel><ENumber value={editConfig.session_end.duration_minutes || 60} onChange={v => updateSessionEnd({ duration_minutes: v })} min={5} max={480} /></div>
+                )}
+                {editConfig.session_end.mode === 'inactivity' && (
+                  <div><ELabel>Inactivity Timeout (minutes)</ELabel><ENumber value={editConfig.session_end.inactivity_timeout_minutes || 10} onChange={v => updateSessionEnd({ inactivity_timeout_minutes: v })} min={1} max={120} /></div>
+                )}
+                <ELabel>Closing Message</ELabel>
+                <ETextarea value={editConfig.session_end.closing_message} onChange={v => updateSessionEnd({ closing_message: v })} rows={2} />
+              </EditSection>
 
-            <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Opening Question</label>
-              <textarea value={editOpening} onChange={e => setEditOpening(e.target.value)} rows={2}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 resize-none" />
-            </div>
+              {/* ── 5. Participant Display ──────────────────────────────── */}
+              <EditSection title="Participant Display" sectionKey="display" open={openSections} toggle={toggleSection}>
+                <ELabel>Welcome Message</ELabel>
+                <ETextarea value={editConfig.display.welcome_message} onChange={v => updateDisplay({ welcome_message: v })} rows={2} />
+                <ELabel>Thank You Message</ELabel>
+                <ETextarea value={editConfig.display.thank_you_message} onChange={v => updateDisplay({ thank_you_message: v })} rows={2} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div><ELabel>Skip Button Label</ELabel><EInput value={editConfig.display.skip_label} onChange={v => updateDisplay({ skip_label: v })} /></div>
+                  <div><ELabel>Done Button Label</ELabel><EInput value={editConfig.display.done_label} onChange={v => updateDisplay({ done_label: v })} /></div>
+                </div>
+              </EditSection>
 
-            <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-3">Discussion Guide</label>
-              <div className="space-y-3">
-                {editGuide.map((t, i) => (
-                  <div key={t.id} className="border border-gray-100 rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase">Topic {i + 1}</span>
-                      <button onClick={() => removeGuideTopic(i)} className="text-[10px] text-red-400 hover:text-red-600">Remove</button>
-                    </div>
-                    <input type="text" value={t.label} onChange={e => updateGuideTopic(i, { label: e.target.value })} placeholder="Topic label"
-                      className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
-                    <textarea value={t.opening_question} onChange={e => updateGuideTopic(i, { opening_question: e.target.value })} placeholder="Opening question" rows={2}
-                      className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 resize-none" />
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400">Target:</span>
-                      <input type="number" min={5} max={500} value={t.response_target} onChange={e => updateGuideTopic(i, { response_target: parseInt(e.target.value) || 30 })}
-                        className="w-20 px-2 py-1 rounded border border-gray-200 text-xs" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button onClick={addGuideTopic}
-                className="mt-3 w-full py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600">
-                + Add Topic
-              </button>
-            </div>
+              {/* ── 6. Post-Session Questions ──────────────────────────── */}
+              <EditSection title="Post-Session Questions" sectionKey="postsession" open={openSections} toggle={toggleSection}>
+                <p className="text-[10px] text-gray-400 mb-3">After the conversation ends, participants can optionally answer demographic and psychographic questions.</p>
 
-            <div className="flex gap-2 pt-2">
+                <ELabel>Demographics</ELabel>
+                <div className="space-y-1 mb-4">
+                  {DEMO_BANK.map(d => {
+                    const active = (editConfig.demoFields || []).find(f => f.key === d.key)
+                    const enabled = active?.enabled ?? false
+                    return (
+                      <button key={d.key} onClick={() => {
+                        const current = editConfig.demoFields || DEMO_BANK.map(b => ({ ...b, enabled: false }))
+                        const next = current.map(f => f.key === d.key ? { ...f, enabled: !enabled } : f)
+                        if (!current.find(f => f.key === d.key)) next.push({ ...d, enabled: true })
+                        updateConfig({ demoFields: next })
+                      }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
+                        style={{ background: enabled ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (enabled ? HERMES : '#e5e7eb') }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                          style={{ borderColor: enabled ? HERMES : '#d1d5db', background: enabled ? HERMES : 'white', color: enabled ? 'white' : 'transparent' }}>
+                          {enabled ? '\u2713' : ''}
+                        </span>
+                        <span style={{ color: enabled ? HERMES : '#6b7280', fontWeight: enabled ? 600 : 400 }}>{d.label}</span>
+                        <span className="text-[10px] text-gray-400 ml-auto">{d.type}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <ELabel>Psychographic Questions</ELabel>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] text-gray-400">Show</span>
+                  <ENumber value={editConfig.psychoCount || 3} onChange={v => updateConfig({ psychoCount: v })} min={0} max={15} />
+                  <span className="text-[10px] text-gray-400">random questions per participant</span>
+                </div>
+                <div className="space-y-1">
+                  {GENERAL_PSYCHO_BANK.map(pq => {
+                    const inBank = (editConfig.psychographicBank || []).some(b => b.key === pq.key)
+                    return (
+                      <button key={pq.key} onClick={() => {
+                        const current = editConfig.psychographicBank || []
+                        const next = inBank ? current.filter(b => b.key !== pq.key) : [...current, { key: pq.key, q: pq.q, opts: pq.opts }]
+                        updateConfig({ psychographicBank: next })
+                      }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
+                        style={{ background: inBank ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (inBank ? HERMES : '#e5e7eb') }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                          style={{ borderColor: inBank ? HERMES : '#d1d5db', background: inBank ? HERMES : 'white', color: inBank ? 'white' : 'transparent' }}>
+                          {inBank ? '\u2713' : ''}
+                        </span>
+                        <span className="flex-1" style={{ color: inBank ? HERMES : '#6b7280', fontWeight: inBank ? 600 : 400 }}>{pq.q}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </EditSection>
+
+            </div>)}
+
+            <div className="flex gap-2 pt-4 border-t border-gray-200 mt-4">
               <button onClick={saveEdit} disabled={saving}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 style={{ background: HERMES }}>
@@ -387,7 +487,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
         {/* Stats bar */}
         {stats && !editing && (
-          <div className="grid grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-7 gap-3 mb-6">
             {[
               { label: 'Joined', value: stats.joined },
               { label: 'Total Turns', value: stats.total_turns },
@@ -395,6 +495,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               { label: 'Skip Rate', value: stats.skip_rate + '%' },
               { label: 'Avg Words', value: stats.avg_words },
               { label: 'Avg Turns', value: stats.avg_turns },
+              { label: 'Surveys', value: stats.survey_responses },
             ].map(s => (
               <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
                 <div className="text-lg font-bold text-gray-900">{s.value}</div>
@@ -581,4 +682,38 @@ function Shell({ logoUrl, analyzeEnabled, campaignsEnabled, user, children }: {
       <main className="pt-14">{children}</main>
     </>
   )
+}
+
+// ── Edit form helper components ──────────────────────────────────────────────
+
+function EditSection({ title, sectionKey, open, toggle, children }: { title: string; sectionKey: string; open: Set<string>; toggle: (k: string) => void; children: React.ReactNode }) {
+  const isOpen = open.has(sectionKey)
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <button onClick={() => toggle(sectionKey)} className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left">
+        <span className="text-xs font-bold text-gray-700">{title}</span>
+        <span className="text-gray-400 text-xs">{isOpen ? '\u25B2' : '\u25BC'}</span>
+      </button>
+      {isOpen && <div className="px-4 py-3 space-y-3 bg-white">{children}</div>}
+    </div>
+  )
+}
+
+function ELabel({ children }: { children: React.ReactNode }) {
+  return <label className="text-xs font-semibold text-gray-500 block mb-1">{children}</label>
+}
+
+function EInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return <input type="text" value={value || ''} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
+}
+
+function ETextarea({ value, onChange, rows, placeholder }: { value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) {
+  return <textarea value={value || ''} onChange={e => onChange(e.target.value)} rows={rows || 2} placeholder={placeholder}
+    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 resize-none" />
+}
+
+function ENumber({ value, onChange, min, max }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+  return <input type="number" value={value} onChange={e => onChange(parseInt(e.target.value) || 0)} min={min} max={max}
+    className="w-20 px-2 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
 }

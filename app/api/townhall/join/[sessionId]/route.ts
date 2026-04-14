@@ -34,6 +34,10 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     languages: config?.languages || [],
     display: config?.display || {},
     closing_message: config?.session_end?.closing_message || null,
+    // Post-session question config (for rendering after chat ends)
+    demoFields: config?.demoFields || [],
+    psychographicBank: config?.psychographicBank || [],
+    psychoCount: config?.psychoCount || 3,
   })
 }
 

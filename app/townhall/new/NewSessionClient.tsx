@@ -4,7 +4,8 @@ import { useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
-import { SUPPORTED_LANGUAGES } from '@/lib/types'
+import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
+import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 
 interface Props {
   logoUrl?: string
@@ -539,6 +540,63 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                       <Input value={config.display.done_label} onChange={v => updateDisplay({ done_label: v })} />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-2">Post-Session Questions</h3>
+                <p className="text-xs text-gray-400 mb-4">After the conversation ends, participants can optionally answer demographic and psychographic questions.</p>
+
+                <h4 className="text-xs font-semibold text-gray-500 mb-2">Demographics</h4>
+                <div className="space-y-1 mb-4">
+                  {DEMO_BANK.map(d => {
+                    const current = config.demoFields || DEMO_BANK.map(b => ({ ...b, enabled: b.key === 'age' || b.key === 'gender' || b.key === 'zip' }))
+                    const enabled = current.find(f => f.key === d.key)?.enabled ?? false
+                    return (
+                      <button key={d.key} type="button" onClick={() => {
+                        const next = current.map(f => f.key === d.key ? { ...f, enabled: !enabled } : f)
+                        setConfig(c => ({ ...c, demoFields: next }))
+                      }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
+                        style={{ background: enabled ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (enabled ? HERMES : '#e5e7eb') }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                          style={{ borderColor: enabled ? HERMES : '#d1d5db', background: enabled ? HERMES : 'white', color: enabled ? 'white' : 'transparent' }}>
+                          {enabled ? '\u2713' : ''}
+                        </span>
+                        <span style={{ color: enabled ? HERMES : '#6b7280', fontWeight: enabled ? 600 : 400 }}>{d.label}</span>
+                        <span className="text-[10px] text-gray-400 ml-auto">{d.type}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <h4 className="text-xs font-semibold text-gray-500 mb-2">Psychographic Questions</h4>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-400">Show</span>
+                  <input type="number" min={0} max={15} value={config.psychoCount || 3}
+                    onChange={e => setConfig(c => ({ ...c, psychoCount: parseInt(e.target.value) || 0 }))}
+                    className="w-16 px-2 py-1 rounded border border-gray-200 text-xs" />
+                  <span className="text-xs text-gray-400">random questions per participant</span>
+                </div>
+                <div className="space-y-1">
+                  {GENERAL_PSYCHO_BANK.map(pq => {
+                    const inBank = (config.psychographicBank || []).some((b: any) => b.key === pq.key)
+                    return (
+                      <button key={pq.key} type="button" onClick={() => {
+                        const current = config.psychographicBank || []
+                        const next = inBank ? current.filter((b: any) => b.key !== pq.key) : [...current, { key: pq.key, q: pq.q, opts: pq.opts }]
+                        setConfig(c => ({ ...c, psychographicBank: next }))
+                      }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
+                        style={{ background: inBank ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (inBank ? HERMES : '#e5e7eb') }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                          style={{ borderColor: inBank ? HERMES : '#d1d5db', background: inBank ? HERMES : 'white', color: inBank ? 'white' : 'transparent' }}>
+                          {inBank ? '\u2713' : ''}
+                        </span>
+                        <span className="flex-1" style={{ color: inBank ? HERMES : '#6b7280', fontWeight: inBank ? 600 : 400 }}>{pq.q}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             </div>

@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
+import type { DemoField, PsychoQuestion } from '@/lib/types'
 
+type Phase = 'chat' | 'transition' | 'psycho' | 'demo' | 'submitting' | 'done'
 interface Message { who: 'bot' | 'user'; text: string }
 interface Props { sessionId: string }
 
@@ -32,10 +34,21 @@ export default function TownHallChat({ sessionId }: Props) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [joined, setJoined] = useState(false)
-  const [finished, setFinished] = useState(false)
+  const [phase, setPhase] = useState<Phase>('chat')
   const [pid, setPid] = useState('')
   const [turn, setTurn] = useState(0)
   const [themeId, setThemeId] = useState<string | null>(null)
+
+  // Post-session question state
+  const [demoFields, setDemoFields] = useState<DemoField[]>([])
+  const [psychoBank, setPsychoBank] = useState<PsychoQuestion[]>([])
+  const [psychoCount, setPsychoCount] = useState(3)
+  const [psychoQuestions, setPsychoQuestions] = useState<PsychoQuestion[]>([])
+  const [psychoIdx, setPsychoIdx] = useState(0)
+  const [psychoAnswers, setPsychoAnswers] = useState<Record<string, string>>({})
+  const [demoAnswers, setDemoAnswers] = useState<Record<string, string>>({})
+
+  const finished = phase !== 'chat'
 
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -49,7 +62,7 @@ export default function TownHallChat({ sessionId }: Props) {
   }, [])
 
   useEffect(() => { scroll() }, [messages, loading, scroll])
-  useEffect(() => { if (!loading && joined && !finished) inputRef.current?.focus() }, [loading, joined, finished])
+  useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])
 
   // Mobile viewport
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -74,6 +87,9 @@ export default function TownHallChat({ sessionId }: Props) {
       setLanguages(d.languages || [])
       setDisplay(d.display || {})
       setClosingMsg(d.closing_message || '')
+      if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
+      if (d.psychographicBank) setPsychoBank(d.psychographicBank)
+      if (d.psychoCount != null) setPsychoCount(d.psychoCount)
       if (d.status === 'active') {
         setStatus('active')
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -114,7 +130,7 @@ export default function TownHallChat({ sessionId }: Props) {
       await typingDelay(d.bot_message)
       setLoading(false)
       setMessages([{ who: 'bot', text: d.bot_message }])
-      if (d.is_final) setFinished(true)
+      if (d.is_final) await startPostSession()
     } catch { setMessages([{ who: 'bot', text: 'Something went wrong. Please try again.' }]) }
     setLoading(false)
   }
@@ -136,10 +152,43 @@ export default function TownHallChat({ sessionId }: Props) {
       // Typing dots are already showing (loading=true) — wait for realistic duration
       await typingDelay(d.bot_message)
       setMessages(p => [...p, { who: 'bot', text: d.bot_message }])
-      if (d.is_final) setFinished(true)
+      if (d.is_final) await startPostSession()
     } catch { setMessages(p => [...p, { who: 'bot', text: 'Something went wrong. Let me try again — what were you saying?' }]) }
     setLoading(false)
   }
+
+  // Start post-session flow: transition → psycho → demo → done
+  const startPostSession = useCallback(async () => {
+    const hasQuestions = psychoBank.length > 0 || demoFields.length > 0
+    if (!hasQuestions) {
+      setPhase('done')
+      return
+    }
+    setPhase('transition')
+    const transMsg = 'Almost done — just a few quick optional questions to help us understand who we heard from today.'
+    setLoading(true)
+    await typingDelay(transMsg)
+    setLoading(false)
+    setMessages(p => [...p, { who: 'bot', text: transMsg }])
+
+    // Pick random psycho questions
+    if (psychoBank.length > 0 && psychoCount > 0) {
+      const pool = [...psychoBank]
+      const picked: PsychoQuestion[] = []
+      const n = Math.min(psychoCount, pool.length)
+      while (picked.length < n && pool.length > 0) {
+        const idx = Math.floor(Math.random() * pool.length)
+        picked.push(...pool.splice(idx, 1))
+      }
+      setPsychoQuestions(picked)
+      setPsychoIdx(0)
+      setPhase('psycho')
+    } else if (demoFields.length > 0) {
+      setPhase('demo')
+    } else {
+      setPhase('done')
+    }
+  }, [psychoBank, psychoCount, demoFields])
 
   const handleDone = async () => {
     const msg = display.thank_you_message || 'Thank you for your time. Your voice matters.'
@@ -147,10 +196,27 @@ export default function TownHallChat({ sessionId }: Props) {
     await typingDelay(msg)
     setLoading(false)
     setMessages(p => [...p, { who: 'bot', text: msg }])
-    setFinished(true)
     fetch('/api/townhall/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: '[done]', turn_number: turn, theme_id: themeId, skipped: true }),
     }).catch(() => {})
+    await startPostSession()
+  }
+
+  const submitPostSession = async (psycho: Record<string, string>, demo: Record<string, string>) => {
+    setPhase('submitting')
+    try {
+      await fetch('/api/townhall/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, participant_id: pid, psychographics: psycho, demographics: demo }),
+      })
+    } catch { /* silently fail — don't block the thank-you screen */ }
+    const thankMsg = 'Thanks for sharing! Your input helps us understand our community better.'
+    setLoading(true)
+    await typingDelay(thankMsg)
+    setLoading(false)
+    setMessages(p => [...p, { who: 'bot', text: thankMsg }])
+    setPhase('done')
   }
 
   const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
@@ -258,8 +324,8 @@ export default function TownHallChat({ sessionId }: Props) {
         )}
       </div>
 
-      {/* Input area */}
-      {!finished ? (
+      {/* Input area — changes based on phase */}
+      {phase === 'chat' ? (
         <div style={{ padding: '8px 10px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="iMessage" disabled={loading} rows={1}
@@ -274,6 +340,85 @@ export default function TownHallChat({ sessionId }: Props) {
             <button onClick={handleDone} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{display.done_label || "I'm done sharing"}</button>
           </div>
         </div>
+      ) : phase === 'psycho' && psychoQuestions[psychoIdx] ? (
+        <div style={{ padding: '12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', flexShrink: 0 }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8, lineHeight: 1.4 }}>{psychoQuestions[psychoIdx].q}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {psychoQuestions[psychoIdx].opts.map(opt => (
+              <button key={opt} onClick={async () => {
+                const q = psychoQuestions[psychoIdx]
+                setPsychoAnswers(p => ({ ...p, [q.key]: opt }))
+                setMessages(p => [...p, { who: 'user', text: opt }])
+                const nextIdx = psychoIdx + 1
+                if (nextIdx < psychoQuestions.length) {
+                  setPsychoIdx(nextIdx)
+                  setLoading(true)
+                  await typingDelay(psychoQuestions[nextIdx].q)
+                  setLoading(false)
+                } else if (demoFields.length > 0) {
+                  setPhase('demo')
+                  setLoading(true)
+                  await typingDelay('A few more quick questions:')
+                  setMessages(p => [...p, { who: 'bot', text: 'A few more quick questions:' }])
+                  setLoading(false)
+                } else {
+                  submitPostSession({ ...psychoAnswers, [q.key]: opt }, {})
+                }
+              }}
+                style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E0E0E0', background: 'white', fontSize: 15, color: '#374151', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseOver={e => { (e.target as HTMLElement).style.borderColor = IMSG_BLUE; (e.target as HTMLElement).style.background = '#EBF5FF' }}
+                onMouseOut={e => { (e.target as HTMLElement).style.borderColor = '#E0E0E0'; (e.target as HTMLElement).style.background = 'white' }}>
+                {opt}
+              </button>
+            ))}
+          </div>
+          <button onClick={async () => {
+            const nextIdx = psychoIdx + 1
+            setMessages(p => [...p, { who: 'user', text: 'Skip' }])
+            if (nextIdx < psychoQuestions.length) {
+              setPsychoIdx(nextIdx)
+            } else if (demoFields.length > 0) {
+              setPhase('demo')
+            } else {
+              submitPostSession(psychoAnswers, {})
+            }
+          }} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', marginTop: 6, width: '100%', textAlign: 'center' }}>
+            Skip this question
+          </button>
+        </div>
+      ) : phase === 'demo' ? (
+        <div style={{ padding: '12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', flexShrink: 0, maxHeight: '50vh', overflowY: 'auto' }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Tell us a bit about yourself <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optional)</span></p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {demoFields.map(f => (
+              <div key={f.key}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>{f.label}</label>
+                {f.type === 'select' && f.options ? (
+                  <select value={demoAnswers[f.key] || ''} onChange={e => setDemoAnswers(p => ({ ...p, [f.key]: e.target.value }))}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #D1D5DB', fontSize: 14, background: 'white', color: '#374151', outline: 'none' }}>
+                    <option value="">Select...</option>
+                    {f.options.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" value={demoAnswers[f.key] || ''} onChange={e => setDemoAnswers(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.label}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #D1D5DB', fontSize: 14, background: 'white', color: '#374151', outline: 'none', boxSizing: 'border-box' }} />
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={() => submitPostSession(psychoAnswers, demoAnswers)}
+              style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: 'none', background: IMSG_BLUE, color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+              Submit
+            </button>
+            <button onClick={() => submitPostSession(psychoAnswers, {})}
+              style={{ padding: '11px 16px', borderRadius: 12, border: '1px solid #D1D5DB', background: 'white', color: '#8E8E93', fontSize: 14, cursor: 'pointer' }}>
+              Skip
+            </button>
+          </div>
+        </div>
+      ) : phase === 'submitting' ? (
+        <div style={{ padding: '16px 12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', textAlign: 'center', flexShrink: 0 }}><p style={{ color: '#8E8E93', fontSize: 13 }}>Saving your responses...</p></div>
       ) : (
         <div style={{ padding: '16px 12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', textAlign: 'center', flexShrink: 0 }}><p style={{ color: '#8E8E93', fontSize: 13 }}>Conversation ended</p></div>
       )}

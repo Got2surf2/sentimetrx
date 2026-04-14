@@ -38,6 +38,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     ? Math.round(answered.reduce((sum, t) => sum + (t.user_message?.split(/\s+/).length || 0), 0) / answered.length)
     : 0
 
+  // Post-session response count
+  const { count: responseCount } = await db
+    .from('townhall_participant_responses')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', params.id)
+
   const stats = {
     joined: participants.size,
     total_turns: allTurns.length,
@@ -46,6 +52,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     skip_rate: allTurns.length > 0 ? Math.round((allTurns.filter(t => t.skipped).length / allTurns.length) * 100) : 0,
     avg_words: avgWords,
     avg_turns: participants.size > 0 ? +(allTurns.length / participants.size).toFixed(1) : 0,
+    survey_responses: responseCount || 0,
   }
 
   return NextResponse.json({ session, themes: themes || [], stats })
