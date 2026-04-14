@@ -4,6 +4,57 @@
 
 import { expandLemma } from './lemmas'
 
+// ── Lexicon-based sentiment scoring (no AI required) ─────────────────────────
+// Scored words: positive = +1, negative = -1. Aggregated across matched comments.
+const POS_WORDS = new Set([
+  'good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best',
+  'delicious','tasty','fresh','friendly','nice','lovely','beautiful','clean','quick','fast',
+  'warm','crispy','tender','flavorful','juicy','smooth','rich','creamy','light',
+  'attentive','helpful','polite','efficient','professional','outstanding','superb','incredible',
+  'impressive','comfortable','cozy','spacious','pleasant','enjoyable','reasonable','generous',
+  'authentic','consistent','reliable','prompt','welcoming','accommodating','caring','cheerful',
+  'exceptional','phenomenal','spectacular','remarkable','brilliant','divine','heavenly','savory',
+  'satisfying','refreshing','favorite','love','loved','enjoy','enjoyed','recommend','happy',
+  'pleased','thrilled','grateful','impressed','delighted','satisfied','glad','proud',
+])
+const NEG_WORDS = new Set([
+  'bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale',
+  'rude','dirty','expensive','overpriced','small','tiny','loud','noisy','crowded','long',
+  'soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless',
+  'mediocre','disappointing','disgusting','unpleasant','uncomfortable','unfriendly','inattentive',
+  'lazy','careless','unprofessional','disorganized','chaotic','filthy','gross','lukewarm',
+  'watery','tough','chewy','rubbery','mushy','hard','old','late','wrong','missing',
+  'broken','ignored','forgotten','waited','waiting','complained','annoyed','frustrated',
+  'underwhelming','overrated','upset','angry','disappointed','unhappy','dissatisfied','regret',
+])
+
+/**
+ * Score a block of text for sentiment using the lexicon.
+ * Returns { positive, negative } word counts.
+ */
+function lexiconScore(text: string): { pos: number; neg: number } {
+  const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/)
+  var pos = 0, neg = 0
+  for (var i = 0; i < words.length; i++) {
+    if (POS_WORDS.has(words[i])) pos++
+    if (NEG_WORDS.has(words[i])) neg++
+  }
+  return { pos, neg }
+}
+
+/**
+ * Classify sentiment from aggregate positive/negative counts.
+ * "mixed" when both sides have meaningful presence.
+ */
+export function classifySentiment(pos: number, neg: number): 'positive' | 'negative' | 'mixed' | 'neutral' {
+  const total = pos + neg
+  if (total === 0) return 'neutral'
+  const posRatio = pos / total
+  if (posRatio >= 0.7) return 'positive'
+  if (posRatio <= 0.3) return 'negative'
+  return 'mixed'
+}
+
 export interface Theme {
   id: string
   name: string
@@ -96,13 +147,22 @@ export function recountThemes(
       const ci = wilsonCI(0, nonEmpty.length)
       return { ...t, count: 0, percentage: 0, ciLow: ci.ciLow, ciHigh: ci.ciHigh }
     }
-    const count = nonEmpty.filter(function(r) {
-      const text = fields.map(function(f) { return String(r[f] || '') }).join(' ').toLowerCase()
-      return regexes.some(function(re) { return re.test(text) })
-    }).length
+    var count = 0, totalPos = 0, totalNeg = 0
+    nonEmpty.forEach(function(r) {
+      const text = fields.map(function(f) { return String(r[f] || '') }).join(' ')
+      const lower = text.toLowerCase()
+      if (regexes.some(function(re) { return re.test(lower) })) {
+        count++
+        var score = lexiconScore(text)
+        totalPos += score.pos
+        totalNeg += score.neg
+      }
+    })
     const pct = nonEmpty.length > 0 ? Math.round(count / nonEmpty.length * 100) : 0
     const ci = wilsonCI(count, nonEmpty.length)
-    return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh }
+    // Compute sentiment from lexicon — always update (overrides stale AI values on recount)
+    const sentiment = count > 0 ? classifySentiment(totalPos, totalNeg) : (t.sentiment || 'neutral')
+    return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh, sentiment }
   })
 }
 
