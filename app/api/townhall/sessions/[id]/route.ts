@@ -72,6 +72,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const responsesWithText = (allTurnsWithText || []).filter(t => !t.skipped && (t.user_message_en || t.user_message))
   const allResponseTexts = responsesWithText.map(t => (t.user_message_en || t.user_message || '').trim()).filter(Boolean)
 
+  // Build a lookup: theme_id → response texts (from turns tagged with that theme)
+  const themeIdTexts: Record<string, string[]> = {}
+  for (const t of responsesWithText) {
+    if (t.theme_id) {
+      if (!themeIdTexts[t.theme_id]) themeIdTexts[t.theme_id] = []
+      themeIdTexts[t.theme_id].push((t.user_message_en || t.user_message || '').trim())
+    }
+  }
+
   // Per-theme analytics
   const enrichedThemes = (themes || []).map(function(t: any) {
     const keywords: string[] = t.keywords || []
@@ -83,20 +92,32 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const matchedQuotes: string[] = []
     const kwFreq: Record<string, number> = {}
 
-    for (const text of allResponseTexts) {
-      const lower = text.toLowerCase()
-      if (regexes.length > 0 && regexes.some(function(re) { return re.test(lower) })) {
-        matchCount++
+    if (regexes.length > 0) {
+      // Keyword-based matching (auto-detected themes with keywords)
+      for (const text of allResponseTexts) {
+        const lower = text.toLowerCase()
+        if (regexes.some(function(re) { return re.test(lower) })) {
+          matchCount++
+          const score = lexiconScore(text)
+          totalPos += score.pos
+          totalNeg += score.neg
+          if (matchedQuotes.length < 5) matchedQuotes.push(text.slice(0, 300))
+          for (var ki = 0; ki < keywords.length; ki++) {
+            try {
+              if (buildKwRegex(keywords[ki]).test(lower)) kwFreq[keywords[ki]] = (kwFreq[keywords[ki]] || 0) + 1
+            } catch {}
+          }
+        }
+      }
+    } else {
+      // Fallback for guide/custom themes without keywords: use turn-level theme_id tagging
+      const tagged = themeIdTexts[t.id] || []
+      matchCount = tagged.length
+      for (const text of tagged) {
         const score = lexiconScore(text)
         totalPos += score.pos
         totalNeg += score.neg
         if (matchedQuotes.length < 5) matchedQuotes.push(text.slice(0, 300))
-        // Count individual keyword hits
-        for (var ki = 0; ki < keywords.length; ki++) {
-          try {
-            if (buildKwRegex(keywords[ki]).test(lower)) kwFreq[keywords[ki]] = (kwFreq[keywords[ki]] || 0) + 1
-          } catch {}
-        }
       }
     }
 
