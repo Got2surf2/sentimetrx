@@ -8,6 +8,7 @@ import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
+import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
 
 interface Props {
   logoUrl?: string
@@ -422,10 +423,13 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
     setGeneratingGuide(false)
   }
 
-  // Step management
+  // Step management (6 steps: Basics, Topics, Sensitive Topics, Conversation, Post-Session, Review)
   const [step, setStep] = useState(0)
-  const STEPS = ['Basics', 'Discussion Guide', 'Settings', 'Review']
-  const STEP_ICONS = ['\u2699', '\uD83D\uDCAC', '\u2699\uFE0F', '\u2714']
+  const [highestVisited, setHighestVisited] = useState(0)
+  const goToStep = (i: number) => {
+    setStep(i)
+    setHighestVisited(prev => Math.max(prev, i))
+  }
 
   const updateContext = (partial: Partial<TownHallConfig['context']>) => {
     setConfig(c => ({ ...c, context: { ...c.context, ...partial } }))
@@ -484,7 +488,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   const canProceed = () => {
     if (step === 0) return !!name.trim() && !!config.opening_message.trim()
     if (step === 1) return guide.length > 0 && guide.every(t => t.label.trim() && t.opening_question.trim())
-    return true
+    return true // steps 2-5 always ok
   }
 
   return (
@@ -510,29 +514,16 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 <h1 className="text-lg font-bold text-gray-900">New Town Hall</h1>
               </div>
             </div>
-            {/* Step pills */}
-            <div className="flex items-center gap-1">
-              {STEPS.map((label, i) => {
-                const isActive = i === step
-                const isClickable = i < step || canProceed()
-                return (
-                  <button key={i} type="button" disabled={!isClickable}
-                    onClick={() => { if (isClickable) setStep(i) }}
-                    className={'flex items-center gap-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all '
-                      + (isActive ? 'px-3 py-1.5 ' : 'px-2 py-1.5 ')
-                      + (isActive ? 'bg-orange-500 text-white shadow-sm'
-                        : i < step ? 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 cursor-pointer'
-                        : isClickable ? 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 cursor-pointer'
-                        : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-default opacity-60')}>
-                    <span className="text-sm leading-none">{STEP_ICONS[i]}</span>
-                    {isActive && <span>{label}</span>}
-                    {!isActive && i < step && (
-                      <span className="w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold bg-green-500 text-white">{'\u2713'}</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
+            <THCreatorNav
+              name={name}
+              config={config}
+              guide={guide}
+              currentStep={step}
+              highestVisited={highestVisited}
+              onStepClick={i => { if (i <= highestVisited || canProceed()) goToStep(i) }}
+              onSave={handleSave}
+              saving={saving}
+            />
           </div>
         </div>
 
@@ -642,6 +633,51 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 <Input value={config.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm, respectful, community-focused" />
               </div>
 
+            </div>
+          )}
+
+          {/* Step 1: Topics (Discussion Guide) */}
+          {step === 1 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-500">
+                  Define the topics you want to explore. Participants will be assigned different starting topics
+                  to ensure broad coverage across the room.
+                </p>
+                <button onClick={generateGuide} disabled={generatingGuide || !config.context.event_description?.trim()}
+                  className="flex-shrink-0 ml-4 px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+                  style={{ background: '#7c3aed' }}
+                  title="AI generates topics from your event description">
+                  {generatingGuide ? 'Generating...' : '\u2728 Generate from Description'}
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {guide.map((topic, i) => (
+                  <TopicCard
+                    key={topic.id}
+                    topic={topic}
+                    index={i}
+                    onChange={t => updateTopic(i, t)}
+                    onRemove={() => removeTopic(i)}
+                    industry={config.industry}
+                    orgName={config.context.org_name}
+                    eventDesc={config.context.event_description}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={addTopic}
+                className="mt-4 px-4 py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-colors w-full">
+                + Add Topic
+              </button>
+            </div>
+          )}
+
+          {/* Step 2: Sensitive Topics */}
+          {step === 2 && (
+            <div className="space-y-5">
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <Label sub="Topics the AI should never ask about">Sensitive topics</Label>
@@ -720,86 +756,9 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
             </div>
           )}
 
-          {/* Step 1: Discussion Guide */}
-          {step === 1 && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-gray-500">
-                  Define the topics you want to explore. Participants will be assigned different starting topics
-                  to ensure broad coverage across the room.
-                </p>
-                <button onClick={generateGuide} disabled={generatingGuide || !config.context.event_description?.trim()}
-                  className="flex-shrink-0 ml-4 px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
-                  style={{ background: '#7c3aed' }}
-                  title="AI generates topics from your event description">
-                  {generatingGuide ? 'Generating...' : '\u2728 Generate from Description'}
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {guide.map((topic, i) => (
-                  <TopicCard
-                    key={topic.id}
-                    topic={topic}
-                    index={i}
-                    onChange={t => updateTopic(i, t)}
-                    onRemove={() => removeTopic(i)}
-                    industry={config.industry}
-                    orgName={config.context.org_name}
-                    eventDesc={config.context.event_description}
-                  />
-                ))}
-              </div>
-
-              <button
-                onClick={addTopic}
-                className="mt-4 px-4 py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-colors w-full">
-                + Add Topic
-              </button>
-            </div>
-          )}
-
-          {/* Step 2: Settings */}
-          {step === 2 && (
+          {/* Step 3: Conversation Settings */}
+          {step === 3 && (
             <div className="space-y-6">
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <h3 className="text-sm font-bold text-gray-700 mb-4">Languages</h3>
-                <p className="text-xs text-gray-400 mb-3">Select the languages participants can use. If multiple are selected, participants will choose their language before joining.</p>
-                <div className="flex flex-wrap gap-2">
-                  {SUPPORTED_LANGUAGES.map(l => {
-                    const checked = (config.languages || []).includes(l.code)
-                    const isEn = l.code === 'en'
-                    return (
-                      <button key={l.code} type="button" disabled={isEn} onClick={() => {
-                        const current = config.languages || []
-                        const next = checked ? current.filter((c: string) => c !== l.code) : [...current, l.code]
-                        setConfig(c => ({ ...c, languages: next }))
-                      }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
-                        style={{
-                          background: checked ? '#fff4ef' : '#f9fafb',
-                          border: '1.5px solid ' + (checked ? HERMES : '#e5e7eb'),
-                          cursor: isEn ? 'default' : 'pointer',
-                          opacity: isEn ? 0.7 : 1,
-                        }}>
-                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
-                          style={{
-                            borderColor: checked ? HERMES : '#d1d5db',
-                            background: checked ? HERMES : 'white',
-                            color: checked ? 'white' : 'transparent',
-                          }}>
-                          {checked ? '\u2713' : ''}
-                        </span>
-                        <span style={{ color: checked ? HERMES : '#6b7280', fontWeight: checked ? 600 : 400 }}>
-                          {l.nativeName}
-                        </span>
-                        {l.name !== l.nativeName && <span className="text-xs" style={{ color: '#9ca3af' }}>{l.name}</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="text-sm font-bold text-gray-700 mb-4">Conversation Settings</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -891,11 +850,71 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <h3 className="text-sm font-bold text-gray-700 mb-2">Post-Session Questions</h3>
-                <p className="text-xs text-gray-400 mb-4">After the conversation ends, participants can optionally answer demographic and psychographic questions.</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-700">Content Safety</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">Filter profanity, slurs, and threats. Participants get warnings and may be shut down after repeated violations.</p>
+                  </div>
+                  <button type="button" onClick={() => setConfig(prev => ({
+                    ...prev,
+                    content_safety: { enabled: !(prev.content_safety?.enabled !== false) },
+                  }))}
+                    className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (config.content_safety?.enabled !== false ? 'bg-green-500' : 'bg-gray-200')}>
+                    <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (config.content_safety?.enabled !== false ? 'translate-x-5' : 'translate-x-0')} />
+                  </button>
+                </div>
+                {config.content_safety?.enabled === false && (
+                  <p className="text-[10px] text-amber-600 mt-2">Content filtering is OFF — profanity and strong language will not be blocked. Suitable for employee feedback or clinical research settings.</p>
+                )}
+              </div>
+            </div>
+          )}
 
-                <h4 className="text-xs font-semibold text-gray-500 mb-2">Demographics</h4>
-                <div className="space-y-1 mb-4">
+          {/* Step 4: Post-Session */}
+          {step === 4 && (
+            <div className="space-y-6">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-4">Languages</h3>
+                <p className="text-xs text-gray-400 mb-3">Select the languages participants can use. If multiple are selected, participants will choose their language before joining.</p>
+                <div className="flex flex-wrap gap-2">
+                  {SUPPORTED_LANGUAGES.map(l => {
+                    const checked = (config.languages || []).includes(l.code)
+                    const isEn = l.code === 'en'
+                    return (
+                      <button key={l.code} type="button" disabled={isEn} onClick={() => {
+                        const current = config.languages || []
+                        const next = checked ? current.filter((c: string) => c !== l.code) : [...current, l.code]
+                        setConfig(c => ({ ...c, languages: next }))
+                      }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                        style={{
+                          background: checked ? '#fff4ef' : '#f9fafb',
+                          border: '1.5px solid ' + (checked ? HERMES : '#e5e7eb'),
+                          cursor: isEn ? 'default' : 'pointer',
+                          opacity: isEn ? 0.7 : 1,
+                        }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                          style={{
+                            borderColor: checked ? HERMES : '#d1d5db',
+                            background: checked ? HERMES : 'white',
+                            color: checked ? 'white' : 'transparent',
+                          }}>
+                          {checked ? '\u2713' : ''}
+                        </span>
+                        <span style={{ color: checked ? HERMES : '#6b7280', fontWeight: checked ? 600 : 400 }}>
+                          {l.nativeName}
+                        </span>
+                        {l.name !== l.nativeName && <span className="text-xs" style={{ color: '#9ca3af' }}>{l.name}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-2">Demographics</h3>
+                <p className="text-xs text-gray-400 mb-4">After the conversation ends, participants can optionally answer these questions.</p>
+                <div className="space-y-1">
                   {DEMO_BANK.map(d => {
                     const current = config.demoFields || DEMO_BANK.map(b => ({ ...b, enabled: b.key === 'age' || b.key === 'gender' || b.key === 'zip' }))
                     const enabled = current.find(f => f.key === d.key)?.enabled ?? false
@@ -916,9 +935,11 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                     )
                   })}
                 </div>
+              </div>
 
-                <h4 className="text-xs font-semibold text-gray-500 mb-2">Psychographic Questions</h4>
-                <div className="flex items-center gap-2 mb-2">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-2">Psychographic Questions</h3>
+                <div className="flex items-center gap-2 mb-3">
                   <span className="text-xs text-gray-400">Show</span>
                   <input type="number" min={0} max={15} value={config.psychoCount || 3}
                     onChange={e => setConfig(c => ({ ...c, psychoCount: parseInt(e.target.value) || 0 }))}
@@ -949,8 +970,8 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
             </div>
           )}
 
-          {/* Step 3: Review */}
-          {step === 3 && (
+          {/* Step 5: Review */}
+          {step === 5 && (
             <div className="space-y-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="text-sm font-bold text-gray-700 mb-2">Session</h3>
@@ -995,15 +1016,15 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
           {/* Navigation buttons */}
           <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-100">
             <button
-              onClick={() => setStep(s => Math.max(0, s - 1))}
+              onClick={() => goToStep(Math.max(0, step - 1))}
               disabled={step === 0}
               className="px-4 py-2 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">
               &larr; Back
             </button>
 
-            {step < STEPS.length - 1 ? (
+            {step < TH_STEP_LABELS.length - 1 ? (
               <button
-                onClick={() => setStep(s => s + 1)}
+                onClick={() => goToStep(step + 1)}
                 disabled={!canProceed()}
                 className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: HERMES }}>

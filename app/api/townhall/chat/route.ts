@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { isInputSafe, isOutputClean, cleanAiOutput } from '@/lib/guardrails'
+import { isOutputClean, cleanAiOutput } from '@/lib/guardrails'
+import { checkMessage } from '@/lib/contentGuard'
 import { callAI } from '@/lib/ai'
 import { detectThemesForSession } from '@/lib/townhallThemeDetection'
 
@@ -114,20 +115,28 @@ export async function POST(req: NextRequest) {
     // Wrong password — don't reveal that debug exists, just treat as normal message
   }
 
-  // Input guardrail: check for harmful content before processing
-  if (message && !skipped && !isInputSafe(message, 1200)) {
-    // Store the turn but don't send to AI — redirect warmly
-    await supabase.from('townhall_turns')
-      .update({ user_message: '[filtered]', skipped: true })
-      .eq('session_id', session_id).eq('participant_id', participant_id).eq('turn_number', turn_number)
+  // Content guard: check for harmful content with strike-based escalation
+  const contentSafetyEnabled = config?.content_safety?.enabled !== false // default: on
+  if (message && !skipped) {
+    const check = checkMessage(participant_id, message, { filterEnabled: contentSafetyEnabled, maxLength: 1200 })
+    if (!check.safe) {
+      // Store the turn as filtered
+      await supabase.from('townhall_turns')
+        .update({ user_message: '[filtered]', skipped: true })
+        .eq('session_id', session_id).eq('participant_id', participant_id).eq('turn_number', turn_number)
 
-    const redirectMsg = 'I appreciate you sharing — let\'s keep the conversation focused on the topic. What else is on your mind?'
-    const nextTurn = turn_number + 1
-    await supabase.from('townhall_turns').insert({
-      session_id, participant_id, turn_number: nextTurn, bot_message: redirectMsg,
-      user_message: null, user_message_en: null, language: language || 'en', theme_id, source: 'clarifier', skipped: false,
-    })
-    return NextResponse.json({ bot_message: redirectMsg, theme_id, source: 'clarifier', is_final: false, turn_number: nextTurn })
+      const warningMsg = check.warning || 'I appreciate you sharing — let\'s keep the conversation focused on the topic. What else is on your mind?'
+      const nextTurn = turn_number + 1
+      await supabase.from('townhall_turns').insert({
+        session_id, participant_id, turn_number: nextTurn, bot_message: warningMsg,
+        user_message: null, user_message_en: null, language: language || 'en', theme_id, source: 'clarifier', skipped: false,
+      })
+      return NextResponse.json({
+        bot_message: warningMsg, theme_id, source: 'clarifier',
+        is_final: !!check.shutdown, turn_number: nextTurn,
+        ...(check.shutdown ? { shutdown: true } : {}),
+      })
+    }
   }
 
   // Language switch detection — don't count as a turn, re-send previous bot message in new language

@@ -908,6 +908,10 @@ export interface TownHallConfig {
   psychoCount?:        number   // how many psycho questions to randomly show (default 3)
   testing?:            boolean  // testing mode: bot messages include AI thinking/reasoning inline
   debugPassword?:      string  // secret word to enable verbose mode via chat (#debug PASSWORD) or URL (?debug=PASSWORD)
+  // Content safety: profanity filtering + strike escalation
+  content_safety?: {
+    enabled: boolean          // master toggle (default true)
+  }
 }
 
 export type TownHallSessionStatus = 'setup' | 'active' | 'paused' | 'ended'

@@ -7,6 +7,7 @@ import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import TownHallAnalyticsPanel from '@/components/townhall/TownHallAnalyticsPanel'
+import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 
@@ -108,17 +109,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [editConfig, setEditConfig] = useState<TownHallConfig | null>(null)
   const [editGuide, setEditGuide] = useState<TownHallGuideTopic[]>([])
   const [saving, setSaving] = useState(false)
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['basics']))
+  const [editStep, setEditStep] = useState(0)
 
   // Custom question state
   const [showCustom, setShowCustom] = useState(false)
   const [customLabel, setCustomLabel] = useState('')
   const [customQuestion, setCustomQuestion] = useState('')
   const [customTarget, setCustomTarget] = useState(30)
-
-  const toggleSection = (key: string) => setOpenSections(prev => {
-    const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
-  })
   const updateConfig = (partial: Partial<TownHallConfig>) => setEditConfig(c => c ? { ...c, ...partial } : c)
   const updateContext = (partial: Partial<TownHallConfig['context']>) => setEditConfig(c => c ? { ...c, context: { ...c.context, ...partial } } : c)
   const updateEngine = (partial: Partial<TownHallConfig['engine']>) => setEditConfig(c => c ? { ...c, engine: { ...c.engine, ...partial } } : c)
@@ -168,7 +165,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setEditSlug(session.slug || '')
     setEditConfig(cfg)
     setEditGuide(JSON.parse(JSON.stringify(session.discussion_guide || [])))
-    setOpenSections(new Set(['basics']))
+    setEditStep(0)
     setEditing(true)
   }
 
@@ -355,24 +352,33 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         )}
 
         {/* ── EDIT MODE ──────────────────────────────────────────── */}
-        {editing && (
+        {editing && editConfig && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 space-y-5">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-700">Edit Session</h3>
-              <div className="flex gap-2">
-                <button onClick={saveEdit} disabled={saving}
-                  className="px-4 py-1.5 rounded-lg text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50"
-                  style={{ background: HERMES }}>
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-                <button onClick={cancelEdit} className="px-4 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-50 border border-gray-200">Cancel</button>
-              </div>
+              <button onClick={cancelEdit} className="px-4 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-50 border border-gray-200">Cancel</button>
             </div>
 
-            {editConfig && (<div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+            {/* Pill navigation */}
+            <THCreatorNav
+              name={editName}
+              config={editConfig}
+              guide={editGuide}
+              currentStep={editStep}
+              highestVisited={TH_STEP_LABELS.length - 1}
+              onStepClick={setEditStep}
+              onSave={saveEdit}
+              saving={saving}
+              freeNav
+              saveLabel="Save Changes"
+              savingLabel="Saving..."
+            />
 
-              {/* ── 1. Basics ──────────────────────────────────────────── */}
-              <EditSection title="Basics" sectionKey="basics" open={openSections} toggle={toggleSection}>
+            {/* Scrollable step content */}
+            <div className="max-h-[65vh] overflow-y-auto pr-1 space-y-3">
+
+              {/* ── Step 0: Basics ──────────────────────────────────────── */}
+              {editStep === 0 && (<div className="space-y-3">
                 <ELabel>Session Name</ELabel>
                 <EInput value={editName} onChange={setEditName} />
                 <ELabel>Participant Link</ELabel>
@@ -426,6 +432,28 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <ETextarea value={editConfig.closing_message} onChange={v => updateConfig({ closing_message: v })} rows={2} placeholder="Thank-you message shown when a participant finishes or the session ends" />
                 <ELabel>Tone</ELabel>
                 <EInput value={editConfig.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm and professional" />
+              </div>)}
+
+              {/* ── Step 1: Topics ──────────────────────────────────────── */}
+              {editStep === 1 && (<div className="space-y-3">
+                <div className="space-y-3">
+                  {editGuide.map((t, i) => (
+                    <EditTopicCard key={t.id} topic={t} index={i}
+                      onChange={partial => updateGuideTopic(i, partial)}
+                      onRemove={() => removeGuideTopic(i)}
+                      industry={editConfig.industry}
+                      orgName={editConfig.context.org_name}
+                      eventDesc={editConfig.context.event_description} />
+                  ))}
+                </div>
+                <button onClick={addGuideTopic}
+                  className="mt-3 w-full py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600">
+                  + Add Topic
+                </button>
+              </div>)}
+
+              {/* ── Step 2: Sensitive Topics ────────────────────────────── */}
+              {editStep === 2 && (<div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <ELabel>Sensitive Topics</ELabel>
                   <button onClick={async () => {
@@ -496,35 +524,98 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <EInputCSV value={editConfig.context.sensitive_topics || []} onChange={v => updateContext({ sensitive_topics: v })} />
                 <ELabel>Priority Areas <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
                 <EInputCSV value={editConfig.context.priority_areas || []} onChange={v => updateContext({ priority_areas: v })} />
-                <div className="border-t border-gray-100 pt-3 mt-3">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Bot Messages <span className="font-normal normal-case">(auto-translated for participants)</span></p>
-                  <ELabel>Post-Session Intro <span className="font-normal text-gray-400">(before optional questions)</span></ELabel>
-                  <EInput value={(editConfig.messages?.post_session_intro) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_intro: v } })} placeholder="Almost done — a few quick optional questions..." />
-                  <ELabel>Before Demographics <span className="font-normal text-gray-400">(before demo form)</span></ELabel>
-                  <EInput value={(editConfig.messages?.post_session_demo) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_demo: v } })} placeholder="A couple of optional questions about you." />
-                </div>
-              </EditSection>
+              </div>)}
 
-              {/* ── 2. Discussion Guide ────────────────────────────────── */}
-              <EditSection title={'Discussion Guide (' + editGuide.length + ' topics)'} sectionKey="guide" open={openSections} toggle={toggleSection}>
-                <div className="space-y-3">
-                  {editGuide.map((t, i) => (
-                    <EditTopicCard key={t.id} topic={t} index={i}
-                      onChange={partial => updateGuideTopic(i, partial)}
-                      onRemove={() => removeGuideTopic(i)}
-                      industry={editConfig.industry}
-                      orgName={editConfig.context.org_name}
-                      eventDesc={editConfig.context.event_description} />
+              {/* ── Step 3: Conversation ────────────────────────────────── */}
+              {editStep === 3 && (<div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div><ELabel>Max Turns / Participant</ELabel><ENumber value={editConfig.engine.max_turns_per_participant} onChange={v => updateEngine({ max_turns_per_participant: v })} min={3} max={50} /></div>
+                  <div><ELabel>Default Response Target</ELabel><ENumber value={editConfig.engine.default_response_target} onChange={v => updateEngine({ default_response_target: v })} min={5} max={500} /></div>
+                </div>
+                <div><ELabel>AI Timeout (ms)</ELabel><ENumber value={editConfig.engine.ai_timeout_ms} onChange={v => updateEngine({ ai_timeout_ms: v })} min={3000} max={30000} /></div>
+                <ELabel>AI Theme Discovery</ELabel>
+                <p className="text-[10px] text-gray-400 mb-2">AI scans participant responses to find topics you didn't pre-configure.</p>
+                <div className="flex gap-2 mb-2">
+                  {([
+                    { value: 'off' as const, label: 'Off' },
+                    { value: 'manual' as const, label: 'On Demand' },
+                    { value: 'auto' as const, label: 'Automatic' },
+                  ]).map(m => (
+                    <button key={m.value} onClick={() => updateEngine({ theme_detection_mode: m.value })}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+                      style={{ background: editConfig.engine.theme_detection_mode === m.value ? '#fff4ef' : '#f9fafb', borderColor: editConfig.engine.theme_detection_mode === m.value ? HERMES : '#e5e7eb', color: editConfig.engine.theme_detection_mode === m.value ? HERMES : '#6b7280' }}>
+                      {m.label}
+                    </button>
                   ))}
                 </div>
-                <button onClick={addGuideTopic}
-                  className="mt-3 w-full py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-orange-300 hover:text-orange-600">
-                  + Add Topic
-                </button>
-              </EditSection>
+                {editConfig.engine.theme_detection_mode === 'auto' && (
+                  <div><ELabel>Detect every N responses</ELabel><ENumber value={editConfig.engine.theme_detection_every_n_responses || 20} onChange={v => updateEngine({ theme_detection_every_n_responses: v })} min={5} max={100} /></div>
+                )}
 
-              {/* ── 3. Conversation Settings ───────────────────────────── */}
-              <EditSection title="Conversation Settings" sectionKey="engine" open={openSections} toggle={toggleSection}>
+                <div className="border-t border-gray-100 pt-3">
+                  <ELabel>Session End Mode</ELabel>
+                  <div className="flex gap-2 mb-3">
+                    {(['manual', 'timed', 'inactivity'] as const).map(m => (
+                      <button key={m} onClick={() => updateSessionEnd({ mode: m })}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+                        style={{ background: editConfig.session_end.mode === m ? '#fff4ef' : '#f9fafb', borderColor: editConfig.session_end.mode === m ? HERMES : '#e5e7eb', color: editConfig.session_end.mode === m ? HERMES : '#6b7280' }}>
+                        {m.charAt(0).toUpperCase() + m.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  {editConfig.session_end.mode === 'timed' && (
+                    <div><ELabel>Duration (minutes)</ELabel><ENumber value={editConfig.session_end.duration_minutes || 60} onChange={v => updateSessionEnd({ duration_minutes: v })} min={5} max={480} /></div>
+                  )}
+                  {editConfig.session_end.mode === 'inactivity' && (
+                    <div><ELabel>Inactivity Timeout (minutes)</ELabel><ENumber value={editConfig.session_end.inactivity_timeout_minutes || 10} onChange={v => updateSessionEnd({ inactivity_timeout_minutes: v })} min={1} max={120} /></div>
+                  )}
+                </div>
+
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><ELabel>Skip Button</ELabel><EInput value={editConfig.display.skip_label} onChange={v => updateDisplay({ skip_label: v })} /></div>
+                    <div><ELabel>Done Button</ELabel><EInput value={editConfig.display.done_label} onChange={v => updateDisplay({ done_label: v })} /></div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">Testing Mode</div>
+                      <div className="text-xs text-gray-500 mt-0.5">Show AI thinking process inline</div>
+                    </div>
+                    <button type="button" onClick={() => updateConfig({ testing: !editConfig.testing })}
+                      className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (editConfig.testing ? 'bg-amber-500' : 'bg-gray-200')}>
+                      <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (editConfig.testing ? 'translate-x-5' : 'translate-x-0')} />
+                    </button>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-600">Debug password <span className="font-normal text-gray-400">— <code className="bg-white/60 px-1 rounded">#debug PWD</code> in chat or <code className="bg-white/60 px-1 rounded">?debug=PWD</code> in URL</span></label>
+                    <EInput value={(editConfig as any).debugPassword || ''} onChange={v => updateConfig({ debugPassword: v || undefined } as any)} placeholder="e.g. showme123" />
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <ELabel>Content Safety</ELabel>
+                      <p className="text-[10px] text-gray-400">Filter profanity, slurs, and threats. Warnings + shutdown after repeated violations.</p>
+                    </div>
+                    <button type="button" onClick={() => updateConfig({
+                      content_safety: { enabled: !(editConfig.content_safety?.enabled !== false) },
+                    })}
+                      className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (editConfig.content_safety?.enabled !== false ? 'bg-green-500' : 'bg-gray-200')}>
+                      <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (editConfig.content_safety?.enabled !== false ? 'translate-x-5' : 'translate-x-0')} />
+                    </button>
+                  </div>
+                  {editConfig.content_safety?.enabled === false && (
+                    <p className="text-[10px] text-amber-600 mt-1">Content filtering is OFF — profanity and strong language will not be blocked.</p>
+                  )}
+                </div>
+              </div>)}
+
+              {/* ── Step 4: Post-Session ────────────────────────────────── */}
+              {editStep === 4 && (<div className="space-y-4">
                 <ELabel>Languages</ELabel>
                 <p className="text-[10px] text-gray-400 mb-2">Participants choose their language before joining. Responses are auto-translated to English.</p>
                 <div className="flex flex-wrap gap-2 mb-3">
@@ -548,141 +639,98 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     )
                   })}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><ELabel>Max Turns / Participant</ELabel><ENumber value={editConfig.engine.max_turns_per_participant} onChange={v => updateEngine({ max_turns_per_participant: v })} min={3} max={50} /></div>
-                  <div><ELabel>Default Response Target</ELabel><ENumber value={editConfig.engine.default_response_target} onChange={v => updateEngine({ default_response_target: v })} min={5} max={500} /></div>
+
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Bot Messages <span className="font-normal normal-case">(auto-translated for participants)</span></p>
+                  <ELabel>Post-Session Intro <span className="font-normal text-gray-400">(before optional questions)</span></ELabel>
+                  <EInput value={(editConfig.messages?.post_session_intro) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_intro: v } })} placeholder="Almost done — a few quick optional questions..." />
+                  <ELabel>Before Demographics <span className="font-normal text-gray-400">(before demo form)</span></ELabel>
+                  <EInput value={(editConfig.messages?.post_session_demo) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_demo: v } })} placeholder="A couple of optional questions about you." />
                 </div>
-                <div><ELabel>AI Timeout (ms)</ELabel><ENumber value={editConfig.engine.ai_timeout_ms} onChange={v => updateEngine({ ai_timeout_ms: v })} min={3000} max={30000} /></div>
-                <ELabel>AI Theme Discovery</ELabel>
-                <p className="text-[10px] text-gray-400 mb-2">AI scans participant responses to find topics you didn't pre-configure. Discovered themes appear as "AI Suggested" for you to approve or dismiss.</p>
-                <div className="flex gap-2 mb-2">
-                  {([
-                    { value: 'off' as const, label: 'Off' },
-                    { value: 'manual' as const, label: 'On Demand' },
-                    { value: 'auto' as const, label: 'Automatic' },
-                  ]).map(m => (
-                    <button key={m.value} onClick={() => updateEngine({ theme_detection_mode: m.value })}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
-                      style={{ background: editConfig.engine.theme_detection_mode === m.value ? '#fff4ef' : '#f9fafb', borderColor: editConfig.engine.theme_detection_mode === m.value ? HERMES : '#e5e7eb', color: editConfig.engine.theme_detection_mode === m.value ? HERMES : '#6b7280' }}>
-                      {m.label}
-                    </button>
-                  ))}
+
+                <div className="border-t border-gray-100 pt-3">
+                  <ELabel>Demographics</ELabel>
+                  <div className="space-y-1 mb-4">
+                    {DEMO_BANK.map(d => {
+                      const active = (editConfig.demoFields || []).find(f => f.key === d.key)
+                      const enabled = active?.enabled ?? false
+                      return (
+                        <button key={d.key} onClick={() => {
+                          const current = editConfig.demoFields || DEMO_BANK.map(b => ({ ...b, enabled: false }))
+                          const next = current.map(f => f.key === d.key ? { ...f, enabled: !enabled } : f)
+                          if (!current.find(f => f.key === d.key)) next.push({ ...d, enabled: true })
+                          updateConfig({ demoFields: next })
+                        }}
+                          className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
+                          style={{ background: enabled ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (enabled ? HERMES : '#e5e7eb') }}>
+                          <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                            style={{ borderColor: enabled ? HERMES : '#d1d5db', background: enabled ? HERMES : 'white', color: enabled ? 'white' : 'transparent' }}>
+                            {enabled ? '\u2713' : ''}
+                          </span>
+                          <span style={{ color: enabled ? HERMES : '#6b7280', fontWeight: enabled ? 600 : 400 }}>{d.label}</span>
+                          <span className="text-[10px] text-gray-400 ml-auto">{d.type}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-                {editConfig.engine.theme_detection_mode === 'auto' && (
-                  <div><ELabel>Detect every N responses</ELabel><ENumber value={editConfig.engine.theme_detection_every_n_responses || 20} onChange={v => updateEngine({ theme_detection_every_n_responses: v })} min={5} max={100} /></div>
-                )}
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-800">Testing Mode</div>
-                      <div className="text-xs text-gray-500 mt-0.5">Show AI thinking process inline</div>
+
+                <div className="border-t border-gray-100 pt-3">
+                  <ELabel>Psychographic Questions</ELabel>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] text-gray-400">Show</span>
+                    <ENumber value={editConfig.psychoCount || 3} onChange={v => updateConfig({ psychoCount: v })} min={0} max={15} />
+                    <span className="text-[10px] text-gray-400">random questions per participant</span>
+                  </div>
+                  <div className="space-y-1">
+                    {GENERAL_PSYCHO_BANK.map(pq => {
+                      const inBank = (editConfig.psychographicBank || []).some(b => b.key === pq.key)
+                      return (
+                        <button key={pq.key} onClick={() => {
+                          const current = editConfig.psychographicBank || []
+                          const next = inBank ? current.filter(b => b.key !== pq.key) : [...current, { key: pq.key, q: pq.q, opts: pq.opts }]
+                          updateConfig({ psychographicBank: next })
+                        }}
+                          className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
+                          style={{ background: inBank ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (inBank ? HERMES : '#e5e7eb') }}>
+                          <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
+                            style={{ borderColor: inBank ? HERMES : '#d1d5db', background: inBank ? HERMES : 'white', color: inBank ? 'white' : 'transparent' }}>
+                            {inBank ? '\u2713' : ''}
+                          </span>
+                          <span className="flex-1" style={{ color: inBank ? HERMES : '#6b7280', fontWeight: inBank ? 600 : 400 }}>{pq.q}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>)}
+
+              {/* ── Step 5: Review ──────────────────────────────────────── */}
+              {editStep === 5 && (<div className="space-y-3">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Session</span>
+                  <p className="text-sm font-medium text-gray-700 mt-1">{editName || '(no name)'}</p>
+                  <p className="text-xs text-gray-400">{editConfig.context.org_name} &middot; {editConfig.context.tone}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Topics ({editGuide.length})</span>
+                  {editGuide.map((t, i) => (
+                    <div key={t.id} className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-gray-400">{i + 1}.</span>
+                      <span className="text-sm text-gray-700">{t.label}</span>
                     </div>
-                    <button type="button" onClick={() => updateConfig({ testing: !editConfig.testing })}
-                      className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (editConfig.testing ? 'bg-amber-500' : 'bg-gray-200')}>
-                      <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (editConfig.testing ? 'translate-x-5' : 'translate-x-0')} />
-                    </button>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-600">Debug password <span className="font-normal text-gray-400">— <code className="bg-white/60 px-1 rounded">#debug PWD</code> in chat or <code className="bg-white/60 px-1 rounded">?debug=PWD</code> in URL</span></label>
-                    <EInput value={(editConfig as any).debugPassword || ''} onChange={v => updateConfig({ debugPassword: v || undefined } as any)} placeholder="e.g. showme123" />
-                  </div>
-                </div>
-              </EditSection>
-
-              {/* ── 4. Session End ──────────────────────────────────────── */}
-              <EditSection title="Session End" sectionKey="session_end" open={openSections} toggle={toggleSection}>
-                <ELabel>End Mode</ELabel>
-                <div className="flex gap-2 mb-3">
-                  {(['manual', 'timed', 'inactivity'] as const).map(m => (
-                    <button key={m} onClick={() => updateSessionEnd({ mode: m })}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
-                      style={{ background: editConfig.session_end.mode === m ? '#fff4ef' : '#f9fafb', borderColor: editConfig.session_end.mode === m ? HERMES : '#e5e7eb', color: editConfig.session_end.mode === m ? HERMES : '#6b7280' }}>
-                      {m.charAt(0).toUpperCase() + m.slice(1)}
-                    </button>
                   ))}
                 </div>
-                {editConfig.session_end.mode === 'timed' && (
-                  <div><ELabel>Duration (minutes)</ELabel><ENumber value={editConfig.session_end.duration_minutes || 60} onChange={v => updateSessionEnd({ duration_minutes: v })} min={5} max={480} /></div>
-                )}
-                {editConfig.session_end.mode === 'inactivity' && (
-                  <div><ELabel>Inactivity Timeout (minutes)</ELabel><ENumber value={editConfig.session_end.inactivity_timeout_minutes || 10} onChange={v => updateSessionEnd({ inactivity_timeout_minutes: v })} min={1} max={120} /></div>
-                )}
-              </EditSection>
-
-              {/* ── 5. Button Labels ───────────────────────────────────── */}
-              <EditSection title="Button Labels" sectionKey="display" open={openSections} toggle={toggleSection}>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><ELabel>Skip Button</ELabel><EInput value={editConfig.display.skip_label} onChange={v => updateDisplay({ skip_label: v })} /></div>
-                  <div><ELabel>Done Button</ELabel><EInput value={editConfig.display.done_label} onChange={v => updateDisplay({ done_label: v })} /></div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Settings</span>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-1">
+                    <span className="text-gray-400">Max turns</span><span className="text-gray-600">{editConfig.engine.max_turns_per_participant}</span>
+                    <span className="text-gray-400">End mode</span><span className="text-gray-600">{editConfig.session_end.mode}</span>
+                    <span className="text-gray-400">Languages</span><span className="text-gray-600">{(editConfig.languages || ['en']).join(', ')}</span>
+                  </div>
                 </div>
-              </EditSection>
+              </div>)}
 
-              {/* ── 6. Post-Session Questions ──────────────────────────── */}
-              <EditSection title="Post-Session Questions" sectionKey="postsession" open={openSections} toggle={toggleSection}>
-                <p className="text-[10px] text-gray-400 mb-3">After the conversation ends, participants can optionally answer demographic and psychographic questions.</p>
-
-                <ELabel>Demographics</ELabel>
-                <div className="space-y-1 mb-4">
-                  {DEMO_BANK.map(d => {
-                    const active = (editConfig.demoFields || []).find(f => f.key === d.key)
-                    const enabled = active?.enabled ?? false
-                    return (
-                      <button key={d.key} onClick={() => {
-                        const current = editConfig.demoFields || DEMO_BANK.map(b => ({ ...b, enabled: false }))
-                        const next = current.map(f => f.key === d.key ? { ...f, enabled: !enabled } : f)
-                        if (!current.find(f => f.key === d.key)) next.push({ ...d, enabled: true })
-                        updateConfig({ demoFields: next })
-                      }}
-                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
-                        style={{ background: enabled ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (enabled ? HERMES : '#e5e7eb') }}>
-                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
-                          style={{ borderColor: enabled ? HERMES : '#d1d5db', background: enabled ? HERMES : 'white', color: enabled ? 'white' : 'transparent' }}>
-                          {enabled ? '\u2713' : ''}
-                        </span>
-                        <span style={{ color: enabled ? HERMES : '#6b7280', fontWeight: enabled ? 600 : 400 }}>{d.label}</span>
-                        <span className="text-[10px] text-gray-400 ml-auto">{d.type}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <ELabel>Psychographic Questions</ELabel>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[10px] text-gray-400">Show</span>
-                  <ENumber value={editConfig.psychoCount || 3} onChange={v => updateConfig({ psychoCount: v })} min={0} max={15} />
-                  <span className="text-[10px] text-gray-400">random questions per participant</span>
-                </div>
-                <div className="space-y-1">
-                  {GENERAL_PSYCHO_BANK.map(pq => {
-                    const inBank = (editConfig.psychographicBank || []).some(b => b.key === pq.key)
-                    return (
-                      <button key={pq.key} onClick={() => {
-                        const current = editConfig.psychographicBank || []
-                        const next = inBank ? current.filter(b => b.key !== pq.key) : [...current, { key: pq.key, q: pq.q, opts: pq.opts }]
-                        updateConfig({ psychographicBank: next })
-                      }}
-                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
-                        style={{ background: inBank ? '#fff4ef' : '#f9fafb', border: '1.5px solid ' + (inBank ? HERMES : '#e5e7eb') }}>
-                        <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
-                          style={{ borderColor: inBank ? HERMES : '#d1d5db', background: inBank ? HERMES : 'white', color: inBank ? 'white' : 'transparent' }}>
-                          {inBank ? '\u2713' : ''}
-                        </span>
-                        <span className="flex-1" style={{ color: inBank ? HERMES : '#6b7280', fontWeight: inBank ? 600 : 400 }}>{pq.q}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </EditSection>
-
-            </div>)}
-
-            <div className="flex gap-2 pt-4 border-t border-gray-200 mt-4">
-              <button onClick={saveEdit} disabled={saving}
-                className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                style={{ background: HERMES }}>
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-              <button onClick={cancelEdit} className="px-4 py-2 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">Cancel</button>
             </div>
           </div>
         )}
@@ -1112,18 +1160,6 @@ function Shell({ logoUrl, analyzeEnabled, campaignsEnabled, user, children }: {
 
 // ── Edit form helper components ──────────────────────────────────────────────
 
-function EditSection({ title, sectionKey, open, toggle, children }: { title: string; sectionKey: string; open: Set<string>; toggle: (k: string) => void; children: React.ReactNode }) {
-  const isOpen = open.has(sectionKey)
-  return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      <button onClick={() => toggle(sectionKey)} className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left">
-        <span className="text-xs font-bold text-gray-700">{title}</span>
-        <span className="text-gray-400 text-xs">{isOpen ? '\u25B2' : '\u25BC'}</span>
-      </button>
-      {isOpen && <div className="px-4 py-3 space-y-3 bg-white">{children}</div>}
-    </div>
-  )
-}
 
 function ELabel({ children }: { children: React.ReactNode }) {
   return <label className="text-xs font-semibold text-gray-500 block mb-1">{children}</label>
