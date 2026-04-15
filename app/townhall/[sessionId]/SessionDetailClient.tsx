@@ -900,7 +900,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               )}
             </div>
 
-            {/* Right 1/3: QR Code */}
+            {/* Right 1/3: QR Code + Live link */}
             <div className="space-y-4">
               {(isSetup || isActive) && (
                 <div className="bg-white rounded-xl border border-gray-200 p-5 text-center">
@@ -911,6 +911,11 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <p className="text-xs text-gray-400 mt-2">Scan to join</p>
                 </div>
               )}
+              <a href={'/th/' + sessionId + '/live'} target="_blank" rel="noopener noreferrer"
+                className="block bg-gray-900 text-white rounded-xl p-4 text-center hover:bg-gray-800 transition-colors">
+                <span className="text-sm font-bold">Open Live Screen</span>
+                <p className="text-[10px] text-gray-400 mt-0.5">Full-screen view for projection</p>
+              </a>
             </div>
           </div>
         )}
