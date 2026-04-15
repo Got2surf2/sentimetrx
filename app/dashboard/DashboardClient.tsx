@@ -388,18 +388,18 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
           {/* Action pills — 3-column grid */}
           <div className="grid grid-cols-3 gap-1.5 mt-auto pt-2 border-t border-gray-100">
             {/* Row 1: Analytics, Responses, Campaigns */}
-            <Link href={'/studies/' + study.id + '/analytics'}
+            <Link href={'/studies/' + study.id + '/analytics'} target="_blank"
               className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
               style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
               Analytics
             </Link>
-            <Link href={'/studies/' + study.id + '/responses'}
+            <Link href={'/studies/' + study.id + '/responses'} target="_blank"
               className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
               style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
               Responses
             </Link>
             {campaignsEnabled ? (
-              <Link href={'/studies/' + study.id + '/campaigns'}
+              <Link href={'/studies/' + study.id + '/campaigns'} target="_blank"
                 className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                 style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                 Campaigns
