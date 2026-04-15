@@ -380,9 +380,39 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
     setFanningTerm(null)
   }
 
+  // Discussion guide AI
+  const [generatingGuide, setGeneratingGuide] = useState(false)
+  const [guideGenerated, setGuideGenerated] = useState(false)
+
+  const generateGuide = async () => {
+    if (!config.context.event_description?.trim()) return
+    setGeneratingGuide(true)
+    try {
+      const res = await fetch('/api/townhall/suggest-guide', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: config.context.event_description, industry: config.industry, org_name: config.context.org_name }),
+      })
+      const data = await res.json()
+      if (data.topics?.length) {
+        setGuide(data.topics.map((t: any) => ({
+          id: generateId(),
+          label: t.label || '',
+          description: t.description || '',
+          opening_question: t.opening_question || '',
+          follow_up_angles: t.follow_up_angles || [],
+          keywords: t.keywords || [],
+          response_target: 30,
+        })))
+        setGuideGenerated(true)
+      }
+    } catch {}
+    setGeneratingGuide(false)
+  }
+
   // Step management
   const [step, setStep] = useState(0)
   const STEPS = ['Basics', 'Discussion Guide', 'Settings', 'Review']
+  const STEP_ICONS = ['\u2699', '\uD83D\uDCAC', '\u2699\uFE0F', '\u2714']
 
   const updateContext = (partial: Partial<TownHallConfig['context']>) => {
     setConfig(c => ({ ...c, context: { ...c.context, ...partial } }))
@@ -457,34 +487,45 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
         currentPage="townhall"
       />
 
-      <main className="pt-14">
-        <div className="max-w-3xl mx-auto px-5 py-8">
-          {/* Header */}
-          <div className="mb-6">
-            <button onClick={() => router.push('/townhall')} className="text-sm text-gray-400 hover:text-gray-600 mb-2 block">&larr; Back to sessions</button>
-            <h1 className="text-2xl font-bold text-gray-900">New Town Hall Session</h1>
+      <main className="pt-14 flex flex-col" style={{ height: 'calc(100vh - 56px)' }}>
+        {/* Fixed header + step pills */}
+        <div className="flex-shrink-0 border-b border-gray-100 bg-white px-5 py-3">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <button onClick={() => router.push('/townhall')} className="text-sm text-gray-400 hover:text-gray-600">&larr;</button>
+                <h1 className="text-lg font-bold text-gray-900">New Town Hall</h1>
+              </div>
+            </div>
+            {/* Step pills */}
+            <div className="flex items-center gap-1">
+              {STEPS.map((label, i) => {
+                const isActive = i === step
+                const isClickable = i < step || canProceed()
+                return (
+                  <button key={i} type="button" disabled={!isClickable}
+                    onClick={() => { if (isClickable) setStep(i) }}
+                    className={'flex items-center gap-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all '
+                      + (isActive ? 'px-3 py-1.5 ' : 'px-2 py-1.5 ')
+                      + (isActive ? 'bg-orange-500 text-white shadow-sm'
+                        : i < step ? 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 cursor-pointer'
+                        : isClickable ? 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 cursor-pointer'
+                        : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-default opacity-60')}>
+                    <span className="text-sm leading-none">{STEP_ICONS[i]}</span>
+                    {isActive && <span>{label}</span>}
+                    {!isActive && i < step && (
+                      <span className="w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold bg-green-500 text-white">{'\u2713'}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
+        </div>
 
-          {/* Step indicator */}
-          <div className="flex items-center gap-1 mb-8">
-            {STEPS.map((label, i) => (
-              <button
-                key={i}
-                onClick={() => { if (i < step || canProceed()) setStep(i) }}
-                className="flex items-center gap-1.5">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
-                  style={{
-                    background: i <= step ? HERMES : '#f3f4f6',
-                    color: i <= step ? 'white' : '#9ca3af',
-                  }}>
-                  {i + 1}
-                </div>
-                <span className={'text-xs font-medium ' + (i <= step ? 'text-gray-700' : 'text-gray-400')}>{label}</span>
-                {i < STEPS.length - 1 && <div className="w-8 h-px bg-gray-200 mx-1" />}
-              </button>
-            ))}
-          </div>
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-5 py-6">
 
           {/* Step 0: Basics */}
           {step === 0 && (
@@ -669,10 +710,18 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
           {/* Step 1: Discussion Guide */}
           {step === 1 && (
             <div>
-              <p className="text-sm text-gray-500 mb-4">
-                Define the topics you want to explore. Participants will be assigned different starting topics
-                to ensure broad coverage across the room.
-              </p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-500">
+                  Define the topics you want to explore. Participants will be assigned different starting topics
+                  to ensure broad coverage across the room.
+                </p>
+                <button onClick={generateGuide} disabled={generatingGuide || !config.context.event_description?.trim()}
+                  className="flex-shrink-0 ml-4 px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+                  style={{ background: '#7c3aed' }}
+                  title="AI generates topics from your event description">
+                  {generatingGuide ? 'Generating...' : '\u2728 Generate from Description'}
+                </button>
+              </div>
 
               <div className="space-y-4">
                 {guide.map((topic, i) => (
@@ -948,6 +997,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 {saving ? 'Creating...' : 'Create Session'}
               </button>
             )}
+          </div>
           </div>
         </div>
       </main>
