@@ -102,8 +102,8 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   const config = session.config as any
   const language = body.language || 'en'
 
-  // Validate debug password (URL param or magic phrase auth)
-  const debugAuthenticated = !!(config?.debugPassword && body.debug_password && body.debug_password === config.debugPassword)
+  // Validate debug: password is the session UUID
+  const debugAuthenticated = !!(body.debug_password && body.debug_password === session.id)
   const participantId = 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 
   // Use opening_message (new) or fall back to legacy welcome + opening_question

@@ -52,14 +52,12 @@ export async function GET(
     if (org) orgName = org.name
   }
 
-  // Validate debug password from URL param — server-side only
+  // Validate debug: password is the study GUID itself
   const debugPwd = _req.nextUrl.searchParams.get('debug')
   const cfg = study.config as any
-  const debugAuthenticated = !!(debugPwd && cfg?.debugPassword && debugPwd === cfg.debugPassword)
+  const debugAuthenticated = !!(debugPwd && debugPwd === study.guid)
 
-  // Strip debugPassword from config before sending to client
   const safeConfig = { ...cfg }
-  delete safeConfig.debugPassword
 
   return NextResponse.json({
     guid:      study.guid,

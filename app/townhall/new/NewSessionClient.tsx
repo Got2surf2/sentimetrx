@@ -794,12 +794,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                       <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + ((config as any).testing ? 'translate-x-5' : 'translate-x-0')} />
                     </button>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-700">Debug password <span className="text-xs text-gray-400 font-normal">— type <code className="bg-white/60 px-1 rounded">#debug PASSWORD</code> in chat or add <code className="bg-white/60 px-1 rounded">?debug=PASSWORD</code> to URL</span></label>
-                    <input type="text" value={(config as any).debugPassword || ''} onChange={e => setConfig(prev => ({ ...prev, debugPassword: e.target.value || undefined }))}
-                      placeholder="e.g. showme123"
-                      className="w-full mt-1 px-3 py-1.5 rounded-lg border border-amber-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 bg-white" />
-                  </div>
+                  <p className="text-[10px] text-amber-700 mt-1">Debug mode: type <code className="bg-white/60 px-1 rounded">#debug SESSION_ID</code> in chat or add <code className="bg-white/60 px-1 rounded">?debug=SESSION_ID</code> to the participant URL. The session ID (shown on the session card) is the password.</p>
                 </div>
               </div>
 

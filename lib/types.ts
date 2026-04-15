@@ -274,7 +274,7 @@ export interface StudyConfig {
 
   // Testing mode — exposes AI thinking/reasoning inline with bot messages
   testing?:           boolean          // default false
-  debugPassword?:     string           // secret word to enable verbose mode via chat or URL param
+  // Debug mode: activated via ?debug=GUID in URL (study GUID is the password)
 
   // Multi-language support
   languages?:         string[]         // enabled language codes, e.g. ['en', 'es', 'fr']
@@ -907,7 +907,7 @@ export interface TownHallConfig {
   psychographicBank?:  PsychoQuestion[]
   psychoCount?:        number   // how many psycho questions to randomly show (default 3)
   testing?:            boolean  // testing mode: bot messages include AI thinking/reasoning inline
-  debugPassword?:      string  // secret word to enable verbose mode via chat (#debug PASSWORD) or URL (?debug=PASSWORD)
+  // Debug mode: activated via #debug SESSION_ID in chat or ?debug=SESSION_ID in URL
   // Content safety: profanity filtering + strike escalation
   content_safety?: {
     enabled: boolean          // master toggle (default true)

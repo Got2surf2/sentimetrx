@@ -88,11 +88,11 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Debug mode toggle via #debug PASSWORD — not a turn, re-send previous bot message
+  // Debug mode toggle via #debug <session-id> — not a turn, re-send previous bot message
   if (message && !skipped) {
     const debugMatch = message.trim().match(/^#debug\s+(.+)$/i)
     const debugOff = /^#debug\s+off$/i.test(message.trim())
-    if (debugOff || (debugMatch && config?.debugPassword && debugMatch[1].trim() === config.debugPassword)) {
+    if (debugOff || (debugMatch && debugMatch[1].trim() === session_id)) {
       // Fetch previous bot message to re-send
       const { data: lastBotTurn } = await supabase
         .from('townhall_turns')
