@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { readSession, writeSession } from '@/lib/useSessionState'
+import { TimeBucket, BUCKET_OPTIONS, autoBucket } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 // Dynamic Plotly import
@@ -1422,7 +1423,21 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
 }
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {
-  var aggSpec = dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: 'day' } : null
+  var [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
+
+  // Determine smart bucket from field summary date counts
+  var dateSummary = analytics?.fieldSummaries?.[dateField]
+  var dateCounts = dateSummary?.counts || {}
+  var dateKeys = Object.keys(dateCounts).sort()
+  var smartBucket: TimeBucket = 'day'
+  if (dateKeys.length >= 2) {
+    smartBucket = autoBucket(dateKeys[0], dateKeys[dateKeys.length - 1])
+  }
+  // hour bucket not supported in SQL function — fall back to day
+  var effectiveBucket: TimeBucket = bucketOverride === 'auto' ? smartBucket : bucketOverride
+  var sqlBucket = effectiveBucket === 'hour' ? 'day' : effectiveBucket
+
+  var aggSpec = dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   var { rows, loaded: rowsLoaded } = useRows(datasetId, aggLoaded ? -1 : (_enrichCtx.enrichKey || 0))
   var loaded = aggLoaded && aggData?.series ? true : rowsLoaded
@@ -1459,9 +1474,19 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField 
     traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: T.blue, width: 2 }, marker: { size: 5 } })
   }
 
+  var bucketLabel = BUCKET_OPTIONS.find(function(o) { return o.value === effectiveBucket })?.label || 'Daily'
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 10, color: T.textFaint }}>Group by:</span>
+          <select value={bucketOverride} onChange={function(e) { setBucketOverride(e.target.value as any) }}
+            style={{ fontSize: 10, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 8, padding: '2px 6px', background: 'transparent', cursor: 'pointer' }}>
+            <option value="auto">Auto ({bucketLabel})</option>
+            {BUCKET_OPTIONS.filter(function(o) { return o.value !== 'hour' }).map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option> })}
+          </select>
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
           <input type="checkbox" checked={smooth} onChange={function() { setSmooth(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
           Smooth curve

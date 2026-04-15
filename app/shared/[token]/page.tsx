@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { detectScale } from '@/lib/scaleUtils'
+import { autoBucket, bucketKey, formatBucketLabel, TimeBucket, BUCKET_OPTIONS } from '@/lib/timeBucket'
 
 const HERMES = '#E8632A'
 const SARINA = '#00b4d8'
@@ -55,6 +56,8 @@ export default function SharedDashboard({ params }: { params: { token: string } 
 
 // -- Responses over time bar chart (CSS-only, no deps) --
 function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
+  const [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
+
   // Get all timestamps
   const timestamps = responses
     .map((r: any) => r.completed_at)
@@ -64,20 +67,15 @@ function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
 
   if (timestamps.length < 2) return null
 
-  // Determine scale: if range < 3 days use hourly, otherwise daily
-  const rangeMs = timestamps[timestamps.length - 1].getTime() - timestamps[0].getTime()
-  const rangeDays = rangeMs / (1000 * 60 * 60 * 24)
-  const useHourly = rangeDays < 3
+  const smartBucket = autoBucket(timestamps[0], timestamps[timestamps.length - 1])
+  const activeBucket: TimeBucket = bucketOverride === 'auto' ? smartBucket : bucketOverride
 
   // Bucket responses
   const buckets: Record<string, { complete: number; incomplete: number }> = {}
 
   for (const r of responses) {
     if (!r.completed_at) continue
-    const d = new Date(r.completed_at)
-    const key = useHourly
-      ? d.toISOString().slice(0, 13) // YYYY-MM-DDTHH
-      : d.toISOString().slice(0, 10) // YYYY-MM-DD
+    const key = bucketKey(r.completed_at, activeBucket)
     if (!buckets[key]) buckets[key] = { complete: 0, incomplete: 0 }
     if (r.status === 'incomplete') buckets[key].incomplete++
     else buckets[key].complete++
@@ -88,16 +86,6 @@ function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
 
   const maxVal = Math.max(...sortedKeys.map(k => buckets[k].complete + buckets[k].incomplete))
 
-  // Format labels
-  const formatLabel = (key: string) => {
-    if (useHourly) {
-      const d = new Date(key + ':00:00Z')
-      return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric' })
-    }
-    const d = new Date(key + 'T00:00:00Z')
-    return d.toLocaleString(undefined, { month: 'short', day: 'numeric' })
-  }
-
   // Show at most 20 bars, evenly sampled if more
   let displayKeys = sortedKeys
   if (sortedKeys.length > 20) {
@@ -105,9 +93,23 @@ function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
     displayKeys = sortedKeys.filter((_, i) => i % step === 0)
   }
 
+  const activeLabel = BUCKET_OPTIONS.find(o => o.value === activeBucket)?.label || 'Daily'
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-      <h3 className="font-semibold text-sm text-gray-800 mb-1">Responses Over Time</h3>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-semibold text-sm text-gray-800">Responses Over Time</h3>
+        <select
+          value={bucketOverride}
+          onChange={e => setBucketOverride(e.target.value as TimeBucket | 'auto')}
+          className="text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 cursor-pointer"
+        >
+          <option value="auto">Auto ({activeLabel})</option>
+          {BUCKET_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-2.5 rounded-sm" style={{ background: '#22c55e' }} />
@@ -117,9 +119,6 @@ function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
           <div className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f59e0b' }} />
           <span className="text-[10px] text-gray-500">Incomplete</span>
         </div>
-        <span className="text-[10px] text-gray-400 ml-auto">
-          {useHourly ? 'Hourly' : 'Daily'}
-        </span>
       </div>
       <div className="flex items-end gap-1" style={{ height: 120 }}>
         {displayKeys.map(key => {
@@ -140,7 +139,7 @@ function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
                 )}
               </div>
               <div className="text-[8px] text-gray-400 mt-1 text-center leading-tight" style={{ maxWidth: '100%', wordBreak: 'break-word' }}>
-                {formatLabel(key)}
+                {formatBucketLabel(key, activeBucket)}
               </div>
             </div>
           )
