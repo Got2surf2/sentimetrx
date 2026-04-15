@@ -41,16 +41,23 @@ const STATE_BADGE: Record<string, { bg: string; text: string; label: string }> =
   dismissed: { bg: '#fee2e2', text: '#991b1b', label: 'Dismissed' },
 }
 
-function ProgressBar({ current, target }: { current: number; target: number }) {
+function CompletionDonut({ current, target, size = 40 }: { current: number; target: number; size?: number }) {
   const pct = Math.min(100, Math.round((current / Math.max(target, 1)) * 100))
+  const r = (size - 6) / 2
+  const circ = 2 * Math.PI * r
+  const filled = (pct / 100) * circ
+  // Orange below target, green at/above
+  const color = pct >= 100 ? '#22c55e' : pct >= 70 ? '#65a30d' : pct >= 40 ? '#d97706' : HERMES
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, height: 6, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ width: pct + '%', height: '100%', background: pct >= 100 ? '#22c55e' : HERMES, borderRadius: 3, transition: 'width 0.3s' }} />
+    <div style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={3} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={3}
+          strokeDasharray={`${filled} ${circ - filled}`} strokeLinecap="round" style={{ transition: 'stroke-dasharray 0.4s' }} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: size < 36 ? 8 : 10, fontWeight: 700, color }}>{pct}%</span>
       </div>
-      <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 500, minWidth: 50, textAlign: 'right' }}>
-        {current} / {target}
-      </span>
     </div>
   )
 }
@@ -253,7 +260,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const isEnded = session.status === 'ended'
 
   // Separate themes into 3 sections
-  const activeTopics = themes.filter(t => t.state === 'active' || t.state === 'paused')
+  const activeTopics = themes.filter(t => t.state === 'active')
+  const pendingTopics = themes.filter(t => t.state === 'paused')
   const suggestedTopics = themes.filter(t => t.state === 'detected')
   const completedTopics = themes.filter(t => t.state === 'completed')
 
@@ -742,25 +750,28 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 </div>
               )}
 
-              {/* ── ACTIVE TOPICS ──────────────────────────────── */}
+              {/* ── ACTIVE ──────────────────────────────────── */}
               <div className="bg-white rounded-xl border border-green-200 p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <h3 className="text-sm font-bold text-gray-700">Active Topics</h3>
-                  <span className="text-[10px] text-gray-400">{isSetup ? (session.discussion_guide || []).length : activeTopics.length}</span>
+                  <h3 className="text-sm font-bold text-green-700">Active</h3>
+                  <span className="text-[10px] text-gray-400">{isSetup ? (session.discussion_guide || []).filter((t: any) => t.enabled !== false).length : activeTopics.length}</span>
                 </div>
 
                 {isSetup ? (
                   <div className="space-y-2">
-                    {(session.discussion_guide || []).map((t: any, i: number) => (
-                      <div key={t.id || i} className="border border-gray-100 rounded-lg p-3">
-                        <span className="text-sm font-semibold text-gray-700">{t.label}</span>
-                        <p className="text-xs text-gray-400 mt-0.5">{t.opening_question}</p>
-                        <span className="text-[10px] text-gray-300">Target: {t.response_target} responses</span>
+                    {(session.discussion_guide || []).filter((t: any) => t.enabled !== false).map((t: any, i: number) => (
+                      <div key={t.id || i} className="border border-gray-100 rounded-lg p-3 flex items-start gap-3">
+                        <CompletionDonut current={0} target={t.response_target || 30} size={36} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-semibold text-gray-700">{t.label}</span>
+                          <p className="text-xs text-gray-400 mt-0.5">{t.opening_question}</p>
+                          <span className="text-[10px] text-gray-300">Target: {t.response_target || 30} responses</span>
+                        </div>
                       </div>
                     ))}
-                    {(!session.discussion_guide || session.discussion_guide.length === 0) && (
-                      <p className="text-xs text-gray-400">No topics yet. Click Edit to add discussion topics.</p>
+                    {(session.discussion_guide || []).filter((t: any) => t.enabled !== false).length === 0 && (
+                      <p className="text-xs text-gray-400">No active topics. Enable topics in the discussion guide or click Edit.</p>
                     )}
                   </div>
                 ) : activeTopics.length > 0 ? (
@@ -775,13 +786,49 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 )}
               </div>
 
-              {/* ── COMPLETED ─────────────────────────────────── */}
+              {/* ── PENDING (paused topics) ───────────────────── */}
+              {pendingTopics.length > 0 && (
+                <div className="bg-white rounded-xl border border-amber-200 p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <h3 className="text-sm font-bold text-amber-700">Pending</h3>
+                    <span className="text-[10px] text-amber-400">{pendingTopics.length}</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    {pendingTopics.map(t => (
+                      <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── SETUP: Disabled topics ────────────────────── */}
+              {isSetup && (session.discussion_guide || []).some((t: any) => t.enabled === false) && (
+                <div className="bg-white rounded-xl border border-gray-100 p-5 opacity-60">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 rounded-full bg-gray-300" />
+                    <h3 className="text-sm font-bold text-gray-400">Disabled</h3>
+                    <span className="text-[10px] text-gray-300">{(session.discussion_guide || []).filter((t: any) => t.enabled === false).length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {(session.discussion_guide || []).filter((t: any) => t.enabled === false).map((t: any, i: number) => (
+                      <div key={t.id || i} className="border border-gray-50 rounded-lg p-3">
+                        <span className="text-sm font-semibold text-gray-400">{t.label}</span>
+                        <p className="text-xs text-gray-300 mt-0.5">Disabled — enable in Edit to include in session</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── CLOSED ───────────────────────────────────── */}
               {completedTopics.length > 0 && (
                 <div className="bg-white rounded-xl border border-blue-200 p-5">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 rounded-full bg-blue-500" />
-                    <h3 className="text-sm font-bold text-blue-700">Completed</h3>
-                    <span className="text-[10px] text-blue-400">{completedTopics.length} topics</span>
+                    <h3 className="text-sm font-bold text-blue-700">Closed</h3>
+                    <span className="text-[10px] text-blue-400">{completedTopics.length}</span>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     {completedTopics.map(t => (
@@ -913,10 +960,20 @@ function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName,
     } catch {}
     setGenerating(false)
   }
+  const enabled = t.enabled !== false
   return (
-    <div className="border border-gray-100 rounded-lg p-3 space-y-2">
+    <div className={'border rounded-lg p-3 space-y-2 transition-opacity ' + (enabled ? 'border-gray-100' : 'border-gray-50 bg-gray-50/50 opacity-60')}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-gray-400 uppercase">Topic {index + 1}</span>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onChange({ enabled: !enabled })}
+            className="w-7 h-3.5 rounded-full relative transition-colors flex-shrink-0"
+            style={{ background: enabled ? '#22c55e' : '#d1d5db' }}>
+            <div className="w-2.5 h-2.5 rounded-full bg-white absolute top-0.5 transition-all"
+              style={{ left: enabled ? 15 : 2 }} />
+          </button>
+          <span className="text-[10px] font-bold text-gray-400 uppercase">Topic {index + 1}</span>
+          {!enabled && <span className="text-[9px] text-gray-400 italic">Disabled</span>}
+        </div>
         <button onClick={onRemove} className="text-[10px] text-red-400 hover:text-red-600">Remove</button>
       </div>
       <div className="flex gap-2">
@@ -964,41 +1021,32 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
   const keywords = t.keywords || []
   const isSuggested = variant === 'suggested'
   const isAI = t.source === 'auto_detected'
+  const isCompleted = variant === 'completed'
 
   return (
-    <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : 'border-gray-200 bg-white'}`}>
-      {/* Color bar */}
-      <div style={{ height: 4, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />
+    <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : isCompleted ? 'border-gray-100 bg-gray-50/50' : 'border-gray-200 bg-white'}`}>
+      <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />
       <div className="p-4">
-        {/* Header: label + badges */}
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-bold text-gray-800">{t.label}</span>
-          <div className="flex items-center gap-1.5">
-            {/* Sentiment pill */}
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
-              style={{ background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral }}>
-              {sent}
-            </span>
-            {/* Source pill */}
-            {isAI && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-600">
-                AI Recommended
-              </span>
-            )}
-            {t.source === 'custom' && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Custom</span>
-            )}
-            {t.state === 'paused' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Paused</span>
-            )}
+        {/* Header row: donut + label + badges */}
+        <div className="flex items-start gap-3">
+          <CompletionDonut current={t.response_count} target={t.response_target} size={44} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-gray-800">{t.label}</span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
+                  style={{ background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral }}>
+                  {sent}
+                </span>
+                {isAI && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-600">AI</span>}
+                {t.source === 'custom' && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Custom</span>}
+                {t.state === 'paused' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-600">Paused</span>}
+              </div>
+            </div>
+            {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
+            <span className="text-[10px] text-gray-400">{t.response_count} / {t.response_target} responses{t.mention_count > 0 ? ' \u00B7 ' + t.mention_count + ' mentions' : ''}</span>
           </div>
         </div>
-
-        {/* Description */}
-        {t.description && <p className="text-xs text-gray-500 mb-2">{t.description}</p>}
-
-        {/* Progress bar */}
-        <ProgressBar current={t.response_count} target={t.response_target} />
 
         {/* Keywords */}
         {keywords.length > 0 && (
@@ -1006,9 +1054,7 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
             {keywords.slice(0, 8).map(kw => (
               <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{kw}</span>
             ))}
-            {keywords.length > 8 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">+{keywords.length - 8}</span>
-            )}
+            {keywords.length > 8 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">+{keywords.length - 8}</span>}
           </div>
         )}
 
@@ -1019,23 +1065,13 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
           </div>
         )}
 
-        {/* Mention count */}
-        {t.mention_count > 0 && (
-          <div className="mt-2 text-[10px] text-gray-400">{t.mention_count} mentions</div>
-        )}
-
         {/* Action buttons */}
         {isSuggested && (
           <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
             <button onClick={() => onAction('approve')} disabled={loading}
-              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50"
-              style={{ background: '#22c55e' }}>
-              Approve
-            </button>
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50" style={{ background: '#22c55e' }}>Approve</button>
             <button onClick={() => onAction('dismiss')} disabled={loading}
-              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200 disabled:opacity-50">
-              Dismiss
-            </button>
+              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200 disabled:opacity-50">Dismiss</button>
           </div>
         )}
         {variant === 'active' && isActive && (

@@ -30,6 +30,7 @@ const DEFAULT_TOPIC: () => TownHallGuideTopic = () => ({
   follow_up_angles: [],
   keywords: [],
   response_target: 30,
+  enabled: true,
 })
 
 const DEFAULT_CONFIG: TownHallConfig = {
@@ -184,10 +185,22 @@ function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventD
     setGenerating(false)
   }
 
+  const enabled = topic.enabled !== false
+
   return (
-    <div className="border border-gray-200 rounded-xl p-4 bg-white">
+    <div className={'border rounded-xl p-4 transition-opacity ' + (enabled ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60')}>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-bold text-gray-400 uppercase">Topic {index + 1}</span>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onChange({ ...topic, enabled: !enabled })}
+            className="w-8 h-4 rounded-full relative transition-colors flex-shrink-0"
+            style={{ background: enabled ? '#22c55e' : '#d1d5db' }}
+            title={enabled ? 'Disable topic' : 'Enable topic'}>
+            <div className="w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all"
+              style={{ left: enabled ? 17 : 2 }} />
+          </button>
+          <span className="text-xs font-bold text-gray-400 uppercase">Topic {index + 1}</span>
+          {!enabled && <span className="text-[10px] text-gray-400 italic">Disabled</span>}
+        </div>
         <button onClick={onRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
       </div>
 

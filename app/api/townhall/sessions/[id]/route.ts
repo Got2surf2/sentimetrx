@@ -311,7 +311,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       .single()
 
     if (session?.discussion_guide && Array.isArray(session.discussion_guide)) {
-      const guideThemes = session.discussion_guide.map((topic: any, idx: number) => ({
+      const enabledTopics = session.discussion_guide.filter((t: any) => t.enabled !== false)
+      const guideThemes = enabledTopics.map((topic: any, idx: number) => ({
         session_id: params.id,
         label: topic.label,
         description: topic.description || null,

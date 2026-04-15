@@ -857,6 +857,7 @@ export interface TownHallGuideTopic {
   follow_up_angles:  string[]
   keywords:          string[]
   response_target:   number
+  enabled?:          boolean   // default true — disabled topics not assigned to participants
 }
 
 export interface TownHallConfig {
