@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useSurveyEngine } from './useSurveyEngine'
 import type { Study } from '@/lib/types'
 
@@ -52,13 +53,19 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
   const chatRef    = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
+  const searchParams = useSearchParams()
   const [status,       setStatus]      = useState<'checking' | 'active' | 'closed' | 'draft' | 'error'>('checking')
   const [liveBotName,  setLiveBotName]  = useState(study.bot_name)
   const [liveBotEmoji, setLiveBotEmoji] = useState(study.bot_emoji)
   const [liveConfig,   setLiveConfig]   = useState(study.config)
 
+  // Debug mode via URL param ?debug=PASSWORD — validated server-side on study fetch
+  const urlDebugPwd = searchParams.get('debug') || ''
+  const [debugViaUrl, setDebugViaUrl] = useState(false)
+
   // Merge live values into study object for the engine and header
-  const liveStudy = { ...study, bot_name: liveBotName, bot_emoji: liveBotEmoji, config: liveConfig }
+  const mergedConfig = debugViaUrl ? { ...liveConfig, testing: true } : liveConfig
+  const liveStudy = { ...study, bot_name: liveBotName, bot_emoji: liveBotEmoji, config: mergedConfig }
 
   const scrollBottom = useCallback(() => {
     const el = chatRef.current
@@ -105,7 +112,8 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
   // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
   // are always the latest from the DB, not potentially stale server-rendered props
   useEffect(() => {
-    fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
+    const url = `/api/study/${study.guid}` + (urlDebugPwd ? `?debug=${encodeURIComponent(urlDebugPwd)}` : '')
+    fetch(url, { cache: 'no-store' })
       .then(async res => {
         if (!res.ok) {
           setStatus(res.status === 404 ? 'closed' : 'error')
@@ -116,10 +124,11 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
         if (data.bot_name)  setLiveBotName(data.bot_name)
         if (data.bot_emoji) setLiveBotEmoji(data.bot_emoji)
         if (data.config)    setLiveConfig(data.config)
+        if (data.debug_mode) setDebugViaUrl(true)
         setStatus('active')
       })
       .catch(() => setStatus('error'))
-  }, [study.guid])
+  }, [study.guid, urlDebugPwd])
 
   useEffect(() => {
     if (status === 'active' && !startedRef.current) {

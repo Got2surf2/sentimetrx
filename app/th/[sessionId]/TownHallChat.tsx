@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import type { DemoField, PsychoQuestion } from '@/lib/types'
 
@@ -19,6 +20,9 @@ function typingDelay(text: string) {
 }
 
 export default function TownHallChat({ sessionId }: Props) {
+  const searchParams = useSearchParams()
+  const urlDebugPwd = searchParams.get('debug') || ''
+
   // Session info — fetched via GET /api/townhall/join/:id
   const [sessionName, setSessionName] = useState('')
   const [botName, setBotName] = useState('Town Hall')
@@ -49,6 +53,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const [demoAnswers, setDemoAnswers] = useState<Record<string, string>>({})
   const [botMessages, setBotMessages] = useState({ post_session_intro: '', post_session_demo: '', post_session_thanks: '' })
   const [testing, setTesting] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
 
   const finished = phase !== 'chat'
 
@@ -125,7 +130,7 @@ export default function TownHallChat({ sessionId }: Props) {
       const r = await fetch('/api/townhall/join/' + sessionId, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: lang }),
+        body: JSON.stringify({ language: lang, debug_password: urlDebugPwd || undefined }),
       })
       const d = await r.json()
       if (d.error) {
@@ -138,6 +143,7 @@ export default function TownHallChat({ sessionId }: Props) {
       if (d.closing_message) setClosingMsg(d.closing_message)
       if (d.psychographicBank) setPsychoBank(d.psychographicBank)
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
+      if (d.debug_mode) { setDebugMode(true); setTesting(true) }
       setJoined(true)
       // Show typing dots, then reveal message
       setLoading(true)
@@ -159,9 +165,12 @@ export default function TownHallChat({ sessionId }: Props) {
     try {
       const r = await fetch('/api/townhall/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: skip ? '' : msg, turn_number: turn, theme_id: themeId, skipped: !!skip, language: selectedLang || 'en' }),
+        body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: skip ? '' : msg, turn_number: turn, theme_id: themeId, skipped: !!skip, language: selectedLang || 'en', debug: debugMode || undefined }),
       })
       const d = await r.json()
+      // Handle debug mode toggle
+      if (d.debug_mode === true) { setDebugMode(true); setTesting(true) }
+      if (d.debug_mode === false) { setDebugMode(false); setTesting(false) }
       setTurn(d.turn_number); setThemeId(d.theme_id)
       // Handle language switch — update language for future messages
       if (d.language_switched) setSelectedLang(d.language_switched)

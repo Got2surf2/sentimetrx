@@ -322,6 +322,12 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
               : <><strong className="text-gray-800">Testing OFF</strong> — normal participant experience</>}
           </span>
         </div>
+        <div className="mt-4">
+          <label className="text-sm font-medium text-gray-700 block mb-1">Debug password <span className="text-xs text-gray-400 font-normal">— anyone can activate verbose mode by typing <code className="bg-gray-100 px-1 rounded">#debug PASSWORD</code> in the chat or adding <code className="bg-gray-100 px-1 rounded">?debug=PASSWORD</code> to the URL</span></label>
+          <input type="text" value={draft.config.debugPassword || ''} onChange={e => updateConfig({ debugPassword: e.target.value || undefined })}
+            placeholder="e.g. showme123"
+            className="w-64 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400" />
+        </div>
       </Section>
 
       <Section title="Branding" description="Control the 'by' label shown in the survey header.">

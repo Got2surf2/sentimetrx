@@ -52,12 +52,22 @@ export async function GET(
     if (org) orgName = org.name
   }
 
+  // Validate debug password from URL param — server-side only
+  const debugPwd = _req.nextUrl.searchParams.get('debug')
+  const cfg = study.config as any
+  const debugAuthenticated = !!(debugPwd && cfg?.debugPassword && debugPwd === cfg.debugPassword)
+
+  // Strip debugPassword from config before sending to client
+  const safeConfig = { ...cfg }
+  delete safeConfig.debugPassword
+
   return NextResponse.json({
     guid:      study.guid,
     name:      study.name,
     bot_name:  study.bot_name,
     bot_emoji: study.bot_emoji,
-    config:    study.config,
+    config:    safeConfig,
     org_name:  orgName,
+    ...(debugAuthenticated ? { debug_mode: true } : {}),
   }, { headers: noCache })
 }

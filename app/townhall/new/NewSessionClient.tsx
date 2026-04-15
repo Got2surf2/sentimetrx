@@ -824,15 +824,23 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 </div>
 
                 {/* Testing mode */}
-                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-4">
-                  <div>
-                    <div className="text-sm font-semibold text-gray-800">Testing Mode</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Show AI thinking process inline — useful for demos</div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">Testing Mode</div>
+                      <div className="text-xs text-gray-500 mt-0.5">Show AI thinking process inline — useful for demos</div>
+                    </div>
+                    <button type="button" onClick={() => setConfig(prev => ({ ...prev, testing: !prev.testing }))}
+                      className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + ((config as any).testing ? 'bg-amber-500' : 'bg-gray-200')}>
+                      <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + ((config as any).testing ? 'translate-x-5' : 'translate-x-0')} />
+                    </button>
                   </div>
-                  <button type="button" onClick={() => setConfig(prev => ({ ...prev, testing: !prev.testing }))}
-                    className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + ((config as any).testing ? 'bg-amber-500' : 'bg-gray-200')}>
-                    <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + ((config as any).testing ? 'translate-x-5' : 'translate-x-0')} />
-                  </button>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">Debug password <span className="text-xs text-gray-400 font-normal">— type <code className="bg-white/60 px-1 rounded">#debug PASSWORD</code> in chat or add <code className="bg-white/60 px-1 rounded">?debug=PASSWORD</code> to URL</span></label>
+                    <input type="text" value={(config as any).debugPassword || ''} onChange={e => setConfig(prev => ({ ...prev, debugPassword: e.target.value || undefined }))}
+                      placeholder="e.g. showme123"
+                      className="w-full mt-1 px-3 py-1.5 rounded-lg border border-amber-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 bg-white" />
+                  </div>
                 </div>
               </div>
 

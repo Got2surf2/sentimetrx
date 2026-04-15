@@ -96,11 +96,14 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     }, { status: 400 })
   }
 
-  let body: { language?: string } = {}
+  let body: { language?: string; debug_password?: string } = {}
   try { body = await req.json() } catch { /* no body is fine */ }
 
   const config = session.config as any
   const language = body.language || 'en'
+
+  // Validate debug password (URL param or magic phrase auth)
+  const debugAuthenticated = !!(config?.debugPassword && body.debug_password && body.debug_password === config.debugPassword)
   const participantId = 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 
   // Use opening_message (new) or fall back to legacy welcome + opening_question
@@ -192,5 +195,6 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     source: 'opening',
     is_final: false,
     turn_number: 1,
+    ...(debugAuthenticated ? { debug_mode: true } : {}),
   })
 }

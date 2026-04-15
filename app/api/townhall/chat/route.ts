@@ -15,6 +15,7 @@ interface ChatRequest {
   theme_id: string | null
   skipped?: boolean
   language?: string
+  debug?: boolean   // client-side debug flag (validated via password)
 }
 
 // POST /api/townhall/chat — participant sends a message, gets next bot message
@@ -84,6 +85,31 @@ export async function POST(req: NextRequest) {
       bot_message: 'This session is currently paused. Please check back shortly.',
       is_final: false, theme_id: null, source: null, turn_number: turn_number, paused: true,
     })
+  }
+
+  // Debug mode toggle via #debug PASSWORD — not a turn, swallowed
+  if (message && !skipped) {
+    const debugMatch = message.trim().match(/^#debug\s+(.+)$/i)
+    const debugOff = /^#debug\s+off$/i.test(message.trim())
+    if (debugOff) {
+      return NextResponse.json({
+        bot_message: 'Debug mode off.',
+        theme_id, source: 'system', is_final: false, turn_number,
+        debug_mode: false,
+      })
+    }
+    if (debugMatch) {
+      const pwd = debugMatch[1].trim()
+      const storedPwd = config?.debugPassword
+      if (storedPwd && pwd === storedPwd) {
+        return NextResponse.json({
+          bot_message: 'Debug mode activated. AI thinking will be shown inline.',
+          theme_id, source: 'system', is_final: false, turn_number,
+          debug_mode: true,
+        })
+      }
+      // Wrong password — don't reveal that debug exists, just treat as normal message
+    }
   }
 
   // Input guardrail: check for harmful content before processing
@@ -243,7 +269,7 @@ export async function POST(req: NextRequest) {
   const shouldClarify = !isOpeningResponse && !skipped && message && wordCount < 12 && currentTopicTurns <= 3
 
   // Testing mode: accumulate reasoning steps
-  const testing = !!config?.testing
+  const testing = !!config?.testing || !!body.debug
   const debug: string[] = []
 
   let botMessage: string

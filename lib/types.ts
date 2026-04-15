@@ -274,6 +274,7 @@ export interface StudyConfig {
 
   // Testing mode — exposes AI thinking/reasoning inline with bot messages
   testing?:           boolean          // default false
+  debugPassword?:     string           // secret word to enable verbose mode via chat or URL param
 
   // Multi-language support
   languages?:         string[]         // enabled language codes, e.g. ['en', 'es', 'fr']
@@ -906,6 +907,7 @@ export interface TownHallConfig {
   psychographicBank?:  PsychoQuestion[]
   psychoCount?:        number   // how many psycho questions to randomly show (default 3)
   testing?:            boolean  // testing mode: bot messages include AI thinking/reasoning inline
+  debugPassword?:      string  // secret word to enable verbose mode via chat (#debug PASSWORD) or URL (?debug=PASSWORD)
 }
 
 export type TownHallSessionStatus = 'setup' | 'active' | 'paused' | 'ended'
