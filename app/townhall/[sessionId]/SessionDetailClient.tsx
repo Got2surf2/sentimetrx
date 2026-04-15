@@ -64,11 +64,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showExport, setShowExport] = useState(false)
-  const [exporting, setExporting] = useState<string | null>(null)
 
   // Edit mode state — full config editing
   const [editing, setEditing] = useState(false)
+  const [autoEditDone, setAutoEditDone] = useState(false)
   const [editName, setEditName] = useState('')
   const [editSlug, setEditSlug] = useState('')
   const [editConfig, setEditConfig] = useState<TownHallConfig | null>(null)
@@ -108,6 +107,11 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     const interval = setInterval(fetchData, 4000)
     return () => clearInterval(interval)
   }, [fetchData])
+
+  // Auto-enter edit mode on first load
+  useEffect(() => {
+    if (session && !autoEditDone) { setAutoEditDone(true); startEdit() }
+  }, [session, autoEditDone])
 
   // Start editing — deep-copy current config
   const startEdit = () => {
@@ -159,21 +163,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const removeGuideTopic = (idx: number) => { setEditGuide(g => g.filter((_, i) => i !== idx)) }
   const updateGuideTopic = (idx: number, partial: Partial<TownHallGuideTopic>) => {
     setEditGuide(g => g.map((t, i) => i === idx ? { ...t, ...partial } : t))
-  }
-
-  const handleDuplicate = async () => {
-    setActionLoading('duplicate')
-    setError(null)
-    try {
-      const res = await fetch('/api/townhall/sessions/' + sessionId + '/duplicate', { method: 'POST' })
-      const data = await res.json()
-      if (data.id) {
-        window.location.href = '/townhall/' + data.id
-        return
-      }
-      setError('Duplicate failed')
-    } catch { setError('Network error') }
-    setActionLoading(null)
   }
 
   const handleSessionAction = async (action: 'start' | 'end' | 'restart' | 'pause' | 'resume') => {
@@ -261,112 +250,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
           </div>
 
           <div className="flex items-center gap-2">
-            {!editing && (
-              <button onClick={startEdit}
-                className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
-                {'\u270F\uFE0F'} Edit
-              </button>
-            )}
-            {!editing && (
-              <button onClick={async () => {
-                try {
-                  const res = await fetch('/api/share', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'townhall', target_id: sessionId, expires_in: '7d' }),
-                  })
-                  const d = await res.json()
-                  if (d.url) {
-                    await navigator.clipboard.writeText(d.url)
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 3000)
-                  }
-                } catch { setError('Failed to create share link') }
-              }}
-                className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
-                {copied ? '\u2705 Copied!' : '\uD83D\uDD17 Share'}
-              </button>
-            )}
-            {!editing && (
-              <div className="relative">
-                <button onClick={() => setShowExport(!showExport)}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
-                  {exporting ? exporting + '...' : '\uD83D\uDCE5 Export'}
-                </button>
-                {showExport && (
-                  <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl border border-gray-200 shadow-lg z-50 overflow-hidden">
-                    <button
-                      onClick={async () => {
-                        setExporting('CSV'); setShowExport(false)
-                        try {
-                          const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=csv')
-                          const blob = await res.blob()
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'export.csv'
-                          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
-                        } catch { setError('Export failed') }
-                        setExporting(null)
-                      }}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <span className="text-base">{'\uD83D\uDCC4'}</span>
-                      <div>
-                        <div className="font-semibold text-gray-700">Responses CSV</div>
-                        <div className="text-[10px] text-gray-400">All turns + demographics</div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setExporting('Themes CSV'); setShowExport(false)
-                        try {
-                          const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=themes')
-                          const blob = await res.blob()
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'themes.csv'
-                          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
-                        } catch { setError('Export failed') }
-                        setExporting(null)
-                      }}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 border-t border-gray-100 flex items-center gap-2"
-                    >
-                      <span className="text-base">{'\uD83C\uDFF7\uFE0F'}</span>
-                      <div>
-                        <div className="font-semibold text-gray-700">Themes CSV</div>
-                        <div className="text-[10px] text-gray-400">Theme stats + keywords</div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setExporting('PPTX'); setShowExport(false)
-                        try {
-                          const res = await fetch('/api/townhall/sessions/' + sessionId + '/export/pptx', { method: 'POST' })
-                          const blob = await res.blob()
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'summary.pptx'
-                          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
-                        } catch { setError('Export failed') }
-                        setExporting(null)
-                      }}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 border-t border-gray-100 flex items-center gap-2"
-                    >
-                      <span className="text-base">{'\uD83D\uDCCA'}</span>
-                      <div>
-                        <div className="font-semibold text-gray-700">Summary Deck</div>
-                        <div className="text-[10px] text-gray-400">PPTX with themes + quotes</div>
-                      </div>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            {!editing && (
-              <button onClick={handleDuplicate} disabled={actionLoading === 'duplicate'}
-                className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600 disabled:opacity-50">
-                {actionLoading === 'duplicate' ? 'Duplicating...' : '\uD83D\uDCC4 Duplicate'}
-              </button>
-            )}
             {isSetup && (
               <button onClick={() => handleSessionAction('start')} disabled={actionLoading === 'start'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
@@ -374,27 +257,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 {actionLoading === 'start' ? 'Starting...' : 'Start Session'}
               </button>
             )}
-            {isActive && (
-              <button onClick={() => handleSessionAction('pause')} disabled={actionLoading === 'pause'}
-                className="px-4 py-2 rounded-xl text-sm font-semibold border border-amber-300 hover:bg-amber-50 text-amber-600 disabled:opacity-50">
-                {actionLoading === 'pause' ? 'Pausing...' : 'Pause'}
-              </button>
-            )}
-            {isActive && (
-              <button onClick={() => handleSessionAction('end')} disabled={actionLoading === 'end'}
-                className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                style={{ background: '#ef4444' }}>
-                {actionLoading === 'end' ? 'Ending...' : 'End Session'}
-              </button>
-            )}
-            {isPaused && (
-              <button onClick={() => handleSessionAction('resume')} disabled={actionLoading === 'resume'}
-                className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                style={{ background: '#22c55e' }}>
-                {actionLoading === 'resume' ? 'Resuming...' : 'Resume Session'}
-              </button>
-            )}
-            {isPaused && (
+            {(isActive || isPaused) && (
               <button onClick={() => handleSessionAction('end')} disabled={actionLoading === 'end'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#ef4444' }}>
@@ -481,7 +344,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400 bg-white"
                 >
                   <option value="">Select industry (optional)</option>
-                  {(Object.keys(INDUSTRY_LABELS) as Industry[]).map(k => (
+                  {(Object.keys(INDUSTRY_LABELS) as Industry[]).sort((a, b) => INDUSTRY_LABELS[a].localeCompare(INDUSTRY_LABELS[b])).map(k => (
                     <option key={k} value={k}>{INDUSTRY_EMOJIS[k]} {INDUSTRY_LABELS[k]}</option>
                   ))}
                 </select>

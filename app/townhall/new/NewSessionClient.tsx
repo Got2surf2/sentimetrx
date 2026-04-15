@@ -346,7 +346,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400 bg-white"
                 >
                   <option value="">Select industry (optional)</option>
-                  {(Object.keys(INDUSTRY_LABELS) as Industry[]).map(k => (
+                  {(Object.keys(INDUSTRY_LABELS) as Industry[]).sort((a, b) => INDUSTRY_LABELS[a].localeCompare(INDUSTRY_LABELS[b])).map(k => (
                     <option key={k} value={k}>{INDUSTRY_EMOJIS[k]} {INDUSTRY_LABELS[k]}</option>
                   ))}
                 </select>

@@ -55,6 +55,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const joiningRef = useRef(false)
 
   const scroll = useCallback(() => {
     const el = chatRef.current
@@ -244,12 +245,13 @@ export default function TownHallChat({ sessionId }: Props) {
   if (status === 'setup' || (status === 'paused' && !joined)) {
     return (
       <Screen>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>{'\uD83C\uDFE4'}</div>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, marginBottom: 12 }}>{botEmoji}</div>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#374151', marginBottom: 4 }}>{sessionName}</h2>
-        <p style={{ color: '#9ca3af', fontSize: 14 }}>
-          {status === 'setup' ? 'Waiting for the facilitator to start the session...' : 'Session is paused. Please wait...'}
+        <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: 16 }}>
+          {status === 'setup' ? 'Stand by — the town hall hasn\'t started yet.' : 'Session is paused. Please wait...'}
         </p>
-        <Dots />
+        <p style={{ color: '#d1d5db', fontSize: 12 }}>This page will update automatically when the session begins.</p>
+        <div style={{ marginTop: 16 }}><Dots /></div>
       </Screen>
     )
   }
@@ -293,22 +295,14 @@ export default function TownHallChat({ sessionId }: Props) {
     return <Screen>Loading...</Screen>
   }
 
-  if (!joined) {
-    return (
-      <div ref={wrapRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: BG, padding: 24 }}>
-        <div style={{ textAlign: 'center', maxWidth: 400 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>{'\uD83D\uDCAC'}</div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>{sessionName}</h1>
-          <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, marginBottom: 24 }}>
-            {display.opening_message || display.welcome_message || 'Welcome! Share your thoughts anonymously.'}
-          </p>
-          <button onClick={handleJoin} disabled={loading}
-            style={{ background: IMSG_BLUE, color: 'white', border: 'none', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
-            {loading ? 'Joining...' : 'Join the conversation'}
-          </button>
-        </div>
-      </div>
-    )
+  // Auto-join once language is selected — skip landing page
+  if (!joined && selectedLang && !loading && status === 'active' && !joiningRef.current) {
+    joiningRef.current = true
+    setTimeout(() => handleJoin(), 0)
+    return <Screen><Dots /></Screen>
+  }
+  if (!joined && joiningRef.current) {
+    return <Screen><Dots /></Screen>
   }
 
   return (
@@ -323,7 +317,10 @@ export default function TownHallChat({ sessionId }: Props) {
       <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {messages.map((m, i) => (
           <div key={i}>
-            <div style={{ display: 'flex', justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
+              {m.who === 'bot' && (
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
+              )}
               <div style={{
                 maxWidth: '75%', padding: '9px 14px',
                 borderRadius: m.who === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
@@ -341,7 +338,8 @@ export default function TownHallChat({ sessionId }: Props) {
           </div>
         ))}
         {loading && (
-          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: 'flex-start' }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
             <div style={{ padding: '12px 18px', borderRadius: '18px 18px 18px 4px', background: IMSG_GRAY, display: 'flex', gap: 5, alignItems: 'center' }}>
               <Dots />
             </div>
