@@ -331,6 +331,68 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
+  // Sync discussion guide changes to townhall_themes for active/paused sessions
+  if (updates.discussion_guide && !updates.status) {
+    const currentStatus = data?.status
+    if (currentStatus === 'active' || currentStatus === 'paused') {
+      const guide = updates.discussion_guide as any[]
+      if (Array.isArray(guide)) {
+        // Fetch existing themes for this session (guide-sourced)
+        const { data: existingThemes } = await db
+          .from('townhall_themes')
+          .select('id, label, state, source')
+          .eq('session_id', params.id)
+
+        const existingLabels = new Set((existingThemes || []).map(t => t.label.toLowerCase()))
+
+        // Insert new enabled topics that don't already have a theme
+        const newTopics = guide
+          .filter((t: any) => t.enabled !== false && t.label.trim() && !existingLabels.has(t.label.toLowerCase().trim()))
+
+        if (newTopics.length > 0) {
+          const maxOrder = (existingThemes || []).length
+          const newThemes = newTopics.map((topic: any, idx: number) => ({
+            session_id: params.id,
+            label: topic.label,
+            description: topic.description || null,
+            question: topic.opening_question || '',
+            follow_up_angles: topic.follow_up_angles || [],
+            keywords: topic.keywords || [],
+            state: 'active',
+            source: 'guide',
+            response_target: topic.response_target || 30,
+            sort_order: maxOrder + idx,
+          }))
+          await db.from('townhall_themes').insert(newThemes)
+        }
+
+        // Pause themes for topics that were disabled in the guide
+        const disabledLabels = guide
+          .filter((t: any) => t.enabled === false && t.label.trim())
+          .map((t: any) => t.label.toLowerCase().trim())
+
+        if (disabledLabels.length > 0) {
+          const toDisable = (existingThemes || [])
+            .filter(t => t.source === 'guide' && t.state === 'active' && disabledLabels.includes(t.label.toLowerCase()))
+          for (const t of toDisable) {
+            await db.from('townhall_themes').update({ state: 'paused' }).eq('id', t.id)
+          }
+        }
+
+        // Re-activate themes for topics that were re-enabled
+        const enabledLabels = guide
+          .filter((t: any) => t.enabled !== false && t.label.trim())
+          .map((t: any) => t.label.toLowerCase().trim())
+
+        const toReactivate = (existingThemes || [])
+          .filter(t => t.source === 'guide' && t.state === 'paused' && enabledLabels.includes(t.label.toLowerCase()))
+        for (const t of toReactivate) {
+          await db.from('townhall_themes').update({ state: 'active' }).eq('id', t.id)
+        }
+      }
+    }
+  }
+
   return NextResponse.json(data)
 }
 
