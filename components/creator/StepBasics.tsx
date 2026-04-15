@@ -307,6 +307,23 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
         </div>
       </Section>
 
+      <Section title="Testing mode" description="Show AI reasoning inline during the conversation — for testing only, disable before publishing.">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateConfig({ testing: !draft.config.testing })}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.testing ? 'bg-orange-500' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.testing ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+          <span className="text-sm text-gray-600">
+            {draft.config.testing
+              ? <><strong className="text-gray-800">Testing ON</strong> — AI thinking panels shown inline (yellow boxes)</>
+              : <><strong className="text-gray-800">Testing OFF</strong> — normal participant experience</>}
+          </span>
+        </div>
+      </Section>
+
       <Section title="Branding" description="Control the 'by' label shown in the survey header.">
         <div className="flex items-center gap-3">
           <button
