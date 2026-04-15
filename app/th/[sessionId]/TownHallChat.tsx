@@ -133,9 +133,11 @@ export default function TownHallChat({ sessionId }: Props) {
         setMessages([{ who: 'bot', text: d.error }]); setPhase('done'); setLoading(false); return
       }
       setPid(d.participant_id); setTurn(d.turn_number); setThemeId(d.theme_id)
-      // Store translated messages from join response
+      // Store translated messages + psycho/demo from join response
       if (d.bot_messages) setBotMessages(d.bot_messages)
       if (d.closing_message) setClosingMsg(d.closing_message)
+      if (d.psychographicBank) setPsychoBank(d.psychographicBank)
+      if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
       setJoined(true)
       // Show typing dots, then reveal message
       setLoading(true)
@@ -161,6 +163,8 @@ export default function TownHallChat({ sessionId }: Props) {
       })
       const d = await r.json()
       setTurn(d.turn_number); setThemeId(d.theme_id)
+      // Handle language switch — update language for future messages
+      if (d.language_switched) setSelectedLang(d.language_switched)
       // Typing dots are already showing (loading=true) — wait for realistic duration
       await typingDelay(d.bot_message)
       setMessages(p => [...p, { who: 'bot', text: d.bot_message, ...(d._debug ? { _debug: d._debug } : {}) }])

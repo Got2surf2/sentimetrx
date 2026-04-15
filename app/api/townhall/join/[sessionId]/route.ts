@@ -119,8 +119,10 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
 
   let translatedMessages = { post_session_intro: introEn, post_session_demo: demoEn, post_session_thanks: thanksEn }
   let translatedClosing = closingEn
+  let translatedPsychoBank = config?.psychographicBank || []
+  let translatedDemoFields = config?.demoFields || []
   if (language !== 'en') {
-    // Batch translate all messages in one call for efficiency
+    // Batch translate canned messages
     const batch = [introEn, demoEn, thanksEn, closingEn]
     const batchText = batch.map((t, i) => '[' + (i + 1) + '] ' + t).join('\n')
     const translated = await translateText(batchText, language)
@@ -128,6 +130,41 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     if (lines.length >= 4) {
       translatedMessages = { post_session_intro: lines[0], post_session_demo: lines[1], post_session_thanks: lines[2] }
       translatedClosing = lines[3]
+    }
+
+    // Translate psychographic questions + options
+    const psychoBank = config?.psychographicBank || []
+    if (psychoBank.length > 0) {
+      const psychoText = psychoBank.map((pq: any, i: number) =>
+        '[Q' + (i + 1) + '] ' + pq.q + '\n' + (pq.opts || []).map((o: string, j: number) => '[Q' + (i + 1) + 'O' + (j + 1) + '] ' + o).join('\n')
+      ).join('\n')
+      try {
+        const tPsycho = await translateText(psychoText, language)
+        const tLines = tPsycho.split('\n').map(l => l.trim()).filter(Boolean)
+        translatedPsychoBank = psychoBank.map((pq: any, i: number) => {
+          const qLine = tLines.find(l => l.startsWith('[Q' + (i + 1) + ']'))
+          const translatedQ = qLine ? qLine.replace(/^\[Q\d+\]\s*/, '') : pq.q
+          const translatedOpts = (pq.opts || []).map((o: string, j: number) => {
+            const oLine = tLines.find(l => l.startsWith('[Q' + (i + 1) + 'O' + (j + 1) + ']'))
+            return oLine ? oLine.replace(/^\[Q\d+O\d+\]\s*/, '') : o
+          })
+          return { ...pq, q: translatedQ, opts: translatedOpts, _origQ: pq.q, _origOpts: pq.opts }
+        })
+      } catch { /* keep English fallback */ }
+    }
+
+    // Translate demo field labels
+    const demoFields = (config?.demoFields || []).filter((f: any) => f.enabled)
+    if (demoFields.length > 0) {
+      const demoText = demoFields.map((f: any, i: number) => '[D' + (i + 1) + '] ' + f.label).join('\n')
+      try {
+        const tDemo = await translateText(demoText, language)
+        const tLines = tDemo.split('\n').map(l => l.trim()).filter(Boolean)
+        translatedDemoFields = demoFields.map((f: any, i: number) => {
+          const dLine = tLines.find(l => l.startsWith('[D' + (i + 1) + ']'))
+          return { ...f, label: dLine ? dLine.replace(/^\[D\d+\]\s*/, '') : f.label, _origLabel: f.label }
+        })
+      } catch { translatedDemoFields = demoFields }
     }
   }
 
@@ -149,6 +186,8 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     bot_message: botMessage,
     closing_message: translatedClosing,
     bot_messages: translatedMessages,
+    psychographicBank: translatedPsychoBank,
+    demoFields: translatedDemoFields,
     theme_id: null,
     source: 'opening',
     is_final: false,

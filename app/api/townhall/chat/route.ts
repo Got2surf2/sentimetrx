@@ -102,6 +102,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ bot_message: redirectMsg, theme_id, source: 'clarifier', is_final: false, turn_number: nextTurn })
   }
 
+  // Language switch detection — don't count as a turn, re-send previous bot message in new language
+  if (message && !skipped) {
+    const lower = message.toLowerCase().trim()
+    const langSwitchResult = detectLanguageSwitch(lower)
+    if (langSwitchResult) {
+      // Get the last bot message for this participant
+      const { data: lastBotTurn } = await supabase
+        .from('townhall_turns')
+        .select('bot_message')
+        .eq('session_id', session_id)
+        .eq('participant_id', participant_id)
+        .not('bot_message', 'is', null)
+        .order('turn_number', { ascending: false })
+        .limit(1)
+        .single()
+
+      const prevBotMsg = lastBotTurn?.bot_message || config?.opening_message || 'What\'s on your mind?'
+
+      // Translate the previous bot message to the requested language
+      let translatedMsg = prevBotMsg
+      if (langSwitchResult !== 'en') {
+        try {
+          translatedMsg = await callClaude(
+            'Translate the following text to ' + langSwitchResult + '. Return ONLY the translation, nothing else. Preserve tone.',
+            prevBotMsg, 3000
+          )
+        } catch { /* keep English */ }
+      }
+
+      // Don't increment turn, don't store as a real turn — just return the translated message
+      return NextResponse.json({
+        bot_message: translatedMsg,
+        theme_id,
+        source: 'language_switch',
+        is_final: false,
+        turn_number, // same turn number — no increment
+        language_switched: langSwitchResult,
+      })
+    }
+  }
+
   // Translate non-English responses to English for analysis
   let messageEn: string | null = null
   if (message && !skipped && language && language !== 'en') {
@@ -342,6 +383,46 @@ function buildConversationContext(turns: any[]): string {
     .filter(t => t.user_message)
     .map(t => `Bot: ${t.bot_message}\nParticipant: ${t.user_message}`)
     .join('\n\n')
+}
+
+// Detect language switch requests — returns ISO language code or null
+function detectLanguageSwitch(msg: string): string | null {
+  const patterns: [RegExp, string][] = [
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(spanish|español|espanol)/i, 'es'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(french|français|francais)/i, 'fr'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(portuguese|português|portugues)/i, 'pt'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(german|deutsch)/i, 'de'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(chinese|mandarin|中文)/i, 'zh'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(japanese|日本語)/i, 'ja'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(korean|한국어)/i, 'ko'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(arabic|عربي)/i, 'ar'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(hindi|हिन्दी)/i, 'hi'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(english)/i, 'en'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(italian|italiano)/i, 'it'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(russian|русский)/i, 'ru'],
+    [/\b(speak|switch|change|use|talk|respond|write)\b.*(vietnamese|tiếng việt)/i, 'vi'],
+    // Direct language name requests
+    [/^(spanish|español|espanol)\s*(please|por favor)?$/i, 'es'],
+    [/^(french|français|francais)\s*(please|s'il vous plaît)?$/i, 'fr'],
+    [/^(english)\s*(please)?$/i, 'en'],
+    [/^(portuguese|português)\s*(please|por favor)?$/i, 'pt'],
+    [/^(german|deutsch)\s*(please|bitte)?$/i, 'de'],
+    // "No hablo/speak X" patterns
+    [/no\s+(hablo|speak|understand)\s+(english|inglés|ingles)/i, 'es'],
+    [/no\s+(hablo|speak|understand)\s+(español|spanish)/i, 'en'],
+    [/je\s+ne\s+parle\s+pas\s+(anglais|english)/i, 'fr'],
+    [/não\s+falo\s+(inglês|english)/i, 'pt'],
+    // "Can you speak X" / "please speak X"
+    [/(can you|could you|please)\s+(speak|use|switch to)\s+(spanish|español)/i, 'es'],
+    [/(can you|could you|please)\s+(speak|use|switch to)\s+(french|français)/i, 'fr'],
+    [/(can you|could you|please)\s+(speak|use|switch to)\s+(english)/i, 'en'],
+    [/(puede|puedes)\s+(hablar|usar)\s+(español|spanish)/i, 'es'],
+    [/(puede|puedes)\s+(hablar|usar)\s+(inglés|english)/i, 'en'],
+  ]
+  for (const [re, lang] of patterns) {
+    if (re.test(msg)) return lang
+  }
+  return null
 }
 
 function baseSystemPrompt(config: any, language?: string): string {
