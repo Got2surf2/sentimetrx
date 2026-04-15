@@ -160,7 +160,9 @@ export default function TownHallChat({ sessionId }: Props) {
     const msg = text || input.trim()
     if (!msg && !skip) return
     if (loading || finished) return
-    if (!skip) { setMessages(p => [...p, { who: 'user', text: msg }]); setInput('') }
+    const isDebugCmd = /^#debug\s/i.test(msg)
+    if (!skip && !isDebugCmd) { setMessages(p => [...p, { who: 'user', text: msg }]) }
+    setInput('')
     setLoading(true)
     try {
       const r = await fetch('/api/townhall/chat', {

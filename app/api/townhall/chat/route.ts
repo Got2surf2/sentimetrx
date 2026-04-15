@@ -87,29 +87,31 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Debug mode toggle via #debug PASSWORD — not a turn, swallowed
+  // Debug mode toggle via #debug PASSWORD — not a turn, re-send previous bot message
   if (message && !skipped) {
     const debugMatch = message.trim().match(/^#debug\s+(.+)$/i)
     const debugOff = /^#debug\s+off$/i.test(message.trim())
-    if (debugOff) {
+    if (debugOff || (debugMatch && config?.debugPassword && debugMatch[1].trim() === config.debugPassword)) {
+      // Fetch previous bot message to re-send
+      const { data: lastBotTurn } = await supabase
+        .from('townhall_turns')
+        .select('bot_message')
+        .eq('session_id', session_id)
+        .eq('participant_id', participant_id)
+        .not('bot_message', 'is', null)
+        .order('turn_number', { ascending: false })
+        .limit(1)
+        .single()
+
+      const prevMsg = lastBotTurn?.bot_message || config?.opening_message || 'What\'s on your mind?'
+
       return NextResponse.json({
-        bot_message: 'Debug mode off.',
+        bot_message: prevMsg,
         theme_id, source: 'system', is_final: false, turn_number,
-        debug_mode: false,
+        debug_mode: !debugOff,
       })
     }
-    if (debugMatch) {
-      const pwd = debugMatch[1].trim()
-      const storedPwd = config?.debugPassword
-      if (storedPwd && pwd === storedPwd) {
-        return NextResponse.json({
-          bot_message: 'Debug mode activated. AI thinking will be shown inline.',
-          theme_id, source: 'system', is_final: false, turn_number,
-          debug_mode: true,
-        })
-      }
-      // Wrong password — don't reveal that debug exists, just treat as normal message
-    }
+    // Wrong password — don't reveal that debug exists, just treat as normal message
   }
 
   // Input guardrail: check for harmful content before processing
