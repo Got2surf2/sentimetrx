@@ -1,7 +1,23 @@
 // lib/industryDefaults.ts
 // Single source of truth for industry definitions.
-// INDUSTRY_THEMES in lib/industryThemes.ts uses the same Industry keys.
-// Add a new industry here → it's available in surveys, analytics, and town halls.
+// Surveys, Town Hall, analytics, TextMine, ThemeEditor, shared dashboards
+// all read from this file + lib/industryThemes.ts automatically.
+//
+// ── HOW TO ADD A NEW INDUSTRY ──────────────────────────────────
+//
+// 1. THIS FILE (lib/industryDefaults.ts) — 6 additions, all in order:
+//    a. Industry type        — add 'your_key' to the union
+//    b. INDUSTRY_LABELS      — add human-readable label
+//    c. INDUSTRY_EMOJIS      — add single emoji for dropdowns/cards
+//    d. INDUSTRY_EMOJI_SETS  — add array of ~12 emojis for picker
+//    e. INDUSTRY_DEFAULTS    — add survey config defaults (greeting, prompts, etc.)
+//    f. INDUSTRY_SUGGESTED_QUESTIONS — add suggested multiple-choice questions
+//
+// 2. THEME FILE (lib/industryThemes.ts) — 1 addition:
+//    a. INDUSTRY_THEMES      — add 8-12 theme objects with keywords
+//
+// That's it. No other files to touch.
+// ───────────────────────────────────────────────────────────────
 
 import type { StudyConfig, PsychoQuestion } from './types'
 

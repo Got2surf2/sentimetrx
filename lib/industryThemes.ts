@@ -1,6 +1,9 @@
 // lib/industryThemes.ts
 // SERVER-ONLY -- never import in client components or browser bundles
 // Contains proprietary industry theme libraries for Ana by Datanautix
+//
+// Adding an industry? See the checklist in lib/industryDefaults.ts.
+// Use the same snake_case key from the Industry type as the key here.
 
 export interface IndustryTheme {
   id: string
