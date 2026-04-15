@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
 import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig, DemoField, PsychoQuestion } from '@/lib/types'
@@ -70,6 +70,32 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   // Edit mode state — full config editing
   const [editing, setEditing] = useState(false)
   const [autoEditDone, setAutoEditDone] = useState(false)
+
+  // Description grader
+  const [descGrade, setDescGrade] = useState<{ score: number; suggestion: string } | null>(null)
+  const [grading, setGrading] = useState(false)
+  const gradeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const gradeDescription = useCallback((desc: string, industry?: string) => {
+    if (gradeTimer.current) clearTimeout(gradeTimer.current)
+    if (!desc.trim()) { setDescGrade(null); return }
+    gradeTimer.current = setTimeout(async () => {
+      setGrading(true)
+      try {
+        const res = await fetch('/api/townhall/grade-description', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: desc, industry }),
+        })
+        const data = await res.json()
+        setDescGrade({ score: data.score || 0, suggestion: data.suggestion || '' })
+      } catch {}
+      setGrading(false)
+    }, 1200)
+  }, [])
+
+  // Sensitive topics AI
+  const [suggestingTopics, setSuggestingTopics] = useState(false)
+  const [suggestedCategories, setSuggestedCategories] = useState<{ name: string; terms: string[] }[] | null>(null)
+  const [fanningTerm, setFanningTerm] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editSlug, setEditSlug] = useState('')
   const [editConfig, setEditConfig] = useState<TownHallConfig | null>(null)
@@ -377,15 +403,88 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 </div>
                 <ELabel>Organization Name</ELabel>
                 <EInput value={editConfig.context.org_name} onChange={v => updateContext({ org_name: v })} />
-                <ELabel>Event Description</ELabel>
-                <ETextarea value={editConfig.context.event_description} onChange={v => updateContext({ event_description: v })} rows={2} />
+                <div className="flex items-center gap-2">
+                  <ELabel>Event Description</ELabel>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600">Key field</span>
+                  {grading && <span className="text-[9px] text-gray-400">Grading...</span>}
+                  {!grading && descGrade && descGrade.score > 0 && <DescGradePillSmall score={descGrade.score} />}
+                </div>
+                <p className="text-[10px] text-gray-400 mb-1">Drives AI moderator context, topic suggestions, and sensitive topic detection.</p>
+                <ETextarea value={editConfig.context.event_description} onChange={v => { updateContext({ event_description: v }); gradeDescription(v, editConfig.industry) }} rows={3} />
+                {!grading && descGrade?.suggestion && <p className="text-[10px] text-amber-600">{'\u2728'} {descGrade.suggestion}</p>}
                 <ELabel>Opening Message</ELabel>
                 <ETextarea value={editConfig.opening_message} onChange={v => updateConfig({ opening_message: v })} rows={3} placeholder="Welcome text + opening question shown when a participant joins" />
                 <ELabel>Closing Message</ELabel>
                 <ETextarea value={editConfig.closing_message} onChange={v => updateConfig({ closing_message: v })} rows={2} placeholder="Thank-you message shown when a participant finishes or the session ends" />
                 <ELabel>Tone</ELabel>
                 <EInput value={editConfig.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm and professional" />
-                <ELabel>Sensitive Topics <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
+                <div className="flex items-center gap-2">
+                  <ELabel>Sensitive Topics</ELabel>
+                  <button onClick={async () => {
+                    setSuggestingTopics(true); setSuggestedCategories(null)
+                    try {
+                      const res = await fetch('/api/townhall/suggest-sensitive', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ description: editConfig.context.event_description, industry: editConfig.industry, org_name: editConfig.context.org_name, existing: editConfig.context.sensitive_topics }),
+                      })
+                      const data = await res.json()
+                      if (data.categories) setSuggestedCategories(data.categories)
+                    } catch {}
+                    setSuggestingTopics(false)
+                  }} disabled={suggestingTopics || (!editConfig.context.event_description?.trim() && !editConfig.industry)}
+                    className="text-[9px] font-semibold px-2 py-0.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50"
+                    style={{ background: '#7c3aed' }}>
+                    {suggestingTopics ? '...' : '\u2728 AI Suggest'}
+                  </button>
+                </div>
+                {suggestedCategories && suggestedCategories.length > 0 && (
+                  <div className="p-2 rounded-lg border border-purple-200 bg-purple-50/50 space-y-1.5 mb-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-bold text-purple-600 uppercase">AI Suggestions</span>
+                      <button onClick={() => setSuggestedCategories(null)} className="text-[9px] text-gray-400">&times;</button>
+                    </div>
+                    {suggestedCategories.map((cat, ci) => (
+                      <div key={ci}>
+                        <span className="text-[9px] font-bold text-gray-500">{cat.name}</span>
+                        <div className="flex flex-wrap gap-0.5 mt-0.5">
+                          {cat.terms.map(term => {
+                            const added = (editConfig.context.sensitive_topics || []).includes(term)
+                            return (
+                              <button key={term} disabled={added}
+                                onClick={() => { if (!added) updateContext({ sensitive_topics: [...(editConfig.context.sensitive_topics || []), term] }) }}
+                                className="text-[9px] px-1.5 py-0.5 rounded-full border disabled:opacity-40"
+                                style={{ background: added ? '#e9d5ff' : 'white', borderColor: added ? '#c084fc' : '#e5e7eb', color: added ? '#7c3aed' : '#6b7280' }}>
+                                {added ? '\u2713' : '+'} {term}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {(editConfig.context.sensitive_topics || []).map((tag: string, i: number) => (
+                    <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-50 text-[9px] text-red-600 border border-red-200">
+                      {tag}
+                      <button onClick={async () => {
+                        setFanningTerm(tag)
+                        try {
+                          const res = await fetch('/api/townhall/suggest-sensitive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fan_term: tag }) })
+                          const data = await res.json()
+                          if (data.terms?.length) {
+                            const existing = new Set((editConfig.context.sensitive_topics || []).map((t: string) => t.toLowerCase()))
+                            const newTerms = data.terms.filter((t: string) => !existing.has(t.toLowerCase()))
+                            if (newTerms.length) updateContext({ sensitive_topics: [...(editConfig.context.sensitive_topics || []), ...newTerms] })
+                          }
+                        } catch {}
+                        setFanningTerm(null)
+                      }} disabled={fanningTerm === tag}
+                        className="text-red-300 hover:text-purple-500 disabled:animate-pulse" title="Expand">{fanningTerm === tag ? '...' : '\u2728'}</button>
+                      <button onClick={() => updateContext({ sensitive_topics: (editConfig.context.sensitive_topics || []).filter((_: string, j: number) => j !== i) })} className="text-red-300 hover:text-red-600">&times;</button>
+                    </span>
+                  ))}
+                </div>
                 <EInputCSV value={editConfig.context.sensitive_topics || []} onChange={v => updateContext({ sensitive_topics: v })} />
                 <ELabel>Priority Areas <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
                 <EInputCSV value={editConfig.context.priority_areas || []} onChange={v => updateContext({ priority_areas: v })} />
@@ -770,6 +869,21 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         )}
       </div>
     </Shell>
+  )
+}
+
+// ── Description Grade Pill (compact for edit form) ─────────────────────────────
+const GRADE_COLORS = ['', '#dc2626', '#ea580c', '#d97706', '#65a30d', '#16a34a']
+const GRADE_BG = ['', '#fef2f2', '#fff7ed', '#fffbeb', '#f7fee7', '#f0fdf4']
+const GRADE_LABELS = ['', 'Needs work', 'Basic', 'Adequate', 'Good', 'Excellent']
+
+function DescGradePillSmall({ score }: { score: number }) {
+  const s = Math.max(1, Math.min(5, score))
+  return (
+    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+      style={{ background: GRADE_BG[s], color: GRADE_COLORS[s] }}>
+      {'●'.repeat(s)}{'○'.repeat(5 - s)} {GRADE_LABELS[s]}
+    </span>
   )
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
@@ -95,6 +95,55 @@ function Textarea({ value, onChange, placeholder, rows = 2 }: { value: string; o
       placeholder={placeholder}
       rows={rows}
       className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400 resize-none"
+    />
+  )
+}
+
+// -- Description grade pill ----------------------------------------------------
+
+const GRADE_COLORS = [
+  '', // 0 unused
+  '#dc2626', // 1 red
+  '#ea580c', // 2 orange
+  '#d97706', // 3 amber
+  '#65a30d', // 4 lime
+  '#16a34a', // 5 green
+]
+const GRADE_BG = [
+  '',
+  '#fef2f2',
+  '#fff7ed',
+  '#fffbeb',
+  '#f7fee7',
+  '#f0fdf4',
+]
+const GRADE_LABELS = ['', 'Needs work', 'Basic', 'Adequate', 'Good', 'Excellent']
+
+function DescGradePill({ score }: { score: number }) {
+  const s = Math.max(1, Math.min(5, score))
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+      style={{ background: GRADE_BG[s], color: GRADE_COLORS[s] }}>
+      {'●'.repeat(s)}{'○'.repeat(5 - s)} {GRADE_LABELS[s]}
+    </span>
+  )
+}
+
+// -- Sensitive topic input (auto-fans on add) ---------------------------------
+
+function SensitiveInput({ onAdd, placeholder }: { onAdd: (term: string) => void; placeholder?: string }) {
+  const [input, setInput] = useState('')
+  const add = () => {
+    const term = input.trim().toLowerCase()
+    if (term) { onAdd(term); setInput('') }
+  }
+  return (
+    <input type="text" value={input}
+      onChange={e => setInput(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+      onBlur={add}
+      placeholder={placeholder}
+      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400"
     />
   )
 }
@@ -268,6 +317,69 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Description grader
+  const [descGrade, setDescGrade] = useState<{ score: number; suggestion: string } | null>(null)
+  const [grading, setGrading] = useState(false)
+  const gradeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const gradeDescription = useCallback((desc: string, industry?: string) => {
+    if (gradeTimer.current) clearTimeout(gradeTimer.current)
+    if (!desc.trim()) { setDescGrade(null); return }
+    gradeTimer.current = setTimeout(async () => {
+      setGrading(true)
+      try {
+        const res = await fetch('/api/townhall/grade-description', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: desc, industry }),
+        })
+        const data = await res.json()
+        setDescGrade({ score: data.score || 0, suggestion: data.suggestion || '' })
+      } catch {}
+      setGrading(false)
+    }, 1200)
+  }, [])
+
+  // Sensitive topics AI
+  const [suggestingTopics, setSuggestingTopics] = useState(false)
+  const [suggestedCategories, setSuggestedCategories] = useState<{ name: string; terms: string[] }[] | null>(null)
+  const [fanningTerm, setFanningTerm] = useState<string | null>(null)
+
+  const suggestSensitiveTopics = async () => {
+    setSuggestingTopics(true)
+    setSuggestedCategories(null)
+    try {
+      const res = await fetch('/api/townhall/suggest-sensitive', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: config.context.event_description,
+          industry: config.industry,
+          org_name: config.context.org_name,
+          existing: config.context.sensitive_topics,
+        }),
+      })
+      const data = await res.json()
+      if (data.categories) setSuggestedCategories(data.categories)
+    } catch {}
+    setSuggestingTopics(false)
+  }
+
+  const fanOutTerm = async (term: string) => {
+    setFanningTerm(term)
+    try {
+      const res = await fetch('/api/townhall/suggest-sensitive', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fan_term: term }),
+      })
+      const data = await res.json()
+      if (data.terms?.length) {
+        const existing = new Set(config.context.sensitive_topics.map((t: string) => t.toLowerCase()))
+        const newTerms = data.terms.filter((t: string) => !existing.has(t.toLowerCase()))
+        if (newTerms.length) updateContext({ sensitive_topics: [...config.context.sensitive_topics, ...newTerms] })
+      }
+    } catch {}
+    setFanningTerm(null)
+  }
+
   // Step management
   const [step, setStep] = useState(0)
   const STEPS = ['Basics', 'Discussion Guide', 'Settings', 'Review']
@@ -431,13 +543,24 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div>
-                <Label>Event description</Label>
+                <div className="flex items-center gap-2 mb-1">
+                  <Label>Event description</Label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600">Most important field</span>
+                  {grading && <span className="text-[10px] text-gray-400">Grading...</span>}
+                  {!grading && descGrade && descGrade.score > 0 && (
+                    <DescGradePill score={descGrade.score} />
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400 mb-1.5">This description drives the AI moderator's context, topic suggestions, and sensitive topic detection. The more detail you provide, the better the AI performs.</p>
                 <Textarea
                   value={config.context.event_description}
-                  onChange={v => updateContext({ event_description: v })}
-                  placeholder="e.g. Community input session for the 2027 Neighborhood Development Plan"
-                  rows={3}
+                  onChange={v => { updateContext({ event_description: v }); gradeDescription(v, config.industry) }}
+                  placeholder="e.g. Community input session for the 2027 Neighborhood Development Plan. We're gathering resident feedback on transportation, parks, housing density, and school zoning. Audience is ~200 neighborhood residents. Goal: prioritize which projects to fund in the 2027-2029 capital budget."
+                  rows={4}
                 />
+                {!grading && descGrade?.suggestion && (
+                  <p className="text-[11px] text-amber-600 mt-1">{'\u2728'} {descGrade.suggestion}</p>
+                )}
               </div>
 
               <div>
@@ -466,8 +589,74 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div>
-                <Label sub="Topics the AI should avoid — press Enter to add">Sensitive topics</Label>
-                <TagsInput value={config.context.sensitive_topics} onChange={v => updateContext({ sensitive_topics: v })} placeholder="e.g. personal income" />
+                <div className="flex items-center gap-2 mb-1">
+                  <Label sub="Topics the AI should never ask about">Sensitive topics</Label>
+                  <button onClick={suggestSensitiveTopics}
+                    disabled={suggestingTopics || (!config.context.event_description?.trim() && !config.industry)}
+                    className="text-[10px] font-semibold px-2.5 py-1 rounded-lg text-white hover:opacity-90 disabled:opacity-50"
+                    style={{ background: '#7c3aed' }}>
+                    {suggestingTopics ? 'Suggesting...' : '\u2728 AI Suggest'}
+                  </button>
+                </div>
+
+                {/* AI suggested categories */}
+                {suggestedCategories && suggestedCategories.length > 0 && (
+                  <div className="mb-3 p-3 rounded-xl border-2 border-purple-200 bg-purple-50/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-purple-600 uppercase">AI Suggestions — click to add</span>
+                      <button onClick={() => setSuggestedCategories(null)} className="text-[10px] text-gray-400 hover:text-gray-600">&times; Close</button>
+                    </div>
+                    {suggestedCategories.map((cat, ci) => (
+                      <div key={ci}>
+                        <span className="text-[10px] font-bold text-gray-500">{cat.name}</span>
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {cat.terms.map(term => {
+                            const added = config.context.sensitive_topics.includes(term)
+                            return (
+                              <button key={term} disabled={added}
+                                onClick={() => { if (!added) updateContext({ sensitive_topics: [...config.context.sensitive_topics, term] }) }}
+                                className="text-[10px] px-2 py-0.5 rounded-full border transition-all disabled:opacity-40"
+                                style={{ background: added ? '#e9d5ff' : 'white', borderColor: added ? '#c084fc' : '#e5e7eb', color: added ? '#7c3aed' : '#6b7280', cursor: added ? 'default' : 'pointer' }}>
+                                {added ? '\u2713 ' : '+ '}{term}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={() => {
+                      const all = suggestedCategories.flatMap(c => c.terms)
+                      const existing = new Set(config.context.sensitive_topics.map(t => t.toLowerCase()))
+                      const newTerms = all.filter(t => !existing.has(t.toLowerCase()))
+                      updateContext({ sensitive_topics: [...config.context.sensitive_topics, ...newTerms] })
+                    }} className="text-[10px] font-semibold text-purple-600 hover:text-purple-800 mt-1">
+                      + Add all suggestions
+                    </button>
+                  </div>
+                )}
+
+                {/* Current tags with fan-out */}
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  {config.context.sensitive_topics.map((tag: string, i: number) => (
+                    <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-xs text-red-600 border border-red-200">
+                      {tag}
+                      <button onClick={() => fanOutTerm(tag)} disabled={fanningTerm === tag}
+                        className="text-red-300 hover:text-purple-500 disabled:animate-pulse" title="Expand with related terms">
+                        {fanningTerm === tag ? '...' : '\u2728'}
+                      </button>
+                      <button onClick={() => updateContext({ sensitive_topics: config.context.sensitive_topics.filter((_: string, j: number) => j !== i) })} className="text-red-300 hover:text-red-600">&times;</button>
+                    </span>
+                  ))}
+                </div>
+                <SensitiveInput
+                  onAdd={(term) => {
+                    if (!config.context.sensitive_topics.includes(term)) {
+                      updateContext({ sensitive_topics: [...config.context.sensitive_topics, term] })
+                      fanOutTerm(term)
+                    }
+                  }}
+                  placeholder="Type a term and press Enter — AI auto-expands it"
+                />
               </div>
 
               <div>
