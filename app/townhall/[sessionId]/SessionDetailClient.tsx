@@ -108,9 +108,12 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     return () => clearInterval(interval)
   }, [fetchData])
 
-  // Auto-enter edit mode on first load
+  // Auto-enter edit mode on first load — only for setup sessions (not active/paused/ended)
   useEffect(() => {
-    if (session && !autoEditDone) { setAutoEditDone(true); startEdit() }
+    if (session && !autoEditDone) {
+      setAutoEditDone(true)
+      if (session.status === 'setup') startEdit()
+    }
   }, [session, autoEditDone])
 
   // Start editing — deep-copy current config
@@ -250,6 +253,12 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
           </div>
 
           <div className="flex items-center gap-2">
+            {!editing && (
+              <button onClick={startEdit}
+                className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
+                {'\u270F\uFE0F'} Edit
+              </button>
+            )}
             {isSetup && (
               <button onClick={() => handleSessionAction('start')} disabled={actionLoading === 'start'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
