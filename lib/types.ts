@@ -940,6 +940,8 @@ export interface TownHallTheme {
   response_target:  number
   response_count:   number
   mention_count:    number
+  keywords:         string[]
+  sentiment:        string | null
   example_quote:    string | null
   detected_at:      string | null
   approved_at:      string | null

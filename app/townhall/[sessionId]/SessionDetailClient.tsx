@@ -30,6 +30,8 @@ interface Stats {
 }
 
 const HERMES = '#E8632A'
+const SENT_COLOR: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280' }
+const SENT_BG: Record<string, string> = { positive: '#f0fdf4', negative: '#fef2f2', mixed: '#fffbeb', neutral: '#f3f4f6' }
 
 const STATE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
   active:    { bg: '#dcfce7', text: '#166534', label: 'Active' },
@@ -635,39 +637,16 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
               {/* ── AI SUGGESTED (show above active if any exist) ── */}
               {!isSetup && suggestedTopics.length > 0 && (
-                <div className="bg-white rounded-xl border-2 border-orange-300 p-5 animate-pulse-subtle">
+                <div className="rounded-xl border-2 border-orange-300 p-5" style={{ background: '#fffaf5' }}>
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse" />
-                    <h3 className="text-sm font-bold text-orange-600">AI Suggested</h3>
+                    <h3 className="text-sm font-bold text-orange-600">AI Recommended</h3>
                     <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{suggestedTopics.length} new</span>
                   </div>
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3">
                     {suggestedTopics.map(t => (
-                      <div key={t.id} className="border border-orange-100 rounded-lg p-3 bg-orange-50/50">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-semibold text-gray-700">{t.label}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 font-medium">AI Detected</span>
-                        </div>
-                        {t.description && <p className="text-xs text-gray-500 mb-2">{t.description}</p>}
-                        {(t as any).keywords?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {((t as any).keywords || []).slice(0, 5).map((kw: string) => (
-                              <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{kw}</span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex gap-2 mt-2">
-                          <button onClick={() => handleThemeAction(t.id, 'approve')}
-                            className="text-[11px] font-semibold px-3 py-1 rounded-lg text-white hover:opacity-90"
-                            style={{ background: '#22c55e' }}>
-                            Approve
-                          </button>
-                          <button onClick={() => handleThemeAction(t.id, 'dismiss')}
-                            className="text-[11px] font-medium px-3 py-1 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">
-                            Dismiss
-                          </button>
-                        </div>
-                      </div>
+                      <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
                     ))}
                   </div>
                 </div>
@@ -695,25 +674,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     )}
                   </div>
                 ) : activeTopics.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3">
                     {activeTopics.map(t => (
-                      <div key={t.id} className="border border-gray-100 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-700">{t.label}</span>
-                            {t.state === 'paused' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Paused</span>}
-                            {t.source !== 'guide' && <span className="text-[10px] text-gray-300">{t.source === 'custom' ? 'Custom' : 'Detected'}</span>}
-                          </div>
-                        </div>
-                        <ProgressBar current={t.response_count} target={t.response_target} />
-                        {isActive && (
-                          <div className="flex gap-2 mt-2">
-                            {t.state === 'active' && <button onClick={() => handleThemeAction(t.id, 'pause')} className="text-[10px] text-gray-400 hover:text-gray-600">Pause</button>}
-                            {t.state === 'paused' && <button onClick={() => handleThemeAction(t.id, 'resume')} className="text-[10px] text-orange-500 hover:text-orange-700">Resume</button>}
-                            <button onClick={() => handleThemeAction(t.id, 'close')} className="text-[10px] text-gray-400 hover:text-red-500">Close</button>
-                          </div>
-                        )}
-                      </div>
+                      <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
                     ))}
                   </div>
                 ) : (
@@ -729,18 +693,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-blue-700">Completed</h3>
                     <span className="text-[10px] text-blue-400">{completedTopics.length} topics</span>
                   </div>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-3">
                     {completedTopics.map(t => (
-                      <div key={t.id} className="border border-blue-50 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-700">{t.label}</span>
-                            {t.source !== 'guide' && <span className="text-[10px] text-gray-300">{t.source === 'custom' ? 'Custom' : 'Detected'}</span>}
-                          </div>
-                          <span className="text-[10px] text-blue-500 font-medium">{t.response_count} responses</span>
-                        </div>
-                        <ProgressBar current={t.response_count} target={t.response_target} />
-                      </div>
+                      <ThemeCard key={t.id} theme={t} isActive={false} variant="completed"
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
                     ))}
                   </div>
                 </div>
@@ -823,6 +779,104 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         )}
       </div>
     </Shell>
+  )
+}
+
+// ── Rich Theme Card (matches analytics style) ─────────────────────────────────
+function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
+  theme: TownHallTheme
+  isActive: boolean
+  variant: 'suggested' | 'active' | 'completed'
+  onAction: (action: string) => void
+  loading: boolean
+}) {
+  const sent = t.sentiment || 'neutral'
+  const keywords = t.keywords || []
+  const isSuggested = variant === 'suggested'
+  const isAI = t.source === 'auto_detected'
+
+  return (
+    <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : 'border-gray-200 bg-white'}`}>
+      {/* Color bar */}
+      <div style={{ height: 4, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />
+      <div className="p-4">
+        {/* Header: label + badges */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-bold text-gray-800">{t.label}</span>
+          <div className="flex items-center gap-1.5">
+            {/* Sentiment pill */}
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
+              style={{ background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral }}>
+              {sent}
+            </span>
+            {/* Source pill */}
+            {isAI && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-600">
+                AI Recommended
+              </span>
+            )}
+            {t.source === 'custom' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Custom</span>
+            )}
+            {t.state === 'paused' && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Paused</span>
+            )}
+          </div>
+        </div>
+
+        {/* Description */}
+        {t.description && <p className="text-xs text-gray-500 mb-2">{t.description}</p>}
+
+        {/* Progress bar */}
+        <ProgressBar current={t.response_count} target={t.response_target} />
+
+        {/* Keywords */}
+        {keywords.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {keywords.slice(0, 8).map(kw => (
+              <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{kw}</span>
+            ))}
+            {keywords.length > 8 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">+{keywords.length - 8}</span>
+            )}
+          </div>
+        )}
+
+        {/* Example quote */}
+        {t.example_quote && (
+          <div className="mt-2 pl-2 border-l-2 border-gray-200">
+            <p className="text-xs text-gray-500 italic line-clamp-2">{'\u201C'}{t.example_quote.slice(0, 150)}{t.example_quote.length > 150 ? '...' : ''}{'\u201D'}</p>
+          </div>
+        )}
+
+        {/* Mention count */}
+        {t.mention_count > 0 && (
+          <div className="mt-2 text-[10px] text-gray-400">{t.mention_count} mentions</div>
+        )}
+
+        {/* Action buttons */}
+        {isSuggested && (
+          <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+            <button onClick={() => onAction('approve')} disabled={loading}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50"
+              style={{ background: '#22c55e' }}>
+              Approve
+            </button>
+            <button onClick={() => onAction('dismiss')} disabled={loading}
+              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200 disabled:opacity-50">
+              Dismiss
+            </button>
+          </div>
+        )}
+        {variant === 'active' && isActive && (
+          <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+            {t.state === 'active' && <button onClick={() => onAction('pause')} disabled={loading} className="text-[10px] text-gray-400 hover:text-gray-600 disabled:opacity-50">Pause</button>}
+            {t.state === 'paused' && <button onClick={() => onAction('resume')} disabled={loading} className="text-[10px] text-orange-500 hover:text-orange-700 disabled:opacity-50">Resume</button>}
+            <button onClick={() => onAction('close')} disabled={loading} className="text-[10px] text-gray-400 hover:text-red-500 disabled:opacity-50">Close</button>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
