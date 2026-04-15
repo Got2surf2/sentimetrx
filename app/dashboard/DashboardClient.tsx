@@ -441,7 +441,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
 
             {/* Row 3: Edit, Duplicate, Share */}
             {canEdit && (<>
-              <Link href={'/studies/' + study.id + '/edit'}
+              <Link href={'/studies/' + study.id + '/edit'} target="_blank"
                 className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                 style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
                 Edit
