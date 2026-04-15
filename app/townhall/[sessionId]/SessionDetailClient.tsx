@@ -163,7 +163,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   }
 
   const addGuideTopic = () => {
-    setEditGuide(g => [...g, { id: generateId(), label: '', description: '', opening_question: '', follow_up_angles: [], response_target: 30 }])
+    setEditGuide(g => [...g, { id: generateId(), label: '', description: '', opening_question: '', follow_up_angles: [], keywords: [], response_target: 30 }])
   }
   const removeGuideTopic = (idx: number) => { setEditGuide(g => g.filter((_, i) => i !== idx)) }
   const updateGuideTopic = (idx: number, partial: Partial<TownHallGuideTopic>) => {
@@ -402,21 +402,12 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               <EditSection title={'Discussion Guide (' + editGuide.length + ' topics)'} sectionKey="guide" open={openSections} toggle={toggleSection}>
                 <div className="space-y-3">
                   {editGuide.map((t, i) => (
-                    <div key={t.id} className="border border-gray-100 rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">Topic {i + 1}</span>
-                        <button onClick={() => removeGuideTopic(i)} className="text-[10px] text-red-400 hover:text-red-600">Remove</button>
-                      </div>
-                      <EInput value={t.label} onChange={v => updateGuideTopic(i, { label: v })} placeholder="Topic label" />
-                      <EInput value={t.description || ''} onChange={v => updateGuideTopic(i, { description: v })} placeholder="Description (context for AI)" />
-                      <ETextarea value={t.opening_question} onChange={v => updateGuideTopic(i, { opening_question: v })} placeholder="Opening question" rows={2} />
-                      <EInputCSV value={t.follow_up_angles || []} onChange={v => updateGuideTopic(i, { follow_up_angles: v })} placeholder="Follow-up angles (comma-separated)" />
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-gray-400">Target:</span>
-                        <input type="number" min={5} max={500} value={t.response_target} onChange={e => updateGuideTopic(i, { response_target: parseInt(e.target.value) || 30 })}
-                          className="w-20 px-2 py-1 rounded border border-gray-200 text-xs" />
-                      </div>
-                    </div>
+                    <EditTopicCard key={t.id} topic={t} index={i}
+                      onChange={partial => updateGuideTopic(i, partial)}
+                      onRemove={() => removeGuideTopic(i)}
+                      industry={editConfig.industry}
+                      orgName={editConfig.context.org_name}
+                      eventDesc={editConfig.context.event_description} />
                   ))}
                 </div>
                 <button onClick={addGuideTopic}
@@ -779,6 +770,71 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         )}
       </div>
     </Shell>
+  )
+}
+
+// ── Edit Topic Card with AI Generate ───────────────────────────────────────────
+function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName, eventDesc }: {
+  topic: TownHallGuideTopic; index: number
+  onChange: (partial: Partial<TownHallGuideTopic>) => void
+  onRemove: () => void
+  industry?: string; orgName?: string; eventDesc?: string
+}) {
+  const [generating, setGenerating] = useState(false)
+  const generateWithAI = async () => {
+    if (!t.label.trim()) return
+    setGenerating(true)
+    try {
+      const res = await fetch('/api/townhall/suggest-topic', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: t.label, industry, org_name: orgName, event_description: eventDesc }),
+      })
+      const data = await res.json()
+      if (!data.error) onChange({
+        description: data.description || t.description,
+        opening_question: data.opening_question || t.opening_question,
+        follow_up_angles: data.follow_up_angles?.length ? data.follow_up_angles : t.follow_up_angles,
+        keywords: data.keywords?.length ? data.keywords : t.keywords,
+      })
+    } catch {}
+    setGenerating(false)
+  }
+  return (
+    <div className="border border-gray-100 rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold text-gray-400 uppercase">Topic {index + 1}</span>
+        <button onClick={onRemove} className="text-[10px] text-red-400 hover:text-red-600">Remove</button>
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1"><EInput value={t.label} onChange={v => onChange({ label: v })} placeholder="Topic label" /></div>
+        <button onClick={generateWithAI} disabled={generating || !t.label.trim()}
+          className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold text-white hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+          style={{ background: '#7c3aed' }}>
+          {generating ? '...' : '\u2728 Generate'}
+        </button>
+      </div>
+      <EInput value={t.description || ''} onChange={v => onChange({ description: v })} placeholder="Description (context for AI)" />
+      <ETextarea value={t.opening_question} onChange={v => onChange({ opening_question: v })} placeholder="Opening question" rows={2} />
+      <EInputCSV value={t.follow_up_angles || []} onChange={v => onChange({ follow_up_angles: v })} placeholder="Follow-up angles (comma-separated)" />
+      {t.keywords?.length > 0 && (
+        <div>
+          <label className="text-[10px] font-semibold text-gray-500 block mb-1">Keywords</label>
+          <div className="flex flex-wrap gap-1">
+            {t.keywords.map(kw => (
+              <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 flex items-center gap-0.5">
+                {kw}
+                <button onClick={() => onChange({ keywords: t.keywords.filter(k => k !== kw) })} className="text-purple-300 hover:text-red-400">&times;</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-gray-400">Target:</span>
+        <input type="number" min={5} max={500} value={t.response_target} onChange={e => onChange({ response_target: parseInt(e.target.value) || 30 })}
+          className="w-20 px-2 py-1 rounded border border-gray-200 text-xs" />
+      </div>
+    </div>
   )
 }
 

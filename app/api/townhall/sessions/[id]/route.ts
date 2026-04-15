@@ -317,6 +317,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         description: topic.description || null,
         question: topic.opening_question,
         follow_up_angles: topic.follow_up_angles || [],
+        keywords: topic.keywords || [],
         state: 'active',
         source: 'guide',
         response_target: topic.response_target || session.config?.engine?.default_response_target || 30,

@@ -855,6 +855,7 @@ export interface TownHallGuideTopic {
   description:       string
   opening_question:  string
   follow_up_angles:  string[]
+  keywords:          string[]
   response_target:   number
 }
 

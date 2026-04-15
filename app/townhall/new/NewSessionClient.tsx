@@ -28,6 +28,7 @@ const DEFAULT_TOPIC: () => TownHallGuideTopic = () => ({
   description: '',
   opening_question: '',
   follow_up_angles: [],
+  keywords: [],
   response_target: 30,
 })
 
@@ -100,13 +101,39 @@ function Textarea({ value, onChange, placeholder, rows = 2 }: { value: string; o
 
 // -- Topic card ---------------------------------------------------------------
 
-function TopicCard({ topic, index, onChange, onRemove }: {
+function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventDesc }: {
   topic: TownHallGuideTopic
   index: number
   onChange: (t: TownHallGuideTopic) => void
   onRemove: () => void
+  industry?: string
+  orgName?: string
+  eventDesc?: string
 }) {
   const [anglesText, setAnglesText] = useState(topic.follow_up_angles.join('\n'))
+  const [generating, setGenerating] = useState(false)
+
+  const generateWithAI = async () => {
+    if (!topic.label.trim()) return
+    setGenerating(true)
+    try {
+      const res = await fetch('/api/townhall/suggest-topic', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: topic.label, industry, org_name: orgName, event_description: eventDesc }),
+      })
+      const data = await res.json()
+      if (data.error) return
+      onChange({
+        ...topic,
+        description: data.description || topic.description,
+        opening_question: data.opening_question || topic.opening_question,
+        follow_up_angles: data.follow_up_angles?.length ? data.follow_up_angles : topic.follow_up_angles,
+        keywords: data.keywords?.length ? data.keywords : topic.keywords,
+      })
+      if (data.follow_up_angles?.length) setAnglesText(data.follow_up_angles.join('\n'))
+    } catch {}
+    setGenerating(false)
+  }
 
   return (
     <div className="border border-gray-200 rounded-xl p-4 bg-white">
@@ -118,7 +145,17 @@ function TopicCard({ topic, index, onChange, onRemove }: {
       <div className="space-y-3">
         <div>
           <Label>Label</Label>
-          <Input value={topic.label} onChange={v => onChange({ ...topic, label: v })} placeholder="e.g. Transportation" />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input value={topic.label} onChange={v => onChange({ ...topic, label: v })} placeholder="e.g. Transportation" />
+            </div>
+            <button onClick={generateWithAI} disabled={generating || !topic.label.trim()}
+              className="px-3 py-2 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 flex-shrink-0 flex items-center gap-1.5"
+              style={{ background: '#7c3aed' }}
+              title="AI fills in description, question, keywords, and follow-up angles">
+              {generating ? 'Generating...' : '\u2728 Generate'}
+            </button>
+          </div>
         </div>
 
         <div>
@@ -146,6 +183,23 @@ function TopicCard({ topic, index, onChange, onRemove }: {
             placeholder={"What specific changes would help most?\nHow does this affect your daily routine?"}
             rows={3}
           />
+        </div>
+
+        {/* Keywords */}
+        <div>
+          <Label sub="Used for theme matching — AI generates these automatically">Keywords</Label>
+          {topic.keywords?.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {topic.keywords.map(kw => (
+                <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 flex items-center gap-1">
+                  {kw}
+                  <button onClick={() => onChange({ ...topic, keywords: topic.keywords.filter(k => k !== kw) })} className="text-purple-300 hover:text-red-400">&times;</button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-400 italic">Click Generate to add keywords</p>
+          )}
         </div>
 
         <div>
@@ -439,6 +493,9 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                     index={i}
                     onChange={t => updateTopic(i, t)}
                     onRemove={() => removeTopic(i)}
+                    industry={config.industry}
+                    orgName={config.context.org_name}
+                    eventDesc={config.context.event_description}
                   />
                 ))}
               </div>
