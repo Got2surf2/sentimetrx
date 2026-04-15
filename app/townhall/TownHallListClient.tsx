@@ -281,6 +281,16 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         </div>
                       )}
 
+                      {/* Session ID — admin only, click to copy (for debug mode) */}
+                      {user.isAdmin && (
+                        <button
+                          onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(s.id); (e.currentTarget as HTMLElement).textContent = '\u2713 Copied!'; setTimeout(() => { (e.currentTarget as HTMLElement).textContent = 'ID: ' + s.id }, 1500) }}
+                          className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
+                          title="Click to copy session ID (for debug mode)">
+                          ID: {s.id}
+                        </button>
+                      )}
+
                       {/* Participant link — always visible */}
                       <button
                         onClick={e => {

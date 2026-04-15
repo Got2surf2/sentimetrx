@@ -358,13 +358,15 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
             </div>
           )}
 
-          {/* GUID — click to copy */}
-          <button
-            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); (e.currentTarget as HTMLElement).textContent = '✓ Copied!' ; setTimeout(() => { (e.currentTarget as HTMLElement).textContent = 'GUID: ' + study.guid }, 1500) }}
-            className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
-            title="Click to copy study GUID">
-            GUID: {study.guid}
-          </button>
+          {/* GUID — admin only, click to copy (for debug mode) */}
+          {isAdmin && (
+            <button
+              onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); (e.currentTarget as HTMLElement).textContent = '✓ Copied!' ; setTimeout(() => { (e.currentTarget as HTMLElement).textContent = 'GUID: ' + study.guid }, 1500) }}
+              className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
+              title="Click to copy study GUID (for debug mode)">
+              GUID: {study.guid}
+            </button>
+          )}
 
           {/* Copy survey link */}
           {status === 'active' && (
