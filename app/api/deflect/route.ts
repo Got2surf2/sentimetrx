@@ -16,6 +16,7 @@ interface DeflectRequest {
   linkUrl?:     string    // e.g. "https://example.com/faq" — optional
   customMessage?: string  // user-written deflection instruction or exact message
   language?:    string    // language code for non-English surveys
+  testing?:     boolean   // testing mode: return debug reasoning
 }
 
 export async function POST(req: NextRequest) {
@@ -81,7 +82,7 @@ ${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. 
     let text = result.text?.trim() || 'NONE'
 
     if (text === 'NONE' || text.length < 5) {
-      return NextResponse.json({ deflection: null })
+      return NextResponse.json({ deflection: null, ...(body.testing ? { _debug: ['DEFLECT CHECK: AI returned NONE — response is on-topic feedback, no deflection needed'] } : {}) })
     }
 
     // Strip any leaked reasoning — if the model included analysis before the actual message
@@ -112,7 +113,13 @@ ${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. 
       ? text.replace('{{LINK}}', `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeText}</a>`)
       : text.replace(/\{\{LINK\}\}/g, '')
 
-    return NextResponse.json({ deflection })
+    const debugInfo = body.testing ? [
+      `Input: "${answer.slice(0, 80)}${answer.length > 80 ? '...' : ''}"`,
+      `AI decided: DEFLECT`,
+      `Generated: "${deflection.replace(/<[^>]+>/g, '').slice(0, 100)}"`,
+    ] : null
+
+    return NextResponse.json({ deflection, ...(debugInfo ? { _debug: debugInfo } : {}) })
 
   } catch (err) {
     console.error('Deflect API error:', err)

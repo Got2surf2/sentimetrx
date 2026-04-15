@@ -256,6 +256,23 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
         )}
       </Section>
 
+      {/* Testing mode */}
+      <Section title="Testing mode" description="Expose AI reasoning inline with bot messages — useful for demos and client walkthroughs.">
+        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Show AI thinking</div>
+            <div className="text-xs text-gray-500 mt-0.5">Clarifier decisions, deflection reasoning, and sentiment detection shown below each bot message</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => updateConfig({ testing: !c.testing })}
+            className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (c.testing ? 'bg-amber-500' : 'bg-gray-200')}
+          >
+            <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (c.testing ? 'translate-x-5' : 'translate-x-0')} />
+          </button>
+        </div>
+      </Section>
+
       <NavButtons onBack={onBack} onNext={onNext} nextLabel="Next: Custom Questions" />
     </div>
   )

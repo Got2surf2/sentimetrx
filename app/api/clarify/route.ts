@@ -19,6 +19,7 @@ interface ClarifyRequest {
   priorAnswers:    Record<string, string>
   industry?:       string
   language?:       string
+  testing?:        boolean
 }
 
 export async function POST(req: NextRequest) {
@@ -94,17 +95,23 @@ Generate a targeted follow-up question or return SKIP.`
     const text = result.text?.trim() || 'SKIP'
 
     if (text === 'SKIP') {
-      return NextResponse.json({ question: null })
+      return NextResponse.json({ question: null, ...(body.testing ? { _debug: ['AI returned SKIP — response was sufficient, no clarification needed'] } : {}) })
     }
 
     const clean = extractQuestion(text)
 
     // ── Output guardrail: validate before returning ────────────────────
     if (!isOutputSafe(clean)) {
-      return NextResponse.json({ question: null })
+      return NextResponse.json({ question: null, ...(body.testing ? { _debug: ['AI generated a response but it failed the output safety guardrail'] } : {}) })
     }
 
-    return NextResponse.json({ question: clean })
+    const debug = body.testing ? [
+      `Input: "${answer.slice(0, 80)}${answer.length > 80 ? '...' : ''}"`,
+      `AI decided: CLARIFY`,
+      `Generated: "${clean}"`,
+    ] : null
+
+    return NextResponse.json({ question: clean, ...(debug ? { _debug: debug } : {}) })
 
   } catch (err) {
     console.error('Clarify API error:', err)

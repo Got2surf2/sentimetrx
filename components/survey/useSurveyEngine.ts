@@ -235,6 +235,25 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     scrollBottom()
   }, [chatRef, config, study.bot_emoji, scrollBottom])
 
+  // Testing mode: show AI reasoning panel below the latest bot message
+  const showDebugPanel = useCallback((lines: string[]) => {
+    if (!chatRef.current || !config.testing) return
+    const panel = document.createElement('div')
+    panel.style.cssText = 'margin:4px 0 8px 36px;padding:8px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:12px;font-size:11px;color:#92400e;line-height:1.5;max-width:80%;'
+    const label = document.createElement('div')
+    label.style.cssText = 'font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;color:#78350f;'
+    label.textContent = 'AI Thinking'
+    panel.appendChild(label)
+    for (const line of lines) {
+      const p = document.createElement('div')
+      p.textContent = line
+      p.style.cssText = 'margin-bottom:2px;'
+      panel.appendChild(p)
+    }
+    chatRef.current.appendChild(panel)
+    scrollBottom()
+  }, [chatRef, config.testing, scrollBottom])
+
   const typingSpeed = config.typingSpeed ?? 0.5
   // Consistent duration based on message length: ~30ms per char, clamped 400–1800ms
   const typingDur = (text: string) => Math.max(400, Math.min(1800, text.length * 30))
@@ -385,13 +404,18 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             linkUrl:       qr.linkUrl || '',
             customMessage: qr.message || '',
             language:      activeLang.current !== 'en' ? activeLang.current : undefined,
+            testing:       config.testing || undefined,
           }),
         }).then(r => r.ok ? r.json() : null),
         800,
       )
-      if (!data?.deflection) return false
+      if (!data?.deflection) {
+        if (data?._debug && config.testing) showDebugPanel(data._debug)
+        return false
+      }
 
       clearInput()
+      if (data._debug && config.testing) showDebugPanel(data._debug)
       // Log the deflection (strip HTML for clean log)
       const plainText = data.deflection.replace(/<[^>]+>/g, '')
       state.current.conversationLog.push({ who: 'bot', text: plainText, ai: true })
@@ -456,10 +480,12 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           npsScore:        s.npsScore || 3,
           priorAnswers,
           language:        activeLang.current !== 'en' ? activeLang.current : undefined,
+          testing:         config.testing || undefined,
         }),
       })
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
+      if (data._debug && config.testing) showDebugPanel(data._debug)
       if (data.question) return data.question
     } catch {
       // AI failed -- fall through to keyword matching

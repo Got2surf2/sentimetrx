@@ -272,6 +272,9 @@ export interface StudyConfig {
   // Typing animation duration multiplier (0.5 = default, 0.25 = minimal, 1.0 = deliberate, 2.0 = slow)
   typingSpeed?:       number           // default 0.5
 
+  // Testing mode — exposes AI thinking/reasoning inline with bot messages
+  testing?:           boolean          // default false
+
   // Multi-language support
   languages?:         string[]         // enabled language codes, e.g. ['en', 'es', 'fr']
   translations?:      Record<string, StudyTranslation> // keyed by language code
@@ -898,6 +901,7 @@ export interface TownHallConfig {
   demoFields?:         DemoField[]
   psychographicBank?:  PsychoQuestion[]
   psychoCount?:        number   // how many psycho questions to randomly show (default 3)
+  testing?:            boolean  // testing mode: bot messages include AI thinking/reasoning inline
 }
 
 export type TownHallSessionStatus = 'setup' | 'active' | 'paused' | 'ended'
