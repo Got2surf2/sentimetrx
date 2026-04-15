@@ -106,10 +106,11 @@ Generate a targeted follow-up question or return SKIP.`
     }
 
     const debug = body.testing ? [
-      `Input: "${answer.slice(0, 80)}${answer.length > 80 ? '...' : ''}"`,
-      `AI decided: CLARIFY`,
-      `Generated: "${clean}"`,
-    ] : null
+      'CLARIFIER FIRED on "' + body.questionKey + '"',
+      'Sentiment: ' + body.sentiment + ' | Rating: ' + body.experienceScore + '/5 | NPS: ' + body.npsScore + '/5',
+      'Answer length: ' + body.answer.split(/\s+/).length + ' words',
+      'AI raw: "' + text.slice(0, 200) + '"',
+    ] : undefined
 
     return NextResponse.json({ question: clean, ...(debug ? { _debug: debug } : {}) })
 

@@ -13,8 +13,10 @@ export interface IndustryTheme {
   relatedThemes: string[]
 }
 
+// Keys match the Industry type in lib/industryDefaults.ts — single source of truth.
+// Use INDUSTRY_LABELS[key] for display names.
 export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
-  "SaaS / Software": [
+  saas_software: [
     {id:"s1",name:"Onboarding & Setup",keywords:["onboarding","setup","getting started","wizard","configure","install","tutorial","guide","walkthrough","first time","activation","initial","sign up","registration","welcome"],sentiment:"mixed",description:"User experience during initial product setup and onboarding.",count:0,percentage:0,relatedThemes:[]},
     {id:"s2",name:"Customer Support",keywords:["support","help","response","ticket","agent","chat","resolved","service","support team","reply","wait","slow response","escalate","helpdesk","contact","customer success","live chat","email support"],sentiment:"mixed",description:"Quality and responsiveness of customer support.",count:0,percentage:0,relatedThemes:[]},
     {id:"s3",name:"Performance & Reliability",keywords:["performance","speed","fast loading","slow loading","lag","load","latency","crash","downtime","reliable","stable","uptime","bug","error","outage","freeze","timeout","response time"],sentiment:"mixed",description:"System speed, reliability, and technical stability.",count:0,percentage:0,relatedThemes:[]},
@@ -26,7 +28,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"s9",name:"Security & Compliance",keywords:["security","compliance","gdpr","soc2","data privacy","privacy","permission","role","audit","encrypt","breach","password","sso","saml","certificate"],sentiment:"mixed",description:"Data security, privacy controls, and compliance certifications.",count:0,percentage:0,relatedThemes:[]},
     {id:"s10",name:"Scalability & Growth",keywords:["scale","scalability","enterprise","growth","capacity","limit","quota","volume","seats","users","expand","migrate","upgrade"],sentiment:"mixed",description:"Ability to scale the product as the organization grows.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Healthcare": [
+  healthcare: [
     {id:"h1",name:"Wait Times & Access",keywords:["wait","waiting","appointment","schedule","delay","long wait","queue","book","availability","slot","urgent","same day","next day","hours","weeks","months","care access","open access"],sentiment:"negative",description:"Patient access to care and wait time experience.",count:0,percentage:0,relatedThemes:[]},
     {id:"h2",name:"Staff & Bedside Manner",keywords:["staff","nurse","doctor","physician","bedside","manner","kind","rude","compassion","attitude","listen","empathy","caring","dismissive","rushed","attentive","friendly","professional"],sentiment:"mixed",description:"Quality of human interaction with clinical and support staff.",count:0,percentage:0,relatedThemes:[]},
     {id:"h3",name:"Treatment Quality",keywords:["treatment","care","diagnosis","accurate","effective","medication","procedure","outcome","test result","recovery","pain","misdiagnosis","error","thorough","exam","test","scan","referral"],sentiment:"mixed",description:"Effectiveness and quality of medical treatment.",count:0,percentage:0,relatedThemes:[]},
@@ -36,7 +38,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"h7",name:"Mental Health Support",keywords:["mental health","anxiety","depression","therapy","counseling","psychiatry","referral","stigma","emotional","support","behavioral","stress","trauma","crisis","telehealth"],sentiment:"mixed",description:"Access to and quality of mental health services.",count:0,percentage:0,relatedThemes:[]},
     {id:"h8",name:"Telehealth & Digital",keywords:["telehealth","virtual","video","online","portal","app","digital","remote","phone","platform","login","technical","connectivity","screen","prescription","refill"],sentiment:"mixed",description:"Experience with virtual care and digital health tools.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Retail / E-commerce": [
+  retail_ecommerce: [
     {id:"r1",name:"Delivery & Shipping",keywords:["delivery","shipping","arrived","arrived late","fast delivery","slow delivery","package","courier","tracking","lost","damaged","on time","delayed","carrier","fedex","ups","usps","expedited","free shipping"],sentiment:"mixed",description:"Speed, reliability, and condition of order delivery.",count:0,percentage:0,relatedThemes:[]},
     {id:"r2",name:"Product Quality",keywords:["quality","broken","defective","material","durable","cheap","well made","excellent","poor","as described","accurate","fake","authentic","sturdy","flimsy","craftsmanship","worn"],sentiment:"mixed",description:"Physical quality and accuracy of products received.",count:0,percentage:0,relatedThemes:[]},
     {id:"r3",name:"Customer Service",keywords:["customer service","support","return","refund","exchange","helpful","rude","resolved","response","agent","chat","email","phone","complaint","replacement","warranty","policy"],sentiment:"mixed",description:"Customer service experience for issues and returns.",count:0,percentage:0,relatedThemes:[]},
@@ -46,7 +48,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"r7",name:"Product Selection & Availability",keywords:["selection","variety","stock","available","sold out","inventory","size","color","range","assortment","backordered","restock","limited","exclusive"],sentiment:"mixed",description:"Breadth and availability of product catalog.",count:0,percentage:0,relatedThemes:[]},
     {id:"r8",name:"Loyalty & Rewards",keywords:["loyalty","rewards","points","membership","program","tier","benefit","cashback","redemption","exclusive","vip","club","earn","status","anniversary"],sentiment:"mixed",description:"Customer loyalty program experience and perceived value.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Hospitality / Hotels": [
+  hospitality: [
     {id:"hh1",name:"Room Quality & Comfort",keywords:["room","bed","clean","comfortable","noisy","size","view","bathroom","shower","temperature","smell","spacious","dirty","linens","pillow","mattress","hvac"],sentiment:"mixed",description:"Comfort, cleanliness, and condition of guest rooms.",count:0,percentage:0,relatedThemes:[]},
     {id:"hh2",name:"Staff & Service",keywords:["front desk","concierge","bellman","valet","housekeeping staff","helpful","friendly","rude","attentive","responsive","professional","courteous","personable","polite","welcoming","above and beyond","accommodating"],sentiment:"mixed",description:"Attitude, helpfulness, and professionalism of staff.",count:0,percentage:0,relatedThemes:[]},
     {id:"hh3",name:"Location & Accessibility",keywords:["location","central","convenient","easy access","transport","distance","nearby","walk","neighborhood","surrounding area","parking","airport","taxi","metro","beach","city center"],sentiment:"mixed",description:"Convenience and appeal of the property's location.",count:0,percentage:0,relatedThemes:[]},
@@ -56,7 +58,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"hh7",name:"Cleanliness & Hygiene",keywords:["clean","dirty","hygiene","mold","smell","odor","fresh","sanitized","housekeeping","towel","sheet","stain","cockroach","pest","bathroom","toilet"],sentiment:"mixed",description:"Overall cleanliness standards throughout the property.",count:0,percentage:0,relatedThemes:[]},
     {id:"hh8",name:"Check-in & Process",keywords:["check in","check out","early check-in","late check-in","wait","queue","key","reservation","booking","confirmation","upgrade","room ready","delay","express","deposit","id"],sentiment:"mixed",description:"Smoothness of arrival, check-in, and departure process.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Financial Services": [
+  financial_services: [
     {id:"f1",name:"Fees & Charges",keywords:["fee","charge","cost","expensive","hidden","overdraft","penalty","waive","price","exchange rate","interest","monthly","annual","maintenance","service charge","surcharge"],sentiment:"negative",description:"Concerns about fees, charges, and pricing transparency.",count:0,percentage:0,relatedThemes:[]},
     {id:"f2",name:"Customer Service",keywords:["service","support","agent","call","wait","help","unhelpful","knowledgeable","branch","phone","response","escalate","representative","advisor","manager"],sentiment:"mixed",description:"Quality and responsiveness of customer-facing service.",count:0,percentage:0,relatedThemes:[]},
     {id:"f3",name:"Digital & App Experience",keywords:["app","online","digital","mobile","banking","login","website","crash","slow app","feature","transfer","payment","biometric","interface","notification"],sentiment:"mixed",description:"Experience with digital banking and mobile app.",count:0,percentage:0,relatedThemes:[]},
@@ -66,7 +68,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"f7",name:"Statements & Reporting",keywords:["statement","account report","transaction","history","balance","summary","download","export","tax","year end","dispute","error","reconcile","category","budget"],sentiment:"mixed",description:"Clarity and accuracy of account statements and reporting.",count:0,percentage:0,relatedThemes:[]},
     {id:"f8",name:"Branch & ATM Experience",keywords:["branch","atm","location","hours","open hours","closed early","teller","counter","cash","deposit","machine","network","convenient","in person","walk in","appointment"],sentiment:"mixed",description:"Experience at physical branch and ATM network.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Education": [
+  education: [
     {id:"e1",name:"Teaching Quality",keywords:["teacher","instructor","professor","teaching","lecture","explain","clear","confusing","engaging","boring","knowledgeable","passionate","available","feedback","marking","grade"],sentiment:"mixed",description:"Quality and effectiveness of instruction.",count:0,percentage:0,relatedThemes:[]},
     {id:"e2",name:"Curriculum & Content",keywords:["curriculum","content","course","material","syllabus","relevant","outdated","practical","theory","depth","breadth","assignment","project","reading","textbook","exam"],sentiment:"mixed",description:"Relevance, depth, and quality of educational content.",count:0,percentage:0,relatedThemes:[]},
     {id:"e3",name:"Student Support",keywords:["support","advisor","counselor","tutor","mentor","help","office hours","accessible","guidance","wellbeing","disability","career","financial aid","scholarship"],sentiment:"mixed",description:"Availability and quality of student support services.",count:0,percentage:0,relatedThemes:[]},
@@ -75,7 +77,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"e6",name:"Community & Culture",keywords:["community","culture","diverse","inclusive","belonging","social","club","event","network","peer","classmate","campus life","spirit","welcome","discrimination","safe"],sentiment:"mixed",description:"Sense of belonging, diversity, and campus culture.",count:0,percentage:0,relatedThemes:[]},
     {id:"e7",name:"Administration & Processes",keywords:["admin","registration","enrollment","bureaucracy","admin process","slow approval","confusing","policy","communication","financial aid","office","deadline","application form","portal","schedule"],sentiment:"negative",description:"Administrative efficiency and institutional communication.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "HR / Employee Experience": [
+  hr_employee: [
     {id:"hr1",name:"Leadership & Management",keywords:["manager","leadership","leader","direction","vision","trust","transparent","communicate","support","micromanage","empowering","decision","accountability","feedback","one on one"],sentiment:"mixed",description:"Quality of leadership and direct management relationships.",count:0,percentage:0,relatedThemes:[]},
     {id:"hr2",name:"Compensation & Benefits",keywords:["salary","base pay","compensation","benefits","bonus","raise","equity","stock","health","dental","insurance","401k","pension","perks","competitive","underpaid","reward"],sentiment:"mixed",description:"Satisfaction with pay, benefits, and total rewards.",count:0,percentage:0,relatedThemes:[]},
     {id:"hr3",name:"Career Growth & Development",keywords:["career","growth","promotion","development","training","skill","opportunity","advance","learning","mentor","path","stuck","progression","stretch","goal","performance review"],sentiment:"mixed",description:"Opportunities for career advancement and skill development.",count:0,percentage:0,relatedThemes:[]},
@@ -85,7 +87,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"hr7",name:"Communication & Transparency",keywords:["communication","transparent","informed","status update","decision","strategy","rumor","unclear","announcement","town hall","all hands","top down","feedback","listen","survey"],sentiment:"mixed",description:"Quality of internal communication and organizational transparency.",count:0,percentage:0,relatedThemes:[]},
     {id:"hr8",name:"Onboarding & Integration",keywords:["onboarding","new hire","first week","orientation","training","buddy","mentor","ramp","integration","welcome","confused","prepared","support","onboarding process","paperwork"],sentiment:"mixed",description:"Quality of onboarding experience for new employees.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Political Opinion Survey": [
+  political: [
     {id:"po1",name:"Economic Policy",keywords:["economy","jobs","unemployment","wages","inflation","tax","spending","deficit","debt","gdp","growth","recession","trade","tariff","minimum wage","cost of living","budget","fiscal"],sentiment:"mixed",description:"Views on economic management, taxation, and fiscal policy.",count:0,percentage:0,relatedThemes:[]},
     {id:"po2",name:"Healthcare Policy",keywords:["healthcare","health care","insurance","coverage","affordable","universal","medicare","medicaid","aca","obamacare","prescription","drug","cost","hospital","mental health"],sentiment:"mixed",description:"Opinions on healthcare systems, coverage, and costs.",count:0,percentage:0,relatedThemes:[]},
     {id:"po3",name:"Immigration",keywords:["immigration","immigrant","border","undocumented","illegal","legal","refugee","asylum","visa","citizenship","path","wall","enforcement","deportation","diversity","nationality","foreign"],sentiment:"mixed",description:"Perspectives on immigration policy and border management.",count:0,percentage:0,relatedThemes:[]},
@@ -97,7 +99,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"po9",name:"Gun Policy",keywords:["gun","firearm","weapon","second amendment","background check","control","ban","ar-15","assault","nra","safe","shooting","violence","permit","carry","reform"],sentiment:"mixed",description:"Opinions on gun rights, control measures, and safety.",count:0,percentage:0,relatedThemes:[]},
     {id:"po10",name:"Political Trust & Polarization",keywords:["trust","partisan","divide","polarized","extremism","moderate","compromise","bipartisan","media","misinformation","fake news","propaganda","cynical","corrupt","politician","both sides"],sentiment:"mixed",description:"Feelings of political trust, polarization, and media credibility.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Media / Entertainment": [
+  media_entertainment: [
     {id:"me1",name:"Content Quality",keywords:["content","quality","writing","story","plot","script","narrative","original","creative","bland","formulaic","predictable","engaging","compelling","boring","fresh","innovative","derivative"],sentiment:"mixed",description:"Overall quality and originality of content and storytelling.",count:0,percentage:0,relatedThemes:[]},
     {id:"me2",name:"Streaming & Access",keywords:["stream","streaming","netflix","hulu","disney","subscription","platform","app","download","offline","buffering","lag","load","playback","device","smart tv","mobile","content access"],sentiment:"mixed",description:"Ease of access and streaming platform experience.",count:0,percentage:0,relatedThemes:[]},
     {id:"me3",name:"Cast & Performances",keywords:["actor","actress","cast","performance","acting","character","role","star","celebrity","talent","believable","wooden","charismatic","chemistry","lead role","supporting"],sentiment:"mixed",description:"Quality of performances and casting choices.",count:0,percentage:0,relatedThemes:[]},
@@ -107,7 +109,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"me7",name:"Advertising & Interruptions",keywords:["ad","advertisement","commercial","interrupt","sponsor","popup","skip","unskippable","intrusive","pause","break","frequency","targeted","annoying","too many"],sentiment:"negative",description:"Experience with advertising and content interruptions.",count:0,percentage:0,relatedThemes:[]},
     {id:"me8",name:"Recommendations & Discovery",keywords:["recommend","discover","algorithm","curate","suggestion","hard to find","search","browse","catalog","library","trending","personalized","for you","explore","hidden"],sentiment:"mixed",description:"Ability to find and discover new content.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Sports": [
+  sports: [
     {id:"sp1",name:"Athlete Performance",keywords:["player","athlete","performance","skill","fitness","injury","comeback","star","mvp","talented","disappointing","elite","speed","strength","technique","consistent"],sentiment:"mixed",description:"Individual athlete performance, skill, and fitness.",count:0,percentage:0,relatedThemes:[]},
     {id:"sp2",name:"Team & Coaching",keywords:["coach","manager","tactics","strategy","formation","lineup","selection","squad","chemistry","morale","leadership","culture","cohesion","preparation","training"],sentiment:"mixed",description:"Team dynamics, coaching decisions, and tactical approach.",count:0,percentage:0,relatedThemes:[]},
     {id:"sp3",name:"Match / Game Experience",keywords:["game","match","exciting","boring","tense","close","blowout","atmosphere","moment","highlight","score","overtime","final","intense","dramatic","disappointing"],sentiment:"mixed",description:"Overall quality and excitement of games and matches.",count:0,percentage:0,relatedThemes:[]},
@@ -117,7 +119,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"sp7",name:"Officiating & Rules",keywords:["referee","official","foul","penalty","call","decision","var","video review","fair","biased","inconsistent","rule","regulation","offside","cheating","controversy","mistake"],sentiment:"mixed",description:"Fairness and quality of officiating and rule enforcement.",count:0,percentage:0,relatedThemes:[]},
     {id:"sp8",name:"Fan Engagement & Community",keywords:["fan","community","supporter","social media","engagement","loyalty","merchandise","interact","app","forum","chant","tradition","culture","passionate","toxic","inclusive"],sentiment:"mixed",description:"Fan culture, community, and engagement with the sport or team.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Non-Profit / Charity": [
+  nonprofit: [
     {id:"np1",name:"Mission & Impact",description:"Perceived effectiveness and relevance of the organization's mission.",keywords:["mission","impact","cause","purpose","difference","community","meaningful","worthwhile","important"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"np2",name:"Donor & Supporter Experience",description:"Experience of donating, fundraising and being a supporter.",keywords:["donate","donation","donor","fundraise","fundraising","giving","support","contribution","pledge"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"np3",name:"Transparency & Accountability",description:"How funds are used and how openly the organization reports.",keywords:["transparent","transparency","accountability","accountable","finances","overhead","annual","funds","spend"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
@@ -127,7 +129,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"np7",name:"Beneficiary Outcomes",description:"Direct outcomes and wellbeing improvements for those served.",keywords:["beneficiary","outcome","helped","support","wellbeing","service","program","assistance"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"np8",name:"Events & Fundraisers",description:"Quality and enjoyment of fundraising events and campaigns.",keywords:["event","gala","auction","fun run","walk","campaign","raffle","virtual","fun","organized"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Performing Arts / Venues": [
+  performing_arts: [
     {id:"pa1",name:"Performance Quality",keywords:["performance","production","quality","talent","skill","execute","deliver","impressive","disappointing","professional","amateur","tight","polished","raw","powerful","moving"],sentiment:"mixed",description:"Overall quality and execution of the live performance.",count:0,percentage:0,relatedThemes:[]},
     {id:"pa2",name:"Venue & Facilities",keywords:["venue","theatre","theater","hall","seat","view","sightline","acoustics","sound","facility","bathroom","bar","lobby","clean","accessible","parking","entrance","historic","modern"],sentiment:"mixed",description:"Physical venue quality including sightlines, acoustics, and facilities.",count:0,percentage:0,relatedThemes:[]},
     {id:"pa3",name:"Ticketing & Value",keywords:["ticket","price","cost","expensive","worth","value","booking","fee","seat","category","resale","premium","box office","online","discount","group","student"],sentiment:"mixed",description:"Ticket pricing, booking experience, and perceived value.",count:0,percentage:0,relatedThemes:[]},
@@ -137,7 +139,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"pa7",name:"Production Design",keywords:["design","costume","lighting","projection","sound","staging","choreography","direction","creative","visual","spectacular","minimalist","innovative","dated","budget"],sentiment:"mixed",description:"Visual and technical design elements of the production.",count:0,percentage:0,relatedThemes:[]},
     {id:"pa8",name:"Accessibility & Inclusion",keywords:["accessible","wheelchair","hearing loop","audio description","captioned","disabled","step free","lift","assistance","inclusive","bsl","sign language","carer","companion","accommodation"],sentiment:"mixed",description:"Accessibility provisions and inclusivity for all audiences.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Travel / Tourism": [
+  travel_tourism: [
     {id:"tr1",name:"Accommodation Quality",keywords:["hotel","room","accommodation","clean","dirty","comfortable","bed","bathroom","shower","noise","view","size","space","maintenance","repair","standard","luxury","budget"],sentiment:"mixed",description:"Quality and comfort of accommodation during the trip.",count:0,percentage:0,relatedThemes:[]},
     {id:"tr2",name:"Value for Money",keywords:["price","cost","value","expensive","affordable","worth","overpriced","budget","luxury","deal","all inclusive","hidden fee","charge","nightly rate","package","competitive"],sentiment:"mixed",description:"Whether the overall experience justified the cost.",count:0,percentage:0,relatedThemes:[]},
     {id:"tr3",name:"Staff & Service",keywords:["staff","service","helpful","friendly","rude","attentive","responsive","professional","welcoming","front desk","concierge","guide","tour","efficient","slow service","above and beyond"],sentiment:"mixed",description:"Quality of staff interactions and customer service throughout.",count:0,percentage:0,relatedThemes:[]},
@@ -147,7 +149,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"tr7",name:"Booking & Organization",keywords:["booking","reservation","check in","check out","booking process","organized","smooth","confusing","error","mistake","cancel","flexible","app","website","confirmation","communication"],sentiment:"mixed",description:"Ease and reliability of the booking and check-in process.",count:0,percentage:0,relatedThemes:[]},
     {id:"tr8",name:"Transport & Transfers",keywords:["transport","transfer","flight","train","bus","car","taxi","airport","shuttle","delay","connection","crowded","comfortable","on time","luggage","driver","navigation"],sentiment:"mixed",description:"Quality and reliability of transport and transfer arrangements.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Higher Education": [
+  higher_education: [
     {id:"he1",name:"Teaching Quality",keywords:["lecture","professor","instructor","teach","explain","clear","engaging","boring","knowledgeable","approachable","feedback","inspire","passionate","unprepared","delivery","seminar","tutorial"],sentiment:"mixed",description:"Quality, clarity, and engagement of teaching and instruction.",count:0,percentage:0,relatedThemes:[]},
     {id:"he2",name:"Course Content & Curriculum",keywords:["course","curriculum","content","module","subject","material","relevant","outdated","theory","practical","assignment","reading","syllabus","breadth","depth","applied","academic"],sentiment:"mixed",description:"Relevance, depth, and quality of course content and curriculum design.",count:0,percentage:0,relatedThemes:[]},
     {id:"he3",name:"Student Support & Wellbeing",keywords:["support","wellbeing","mental health","counseling","advisor","tutor","pastoral","welfare","stress","anxiety","overwhelmed","help","accessible","lonely","community","belonging"],sentiment:"mixed",description:"Availability and quality of student support and wellbeing services.",count:0,percentage:0,relatedThemes:[]},
@@ -157,7 +159,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"he7",name:"Social & Campus Life",keywords:["social","friend","community","club","society","event","union","sport","nightlife","culture","diverse","inclusive","welcome","fresher","induction","peer","network","experience","fun"],sentiment:"mixed",description:"Quality of social life, student community, and extracurricular activities.",count:0,percentage:0,relatedThemes:[]},
     {id:"he8",name:"Value & Fees",keywords:["tuition","fee","cost","debt","loan","value","expensive","worth","funding","scholarship","bursary","financial","grant","return","investment","graduate","earning","afford","justify"],sentiment:"mixed",description:"Perceived value of the degree relative to tuition fees and financial burden.",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Casual Dining": [
+  casual_dining: [
     {id:"cd1",name:"Food Quality & Taste",description:"Quality, freshness and taste of food.",keywords:["food","taste","fresh","delicious","bland","quality","flavour","flavor","cooked","portion","tasty","yummy","undercooked","overcooked","seasoned","flavorless"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"cd2",name:"Food Temperature & Texture",description:"Whether food arrived at the right temperature and had the right texture.",keywords:["served cold","lukewarm","tough","chewy","dry","greasy","soggy","burnt","crispy","tender","overcooked","undercooked","rubbery","mushy","stale"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"cd3",name:"Steak & Beef",description:"Mentions of steak and beef dishes.",keywords:["steak","filet","strip steak","sirloin","t-bone","porterhouse","ribeye","beef","prime rib","new york strip","medium rare","well done","grilled"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
@@ -172,7 +174,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"cd12",name:"Menu & Variety",description:"Breadth of menu options including dietary choices.",keywords:["menu","variety","vegetarian","vegan","gluten free","dietary","kids menu","selection","specials","limited menu"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"cd13",name:"Dining Companions",description:"Who the customer dined with — family, friends, dates.",keywords:["family dinner","kids","children","date night","husband","wife","birthday","anniversary","group","friends","celebration","special occasion"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Fine Dining": [
+  fine_dining: [
     {id:"fd1",name:"Cuisine & Culinary Excellence",description:"Quality, creativity and execution of dishes.",keywords:["cuisine","dish","flavour","flavor","chef","exquisite","presentation","plating","course","masterful","impeccable","refined","delicate"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"fd2",name:"Steak & Prime Cuts",description:"Quality of steak and premium beef dishes.",keywords:["steak","filet","filet mignon","strip steak","ribeye","prime rib","wagyu","dry aged","medium rare","perfectly cooked","porterhouse","tenderloin"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"fd3",name:"Seafood & Shellfish",description:"Quality of seafood and shellfish offerings.",keywords:["lobster","scallops","salmon","oyster","crab","caviar","dover sole","branzino","langoustine","tuna tartare","ceviche","sashimi","seafood tower"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
@@ -185,7 +187,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"fd10",name:"Reservation & Exclusivity",description:"Ease of securing reservations at sought-after venues.",keywords:["reservation","waitlist","fully booked","hard to book","months in advance","cancellation policy","deposit required","exclusive","sought after"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"fd11",name:"Special Occasions",description:"Dining for celebrations, anniversaries, and milestones.",keywords:["birthday","anniversary","celebration","special occasion","proposal","date night","milestone","engagement","graduation","retirement dinner"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Fast Food": [
+  fast_food: [
     {id:"ff1",name:"Food Quality & Taste",description:"Taste, freshness and consistency of food items.",keywords:["food","burger","fries","chicken tenders","chicken nuggets","fresh","soggy","quality","taste","consistent","flavorless","delicious","crispy","stale"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"ff2",name:"Food Temperature",description:"Whether food was served at the right temperature.",keywords:["served cold","lukewarm","served hot","burnt","greasy","soggy fries","cold burger","cold fries","rubbery","reheated","fresh off the grill"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"ff3",name:"Speed & Efficiency",description:"Speed of service and order fulfillment.",keywords:["fast service","quick","slow service","took forever","wait time","speed","drive through wait","minutes","line out the door","queue around the block"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
@@ -196,7 +198,7 @@ export const INDUSTRY_THEMES: Record<string, IndustryTheme[]> = {
     {id:"ff8",name:"App & Digital Ordering",description:"Experience with mobile app, kiosk and digital ordering.",keywords:["app","kiosk","mobile order","online order","delivery app","doordash","ubereats","pickup","rewards","loyalty points","coupon code"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
     {id:"ff9",name:"Drive-Through Experience",description:"Speed and accuracy of drive-through service.",keywords:["drive through","drive-thru","window","speaker","pull forward","curbside pickup","drive through line","car line","two lane drive through"],sentiment:"mixed",count:0,percentage:0,relatedThemes:[]},
   ],
-  "Automotive Repair": [
+  automotive_repair: [
     {id:"au1",name:"Diagnosis & Accuracy",keywords:["diagnosis","diagnose","accurate","misdiagnose","find the problem","identified","cause","fault","code","scan","inspection","wrong","correct","finally fixed","figured out","root cause","check engine","error code"],sentiment:"mixed",description:"Accuracy of fault diagnosis and problem identification.",count:0,percentage:0,relatedThemes:[]},
     {id:"au2",name:"Repair Quality & Workmanship",keywords:["repair","fix","fixed","quality","workmanship","shoddy","excellent","still broken","came back","recurring","same problem","proper","thorough","rushed","corners","professional","reliable","lasting"],sentiment:"mixed",description:"Quality and durability of repair work performed.",count:0,percentage:0,relatedThemes:[]},
     {id:"au3",name:"Cost & Pricing",keywords:["cost","price","expensive","cheap","quote","estimate","overcharged","fair","reasonable","bill","invoice","labor","parts","markup","fee","total","value","rip off","worth","affordable"],sentiment:"mixed",description:"Perception of pricing fairness and value for money.",count:0,percentage:0,relatedThemes:[]},

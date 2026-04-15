@@ -55,12 +55,7 @@ export default function AnalyzeButton({ studyId }: Props) {
         var studyData = studyRes.ok ? await studyRes.json() : null
         var studyName = studyData?.name || 'Study Data'
         var industry = studyData?.config?.industry || ''
-        var anaLibrary = ''
-        if (industry && industry !== 'other') {
-          // Dynamic import to avoid bundling the full defaults
-          var { ANA_LIBRARY_KEY } = await import('@/lib/industryDefaults')
-          anaLibrary = ANA_LIBRARY_KEY[industry as keyof typeof ANA_LIBRARY_KEY] || ''
-        }
+        var anaLibrary = (industry && industry !== 'other') ? industry : ''
 
         // Create dataset with industry mapping
         setStatus('Creating dataset...')

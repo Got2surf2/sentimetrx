@@ -23,6 +23,7 @@ import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 const T = {
   bg: '#f4f5f7', bgCard: '#ffffff', bgSidebar: '#ffffff',
@@ -1345,7 +1346,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         </button>
                         <button onClick={function() { setShowThemeEditor(true) }}
                           style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
-                          {'\u2261'} {anaLibrary ? 'Apply ' + anaLibrary + ' themes' : 'Choose theme library'}
+                          {'\u2261'} {anaLibrary ? 'Apply ' + (INDUSTRY_LABELS[anaLibrary as Industry] || anaLibrary) + ' themes' : 'Choose theme library'}
                         </button>
                       </div>
                     )}

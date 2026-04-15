@@ -6,6 +6,7 @@
 
 import { useState, useRef } from 'react'
 import type { StudyDraft } from '@/lib/studyDraft'
+import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 const HERMES    = '#e8622a'
 const HERMES_BG = '#fff4ef'
@@ -131,7 +132,7 @@ export default function StudyStartModal({ onApply, onSkip }: Props) {
                 {preview.name || 'Your new study'}
               </h2>
               <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
-                Meet <strong>{preview.bot_name}</strong> · {INDUSTRY_LABEL[preview.industry] || preview.industry}
+                Meet <strong>{preview.bot_name}</strong> · {INDUSTRY_LABELS[preview.industry as Industry] || preview.industry}
               </p>
             </div>
           </div>
@@ -291,24 +292,3 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-const INDUSTRY_LABEL: Record<string, string> = {
-  healthcare:          'Healthcare',
-  hospitality:         'Hospitality',
-  casual_dining:       'Casual Dining',
-  fine_dining:         'Fine Dining',
-  fast_food:           'Fast Food',
-  travel_tourism:      'Travel & Tourism',
-  political:           'Politics & Advocacy',
-  media_entertainment: 'Media & Entertainment',
-  performing_arts:     'Performing Arts',
-  saas_software:       'SaaS / Software',
-  retail_ecommerce:    'Retail / E-commerce',
-  financial_services:  'Financial Services',
-  education:           'Education',
-  higher_education:    'Higher Education',
-  hr_employee:         'HR / Employee',
-  sports:              'Sports',
-  nonprofit:           'Non-Profit',
-  automotive_repair:   'Automotive',
-  other:               'Custom',
-}

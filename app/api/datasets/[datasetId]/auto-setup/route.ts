@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { buildStudySchema } from '@/lib/datasetUtils'
-import { ANA_LIBRARY_KEY, type Industry } from '@/lib/industryDefaults'
+import { type Industry } from '@/lib/industryDefaults'
 import { INDUSTRY_THEMES } from '@/lib/industryThemes'
 
 export const dynamic = 'force-dynamic'
@@ -90,9 +90,9 @@ export async function POST(_req: Request, { params }: Params) {
     if (f.field === 'q4_response' && !f.label) f.label = 'Open Response 2'
   })
 
-  // Extract industry and map to ana_library
+  // Extract industry — INDUSTRY_THEMES keys match Industry keys directly
   const industry = study.config.industry as Industry | undefined
-  const anaLibrary = industry && industry !== 'other' ? (ANA_LIBRARY_KEY[industry as Exclude<Industry, 'other'>] || null) : null
+  const anaLibrary = industry && industry !== 'other' ? industry : null
 
   // Update dataset name and ana_library
   const datasetUpdate: Record<string, unknown> = { name: study.name + ' \u2014 Analytics' }

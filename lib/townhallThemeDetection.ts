@@ -72,8 +72,9 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
 
   const config = session.config as any
   const contextNote = config?.context?.event_description ? '\nEvent: ' + config.context.event_description : ''
+  const industryNote = config?.industry ? '\nIndustry: ' + config.industry.replace(/_/g, ' ') : ''
 
-  const prompt = 'You are a qualitative research expert analyzing a live town hall discussion.' + contextNote +
+  const prompt = 'You are a qualitative research expert analyzing a live town hall discussion.' + contextNote + industryNote +
     '\n\n' + allTexts.length + ' total responses (' + sampled.length + ' sampled below).' +
     existingList +
     '\n\nRESPONSES:\n' + corpus +

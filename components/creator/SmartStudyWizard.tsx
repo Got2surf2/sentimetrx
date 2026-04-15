@@ -13,32 +13,11 @@ import EmojiPickerPopover from './EmojiPickerPopover'
 import type { StudyDraft } from '@/lib/studyDraft'
 import { generateStudyDraft, type WizardAnswers } from '@/lib/smartStudyGenerator'
 import { STUDY_TYPE_BLUEPRINTS, STUDY_TYPE_LABELS, getBlueprintForStudyType, type StudyType } from '@/lib/surveyBlueprints'
-import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
+import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, type Industry } from '@/lib/industryDefaults'
 
 const HERMES = '#e8622a'
 const HERMES_BG = '#fff4ef'
 
-const INDUSTRY_EMOJIS: Record<Industry, string> = {
-  healthcare:          '🏥',
-  hospitality:         '🏨',
-  casual_dining:       '🍔',
-  fine_dining:         '🍽️',
-  fast_food:           '⚡',
-  travel_tourism:      '✈️',
-  political:           '🗳️',
-  media_entertainment: '🎬',
-  performing_arts:     '🎭',
-  saas_software:       '💻',
-  retail_ecommerce:    '🛍️',
-  financial_services:  '💳',
-  education:           '📚',
-  higher_education:    '🎓',
-  hr_employee:         '👥',
-  sports:              '⚽',
-  nonprofit:           '🤝',
-  automotive_repair:   '🔧',
-  other:               '📋',
-}
 
 interface Props {
   onGenerated: (draft: StudyDraft) => void

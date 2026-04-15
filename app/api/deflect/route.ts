@@ -114,10 +114,10 @@ ${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. 
       : text.replace(/\{\{LINK\}\}/g, '')
 
     const debugInfo = body.testing ? [
-      `Input: "${answer.slice(0, 80)}${answer.length > 80 ? '...' : ''}"`,
-      `AI decided: DEFLECT`,
-      `Generated: "${deflection.replace(/<[^>]+>/g, '').slice(0, 100)}"`,
-    ] : null
+      'DEFLECT TRIGGERED: Respondent went off-topic',
+      'AI raw: "' + (result.text?.trim() || '').slice(0, 200) + '"',
+      'After cleanup: "' + deflection.slice(0, 200) + '"',
+    ] : undefined
 
     return NextResponse.json({ deflection, ...(debugInfo ? { _debug: debugInfo } : {}) })
 

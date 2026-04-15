@@ -3,33 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
-import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, type Industry } from '@/lib/industryDefaults'
+import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import EmojiPickerPopover from './EmojiPickerPopover'
 
 const HERMES = '#E8632A'
 
-// ── Industry emoji sets ───────────────────────────────────────
-const INDUSTRY_EMOJIS: Record<string, string[]> = {
-  healthcare:          ['👨‍⚕️','👩‍⚕️','🧑‍⚕️','🏥','💊','🩺','🩻','💉','🩹','🧬','❤️‍🩹','🚑','🫀','🧪','🔬'],
-  casual_dining:       ['👨‍🍳','👩‍🍳','🧑‍🍳','🍽️','🥂','☕','🍷','🛎️','🥘','🍝','🥗','🍻','🍾'],
-  fast_food:           ['👨‍🍳','👩‍🍳','🧑‍🍳','🍔','🍕','🌮','🍟','🥤','🌯','🌭','🍿','🥪'],
-  fine_dining:         ['👨‍🍳','👩‍🍳','🧑‍🍳','🍽️','🥂','🍷','🛎️','🌹','🥩','🍣','🦞','🍾','🕯️'],
-  education:           ['👨‍🏫','👩‍🏫','🧑‍🏫','🎓','📚','✏️','🏫','🖊️','📖','📝','🔬','🔭','📐','🖥️'],
-  higher_education:    ['👨‍🏫','👩‍🏫','🧑‍🏫','👨‍🎓','👩‍🎓','🧑‍🎓','🎓','📚','🏛️','🔬','🧪','🔭','📜','🎖️'],
-  financial_services:  ['👨‍💼','👩‍💼','🧑‍💼','💰','💳','🏦','📈','🤝','💹','🏧','🪙','💵','🏢'],
-  hospitality:         ['🛎️','🏨','🛏️','🔑','🧳','🍳','🛁','🏖️','☀️','🌴','🍹','🏊','🧖'],
-  saas_software:       ['👨‍💻','👩‍💻','🧑‍💻','💻','🖥️','⚙️','🔧','🚀','🤖','🛠️','📡','🔐','💾','🖱️'],
-  retail_ecommerce:    ['🛍️','🏪','💳','📦','🚚','🏷️','🛒','💝','🎁','📬','📱','🏬'],
-  sports:              ['🏋️','⚽','🏆','🎽','🏅','🏃','⛹️','🤸','🧗','🏊','🚴','🏈','🎾','⛷️','🏒'],
-  travel_tourism:      ['✈️','🗺️','🧳','🏖️','🏝️','🗼','🌍','🏔️','🚂','🛳️','🌅','🎡','🏕️','🧭'],
-  hr_employee:         ['👔','🤝','👥','🏢','📋','💼','🧑‍💼','👨‍💼','👩‍💼','📊','🏅','🌱','🎯'],
-  nonprofits:          ['🤝','🌍','❤️','🙏','🫂','💚','🌱','🕊️','🙌','🌈','🤲','🫶','♻️','🌻'],
-  performing_arts:     ['🎭','🎬','🎵','🎤','🎪','🎩','🩰','🎻','🎸','🥁','🎺','🎷','🎼','🎟️','📽️'],
-  media_entertainment: ['📺','🎮','🎬','🎙️','📻','🎧','🎥','📸','🕹️','📡','🖥️','📱','🎞️'],
-  political:           ['🏛️','🗳️','⚖️','🎙️','📜','🗺️','🤝','📢','📰','🫡'],
-  automotive_repair:   ['🔧','🚗','🔩','🛠️','🏎️','🚙','🪛','🔋','⛽','🛞','🧰','🔌'],
-}
 
 // ── Color presets ─────────────────────────────────────────────
 const PRESETS = [
@@ -241,7 +220,7 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
           <EmojiPickerPopover
             value={draft.bot_emoji || '💬'}
             onChange={handleEmojiSelect}
-            industryEmojis={industry && industry !== 'other' ? (INDUSTRY_EMOJIS[industry] || undefined) : undefined}
+            industryEmojis={industry && industry !== 'other' ? (INDUSTRY_EMOJI_SETS[industry] || undefined) : undefined}
             industryLabel={industry && industry !== 'other' ? (INDUSTRY_LABELS[industry as Industry] || undefined) : undefined}
             size="md"
           />

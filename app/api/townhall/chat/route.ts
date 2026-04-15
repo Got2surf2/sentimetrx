@@ -349,12 +349,13 @@ function baseSystemPrompt(config: any, language?: string): string {
   const eventDesc = config?.context?.event_description || ''
   const tone = config?.context?.tone || 'warm and conversational'
   const sensitive = config?.context?.sensitive_topics?.join(', ') || 'none'
+  const industry = config?.industry || ''
   const langInstruction = language && language !== 'en'
     ? `\n\nIMPORTANT: The participant is using ${language}. You MUST respond ONLY in ${language}. Do NOT respond in English.`
     : ''
 
   return `You are an AI moderator facilitating a town hall discussion on behalf of ${orgName}.
-${eventDesc ? `\nEVENT: ${eventDesc}` : ''}
+${eventDesc ? `\nEVENT: ${eventDesc}` : ''}${industry ? `\nINDUSTRY: ${industry.replace(/_/g, ' ')}` : ''}
 
 TONE: ${tone}
 
@@ -362,7 +363,7 @@ RULES:
 - Be warm, conversational, and brief — maximum 40 words
 - Never sound robotic or like a survey form
 - Never mention AI, algorithms, or that you are a bot
-- NEVER ask about: ${sensitive}
+- NEVER ask about: ${sensitive}${industry ? `\n- Use terminology and context appropriate for the ${industry.replace(/_/g, ' ')} industry` : ''}
 - Just output the message text — no reasoning, labels, quotes, or JSON${langInstruction}`
 }
 

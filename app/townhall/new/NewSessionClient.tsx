@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
+import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
+import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 
 interface Props {
   logoUrl?: string
@@ -336,6 +338,20 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 </div>
               </div>
 
+              <div>
+                <Label>Industry</Label>
+                <select
+                  value={config.industry || ''}
+                  onChange={e => setConfig(c => ({ ...c, industry: e.target.value || undefined }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400 bg-white"
+                >
+                  <option value="">Select industry (optional)</option>
+                  {(Object.keys(INDUSTRY_LABELS) as Industry[]).map(k => (
+                    <option key={k} value={k}>{INDUSTRY_EMOJIS[k]} {INDUSTRY_LABELS[k]}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Bot name</Label>
@@ -343,7 +359,15 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 </div>
                 <div>
                   <Label>Bot emoji</Label>
-                  <Input value={config.bot_emoji} onChange={v => setConfig(c => ({ ...c, bot_emoji: v }))} placeholder="e.g. 💬" />
+                  <div className="flex items-center gap-2">
+                    <EmojiPickerPopover
+                      value={config.bot_emoji || '💬'}
+                      onChange={v => setConfig(c => ({ ...c, bot_emoji: v }))}
+                      industryEmojis={config.industry && config.industry !== 'other' ? (INDUSTRY_EMOJI_SETS[config.industry] || undefined) : undefined}
+                      industryLabel={config.industry && config.industry !== 'other' ? (INDUSTRY_LABELS[config.industry as Industry] || undefined) : undefined}
+                    />
+                    <span className="text-xs text-gray-400">Click to pick</span>
+                  </div>
                 </div>
               </div>
 

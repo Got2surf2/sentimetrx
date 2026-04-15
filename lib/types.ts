@@ -861,6 +861,7 @@ export interface TownHallGuideTopic {
 export interface TownHallConfig {
   bot_name:  string
   bot_emoji: string
+  industry?: string   // matches Industry type from industryDefaults.ts
   context: {
     org_name:          string
     event_description: string

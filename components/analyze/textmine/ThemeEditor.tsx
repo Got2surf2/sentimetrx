@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from 'react'
 import { Theme, THEME_PALETTE, sentColor, sentBg } from '@/lib/themeUtils'
+import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, type Industry } from '@/lib/industryDefaults'
 
 var T = {
   bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
@@ -15,17 +16,6 @@ var T = {
   red: '#dc2626', amber: '#d97706', amberBg: '#fffbeb', amberMid: '#fde68a',
 }
 
-var INDUSTRY_ICONS: Record<string, string> = {
-  'SaaS / Software': '\uD83D\uDCBB', 'Healthcare': '\uD83C\uDFE5',
-  'Retail / E-commerce': '\uD83D\uDED2', 'Hospitality / Hotels': '\uD83C\uDFE8',
-  'Financial Services': '\uD83D\uDCB3', 'Education': '\uD83C\uDF93',
-  'HR / Employee Experience': '\uD83D\uDC65', 'Political Opinion Survey': '\uD83D\uDDF3\uFE0F',
-  'Media / Entertainment': '\uD83C\uDFAC', 'Sports': '\u26BD',
-  'Performing Arts / Venues': '\uD83C\uDFAD', 'Travel / Tourism': '\u2708\uFE0F',
-  'Higher Education': '\uD83C\uDFDB', 'Casual Dining': '\uD83C\uDF7D\uFE0F',
-  'Fine Dining': '\uD83E\uDD42', 'Fast Food': '\uD83C\uDF5F',
-  'Non-Profit / Charity': '\uD83E\uDD1D', 'Automotive Repair': '\uD83D\uDD27',
-}
 
 interface InitialData {
   themes: Theme[]
@@ -304,7 +294,7 @@ export default function ThemeEditor({ onApply, onClose, initialData, industryThe
                 {industries.map(function(ind) {
                   var sel = checkedInds.has(ind)
                   var themeCount = (industryThemes[ind] || []).length
-                  var icon = INDUSTRY_ICONS[ind] || '\uD83D\uDCCB'
+                  var icon = INDUSTRY_EMOJIS[ind as Industry] || '\uD83D\uDCCB'
                   return (
                     <button key={ind} onClick={function() { toggleInd(ind) }}
                       style={{
@@ -323,7 +313,7 @@ export default function ThemeEditor({ onApply, onClose, initialData, industryThe
                         fontSize: 8, color: 'white', flexShrink: 0,
                       }}>{sel ? '\u2713' : ''}</span>
                       <span style={{ fontSize: 16 }}>{icon}</span>
-                      <span style={{ flex: 1, textAlign: 'left' }}>{ind}</span>
+                      <span style={{ flex: 1, textAlign: 'left' }}>{INDUSTRY_LABELS[ind as Industry] || ind}</span>
                       <span style={{ fontSize: 10, color: T.textFaint, flexShrink: 0 }}>{themeCount}</span>
                     </button>
                   )

@@ -1,12 +1,7 @@
 // lib/industryDefaults.ts
-// Default study config values per industry
-//
-// INDUSTRY ↔ ANA LIBRARY MAPPING
-// Every key here has an exact 1:1 match to an Ana theme library name.
-// This is the contract used by the survey-to-dataset bridge to auto-select
-// the correct Ana theme library when creating a linked dataset.
-// Kept in sync with Ana's INDUSTRY_THEMES keys — do not rename without
-// updating both sides.
+// Single source of truth for industry definitions.
+// INDUSTRY_THEMES in lib/industryThemes.ts uses the same Industry keys.
+// Add a new industry here → it's available in surveys, analytics, and town halls.
 
 import type { StudyConfig, PsychoQuestion } from './types'
 
@@ -54,27 +49,49 @@ export const INDUSTRY_LABELS: Record<Industry, string> = {
   other:               'Other / Custom',
 }
 
-// Maps every Sentimetrx industry key to the exact Ana theme library name.
-// Used by the survey bridge: dataset.ana_library = ANA_LIBRARY_KEY[study.config.industry]
-export const ANA_LIBRARY_KEY: Record<Exclude<Industry, 'other'>, string> = {
-  healthcare:          'Healthcare',
-  hospitality:         'Hospitality / Hotels',
-  casual_dining:       'Casual Dining',
-  fine_dining:         'Fine Dining',
-  fast_food:           'Fast Food',
-  travel_tourism:      'Travel / Tourism',
-  political:           'Political Opinion Survey',
-  media_entertainment: 'Media / Entertainment',
-  performing_arts:     'Performing Arts / Venues',
-  saas_software:       'SaaS / Software',
-  retail_ecommerce:    'Retail / E-commerce',
-  financial_services:  'Financial Services',
-  education:           'Education',
-  higher_education:    'Higher Education',
-  hr_employee:         'HR / Employee Experience',
-  sports:              'Sports',
-  nonprofit:           'Non-Profit / Charity',
-  automotive_repair:   'Automotive Repair',
+// Single emoji per industry — used in dropdowns, cards, wizards
+export const INDUSTRY_EMOJIS: Record<Industry, string> = {
+  healthcare:          '🏥',
+  hospitality:         '🏨',
+  casual_dining:       '🍔',
+  fine_dining:         '🍽️',
+  fast_food:           '⚡',
+  travel_tourism:      '✈️',
+  political:           '🗳️',
+  media_entertainment: '🎬',
+  performing_arts:     '🎭',
+  saas_software:       '💻',
+  retail_ecommerce:    '🛍️',
+  financial_services:  '💳',
+  education:           '📚',
+  higher_education:    '🎓',
+  hr_employee:         '👥',
+  sports:              '⚽',
+  nonprofit:           '🤝',
+  automotive_repair:   '🔧',
+  other:               '📋',
+}
+
+// Emoji sets per industry — used in emoji picker "industry picks" row
+export const INDUSTRY_EMOJI_SETS: Record<string, string[]> = {
+  healthcare:          ['👨‍⚕️','👩‍⚕️','🧑‍⚕️','🏥','💊','🩺','🩻','💉','🩹','🧬','❤️‍🩹','🚑','🫀','🧪','🔬'],
+  casual_dining:       ['👨‍🍳','👩‍🍳','🧑‍🍳','🍽️','🥂','☕','🍷','🛎️','🥘','🍝','🥗','🍻','🍾'],
+  fast_food:           ['👨‍🍳','👩‍🍳','🧑‍🍳','🍔','🍕','🌮','🍟','🥤','🌯','🌭','🍿','🥪'],
+  fine_dining:         ['👨‍🍳','👩‍🍳','🧑‍🍳','🍽️','🥂','🍷','🛎️','🌹','🥩','🍣','🦞','🍾','🕯️'],
+  education:           ['👨‍🏫','👩‍🏫','🧑‍🏫','🎓','📚','✏️','🏫','🖊️','📖','📝','🔬','🔭','📐','🖥️'],
+  higher_education:    ['👨‍🏫','👩‍🏫','🧑‍🏫','👨‍🎓','👩‍🎓','🧑‍🎓','🎓','📚','🏛️','🔬','🧪','🔭','📜','🎖️'],
+  financial_services:  ['👨‍💼','👩‍💼','🧑‍💼','💰','💳','🏦','📈','🤝','💹','🏧','🪙','💵','🏢'],
+  hospitality:         ['🛎️','🏨','🛏️','🔑','🧳','🍳','🛁','🏖️','☀️','🌴','🍹','🏊','🧖'],
+  saas_software:       ['👨‍💻','👩‍💻','🧑‍💻','💻','🖥️','⚙️','🔧','🚀','🤖','🛠️','📡','🔐','💾','🖱️'],
+  retail_ecommerce:    ['🛍️','🏪','💳','📦','🚚','🏷️','🛒','💝','🎁','📬','📱','🏬'],
+  sports:              ['🏋️','⚽','🏆','🎽','🏅','🏃','⛹️','🤸','🧗','🏊','🚴','🏈','🎾','⛷️','🏒'],
+  travel_tourism:      ['✈️','🗺️','🧳','🏖️','🏝️','🗼','🌍','🏔️','🚂','🛳️','🌅','🎡','🏕️','🧭'],
+  hr_employee:         ['👔','🤝','👥','🏢','📋','💼','🧑‍💼','👨‍💼','👩‍💼','📊','🏅','🌱','🎯'],
+  nonprofit:           ['🤝','🌍','❤️','🙏','🫂','💚','🌱','🕊️','🙌','🌈','🤲','🫶','♻️','🌻'],
+  performing_arts:     ['🎭','🎬','🎵','🎤','🎪','🎩','🩰','🎻','🎸','🥁','🎺','🎷','🎼','🎟️','📽️'],
+  media_entertainment: ['📺','🎮','🎬','🎙️','📻','🎧','🎥','📸','🕹️','📡','🖥️','📱','🎞️'],
+  political:           ['🏛️','🗳️','⚖️','🎙️','📜','🗺️','🤝','📢','📰','🫡'],
+  automotive_repair:   ['🔧','🚗','🔩','🛠️','🏎️','🚙','🪛','🔋','⛽','🛞','🧰','🔌'],
 }
 
 type Defaults = Pick<StudyConfig,
