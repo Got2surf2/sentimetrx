@@ -68,7 +68,7 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
 
 export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled = true, campaignsEnabled = false, currentPage, datasetName }: Props) {
 
-  const surveyPages = new Set(['dashboard', 'new', 'edit', 'deploy', 'responses', 'analytics'])
+  const surveyPages = new Set(['dashboard', 'new', 'edit', 'deploy', 'responses'])
 
   const navLink = (page: string, href: string, label: string) => {
     const active = page === 'dashboard' ? surveyPages.has(currentPage || '') : currentPage === page
