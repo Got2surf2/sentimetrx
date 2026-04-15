@@ -43,7 +43,7 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
     updateConfig({ clarifiers: next })
   }
 
-  const maxCount = c.maxClarifierCount ?? 0
+  const maxCount = c.maxClarifierCount ?? 5
 
   return (
     <div className="flex flex-col gap-6">
@@ -82,22 +82,20 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
         <div className="flex items-center gap-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
           <div className="flex-1">
             <div className="text-sm text-gray-700">
-              {maxCount === 0
-                ? 'Unlimited — clarifier fires every time a condition is met'
-                : `Clarifier fires at most ${maxCount} time${maxCount === 1 ? '' : 's'} per respondent`}
+              {`Clarifier fires at most ${maxCount} time${maxCount === 1 ? '' : 's'} per respondent`}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               type="button"
-              onClick={() => updateConfig({ maxClarifierCount: Math.max(0, maxCount - 1) })}
-              disabled={maxCount === 0}
+              onClick={() => updateConfig({ maxClarifierCount: Math.max(1, maxCount - 1) })}
+              disabled={maxCount <= 1}
               className="w-8 h-8 rounded-xl border border-gray-300 bg-white text-gray-700 font-bold hover:border-orange-400 hover:text-orange-500 disabled:opacity-30 transition-all flex items-center justify-center"
             >
               −
             </button>
             <span className="w-12 text-center text-lg font-bold text-gray-800">
-              {maxCount === 0 ? '∞' : maxCount}
+              {maxCount}
             </span>
             <button
               type="button"

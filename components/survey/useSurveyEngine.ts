@@ -949,7 +949,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         return
       }
       // Check for clarifier on short responses
-      if (v && storageKey && shouldClarify(v) && state.current.clarifyCount < 2) {
+      if (v && storageKey && shouldClarify(v) && state.current.clarifyCount < (config.maxClarifierCount || 5)) {
         const cq = await showTypingDuring(buildClarify(v, storageKey === 'q1' ? 'q3' : 'q4'), 800)
         if (cq) {
           state.current.clarifyCount++
@@ -1111,7 +1111,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
               return
             }
             // Clarifier follow-up for non-trivial responses
-            if (val && (q.clarify !== false) && config.useAIClarify && shouldClarify(val) && state.current.clarifyCount < 2) {
+            if (val && (q.clarify !== false) && config.useAIClarify && shouldClarify(val) && state.current.clarifyCount < (config.maxClarifierCount || 5)) {
               const cq = await showTypingDuring(buildClarify(val, 'q4'), 800)
               if (cq) {
                 state.current.clarifyCount++
@@ -1809,7 +1809,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     }
     // Only attempt clarification if enabled for this question (default: on)
     const clarifyEnabled = qKey === 'q3' ? config.q3Clarify !== false : config.q4Clarify !== false
-    if (clarifyEnabled && state.current.clarifyCount < 2 && shouldClarify(val)) {
+    if (clarifyEnabled && state.current.clarifyCount < (config.maxClarifierCount || 5) && shouldClarify(val)) {
       const cq = await showTypingDuring(buildClarify(val, qKey), 800)
       if (cq) {
         state.current.clarifyCount++

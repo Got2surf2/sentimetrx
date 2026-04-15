@@ -221,7 +221,7 @@ export interface StudyConfig {
   // Clarifiers (used by legacy Q1/Q3/Q4 and open custom questions)
   clarifiers:         StudyClarifiers
   useAIClarify?:      boolean
-  maxClarifierCount?: number           // max times a clarifier fires per session (default unlimited)
+  maxClarifierCount?: number           // max times a clarifier fires per session (default 5; 0 = unlimited)
 
   // Response control
   allowMultipleResponses?: boolean   // default true — multiple responses allowed; set false to limit to one per device
