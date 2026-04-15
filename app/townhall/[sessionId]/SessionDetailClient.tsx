@@ -402,10 +402,28 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               </button>
             )}
             {isEnded && (
-              <button onClick={() => handleSessionAction('restart')} disabled={actionLoading === 'restart'}
+              <button onClick={async () => {
+                setActionLoading('reopen')
+                setError(null)
+                try {
+                  const res = await fetch('/api/townhall/sessions/' + sessionId, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reopen: true }),
+                  })
+                  if (!res.ok) { const d = await res.json().catch(() => ({})); setError('Failed to reopen: ' + (d.error || res.status)) }
+                } catch (err: any) { setError('Network error: ' + (err?.message || 'unknown')) }
+                await fetchData()
+                setActionLoading(null)
+              }} disabled={actionLoading === 'reopen'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                style={{ background: HERMES }}>
-                {actionLoading === 'restart' ? 'Restarting...' : 'Restart Session'}
+                style={{ background: '#22c55e' }}>
+                {actionLoading === 'reopen' ? 'Reopening...' : 'Reopen Session'}
+              </button>
+            )}
+            {isEnded && (
+              <button onClick={() => handleSessionAction('restart')} disabled={actionLoading === 'restart'}
+                className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600 disabled:opacity-50">
+                {actionLoading === 'restart' ? 'Restarting...' : 'Restart (clear data)'}
               </button>
             )}
           </div>
@@ -415,7 +433,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         {error && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 text-sm text-red-700">{error}</div>}
 
         {/* Participant link + QR */}
-        {(isSetup || isActive || isPaused) && !editing && (
+        {!editing && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <span className="text-xs font-semibold text-gray-400 uppercase block mb-1">Participant Link</span>

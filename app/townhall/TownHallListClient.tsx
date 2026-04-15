@@ -122,11 +122,11 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
     setShareLoading(null)
   }
 
-  const handleAction = async (sessionId: string, action: 'start' | 'end' | 'pause' | 'resume' | 'restart') => {
+  const handleAction = async (sessionId: string, action: 'start' | 'end' | 'pause' | 'resume' | 'restart' | 'reopen') => {
     setActionLoading(sessionId)
     try {
       const statusMap: Record<string, string> = { start: 'active', end: 'ended', pause: 'paused', resume: 'active' }
-      const body = action === 'restart' ? { restart: true } : { status: statusMap[action] }
+      const body = action === 'restart' ? { restart: true } : action === 'reopen' ? { reopen: true } : { status: statusMap[action] }
       await fetch('/api/townhall/sessions/' + sessionId, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -281,24 +281,22 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         </div>
                       )}
 
-                      {/* Participant link — matches survey link copy */}
-                      {(s.status === 'active' || s.status === 'setup') && (
-                        <button
-                          onClick={e => {
-                            e.stopPropagation()
-                            const url = window.location.origin + '/th/' + (s.slug || s.id)
-                            navigator.clipboard.writeText(url)
-                            const span = e.currentTarget.querySelector('span')
-                            if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/th/' + (s.slug || s.id) }, 1500) }
-                          }}
-                          className="text-xs text-gray-300 hover:text-green-600 truncate text-left transition-colors flex items-center gap-1.5"
-                          title="Click to copy participant link">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                          <span>/th/{s.slug || s.id}</span>
-                        </button>
-                      )}
+                      {/* Participant link — always visible */}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          const url = window.location.origin + '/th/' + (s.slug || s.id)
+                          navigator.clipboard.writeText(url)
+                          const span = e.currentTarget.querySelector('span')
+                          if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/th/' + (s.slug || s.id) }, 1500) }
+                        }}
+                        className="text-xs text-gray-300 hover:text-green-600 truncate text-left transition-colors flex items-center gap-1.5"
+                        title="Click to copy participant link">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        <span>/th/{s.slug || s.id}</span>
+                      </button>
 
                       {/* Action pills — identical layout to survey cards */}
                       <div className="grid grid-cols-3 gap-1.5 mt-auto pt-2 border-t border-gray-100">
@@ -323,7 +321,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         <button
                           onClick={() => {
                             const isLive = s.status === 'active' || s.status === 'paused'
-                            handleAction(s.id, isLive ? 'end' : s.status === 'ended' ? 'restart' : 'start')
+                            handleAction(s.id, isLive ? 'end' : s.status === 'ended' ? 'reopen' : 'start')
                           }}
                           disabled={!!actionLoading}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"

@@ -283,7 +283,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   // Handle status transitions
-  if (updates.status === 'active') {
+  if (body.reopen) {
+    // Reopen from ended — go back to active, preserve started_at, clear ended_at
+    updates.status = 'active'
+    updates.ended_at = null
+  } else if (updates.status === 'active') {
     updates.started_at = new Date().toISOString()
   } else if (updates.status === 'ended') {
     updates.ended_at = new Date().toISOString()
