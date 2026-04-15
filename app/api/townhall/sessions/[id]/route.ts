@@ -327,3 +327,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   return NextResponse.json(data)
 }
+
+// DELETE /api/townhall/sessions/:id — delete session and all related data
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const db = createServiceRoleClient()
+
+  // Delete in order: turns → themes → participant responses → session
+  await db.from('townhall_turns').delete().eq('session_id', params.id)
+  await db.from('townhall_themes').delete().eq('session_id', params.id)
+  await db.from('townhall_participant_responses').delete().eq('session_id', params.id)
+  const { error } = await db.from('townhall_sessions').delete().eq('id', params.id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ deleted: true })
+}

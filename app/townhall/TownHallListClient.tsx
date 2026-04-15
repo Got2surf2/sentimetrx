@@ -54,6 +54,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [shareLoading, setShareLoading] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/townhall/sessions')
@@ -134,6 +135,16 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
       const res = await fetch('/api/townhall/sessions')
       const data = await res.json()
       setSessions(Array.isArray(data) ? data : [])
+    } catch {}
+    setActionLoading(null)
+  }
+
+  const handleDelete = async (sessionId: string) => {
+    setConfirmDelete(null)
+    setActionLoading(sessionId)
+    try {
+      await fetch('/api/townhall/sessions/' + sessionId, { method: 'DELETE' })
+      setSessions(prev => prev.filter(s => s.id !== sessionId))
     } catch {}
     setActionLoading(null)
   }
@@ -319,12 +330,17 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
                           {(s.status === 'active' || s.status === 'paused') ? 'Close' : 'Reopen'}
                         </button>
+                        <button onClick={() => setConfirmDelete(s.id)}
+                          disabled={!!actionLoading}
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
+                          style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                          Delete
+                        </button>
                         <button onClick={() => handleArchive(s.id, !archived)}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                           style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
                           {archived ? 'Unarchive' : 'Archive'}
                         </button>
-                        <div />
 
                         {/* Row 3: Edit, Duplicate, Share (gray/blue) */}
                         <Link href={'/townhall/' + s.id + '?edit=1'} target="_blank"
@@ -351,6 +367,26 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
           )}
         </div>
       </main>
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm mx-4">
+            <h3 className="font-bold text-gray-800 text-sm mb-2">Delete this session?</h3>
+            <p className="text-xs text-gray-500 mb-4">This will permanently delete the session and all its responses, themes, and participant data. This cannot be undone.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={() => handleDelete(confirmDelete)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-red-500 hover:bg-red-600">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
