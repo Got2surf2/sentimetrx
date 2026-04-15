@@ -575,7 +575,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
             <Link href="/studies/new"
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-all"
               style={{ background: HERMES }}>
-              + New Study
+              + New Survey
             </Link>
           </div>
         </div>

@@ -145,7 +145,7 @@ export default function NewStudyPage() {
       )}
 
       <TopNav currentPage="new" />
-      <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'New Study' }]} />
+      <SubHeader crumbs={[{ label: 'Surveys', href: '/dashboard' }, { label: 'New Survey' }]} />
 
       {/* Pill nav bar — fixed directly below SubHeader (TopNav 56px + SubHeader ~40px = 96px) */}
       <div className="bg-white border-b border-gray-200 shadow-sm px-5 py-2"
