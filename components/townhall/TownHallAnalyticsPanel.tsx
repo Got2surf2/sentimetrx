@@ -5,6 +5,7 @@
 // Modeled after the TextMine theme cards UI (survey standard).
 
 import { useState, useEffect, useCallback } from 'react'
+import { TimeBucket, BUCKET_OPTIONS, formatBucketLabel } from '@/lib/timeBucket'
 
 const HERMES = '#E8632A'
 const sentColor: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280' }
@@ -18,9 +19,20 @@ interface ThemeAnalytics {
   example_quotes: string[]; top_keywords: { word: string; count: number }[]
 }
 
+interface TopicSeries {
+  theme_id: string; label: string; series: { bucket: string; count: number }[]
+}
+
+interface TopicShift {
+  theme_id: string; label: string; latest: number; avg: number
+}
+
 interface Analytics {
   sentiment_breakdown: { positive: number; negative: number; mixed: number; neutral: number }
   responses_over_time: { bucket: string; count: number }[]
+  topic_frequency?: TopicSeries[]
+  topic_shifts?: TopicShift[]
+  time_bucket: TimeBucket
   total_responses: number
 }
 
@@ -32,10 +44,12 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
 
   const fetchAnalytics = useCallback(async () => {
     try {
-      const res = await fetch('/api/townhall/sessions/' + sessionId + '?analytics=true')
+      const url = '/api/townhall/sessions/' + sessionId + '?analytics=true' + (bucketOverride !== 'auto' ? '&bucket=' + bucketOverride : '')
+      const res = await fetch(url)
       if (!res.ok) { setError('Failed to load analytics'); return }
       const d = await res.json()
       setThemes(d.themes || [])
@@ -43,7 +57,7 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
       setStats(d.stats || null)
     } catch { setError('Network error') }
     setLoading(false)
-  }, [sessionId])
+  }, [sessionId, bucketOverride])
 
   useEffect(() => { fetchAnalytics() }, [fetchAnalytics])
 
@@ -158,20 +172,97 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
       {/* Responses over time */}
       {analytics?.responses_over_time && analytics.responses_over_time.length > 1 && (
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Responses Over Time</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-gray-700 uppercase">Responses Over Time</h3>
+            <select
+              value={bucketOverride}
+              onChange={e => { setBucketOverride(e.target.value as TimeBucket | 'auto'); }}
+              className="text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 cursor-pointer"
+            >
+              <option value="auto">Auto ({BUCKET_OPTIONS.find(o => o.value === analytics.time_bucket)?.label || 'Auto'})</option>
+              {BUCKET_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-end gap-1" style={{ height: 80 }}>
             {(() => {
+              const tb = analytics.time_bucket
               const maxCount = Math.max(...analytics.responses_over_time.map(b => b.count), 1)
+              const labelStep = Math.max(1, Math.floor(analytics.responses_over_time.length / 6))
               return analytics.responses_over_time.map((b, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <div style={{ height: Math.max(4, (b.count / maxCount) * 64), background: HERMES, borderRadius: 2 }} className="w-full" />
-                  {i % Math.max(1, Math.floor(analytics.responses_over_time.length / 6)) === 0 && (
-                    <span className="text-[8px] text-gray-400">{new Date(b.bucket).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  {i % labelStep === 0 && (
+                    <span className="text-[8px] text-gray-400">{formatBucketLabel(b.bucket, tb)}</span>
                   )}
                 </div>
               ))
             })()}
           </div>
+        </div>
+      )}
+
+      {/* Topic shift alerts */}
+      {analytics?.topic_shifts && analytics.topic_shifts.length > 0 && (
+        <div className="space-y-2">
+          {analytics.topic_shifts.map(s => (
+            <div key={s.theme_id} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+              <span className="text-lg">{'⚡'}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-bold text-amber-800">{s.label}</span>
+                <span className="text-xs text-amber-600 ml-2">surging — {s.latest} mentions in latest period vs {s.avg} avg</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Topic frequency over time */}
+      {analytics?.topic_frequency && analytics.topic_frequency.length > 0 && analytics.topic_frequency[0].series.length > 1 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Topic Frequency Over Time</h3>
+          {(() => {
+            const tf = analytics.topic_frequency!
+            const buckets = tf[0].series.map(s => s.bucket)
+            const maxVal = Math.max(...tf.flatMap(t => t.series.map(s => s.count)), 1)
+            const tb = analytics.time_bucket
+            const labelStep = Math.max(1, Math.floor(buckets.length / 6))
+
+            return (
+              <div>
+                {/* Stacked area chart (CSS-only bars per bucket) */}
+                <div className="flex items-end gap-1" style={{ height: 100 }}>
+                  {buckets.map((bk, bi) => {
+                    const total = tf.reduce((sum, t) => sum + t.series[bi].count, 0)
+                    return (
+                      <div key={bi} className="flex-1 flex flex-col items-center gap-1">
+                        <div className="w-full flex flex-col-reverse" style={{ height: Math.max(4, (total / maxVal) * 80) }}>
+                          {tf.map((t, ti) => {
+                            const c = t.series[bi].count
+                            if (c === 0) return null
+                            return <div key={ti} style={{ height: (c / total) * 100 + '%', background: THEME_COLORS[ti % THEME_COLORS.length], minHeight: 2 }} />
+                          })}
+                        </div>
+                        {bi % labelStep === 0 && (
+                          <span className="text-[8px] text-gray-400">{formatBucketLabel(bk, tb)}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {/* Legend */}
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3">
+                  {tf.map((t, i) => (
+                    <div key={t.theme_id} className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-sm" style={{ background: THEME_COLORS[i % THEME_COLORS.length] }} />
+                      <span className="text-[10px] text-gray-500">{t.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
 

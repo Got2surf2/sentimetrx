@@ -62,6 +62,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showExport, setShowExport] = useState(false)
+  const [exporting, setExporting] = useState<string | null>(null)
 
   // Edit mode state — full config editing
   const [editing, setEditing] = useState(false)
@@ -108,10 +110,19 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   // Start editing — deep-copy current config
   const startEdit = () => {
     if (!session) return
-    const cfg = session.config as TownHallConfig
+    const cfg = JSON.parse(JSON.stringify(session.config)) as TownHallConfig
+    // Ensure opening_message is populated from legacy fields if not set
+    if (!cfg.opening_message) {
+      const welcome = (cfg as any).display?.welcome_message || ''
+      const oq = (cfg as any).opening_question || ''
+      cfg.opening_message = (welcome && oq) ? welcome + '\n\n' + oq : welcome || oq || ''
+    }
+    if (!cfg.closing_message) {
+      cfg.closing_message = (cfg as any).session_end?.closing_message || (cfg as any).display?.thank_you_message || 'Thank you for participating!'
+    }
     setEditName(session.name)
     setEditSlug(session.slug || '')
-    setEditConfig(JSON.parse(JSON.stringify(cfg)))
+    setEditConfig(cfg)
     setEditGuide(JSON.parse(JSON.stringify(session.discussion_guide || [])))
     setOpenSections(new Set(['basics']))
     setEditing(true)
@@ -148,11 +159,27 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setEditGuide(g => g.map((t, i) => i === idx ? { ...t, ...partial } : t))
   }
 
-  const handleSessionAction = async (action: 'start' | 'end' | 'restart') => {
+  const handleDuplicate = async () => {
+    setActionLoading('duplicate')
+    setError(null)
+    try {
+      const res = await fetch('/api/townhall/sessions/' + sessionId + '/duplicate', { method: 'POST' })
+      const data = await res.json()
+      if (data.id) {
+        window.location.href = '/townhall/' + data.id
+        return
+      }
+      setError('Duplicate failed')
+    } catch { setError('Network error') }
+    setActionLoading(null)
+  }
+
+  const handleSessionAction = async (action: 'start' | 'end' | 'restart' | 'pause' | 'resume') => {
     setActionLoading(action)
     setError(null)
     try {
-      const body = action === 'restart' ? { restart: true } : { status: action === 'start' ? 'active' : 'ended' }
+      const statusMap: Record<string, string> = { start: 'active', end: 'ended', pause: 'paused', resume: 'active' }
+      const body = action === 'restart' ? { restart: true } : { status: statusMap[action] }
       const res = await fetch('/api/townhall/sessions/' + sessionId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -200,6 +227,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const cfg = session.config as any
   const isSetup = session.status === 'setup'
   const isActive = session.status === 'active'
+  const isPaused = session.status === 'paused'
   const isEnded = session.status === 'ended'
 
   // Separate themes into 3 sections
@@ -256,6 +284,87 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 {copied ? '\u2705 Copied!' : '\uD83D\uDD17 Share'}
               </button>
             )}
+            {!editing && (
+              <div className="relative">
+                <button onClick={() => setShowExport(!showExport)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
+                  {exporting ? exporting + '...' : '\uD83D\uDCE5 Export'}
+                </button>
+                {showExport && (
+                  <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl border border-gray-200 shadow-lg z-50 overflow-hidden">
+                    <button
+                      onClick={async () => {
+                        setExporting('CSV'); setShowExport(false)
+                        try {
+                          const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=csv')
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'export.csv'
+                          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+                        } catch { setError('Export failed') }
+                        setExporting(null)
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <span className="text-base">{'\uD83D\uDCC4'}</span>
+                      <div>
+                        <div className="font-semibold text-gray-700">Responses CSV</div>
+                        <div className="text-[10px] text-gray-400">All turns + demographics</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setExporting('Themes CSV'); setShowExport(false)
+                        try {
+                          const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=themes')
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'themes.csv'
+                          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+                        } catch { setError('Export failed') }
+                        setExporting(null)
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 border-t border-gray-100 flex items-center gap-2"
+                    >
+                      <span className="text-base">{'\uD83C\uDFF7\uFE0F'}</span>
+                      <div>
+                        <div className="font-semibold text-gray-700">Themes CSV</div>
+                        <div className="text-[10px] text-gray-400">Theme stats + keywords</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setExporting('PPTX'); setShowExport(false)
+                        try {
+                          const res = await fetch('/api/townhall/sessions/' + sessionId + '/export/pptx', { method: 'POST' })
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'summary.pptx'
+                          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+                        } catch { setError('Export failed') }
+                        setExporting(null)
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 border-t border-gray-100 flex items-center gap-2"
+                    >
+                      <span className="text-base">{'\uD83D\uDCCA'}</span>
+                      <div>
+                        <div className="font-semibold text-gray-700">Summary Deck</div>
+                        <div className="text-[10px] text-gray-400">PPTX with themes + quotes</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {!editing && (
+              <button onClick={handleDuplicate} disabled={actionLoading === 'duplicate'}
+                className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600 disabled:opacity-50">
+                {actionLoading === 'duplicate' ? 'Duplicating...' : '\uD83D\uDCC4 Duplicate'}
+              </button>
+            )}
             {isSetup && (
               <button onClick={() => handleSessionAction('start')} disabled={actionLoading === 'start'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
@@ -264,6 +373,26 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               </button>
             )}
             {isActive && (
+              <button onClick={() => handleSessionAction('pause')} disabled={actionLoading === 'pause'}
+                className="px-4 py-2 rounded-xl text-sm font-semibold border border-amber-300 hover:bg-amber-50 text-amber-600 disabled:opacity-50">
+                {actionLoading === 'pause' ? 'Pausing...' : 'Pause'}
+              </button>
+            )}
+            {isActive && (
+              <button onClick={() => handleSessionAction('end')} disabled={actionLoading === 'end'}
+                className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                style={{ background: '#ef4444' }}>
+                {actionLoading === 'end' ? 'Ending...' : 'End Session'}
+              </button>
+            )}
+            {isPaused && (
+              <button onClick={() => handleSessionAction('resume')} disabled={actionLoading === 'resume'}
+                className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                style={{ background: '#22c55e' }}>
+                {actionLoading === 'resume' ? 'Resuming...' : 'Resume Session'}
+              </button>
+            )}
+            {isPaused && (
               <button onClick={() => handleSessionAction('end')} disabled={actionLoading === 'end'}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#ef4444' }}>
@@ -284,7 +413,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         {error && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 text-sm text-red-700">{error}</div>}
 
         {/* Participant link + QR */}
-        {(isSetup || isActive) && !editing && (
+        {(isSetup || isActive || isPaused) && !editing && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <span className="text-xs font-semibold text-gray-400 uppercase block mb-1">Participant Link</span>
@@ -336,7 +465,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <ELabel>Opening Message</ELabel>
                 <ETextarea value={editConfig.opening_message} onChange={v => updateConfig({ opening_message: v })} rows={3} placeholder="Welcome text + opening question shown when a participant joins" />
                 <ELabel>Closing Message</ELabel>
-                <ETextarea value={editConfig.closing_message} onChange={v => updateConfig({ closing_message: v })} rows={2} placeholder="Shown when the session ends or a participant finishes" />
+                <ETextarea value={editConfig.closing_message} onChange={v => updateConfig({ closing_message: v })} rows={2} placeholder="Thank-you message shown when a participant finishes or the session ends" />
                 <ELabel>Tone</ELabel>
                 <EInput value={editConfig.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm and professional" />
                 <ELabel>Sensitive Topics <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
@@ -349,8 +478,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <EInput value={(editConfig.messages?.post_session_intro) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_intro: v } })} placeholder="Almost done — a few quick optional questions..." />
                   <ELabel>Before Demographics <span className="font-normal text-gray-400">(before demo form)</span></ELabel>
                   <EInput value={(editConfig.messages?.post_session_demo) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_demo: v } })} placeholder="A couple of optional questions about you." />
-                  <ELabel>Post-Session Thanks <span className="font-normal text-gray-400">(after submitting)</span></ELabel>
-                  <EInput value={(editConfig.messages?.post_session_thanks) || ''} onChange={v => updateConfig({ messages: { ...editConfig.messages, post_session_thanks: v } })} placeholder="Thanks for sharing!" />
                 </div>
               </EditSection>
 
@@ -411,19 +538,34 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div><ELabel>Default Response Target</ELabel><ENumber value={editConfig.engine.default_response_target} onChange={v => updateEngine({ default_response_target: v })} min={5} max={500} /></div>
                 </div>
                 <div><ELabel>AI Timeout (ms)</ELabel><ENumber value={editConfig.engine.ai_timeout_ms} onChange={v => updateEngine({ ai_timeout_ms: v })} min={3000} max={30000} /></div>
-                <ELabel>Theme Detection Mode</ELabel>
+                <ELabel>AI Theme Discovery</ELabel>
+                <p className="text-[10px] text-gray-400 mb-2">AI scans participant responses to find topics you didn't pre-configure. Discovered themes appear as "AI Suggested" for you to approve or dismiss.</p>
                 <div className="flex gap-2 mb-2">
-                  {(['off', 'manual', 'auto'] as const).map(m => (
-                    <button key={m} onClick={() => updateEngine({ theme_detection_mode: m })}
+                  {([
+                    { value: 'off' as const, label: 'Off' },
+                    { value: 'manual' as const, label: 'On Demand' },
+                    { value: 'auto' as const, label: 'Automatic' },
+                  ]).map(m => (
+                    <button key={m.value} onClick={() => updateEngine({ theme_detection_mode: m.value })}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
-                      style={{ background: editConfig.engine.theme_detection_mode === m ? '#fff4ef' : '#f9fafb', borderColor: editConfig.engine.theme_detection_mode === m ? HERMES : '#e5e7eb', color: editConfig.engine.theme_detection_mode === m ? HERMES : '#6b7280' }}>
-                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                      style={{ background: editConfig.engine.theme_detection_mode === m.value ? '#fff4ef' : '#f9fafb', borderColor: editConfig.engine.theme_detection_mode === m.value ? HERMES : '#e5e7eb', color: editConfig.engine.theme_detection_mode === m.value ? HERMES : '#6b7280' }}>
+                      {m.label}
                     </button>
                   ))}
                 </div>
                 {editConfig.engine.theme_detection_mode === 'auto' && (
-                  <div><ELabel>Detection Interval (minutes)</ELabel><ENumber value={editConfig.engine.theme_detection_interval_minutes} onChange={v => updateEngine({ theme_detection_interval_minutes: v })} min={5} max={60} /></div>
+                  <div><ELabel>Detect every N responses</ELabel><ENumber value={editConfig.engine.theme_detection_every_n_responses || 20} onChange={v => updateEngine({ theme_detection_every_n_responses: v })} min={5} max={100} /></div>
                 )}
+                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">Testing Mode</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Show AI thinking process inline — useful for demos and debugging</div>
+                  </div>
+                  <button type="button" onClick={() => updateConfig({ testing: !editConfig.testing })}
+                    className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (editConfig.testing ? 'bg-amber-500' : 'bg-gray-200')}>
+                    <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (editConfig.testing ? 'translate-x-5' : 'translate-x-0')} />
+                  </button>
+                </div>
               </EditSection>
 
               {/* ── 4. Session End ──────────────────────────────────────── */}
@@ -568,11 +710,11 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
             {/* Left 2/3: Topics — single unified list */}
             <div className="lg:col-span-2 space-y-4">
 
-              {/* Opening question preview */}
-              {cfg?.opening_question && (
+              {/* Opening message preview */}
+              {(cfg?.opening_message || cfg?.opening_question) && (
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Opening Question</span>
-                  <p className="text-sm text-gray-600 mt-1 italic">"{cfg.opening_question}"</p>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Opening Message</span>
+                  <p className="text-sm text-gray-600 mt-1 italic whitespace-pre-wrap">"{cfg.opening_message || cfg.opening_question}"</p>
                 </div>
               )}
 

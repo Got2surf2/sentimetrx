@@ -64,6 +64,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     demoFields: config?.demoFields || [],
     psychographicBank: config?.psychographicBank || [],
     psychoCount: config?.psychoCount || 3,
+    testing: !!config?.testing,
   })
 }
 

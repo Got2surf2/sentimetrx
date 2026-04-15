@@ -43,7 +43,8 @@ const DEFAULT_CONFIG: TownHallConfig = {
   closing_message: 'Thank you for your time. Your voice matters.',
   engine: {
     theme_detection_mode: 'manual',
-    theme_detection_interval_minutes: 10,
+    theme_detection_interval_minutes: 10,  // deprecated
+    theme_detection_every_n_responses: 20,
     max_turns_per_participant: 20,
     default_response_target: 30,
     max_active_themes: 8,
@@ -489,6 +490,18 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                       className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200" />
                   </div>
                 </div>
+
+                {/* Testing mode */}
+                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-4">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">Testing Mode</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Show AI thinking process inline — useful for demos</div>
+                  </div>
+                  <button type="button" onClick={() => setConfig(prev => ({ ...prev, testing: !prev.testing }))}
+                    className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + ((config as any).testing ? 'bg-amber-500' : 'bg-gray-200')}>
+                    <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + ((config as any).testing ? 'translate-x-5' : 'translate-x-0')} />
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -625,7 +638,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 <h3 className="text-sm font-bold text-gray-700 mb-2">Settings</h3>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
                   <span className="text-gray-400">Opening question</span>
-                  <span className="text-gray-600">{config.opening_message || '(not set)'}</span>
+                  <span className="text-gray-600 whitespace-pre-wrap">{config.opening_message || '(not set)'}</span>
                   <span className="text-gray-400">Max turns</span>
                   <span className="text-gray-600">{config.engine.max_turns_per_participant}</span>
                   <span className="text-gray-400">End mode</span>

@@ -5,7 +5,7 @@ import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import type { DemoField, PsychoQuestion } from '@/lib/types'
 
 type Phase = 'chat' | 'transition' | 'psycho' | 'demo' | 'submitting' | 'done'
-interface Message { who: 'bot' | 'user'; text: string }
+interface Message { who: 'bot' | 'user'; text: string; _debug?: string[] }
 interface Props { sessionId: string }
 
 const IMSG_BLUE = '#007AFF'
@@ -23,7 +23,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const [sessionName, setSessionName] = useState('')
   const [botName, setBotName] = useState('Town Hall')
   const [botEmoji, setBotEmoji] = useState('\uD83D\uDCAC')
-  const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'ended' | 'notfound'>('loading')
+  const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'paused' | 'ended' | 'notfound'>('loading')
   const [display, setDisplay] = useState<any>({})
   const [closingMsg, setClosingMsg] = useState('')
   const [languages, setLanguages] = useState<string[]>([])
@@ -48,6 +48,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const [psychoAnswers, setPsychoAnswers] = useState<Record<string, string>>({})
   const [demoAnswers, setDemoAnswers] = useState<Record<string, string>>({})
   const [botMessages, setBotMessages] = useState({ post_session_intro: '', post_session_demo: '', post_session_thanks: '' })
+  const [testing, setTesting] = useState(false)
 
   const finished = phase !== 'chat'
 
@@ -93,12 +94,16 @@ export default function TownHallChat({ sessionId }: Props) {
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
       if (d.psychographicBank) setPsychoBank(d.psychographicBank)
       if (d.psychoCount != null) setPsychoCount(d.psychoCount)
+      if (d.testing) setTesting(true)
       if (d.status === 'active') {
         setStatus('active')
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       } else if (d.status === 'ended') {
         setStatus('ended')
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      } else if (d.status === 'paused') {
+        setStatus('paused')
+        // Keep polling — session may resume
       } else {
         setStatus('setup')
       }
@@ -157,7 +162,7 @@ export default function TownHallChat({ sessionId }: Props) {
       setTurn(d.turn_number); setThemeId(d.theme_id)
       // Typing dots are already showing (loading=true) — wait for realistic duration
       await typingDelay(d.bot_message)
-      setMessages(p => [...p, { who: 'bot', text: d.bot_message }])
+      setMessages(p => [...p, { who: 'bot', text: d.bot_message, ...(d._debug ? { _debug: d._debug } : {}) }])
       if (d.is_final) await startPostSession()
     } catch { setMessages(p => [...p, { who: 'bot', text: 'Something went wrong. Let me try again — what were you saying?' }]) }
     setLoading(false)
@@ -221,7 +226,7 @@ export default function TownHallChat({ sessionId }: Props) {
         body: JSON.stringify({ session_id: sessionId, participant_id: pid, psychographics: psycho, demographics: demo }),
       })
     } catch { /* silently fail — don't block the thank-you screen */ }
-    const thankMsg = botMessages.post_session_thanks || 'Thanks for sharing! Your input helps us understand our community better.'
+    const thankMsg = closingMsg || botMessages.post_session_thanks || 'Thanks for sharing! Your input helps us understand our community better.'
     setLoading(true)
     await typingDelay(thankMsg)
     setLoading(false)
@@ -236,12 +241,14 @@ export default function TownHallChat({ sessionId }: Props) {
   if (status === 'loading') return <Screen>{'\u23F3'} Loading...</Screen>
   if (status === 'notfound') return <Screen>Session not found.</Screen>
 
-  if (status === 'setup') {
+  if (status === 'setup' || (status === 'paused' && !joined)) {
     return (
       <Screen>
         <div style={{ fontSize: 40, marginBottom: 12 }}>{'\uD83C\uDFE4'}</div>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#374151', marginBottom: 4 }}>{sessionName}</h2>
-        <p style={{ color: '#9ca3af', fontSize: 14 }}>Waiting for the facilitator to start the session...</p>
+        <p style={{ color: '#9ca3af', fontSize: 14 }}>
+          {status === 'setup' ? 'Waiting for the facilitator to start the session...' : 'Session is paused. Please wait...'}
+        </p>
         <Dots />
       </Screen>
     )
@@ -315,14 +322,22 @@ export default function TownHallChat({ sessionId }: Props) {
       {/* Chat area */}
       <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {messages.map((m, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
-            <div style={{
-              maxWidth: '75%', padding: '9px 14px',
-              borderRadius: m.who === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-              background: m.who === 'user' ? IMSG_BLUE : IMSG_GRAY,
-              color: m.who === 'user' ? 'white' : '#000',
-              fontSize: 16, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}>{m.text}</div>
+          <div key={i}>
+            <div style={{ display: 'flex', justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
+              <div style={{
+                maxWidth: '75%', padding: '9px 14px',
+                borderRadius: m.who === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                background: m.who === 'user' ? IMSG_BLUE : IMSG_GRAY,
+                color: m.who === 'user' ? 'white' : '#000',
+                fontSize: 16, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>{m.text}</div>
+            </div>
+            {testing && m._debug && m._debug.length > 0 && (
+              <div style={{ margin: '4px 0 6px 8px', padding: '8px 12px', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 12, fontSize: 11, color: '#92400e', lineHeight: 1.5, maxWidth: '85%' }}>
+                <div style={{ fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, color: '#78350f' }}>AI Thinking</div>
+                {m._debug.map((line, j) => <div key={j} style={{ marginBottom: 2 }}>{line}</div>)}
+              </div>
+            )}
           </div>
         ))}
         {loading && (

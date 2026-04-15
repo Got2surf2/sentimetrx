@@ -59,6 +59,12 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83E\uDDEA'} Testing Tools
             </Link>
+            <Link href="/admin/simulator" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83C\uDFB2'} Simulators
+            </Link>
           </div>
         </>
       )}

@@ -301,8 +301,15 @@ export default function SimulatorPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-xl font-bold text-gray-800">Response Simulator</h1>
-        <p className="text-sm text-gray-500 mb-6">Generate realistic test responses without needing humans</p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">Survey Simulator</h1>
+            <p className="text-sm text-gray-500">Generate realistic test responses without needing humans</p>
+          </div>
+          <a href="/admin/simulator/townhall" className="text-xs text-teal-600 hover:text-teal-800 font-medium">
+            Town Hall Simulator →
+          </a>
+        </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
           <div className="flex gap-3 mb-4">

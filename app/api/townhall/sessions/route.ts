@@ -12,7 +12,7 @@ export async function GET() {
 
   const { data, error } = await db
     .from('townhall_sessions')
-    .select('id, name, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
+    .select('id, name, slug, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

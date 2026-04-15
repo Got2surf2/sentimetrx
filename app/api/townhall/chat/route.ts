@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isInputSafe, isOutputClean, cleanAiOutput } from '@/lib/guardrails'
 import { callAI } from '@/lib/ai'
+import { detectThemesForSession } from '@/lib/townhallThemeDetection'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,11 +72,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // If session ended, return closing message
+  // If session ended or paused, return appropriate message
   if (session.status === 'ended') {
     return NextResponse.json({
       bot_message: config?.closing_message || config?.session_end?.closing_message || 'This session has ended. Thank you for participating.',
       is_final: true, theme_id: null, source: null, turn_number: turn_number + 1,
+    })
+  }
+  if (session.status === 'paused') {
+    return NextResponse.json({
+      bot_message: 'This session is currently paused. Please check back shortly.',
+      is_final: false, theme_id: null, source: null, turn_number: turn_number, paused: true,
     })
   }
 
@@ -143,10 +150,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Increment session response counter
+    const newCounter = (session.response_counter || 0) + 1
     await supabase
       .from('townhall_sessions')
-      .update({ response_counter: (session.response_counter || 0) + 1 })
+      .update({ response_counter: newCounter })
       .eq('id', session_id)
+
+    // Auto theme detection: trigger every N responses (fire-and-forget, don't block chat)
+    if (config?.engine?.theme_detection_mode === 'auto' && !skipped) {
+      const everyN = config.engine.theme_detection_every_n_responses || 20
+      if (newCounter > 0 && newCounter % everyN === 0) {
+        detectThemesForSession(session_id).catch(() => {})
+      }
+    }
   }
 
   // Check turn cap
@@ -182,7 +198,12 @@ export async function POST(req: NextRequest) {
 
   // Check if we should clarify (short answer on current topic)
   const currentTopicTurns = theme_id ? turns.filter(t => t.theme_id === theme_id).length : 0
-  const shouldClarify = !isOpeningResponse && !skipped && message && message.split(/\s+/).length < 12 && currentTopicTurns <= 1
+  const wordCount = message ? message.split(/\s+/).length : 0
+  const shouldClarify = !isOpeningResponse && !skipped && message && wordCount < 12 && currentTopicTurns <= 1
+
+  // Testing mode: accumulate reasoning steps
+  const testing = !!config?.testing
+  const debug: string[] = []
 
   let botMessage: string
   let resolvedThemeId: string | null = null
@@ -190,15 +211,25 @@ export async function POST(req: NextRequest) {
 
   if (isOpeningResponse && message && !skipped) {
     // ── OPENING RESPONSE: Match to best topic ────────────────────────────
+    if (testing) debug.push('DECISION: Opening response — matching to best topic from ' + allTopics.length + ' available topics')
     const matchResult = await matchResponseToTopic(config, message, language, allTopics)
     resolvedThemeId = matchResult.themeId
     aiSource = resolvedThemeId ? 'guide' : 'clarifier'
     botMessage = matchResult.followUp
+    if (testing) {
+      const matched = allTopics.find(t => t.id === resolvedThemeId)
+      debug.push(resolvedThemeId ? 'MATCHED TOPIC: "' + (matched?.label || '?') + '"' : 'NO TOPIC MATCH — using generic follow-up')
+    }
 
   } else if (shouldClarify) {
     // ── CLARIFIER: Short answer, dig deeper on same topic ────────────────
     resolvedThemeId = theme_id
     aiSource = 'clarifier'
+    if (testing) {
+      const topic = allTopics.find(t => t.id === theme_id)
+      debug.push('DECISION: Clarifier triggered')
+      debug.push('REASON: Response was ' + wordCount + ' words (< 12 threshold) and only ' + currentTopicTurns + ' prior turn(s) on topic "' + (topic?.label || '?') + '"')
+    }
     botMessage = await generateClarifier(config, message, turns, language)
 
   } else {
@@ -206,6 +237,13 @@ export async function POST(req: NextRequest) {
     const available = allTopics.filter(
       t => t.response_count < t.response_target && !discussedThemeIds.has(t.id)
     )
+
+    if (testing && !shouldClarify && !isOpeningResponse) {
+      debug.push('DECISION: Move to next topic')
+      if (wordCount >= 12) debug.push('Clarifier skipped: response was ' + wordCount + ' words (>= 12 threshold)')
+      else if (currentTopicTurns > 1) debug.push('Clarifier skipped: already had ' + currentTopicTurns + ' turns on this topic')
+      debug.push('Topics discussed: ' + discussedThemeIds.size + ' | Available: ' + available.length)
+    }
 
     if (available.length === 0) {
       return wrapUp(config)
@@ -215,17 +253,28 @@ export async function POST(req: NextRequest) {
     // auto-detected or custom theme, prioritize that theme over the default queue.
     // This makes the conversation feel natural — following the participant's interests.
     let nextTopic = available[0]  // default: fewest responses
+    let probedKeyword: string | null = null
     if (message && !skipped) {
       const lower = message.toLowerCase()
       for (const t of available) {
         if (t.id === theme_id) continue  // don't repeat same topic
         const kws: string[] = (t as any).keywords || []
-        if (kws.length > 0 && kws.some(function(kw) {
-          return lower.includes(kw.toLowerCase())
-        })) {
-          nextTopic = t
-          break
+        if (kws.length > 0) {
+          const matchedKw = kws.find(function(kw) { return lower.includes(kw.toLowerCase()) })
+          if (matchedKw) {
+            nextTopic = t
+            probedKeyword = matchedKw
+            break
+          }
         }
+      }
+    }
+
+    if (testing) {
+      if (probedKeyword) {
+        debug.push('SMART PROBE: Keyword "' + probedKeyword + '" matched — jumping to "' + nextTopic.label + '" instead of default queue')
+      } else {
+        debug.push('NEXT TOPIC: "' + nextTopic.label + '" (fewest responses: ' + nextTopic.response_count + '/' + nextTopic.response_target + ')')
       }
     }
 
@@ -235,6 +284,10 @@ export async function POST(req: NextRequest) {
   }
 
   const nextTurnNumber = turn_number + 1
+
+  if (testing) {
+    debug.push('SOURCE: ' + aiSource + ' | TURN: ' + nextTurnNumber)
+  }
 
   // Store the new turn
   await supabase.from('townhall_turns').insert({
@@ -256,6 +309,7 @@ export async function POST(req: NextRequest) {
     source: aiSource,
     is_final: false,
     turn_number: nextTurnNumber,
+    ...(testing ? { _debug: debug } : {}),
   })
 }
 

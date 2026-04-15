@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 interface Session {
   id: string
   name: string
+  slug: string | null
   status: string
   config: any
   discussion_guide: any[]
@@ -35,6 +36,8 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> 
   ended:  { bg: '#e5e7eb', text: '#374151', label: 'Ended' },
 }
 
+type FilterTab = 'all' | 'active' | 'setup' | 'ended' | 'archived'
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
@@ -47,6 +50,10 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
   const router = useRouter()
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<FilterTab>('all')
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [shareLoading, setShareLoading] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/townhall/sessions')
@@ -54,6 +61,101 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
       .then(data => { setSessions(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
+
+  const isArchived = (s: Session) => !!s.config?.archived
+
+  const filtered = sessions.filter(s => {
+    if (filter === 'archived') return isArchived(s)
+    if (isArchived(s)) return false // hide archived from non-archived tabs
+    if (filter === 'all') return true
+    return s.status === filter
+  })
+
+  const archivedCount = sessions.filter(s => isArchived(s)).length
+
+  const handleArchive = async (sessionId: string, archive: boolean) => {
+    setActionLoading(sessionId)
+    setMenuOpen(null)
+    try {
+      const s = sessions.find(s => s.id === sessionId)
+      if (!s) return
+      const updatedConfig = { ...s.config, archived: archive || undefined }
+      if (!archive) delete updatedConfig.archived
+      await fetch('/api/townhall/sessions/' + sessionId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: updatedConfig }),
+      })
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, config: updatedConfig } : s))
+    } catch {}
+    setActionLoading(null)
+  }
+
+  const handleDuplicate = async (sessionId: string) => {
+    setActionLoading(sessionId)
+    setMenuOpen(null)
+    try {
+      const res = await fetch('/api/townhall/sessions/' + sessionId + '/duplicate', { method: 'POST' })
+      const data = await res.json()
+      if (data.id) {
+        router.push('/townhall/' + data.id)
+      }
+    } catch {}
+    setActionLoading(null)
+  }
+
+  const handleShare = async (sessionId: string) => {
+    setShareLoading(sessionId)
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'townhall', target_id: sessionId, expires_in: '7d' }),
+      })
+      const d = await res.json()
+      if (d.url) {
+        await navigator.clipboard.writeText(d.url)
+        setTimeout(() => setShareLoading(null), 2000)
+        return
+      }
+    } catch {}
+    setShareLoading(null)
+  }
+
+  const handleAction = async (sessionId: string, action: 'start' | 'end' | 'pause' | 'resume' | 'restart') => {
+    setActionLoading(sessionId)
+    try {
+      const statusMap: Record<string, string> = { start: 'active', end: 'ended', pause: 'paused', resume: 'active' }
+      const body = action === 'restart' ? { restart: true } : { status: statusMap[action] }
+      await fetch('/api/townhall/sessions/' + sessionId, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      // Refetch
+      const res = await fetch('/api/townhall/sessions')
+      const data = await res.json()
+      setSessions(Array.isArray(data) ? data : [])
+    } catch {}
+    setActionLoading(null)
+  }
+
+  const handleExport = async (sessionId: string, name: string) => {
+    try {
+      const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=csv')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || (name + '.csv')
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+    } catch {}
+  }
+
+  const tabs: { key: FilterTab; label: string; count?: number }[] = [
+    { key: 'all', label: 'All', count: sessions.filter(s => !isArchived(s)).length },
+    { key: 'active', label: 'Active', count: sessions.filter(s => s.status === 'active' && !isArchived(s)).length },
+    { key: 'setup', label: 'Setup', count: sessions.filter(s => s.status === 'setup' && !isArchived(s)).length },
+    { key: 'ended', label: 'Ended', count: sessions.filter(s => s.status === 'ended' && !isArchived(s)).length },
+    ...(archivedCount > 0 ? [{ key: 'archived' as FilterTab, label: 'Archived', count: archivedCount }] : []),
+  ]
 
   return (
     <>
@@ -84,6 +186,21 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
             </Link>
           </div>
 
+          {/* Filter tabs */}
+          {sessions.length > 0 && (
+            <div className="flex gap-1 mb-5">
+              {tabs.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setFilter(t.key)}
+                  className={'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ' + (filter === t.key ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
+                >
+                  {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Sessions grid */}
           {loading ? (
             <div className="text-center py-20 text-gray-400 text-sm">Loading sessions...</div>
@@ -98,60 +215,136 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                 Create Session
               </Link>
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16 text-gray-400 text-sm">No {filter} sessions</div>
           ) : (
             <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-              {sessions.map(s => {
+              {filtered.map(s => {
                 const badge = STATUS_BADGE[s.status] || STATUS_BADGE.setup
                 const topicCount = s.discussion_guide?.length || 0
+                const archived = isArchived(s)
                 const statusColor = s.status === 'active' ? 'bg-green-100 text-green-700 border-green-200'
                   : s.status === 'ended' ? 'bg-gray-100 text-gray-500 border-gray-200'
                   : 'bg-yellow-50 text-yellow-700 border-yellow-200'
                 return (
-                  <Link
-                    key={s.id}
-                    href={'/townhall/' + s.id}
-                    className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden">
+                  <div key={s.id} className={'bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden relative' + (archived ? ' opacity-60' : '')}>
 
                     {/* Color strip */}
-                    <div className="h-1.5 w-full" style={{ background: s.status === 'active' ? 'linear-gradient(135deg, #22c55e, #16a34a)' : s.status === 'ended' ? 'linear-gradient(135deg, #9ca3af, #6b7280)' : 'linear-gradient(135deg,' + HERMES + ',#c44d1a)' }} />
+                    <div className="h-1.5 w-full" style={{ background: archived ? '#9ca3af' : s.status === 'active' ? 'linear-gradient(135deg, #22c55e, #16a34a)' : s.status === 'ended' ? 'linear-gradient(135deg, #9ca3af, #6b7280)' : 'linear-gradient(135deg,' + HERMES + ',#c44d1a)' }} />
 
                     <div className="p-4 flex flex-col gap-3 flex-1">
-                      {/* Title row */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-lg leading-none">{'\uD83C\uDFE4'}</span>
-                          <h3 className="font-bold text-gray-800 text-sm truncate">{s.name}</h3>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' + statusColor}>
-                            {badge.label}
-                          </span>
-                          <span className="text-xs text-gray-400">{formatDate(s.created_at)}</span>
+                      {/* Title row — matches survey card */}
+                      <div className="flex items-start justify-between gap-2">
+                        <Link href={'/townhall/' + s.id} target="_blank" className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-lg leading-none">{s.config?.bot_emoji || '\uD83C\uDFE4'}</span>
+                            <h3 className="font-bold text-gray-800 text-sm truncate hover:text-orange-600 transition-colors">{s.name}</h3>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className={'text-xs px-2 py-0.5 rounded-full border font-medium ' + statusColor}>
+                              {archived ? 'Archived' : badge.label}
+                            </span>
+                            <span className="text-xs text-gray-400">{formatDate(s.created_at)}</span>
+                          </div>
+                        </Link>
+                        {/* Mini stat circle — matches survey donut position */}
+                        <div className="flex flex-col items-center justify-center w-12 h-12 rounded-full flex-shrink-0" style={{ background: '#fff4ef' }}>
+                          <div className="text-sm font-black" style={{ color: HERMES }}>{s.participants}</div>
+                          <div className="text-[7px] text-gray-400 font-semibold uppercase leading-tight">joined</div>
                         </div>
                       </div>
 
-                      {/* Opening question preview */}
-                      {s.config?.opening_question && (
-                        <p className="text-xs text-gray-400 italic line-clamp-2">"{s.config.opening_question}"</p>
+                      {/* Stats line — matches survey "42 responses (85%)" pattern */}
+                      <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                        <span className="font-medium text-gray-700">{s.turns} responses</span>
+                        <span className="text-gray-400">{topicCount} topics</span>
+                        {s.config?.bot_name && <span className="text-gray-400">Bot: {s.config.bot_name}</span>}
+                      </div>
+
+                      {/* Timing info */}
+                      {s.started_at && (
+                        <div className="text-xs text-gray-400">
+                          {s.status === 'ended' && s.ended_at
+                            ? 'Ran ' + formatDate(s.started_at) + ' – ' + formatDate(s.ended_at)
+                            : 'Started ' + formatDate(s.started_at) + ' ' + formatTime(s.started_at)}
+                        </div>
                       )}
 
-                      {/* Stats row */}
+                      {/* Participant link — matches survey link copy */}
+                      {(s.status === 'active' || s.status === 'setup') && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            const url = window.location.origin + '/th/' + (s.slug || s.id)
+                            navigator.clipboard.writeText(url)
+                            const span = e.currentTarget.querySelector('span')
+                            if (span) { span.textContent = 'Copied!'; setTimeout(() => { span.textContent = '/th/' + (s.slug || s.id) }, 1500) }
+                          }}
+                          className="text-xs text-gray-300 hover:text-green-600 truncate text-left transition-colors flex items-center gap-1.5"
+                          title="Click to copy participant link">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                          <span>/th/{s.slug || s.id}</span>
+                        </button>
+                      )}
+
+                      {/* Action pills — identical layout to survey cards */}
                       <div className="grid grid-cols-3 gap-1.5 mt-auto pt-2 border-t border-gray-100">
-                        <div className="text-center">
-                          <div className="text-base font-black" style={{ color: HERMES }}>{topicCount}</div>
-                          <div className="text-[10px] text-gray-400 font-medium">Topics</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-base font-black" style={{ color: HERMES }}>{s.participants}</div>
-                          <div className="text-[10px] text-gray-400 font-medium">Joined</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-base font-black" style={{ color: HERMES }}>{s.turns}</div>
-                          <div className="text-[10px] text-gray-400 font-medium">Turns</div>
-                        </div>
+                        {/* Row 1: Analytics, Responses, Export (orange) */}
+                        <Link href={'/townhall/' + s.id + '?tab=analytics'} target="_blank"
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                          Analytics
+                        </Link>
+                        <Link href={'/townhall/' + s.id} target="_blank"
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                          Responses
+                        </Link>
+                        <button onClick={() => handleExport(s.id, s.name)}
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                          Export
+                        </button>
+
+                        {/* Row 2: Close/Reopen, Archive (red) */}
+                        <button
+                          onClick={() => {
+                            const isLive = s.status === 'active' || s.status === 'paused'
+                            handleAction(s.id, isLive ? 'end' : s.status === 'ended' ? 'restart' : 'start')
+                          }}
+                          disabled={!!actionLoading}
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all disabled:opacity-50 text-center"
+                          style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                          {(s.status === 'active' || s.status === 'paused') ? 'Close' : 'Reopen'}
+                        </button>
+                        <button onClick={() => handleArchive(s.id, !archived)}
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                          {archived ? 'Unarchive' : 'Archive'}
+                        </button>
+                        <div />
+
+                        {/* Row 3: Edit, Duplicate, Share (gray/blue) */}
+                        <Link href={'/townhall/' + s.id + '?edit=1'} target="_blank"
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
+                          Edit
+                        </Link>
+                        <button onClick={() => handleDuplicate(s.id)}
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
+                          Duplicate
+                        </button>
+                        <button onClick={() => handleShare(s.id)}
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
+                          {shareLoading === s.id ? 'Copied!' : 'Share'}
+                        </button>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 )
               })}
             </div>

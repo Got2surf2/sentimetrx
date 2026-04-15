@@ -35,11 +35,11 @@ export async function GET(req: Request) {
     const mode = config?.engine?.theme_detection_mode
     if (mode !== 'auto') continue
 
-    // Check if interval has elapsed
-    const intervalMin = config?.engine?.theme_detection_interval_minutes || 10
+    // Cron is a safety net — primary trigger is response-count-based in the chat route.
+    // Only run if at least 10 minutes since last detection to avoid duplicate runs.
     const lastRun = s.last_theme_detection_at ? new Date(s.last_theme_detection_at).getTime() : 0
     const elapsed = (Date.now() - lastRun) / 60000
-    if (elapsed < intervalMin) continue
+    if (elapsed < 10) continue
 
     scanned++
     try {

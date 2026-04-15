@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
+import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
 
 // GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -146,13 +147,74 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     else overallNeutral++
   }
 
-  // Responses over time (hourly buckets)
-  const buckets: Record<string, number> = {}
+  // Responses over time (smart bucketing)
+  const bucketParam = _req.nextUrl.searchParams.get('bucket') as TimeBucket | null
+  const timestamps = responsesWithText.map(t => new Date(t.created_at))
+  const chosenBucket: TimeBucket = bucketParam && ['hour', 'day', 'week', 'month'].includes(bucketParam)
+    ? bucketParam
+    : timestamps.length >= 2
+      ? autoBucket(timestamps[0], timestamps[timestamps.length - 1])
+      : 'hour'
+  const timeBuckets: Record<string, number> = {}
   for (const t of responsesWithText) {
-    const hr = new Date(t.created_at).toISOString().slice(0, 13) + ':00'
-    buckets[hr] = (buckets[hr] || 0) + 1
+    const key = bucketKey(t.created_at, chosenBucket)
+    timeBuckets[key] = (timeBuckets[key] || 0) + 1
   }
-  const responsesOverTime = Object.entries(buckets).sort().map(function(e) { return { bucket: e[0], count: e[1] } })
+  const responsesOverTime = Object.entries(timeBuckets).sort().map(function(e) { return { bucket: e[0], count: e[1] } })
+
+  // Per-theme frequency over time (keyword-matched, same buckets)
+  const activeThemeList = (themes || []).filter((t: any) => t.state !== 'dismissed')
+  const themeRegexes: { id: string; label: string; regexes: RegExp[] }[] = activeThemeList.map(function(t: any) {
+    const kws: string[] = t.keywords || []
+    return {
+      id: t.id,
+      label: t.label,
+      regexes: kws.slice(0, 15).map(function(kw: string) { try { return buildKwRegex(kw) } catch { return null } }).filter(Boolean) as RegExp[],
+    }
+  })
+
+  // Build sorted bucket keys
+  const sortedBuckets = Object.keys(timeBuckets).sort()
+
+  // For each response, check which themes match, bucket by time
+  const themeTimeSeries: Record<string, Record<string, number>> = {}
+  for (const tr of themeRegexes) themeTimeSeries[tr.id] = {}
+
+  for (const t of responsesWithText) {
+    const text = (t.user_message_en || t.user_message || '').toLowerCase()
+    const bk = bucketKey(t.created_at, chosenBucket)
+    for (const tr of themeRegexes) {
+      if (tr.regexes.length > 0) {
+        if (tr.regexes.some(function(re) { return re.test(text) })) {
+          themeTimeSeries[tr.id][bk] = (themeTimeSeries[tr.id][bk] || 0) + 1
+        }
+      } else if (t.theme_id === tr.id) {
+        // Fallback: use turn-level theme tagging for themes without keywords
+        themeTimeSeries[tr.id][bk] = (themeTimeSeries[tr.id][bk] || 0) + 1
+      }
+    }
+  }
+
+  // Format: array of { theme_id, label, series: [{bucket, count}] }
+  const topicFrequency = themeRegexes.map(function(tr) {
+    return {
+      theme_id: tr.id,
+      label: tr.label,
+      series: sortedBuckets.map(function(bk) { return { bucket: bk, count: themeTimeSeries[tr.id][bk] || 0 } }),
+    }
+  })
+
+  // Shift detection: flag themes where the latest bucket is ≥2x the per-bucket average
+  const shifts: { theme_id: string; label: string; latest: number; avg: number }[] = []
+  for (const tf of topicFrequency) {
+    if (tf.series.length < 3) continue
+    const counts = tf.series.map(function(s) { return s.count })
+    const avg = counts.reduce(function(a, b) { return a + b }, 0) / counts.length
+    const latest = counts[counts.length - 1]
+    if (avg > 0 && latest >= avg * 2 && latest >= 3) {
+      shifts.push({ theme_id: tf.theme_id, label: tf.label, latest, avg: Math.round(avg * 10) / 10 })
+    }
+  }
 
   return NextResponse.json({
     session,
@@ -161,6 +223,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     analytics: {
       sentiment_breakdown: { positive: overallPos, negative: overallNeg, mixed: overallMixed, neutral: overallNeutral },
       responses_over_time: responsesOverTime,
+      topic_frequency: topicFrequency,
+      topic_shifts: shifts,
+      time_bucket: chosenBucket,
       total_responses: allResponseTexts.length,
     },
   })

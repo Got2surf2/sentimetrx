@@ -876,7 +876,8 @@ export interface TownHallConfig {
   languages?: string[]
   engine: {
     theme_detection_mode:             'off' | 'manual' | 'auto'
-    theme_detection_interval_minutes: number   // for auto mode — how often to run detection
+    theme_detection_interval_minutes: number   // deprecated — kept for backwards compat
+    theme_detection_every_n_responses: number  // for auto mode — run detection every N new responses (default 20)
     max_turns_per_participant:        number
     default_response_target:          number
     max_active_themes:                number
