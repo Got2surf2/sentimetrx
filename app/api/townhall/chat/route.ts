@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
   // Check if we should clarify (short answer on current topic)
   const currentTopicTurns = theme_id ? turns.filter(t => t.theme_id === theme_id).length : 0
   const wordCount = message ? message.split(/\s+/).length : 0
-  const shouldClarify = !isOpeningResponse && !skipped && message && wordCount < 12 && currentTopicTurns <= 1
+  const shouldClarify = !isOpeningResponse && !skipped && message && wordCount < 12 && currentTopicTurns <= 3
 
   // Testing mode: accumulate reasoning steps
   const testing = !!config?.testing
@@ -287,8 +287,23 @@ export async function POST(req: NextRequest) {
     }
 
     if (available.length === 0) {
-      return wrapUp(config)
-    }
+      // All topics covered — but don't end early if participant still has turns left.
+      // Revisit the topic with the most remaining capacity, or do an open follow-up.
+      const revisit = allTopics
+        .filter(t => t.response_count < t.response_target)
+        .sort((a: any, b: any) => (b.response_target - b.response_count) - (a.response_target - a.response_count))
+      if (revisit.length > 0) {
+        // Revisit the topic with the most headroom
+        const nextTopic = revisit[0]
+        resolvedThemeId = nextTopic.id
+        aiSource = 'revisit'
+        if (testing) debug.push('ALL TOPICS VISITED — revisiting "' + nextTopic.label + '" (most headroom: ' + nextTopic.response_count + '/' + nextTopic.response_target + ')')
+        botMessage = await generateClarifier(config, message, turns, language)
+      } else {
+        // Truly exhausted — all topics at target. End conversation.
+        return wrapUp(config)
+      }
+    } else {
 
     // Smart probing: if the participant's response matches keywords of an available
     // auto-detected or custom theme, prioritize that theme over the default queue.
@@ -322,6 +337,7 @@ export async function POST(req: NextRequest) {
     resolvedThemeId = nextTopic.id
     aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
     botMessage = await generateTransition(config, message, language, turns, nextTopic)
+    }
   }
 
   const nextTurnNumber = turn_number + 1
