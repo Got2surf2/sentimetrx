@@ -40,6 +40,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const [joined, setJoined] = useState(false)
   const [phase, setPhase] = useState<Phase>('chat')
   const [pid, setPid] = useState('')
+  const [resolvedId, setResolvedId] = useState(sessionId) // UUID from join — slug resolved server-side
   const [turn, setTurn] = useState(0)
   const [themeId, setThemeId] = useState<string | null>(null)
 
@@ -137,6 +138,7 @@ export default function TownHallChat({ sessionId }: Props) {
         if (d.status === 'setup') { setStatus('setup'); setLoading(false); return }
         setMessages([{ who: 'bot', text: d.error }]); setPhase('done'); setLoading(false); return
       }
+      if (d.session_id) setResolvedId(d.session_id)
       setPid(d.participant_id); setTurn(d.turn_number); setThemeId(d.theme_id)
       // Store translated messages + psycho/demo from join response
       if (d.bot_messages) setBotMessages(d.bot_messages)
@@ -167,7 +169,7 @@ export default function TownHallChat({ sessionId }: Props) {
     try {
       const r = await fetch('/api/townhall/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: skip ? '' : msg, turn_number: turn, theme_id: themeId, skipped: !!skip, language: selectedLang || 'en', debug: debugMode || undefined }),
+        body: JSON.stringify({ session_id: resolvedId, participant_id: pid, message: skip ? '' : msg, turn_number: turn, theme_id: themeId, skipped: !!skip, language: selectedLang || 'en', debug: debugMode || undefined }),
       })
       const d = await r.json()
       // Handle debug mode toggle
@@ -228,7 +230,7 @@ export default function TownHallChat({ sessionId }: Props) {
     setLoading(false)
     setMessages(p => [...p, { who: 'bot', text: msg }])
     fetch('/api/townhall/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, participant_id: pid, message: '[done]', turn_number: turn, theme_id: themeId, skipped: true }),
+      body: JSON.stringify({ session_id: resolvedId, participant_id: pid, message: '[done]', turn_number: turn, theme_id: themeId, skipped: true }),
     }).catch(() => {})
     await startPostSession()
   }
@@ -239,7 +241,7 @@ export default function TownHallChat({ sessionId }: Props) {
       await fetch('/api/townhall/responses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, participant_id: pid, psychographics: psycho, demographics: demo }),
+        body: JSON.stringify({ session_id: resolvedId, participant_id: pid, psychographics: psycho, demographics: demo }),
       })
     } catch { /* silently fail — don't block the thank-you screen */ }
     const thankMsg = closingMsg || botMessages.post_session_thanks || 'Thanks for sharing! Your input helps us understand our community better.'

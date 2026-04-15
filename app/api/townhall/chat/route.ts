@@ -36,13 +36,17 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceRoleClient()
 
-  // Fetch session
-  const { data: session } = await supabase
-    .from('townhall_sessions')
-    .select('id, status, config, response_counter, started_at')
-    .eq('id', session_id)
-    .single()
-
+  // Fetch session (by UUID or slug)
+  let session: any = null
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
+  if (isUUID) {
+    const { data } = await supabase.from('townhall_sessions').select('id, status, config, response_counter, started_at').eq('id', session_id).single()
+    session = data
+  }
+  if (!session) {
+    const { data } = await supabase.from('townhall_sessions').select('id, status, config, response_counter, started_at').eq('slug', session_id.toLowerCase()).single()
+    session = data
+  }
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   const config = session.config as any
@@ -58,7 +62,7 @@ export async function POST(req: NextRequest) {
       const { data: lastTurn } = await supabase
         .from('townhall_turns')
         .select('created_at')
-        .eq('session_id', session_id)
+        .eq('session_id', session.id)
         .not('user_message', 'is', null)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -69,7 +73,7 @@ export async function POST(req: NextRequest) {
       }
     }
     if (shouldEnd) {
-      await supabase.from('townhall_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', session_id)
+      await supabase.from('townhall_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', session.id)
       session.status = 'ended'
     }
   }
@@ -92,12 +96,12 @@ export async function POST(req: NextRequest) {
   if (message && !skipped) {
     const debugMatch = message.trim().match(/^#debug\s+(.+)$/i)
     const debugOff = /^#debug\s+off$/i.test(message.trim())
-    if (debugOff || (debugMatch && debugMatch[1].trim() === session_id)) {
+    if (debugOff || (debugMatch && debugMatch[1].trim() === session.id)) {
       // Fetch previous bot message to re-send
       const { data: lastBotTurn } = await supabase
         .from('townhall_turns')
         .select('bot_message')
-        .eq('session_id', session_id)
+        .eq('session_id', session.id)
         .eq('participant_id', participant_id)
         .not('bot_message', 'is', null)
         .order('turn_number', { ascending: false })
@@ -123,12 +127,12 @@ export async function POST(req: NextRequest) {
       // Store the turn as filtered
       await supabase.from('townhall_turns')
         .update({ user_message: '[filtered]', skipped: true })
-        .eq('session_id', session_id).eq('participant_id', participant_id).eq('turn_number', turn_number)
+        .eq('session_id', session.id).eq('participant_id', participant_id).eq('turn_number', turn_number)
 
       const warningMsg = check.warning || 'I appreciate you sharing — let\'s keep the conversation focused on the topic. What else is on your mind?'
       const nextTurn = turn_number + 1
       await supabase.from('townhall_turns').insert({
-        session_id, participant_id, turn_number: nextTurn, bot_message: warningMsg,
+        session_id: session.id, participant_id, turn_number: nextTurn, bot_message: warningMsg,
         user_message: null, user_message_en: null, language: language || 'en', theme_id, source: 'clarifier', skipped: false,
       })
       return NextResponse.json({
@@ -148,7 +152,7 @@ export async function POST(req: NextRequest) {
       const { data: lastBotTurn } = await supabase
         .from('townhall_turns')
         .select('bot_message')
-        .eq('session_id', session_id)
+        .eq('session_id', session.id)
         .eq('participant_id', participant_id)
         .not('bot_message', 'is', null)
         .order('turn_number', { ascending: false })
@@ -204,7 +208,7 @@ export async function POST(req: NextRequest) {
     await supabase
       .from('townhall_turns')
       .update(turnUpdate)
-      .eq('session_id', session_id)
+      .eq('session_id', session.id)
       .eq('participant_id', participant_id)
       .eq('turn_number', turn_number)
 
@@ -232,13 +236,13 @@ export async function POST(req: NextRequest) {
     await supabase
       .from('townhall_sessions')
       .update({ response_counter: newCounter })
-      .eq('id', session_id)
+      .eq('id', session.id)
 
     // Auto theme detection: trigger every N responses (fire-and-forget, don't block chat)
     if (config?.engine?.theme_detection_mode === 'auto' && !skipped) {
       const everyN = config.engine.theme_detection_every_n_responses || 20
       if (newCounter > 0 && newCounter % everyN === 0) {
-        detectThemesForSession(session_id).catch(() => {})
+        detectThemesForSession(session.id).catch(() => {})
       }
     }
   }
@@ -253,7 +257,7 @@ export async function POST(req: NextRequest) {
   const { data: history } = await supabase
     .from('townhall_turns')
     .select('bot_message, user_message, theme_id, source, turn_number')
-    .eq('session_id', session_id)
+    .eq('session_id', session.id)
     .eq('participant_id', participant_id)
     .order('turn_number', { ascending: true })
 
@@ -263,7 +267,7 @@ export async function POST(req: NextRequest) {
   const { data: activeThemes } = await supabase
     .from('townhall_themes')
     .select('id, label, description, question, follow_up_angles, keywords, source, response_count, response_target')
-    .eq('session_id', session_id)
+    .eq('session_id', session.id)
     .eq('state', 'active')
     .order('response_count', { ascending: true })
 
@@ -385,7 +389,7 @@ export async function POST(req: NextRequest) {
 
   // Store the new turn
   await supabase.from('townhall_turns').insert({
-    session_id,
+    session_id: session.id,
     participant_id,
     turn_number: nextTurnNumber,
     bot_message: botMessage,

@@ -185,6 +185,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   })
 
   return NextResponse.json({
+    session_id: session.id,  // resolved UUID — client should use this for all subsequent calls
     participant_id: participantId,
     bot_message: botMessage,
     closing_message: translatedClosing,
