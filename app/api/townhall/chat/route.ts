@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
         message,
         3000
       )
-      if (transResult && transResult.length > 2) messageEn = transResult
+      if (transResult.text && transResult.text.length > 2) messageEn = transResult.text
     } catch { /* translation failed — store without, theme detection will work on original */ }
   }
 
@@ -294,13 +294,14 @@ export async function POST(req: NextRequest) {
   if (isOpeningResponse && message && !skipped) {
     // ── OPENING RESPONSE: Match to best topic ────────────────────────────
     if (testing) debug.push('DECISION: Opening response — matching to best topic from ' + allTopics.length + ' available topics')
-    const matchResult = await matchResponseToTopic(config, message, language, allTopics)
+    const matchResult = await matchResponseToTopic(config, message, language, allTopics, testing)
     resolvedThemeId = matchResult.themeId
     aiSource = resolvedThemeId ? 'guide' : 'clarifier'
     botMessage = matchResult.followUp
     if (testing) {
       const matched = allTopics.find(t => t.id === resolvedThemeId)
       debug.push(resolvedThemeId ? 'MATCHED TOPIC: "' + (matched?.label || '?') + '"' : 'NO TOPIC MATCH — using generic follow-up')
+      if (matchResult.thinking.length > 0) debug.push('AI REASONING:', ...matchResult.thinking)
     }
 
   } else if (shouldClarify) {
@@ -312,7 +313,9 @@ export async function POST(req: NextRequest) {
       debug.push('DECISION: Clarifier triggered')
       debug.push('REASON: Response was ' + wordCount + ' words (< 12 threshold) and only ' + currentTopicTurns + ' prior turn(s) on topic "' + (topic?.label || '?') + '"')
     }
-    botMessage = await generateClarifier(config, message, turns, language)
+    const clarifyResult = await generateClarifier(config, message, turns, language, testing)
+    botMessage = clarifyResult.text
+    if (testing && clarifyResult.thinking.length > 0) debug.push('AI REASONING:', ...clarifyResult.thinking)
 
   } else {
     // ── NEXT TOPIC: Move to an unvisited topic ───────────────────────────
@@ -328,33 +331,28 @@ export async function POST(req: NextRequest) {
     }
 
     if (available.length === 0) {
-      // All topics covered — but don't end early if participant still has turns left.
-      // Revisit the topic with the most remaining capacity, or do an open follow-up.
       const revisit = allTopics
         .filter(t => t.response_count < t.response_target)
         .sort((a: any, b: any) => (b.response_target - b.response_count) - (a.response_target - a.response_count))
       if (revisit.length > 0) {
-        // Revisit the topic with the most headroom
         const nextTopic = revisit[0]
         resolvedThemeId = nextTopic.id
         aiSource = 'revisit'
         if (testing) debug.push('ALL TOPICS VISITED — revisiting "' + nextTopic.label + '" (most headroom: ' + nextTopic.response_count + '/' + nextTopic.response_target + ')')
-        botMessage = await generateClarifier(config, message, turns, language)
+        const clarifyResult = await generateClarifier(config, message, turns, language, testing)
+        botMessage = clarifyResult.text
+        if (testing && clarifyResult.thinking.length > 0) debug.push('AI REASONING:', ...clarifyResult.thinking)
       } else {
-        // Truly exhausted — all topics at target. End conversation.
         return wrapUp(config)
       }
     } else {
 
-    // Smart probing: if the participant's response matches keywords of an available
-    // auto-detected or custom theme, prioritize that theme over the default queue.
-    // This makes the conversation feel natural — following the participant's interests.
-    let nextTopic = available[0]  // default: fewest responses
+    let nextTopic = available[0]
     let probedKeyword: string | null = null
     if (message && !skipped) {
       const lower = message.toLowerCase()
       for (const t of available) {
-        if (t.id === theme_id) continue  // don't repeat same topic
+        if (t.id === theme_id) continue
         const kws: string[] = (t as any).keywords || []
         if (kws.length > 0) {
           const matchedKw = kws.find(function(kw) { return lower.includes(kw.toLowerCase()) })
@@ -377,7 +375,9 @@ export async function POST(req: NextRequest) {
 
     resolvedThemeId = nextTopic.id
     aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
-    botMessage = await generateTransition(config, message, language, turns, nextTopic)
+    const transResult = await generateTransition(config, message, language, turns, nextTopic, testing)
+    botMessage = transResult.text
+    if (testing && transResult.thinking.length > 0) debug.push('AI REASONING:', ...transResult.thinking)
     }
   }
 
@@ -420,18 +420,27 @@ function wrapUp(config: any) {
   })
 }
 
-async function callClaude(system: string, user: string, timeoutMs = 3000): Promise<string> {
+async function callClaude(system: string, user: string, timeoutMs = 3000, verbose = false): Promise<{ text: string; thinking: string[] }> {
+  const verboseSystem = verbose
+    ? system + '\n\nDEBUG MODE — Think step by step. Before your response, write your reasoning process (what you noticed, what you considered, why you chose this response). Then write a line containing exactly "---RESPONSE---" and your actual message after it.'
+    : system
   try {
     const result = await callAI({
       tier: 'fast',
-      maxTokens: 200,
-      timeoutMs,
-      system,
+      maxTokens: verbose ? 500 : 200,
+      timeoutMs: verbose ? Math.max(timeoutMs, 5000) : timeoutMs,
+      system: verboseSystem,
       messages: [{ role: 'user', content: user }],
     })
-    return cleanAiOutput(result.text?.trim() || '')
+    const raw = result.text?.trim() || ''
+    if (verbose && raw.includes('---RESPONSE---')) {
+      const [thinkingPart, responsePart] = raw.split('---RESPONSE---')
+      const thinking = thinkingPart.trim().split('\n').filter(Boolean)
+      return { text: cleanAiOutput(responsePart.trim()), thinking }
+    }
+    return { text: cleanAiOutput(raw), thinking: [] }
   } catch {
-    return ''
+    return { text: '', thinking: [] }
   }
 }
 
@@ -511,10 +520,11 @@ async function matchResponseToTopic(
   config: any,
   response: string,
   language: string | undefined,
-  topics: { id: string; label: string; description: string | null; question: string; follow_up_angles: string[] }[]
-): Promise<{ themeId: string | null; followUp: string }> {
+  topics: { id: string; label: string; description: string | null; question: string; follow_up_angles: string[] }[],
+  verbose = false,
+): Promise<{ themeId: string | null; followUp: string; thinking: string[] }> {
   if (topics.length === 0) {
-    return { themeId: null, followUp: 'Could you tell me more about that?' }
+    return { themeId: null, followUp: 'Could you tell me more about that?', thinking: [] }
   }
 
   const topicList = topics.map((t, i) => `${i + 1}. "${t.label}" — ${t.description || t.question}`).join('\n')
@@ -531,7 +541,8 @@ Return ONLY a JSON object (no other text):
 
   const user = `The participant was asked a broad opening question and responded:\n\n"${response}"\n\nMatch to a topic and follow up.`
 
-  const raw = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000)
+  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
+  const raw = result.text
 
   try {
     // Try to parse JSON response
@@ -542,33 +553,32 @@ Return ONLY a JSON object (no other text):
       const followUp = parsed.follow_up || ''
 
       if (topicIdx >= 0 && topicIdx < topics.length && followUp) {
-        return { themeId: topics[topicIdx].id, followUp: cleanAiOutput(followUp) }
+        return { themeId: topics[topicIdx].id, followUp: cleanAiOutput(followUp), thinking: result.thinking }
       }
       if (followUp) {
-        // No match but AI generated a follow-up anyway — use it without a theme
-        return { themeId: null, followUp: cleanAiOutput(followUp) }
+        return { themeId: null, followUp: cleanAiOutput(followUp), thinking: result.thinking }
       }
     }
   } catch {
     // JSON parse failed — try to use raw text as follow-up
     if (raw && raw.length > 10 && !raw.startsWith('{')) {
-      return { themeId: topics[0].id, followUp: raw }
+      return { themeId: topics[0].id, followUp: raw, thinking: result.thinking }
     }
   }
 
   // Fallback: ask a generic follow-up
-  return { themeId: null, followUp: 'That\'s interesting — could you tell me more about what you mean by that?' }
+  return { themeId: null, followUp: 'That\'s interesting — could you tell me more about what you mean by that?', thinking: [] }
 }
 
 // ── Generate clarifier for short responses ───────────────────────────────
 
-async function generateClarifier(config: any, message: string, turns: any[], language?: string): Promise<string> {
+async function generateClarifier(config: any, message: string, turns: any[], language?: string, verbose = false): Promise<{ text: string; thinking: string[] }> {
   const system = baseSystemPrompt(config, language) + `\n\n${buildConversationContext(turns) ? `CONVERSATION SO FAR:\n${buildConversationContext(turns)}` : ''}`
 
   const user = `The participant just said: "${message}"\n\nThis was a short response. Ask a warm, natural follow-up to draw out more detail. Maximum 30 words. Just the question.`
 
-  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000)
-  return (result && isOutputClean(result)) ? result : 'Could you tell me a bit more about that?'
+  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
+  return { text: (result.text && isOutputClean(result.text)) ? result.text : 'Could you tell me a bit more about that?', thinking: result.thinking }
 }
 
 // ── Generate natural transition to next topic ────────────────────────────
@@ -578,8 +588,9 @@ async function generateTransition(
   lastMessage: string | undefined,
   language: string | undefined,
   turns: any[],
-  nextTopic: { label: string; description?: string | null; question: string; follow_up_angles?: string[] }
-): Promise<string> {
+  nextTopic: { label: string; description?: string | null; question: string; follow_up_angles?: string[] },
+  verbose = false,
+): Promise<{ text: string; thinking: string[] }> {
   const convo = buildConversationContext(turns)
 
   const system = baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`
@@ -591,6 +602,6 @@ ${nextTopic.follow_up_angles?.length ? 'Angles to consider: ' + nextTopic.follow
 
 Acknowledge what they've shared so far, then smoothly shift to the new topic. Maximum 40 words. Just the message.`
 
-  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000)
-  return (result && isOutputClean(result)) ? result : ('Let me ask you about something else — ' + nextTopic.question)
+  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
+  return { text: (result.text && isOutputClean(result.text)) ? result.text : ('Let me ask you about something else — ' + nextTopic.question), thinking: result.thinking }
 }

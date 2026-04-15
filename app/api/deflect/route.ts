@@ -69,20 +69,29 @@ RULES:
 - Do NOT mention the bot name, organization name, or survey name
 - Do NOT say "I'm just a survey bot" or "I'm just collecting feedback" — too robotic
 - Be warm and conversational, like a friendly interviewer
-${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. You MUST write your deflection message in ${language}. Do NOT respond in English.` : ''}`
+${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. You MUST write your deflection message in ${language}. Do NOT respond in English.` : ''}
+${body.testing ? `\nDEBUG MODE — Think step by step. Before your response, explain your reasoning (is this feedback or a question? what signals did you notice? why are you deflecting or not?). Then write a line containing exactly "---RESPONSE---" and your actual response (NONE or the deflection message) after it.` : ''}`
 
   try {
     const result = await callAI({
       tier: 'fast',
-      maxTokens: 100,
+      maxTokens: body.testing ? 400 : 100,
       system: systemPrompt,
       messages: [{ role: 'user', content: 'Analyze the respondent\'s reply and respond accordingly.' }],
     })
 
     let text = result.text?.trim() || 'NONE'
+    let aiThinking: string[] = []
+
+    // Parse verbose thinking if present
+    if (body.testing && text.includes('---RESPONSE---')) {
+      const [thinkingPart, responsePart] = text.split('---RESPONSE---')
+      aiThinking = thinkingPart.trim().split('\n').filter(Boolean)
+      text = responsePart.trim()
+    }
 
     if (text === 'NONE' || text.length < 5) {
-      return NextResponse.json({ deflection: null, ...(body.testing ? { _debug: ['DEFLECT CHECK: AI returned NONE — response is on-topic feedback, no deflection needed'] } : {}) })
+      return NextResponse.json({ deflection: null, ...(body.testing ? { _debug: ['DEFLECT CHECK: AI returned NONE — response is on-topic feedback, no deflection needed', ...(aiThinking.length ? ['AI REASONING:', ...aiThinking] : [])] } : {}) })
     }
 
     // Strip any leaked reasoning — if the model included analysis before the actual message
@@ -117,6 +126,7 @@ ${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. 
       'DEFLECT TRIGGERED: Respondent went off-topic',
       'AI raw: "' + (result.text?.trim() || '').slice(0, 200) + '"',
       'After cleanup: "' + deflection.slice(0, 200) + '"',
+      ...(aiThinking.length ? ['AI REASONING:', ...aiThinking] : []),
     ] : undefined
 
     return NextResponse.json({ deflection, ...(debugInfo ? { _debug: debugInfo } : {}) })

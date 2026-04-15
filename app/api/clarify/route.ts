@@ -77,7 +77,8 @@ CRITICAL OUTPUT FORMAT:
 - Do NOT write phrases like "Got it", "Here's my follow-up", "I'll ask about...", "The respondent..."
 - Do NOT explain your thought process or rationale
 - Just output the bare question text — nothing else
-${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. You MUST write your follow-up question in ${language}. Do NOT respond in English.` : ''}`
+${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. You MUST write your follow-up question in ${language}. Do NOT respond in English.` : ''}
+${body.testing ? `\nDEBUG MODE — Think step by step. Before your response, explain your reasoning (what you noticed about the answer, why you chose this follow-up angle, what you considered). Then write a line containing exactly "---RESPONSE---" and your actual follow-up question (or SKIP) after it.` : ''}`
 
   const userPrompt = `The survey asked: "${questionAsked}"
 The respondent answered: "${answer}"
@@ -87,22 +88,32 @@ Generate a targeted follow-up question or return SKIP.`
   try {
     const result = await callAI({
       tier: 'fast',
-      maxTokens: 80,
+      maxTokens: body.testing ? 400 : 80,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     })
 
-    const text = result.text?.trim() || 'SKIP'
+    let rawText = result.text?.trim() || 'SKIP'
+    let aiThinking: string[] = []
+
+    // Parse verbose thinking if present
+    if (body.testing && rawText.includes('---RESPONSE---')) {
+      const [thinkingPart, responsePart] = rawText.split('---RESPONSE---')
+      aiThinking = thinkingPart.trim().split('\n').filter(Boolean)
+      rawText = responsePart.trim()
+    }
+
+    const text = rawText
 
     if (text === 'SKIP') {
-      return NextResponse.json({ question: null, ...(body.testing ? { _debug: ['AI returned SKIP — response was sufficient, no clarification needed'] } : {}) })
+      return NextResponse.json({ question: null, ...(body.testing ? { _debug: ['AI returned SKIP — response was sufficient, no clarification needed', ...(aiThinking.length ? ['AI REASONING:', ...aiThinking] : [])] } : {}) })
     }
 
     const clean = extractQuestion(text)
 
     // ── Output guardrail: validate before returning ────────────────────
     if (!isOutputSafe(clean)) {
-      return NextResponse.json({ question: null, ...(body.testing ? { _debug: ['AI generated a response but it failed the output safety guardrail'] } : {}) })
+      return NextResponse.json({ question: null, ...(body.testing ? { _debug: ['AI generated a response but it failed the output safety guardrail', 'AI raw: "' + text.slice(0, 200) + '"', ...(aiThinking.length ? ['AI REASONING:', ...aiThinking] : [])] } : {}) })
     }
 
     const debug = body.testing ? [
@@ -110,6 +121,7 @@ Generate a targeted follow-up question or return SKIP.`
       'Sentiment: ' + body.sentiment + ' | Rating: ' + body.experienceScore + '/5 | NPS: ' + body.npsScore + '/5',
       'Answer length: ' + body.answer.split(/\s+/).length + ' words',
       'AI raw: "' + text.slice(0, 200) + '"',
+      ...(aiThinking.length ? ['AI REASONING:', ...aiThinking] : []),
     ] : undefined
 
     return NextResponse.json({ question: clean, ...(debug ? { _debug: debug } : {}) })
