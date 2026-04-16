@@ -75,12 +75,23 @@ export default function TownHallChat({ sessionId }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const joiningRef = useRef(false)
 
-  // Scroll to bottom — matches survey SurveyWidget.scrollBottom exactly:
-  // Always scroll unconditionally, double retry for late-rendering DOM
+  // Scroll to show the last bot message from its top.
+  // On iOS when the keyboard opens, scrolling to absolute bottom hides
+  // the top of long bot messages. Instead we scroll the last bot bubble
+  // to the top of the visible chat area so the user can read it.
+  const lastBotRef = useRef<HTMLDivElement>(null)
   const scrollBottom = useCallback(() => {
     const el = chatRef.current
     if (!el) return
-    const doScroll = () => { el.scrollTop = el.scrollHeight }
+    const doScroll = () => {
+      if (lastBotRef.current) {
+        // Scroll so the last bot message starts near the top of the chat area
+        const botTop = lastBotRef.current.offsetTop
+        el.scrollTop = Math.max(0, botTop - 8)
+      } else {
+        el.scrollTop = el.scrollHeight
+      }
+    }
     setTimeout(doScroll, 60)
     setTimeout(doScroll, 350)
   }, [])
@@ -380,8 +391,11 @@ export default function TownHallChat({ sessionId }: Props) {
 
       {/* Chat area */}
       <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {messages.map((m, i) => (
-          <div key={i}>
+        {messages.map((m, i) => {
+          // Track the last bot message for scroll positioning
+          const isLastBot = m.who === 'bot' && !messages.slice(i + 1).some(n => n.who === 'bot')
+          return (
+          <div key={i} ref={isLastBot ? lastBotRef : undefined}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
               {m.who === 'bot' && (
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
@@ -402,7 +416,8 @@ export default function TownHallChat({ sessionId }: Props) {
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
         {loading && (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: 'flex-start' }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
