@@ -173,8 +173,9 @@ export default function TownHallChat({ sessionId }: Props) {
       })
       const d = await r.json()
       // Handle debug mode toggle
-      if (d.debug_mode === true) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ON]', 'color: #E8632A; font-weight: bold') }
-      if (d.debug_mode === false) { setDebugMode(false); setTesting(false); console.log('%c[DEBUG MODE OFF]', 'color: #6b7280; font-weight: bold') }
+      // Handle debug mode toggle — don't add duplicate bot message
+      if (d.debug_mode === true) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ON]', 'color: #E8632A; font-weight: bold'); setLoading(false); return }
+      if (d.debug_mode === false) { setDebugMode(false); setTesting(false); console.log('%c[DEBUG MODE OFF]', 'color: #6b7280; font-weight: bold'); setLoading(false); return }
       setTurn(d.turn_number); setThemeId(d.theme_id)
       // Handle language switch — update language for future messages
       if (d.language_switched) setSelectedLang(d.language_switched)
