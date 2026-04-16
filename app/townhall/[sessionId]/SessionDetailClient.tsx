@@ -263,6 +263,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const suggestedTopics = themes.filter(t => t.state === 'detected')
   const parkedTopics = themes.filter(t => t.state === 'parked')
   const completedTopics = themes.filter(t => t.state === 'completed')
+  const dismissedTopics = themes.filter(t => t.state === 'dismissed')
   const defaultResponseTarget = cfg?.engine?.default_response_target || 30
 
   return (
@@ -917,6 +918,23 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   </div>
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {completedTopics.map(t => (
+                      <ThemeCard key={t.id} theme={t} isActive={false} variant="completed"
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── DISMISSED ──────────────────────────────── */}
+              {dismissedTopics.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 p-5 opacity-60">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 rounded-full bg-gray-300" />
+                    <h3 className="text-sm font-bold text-gray-400">Dismissed</h3>
+                    <span className="text-[10px] text-gray-300">{dismissedTopics.length}</span>
+                  </div>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                    {dismissedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={false} variant="completed"
                         onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
                     ))}

@@ -122,7 +122,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  const activeThemes = (themes || []).filter(t => t.state !== 'dismissed')
+  // Include all themes — the full record of what was explored, parked, and dismissed
+  const activeThemes = (themes || [])
 
   const enrichedThemes = activeThemes.map(t => {
     const keywords: string[] = t.keywords || []
@@ -282,6 +283,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
       slide.addShape(pptx.ShapeType.rect, { x: cx + 1.2, y: CY + 0.8, w: 1.0, h: 0.28, fill: { color: DN.slateLight }, line: { width: 0 }, rectRadius: 0.14 })
       slide.addText(theme.source.replace('_', ' '), { x: cx + 1.2, y: CY + 0.8, w: 1.0, h: 0.28, fontSize: 8, color: DN.slateDark, valign: 'middle', align: 'center' })
+
+      // State badge
+      const stateLabel = (theme.state || 'active').charAt(0).toUpperCase() + (theme.state || 'active').slice(1)
+      const stateBg: Record<string, string> = { active: DN.greenLight || 'dcfce7', completed: 'dbeafe', parked: 'dbeafe', paused: DN.amberLight || 'fef3c7', dismissed: DN.slateLight, detected: 'fef3c7' }
+      const stateClr: Record<string, string> = { active: DN.green, completed: '2563eb', parked: '2563eb', paused: DN.amber || 'd97706', dismissed: DN.slate, detected: 'd97706' }
+      slide.addShape(pptx.ShapeType.rect, { x: cx + 2.3, y: CY + 0.8, w: 1.0, h: 0.28, fill: { color: stateBg[theme.state] || DN.slateLight }, line: { width: 0 }, rectRadius: 0.14 })
+      slide.addText(stateLabel, { x: cx + 2.3, y: CY + 0.8, w: 1.0, h: 0.28, fontSize: 8, bold: true, color: stateClr[theme.state] || DN.slate, valign: 'middle', align: 'center' })
 
       // Stats
       slide.addText(theme.matchCount + ' responses  ·  ' + theme.percentage + '% of total', { x: cx + 0.2, y: CY + 1.25, w: cw - 0.4, h: 0.3, fontSize: 10, color: DN.slateDark })
