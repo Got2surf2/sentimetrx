@@ -43,6 +43,10 @@ interface SchemaField {
   label?: string
   status?: string
   values?: string[]
+  sqt?: string | null
+  scoreField?: boolean
+  min?: number
+  max?: number
 }
 
 interface SchemaConfig {
@@ -342,7 +346,7 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
 
 // ─── CompareTab (multi-field breakdown with significance) ─────────────────────
 
-function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownFields, setBreakdownFields, onDrillTheme, viewMode, setViewMode, smartAxes, setSmartAxes }: {
+function CompareTab({ themes, parsedData, schema, activeField, themeColors, breakdownFields, setBreakdownFields, onDrillTheme, viewMode, setViewMode, smartAxes, setSmartAxes, ratingField }: {
   themes: ThemeModel | null
   parsedData: Record<string, unknown>[]
   schema: SchemaField[]
@@ -355,6 +359,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   setViewMode: (v: 'group' | 'theme') => void
   smartAxes: boolean
   setSmartAxes: (v: boolean) => void
+  ratingField?: string | null
 }) {
   var [showSummary, setShowSummary] = useState(false)
   var [copied, setCopied] = useState(false)
@@ -407,7 +412,13 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
       var groupPct = Math.round(groupTotal / totalRows * 100)
       var themeCounts = themes.themes.map(function(t) {
         var matches = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) })
-        return { themeId: t.id, themeName: t.name, count: matches.length }
+        var avgRating: number | null = null
+        if (ratingField && matches.length > 0) {
+          var rSum = 0, rCnt = 0
+          matches.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) { rSum += rv; rCnt++ } })
+          if (rCnt > 0) avgRating = Math.round(rSum / rCnt * 100) / 100
+        }
+        return { themeId: t.id, themeName: t.name, count: matches.length, avgRating: avgRating }
       })
       var unclassified = rows.filter(function(r) {
         return String(r[field] || '').trim().length > 0 && !themes.themes.some(function(t) { return commentMatchesTheme(String(r[field] || ''), t) })
@@ -415,17 +426,25 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
       return { group: gk, groupTotal: groupTotal, groupPct: groupPct, themeCounts: themeCounts, unclassified: unclassified }
     })
 
+    // Overall avg rating for delta coloring
+    var overallRatAvg = 0
+    if (ratingField) {
+      var rS = 0, rC = 0
+      parsedData.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) { rS += rv; rC++ } })
+      if (rC > 0) overallRatAvg = rS / rC
+    }
+
     var themeStats = themes.themes.map(function(t) {
       var totalMatches = groupStats.reduce(function(s, g) { var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id }); return s + (tc ? tc.count : 0) }, 0)
       var perGroup = groupStats.map(function(g) {
         var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
         var count = tc ? tc.count : 0
         var mentionRate = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
-        return { group: g.group, count: count, mentionRate: mentionRate, groupTotal: g.groupTotal, groupPct: g.groupPct }
+        return { group: g.group, count: count, mentionRate: mentionRate, groupTotal: g.groupTotal, groupPct: g.groupPct, avgRating: tc ? tc.avgRating : null }
       })
       return { themeId: t.id, themeName: t.name, totalMatches: totalMatches, perGroup: perGroup }
     })
-    return { groupStats: groupStats, themeStats: themeStats, groupKeys: groupKeys, totalRows: totalRows }
+    return { groupStats: groupStats, themeStats: themeStats, groupKeys: groupKeys, totalRows: totalRows, overallRatAvg: overallRatAvg }
   })()
 
   // ── Collect outliers ─────────────────────────────────────────────────────
@@ -467,7 +486,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   var [copiedSig, setCopiedSig] = useState(false)
   var sigLeaveTimer = useRef<any>(null)
 
-  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string }) {
+  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string; avgRating?: number | null; overallRatAvg?: number }) {
     var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
     var sigId = (props.groupName || '') + '::' + (props.themeName || '') + '::' + props.label
     var grpLabel = props.groupName || props.label
@@ -518,6 +537,10 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         {!sigColor && <span style={{ width: 14, flexShrink: 0 }} />}
         <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{props.pct}%</span>
         <span style={{ fontSize: 10, color: T.textFaint, width: 44, textAlign: 'right', flexShrink: 0 }}>n={props.count}</span>
+        {props.avgRating != null && (function() {
+          var d = props.avgRating! - (props.overallRatAvg || 0)
+          return <span style={{ fontSize: 10, fontWeight: 700, width: 38, textAlign: 'right', flexShrink: 0, color: d > 0.1 ? '#059669' : d < -0.1 ? '#dc2626' : T.textMid }} title={'Avg rating: ' + props.avgRating!.toFixed(2) + ' (' + (d >= 0 ? '+' : '') + d.toFixed(2) + ' vs overall)'}>{props.avgRating!.toFixed(1)}</span>
+        })()}
       </div>
     )
   }
@@ -621,7 +644,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                       var pct = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
                       var pal = themeColors[ti] || THEME_PALETTE[0]
                       var sig = sigTest(count, g.groupTotal, ts ? ts.totalMatches : 0, compStats!.totalRows)
-                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} groupName={g.group} themeName={t.name} />
+                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} groupName={g.group} themeName={t.name} avgRating={tc ? tc.avgRating : null} overallRatAvg={compStats!.overallRatAvg} />
                     })}
                     {g.unclassified > 0 && <CompareBar label="Unclassified" pct={g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0} count={g.unclassified} maxPct={maxShare} color={T.borderMid} labelColor={T.textFaint} sig={null} isUnclassified={true} />}
                   </div>
@@ -652,7 +675,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                   </div>
                   {perGroupSorted.map(function(g) {
                     var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
-                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} />
+                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} />
                   })}
                 </div>
               )
@@ -785,6 +808,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [opinionWord, setOpinionWord] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
 
+  // Rating field for avg rating display on theme cards / compare
+  const ratingFields = schema.fields.filter(function(f) {
+    return f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField)
+  })
+  const [ratingField, setRatingField] = useState<string | null>(_tmSaved?.ratingField || (ratingFields.length > 0 ? ratingFields[0].field : null))
+
   useEffect(function() {
     writeSession(_tmKey, {
       activeField: activeField, activeFields: activeFields, subTab: subTab,
@@ -792,8 +821,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       breakdownField: breakdownField, compareFields: compareFields,
       selectedValues: Array.from(selectedValues),
       compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
+      ratingField: ratingField,
     })
-  }, [activeField, activeFields, subTab, themesView, showAllThemes, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, _tmKey])
+  }, [activeField, activeFields, subTab, themesView, showAllThemes, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, _tmKey])
 
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
@@ -1002,12 +1032,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setComputing(true)
     // Use setTimeout to let the "computing" spinner paint before heavy work
     var timer = setTimeout(function() {
-      var recounted = recountThemes(themes.themes, filteredRows, _recountFields).filter(function(t) { return t.name && t.name.trim() })
+      var recounted = recountThemes(themes.themes, filteredRows, _recountFields, ratingField).filter(function(t) { return t.name && t.name.trim() })
       setDisplayThemes({ ...themes, themes: recounted })
       setComputing(false)
     }, 20)
     return function() { clearTimeout(timer) }
-  }, [themes, filteredRows.length, _recountFields.join(','), activeFilterCount])
+  }, [themes, filteredRows.length, _recountFields.join(','), activeFilterCount, ratingField])
 
   // Stats for active fields (on filtered data)
   var activeFieldRows = filteredRows.filter(function(r) {
@@ -1262,6 +1292,19 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: canMine && !loading && aiEnabled ? T.accent : T.borderMid, color: canMine && !loading && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 20, cursor: canMine && !loading && aiEnabled ? 'pointer' : 'not-allowed' }}>
                   {loading ? 'Mining...' : '\u29E1 Mine'}
                 </button>
+              )}
+              {hasThemes && ratingFields.length > 0 && (
+                <select
+                  value={ratingField || ''}
+                  onChange={function(e) { setRatingField(e.target.value || null) }}
+                  style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600, background: ratingField ? T.blueBg : T.bg, color: ratingField ? T.blue : T.textMid, border: '1px solid ' + (ratingField ? T.blue + '50' : T.border), borderRadius: 20, cursor: 'pointer', maxWidth: 160 }}
+                  title="Select a rating field to show avg scores on theme cards and compare charts"
+                >
+                  <option value="">No rating</option>
+                  {ratingFields.map(function(f) {
+                    return <option key={f.field} value={f.field}>{fieldLabel(f.field)}</option>
+                  })}
+                </select>
               )}
               {hasThemes && isDirty && (
                 <button onClick={function() { saveThemeModel() }} disabled={saving}
@@ -1583,6 +1626,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     <span style={{ fontSize: 22, fontWeight: 800, color: pal.border }}>{pct}%</span>
                                   </div>
                                   <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>95% CI: {t.ciLow ?? 0}{'\u2013'}{t.ciHigh ?? 0}%</div>
+                                  {t.avgRating != null && (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                      <span style={{ fontSize: 11, color: T.textMid }}>Avg Rating: <strong style={{ color: t.ratingDelta != null && t.ratingDelta > 0 ? '#059669' : t.ratingDelta != null && t.ratingDelta < -0.1 ? '#dc2626' : T.text }}>{t.avgRating.toFixed(2)}</strong></span>
+                                      {t.ratingDelta != null && t.ratingDelta !== 0 && (
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: t.ratingDelta > 0 ? '#059669' : '#dc2626' }}>
+                                          {t.ratingDelta > 0 ? '\u25B2' : '\u25BC'} {Math.abs(t.ratingDelta).toFixed(2)} vs avg
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                   <div style={{ height: 5, background: T.border, borderRadius: 3, overflow: 'hidden' }}>
                                     <div style={{ height: '100%', width: pct + '%', background: pal.border, borderRadius: 3, transition: 'width .6s ease' }} />
                                   </div>
@@ -1595,7 +1648,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (
-                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} />
+                        <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} ratingField={ratingField} />
                       )}
                     </div>
                   )
@@ -1648,7 +1701,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} viewMode={compareViewMode} setViewMode={setCompareViewMode} smartAxes={compareSmartAxes} setSmartAxes={setCompareSmartAxes} />
+              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} viewMode={compareViewMode} setViewMode={setCompareViewMode} smartAxes={compareSmartAxes} setSmartAxes={setCompareSmartAxes} ratingField={ratingField} />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}

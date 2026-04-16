@@ -86,6 +86,9 @@ export interface Theme {
   ciLow?: number
   ciHigh?: number
   relatedThemes: string[]
+  avgRating?: number       // avg of rating field for matching rows
+  ratingDelta?: number     // avgRating - overallAvg
+  ratingCount?: number     // rows that matched AND had a valid rating
 }
 
 export interface ThemeModel {
@@ -146,7 +149,8 @@ function wilsonCI(count: number, total: number): { ciLow: number; ciHigh: number
 export function recountThemes(
   themes: Theme[],
   rows: Record<string, unknown>[],
-  field: string | string[]
+  field: string | string[],
+  ratingField?: string | null
 ): Theme[] {
   const fields = Array.isArray(field) ? field : [field]
   const nonEmpty = rows.filter(function(r) {
@@ -161,6 +165,18 @@ export function recountThemes(
       themeRegexes.set(t.id, t.keywords.map(buildKwRegex))
     }
   }
+
+  // Compute overall avg rating (for delta calculation)
+  let overallAvg = 0
+  if (ratingField) {
+    let sum = 0, cnt = 0
+    for (const r of nonEmpty) {
+      const v = parseFloat(String(r[ratingField] ?? ''))
+      if (!isNaN(v)) { sum += v; cnt++ }
+    }
+    if (cnt > 0) overallAvg = sum / cnt
+  }
+
   return themes.map(function(t) {
     const regexes = themeRegexes.get(t.id)
     if (!regexes || !regexes.length) {
@@ -168,6 +184,7 @@ export function recountThemes(
       return { ...t, count: 0, percentage: 0, ciLow: ci.ciLow, ciHigh: ci.ciHigh }
     }
     var count = 0, totalPos = 0, totalNeg = 0
+    var ratingSum = 0, ratingCnt = 0
     nonEmpty.forEach(function(r) {
       const text = fields.map(function(f) { return String(r[f] || '') }).join(' ')
       const lower = text.toLowerCase()
@@ -176,13 +193,23 @@ export function recountThemes(
         var score = lexiconScore(text)
         totalPos += score.pos
         totalNeg += score.neg
+        if (ratingField) {
+          const rv = parseFloat(String(r[ratingField] ?? ''))
+          if (!isNaN(rv)) { ratingSum += rv; ratingCnt++ }
+        }
       }
     })
     const pct = nonEmpty.length > 0 ? Math.round(count / nonEmpty.length * 100) : 0
     const ci = wilsonCI(count, nonEmpty.length)
     // Compute sentiment from lexicon — always update (overrides stale AI values on recount)
     const sentiment = count > 0 ? classifySentiment(totalPos, totalNeg) : (t.sentiment || 'neutral')
-    return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh, sentiment }
+    const ratingInfo: Partial<Theme> = {}
+    if (ratingField && ratingCnt > 0) {
+      ratingInfo.avgRating = Math.round(ratingSum / ratingCnt * 100) / 100
+      ratingInfo.ratingDelta = Math.round((ratingInfo.avgRating - overallAvg) * 100) / 100
+      ratingInfo.ratingCount = ratingCnt
+    }
+    return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh, sentiment, ...ratingInfo }
   })
 }
 

@@ -22,10 +22,11 @@ interface Props {
   selectedValues: Set<string>
   themeColors: Record<number, typeof THEME_PALETTE[0]>
   onDrillTheme: (t: Theme) => void
+  ratingField?: string | null
 }
 
 export default function BreakdownDist({
-  themes: themeModel, parsedData, activeField, breakdownField, selectedValues, themeColors, onDrillTheme,
+  themes: themeModel, parsedData, activeField, breakdownField, selectedValues, themeColors, onDrillTheme, ratingField,
 }: Props) {
   const [distView, setDistView] = useState<'group' | 'theme'>('group')
   const field = activeField || themeModel.fieldName
@@ -65,6 +66,38 @@ export default function BreakdownDist({
     })
     return gt
   }, [selVals, parsedData, breakdownField, field])
+
+  // Per-group, per-theme avg rating (when ratingField is set)
+  const ratingAvgs = useMemo(function() {
+    if (!ratingField || !breakdownField) return {}
+    const avgs: Record<string, Record<string, { sum: number; cnt: number; avg: number }>> = {}
+    selVals.forEach(function(v) {
+      avgs[v] = {}
+      const rows = parsedData.filter(function(r) { return String(r[breakdownField] ?? '') === v })
+      sortedThemes.forEach(function(t) {
+        let sum = 0, cnt = 0
+        rows.forEach(function(r) {
+          if (commentMatchesTheme(String(r[field] || ''), t)) {
+            const rv = parseFloat(String(r[ratingField] ?? ''))
+            if (!isNaN(rv)) { sum += rv; cnt++ }
+          }
+        })
+        if (cnt > 0) avgs[v][t.id] = { sum, cnt, avg: Math.round(sum / cnt * 100) / 100 }
+      })
+    })
+    return avgs
+  }, [selVals, parsedData, breakdownField, sortedThemes, field, ratingField])
+
+  // Overall avg rating (for delta color coding)
+  const overallRatingAvg = useMemo(function() {
+    if (!ratingField) return 0
+    let sum = 0, cnt = 0
+    parsedData.forEach(function(r) {
+      const rv = parseFloat(String(r[ratingField] ?? ''))
+      if (!isNaN(rv)) { sum += rv; cnt++ }
+    })
+    return cnt > 0 ? sum / cnt : 0
+  }, [parsedData, ratingField])
 
   // Total matches per theme + total rows for sig testing
   var totalThemeMatches = useMemo(function() {
@@ -166,6 +199,11 @@ export default function BreakdownDist({
                       <span style={{ fontSize: 10, color: T.textFaint, width: 28, textAlign: 'right', flexShrink: 0 }}>
                         {cnt}
                       </span>
+                      {ratingField && ratingAvgs[v] && ratingAvgs[v][t.id] && (function() {
+                        var ra = ratingAvgs[v][t.id]
+                        var delta = ra.avg - overallRatingAvg
+                        return <span style={{ fontSize: 10, fontWeight: 700, width: 40, textAlign: 'right', flexShrink: 0, color: delta > 0.1 ? '#059669' : delta < -0.1 ? '#dc2626' : T.textMid }} title={'Avg rating: ' + ra.avg.toFixed(2) + ' (n=' + ra.cnt + ', ' + (delta >= 0 ? '+' : '') + delta.toFixed(2) + ' vs overall)'}>{ra.avg.toFixed(1)}</span>
+                      })()}
                     </div>
                   )
                 })}
@@ -212,6 +250,11 @@ export default function BreakdownDist({
                       {sigColor && <span style={{ fontSize: 11, fontWeight: 800, color: sigColor, flexShrink: 0 }} title={sig!.dir === 'over' ? 'Significantly over-represented (z=' + sig!.z.toFixed(1) + ')' : 'Significantly under-represented (z=' + sig!.z.toFixed(1) + ')'}>★</span>}
                       <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{pct}%</span>
                       <span style={{ fontSize: 10, color: T.textFaint, width: 28, textAlign: 'right', flexShrink: 0 }}>{cnt}</span>
+                      {ratingField && ratingAvgs[v] && ratingAvgs[v][t.id] && (function() {
+                        var ra = ratingAvgs[v][t.id]
+                        var delta = ra.avg - overallRatingAvg
+                        return <span style={{ fontSize: 10, fontWeight: 700, width: 40, textAlign: 'right', flexShrink: 0, color: delta > 0.1 ? '#059669' : delta < -0.1 ? '#dc2626' : T.textMid }} title={'Avg rating: ' + ra.avg.toFixed(2) + ' (n=' + ra.cnt + ', ' + (delta >= 0 ? '+' : '') + delta.toFixed(2) + ' vs overall)'}>{ra.avg.toFixed(1)}</span>
+                      })()}
                     </div>
                   )
                 })}
