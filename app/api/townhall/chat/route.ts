@@ -121,8 +121,10 @@ export async function POST(req: NextRequest) {
 
   // Content guard: check for harmful content with strike-based escalation
   const contentSafetyEnabled = config?.content_safety?.enabled !== false // default: on
+  let toneNudge = false
   if (message && !skipped) {
     const check = checkMessage(participant_id, message, { filterEnabled: contentSafetyEnabled, maxLength: 1200 })
+    if (check.nudge) toneNudge = true
     if (!check.safe) {
       // Store the turn as filtered
       await supabase.from('townhall_turns')
@@ -294,7 +296,7 @@ export async function POST(req: NextRequest) {
   if (isOpeningResponse && message && !skipped) {
     // ── OPENING RESPONSE: Match to best topic ────────────────────────────
     if (testing) debug.push('DECISION: Opening response — matching to best topic from ' + allTopics.length + ' available topics')
-    const matchResult = await matchResponseToTopic(config, message, language, allTopics, testing)
+    const matchResult = await matchResponseToTopic(config, message, language, allTopics, testing, toneNudge)
     resolvedThemeId = matchResult.themeId
     aiSource = resolvedThemeId ? 'guide' : 'clarifier'
     botMessage = matchResult.followUp
@@ -313,7 +315,7 @@ export async function POST(req: NextRequest) {
       debug.push('DECISION: Clarifier triggered')
       debug.push('REASON: Response was ' + wordCount + ' words (< 12 threshold) and only ' + currentTopicTurns + ' prior turn(s) on topic "' + (topic?.label || '?') + '"')
     }
-    const clarifyResult = await generateClarifier(config, message, turns, language, testing)
+    const clarifyResult = await generateClarifier(config, message, turns, language, testing, toneNudge)
     botMessage = clarifyResult.text
     if (testing && clarifyResult.thinking.length > 0) debug.push('AI REASONING:', ...clarifyResult.thinking)
 
@@ -339,7 +341,7 @@ export async function POST(req: NextRequest) {
         resolvedThemeId = nextTopic.id
         aiSource = 'revisit'
         if (testing) debug.push('ALL TOPICS VISITED — revisiting "' + nextTopic.label + '" (most headroom: ' + nextTopic.response_count + '/' + nextTopic.response_target + ')')
-        const clarifyResult = await generateClarifier(config, message, turns, language, testing)
+        const clarifyResult = await generateClarifier(config, message, turns, language, testing, toneNudge)
         botMessage = clarifyResult.text
         if (testing && clarifyResult.thinking.length > 0) debug.push('AI REASONING:', ...clarifyResult.thinking)
       } else {
@@ -375,7 +377,7 @@ export async function POST(req: NextRequest) {
 
     resolvedThemeId = nextTopic.id
     aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
-    const transResult = await generateTransition(config, message, language, turns, nextTopic, testing)
+    const transResult = await generateTransition(config, message, language, turns, nextTopic, testing, toneNudge)
     botMessage = transResult.text
     if (testing && transResult.thinking.length > 0) debug.push('AI REASONING:', ...transResult.thinking)
     }
@@ -514,6 +516,11 @@ RULES:
 - Just output the message text — no reasoning, labels, quotes, or JSON${langInstruction}`
 }
 
+function withNudge(prompt: string, nudge: boolean): string {
+  if (!nudge) return prompt
+  return prompt + '\n\nIMPORTANT: The participant used a rude or dismissive tone in their last message. Start your response by very briefly and warmly acknowledging this (e.g. "Hey, no need for that — I\'m here to listen." or "Let\'s keep it friendly —") then continue naturally with your actual response. Do NOT lecture or moralize. Keep it light, one short phrase, then move on.'
+}
+
 // ── Match opening response to best guide topic ───────────────────────────
 
 async function matchResponseToTopic(
@@ -522,6 +529,7 @@ async function matchResponseToTopic(
   language: string | undefined,
   topics: { id: string; label: string; description: string | null; question: string; follow_up_angles: string[] }[],
   verbose = false,
+  nudge = false,
 ): Promise<{ themeId: string | null; followUp: string; thinking: string[] }> {
   if (topics.length === 0) {
     return { themeId: null, followUp: 'Could you tell me more about that?', thinking: [] }
@@ -529,7 +537,7 @@ async function matchResponseToTopic(
 
   const topicList = topics.map((t, i) => `${i + 1}. "${t.label}" — ${t.description || t.question}`).join('\n')
 
-  const system = baseSystemPrompt(config, language) + `
+  const system = withNudge(baseSystemPrompt(config, language) + `
 
 DISCUSSION TOPICS:
 ${topicList}
@@ -537,7 +545,7 @@ ${topicList}
 Your job: Read the participant's opening response. Determine which topic it most closely relates to. Then ask a warm, natural follow-up question that digs deeper into what they said — guided by that topic's focus area.
 
 Return ONLY a JSON object (no other text):
-{"topic_number": <1-based index of best matching topic, or 0 if none match>, "follow_up": "<your follow-up question>"}`
+{"topic_number": <1-based index of best matching topic, or 0 if none match>, "follow_up": "<your follow-up question>"}`, nudge)
 
   const user = `The participant was asked a broad opening question and responded:\n\n"${response}"\n\nMatch to a topic and follow up.`
 
@@ -572,8 +580,8 @@ Return ONLY a JSON object (no other text):
 
 // ── Generate clarifier for short responses ───────────────────────────────
 
-async function generateClarifier(config: any, message: string, turns: any[], language?: string, verbose = false): Promise<{ text: string; thinking: string[] }> {
-  const system = baseSystemPrompt(config, language) + `\n\n${buildConversationContext(turns) ? `CONVERSATION SO FAR:\n${buildConversationContext(turns)}` : ''}`
+async function generateClarifier(config: any, message: string, turns: any[], language?: string, verbose = false, nudge = false): Promise<{ text: string; thinking: string[] }> {
+  const system = withNudge(baseSystemPrompt(config, language) + `\n\n${buildConversationContext(turns) ? `CONVERSATION SO FAR:\n${buildConversationContext(turns)}` : ''}`, nudge)
 
   const user = `The participant just said: "${message}"\n\nThis was a short response. Ask a warm, natural follow-up to draw out more detail. Maximum 30 words. Just the question.`
 
@@ -590,10 +598,11 @@ async function generateTransition(
   turns: any[],
   nextTopic: { label: string; description?: string | null; question: string; follow_up_angles?: string[] },
   verbose = false,
+  nudge = false,
 ): Promise<{ text: string; thinking: string[] }> {
   const convo = buildConversationContext(turns)
 
-  const system = baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`
+  const system = withNudge(baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`, nudge)
 
   const user = `The participant has finished discussing the previous topic. Now transition naturally to a new topic: "${nextTopic.label}"
 

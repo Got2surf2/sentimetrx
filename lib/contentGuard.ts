@@ -6,7 +6,7 @@
 // 'mild' = logged only, no escalation (damn, hell, crap, etc.)
 // 'severe' = triggers strikes + escalation (slurs, threats, sexual content)
 
-type Severity = 'mild' | 'severe'
+type Severity = 'mild' | 'rude' | 'severe'
 interface PatternDef { pattern: RegExp; severity: Severity; category: string }
 
 // ── Expanded pattern list with fuzzy matching ────────────────────────────────
@@ -31,6 +31,10 @@ const PATTERNS: PatternDef[] = [
   // Severe: strong profanity (with evasion: f*ck, f u c k, fck, etc.)
   { pattern: /\bf+[\s.*_-]*[u\xfc]+[\s.*_-]*c+[\s.*_-]*k+/i, severity: 'severe', category: 'profanity' },
   { pattern: /\bc+[\s.*_-]*u+[\s.*_-]*n+[\s.*_-]*t+/i, severity: 'severe', category: 'profanity' },
+
+  // Rude: insults that get a gentle nudge (message still processed, no strikes)
+  { pattern: /\b(dumbass(es)?|idiot[s]?|moron[s]?|stupid|dumb|loser[s]?|pathetic|ignorant|incompetent)\b/i, severity: 'rude', category: 'insult' },
+  { pattern: /\b(shut\s*up|screw\s*you|go\s*to\s*hell|piss\s*off|get\s*lost|bite\s*me)\b/i, severity: 'rude', category: 'insult' },
 
   // Mild: common profanity (logged but no escalation)
   { pattern: /\b(shit+y?|bullshit|shitt?ing)\b/i, severity: 'mild', category: 'profanity' },
@@ -66,6 +70,7 @@ export interface ContentCheckResult {
   severity?: Severity
   category?: string
   warning?: string      // message to show to participant
+  nudge?: boolean        // true = message is processed but bot should gently acknowledge the tone
   shutdown?: boolean     // true = end conversation for this participant
   strikes?: number       // current strike count
 }
@@ -97,6 +102,11 @@ export function checkMessage(
   // Check all patterns
   for (const def of PATTERNS) {
     if (def.pattern.test(text)) {
+      // Rude: message goes through but bot should acknowledge the tone
+      if (def.severity === 'rude') {
+        return { safe: true, severity: 'rude', category: def.category, nudge: true }
+      }
+
       // Mild severity: log only, no escalation
       if (def.severity === 'mild') {
         return { safe: true, severity: 'mild', category: def.category }
