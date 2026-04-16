@@ -73,12 +73,16 @@ export default function TownHallChat({ sessionId }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const joiningRef = useRef(false)
 
+  const hasScrolledRef = useRef(false)
   const scroll = useCallback(() => {
     const el = chatRef.current
     if (!el) return
+    // Don't auto-scroll on first message — let user see prologue from the top
+    if (!hasScrolledRef.current && messages.length <= 1) return
+    hasScrolledRef.current = true
     setTimeout(() => { el.scrollTop = el.scrollHeight }, 60)
     setTimeout(() => { el.scrollTop = el.scrollHeight }, 300)
-  }, [])
+  }, [messages.length])
 
   useEffect(() => { scroll() }, [messages, loading, scroll])
   useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])

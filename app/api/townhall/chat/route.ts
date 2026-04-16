@@ -282,8 +282,10 @@ export async function POST(req: NextRequest) {
 
   // Check if we should clarify (short answer on current topic)
   const currentTopicTurns = theme_id ? turns.filter(t => t.theme_id === theme_id).length : 0
+  const clarifierTurnsOnTopic = theme_id ? turns.filter(t => t.theme_id === theme_id && t.source === 'clarifier').length : 0
+  const maxClarifiersPerTopic = 2
   const wordCount = message ? message.split(/\s+/).length : 0
-  const shouldClarify = !isOpeningResponse && !skipped && message && wordCount < 12 && currentTopicTurns <= 3
+  const shouldClarify = !isOpeningResponse && !skipped && message && wordCount < 12 && currentTopicTurns <= 3 && clarifierTurnsOnTopic < maxClarifiersPerTopic
 
   // Testing mode: accumulate reasoning steps
   const testing = !!config?.testing || !!body.debug
@@ -328,7 +330,8 @@ export async function POST(req: NextRequest) {
     if (testing && !shouldClarify && !isOpeningResponse) {
       debug.push('DECISION: Move to next topic')
       if (wordCount >= 12) debug.push('Clarifier skipped: response was ' + wordCount + ' words (>= 12 threshold)')
-      else if (currentTopicTurns > 1) debug.push('Clarifier skipped: already had ' + currentTopicTurns + ' turns on this topic')
+      else if (clarifierTurnsOnTopic >= maxClarifiersPerTopic) debug.push('Clarifier skipped: hit max ' + maxClarifiersPerTopic + ' clarifiers on this topic')
+      else if (currentTopicTurns > 3) debug.push('Clarifier skipped: already had ' + currentTopicTurns + ' turns on this topic')
       debug.push('Topics discussed: ' + discussedThemeIds.size + ' | Available: ' + available.length)
     }
 
@@ -377,7 +380,7 @@ export async function POST(req: NextRequest) {
 
     resolvedThemeId = nextTopic.id
     aiSource = nextTopic.source === 'guide' ? 'guide' : nextTopic.source === 'custom' ? 'custom' : 'detected_theme'
-    const transResult = await generateTransition(config, message, language, turns, nextTopic, testing, toneNudge)
+    const transResult = await generateTransition(config, message, language, turns, nextTopic, testing, toneNudge, !!skipped)
     botMessage = transResult.text
     if (testing && transResult.thinking.length > 0) debug.push('AI REASONING:', ...transResult.thinking)
     }
@@ -513,6 +516,8 @@ RULES:
 - Never sound robotic or like a survey form
 - Never mention AI, algorithms, or that you are a bot
 - NEVER ask about: ${sensitive}${industry ? `\n- Use terminology and context appropriate for the ${industry.replace(/_/g, ' ')} industry` : ''}
+- NEVER start two consecutive messages the same way — vary your openers (don't repeat "That's wonderful", "Thanks for sharing", "Great point", etc.)
+- Sound like a real person having a conversation, not a moderator reading from a script
 - Just output the message text — no reasoning, labels, quotes, or JSON${langInstruction}`
 }
 
@@ -599,17 +604,22 @@ async function generateTransition(
   nextTopic: { label: string; description?: string | null; question: string; follow_up_angles?: string[] },
   verbose = false,
   nudge = false,
+  wasSkipped = false,
 ): Promise<{ text: string; thinking: string[] }> {
   const convo = buildConversationContext(turns)
 
   const system = withNudge(baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`, nudge)
 
-  const user = `The participant has finished discussing the previous topic. Now transition naturally to a new topic: "${nextTopic.label}"
+  const skipInstruction = wasSkipped
+    ? `The participant chose to skip this question. Respect their choice — briefly acknowledge it (e.g. "No problem" or "Totally fine") and move on without dwelling on it. Do NOT say "That's wonderful" or anything enthusiastic about skipping.`
+    : 'Acknowledge what they\'ve shared so far, then smoothly shift to the new topic.'
+
+  const user = `${wasSkipped ? 'The participant declined to answer the previous question.' : 'The participant has finished discussing the previous topic.'} Now transition naturally to a new topic: "${nextTopic.label}"
 
 The question to work in: "${nextTopic.question}"
 ${nextTopic.follow_up_angles?.length ? 'Angles to consider: ' + nextTopic.follow_up_angles.join(', ') : ''}
 
-Acknowledge what they've shared so far, then smoothly shift to the new topic. Maximum 40 words. Just the message.`
+${skipInstruction} Maximum 40 words. Just the message.`
 
   const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
   return { text: (result.text && isOutputClean(result.text)) ? result.text : ('Let me ask you about something else — ' + nextTopic.question), thinking: result.thinking }

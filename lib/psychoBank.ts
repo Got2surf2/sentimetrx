@@ -20,7 +20,7 @@ export const GENERAL_PSYCHO_BANK: PsychoQuestion[] = [
   { key: 'a_compare',     q: 'How do we compare to similar providers you have used?',            opts: ['Much better', 'Somewhat better', 'About the same', 'Somewhat worse', 'This is the only one I use'], exportLabel: 'Competitive Comparison' },
 
   // Media & Communication
-  { key: 'm_social',      q: 'Which social media platforms do you use most?',                    opts: ['Facebook', 'Instagram', 'TikTok', 'X / Twitter', 'LinkedIn', 'YouTube', 'None'],                   exportLabel: 'Social Platforms' },
+  { key: 'm_social',      q: 'Which social media platforms do you use most?',                    opts: ['Facebook', 'Instagram', 'TikTok', 'X / Twitter', 'LinkedIn', 'YouTube', 'WhatsApp', 'None'],       exportLabel: 'Social Platforms' },
   { key: 'm_comms',       q: 'How do you prefer to receive updates and communications from us?', opts: ['Email', 'SMS / text', 'Push notification', 'Social media', 'In person', 'I prefer not to receive updates'], exportLabel: 'Comms Preference' },
   { key: 'm_content',     q: 'What type of content from us would you find most useful?',         opts: ['Offers and promotions', 'How-to guides and tips', 'Behind the scenes content', 'News and updates', 'Customer stories', 'None'], exportLabel: 'Preferred Content' },
 
