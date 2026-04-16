@@ -327,12 +327,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           Export
                         </button>
 
-                        {/* Row 2: JSON, Close/Reopen, Archive */}
-                        <button onClick={() => handleExport(s.id, s.name, 'json')}
-                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
-                          style={{ background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd' }}>
-                          JSON
-                        </button>
+                        {/* Row 2: Close/Reopen, Archive */}
                         <button
                           onClick={() => {
                             const isLive = s.status === 'active' || s.status === 'paused'
