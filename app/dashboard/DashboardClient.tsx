@@ -217,6 +217,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
   const [refreshing, setRefreshing] = useState(false)
   const [stats,      setStats]      = useState(initialStats)
   const [showShare,  setShowShare]  = useState(false)
+  const [guidCopied, setGuidCopied] = useState(false)
 
   const canEdit  = study.created_by === userId || isAdmin
   const theme    = study.config?.theme || {}
@@ -361,10 +362,10 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
           {/* GUID — admin only, click to copy (for debug mode) */}
           {isAdmin && (
             <button
-              onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); (e.currentTarget as HTMLElement).textContent = '✓ Copied!' ; setTimeout(() => { (e.currentTarget as HTMLElement).textContent = 'GUID: ' + study.guid }, 1500) }}
+              onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(study.guid); setGuidCopied(true); setTimeout(() => setGuidCopied(false), 1500) }}
               className="text-xs text-gray-300 hover:text-gray-500 truncate text-left transition-colors"
               title="Click to copy study GUID (for debug mode)">
-              GUID: {study.guid}
+              {guidCopied ? '✓ Copied!' : 'GUID: ' + study.guid}
             </button>
           )}
 
