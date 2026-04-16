@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
   // Get this participant's conversation history
   const { data: history } = await supabase
     .from('townhall_turns')
-    .select('bot_message, user_message, theme_id, source, turn_number')
+    .select('bot_message, user_message, theme_id, source, turn_number, skipped')
     .eq('session_id', session.id)
     .eq('participant_id', participant_id)
     .order('turn_number', { ascending: true })
@@ -300,17 +300,101 @@ export async function POST(req: NextRequest) {
 
   const isOpeningResponse = turn_number === 1 && !theme_id
   const discussedThemeIds = new Set(turns.map(t => t.theme_id).filter(Boolean))
-
-  // Check if we should clarify (short answer on current topic)
-  const currentTopicTurns = theme_id ? turns.filter(t => t.theme_id === theme_id).length : 0
-  const clarifierTurnsOnTopic = theme_id ? turns.filter(t => t.theme_id === theme_id && t.source === 'clarifier').length : 0
-  const maxClarifiersPerTopic = 2
   const wordCount = message ? message.split(/\s+/).length : 0
-  const shouldClarify = !isOpeningResponse && !skipped && message && wordCount < 12 && currentTopicTurns <= 3 && clarifierTurnsOnTopic < maxClarifiersPerTopic
 
   // Testing mode: accumulate reasoning steps
   const testing = !!config?.testing || !!body.debug
   const debug: string[] = []
+
+  // ── #1: "Move on" signal detection ────────────────────────────────────
+  // Fast regex for words that mean "I'm done with this topic" — zero AI cost
+  const MOVE_ON_SIGNALS = /^(stop|enough|next|move on|done|that'?s it|that'?s all|nothing else|no more|i'?m done|let'?s move on|skip|pass|next topic|next question)\s*[.!?]*$/i
+  const moveOnSignal = !!(message && MOVE_ON_SIGNALS.test(message.trim()))
+  if (testing && moveOnSignal) debug.push('SIGNAL: "' + message?.trim() + '" detected as move-on signal — skipping clarifier')
+
+  // ── #5: Response trajectory — detect disengagement ────────────────────
+  // Track word counts for last 3 responses on this topic; if trending down, participant is disengaging
+  const recentOnTopic = theme_id
+    ? turns.filter(t => t.theme_id === theme_id && t.user_message && !t.skipped).slice(-3)
+    : []
+  const recentWordCounts = recentOnTopic.map(t => (t.user_message || '').split(/\s+/).length)
+  const trajectoryDisengaging = recentWordCounts.length >= 2 &&
+    recentWordCounts.every((wc: number, i: number) => i === 0 || wc <= recentWordCounts[i - 1]) &&
+    wordCount > 0 && wordCount < (recentWordCounts[recentWordCounts.length - 1] || 999)
+  if (testing && trajectoryDisengaging) debug.push('SIGNAL: Response trajectory declining (' + [...recentWordCounts, wordCount].join(' → ') + ' words) — disengagement detected')
+
+  // ── #2: Frustration-aware clarifier cap ───────────────────────────────
+  // Base max is 2 clarifiers per topic, but drop to 1 if responses are getting shorter
+  const currentTopicTurns = theme_id ? turns.filter(t => t.theme_id === theme_id).length : 0
+  const clarifierTurnsOnTopic = theme_id ? turns.filter(t => t.theme_id === theme_id && t.source === 'clarifier').length : 0
+  const maxClarifiersPerTopic = trajectoryDisengaging ? 1 : 2
+
+  // ── #4: Smart word-count threshold + 60/40 turn budget ────────────────
+  // Instead of flat 12-word cutoff, adjust based on conversation progress:
+  // - Early in conversation with many topics left → lower threshold (move on faster)
+  // - Late in conversation or few topics left → higher threshold (clarify more)
+  const maxTurnsForBudget = config?.engine?.max_turns_per_participant || 20
+  const seedTopics = allTopics.filter(t => t.source === 'guide')
+  const organicTopics = allTopics.filter(t => t.source !== 'guide')
+  const totalTopicCount = allTopics.length
+  const topicsRemaining = allTopics.filter(t => !discussedThemeIds.has(t.id) && t.response_count < t.response_target).length
+  const turnsUsed = turns.length
+  const turnsRemaining = maxTurnsForBudget - turnsUsed
+
+  // 60/40 budget: reserve 40% of turns for organic topics
+  const seedTurnsUsed = turns.filter(t => {
+    const topic = allTopics.find(a => a.id === t.theme_id)
+    return topic && topic.source === 'guide'
+  }).length
+  const seedBudget = Math.ceil(maxTurnsForBudget * 0.6)
+  const seedBudgetExhausted = seedTurnsUsed >= seedBudget && organicTopics.some(t => !discussedThemeIds.has(t.id))
+
+  // Dynamic word-count threshold: 8 words if lots of topics left, up to 15 if on last topic
+  let clarifyWordThreshold = 12 // default
+  if (topicsRemaining > 3 && turnsUsed < maxTurnsForBudget * 0.3) {
+    clarifyWordThreshold = 8 // early + many topics → move on faster
+  } else if (topicsRemaining <= 1) {
+    clarifyWordThreshold = 15 // last topic → allow more clarification
+  }
+  if (testing) debug.push('BUDGET: turn ' + turnsUsed + '/' + maxTurnsForBudget + ' | topics left: ' + topicsRemaining + ' | seed: ' + seedTurnsUsed + '/' + seedBudget + ' | clarify threshold: ' + clarifyWordThreshold + 'w')
+
+  // ── Clarifier decision (all signals combined) ─────────────────────────
+  let shouldClarify = !isOpeningResponse && !skipped && message &&
+    !moveOnSignal &&                              // #1: not a "move on" signal
+    !trajectoryDisengaging &&                     // #5: not disengaging
+    wordCount < clarifyWordThreshold &&           // #4: dynamic threshold
+    currentTopicTurns <= 3 &&                     // original: not too many turns on topic
+    clarifierTurnsOnTopic < maxClarifiersPerTopic // #2: frustration-aware cap
+
+  // ── #3: AI tone check on short responses ──────────────────────────────
+  // For borderline cases (short response that would trigger clarifier),
+  // ask AI: "Is this person being concise or trying to move on?"
+  // Only fires when clarifier would trigger AND response has subtle signals
+  const SUBTLE_DISENGAGE = /^(whatever|sure|fine|ok|okay|i guess|idk|i don't know|yeah|yep|nah|no|not really|i said what i said)\s*[.!?]*$/i
+  if (shouldClarify && message && SUBTLE_DISENGAGE.test(message.trim())) {
+    // Subtle disengagement signal — check with AI before clarifying
+    if (testing) debug.push('TONE CHECK: "' + message.trim() + '" is a subtle signal — asking AI')
+    try {
+      const toneResult = await callClaude(
+        'You classify participant tone in a conversation. Return ONLY "move_on" or "clarify".\n\n' +
+        'Rules:\n- "move_on" = the person is disengaged, annoyed, wants to change topics, or has nothing more to say\n' +
+        '- "clarify" = the person is thinking, gave a partial answer, and would benefit from a follow-up\n' +
+        'Be conservative — if in doubt, say "move_on". A frustrated participant asked to clarify will disengage further.',
+        'The participant just said: "' + message.trim() + '"\n\nRecent conversation:\n' + buildConversationContext(turns.slice(-4)),
+        2000
+      )
+      if (toneResult.text?.trim().toLowerCase() === 'move_on') {
+        shouldClarify = false
+        if (testing) debug.push('TONE RESULT: move_on — skipping clarifier')
+      } else {
+        if (testing) debug.push('TONE RESULT: clarify — proceeding with clarifier')
+      }
+    } catch {
+      // AI failed — err on side of moving on (don't annoy participant)
+      shouldClarify = false
+      if (testing) debug.push('TONE CHECK: AI failed — defaulting to move on')
+    }
+  }
 
   let botMessage: string
   let resolvedThemeId: string | null = null
@@ -336,7 +420,7 @@ export async function POST(req: NextRequest) {
     if (testing) {
       const topic = allTopics.find(t => t.id === theme_id)
       debug.push('DECISION: Clarifier triggered')
-      debug.push('REASON: Response was ' + wordCount + ' words (< 12 threshold) and only ' + currentTopicTurns + ' prior turn(s) on topic "' + (topic?.label || '?') + '"')
+      debug.push('REASON: Response was ' + wordCount + ' words (< ' + clarifyWordThreshold + ' threshold) and ' + clarifierTurnsOnTopic + '/' + maxClarifiersPerTopic + ' clarifiers used on "' + (topic?.label || '?') + '"')
     }
     const clarifyResult = await generateClarifier(config, message, turns, language, testing, toneNudge)
     botMessage = clarifyResult.text
@@ -344,16 +428,27 @@ export async function POST(req: NextRequest) {
 
   } else {
     // ── NEXT TOPIC: Move to an unvisited topic ───────────────────────────
-    const available = allTopics.filter(
+    // 60/40 budget: if seed budget exhausted and organic topics exist, prefer organic
+    let available = allTopics.filter(
       t => t.response_count < t.response_target && !discussedThemeIds.has(t.id)
     )
 
-    if (testing && !shouldClarify && !isOpeningResponse) {
+    if (seedBudgetExhausted) {
+      const organicAvailable = available.filter(t => t.source !== 'guide')
+      if (organicAvailable.length > 0) {
+        available = organicAvailable
+        if (testing) debug.push('BUDGET: Seed budget exhausted (' + seedTurnsUsed + '/' + seedBudget + ') — prioritizing organic topics')
+      }
+    }
+
+    if (testing && !isOpeningResponse) {
       debug.push('DECISION: Move to next topic')
-      if (wordCount >= 12) debug.push('Clarifier skipped: response was ' + wordCount + ' words (>= 12 threshold)')
+      if (moveOnSignal) debug.push('Clarifier skipped: move-on signal detected')
+      else if (trajectoryDisengaging) debug.push('Clarifier skipped: response trajectory declining')
+      else if (wordCount >= clarifyWordThreshold) debug.push('Clarifier skipped: response was ' + wordCount + ' words (>= ' + clarifyWordThreshold + ' threshold)')
       else if (clarifierTurnsOnTopic >= maxClarifiersPerTopic) debug.push('Clarifier skipped: hit max ' + maxClarifiersPerTopic + ' clarifiers on this topic')
       else if (currentTopicTurns > 3) debug.push('Clarifier skipped: already had ' + currentTopicTurns + ' turns on this topic')
-      debug.push('Topics discussed: ' + discussedThemeIds.size + ' | Available: ' + available.length)
+      debug.push('Topics discussed: ' + discussedThemeIds.size + ' | Available: ' + available.length + ' (seed: ' + available.filter(t => t.source === 'guide').length + ', organic: ' + available.filter(t => t.source !== 'guide').length + ')')
     }
 
     if (available.length === 0) {
