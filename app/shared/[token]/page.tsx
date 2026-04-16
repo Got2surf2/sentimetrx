@@ -511,7 +511,7 @@ function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefres
         {/* Themes */}
         {themes.length > 0 && (
           <div className="mb-4">
-            <h2 className="text-sm font-bold text-gray-700 mb-3 uppercase">Themes ({themes.length})</h2>
+            <h2 className="text-sm font-bold text-gray-700 mb-3 uppercase">Topics ({themes.length})</h2>
             <div className="grid grid-cols-2 gap-3">
               {themes.map((t: any, i: number) => {
                 const color = TH_COLORS[i % TH_COLORS.length]

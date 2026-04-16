@@ -645,7 +645,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
             </div>
           )}
 
-          {/* Step 1: Topics (Discussion Guide) */}
+          {/* Step 1: Seed Topics (Discussion Guide) */}
           {step === 1 && (
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -1018,7 +1018,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <h3 className="text-sm font-bold text-gray-700 mb-3">Discussion Guide ({guide.length} topic{guide.length !== 1 ? 's' : ''})</h3>
+                <h3 className="text-sm font-bold text-gray-700 mb-3">Seed Topics ({guide.length} topic{guide.length !== 1 ? 's' : ''})</h3>
                 <div className="space-y-2">
                   {guide.map((t, i) => (
                     <div key={t.id} className="flex items-start gap-2">

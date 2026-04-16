@@ -6,7 +6,7 @@ import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
 
 export const TH_STEP_LABELS = [
   'Basics',
-  'Topics',
+  'Seed Topics',
   'Sensitive Topics',
   'Conversation',
   'Post-Session',
@@ -24,7 +24,7 @@ const TH_STEP_ICONS = [
 
 const TH_STEP_TOOLTIPS = [
   'Basics — name, bot, org, messages',
-  'Topics — discussion guide',
+  'Seed Topics — discussion guide',
   'Sensitive Topics — off-limits topics, priority areas',
   'Conversation — engine settings, session end',
   'Post-Session — languages, demographics, psychographics',

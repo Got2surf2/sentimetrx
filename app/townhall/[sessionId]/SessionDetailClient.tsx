@@ -444,7 +444,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <EInput value={editConfig.context.tone} onChange={v => updateContext({ tone: v })} placeholder="e.g. warm and professional" />
               </div>)}
 
-              {/* ── Step 1: Topics ──────────────────────────────────────── */}
+              {/* ── Step 1: Seed Topics ──────────────────────────────────────── */}
               {editStep === 1 && (<div className="space-y-3">
                 <div className="space-y-3">
                   {editGuide.map((t, i) => (
@@ -543,8 +543,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div><ELabel>Default Response Target</ELabel><ENumber value={editConfig.engine.default_response_target} onChange={v => updateEngine({ default_response_target: v })} min={5} max={500} /></div>
                 </div>
                 <div><ELabel>AI Timeout (ms)</ELabel><ENumber value={editConfig.engine.ai_timeout_ms} onChange={v => updateEngine({ ai_timeout_ms: v })} min={3000} max={30000} /></div>
-                <ELabel>AI Theme Discovery</ELabel>
-                <p className="text-[10px] text-gray-400 mb-2">AI scans participant responses to find topics you didn't pre-configure.</p>
+                <ELabel>Organic Topic Discovery</ELabel>
+                <p className="text-[10px] text-gray-400 mb-2">AI scans participant responses to find organic topics that emerge from the conversation.</p>
                 <div className="flex gap-2 mb-2">
                   {([
                     { value: 'off' as const, label: 'Off' },
@@ -720,7 +720,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <p className="text-xs text-gray-400">{editConfig.context.org_name} &middot; {editConfig.context.tone}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Topics ({editGuide.length})</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Seed Topics ({editGuide.length})</span>
                   {editGuide.map((t, i) => (
                     <div key={t.id} className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-gray-400">{i + 1}.</span>
@@ -852,7 +852,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     )}
                     {t.skipped && (
                       <div className="flex justify-end mb-1">
-                        <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-xs text-gray-400 italic bg-gray-50 max-w-[85%]">skipped</div>
+                        <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-xs text-gray-400 italic bg-gray-50 max-w-[85%]">{t.user || 'skipped'}</div>
                       </div>
                     )}
                   </div>
@@ -941,7 +941,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <div className="rounded-xl border-2 border-orange-300 p-5" style={{ background: '#fffaf5' }}>
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse" />
-                    <h3 className="text-sm font-bold text-orange-600">AI Recommended</h3>
+                    <h3 className="text-sm font-bold text-orange-600">Organic Topics</h3>
                     <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{suggestedTopics.length} new</span>
                   </div>
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
@@ -975,7 +975,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       </div>
                     ))}
                     {(session.discussion_guide || []).filter((t: any) => t.enabled !== false).length === 0 && (
-                      <p className="text-xs text-gray-400">No active topics. Enable topics in the discussion guide or click Edit.</p>
+                      <p className="text-xs text-gray-400">No active topics. Enable seed topics or click Edit.</p>
                     )}
                   </div>
                 ) : activeTopics.length > 0 ? (
@@ -1288,7 +1288,8 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
                     {sent}
                   </span>
                 )}
-                {isAI && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-600">AI</span>}
+                {isAI && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-600">Organic</span>}
+                {t.source === 'guide' && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-600">Seed</span>}
                 {t.source === 'custom' && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Custom</span>}
                 {t.state === 'paused' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-600">Paused</span>}
               </div>

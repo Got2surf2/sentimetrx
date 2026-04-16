@@ -85,7 +85,7 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
           { label: 'Participants', value: stats?.joined || 0 },
           { label: 'Responses', value: analytics?.total_responses || 0 },
           { label: 'Avg Words', value: stats?.avg_words || 0 },
-          { label: 'Themes', value: activeThemes.length },
+          { label: 'Topics', value: activeThemes.length },
           { label: 'Surveys', value: stats?.survey_responses || 0 },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
@@ -119,7 +119,7 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
 
       {/* Theme cards */}
       <div>
-        <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Themes ({activeThemes.length})</h3>
+        <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Topics ({activeThemes.length})</h3>
         <div className="grid grid-cols-2 gap-3">
           {activeThemes.map((t, i) => {
             const color = THEME_COLORS[i % THEME_COLORS.length]
@@ -134,7 +134,7 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
                         style={{ background: sentBg[t.sentiment] || sentBg.neutral, color: sentColor[t.sentiment] || sentColor.neutral }}>
                         {t.sentiment}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium capitalize">{t.source.replace('_', ' ')}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${t.source === 'guide' ? 'bg-blue-100 text-blue-600' : t.source === 'auto_detected' ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>{t.source === 'guide' ? 'Seed' : t.source === 'auto_detected' ? 'Organic' : 'Custom'}</span>
                     </div>
                   </div>
 

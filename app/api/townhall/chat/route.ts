@@ -202,9 +202,11 @@ export async function POST(req: NextRequest) {
 
   // Update the current turn with the user's response (raw — bleeping is done on display)
   if (message || skipped) {
+    const isDone = skipped && message === '[done]'
+    const skipLabel = isDone ? '[Done — participant ended conversation]' : '[Skipped — participant declined to answer]'
     const turnUpdate: Record<string, unknown> = {
-      user_message: skipped ? null : message,
-      user_message_en: skipped ? null : (messageEn || message),
+      user_message: skipped ? skipLabel : message,
+      user_message_en: skipped ? skipLabel : (messageEn || message),
       language: language || 'en',
       skipped: !!skipped,
     }
@@ -602,7 +604,7 @@ async function generateTransition(
   lastMessage: string | undefined,
   language: string | undefined,
   turns: any[],
-  nextTopic: { label: string; description?: string | null; question: string; follow_up_angles?: string[] },
+  nextTopic: { label: string; description?: string | null; question: string; follow_up_angles?: string[]; source?: string },
   verbose = false,
   nudge = false,
   wasSkipped = false,
@@ -611,17 +613,23 @@ async function generateTransition(
 
   const system = withNudge(baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`, nudge)
 
+  const isOrganic = nextTopic.source === 'auto_detected'
+
   const skipInstruction = wasSkipped
     ? `The participant chose to skip this question. Respect their choice — briefly acknowledge it (e.g. "No problem" or "Totally fine") and move on without dwelling on it. Do NOT say "That's wonderful" or anything enthusiastic about skipping.`
     : 'Acknowledge what they\'ve shared so far, then smoothly shift to the new topic.'
 
+  const organicFraming = isOrganic
+    ? `\n\nIMPORTANT: This topic emerged organically from other participants' conversations. Frame your transition to reference this — e.g. "A few others have mentioned ${nextTopic.label}, so I'd love to hear your take" or "This has come up in other conversations today..." or "Some participants have been talking about ${nextTopic.label}..." — vary the phrasing naturally. Do NOT say "AI detected" or "recommended".`
+    : ''
+
   const user = `${wasSkipped ? 'The participant declined to answer the previous question.' : 'The participant has finished discussing the previous topic.'} Now transition naturally to a new topic: "${nextTopic.label}"
 
 The question to work in: "${nextTopic.question}"
-${nextTopic.follow_up_angles?.length ? 'Angles to consider: ' + nextTopic.follow_up_angles.join(', ') : ''}
+${nextTopic.follow_up_angles?.length ? 'Angles to consider: ' + nextTopic.follow_up_angles.join(', ') : ''}${organicFraming}
 
 ${skipInstruction} Maximum 40 words. Just the message.`
 
   const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
-  return { text: (result.text && isOutputClean(result.text)) ? result.text : ('Let me ask you about something else — ' + nextTopic.question), thinking: result.thinking }
+  return { text: (result.text && isOutputClean(result.text)) ? result.text : (isOrganic ? 'Others have been talking about ' + nextTopic.label + ' — ' + nextTopic.question : 'Let me ask you about something else — ' + nextTopic.question), thinking: result.thinking }
 }
