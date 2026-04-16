@@ -488,6 +488,8 @@ function ConversationModal({ response, studyId, studyConfig, botName, botEmoji, 
   botEmoji: string
   onClose: () => void
 }) {
+  const [showJson, setShowJson] = useState(false)
+  const [jsonCopied, setJsonCopied] = useState(false)
   const msgs: ConvMsg[] = response.payload?.conversationLog || []
   const theme = studyConfig?.theme || { primaryColor: '#00b4d8', backgroundColor: '#0a1628', headerGradient: 'linear-gradient(135deg, #00b4d8, #0077a8)', botAvatarGradient: 'linear-gradient(135deg, #00b4d8, #0077a8)' }
 
@@ -648,21 +650,51 @@ function ConversationModal({ response, studyId, studyConfig, botName, botEmoji, 
             <span>NPS: {response.nps_score ?? '—'}/5</span>
             {response.duration_sec && <><span>·</span><span>{response.duration_sec}s</span></>}
           </div>
-          <button
-            onClick={() => {
-              const a = document.createElement('a')
-              a.href = `/api/studies/${studyId}/responses/${response.id}/conversation-export`
-              a.download = 'conversation.pptx'
-              a.click()
-            }}
-            className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
-            style={{ background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)', color: subtleText }}
-            onMouseEnter={e => { e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = isLight ? '#000' : '#fff' }}
-            onMouseLeave={e => { e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = subtleText }}
-          >
-            Export PPTX
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => { setShowJson(true); setJsonCopied(false) }}
+              className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
+              style={{ background: isLight ? '#f0f9ff' : 'rgba(2,132,199,0.15)', color: '#0284c7', border: '1px solid ' + (isLight ? '#bae6fd' : 'rgba(2,132,199,0.3)') }}>
+              View JSON
+            </button>
+            <button
+              onClick={() => {
+                const a = document.createElement('a')
+                a.href = `/api/studies/${studyId}/responses/${response.id}/conversation-export`
+                a.download = 'conversation.pptx'
+                a.click()
+              }}
+              className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
+              style={{ background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)', color: subtleText }}
+              onMouseEnter={e => { e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = isLight ? '#000' : '#fff' }}
+              onMouseLeave={e => { e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = subtleText }}
+            >
+              Export PPTX
+            </button>
+          </div>
         </div>
+
+        {/* JSON view overlay */}
+        {showJson && (
+          <div style={{ position: 'absolute', inset: 0, background: isLight ? '#fff' : '#0f172a', borderRadius: 16, display: 'flex', flexDirection: 'column', zIndex: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid ' + (isLight ? '#e2e8f0' : 'rgba(255,255,255,0.07)'), flexShrink: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: isLight ? '#1e293b' : '#f8fafc' }}>Conversation JSON</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={() => {
+                  const json = JSON.stringify({ response_id: response.id, study_id: studyId, payload: response.payload, experience_score: response.experience_score, nps_score: response.nps_score, status: response.status, duration_sec: response.duration_sec }, null, 2)
+                  navigator.clipboard.writeText(json)
+                  setJsonCopied(true); setTimeout(() => setJsonCopied(false), 2000)
+                }}
+                  style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 8, background: jsonCopied ? '#dcfce7' : (isLight ? '#f0f9ff' : 'rgba(2,132,199,0.15)'), color: jsonCopied ? '#16a34a' : '#0284c7', border: '1px solid ' + (jsonCopied ? '#bbf7d0' : '#bae6fd') }}>
+                  {jsonCopied ? '\u2713 Copied!' : 'Copy'}
+                </button>
+                <button onClick={() => setShowJson(false)} style={{ color: isLight ? '#94a3b8' : 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer' }}>&times;</button>
+              </div>
+            </div>
+            <pre style={{ flex: 1, overflow: 'auto', padding: '12px 20px', fontSize: 11, color: isLight ? '#475569' : 'rgba(255,255,255,0.6)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', background: isLight ? '#f8fafc' : '#0a0f1a' }}>
+              {JSON.stringify({ response_id: response.id, study_id: studyId, payload: response.payload, experience_score: response.experience_score, nps_score: response.nps_score, status: response.status, duration_sec: response.duration_sec }, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     </div>
   )

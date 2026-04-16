@@ -77,7 +77,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [participantList, setParticipantList] = useState<any[]>([])
-  const [convModal, setConvModal] = useState<{ pid: string; turns: any[] } | null>(null)
+  const [convModal, setConvModal] = useState<{ pid: string; turns: any[]; demographics?: any; psychographics?: any } | null>(null)
+  const [jsonView, setJsonView] = useState(false)
+  const [jsonCopied, setJsonCopied] = useState(false)
 
   // Edit mode state — full config editing
   const [editing, setEditing] = useState(false)
@@ -799,7 +801,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                           const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=json')
                           const data = await res.json()
                           const conv = data.conversations?.find((c: any) => c.participant_id === p.participant_id)
-                          if (conv) setConvModal({ pid: p.participant_id, turns: conv.turns })
+                          if (conv) setConvModal({ pid: p.participant_id, turns: conv.turns, demographics: conv.demographics, psychographics: conv.psychographics })
                         } catch {}
                       }} title="View conversation"
                         className={'w-6 h-6 rounded-full flex items-center justify-center transition-all ' + (p.is_complete ? 'hover:bg-green-100' : 'hover:bg-orange-100')}
@@ -856,6 +858,49 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   </div>
                 ))}
               </div>
+
+              {/* Footer: JSON + PPTX buttons */}
+              <div className="flex items-center gap-2 px-5 py-3 border-t border-gray-100 flex-shrink-0">
+                <button onClick={() => { setJsonView(true); setJsonCopied(false) }}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                  style={{ background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd' }}>
+                  View JSON
+                </button>
+                <button onClick={() => {
+                  const a = document.createElement('a')
+                  a.href = '/api/townhall/sessions/' + sessionId + '/export/pptx?participant=' + convModal.pid
+                  a.download = 'conversation.pptx'
+                  a.click()
+                }}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                  style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                  Download PPTX
+                </button>
+              </div>
+
+              {/* JSON view overlay */}
+              {jsonView && (
+                <div className="absolute inset-0 bg-white flex flex-col rounded-2xl">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
+                    <span className="text-sm font-bold text-gray-700">Conversation JSON</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => {
+                        const json = JSON.stringify({ participant_id: convModal.pid, session_id: sessionId, session_name: session?.name, turns: convModal.turns, demographics: convModal.demographics, psychographics: convModal.psychographics }, null, 2)
+                        navigator.clipboard.writeText(json)
+                        setJsonCopied(true); setTimeout(() => setJsonCopied(false), 2000)
+                      }}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                        style={{ background: jsonCopied ? '#dcfce7' : '#f0f9ff', color: jsonCopied ? '#16a34a' : '#0284c7', border: '1px solid ' + (jsonCopied ? '#bbf7d0' : '#bae6fd') }}>
+                        {jsonCopied ? '\u2713 Copied!' : 'Copy'}
+                      </button>
+                      <button onClick={() => setJsonView(false)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+                    </div>
+                  </div>
+                  <pre className="flex-1 overflow-auto px-5 py-3 text-[11px] text-gray-600 font-mono whitespace-pre-wrap bg-gray-50">
+                    {JSON.stringify({ participant_id: convModal.pid, session_id: sessionId, session_name: session?.name, turns: convModal.turns, demographics: convModal.demographics, psychographics: convModal.psychographics }, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
           </div>
         )}
