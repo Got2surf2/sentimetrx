@@ -145,11 +145,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Language switch detection — don't count as a turn, re-send previous bot message in new language
+  // Language switch detection — AI-based, only triggers at >=95% confidence
+  // Don't count as a turn, confirm bilingually and re-send previous bot message in new language
   if (message && !skipped) {
-    const lower = message.toLowerCase().trim()
-    const langSwitchResult = detectLanguageSwitch(lower)
-    if (langSwitchResult) {
+    const langSwitch = await detectLanguageSwitch(message.trim())
+    if (langSwitch) {
+      const targetLang = langSwitch.lang
+
       // Get the last bot message for this participant
       const { data: lastBotTurn } = await supabase
         .from('townhall_turns')
@@ -163,26 +165,31 @@ export async function POST(req: NextRequest) {
 
       const prevBotMsg = lastBotTurn?.bot_message || config?.opening_message || 'What\'s on your mind?'
 
-      // Translate the previous bot message to the requested language
+      // Build response: bilingual confirmation + translated previous bot message
+      const confirm = SWITCH_CONFIRM[targetLang] || `Sure — switching languages!`
       let translatedMsg = prevBotMsg
-      if (langSwitchResult !== 'en') {
+      if (targetLang !== 'en') {
         try {
           const tr = await callClaude(
-            'Translate the following text to ' + langSwitchResult + '. Return ONLY the translation, nothing else. Preserve tone.',
+            'Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone.',
             prevBotMsg, 3000
           )
           if (tr.text) translatedMsg = tr.text
         } catch { /* keep English */ }
       }
 
-      // Don't increment turn, don't store as a real turn — just return the translated message
+      const labels = TH_LABELS[targetLang] || TH_LABELS.en
+
+      // Don't increment turn, don't store as a real turn
       return NextResponse.json({
-        bot_message: translatedMsg,
+        bot_message: confirm + '\n\n' + translatedMsg,
         theme_id,
         source: 'language_switch',
         is_final: false,
         turn_number, // same turn number — no increment
-        language_switched: langSwitchResult,
+        language_switched: targetLang,
+        skip_label: labels.skip,
+        done_label: labels.done,
       })
     }
   }
@@ -459,44 +466,79 @@ function buildConversationContext(turns: any[]): string {
     .join('\n\n')
 }
 
-// Detect language switch requests — returns ISO language code or null
-function detectLanguageSwitch(msg: string): string | null {
-  const patterns: [RegExp, string][] = [
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(spanish|español|espanol)/i, 'es'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(french|français|francais)/i, 'fr'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(portuguese|português|portugues)/i, 'pt'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(german|deutsch)/i, 'de'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(chinese|mandarin|中文)/i, 'zh'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(japanese|日本語)/i, 'ja'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(korean|한국어)/i, 'ko'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(arabic|عربي)/i, 'ar'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(hindi|हिन्दी)/i, 'hi'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(english)/i, 'en'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(italian|italiano)/i, 'it'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(russian|русский)/i, 'ru'],
-    [/\b(speak|switch|change|use|talk|respond|write)\b.*(vietnamese|tiếng việt)/i, 'vi'],
-    // Direct language name requests
-    [/^(spanish|español|espanol)\s*(please|por favor)?$/i, 'es'],
-    [/^(french|français|francais)\s*(please|s'il vous plaît)?$/i, 'fr'],
-    [/^(english)\s*(please)?$/i, 'en'],
-    [/^(portuguese|português)\s*(please|por favor)?$/i, 'pt'],
-    [/^(german|deutsch)\s*(please|bitte)?$/i, 'de'],
-    // "No hablo/speak X" patterns
-    [/no\s+(hablo|speak|understand)\s+(english|inglés|ingles)/i, 'es'],
-    [/no\s+(hablo|speak|understand)\s+(español|spanish)/i, 'en'],
-    [/je\s+ne\s+parle\s+pas\s+(anglais|english)/i, 'fr'],
-    [/não\s+falo\s+(inglês|english)/i, 'pt'],
-    // "Can you speak X" / "please speak X"
-    [/(can you|could you|please)\s+(speak|use|switch to)\s+(spanish|español)/i, 'es'],
-    [/(can you|could you|please)\s+(speak|use|switch to)\s+(french|français)/i, 'fr'],
-    [/(can you|could you|please)\s+(speak|use|switch to)\s+(english)/i, 'en'],
-    [/(puede|puedes)\s+(hablar|usar)\s+(español|spanish)/i, 'es'],
-    [/(puede|puedes)\s+(hablar|usar)\s+(inglés|english)/i, 'en'],
-  ]
-  for (const [re, lang] of patterns) {
-    if (re.test(msg)) return lang
-  }
+// ── AI-based language switch detection ────────────────────────────────────
+// Only triggers when >=95% confident the message is a language change request.
+// Returns { lang, confidence } or null if not a language switch.
+
+const LANG_CODES = ['en','es','fr','de','pt','it','zh','ja','ko','ar','hi','vi','tl','ru','pl']
+
+async function detectLanguageSwitch(msg: string): Promise<{ lang: string; confidence: number } | null> {
+  // Quick filter: very long messages are almost certainly not language switch requests
+  if (msg.length > 120) return null
+
+  const result = await callClaude(
+    `You are a language-switch classifier for a chat system. The user is mid-conversation with an AI moderator.
+
+Determine if this message is ONLY a request to switch the conversation language.
+Return JSON: {"is_switch": true/false, "lang": "ISO code", "confidence": 0-100}
+
+RULES:
+- Confidence must be >= 95 to count. Be conservative — err on the side of NOT detecting.
+- A message like "español" or "can you speak French?" is a clear switch (confidence 98-100).
+- A message like "no hablo inglés" or "je ne parle pas anglais" is a switch (confidence 95+).
+- A message that MENTIONS a language but is actually answering a question is NOT a switch. E.g. "I think the Spanish community needs more support" — this talks ABOUT Spanish, not requesting Spanish.
+- If the message contains substantive content beyond the language request, it is NOT a pure switch — return is_switch: false.
+- Supported languages: ${LANG_CODES.join(', ')}
+- Return ONLY the JSON, nothing else.`,
+    msg,
+    3000
+  )
+
+  try {
+    const parsed = JSON.parse(result.text)
+    if (parsed.is_switch && parsed.confidence >= 95 && LANG_CODES.includes(parsed.lang)) {
+      return { lang: parsed.lang, confidence: parsed.confidence }
+    }
+  } catch { /* parse failed — not a switch */ }
   return null
+}
+
+// Translated TH button labels per language
+const TH_LABELS: Record<string, { skip: string; done: string }> = {
+  en: { skip: "I'd rather not answer that", done: "I'm done sharing" },
+  es: { skip: 'Prefiero no responder', done: 'Ya terminé de compartir' },
+  fr: { skip: 'Je préfère ne pas répondre', done: "J'ai fini de partager" },
+  de: { skip: 'Das möchte ich lieber nicht beantworten', done: 'Ich bin fertig' },
+  pt: { skip: 'Prefiro não responder', done: 'Terminei de compartilhar' },
+  it: { skip: 'Preferisco non rispondere', done: 'Ho finito di condividere' },
+  zh: { skip: '我不想回答这个问题', done: '我说完了' },
+  ja: { skip: '答えたくないです', done: '以上です' },
+  ko: { skip: '대답하고 싶지 않습니다', done: '더 이상 없습니다' },
+  ar: { skip: 'أفضّل عدم الإجابة', done: 'انتهيت من المشاركة' },
+  hi: { skip: 'मैं इसका जवाब नहीं देना चाहता/चाहती', done: 'मैंने अपनी बात कह दी' },
+  vi: { skip: 'Tôi không muốn trả lời', done: 'Tôi đã chia sẻ xong' },
+  tl: { skip: 'Ayoko nang sagutin iyan', done: 'Tapos na ako' },
+  ru: { skip: 'Я предпочитаю не отвечать', done: 'Я закончил(а)' },
+  pl: { skip: 'Wolę nie odpowiadać', done: 'Skończyłem/am' },
+}
+
+// Bilingual confirmation messages for language switches
+const SWITCH_CONFIRM: Record<string, string> = {
+  es: "Sure — switching to Spanish! / ¡Claro — cambiando a español!",
+  fr: "Sure — switching to French! / Bien sûr — on passe au français !",
+  de: "Sure — switching to German! / Klar — wir wechseln zu Deutsch!",
+  pt: "Sure — switching to Portuguese! / Claro — mudando para português!",
+  it: "Sure — switching to Italian! / Certo — passiamo all'italiano!",
+  zh: "Sure — switching to Chinese! / 好的，切换到中文！",
+  ja: "Sure — switching to Japanese! / はい、日本語に切り替えます！",
+  ko: "Sure — switching to Korean! / 네, 한국어로 전환합니다!",
+  ar: "Sure — switching to Arabic! / !بالطبع — سننتقل إلى العربية",
+  hi: "Sure — switching to Hindi! / बिल्कुल — हिंदी में बात करते हैं!",
+  vi: "Sure — switching to Vietnamese! / Được — chuyển sang tiếng Việt!",
+  tl: "Sure — switching to Filipino! / Sige — lilipat tayo sa Filipino!",
+  ru: "Sure — switching to Russian! / Конечно — переключаемся на русский!",
+  pl: "Sure — switching to Polish! / Jasne — przechodzimy na polski!",
+  en: "Sure — switching back to English!",
 }
 
 function baseSystemPrompt(config: any, language?: string): string {

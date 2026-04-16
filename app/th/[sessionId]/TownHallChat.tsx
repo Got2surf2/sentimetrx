@@ -42,6 +42,8 @@ export default function TownHallChat({ sessionId }: Props) {
   const [closingMsg, setClosingMsg] = useState('')
   const [languages, setLanguages] = useState<string[]>([])
   const [selectedLang, setSelectedLang] = useState<string | null>(null)
+  const [skipLabel, setSkipLabel] = useState('')
+  const [doneLabel, setDoneLabel] = useState('')
 
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
@@ -182,7 +184,7 @@ export default function TownHallChat({ sessionId }: Props) {
     if (!msg && !skip) return
     if (loading || finished) return
     const isDebugCmd = /^#debug\s/i.test(msg)
-    if (skip) { setMessages(p => [...p, { who: 'user', text: display.skip_label || "I'd rather not answer that", italic: true }]) }
+    if (skip) { setMessages(p => [...p, { who: 'user', text: skipLabel || display.skip_label || "I'd rather not answer that", italic: true }]) }
     else if (!isDebugCmd) { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
     setInput('')
     setLoading(true)
@@ -197,8 +199,12 @@ export default function TownHallChat({ sessionId }: Props) {
       if (d.debug_mode === true) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ON]', 'color: #E8632A; font-weight: bold'); setLoading(false); return }
       if (d.debug_mode === false) { setDebugMode(false); setTesting(false); console.log('%c[DEBUG MODE OFF]', 'color: #6b7280; font-weight: bold'); setLoading(false); return }
       setTurn(d.turn_number); setThemeId(d.theme_id)
-      // Handle language switch — update language for future messages
-      if (d.language_switched) setSelectedLang(d.language_switched)
+      // Handle language switch — update language and button labels
+      if (d.language_switched) {
+        setSelectedLang(d.language_switched)
+        if (d.skip_label) setSkipLabel(d.skip_label)
+        if (d.done_label) setDoneLabel(d.done_label)
+      }
       // Typing dots are already showing (loading=true) — wait for realistic duration
       await typingDelay(d.bot_message)
       setMessages(p => [...p, { who: 'bot', text: d.bot_message, ...(d._debug ? { _debug: d._debug } : {}) }])
@@ -245,7 +251,7 @@ export default function TownHallChat({ sessionId }: Props) {
   }, [psychoBank, psychoCount, demoFields, botMessages])
 
   const handleDone = async () => {
-    setMessages(p => [...p, { who: 'user', text: display.done_label || "I'm done sharing", italic: true }])
+    setMessages(p => [...p, { who: 'user', text: doneLabel || display.done_label || "I'm done sharing", italic: true }])
     const msg = closingMsg || display.thank_you_message || 'Thank you for your time. Your voice matters.'
     setLoading(true)
     await typingDelay(msg)
@@ -405,9 +411,9 @@ export default function TownHallChat({ sessionId }: Props) {
               style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: input.trim() ? IMSG_BLUE : '#C7C7CC', color: 'white', fontSize: 16, cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>{'\u2191'}</button>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <button onClick={() => handleSend(undefined, true)} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{display.skip_label || "I'd rather not answer that"}</button>
+            <button onClick={() => handleSend(undefined, true)} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{skipLabel || display.skip_label || "I'd rather not answer that"}</button>
             <span style={{ color: '#D1D1D6', fontSize: 12 }}>|</span>
-            <button onClick={handleDone} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{display.done_label || "I'm done sharing"}</button>
+            <button onClick={handleDone} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{doneLabel || display.done_label || "I'm done sharing"}</button>
           </div>
         </div>
       ) : phase === 'psycho' && psychoQuestions[psychoIdx] ? (
