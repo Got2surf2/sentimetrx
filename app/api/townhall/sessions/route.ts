@@ -19,24 +19,25 @@ export async function GET() {
 
   // Get participant + turn counts per session
   const sessionIds = (data || []).map(s => s.id)
-  let stats: Record<string, { participants: number; turns: number }> = {}
+  let stats: Record<string, { participants: number; responses: number }> = {}
   if (sessionIds.length > 0) {
     const { data: turnData } = await db
       .from('townhall_turns')
-      .select('session_id, participant_id')
+      .select('session_id, participant_id, skipped, user_message')
       .in('session_id', sessionIds)
 
     for (const sid of sessionIds) {
       const sessionTurns = (turnData || []).filter(t => t.session_id === sid)
       const uniqueParticipants = new Set(sessionTurns.map(t => t.participant_id))
-      stats[sid] = { participants: uniqueParticipants.size, turns: sessionTurns.length }
+      const answered = sessionTurns.filter(t => !t.skipped && t.user_message)
+      stats[sid] = { participants: uniqueParticipants.size, responses: answered.length }
     }
   }
 
   const enriched = (data || []).map(s => ({
     ...s,
     participants: stats[s.id]?.participants || 0,
-    turns: stats[s.id]?.turns || 0,
+    turns: stats[s.id]?.responses || 0,
   }))
 
   return NextResponse.json(enriched)
