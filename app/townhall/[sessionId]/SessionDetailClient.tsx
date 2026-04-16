@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
 import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig, DemoField, PsychoQuestion } from '@/lib/types'
@@ -69,7 +70,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [session, setSession] = useState<TownHallSession | null>(null)
   const [themes, setThemes] = useState<TownHallTheme[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
-  const [activeTab, setActiveTab] = useState<'topics' | 'responses' | 'analytics'>('topics')
+  const searchParams = useSearchParams()
+  const initialTab = (['topics', 'responses', 'analytics'] as const).includes(searchParams.get('tab') as any) ? searchParams.get('tab') as 'topics' | 'responses' | 'analytics' : 'topics'
+  const [activeTab, setActiveTab] = useState<'topics' | 'responses' | 'analytics'>(initialTab)
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null)
   const [gridCols, setGridCols] = useState(2)
   const [loading, setLoading] = useState(true)

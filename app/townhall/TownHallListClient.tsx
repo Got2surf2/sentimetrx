@@ -316,7 +316,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                           Analytics
                         </Link>
-                        <Link href={'/townhall/' + s.id} target="_blank"
+                        <Link href={'/townhall/' + s.id + '?tab=responses'} target="_blank"
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                           style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                           Responses
