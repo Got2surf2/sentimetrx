@@ -167,10 +167,11 @@ export async function POST(req: NextRequest) {
       let translatedMsg = prevBotMsg
       if (langSwitchResult !== 'en') {
         try {
-          translatedMsg = await callClaude(
+          const tr = await callClaude(
             'Translate the following text to ' + langSwitchResult + '. Return ONLY the translation, nothing else. Preserve tone.',
             prevBotMsg, 3000
           )
+          if (tr.text) translatedMsg = tr.text
         } catch { /* keep English */ }
       }
 
