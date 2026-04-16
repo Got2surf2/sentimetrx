@@ -58,10 +58,27 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     survey_responses: responseCount || 0,
   }
 
+  // Per-participant summary for the responses tab
+  const participantSummary = Array.from(participants).map(pid => {
+    const pTurns = allTurns.filter(t => t.participant_id === pid)
+    const pAnswered = pTurns.filter(t => !t.skipped && t.user_message)
+    const lastTurn = pTurns[pTurns.length - 1]
+    const topics = new Set(pTurns.filter(t => t.theme_id).map(t => t.theme_id))
+    return {
+      participant_id: pid,
+      turns: pTurns.length,
+      answered: pAnswered.length,
+      skipped: pTurns.filter(t => t.skipped).length,
+      topics: topics.size,
+      last_source: lastTurn?.source || null,
+      is_complete: lastTurn?.source === 'done' || pTurns.some(t => t.skipped && t.user_message === '[done]'),
+    }
+  })
+
   const wantsAnalytics = _req.nextUrl.searchParams.get('analytics') === 'true'
 
   if (!wantsAnalytics) {
-    return NextResponse.json({ session, themes: themes || [], stats })
+    return NextResponse.json({ session, themes: themes || [], stats, participants: participantSummary })
   }
 
   // ── Analytics mode: enrich themes with keyword matching, sentiment, quotes ──

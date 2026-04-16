@@ -281,7 +281,9 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                         </td>
                         <td className="px-2 py-3.5">
                           {r.payload?.conversationLog?.length > 0
-                            ? <button onClick={e => { e.stopPropagation(); setSelected(r) }} title="View conversation" className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-orange-100 transition-all" style={{ color: HERMES }}>
+                            ? <button onClick={e => { e.stopPropagation(); setSelected(r) }} title="View conversation"
+                                className={'w-6 h-6 rounded-full flex items-center justify-center transition-all ' + (r.status === 'incomplete' ? 'hover:bg-orange-100' : 'hover:bg-green-100')}
+                                style={{ color: r.status === 'incomplete' ? HERMES : '#16a34a' }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                               </button>
                             : <span className="w-6 h-6 flex items-center justify-center text-gray-200"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>}

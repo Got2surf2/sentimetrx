@@ -69,12 +69,15 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [session, setSession] = useState<TownHallSession | null>(null)
   const [themes, setThemes] = useState<TownHallTheme[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
-  const [activeTab, setActiveTab] = useState<'topics' | 'analytics'>('topics')
+  const [activeTab, setActiveTab] = useState<'topics' | 'responses' | 'analytics'>('topics')
+  const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null)
   const [gridCols, setGridCols] = useState(2)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [participantList, setParticipantList] = useState<any[]>([])
+  const [convModal, setConvModal] = useState<{ pid: string; turns: any[] } | null>(null)
 
   // Edit mode state — full config editing
   const [editing, setEditing] = useState(false)
@@ -131,6 +134,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       setSession(data.session)
       setThemes(data.themes || [])
       setStats(data.stats || null)
+      if (data.participants) setParticipantList(data.participants)
     } catch {}
     setLoading(false)
   }, [sessionId])
@@ -759,13 +763,100 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         {/* Tab switcher */}
         {!editing && (
           <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1 w-fit">
-            {(['topics', 'analytics'] as const).map(tab => (
+            {(['topics', 'responses', 'analytics'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize"
                 style={{ background: activeTab === tab ? 'white' : 'transparent', color: activeTab === tab ? HERMES : '#6b7280', boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
                 {tab}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* ── RESPONSES TAB ─────────────────────────────────────────── */}
+        {!editing && activeTab === 'responses' && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                  <th className="px-4 py-2.5 text-left w-8"></th>
+                  <th className="px-4 py-2.5 text-left">Participant</th>
+                  <th className="px-4 py-2.5 text-center">Turns</th>
+                  <th className="px-4 py-2.5 text-center">Answered</th>
+                  <th className="px-4 py-2.5 text-center">Topics</th>
+                  <th className="px-4 py-2.5 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {participantList.length === 0 && (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-xs">No participants yet</td></tr>
+                )}
+                {participantList.map((p, i) => (
+                  <tr key={p.participant_id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-2.5">
+                      <button onClick={async () => {
+                        try {
+                          const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=json')
+                          const data = await res.json()
+                          const conv = data.conversations?.find((c: any) => c.participant_id === p.participant_id)
+                          if (conv) setConvModal({ pid: p.participant_id, turns: conv.turns })
+                        } catch {}
+                      }} title="View conversation"
+                        className={'w-6 h-6 rounded-full flex items-center justify-center transition-all ' + (p.is_complete ? 'hover:bg-green-100' : 'hover:bg-orange-100')}
+                        style={{ color: p.is_complete ? '#16a34a' : HERMES }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                      </button>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500 font-mono">{p.participant_id.slice(0, 12)}...</td>
+                    <td className="px-4 py-2.5 text-center text-xs text-gray-600">{p.turns}</td>
+                    <td className="px-4 py-2.5 text-center text-xs text-gray-600">{p.answered}</td>
+                    <td className="px-4 py-2.5 text-center text-xs text-gray-600">{p.topics}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={'text-[10px] px-2 py-0.5 rounded-full font-medium ' + (p.is_complete ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700')}>
+                        {p.is_complete ? 'complete' : 'in progress'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Conversation modal */}
+        {convModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConvModal(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
+                <div>
+                  <span className="text-sm font-bold text-gray-700">Conversation</span>
+                  <span className="text-xs text-gray-400 ml-2 font-mono">{convModal.pid.slice(0, 12)}...</span>
+                </div>
+                <button onClick={() => setConvModal(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+                {convModal.turns.map((t: any, i: number) => (
+                  <div key={i}>
+                    {t.bot && (
+                      <div className="flex gap-2 mb-1">
+                        <span className="text-lg flex-shrink-0">{cfg?.bot_emoji || '\uD83D\uDCAC'}</span>
+                        <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2 text-sm text-gray-700 max-w-[85%]">{t.bot}</div>
+                      </div>
+                    )}
+                    {t.user && !t.skipped && (
+                      <div className="flex justify-end mb-1">
+                        <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-sm text-white max-w-[85%]" style={{ background: '#007AFF' }}>{t.user}</div>
+                      </div>
+                    )}
+                    {t.skipped && (
+                      <div className="flex justify-end mb-1">
+                        <div className="rounded-2xl rounded-tr-sm px-3 py-2 text-xs text-gray-400 italic bg-gray-50 max-w-[85%]">skipped</div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
