@@ -75,36 +75,34 @@ export default function TownHallChat({ sessionId }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const joiningRef = useRef(false)
 
-  // Scroll to bottom — matches survey SurveyWidget.scrollBottom exactly:
-  // Always scroll unconditionally, double retry for late-rendering DOM
-  const scrollBottom = useCallback(() => {
+  // Scroll to show the latest bot message from the TOP so user can read it.
+  // After user sends a message, the new bot reply should be visible starting
+  // from its first line — not scrolled to the absolute bottom.
+  const lastBotRef = useRef<HTMLDivElement>(null)
+  const scrollToLastBot = useCallback(() => {
     const el = chatRef.current
     if (!el) return
-    const doScroll = () => { el.scrollTop = el.scrollHeight }
+    const doScroll = () => {
+      if (lastBotRef.current) {
+        // Scroll the chat container so the last bot message starts at the top
+        el.scrollTop = lastBotRef.current.offsetTop - 8
+      } else {
+        el.scrollTop = 0
+      }
+    }
     setTimeout(doScroll, 60)
     setTimeout(doScroll, 350)
   }, [])
 
-  useEffect(() => { scrollBottom() }, [messages, loading, scrollBottom])
+  useEffect(() => { scrollToLastBot() }, [messages, loading, scrollToLastBot])
   useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])
 
-  // Mobile viewport — match survey SurveyWidget approach:
-  // On iOS, 100dvh doesn't shrink when keyboard opens. Listen to visualViewport
-  // resize and update wrapper height. Scroll chat to bottom after resize.
+  // Mobile viewport — match survey SurveyWidget approach exactly:
+  // Do NOT manually resize the wrapper. On iOS, 100dvh stays fixed when the
+  // keyboard opens. The browser natively scrolls the page to keep the focused
+  // input visible. Manually shrinking the wrapper via visualViewport.height
+  // causes the chat to re-layout in a tiny space and scroll the message away.
   const wrapRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const onResize = () => {
-      if (wrapRef.current) {
-        wrapRef.current.style.height = vv.height + 'px'
-      }
-      // After viewport shrinks (keyboard open), scroll chat to bottom
-      scrollBottom()
-    }
-    vv.addEventListener('resize', onResize)
-    return () => vv.removeEventListener('resize', onResize)
-  }, [scrollBottom])
 
   // Poll session via GET /api/townhall/join/:id (same endpoint, no auth needed)
   const poll = useCallback(async () => {
@@ -380,8 +378,10 @@ export default function TownHallChat({ sessionId }: Props) {
 
       {/* Chat area */}
       <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
-        {messages.map((m, i) => (
-          <div key={i}>
+        {messages.map((m, i) => {
+          const isLastBot = m.who === 'bot' && !messages.slice(i + 1).some(n => n.who === 'bot')
+          return (
+          <div key={i} ref={isLastBot ? lastBotRef : undefined}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
               {m.who === 'bot' && (
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
@@ -402,7 +402,8 @@ export default function TownHallChat({ sessionId }: Props) {
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
         {loading && (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: 'flex-start' }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
