@@ -80,8 +80,13 @@ export default function TownHallChat({ sessionId }: Props) {
     // Don't auto-scroll on first message — let user see prologue from the top
     if (!hasScrolledRef.current && messages.length <= 1) return
     hasScrolledRef.current = true
-    setTimeout(() => { el.scrollTop = el.scrollHeight }, 60)
-    setTimeout(() => { el.scrollTop = el.scrollHeight }, 300)
+    // Scroll so the last message's top is visible (not the absolute bottom)
+    // This ensures long messages show from their start and the input stays reachable
+    setTimeout(() => {
+      const lastMsg = el.lastElementChild as HTMLElement
+      if (lastMsg) { lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+      else { el.scrollTop = el.scrollHeight }
+    }, 80)
   }, [messages.length])
 
   useEffect(() => { scroll() }, [messages, loading, scroll])
