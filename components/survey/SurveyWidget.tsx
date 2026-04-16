@@ -124,7 +124,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
         if (data.bot_name)  setLiveBotName(data.bot_name)
         if (data.bot_emoji) setLiveBotEmoji(data.bot_emoji)
         if (data.config)    setLiveConfig(data.config)
-        if (data.debug_mode) setDebugViaUrl(true)
+        if (data.debug_mode) { setDebugViaUrl(true); console.log('%c[DEBUG MODE ACTIVE]', 'color: #E8632A; font-weight: bold; font-size: 14px', 'Study GUID matched — verbose AI reasoning enabled') }
         setStatus('active')
       })
       .catch(() => setStatus('error'))
@@ -273,6 +273,13 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
           )
         })()}
       </div>
+
+      {/* Debug mode banner */}
+      {debugViaUrl && (
+        <div style={{ background: '#FEF3C7', borderBottom: '1px solid #FDE68A', padding: '4px 16px', fontSize: '0.6875rem', color: '#92400E', fontWeight: 600, flexShrink: 0, textAlign: 'center' }}>
+          Running in debug mode — AI reasoning visible
+        </div>
+      )}
 
       {/* Chat area — scrollable, fills all available space between header and input */}
       <div

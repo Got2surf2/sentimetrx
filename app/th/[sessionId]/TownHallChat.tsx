@@ -145,7 +145,7 @@ export default function TownHallChat({ sessionId }: Props) {
       if (d.closing_message) setClosingMsg(d.closing_message)
       if (d.psychographicBank) setPsychoBank(d.psychographicBank)
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
-      if (d.debug_mode) { setDebugMode(true); setTesting(true) }
+      if (d.debug_mode) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ACTIVE]', 'color: #E8632A; font-weight: bold; font-size: 14px', 'Session ID matched — verbose AI reasoning enabled') }
       setJoined(true)
       // Show typing dots, then reveal message
       setLoading(true)
@@ -173,8 +173,8 @@ export default function TownHallChat({ sessionId }: Props) {
       })
       const d = await r.json()
       // Handle debug mode toggle
-      if (d.debug_mode === true) { setDebugMode(true); setTesting(true) }
-      if (d.debug_mode === false) { setDebugMode(false); setTesting(false) }
+      if (d.debug_mode === true) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ON]', 'color: #E8632A; font-weight: bold') }
+      if (d.debug_mode === false) { setDebugMode(false); setTesting(false); console.log('%c[DEBUG MODE OFF]', 'color: #6b7280; font-weight: bold') }
       setTurn(d.turn_number); setThemeId(d.theme_id)
       // Handle language switch — update language for future messages
       if (d.language_switched) setSelectedLang(d.language_switched)
@@ -329,6 +329,13 @@ export default function TownHallChat({ sessionId }: Props) {
         <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 2 }}>{botEmoji}</div>
         <div style={{ fontSize: 13, fontWeight: 600, color: '#000' }}>{botName}</div>
       </div>
+
+      {/* Debug mode banner */}
+      {testing && (
+        <div style={{ background: '#FEF3C7', borderBottom: '1px solid #FDE68A', padding: '4px 16px', fontSize: 11, color: '#92400E', fontWeight: 600, flexShrink: 0, textAlign: 'center' }}>
+          Running in debug mode — AI reasoning visible
+        </div>
+      )}
 
       {/* Chat area */}
       <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
