@@ -22,6 +22,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       if (response_target) updates.response_target = response_target
       if (question) updates.question = question
       break
+    case 'park':
+      updates.state = 'parked'
+      break
     case 'dismiss':
       updates.state = 'dismissed'
       break

@@ -257,11 +257,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const isPaused = session.status === 'paused'
   const isEnded = session.status === 'ended'
 
-  // Separate themes into 3 sections
+  // Separate themes into sections
   const activeTopics = themes.filter(t => t.state === 'active')
   const pendingTopics = themes.filter(t => t.state === 'paused')
   const suggestedTopics = themes.filter(t => t.state === 'detected')
+  const parkedTopics = themes.filter(t => t.state === 'parked')
   const completedTopics = themes.filter(t => t.state === 'completed')
+  const defaultResponseTarget = cfg?.engine?.default_response_target || 30
 
   return (
     <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, user }}>
@@ -808,7 +810,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {suggestedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
+                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                        defaultResponseTarget={defaultResponseTarget} />
                     ))}
                   </div>
                 </div>
@@ -849,6 +852,24 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <p className="text-xs text-gray-400">No active topics.</p>
                 )}
               </div>
+
+              {/* ── PARKED (saved for later) ──────────────────── */}
+              {parkedTopics.length > 0 && (
+                <div className="bg-white rounded-xl border border-blue-200 p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 rounded-full bg-blue-400" />
+                    <h3 className="text-sm font-bold text-blue-700">Parked</h3>
+                    <span className="text-[10px] text-blue-400">{parkedTopics.length}</span>
+                  </div>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                    {parkedTopics.map(t => (
+                      <ThemeCard key={t.id} theme={t} isActive={isActive} variant="parked"
+                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                        defaultResponseTarget={defaultResponseTarget} />
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ── PENDING (paused topics) ───────────────────── */}
               {pendingTopics.length > 0 && (
@@ -1079,21 +1100,25 @@ function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName,
 }
 
 // ── Rich Theme Card (matches analytics style) ─────────────────────────────────
-function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
+function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResponseTarget }: {
   theme: TownHallTheme
   isActive: boolean
-  variant: 'suggested' | 'active' | 'completed'
-  onAction: (action: string) => void
+  variant: 'suggested' | 'active' | 'parked' | 'completed'
+  onAction: (action: string, extras?: Record<string, unknown>) => void
   loading: boolean
+  defaultResponseTarget?: number
 }) {
   const sent = t.sentiment || 'neutral'
   const keywords = t.keywords || []
   const isSuggested = variant === 'suggested'
+  const isParked = variant === 'parked'
   const isAI = t.source === 'auto_detected'
   const isCompleted = variant === 'completed'
+  const [showApprove, setShowApprove] = useState(false)
+  const [approveTarget, setApproveTarget] = useState(defaultResponseTarget || 30)
 
   return (
-    <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : isCompleted ? 'border-gray-100 bg-gray-50/50' : 'border-gray-200 bg-white'}`}>
+    <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : isParked ? 'border-blue-100 bg-white' : isCompleted ? 'border-gray-100 bg-gray-50/50' : 'border-gray-200 bg-white'}`}>
       {sent !== 'insufficient' && <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />}
       <div className="p-4">
         {/* Header row: donut + label + badges */}
@@ -1137,12 +1162,32 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
         )}
 
         {/* Action buttons */}
-        {isSuggested && (
+        {(isSuggested || isParked) && !showApprove && (
           <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
-            <button onClick={() => onAction('approve')} disabled={loading}
+            <button onClick={() => setShowApprove(true)} disabled={loading}
               className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50" style={{ background: '#22c55e' }}>Approve</button>
+            {isSuggested && (
+              <button onClick={() => onAction('park')} disabled={loading}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200 disabled:opacity-50">Park</button>
+            )}
             <button onClick={() => onAction('dismiss')} disabled={loading}
               className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200 disabled:opacity-50">Dismiss</button>
+          </div>
+        )}
+        {(isSuggested || isParked) && showApprove && (
+          <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-500">Response target:</span>
+              <input type="number" min={5} max={500} value={approveTarget}
+                onChange={e => setApproveTarget(parseInt(e.target.value) || 30)}
+                className="w-16 px-2 py-1 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-green-200" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { onAction('approve', { response_target: approveTarget }); setShowApprove(false) }} disabled={loading}
+                className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50" style={{ background: '#22c55e' }}>Confirm</button>
+              <button onClick={() => setShowApprove(false)}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-400 hover:text-gray-600">Cancel</button>
+            </div>
           </div>
         )}
         {variant === 'active' && isActive && (

@@ -915,7 +915,7 @@ export interface TownHallConfig {
 }
 
 export type TownHallSessionStatus = 'setup' | 'active' | 'paused' | 'ended'
-export type TownHallThemeState = 'active' | 'detected' | 'paused' | 'completed' | 'dismissed'
+export type TownHallThemeState = 'active' | 'detected' | 'paused' | 'parked' | 'completed' | 'dismissed'
 export type TownHallThemeSource = 'guide' | 'auto_detected' | 'custom'
 export type TownHallTurnSource = 'guide' | 'clarifier' | 'detected_theme' | 'custom'
 
