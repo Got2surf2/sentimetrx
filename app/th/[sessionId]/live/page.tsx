@@ -9,8 +9,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 
 const HERMES = '#E8632A'
-const SENT_COLOR: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280' }
-const SENT_BG: Record<string, string> = { positive: '#dcfce7', negative: '#fee2e2', mixed: '#fef3c7', neutral: '#f3f4f6' }
+const SENT_COLOR: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280', insufficient: '#9ca3af' }
+const SENT_BG: Record<string, string> = { positive: '#dcfce7', negative: '#fee2e2', mixed: '#fef3c7', neutral: '#f3f4f6', insufficient: '#f9fafb' }
 
 interface ThemeData {
   id: string; label: string; description: string | null; state: string; source: string
@@ -252,7 +252,7 @@ function LiveThemeCard({ theme: t }: { theme: ThemeData }) {
 
   return (
     <div style={{ background: '#1f2937', borderRadius: 16, overflow: 'hidden', border: '1px solid #374151' }}>
-      <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />
+      {sent !== 'insufficient' && <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />}
       <div style={{ padding: 16 }}>
         {/* Header: donut + label */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -261,7 +261,7 @@ function LiveThemeCard({ theme: t }: { theme: ThemeData }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: '#f9fafb' }}>{t.label}</span>
               <div style={{ display: 'flex', gap: 4 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: SENT_BG[sent], color: SENT_COLOR[sent], textTransform: 'capitalize' }}>{sent}</span>
+                {sent !== 'insufficient' && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: SENT_BG[sent], color: SENT_COLOR[sent], textTransform: 'capitalize' }}>{sent}</span>}
                 {isAI && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#ede9fe', color: '#7c3aed' }}>AI</span>}
               </div>
             </div>

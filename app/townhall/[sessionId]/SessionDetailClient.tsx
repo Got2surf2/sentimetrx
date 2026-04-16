@@ -31,8 +31,8 @@ interface Stats {
 }
 
 const HERMES = '#E8632A'
-const SENT_COLOR: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280' }
-const SENT_BG: Record<string, string> = { positive: '#f0fdf4', negative: '#fef2f2', mixed: '#fffbeb', neutral: '#f3f4f6' }
+const SENT_COLOR: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280', insufficient: '#9ca3af' }
+const SENT_BG: Record<string, string> = { positive: '#f0fdf4', negative: '#fef2f2', mixed: '#fffbeb', neutral: '#f3f4f6', insufficient: '#f9fafb' }
 
 const STATE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
   active:    { bg: '#dcfce7', text: '#166534', label: 'Active' },
@@ -1094,7 +1094,7 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
 
   return (
     <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : isCompleted ? 'border-gray-100 bg-gray-50/50' : 'border-gray-200 bg-white'}`}>
-      <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />
+      {sent !== 'insufficient' && <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />}
       <div className="p-4">
         {/* Header row: donut + label + badges */}
         <div className="flex items-start gap-3">
@@ -1103,10 +1103,12 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading }: {
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-gray-800">{t.label}</span>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
-                  style={{ background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral }}>
-                  {sent}
-                </span>
+                {sent !== 'insufficient' && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
+                    style={{ background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral }}>
+                    {sent}
+                  </span>
+                )}
                 {isAI && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-600">AI</span>}
                 {t.source === 'custom' && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Custom</span>}
                 {t.state === 'paused' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-600">Paused</span>}

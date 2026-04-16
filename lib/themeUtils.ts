@@ -66,9 +66,9 @@ export function lexiconScore(text: string): { pos: number; neg: number } {
  * "mixed" when both sides have meaningful presence.
  * Requires minResponses (default 5) scored words before classifying — returns 'neutral' if below threshold.
  */
-export function classifySentiment(pos: number, neg: number, minResponses = 5): 'positive' | 'negative' | 'mixed' | 'neutral' {
+export function classifySentiment(pos: number, neg: number, minResponses = 5): 'positive' | 'negative' | 'mixed' | 'neutral' | 'insufficient' {
   const total = pos + neg
-  if (total < minResponses) return 'neutral'
+  if (total < minResponses) return 'insufficient'
   const posRatio = pos / total
   if (posRatio >= 0.7) return 'positive'
   if (posRatio <= 0.3) return 'negative'
