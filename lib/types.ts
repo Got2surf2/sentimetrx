@@ -910,7 +910,7 @@ export interface TownHallConfig {
   // Debug mode: activated via #debug SESSION_ID in chat or ?debug=SESSION_ID in URL
   // Content safety: profanity filtering + strike escalation
   content_safety?: {
-    enabled: boolean          // master toggle (default true)
+    enabled?: boolean          // master toggle (default true)
     profanity?: boolean       // block/bleep profanity (default true)
     slurs?: boolean           // block slurs (default true)
     threats?: boolean         // block threats/violence (default true)

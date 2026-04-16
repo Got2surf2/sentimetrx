@@ -443,6 +443,15 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   const updateDisplay = (partial: Partial<TownHallConfig['display']>) => {
     setConfig(c => ({ ...c, display: { ...c.display, ...partial } }))
   }
+  const updateSafety = (partial: Record<string, boolean>) => {
+    setConfig(c => {
+      const prev = c.content_safety || {}
+      const cs = { profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true, ...prev, ...partial }
+      if (cs.enabled === undefined) cs.enabled = true
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return { ...c, content_safety: cs } as any
+    })
+  }
 
   const updateTopic = (idx: number, topic: TownHallGuideTopic) => {
     setGuide(g => g.map((t, i) => i === idx ? topic : t))
@@ -852,7 +861,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                   </div>
                   <button type="button" onClick={() => {
                     const on = config.content_safety?.enabled !== false
-                    setConfig(prev => ({ ...prev, content_safety: { ...prev.content_safety, enabled: !on, profanity: !on, slurs: !on, threats: !on, sexual: !on, insults: !on, spam: !on } }))
+                    updateSafety({ enabled: !on, profanity: !on, slurs: !on, threats: !on, sexual: !on, insults: !on, spam: !on })
                   }}
                     className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (config.content_safety?.enabled !== false ? 'bg-green-500' : 'bg-gray-200')}>
                     <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (config.content_safety?.enabled !== false ? 'translate-x-5' : 'translate-x-0')} />
@@ -861,22 +870,22 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 {config.content_safety?.enabled !== false && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-3 mb-2">
-                      <button type="button" onClick={() => setConfig(prev => ({ ...prev, content_safety: { ...prev.content_safety, enabled: true, profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true } }))}
+                      <button type="button" onClick={() => updateSafety({ profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true })}
                         className="text-[10px] font-semibold text-orange-600 hover:text-orange-800">Select All</button>
-                      <button type="button" onClick={() => setConfig(prev => ({ ...prev, content_safety: { ...prev.content_safety, enabled: true, profanity: false, slurs: false, threats: false, sexual: false, insults: false, spam: false } }))}
+                      <button type="button" onClick={() => updateSafety({ profanity: false, slurs: false, threats: false, sexual: false, insults: false, spam: false })}
                         className="text-[10px] font-semibold text-gray-400 hover:text-gray-600">Select None</button>
                     </div>
-                    {([
-                      { key: 'profanity' as const, label: 'Profanity', desc: 'Block/bleep swear words' },
-                      { key: 'slurs' as const, label: 'Slurs', desc: 'Block racial and identity slurs' },
-                      { key: 'threats' as const, label: 'Threats & Violence', desc: 'Block violent language and threats' },
-                      { key: 'sexual' as const, label: 'Sexual Content', desc: 'Block explicit sexual language' },
-                      { key: 'insults' as const, label: 'Insults & Rudeness', desc: 'Gentle nudge when participants are rude' },
-                      { key: 'spam' as const, label: 'URLs / Spam', desc: 'Block links and URLs' },
-                    ] as const).map(opt => {
+                    {[
+                      { key: 'profanity', label: 'Profanity', desc: 'Block/bleep swear words' },
+                      { key: 'slurs', label: 'Slurs', desc: 'Block racial and identity slurs' },
+                      { key: 'threats', label: 'Threats & Violence', desc: 'Block violent language and threats' },
+                      { key: 'sexual', label: 'Sexual Content', desc: 'Block explicit sexual language' },
+                      { key: 'insults', label: 'Insults & Rudeness', desc: 'Gentle nudge when participants are rude' },
+                      { key: 'spam', label: 'URLs / Spam', desc: 'Block links and URLs' },
+                    ].map(opt => {
                       const on = (config.content_safety as any)?.[opt.key] !== false
                       return (
-                        <button key={opt.key} type="button" onClick={() => setConfig(prev => ({ ...prev, content_safety: { ...prev.content_safety, [opt.key]: !on } }))}
+                        <button key={opt.key} type="button" onClick={() => updateSafety({ [opt.key]: !on })}
                           className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
                           style={{ background: on ? '#f0fdf4' : '#f9fafb', border: '1.5px solid ' + (on ? '#22c55e' : '#e5e7eb') }}>
                           <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
