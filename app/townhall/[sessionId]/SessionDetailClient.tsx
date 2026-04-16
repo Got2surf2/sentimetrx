@@ -805,7 +805,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-orange-600">AI Recommended</h3>
                     <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{suggestedTopics.length} new</span>
                   </div>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px'}, 1fr))` }}
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {suggestedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
                         onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
@@ -839,7 +839,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     )}
                   </div>
                 ) : activeTopics.length > 0 ? (
-                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px'}, 1fr))` }}
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {activeTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
                         onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
@@ -858,7 +858,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-amber-700">Pending</h3>
                     <span className="text-[10px] text-amber-400">{pendingTopics.length}</span>
                   </div>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px'}, 1fr))` }}
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {pendingTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
                         onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
@@ -894,7 +894,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-blue-700">Closed</h3>
                     <span className="text-[10px] text-blue-400">{completedTopics.length}</span>
                   </div>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px'}, 1fr))` }}
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {completedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={false} variant="completed"
                         onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />

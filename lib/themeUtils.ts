@@ -28,16 +28,35 @@ const NEG_WORDS = new Set([
   'underwhelming','overrated','upset','angry','disappointed','unhappy','dissatisfied','regret',
 ])
 
+// Negation words — if one of these precedes a sentiment word, flip its polarity
+const NEGATORS = new Set([
+  'not','no','never','dont','don\'t','doesnt','doesn\'t','didnt','didn\'t',
+  'isnt','isn\'t','arent','aren\'t','wasnt','wasn\'t','werent','weren\'t',
+  'wont','won\'t','wouldnt','wouldn\'t','cant','can\'t','cannot','hardly',
+  'barely','neither','nor','nothing','nowhere','nobody','lack','without',
+])
+
 /**
  * Score a block of text for sentiment using the lexicon.
- * Returns { positive, negative } word counts.
+ * Handles negation: "not good" = negative, "don't like" stays negative.
+ * Looks back up to 3 words for a negator.
  */
 export function lexiconScore(text: string): { pos: number; neg: number } {
-  const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/)
+  const words = text.toLowerCase().replace(/[^a-z'\s]/g, '').split(/\s+/)
   var pos = 0, neg = 0
   for (var i = 0; i < words.length; i++) {
-    if (POS_WORDS.has(words[i])) pos++
-    if (NEG_WORDS.has(words[i])) neg++
+    const isPos = POS_WORDS.has(words[i])
+    const isNeg = NEG_WORDS.has(words[i])
+    if (!isPos && !isNeg) continue
+
+    // Check up to 3 preceding words for a negator
+    var negated = false
+    for (var j = Math.max(0, i - 3); j < i; j++) {
+      if (NEGATORS.has(words[j])) { negated = true; break }
+    }
+
+    if (isPos) { negated ? neg++ : pos++ }
+    if (isNeg) { negated ? pos++ : neg++ }
   }
   return { pos, neg }
 }
@@ -45,10 +64,11 @@ export function lexiconScore(text: string): { pos: number; neg: number } {
 /**
  * Classify sentiment from aggregate positive/negative counts.
  * "mixed" when both sides have meaningful presence.
+ * Requires minResponses (default 5) scored words before classifying — returns 'neutral' if below threshold.
  */
-export function classifySentiment(pos: number, neg: number): 'positive' | 'negative' | 'mixed' | 'neutral' {
+export function classifySentiment(pos: number, neg: number, minResponses = 5): 'positive' | 'negative' | 'mixed' | 'neutral' {
   const total = pos + neg
-  if (total === 0) return 'neutral'
+  if (total < minResponses) return 'neutral'
   const posRatio = pos / total
   if (posRatio >= 0.7) return 'positive'
   if (posRatio <= 0.3) return 'negative'
