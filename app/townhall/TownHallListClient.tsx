@@ -149,13 +149,13 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
     setActionLoading(null)
   }
 
-  const handleExport = async (sessionId: string, name: string) => {
+  const handleExport = async (sessionId: string, name: string, format = 'csv') => {
     try {
-      const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=csv')
+      const res = await fetch('/api/townhall/sessions/' + sessionId + '/export?format=' + format)
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || (name + '.csv')
+      a.href = url; a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || (name + '.' + format)
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
     } catch {}
   }
@@ -327,7 +327,12 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           Export
                         </button>
 
-                        {/* Row 2: Close/Reopen, Archive (red) */}
+                        {/* Row 2: JSON, Close/Reopen, Archive */}
+                        <button onClick={() => handleExport(s.id, s.name, 'json')}
+                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
+                          style={{ background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd' }}>
+                          JSON
+                        </button>
                         <button
                           onClick={() => {
                             const isLive = s.status === 'active' || s.status === 'paused'

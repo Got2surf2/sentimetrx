@@ -81,7 +81,58 @@ export async function GET(req: NextRequest, { params }: Params) {
     return buildThemesCsv(session, themes || [], turns)
   }
 
-  return NextResponse.json({ error: 'Unsupported format. Use ?format=csv or ?format=themes' }, { status: 400 })
+  if (format === 'json') {
+    // Group turns into conversation threads by participant
+    const participants: Record<string, any[]> = {}
+    for (const t of turns) {
+      if (!participants[t.participant_id]) participants[t.participant_id] = []
+      participants[t.participant_id].push({
+        turn: t.turn_number,
+        bot: t.bot_message,
+        user: t.user_message,
+        user_en: t.user_message_en,
+        language: t.language,
+        topic: themeMap[t.theme_id] || null,
+        source: t.source,
+        skipped: t.skipped,
+        time: t.created_at,
+      })
+    }
+
+    const conversations = Object.entries(participants).map(([pid, turns]) => ({
+      participant_id: pid,
+      turns,
+      demographics: demoMap[pid] || null,
+      psychographics: psychoMap[pid] || null,
+    }))
+
+    const payload = {
+      session: {
+        name: session.name,
+        status: session.status,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        config: session.config,
+      },
+      themes: (themes || []).map(t => ({ id: t.id, label: t.label, source: t.source, state: t.state, sentiment: t.sentiment, keywords: t.keywords })),
+      conversations,
+      summary: {
+        participants: Object.keys(participants).length,
+        total_turns: turns.length,
+        answered: turns.filter(t => !t.skipped && t.user_message).length,
+      },
+    }
+
+    const blob = JSON.stringify(payload, null, 2)
+    return new NextResponse(blob, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Disposition': `attachment; filename="${(session.name || 'townhall').replace(/[^a-z0-9]/gi, '_')}_conversations.json"`,
+      },
+    })
+  }
+
+  return NextResponse.json({ error: 'Unsupported format. Use ?format=csv, ?format=themes, or ?format=json' }, { status: 400 })
 }
 
 function esc(v: unknown): string {
