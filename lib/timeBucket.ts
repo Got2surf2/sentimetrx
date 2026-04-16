@@ -1,13 +1,15 @@
 // lib/timeBucket.ts — Smart time-axis bucketing utility
 // Picks optimal bucket granularity based on data range, with user override support.
 
-export type TimeBucket = 'hour' | 'day' | 'week' | 'month'
+export type TimeBucket = 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year'
 
 export const BUCKET_OPTIONS: { value: TimeBucket; label: string }[] = [
   { value: 'hour', label: 'Hourly' },
   { value: 'day', label: 'Daily' },
   { value: 'week', label: 'Weekly' },
   { value: 'month', label: 'Monthly' },
+  { value: 'quarter', label: 'Quarterly' },
+  { value: 'year', label: 'Annual' },
 ]
 
 /**
@@ -15,7 +17,9 @@ export const BUCKET_OPTIONS: { value: TimeBucket; label: string }[] = [
  * - < 3 days → hourly
  * - 3–90 days → daily
  * - 90–365 days → weekly
- * - > 365 days → monthly
+ * - 365–730 days → monthly
+ * - 730–1825 days → quarterly
+ * - > 1825 days (5yr) → annual
  */
 export function autoBucket(minDate: Date | string, maxDate: Date | string): TimeBucket {
   const lo = typeof minDate === 'string' ? new Date(minDate) : minDate
@@ -24,7 +28,9 @@ export function autoBucket(minDate: Date | string, maxDate: Date | string): Time
   if (days < 3) return 'hour'
   if (days < 90) return 'day'
   if (days < 365) return 'week'
-  return 'month'
+  if (days < 730) return 'month'
+  if (days < 1825) return 'quarter'
+  return 'year'
 }
 
 /**
@@ -46,6 +52,12 @@ export function bucketKey(date: Date | string, bucket: TimeBucket): string {
     }
     case 'month':
       return d.toISOString().slice(0, 7) // YYYY-MM
+    case 'quarter': {
+      const q = Math.floor(d.getUTCMonth() / 3) + 1
+      return d.getUTCFullYear() + '-Q' + q
+    }
+    case 'year':
+      return String(d.getUTCFullYear())
   }
 }
 
@@ -70,5 +82,12 @@ export function formatBucketLabel(key: string, bucket: TimeBucket): string {
       const d = new Date(key + '-01T00:00:00Z')
       return d.toLocaleString(undefined, { month: 'short', year: '2-digit' })
     }
+    case 'quarter': {
+      // key format: YYYY-Q1
+      const parts = key.split('-Q')
+      return 'Q' + parts[1] + ' ' + parts[0]
+    }
+    case 'year':
+      return key
   }
 }

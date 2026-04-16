@@ -91,6 +91,8 @@ BEGIN
     CASE p_bucket
       WHEN 'week' THEN to_char(date_trunc('week', (data ->> p_date_field)::date), 'YYYY-MM-DD')
       WHEN 'month' THEN to_char(date_trunc('month', (data ->> p_date_field)::date), 'YYYY-MM')
+      WHEN 'quarter' THEN to_char(date_trunc('quarter', (data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (data ->> p_date_field)::date))::text
+      WHEN 'year' THEN to_char(date_trunc('year', (data ->> p_date_field)::date), 'YYYY')
       ELSE to_char((data ->> p_date_field)::date, 'YYYY-MM-DD')
     END AS bucket_date,
     count(*)::bigint AS n,

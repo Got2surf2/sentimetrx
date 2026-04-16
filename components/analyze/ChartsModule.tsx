@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { readSession, writeSession } from '@/lib/useSessionState'
-import { TimeBucket, BUCKET_OPTIONS, autoBucket } from '@/lib/timeBucket'
+import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 // Dynamic Plotly import
@@ -1424,6 +1424,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField, colorByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string; colorByField?: string; colors?: string[] }) {
   var [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
+  var [splitMode, setSplitMode] = useState(false)
   var pal = colors || CHART_COLORS
 
   // Determine smart bucket from field summary date counts
@@ -1436,7 +1437,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   }
   // hour bucket not supported in SQL function — fall back to day
   var effectiveBucket: TimeBucket = bucketOverride === 'auto' ? smartBucket : bucketOverride
-  var sqlBucket = effectiveBucket === 'hour' ? 'day' : effectiveBucket
+  var sqlBucket: string = effectiveBucket === 'hour' ? 'day' : effectiveBucket
 
   var aggSpec = dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
@@ -1450,20 +1451,25 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var traces: any[] = []
   var hasBreakdown = !!(colorByField && colorByField.trim())
 
+  // Pre-compute breakdown groups (used by both combined and split modes)
+  var catGroups: Record<string, Record<string, number[]>> = {}
+  var sortedDates: string[] = []
+  var catNames: string[] = []
+
   if (hasBreakdown) {
-    // Group rows by category value, then by date
-    var catGroups: Record<string, Record<string, number[]>> = {}
+    // Group rows by category value, then by bucketed date
     var allDates = new Set<string>()
     rows.forEach(function(r) {
-      var d = String(r[dateField] || '').slice(0, 10); if (!d) return
+      var raw = String(r[dateField] || ''); if (!raw) return
+      var d = bucketKey(raw, effectiveBucket)
       var cat = String(r[colorByField!] || '(blank)')
       allDates.add(d)
       if (!catGroups[cat]) catGroups[cat] = {}
       if (!catGroups[cat][d]) catGroups[cat][d] = []
       if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) catGroups[cat][d].push(v) } else { catGroups[cat][d].push(1) }
     })
-    var sortedDates = Array.from(allDates).sort()
-    var catNames = Object.keys(catGroups).sort()
+    sortedDates = Array.from(allDates).sort()
+    catNames = Object.keys(catGroups).sort()
     catNames.forEach(function(cat, ci) {
       var yVals = sortedDates.map(function(d) {
         var arr = catGroups[cat][d]
@@ -1480,7 +1486,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
       aggData.series.forEach(function(s: any) { dates.push(s.date); yVals.push(metricField ? (s.avg || 0) : s.count) })
     } else {
       var grouped: Record<string, number[]> = {}
-      rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
+      rows.forEach(function(r) { var raw = String(r[dateField] || ''); if (!raw) return; var d = bucketKey(raw, effectiveBucket); if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
       dates = Object.keys(grouped).sort()
       yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
     }
@@ -1506,6 +1512,23 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
 
   var bucketLabel = BUCKET_OPTIONS.find(function(o) { return o.value === effectiveBucket })?.label || 'Daily'
 
+  // Build split chart data if splitMode + breakdown
+  var splitCharts: { name: string; traces: any[]; color: string }[] = []
+  if (hasBreakdown && splitMode && catNames.length > 0) {
+    catNames.forEach(function(cat, ci) {
+      var yVals = sortedDates.map(function(d) {
+        var arr = catGroups[cat] ? catGroups[cat][d] : null
+        if (!arr || arr.length === 0) return 0
+        return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length
+      })
+      splitCharts.push({
+        name: cat,
+        color: pal[ci % pal.length],
+        traces: [{ x: sortedDates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: pal[ci % pal.length], width: 2 }, marker: { size: 4 }, showlegend: false }],
+      })
+    })
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -1514,9 +1537,23 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
           <select value={bucketOverride} onChange={function(e) { setBucketOverride(e.target.value as any) }}
             style={{ fontSize: 10, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 8, padding: '2px 6px', background: 'transparent', cursor: 'pointer' }}>
             <option value="auto">Auto ({bucketLabel})</option>
-            {BUCKET_OPTIONS.filter(function(o) { return o.value !== 'hour' }).map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option> })}
+            {BUCKET_OPTIONS.filter(function(o) { return o.value !== 'hour' }).map(function(o) {
+              return <option key={o.value} value={o.value}>{o.label}</option>
+            })}
           </select>
         </div>
+        {hasBreakdown && (
+          <div style={{ display: 'flex', background: T.bg, borderRadius: 12, padding: 2, border: '1px solid ' + T.border }}>
+            {[['combined', 'Combined'], ['split', 'Split']].map(function(pair) {
+              var isSplit = pair[0] === 'split'
+              var active = splitMode === isSplit
+              return <button key={pair[0]} onClick={function() { setSplitMode(isSplit) }}
+                style={{ fontSize: 10, fontWeight: active ? 700 : 500, padding: '2px 10px', borderRadius: 10, background: active ? T.bgCard : 'transparent', color: active ? T.text : T.textMute, border: 'none', cursor: 'pointer' }}>
+                {pair[1]}
+              </button>
+            })}
+          </div>
+        )}
         {!hasBreakdown && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
             <input type="checkbox" checked={smooth} onChange={function() { setSmooth(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
@@ -1535,7 +1572,24 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
           </div>
         )}
       </div>
-      <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: { orientation: 'h' as const, y: -0.15 } }} />
+      {hasBreakdown && splitMode && splitCharts.length > 0 ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+          {splitCharts.map(function(sc) {
+            return (
+              <div key={sc.name} style={{ border: '1px solid ' + T.border, borderRadius: 10, padding: '10px 12px', background: T.bgCard }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: sc.color, marginBottom: 4 }}>{sc.name}</div>
+                <PlotlyChart traces={sc.traces} layout={{
+                  xaxis: { title: '', tickfont: { size: 9 } },
+                  yaxis: { title: metricField ? 'Avg' : 'Count', titlefont: { size: 10 }, tickfont: { size: 9 } },
+                  height: 200, margin: { t: 10, b: 40, l: 40, r: 10 },
+                }} />
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: { orientation: 'h' as const, y: -0.15 } }} />
+      )}
     </div>
   )
 }
