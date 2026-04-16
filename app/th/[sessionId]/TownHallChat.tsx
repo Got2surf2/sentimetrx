@@ -94,27 +94,25 @@ export default function TownHallChat({ sessionId }: Props) {
   useEffect(() => { scroll() }, [messages, loading, scroll])
   useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])
 
-  // Mobile viewport — keep wrapper sized to visual viewport and scroll chat on keyboard open
+  // Mobile viewport — match survey SurveyWidget approach:
+  // On iOS, 100dvh doesn't shrink when keyboard opens. Listen to visualViewport
+  // resize and update wrapper height. Scroll chat to bottom after resize.
   const wrapRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
     const onResize = () => {
-      if (!wrapRef.current) return
-      // Pin wrapper to visual viewport (accounts for keyboard)
-      wrapRef.current.style.height = vv.height + 'px'
-      wrapRef.current.style.transform = `translateY(${vv.offsetTop}px)`
-      // After resize, scroll chat to bottom so input + last message stay visible
-      requestAnimationFrame(() => {
-        if (chatRef.current) {
-          chatRef.current.scrollTop = chatRef.current.scrollHeight
-        }
-      })
+      if (wrapRef.current) {
+        wrapRef.current.style.height = vv.height + 'px'
+      }
+      // After viewport shrinks (keyboard open), scroll chat to bottom
+      // Two retries to handle late-rendering DOM elements
+      const doScroll = () => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }
+      setTimeout(doScroll, 60)
+      setTimeout(doScroll, 350)
     }
     vv.addEventListener('resize', onResize)
-    vv.addEventListener('scroll', onResize)
-    onResize()
-    return () => { vv.removeEventListener('resize', onResize); vv.removeEventListener('scroll', onResize) }
+    return () => vv.removeEventListener('resize', onResize)
   }, [])
 
   // Poll session via GET /api/townhall/join/:id (same endpoint, no auth needed)
