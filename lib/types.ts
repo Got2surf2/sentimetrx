@@ -911,6 +911,12 @@ export interface TownHallConfig {
   // Content safety: profanity filtering + strike escalation
   content_safety?: {
     enabled: boolean          // master toggle (default true)
+    profanity?: boolean       // block/bleep profanity (default true)
+    slurs?: boolean           // block slurs (default true)
+    threats?: boolean         // block threats/violence (default true)
+    sexual?: boolean          // block sexual content (default true)
+    insults?: boolean         // nudge on insults (default true)
+    spam?: boolean            // block URLs (default true)
   }
 }
 

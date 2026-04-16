@@ -4,14 +4,30 @@
 
 // ── Severity levels ──────────────────────────────────────────────────────────
 // 'mild' = logged only, no escalation (damn, hell, crap, etc.)
+// 'rude' = message processed but bot nudges the participant
 // 'severe' = triggers strikes + escalation (slurs, threats, sexual content)
 
 type Severity = 'mild' | 'rude' | 'severe'
-interface PatternDef { pattern: RegExp; severity: Severity; category: string }
+type Category = 'slur' | 'threat' | 'sexual' | 'profanity' | 'insult' | 'spam'
+interface PatternDef { pattern: RegExp; severity: Severity; category: Category }
 
-// ── Expanded pattern list with fuzzy matching ────────────────────────────────
-// Handles: spaces between letters, number substitutions, asterisk censoring
+// ── Bleep patterns: simpler regexes for word replacement in display ───────────
+const BLEEP_PATTERNS: { pattern: RegExp; category: Category }[] = [
+  // Slurs
+  { pattern: /\b(n[i1!]gg\w*|sp[i1!]c[ks]?|ch[i1!]nk[s]?|k[i1!]ke[s]?|w[e3]tb[a4@]ck[s]?|f[a4@]gg?\w*|r[e3]t[a4@]rd\w*)\b/gi, category: 'slur' },
+  // Threats
+  { pattern: /\b(kill\s+(you|them|myself|him|her)|murder|bomb\s+threat|shoot(?:ing)?|stab(?:bing)?|rape|molest|assault)\b/gi, category: 'threat' },
+  // Sexual
+  { pattern: /\b(porn|hentai|xxx|nudes?|naked|d[i1!]ck\s*pic|c[o0]ck\s*suck\w*)\b/gi, category: 'sexual' },
+  // Strong profanity
+  { pattern: /\b(f+u+c+k\w*|c+u+n+t+s?|motherf\w*)\b/gi, category: 'profanity' },
+  // Mild profanity
+  { pattern: /\b(shit+\w*|bullshit|bitch\w*|bastard[s]?|asshole[s]?|damn\w*|crap\w*|piss\w*)\b/gi, category: 'profanity' },
+  // Insults
+  { pattern: /\b(dumbass\w*|idiot[s]?|moron[s]?|stupid|loser[s]?|pathetic|ignorant|incompetent)\b/gi, category: 'insult' },
+]
 
+// ── Detection patterns (more complex, for severity checking) ─────────────────
 const PATTERNS: PatternDef[] = [
   // Severe: slurs (with common evasion tactics)
   { pattern: /\b(n+[i1!]+g+[e3]*[r]+s?)\b/i, severity: 'severe', category: 'slur' },
@@ -45,13 +61,51 @@ const PATTERNS: PatternDef[] = [
   { pattern: /https?:\/\//i, severity: 'severe', category: 'spam' },
 ]
 
+// ── Content safety toggles ───────────────────────────────────────────────────
+export interface ContentSafetyConfig {
+  enabled: boolean       // master toggle (default true)
+  profanity?: boolean    // block/bleep profanity (default true)
+  slurs?: boolean        // block slurs (default true)
+  threats?: boolean      // block threats/violence (default true)
+  sexual?: boolean       // block sexual content (default true)
+  insults?: boolean      // nudge on insults (default true)
+  spam?: boolean         // block URLs (default true)
+}
+
+export const CONTENT_SAFETY_DEFAULTS: ContentSafetyConfig = {
+  enabled: true, profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true,
+}
+
+function isCategoryEnabled(category: Category, config?: ContentSafetyConfig): boolean {
+  if (!config || config.enabled === false) return false
+  switch (category) {
+    case 'profanity': return config.profanity !== false
+    case 'slur':      return config.slurs !== false
+    case 'threat':    return config.threats !== false
+    case 'sexual':    return config.sexual !== false
+    case 'insult':    return config.insults !== false
+    case 'spam':      return config.spam !== false
+    default:          return true
+  }
+}
+
+// ── Bleep text: replace matched words with **** ──────────────────────────────
+export function bleepText(text: string, config?: ContentSafetyConfig): string {
+  const cfg = config || CONTENT_SAFETY_DEFAULTS
+  if (cfg.enabled === false) return text
+  let result = text
+  for (const bp of BLEEP_PATTERNS) {
+    if (!isCategoryEnabled(bp.category, cfg)) continue
+    result = result.replace(bp.pattern, (match) => match[0] + '*'.repeat(Math.max(1, match.length - 2)) + match[match.length - 1])
+  }
+  return result
+}
+
 // ── Strike tracking (in-memory, resets per process) ──────────────────────────
-// Key: participantId, Value: { strikes, lastViolation }
 const strikeMap = new Map<string, { strikes: number; lastViolation: number }>()
 
-// Clean up old entries every 30 minutes to prevent memory leaks
 const CLEANUP_INTERVAL = 30 * 60 * 1000
-const MAX_AGE = 4 * 60 * 60 * 1000 // 4 hours
+const MAX_AGE = 4 * 60 * 60 * 1000
 
 let lastCleanup = Date.now()
 function cleanupOldEntries() {
@@ -69,107 +123,80 @@ export interface ContentCheckResult {
   safe: boolean
   severity?: Severity
   category?: string
-  warning?: string      // message to show to participant
-  nudge?: boolean        // true = message is processed but bot should gently acknowledge the tone
-  shutdown?: boolean     // true = end conversation for this participant
-  strikes?: number       // current strike count
+  warning?: string
+  nudge?: boolean
+  shutdown?: boolean
+  strikes?: number
+  bleeped?: string      // bleeped version of the text for display
 }
 
-/**
- * Check a participant message for content safety violations.
- *
- * @param participantId - Unique participant identifier for strike tracking
- * @param text - The message text to check
- * @param options.filterEnabled - Whether content filtering is active (default true)
- * @param options.maxLength - Maximum message length (default 1200)
- * @returns ContentCheckResult with safe flag, optional warning, and shutdown signal
- */
 export function checkMessage(
   participantId: string,
   text: string,
-  options: { filterEnabled?: boolean; maxLength?: number } = {},
+  options: { safetyConfig?: ContentSafetyConfig; maxLength?: number } = {},
 ): ContentCheckResult {
-  const { filterEnabled = true, maxLength = 1200 } = options
+  const { safetyConfig, maxLength = 1200 } = options
+  const cfg = safetyConfig || CONTENT_SAFETY_DEFAULTS
   cleanupOldEntries()
 
-  // Basic input validation (always enforced regardless of filter toggle)
   if (!text || text.trim().length < 2) return { safe: false, category: 'empty' }
   if (text.length > maxLength) return { safe: false, category: 'too_long' }
 
-  // If filtering is disabled, only check length — skip pattern matching
-  if (!filterEnabled) return { safe: true }
+  if (cfg.enabled === false) return { safe: true }
 
-  // Check all patterns
+  // Always produce bleeped version for display
+  const bleeped = bleepText(text, cfg)
+
   for (const def of PATTERNS) {
-    if (def.pattern.test(text)) {
-      // Rude: message goes through but bot should acknowledge the tone
-      if (def.severity === 'rude') {
-        return { safe: true, severity: 'rude', category: def.category, nudge: true }
-      }
+    if (!isCategoryEnabled(def.category, cfg)) continue
+    if (!def.pattern.test(text)) continue
 
-      // Mild severity: log only, no escalation
-      if (def.severity === 'mild') {
-        return { safe: true, severity: 'mild', category: def.category }
-      }
+    // Rude: message goes through but bot should acknowledge the tone
+    if (def.severity === 'rude') {
+      return { safe: true, severity: 'rude', category: def.category, nudge: true, bleeped }
+    }
 
-      // Severe: apply strike escalation
-      const entry = strikeMap.get(participantId) || { strikes: 0, lastViolation: 0 }
-      entry.strikes += 1
-      entry.lastViolation = Date.now()
-      strikeMap.set(participantId, entry)
+    // Mild severity: log only, no escalation
+    if (def.severity === 'mild') {
+      return { safe: true, severity: 'mild', category: def.category, bleeped }
+    }
 
-      if (entry.strikes >= 3) {
-        return {
-          safe: false,
-          severity: 'severe',
-          category: def.category,
-          warning: "We've had to end this conversation. Thank you for your time.",
-          shutdown: true,
-          strikes: entry.strikes,
-        }
-      }
+    // Severe: apply strike escalation
+    const entry = strikeMap.get(participantId) || { strikes: 0, lastViolation: 0 }
+    entry.strikes += 1
+    entry.lastViolation = Date.now()
+    strikeMap.set(participantId, entry)
 
-      if (entry.strikes === 2) {
-        return {
-          safe: false,
-          severity: 'severe',
-          category: def.category,
-          warning: "Please keep the conversation respectful. One more violation and we'll need to end the conversation.",
-          strikes: entry.strikes,
-        }
-      }
-
-      // Strike 1
+    if (entry.strikes >= 3) {
       return {
-        safe: false,
-        severity: 'severe',
-        category: def.category,
-        warning: "Let's keep things respectful — could you rephrase that? What else is on your mind?",
+        safe: false, severity: 'severe', category: def.category, bleeped,
+        warning: "We've had to end this conversation. Thank you for your time.",
+        shutdown: true, strikes: entry.strikes,
+      }
+    }
+
+    if (entry.strikes === 2) {
+      return {
+        safe: false, severity: 'severe', category: def.category, bleeped,
+        warning: "Please keep the conversation respectful. One more violation and we'll need to end the conversation.",
         strikes: entry.strikes,
       }
     }
+
+    return {
+      safe: false, severity: 'severe', category: def.category, bleeped,
+      warning: "Let's keep things respectful — could you rephrase that? What else is on your mind?",
+      strikes: entry.strikes,
+    }
   }
 
-  return { safe: true }
+  return { safe: true, bleeped }
 }
 
-/**
- * Reset strikes for a participant (e.g., when a new session starts).
- */
-export function resetStrikes(participantId: string) {
-  strikeMap.delete(participantId)
-}
+export function resetStrikes(participantId: string) { strikeMap.delete(participantId) }
+export function getStrikes(participantId: string): number { return strikeMap.get(participantId)?.strikes || 0 }
 
-/**
- * Get current strike count for a participant.
- */
-export function getStrikes(participantId: string): number {
-  return strikeMap.get(participantId)?.strikes || 0
-}
-
-// ── Legacy compat: drop-in replacement for isInputSafe ───────────────────────
-// For endpoints that don't need strike tracking (surveys, deflect, etc.)
+// Legacy compat
 export function isContentSafe(text: string, maxLength = 600): boolean {
-  const result = checkMessage('_anon', text, { maxLength })
-  return result.safe
+  return checkMessage('_anon', text, { maxLength }).safe
 }

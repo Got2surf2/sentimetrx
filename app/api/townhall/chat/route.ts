@@ -120,10 +120,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Content guard: check for harmful content with strike-based escalation
-  const contentSafetyEnabled = config?.content_safety?.enabled !== false // default: on
+  const safetyConfig = { enabled: true, profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true, ...(config?.content_safety || {}) }
   let toneNudge = false
   if (message && !skipped) {
-    const check = checkMessage(participant_id, message, { filterEnabled: contentSafetyEnabled, maxLength: 1200 })
+    const check = checkMessage(participant_id, message, { safetyConfig, maxLength: 1200 })
     if (check.nudge) toneNudge = true
     if (!check.safe) {
       // Store the turn as filtered
