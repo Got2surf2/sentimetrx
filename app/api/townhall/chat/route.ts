@@ -276,6 +276,88 @@ export async function POST(req: NextRequest) {
     return wrapUp(config)
   }
 
+  // ── Smart deflection: detect off-topic / questions and redirect ───────
+  // Runs before decision logic to avoid wasting clarifier slots on irrelevant input.
+  // Only fires on real messages (not skips, not opening response), and only if enabled (default: on).
+  const deflectionEnabled = config?.deflection?.enabled !== false
+  if (deflectionEnabled && message && !skipped && turn_number > 1) {
+    const testing = !!config?.testing || !!body.debug
+    const analyzeText = messageEn || message
+    // Fast regex pre-check: skip deflection if response looks like genuine feedback
+    // (contains opinion/emotion words — not worth burning an AI call)
+    const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|feel|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern)\b/i
+    const QUESTION_SIGNALS = /\?\s*$|^(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
+
+    if (!FEEDBACK_SIGNALS.test(analyzeText) || QUESTION_SIGNALS.test(analyzeText)) {
+      // Possible off-topic or question — ask AI
+      const currentTopic = theme_id ? (await supabase.from('townhall_themes').select('label, question').eq('id', theme_id).single()).data : null
+      const topicContext = currentTopic ? currentTopic.question || currentTopic.label : 'the discussion topic'
+
+      try {
+        const deflectResult = await callClaude(
+          `You are analyzing a participant's reply in a Town Hall discussion to decide if they went off-topic.
+
+The discussion question was: "${topicContext}"
+The participant replied: "${analyzeText}"
+
+DECISION:
+- If they gave ANY form of feedback — opinions, complaints, praise, suggestions, stories, emotions, even if brief, tangential, or passionate — respond with exactly: NONE
+- Rhetorical questions count as feedback (e.g. "Why can't they just fix it?" = complaint)
+- Only deflect if they are CLEARLY asking for information, requesting help, or talking about something completely unrelated
+- Short answers like "yes", "no", "fine", "ok" are NOT off-topic — respond NONE
+
+If deflection IS needed, write a SHORT (max 25 words), warm, human-sounding message that gently steers them back to the discussion.
+
+RULES:
+- Output ONLY the redirect message, or NONE — nothing else
+- Be warm and conversational, like a friendly facilitator
+- Do NOT mention "bot", "AI", or "survey"` +
+            (language && language !== 'en' ? `\n\nIMPORTANT: Write your deflection message in ${language}.` : ''),
+          'Analyze the participant\'s reply.',
+          3000,
+          testing
+        )
+
+        let deflectText = deflectResult.text?.trim() || 'NONE'
+        // Strip leaked reasoning
+        if (deflectText.includes('---RESPONSE---')) deflectText = deflectText.split('---RESPONSE---').pop()!.trim()
+        if (deflectText.includes('---')) deflectText = deflectText.split('---').pop()!.trim()
+        deflectText = deflectText.replace(/^(Yes,?\s+)?(The respondent|They are|This is)[^.!?]*[.!?]\s*/gi, '')
+        deflectText = deflectText.replace(/^(Got it|Sure|Okay|I see|Understood|Right)[^.!?]*[.!?\-—:]\s*/gi, '')
+
+        if (deflectText && deflectText !== 'NONE' && deflectText.length >= 5) {
+          // Custom deflection message override
+          if (config?.deflection?.message?.trim()) {
+            deflectText = config.deflection.message.trim()
+          }
+
+          const nextTurn = turn_number + 1
+          await supabase.from('townhall_turns').insert({
+            session_id: session.id, participant_id, turn_number: nextTurn,
+            bot_message: deflectText, user_message: null, user_message_en: null,
+            language: language || 'en', theme_id, source: 'deflect', skipped: false,
+          })
+
+          const debugInfo = testing ? [
+            'DEFLECT: Participant went off-topic or asked a question',
+            'Input: "' + analyzeText.slice(0, 100) + '"',
+            'Topic context: "' + topicContext + '"',
+            'Redirect: "' + deflectText.slice(0, 100) + '"',
+            ...(deflectResult.thinking || []),
+          ] : undefined
+
+          return NextResponse.json({
+            bot_message: deflectText, theme_id, source: 'deflect',
+            is_final: false, turn_number: nextTurn,
+            ...(debugInfo ? { _debug: debugInfo } : {}),
+          })
+        }
+      } catch {
+        // Deflection AI failed — proceed normally, don't block conversation
+      }
+    }
+  }
+
   // Get this participant's conversation history
   const { data: history } = await supabase
     .from('townhall_turns')
