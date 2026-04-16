@@ -370,7 +370,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     )
   }
 
-  var catFields = schema.filter(function(f) { return f.type === 'categorical' || f.type === 'date' }).map(function(f) { return f.field })
+  var catFields = schema.filter(function(f) { return f.type === 'categorical' }).map(function(f) { return f.field })
   var field = activeField || themes!.fieldName
   var fieldLabel = function(f: string) {
     var sf = schema.find(function(s) { return s.field === f })

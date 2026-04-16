@@ -58,7 +58,7 @@ var CHART_SLOTS: Record<string, SlotDef[]> = {
   distribution: [{ key: 'field', label: 'Numeric Field', accepts: ['numeric'], required: true }, { key: 'splitBy', label: 'Split by', accepts: ['categorical'], required: false }],
   scatter:      [{ key: 'x', label: 'X Axis', accepts: ['numeric'], required: true }, { key: 'y', label: 'Y Axis', accepts: ['numeric'], required: true }, { key: 'colorBy', label: 'Color by', accepts: ['categorical'], required: false }],
   crosstab:     [{ key: 'rows', label: 'Row Variable', accepts: ['categorical'], required: true }, { key: 'cols', label: 'Column Variable', accepts: ['categorical'], required: true }],
-  timeseries:   [{ key: 'date', label: 'Date Field', accepts: ['date'], required: true }, { key: 'metric', label: 'Metric', accepts: ['numeric'], required: false }],
+  timeseries:   [{ key: 'date', label: 'Date Field', accepts: ['date'], required: true }, { key: 'metric', label: 'Metric', accepts: ['numeric'], required: false }, { key: 'colorBy', label: 'Break down by', accepts: ['categorical'], required: false }],
   treemap:      [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'size', label: 'Size (optional)', accepts: ['numeric'], required: false }],
   bubbles:      [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'size', label: 'Size (optional)', accepts: ['numeric'], required: false }],
   waterfall:    [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }],
@@ -394,7 +394,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
 
   if (chartType === 'timeseries') {
     var dateF = config.date; if (!dateF) return <EmptyChart msg="Assign a date field above." />
-    return <TimeSeriesInner analytics={analytics} schema={schema} datasetId={datasetId} dateField={dateF} metricField={config.metric || ''} />
+    return <TimeSeriesInner analytics={analytics} schema={schema} datasetId={datasetId} dateField={dateF} metricField={config.metric || ''} colorByField={config.colorBy || ''} colors={opts?.colors || CHART_COLORS} />
   }
 
   if (chartType === 'treemap') {
@@ -1422,8 +1422,9 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
 }
 
-function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string }) {
+function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField, colorByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string; colorByField?: string; colors?: string[] }) {
   var [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
+  var pal = colors || CHART_COLORS
 
   // Determine smart bucket from field summary date counts
   var dateSummary = analytics?.fieldSummaries?.[dateField]
@@ -1444,34 +1445,63 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField 
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
-  var dates: string[] = []
-  var yVals: number[] = []
-  if (aggData && aggData.series && aggData.series.length > 0) {
-    aggData.series.forEach(function(s: any) { dates.push(s.date); yVals.push(metricField ? (s.avg || 0) : s.count) })
-  } else {
-    var grouped: Record<string, number[]> = {}
-    rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
-    dates = Object.keys(grouped).sort()
-    yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
-  }
 
-  // Moving average smoothing
-  var smoothed = yVals
-  if (smooth && yVals.length > window) {
-    smoothed = yVals.map(function(_, i) {
-      var start = Math.max(0, i - Math.floor(window / 2))
-      var end = Math.min(yVals.length, i + Math.ceil(window / 2))
-      var slice = yVals.slice(start, end)
-      return slice.reduce(function(a, b) { return a + b }, 0) / slice.length
-    })
-  }
-
+  // ── Build traces — with optional categorical breakdown ──────────────
   var traces: any[] = []
-  if (smooth) {
-    traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'markers', marker: { color: T.blue, size: 4, opacity: 0.3 }, name: 'Raw', showlegend: true })
-    traces.push({ x: dates, y: smoothed, type: 'scatter', mode: 'lines', line: { color: T.accent, width: 3, shape: 'spline' }, name: window + '-day avg', showlegend: true })
+  var hasBreakdown = !!(colorByField && colorByField.trim())
+
+  if (hasBreakdown) {
+    // Group rows by category value, then by date
+    var catGroups: Record<string, Record<string, number[]>> = {}
+    var allDates = new Set<string>()
+    rows.forEach(function(r) {
+      var d = String(r[dateField] || '').slice(0, 10); if (!d) return
+      var cat = String(r[colorByField!] || '(blank)')
+      allDates.add(d)
+      if (!catGroups[cat]) catGroups[cat] = {}
+      if (!catGroups[cat][d]) catGroups[cat][d] = []
+      if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) catGroups[cat][d].push(v) } else { catGroups[cat][d].push(1) }
+    })
+    var sortedDates = Array.from(allDates).sort()
+    var catNames = Object.keys(catGroups).sort()
+    catNames.forEach(function(cat, ci) {
+      var yVals = sortedDates.map(function(d) {
+        var arr = catGroups[cat][d]
+        if (!arr || arr.length === 0) return 0
+        return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length
+      })
+      traces.push({ x: sortedDates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: pal[ci % pal.length], width: 2 }, marker: { size: 4 }, name: cat, showlegend: true })
+    })
   } else {
-    traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: T.blue, width: 2 }, marker: { size: 5 } })
+    // Single line — original behavior
+    var dates: string[] = []
+    var yVals: number[] = []
+    if (aggData && aggData.series && aggData.series.length > 0) {
+      aggData.series.forEach(function(s: any) { dates.push(s.date); yVals.push(metricField ? (s.avg || 0) : s.count) })
+    } else {
+      var grouped: Record<string, number[]> = {}
+      rows.forEach(function(r) { var d = String(r[dateField] || '').slice(0, 10); if (!d) return; if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
+      dates = Object.keys(grouped).sort()
+      yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
+    }
+
+    // Moving average smoothing
+    var smoothed = yVals
+    if (smooth && yVals.length > window) {
+      smoothed = yVals.map(function(_, i) {
+        var start = Math.max(0, i - Math.floor(window / 2))
+        var end = Math.min(yVals.length, i + Math.ceil(window / 2))
+        var slice = yVals.slice(start, end)
+        return slice.reduce(function(a, b) { return a + b }, 0) / slice.length
+      })
+    }
+
+    if (smooth) {
+      traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'markers', marker: { color: T.blue, size: 4, opacity: 0.3 }, name: 'Raw', showlegend: true })
+      traces.push({ x: dates, y: smoothed, type: 'scatter', mode: 'lines', line: { color: T.accent, width: 3, shape: 'spline' }, name: window + '-day avg', showlegend: true })
+    } else {
+      traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: T.blue, width: 2 }, marker: { size: 5 } })
+    }
   }
 
   var bucketLabel = BUCKET_OPTIONS.find(function(o) { return o.value === effectiveBucket })?.label || 'Daily'
@@ -1487,11 +1517,13 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField 
             {BUCKET_OPTIONS.filter(function(o) { return o.value !== 'hour' }).map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option> })}
           </select>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
-          <input type="checkbox" checked={smooth} onChange={function() { setSmooth(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
-          Smooth curve
-        </label>
-        {smooth && (
+        {!hasBreakdown && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+            <input type="checkbox" checked={smooth} onChange={function() { setSmooth(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+            Smooth curve
+          </label>
+        )}
+        {!hasBreakdown && smooth && (
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: T.textFaint }}>Window:</span>
             {[3, 7, 14, 30].map(function(w) {
@@ -1503,7 +1535,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField 
           </div>
         )}
       </div>
-      <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: smooth ? { orientation: 'h' as const, y: -0.15 } : undefined }} />
+      <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: { orientation: 'h' as const, y: -0.15 } }} />
     </div>
   )
 }
