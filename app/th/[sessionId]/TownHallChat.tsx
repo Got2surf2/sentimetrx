@@ -264,6 +264,17 @@ export default function TownHallChat({ sessionId }: Props) {
   }
 
   const submitPostSession = async (psycho: Record<string, string>, demo: Record<string, string>) => {
+    // Inject demo answers into chat stream so conversation reads naturally on review
+    const filledDemo = Object.entries(demo).filter(([, v]) => v)
+    if (filledDemo.length > 0) {
+      const demoText = filledDemo.map(([k, v]) => {
+        const field = demoFields.find(f => f.key === k)
+        return `${field?.label || k}: ${v}`
+      }).join('\n')
+      setMessages(p => [...p, { who: 'user', text: demoText, italic: true }])
+    } else if (Object.keys(demo).length === 0 && demoFields.length > 0) {
+      setMessages(p => [...p, { who: 'user', text: 'Skipped demographics', italic: true }])
+    }
     setPhase('submitting')
     try {
       await fetch('/api/townhall/responses', {
@@ -451,7 +462,7 @@ export default function TownHallChat({ sessionId }: Props) {
           </div>
           <button onClick={async () => {
             const nextIdx = psychoIdx + 1
-            setMessages(p => [...p, { who: 'user', text: 'Skip' }])
+            setMessages(p => [...p, { who: 'user', text: 'Skipped', italic: true }])
             if (nextIdx < psychoQuestions.length) {
               setPsychoIdx(nextIdx)
             } else if (demoFields.length > 0) {
