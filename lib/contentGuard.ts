@@ -48,9 +48,12 @@ const PATTERNS: PatternDef[] = [
   { pattern: /\bf+[\s.*_-]*[u\xfc]+[\s.*_-]*c+[\s.*_-]*k+/i, severity: 'severe', category: 'profanity' },
   { pattern: /\bc+[\s.*_-]*u+[\s.*_-]*n+[\s.*_-]*t+/i, severity: 'severe', category: 'profanity' },
 
+  // Severe: directed hostility (triggers strikes)
+  { pattern: /\b(screw\s*you|go\s*to\s*hell|piss\s*off|bite\s*me|eat\s*shit)\b/i, severity: 'severe', category: 'insult' },
+
   // Rude: insults that get a gentle nudge (message still processed, no strikes)
   { pattern: /\b(dumbass(es)?|idiot[s]?|moron[s]?|stupid|dumb|loser[s]?|pathetic|ignorant|incompetent)\b/i, severity: 'rude', category: 'insult' },
-  { pattern: /\b(shut\s*up|screw\s*you|go\s*to\s*hell|piss\s*off|get\s*lost|bite\s*me)\b/i, severity: 'rude', category: 'insult' },
+  { pattern: /\b(shut\s*up|get\s*lost|whatever|waste\s+of\s+time)\b/i, severity: 'rude', category: 'insult' },
 
   // Mild: common profanity (logged but no escalation)
   { pattern: /\b(shit+y?|bullshit|shitt?ing)\b/i, severity: 'mild', category: 'profanity' },

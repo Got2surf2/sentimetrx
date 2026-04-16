@@ -13,6 +13,16 @@ const IMSG_BLUE = '#007AFF'
 const IMSG_GRAY = '#E9E9EB'
 const BG = '#FFFFFF'
 
+// Client-side bleep — replace profanity with asterisks for display
+function clientBleep(text: string): string {
+  return text
+    .replace(/\b(f+u+c+k\w*|c+u+n+t+s?|motherf\w*)\b/gi, m => m[0] + '*'.repeat(Math.max(1, m.length - 2)) + m[m.length - 1])
+    .replace(/\b(shit\w*|bullshit|bitch\w*|bastard[s]?|asshole[s]?)\b/gi, m => m[0] + '*'.repeat(Math.max(1, m.length - 2)) + m[m.length - 1])
+    .replace(/\b(n[i1]gg\w*|sp[i1]c[ks]?|ch[i1]nk[s]?|k[i1]ke[s]?|f[a4]gg\w*|r[e3]t[a4]rd\w*)\b/gi, m => m[0] + '*'.repeat(Math.max(1, m.length - 2)) + m[m.length - 1])
+    .replace(/\b(dumbass\w*|idiot[s]?|moron[s]?)\b/gi, m => m[0] + '*'.repeat(Math.max(1, m.length - 2)) + m[m.length - 1])
+    .replace(/\b(screw\s*you|piss\s*off|bite\s*me|eat\s*shit)\b/gi, m => m[0] + '*'.repeat(Math.max(1, m.length - 2)) + m[m.length - 1])
+}
+
 // Mimic agent typing — 30ms per char, clamped 400–1800ms (matches survey engine)
 function typingDelay(text: string) {
   const dur = Math.max(400, Math.min(1800, text.length * 30))
@@ -163,7 +173,7 @@ export default function TownHallChat({ sessionId }: Props) {
     if (!msg && !skip) return
     if (loading || finished) return
     const isDebugCmd = /^#debug\s/i.test(msg)
-    if (!skip && !isDebugCmd) { setMessages(p => [...p, { who: 'user', text: msg }]) }
+    if (!skip && !isDebugCmd) { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
     setInput('')
     setLoading(true)
     try {

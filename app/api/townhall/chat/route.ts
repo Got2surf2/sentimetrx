@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
     } catch { /* translation failed — store without, theme detection will work on original */ }
   }
 
-  // Update the current turn with the user's response
+  // Update the current turn with the user's response (raw — bleeping is done on display)
   if (message || skipped) {
     const turnUpdate: Record<string, unknown> = {
       user_message: skipped ? null : message,

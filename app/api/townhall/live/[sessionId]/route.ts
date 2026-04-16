@@ -5,6 +5,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore } from '@/lib/themeUtils'
+import { bleepText } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
 

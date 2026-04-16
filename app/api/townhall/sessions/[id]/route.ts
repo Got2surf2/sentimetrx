@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
+import { bleepText } from '@/lib/contentGuard'
 
 // GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -70,8 +71,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .eq('session_id', params.id)
     .order('created_at', { ascending: true })
 
+  const safetyConfig = (session.config as any)?.content_safety || {}
   const responsesWithText = (allTurnsWithText || []).filter(t => !t.skipped && (t.user_message_en || t.user_message))
-  const allResponseTexts = responsesWithText.map(t => (t.user_message_en || t.user_message || '').trim()).filter(Boolean)
+  const allResponseTexts = responsesWithText.map(t => bleepText((t.user_message_en || t.user_message || '').trim(), safetyConfig)).filter(Boolean)
 
   // Build a lookup: theme_id → response texts (from turns tagged with that theme)
   const themeIdTexts: Record<string, string[]> = {}
