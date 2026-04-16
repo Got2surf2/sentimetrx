@@ -6,7 +6,7 @@ import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import type { DemoField, PsychoQuestion } from '@/lib/types'
 
 type Phase = 'chat' | 'transition' | 'psycho' | 'demo' | 'submitting' | 'done'
-interface Message { who: 'bot' | 'user'; text: string; _debug?: string[] }
+interface Message { who: 'bot' | 'user'; text: string; italic?: boolean; _debug?: string[] }
 interface Props { sessionId: string }
 
 const IMSG_BLUE = '#007AFF'
@@ -182,7 +182,8 @@ export default function TownHallChat({ sessionId }: Props) {
     if (!msg && !skip) return
     if (loading || finished) return
     const isDebugCmd = /^#debug\s/i.test(msg)
-    if (!skip && !isDebugCmd) { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
+    if (skip) { setMessages(p => [...p, { who: 'user', text: display.skip_label || "I'd rather not answer that", italic: true }]) }
+    else if (!isDebugCmd) { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
     setInput('')
     setLoading(true)
     try {
@@ -244,6 +245,7 @@ export default function TownHallChat({ sessionId }: Props) {
   }, [psychoBank, psychoCount, demoFields, botMessages])
 
   const handleDone = async () => {
+    setMessages(p => [...p, { who: 'user', text: display.done_label || "I'm done sharing", italic: true }])
     const msg = closingMsg || display.thank_you_message || 'Thank you for your time. Your voice matters.'
     setLoading(true)
     await typingDelay(msg)
@@ -368,9 +370,10 @@ export default function TownHallChat({ sessionId }: Props) {
               <div style={{
                 maxWidth: '75%', padding: '9px 14px',
                 borderRadius: m.who === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                background: m.who === 'user' ? IMSG_BLUE : IMSG_GRAY,
-                color: m.who === 'user' ? 'white' : '#000',
-                fontSize: 16, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                background: m.who === 'user' ? (m.italic ? '#E5E5EA' : IMSG_BLUE) : IMSG_GRAY,
+                color: m.who === 'user' ? (m.italic ? '#8E8E93' : 'white') : '#000',
+                fontSize: m.italic ? 14 : 16, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                fontStyle: m.italic ? 'italic' : 'normal',
               }}>{m.text}</div>
             </div>
             {testing && m._debug && m._debug.length > 0 && (
