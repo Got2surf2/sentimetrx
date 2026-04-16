@@ -75,23 +75,17 @@ export default function TownHallChat({ sessionId }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const joiningRef = useRef(false)
 
-  const hasScrolledRef = useRef(false)
-  const scroll = useCallback(() => {
+  // Scroll to bottom — matches survey SurveyWidget.scrollBottom exactly:
+  // Always scroll unconditionally, double retry for late-rendering DOM
+  const scrollBottom = useCallback(() => {
     const el = chatRef.current
     if (!el) return
-    // Don't auto-scroll on first message — let user see prologue from the top
-    if (!hasScrolledRef.current && messages.length <= 1) return
-    hasScrolledRef.current = true
-    // Scroll so the last message's top is visible (not the absolute bottom)
-    // This ensures long messages show from their start and the input stays reachable
-    setTimeout(() => {
-      const lastMsg = el.lastElementChild as HTMLElement
-      if (lastMsg) { lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
-      else { el.scrollTop = el.scrollHeight }
-    }, 80)
-  }, [messages.length])
+    const doScroll = () => { el.scrollTop = el.scrollHeight }
+    setTimeout(doScroll, 60)
+    setTimeout(doScroll, 350)
+  }, [])
 
-  useEffect(() => { scroll() }, [messages, loading, scroll])
+  useEffect(() => { scrollBottom() }, [messages, loading, scrollBottom])
   useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])
 
   // Mobile viewport — match survey SurveyWidget approach:
@@ -106,14 +100,11 @@ export default function TownHallChat({ sessionId }: Props) {
         wrapRef.current.style.height = vv.height + 'px'
       }
       // After viewport shrinks (keyboard open), scroll chat to bottom
-      // Two retries to handle late-rendering DOM elements
-      const doScroll = () => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }
-      setTimeout(doScroll, 60)
-      setTimeout(doScroll, 350)
+      scrollBottom()
     }
     vv.addEventListener('resize', onResize)
     return () => vv.removeEventListener('resize', onResize)
-  }, [])
+  }, [scrollBottom])
 
   // Poll session via GET /api/townhall/join/:id (same endpoint, no auth needed)
   const poll = useCallback(async () => {
