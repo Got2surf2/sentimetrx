@@ -179,14 +179,25 @@ export async function POST(req: NextRequest) {
       }
 
       const labels = TH_LABELS[targetLang] || TH_LABELS.en
+      const switchBotMsg = confirm + '\n\n' + translatedMsg
 
-      // Don't increment turn, don't store as a real turn
+      // Store the language switch as a turn so it appears in conversation review
+      await supabase.from('townhall_turns')
+        .update({ user_message: '[Language switch: ' + targetLang + '] ' + message, user_message_en: message, language: language || 'en', skipped: false })
+        .eq('session_id', session.id).eq('participant_id', participant_id).eq('turn_number', turn_number)
+
+      const nextTurn = turn_number + 1
+      await supabase.from('townhall_turns').insert({
+        session_id: session.id, participant_id, turn_number: nextTurn, bot_message: switchBotMsg,
+        user_message: null, user_message_en: null, language: targetLang, theme_id, source: 'language_switch', skipped: false,
+      })
+
       return NextResponse.json({
-        bot_message: confirm + '\n\n' + translatedMsg,
+        bot_message: switchBotMsg,
         theme_id,
         source: 'language_switch',
         is_final: false,
-        turn_number, // same turn number — no increment
+        turn_number: nextTurn,
         language_switched: targetLang,
         skip_label: labels.skip,
         done_label: labels.done,
