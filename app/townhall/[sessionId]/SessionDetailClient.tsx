@@ -148,8 +148,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [saving, setSaving] = useState(false)
   const [editStep, setEditStep] = useState(0)
 
-  // Organic topic detail popup
-  const [organicDetailTopic, setOrganicDetailTopic] = useState<TownHallTheme | null>(null)
+  // Organic topic detail popup — store ID, look up from live themes for fresh data
+  const [organicDetailId, setOrganicDetailId] = useState<string | null>(null)
+  const organicDetailTopic = organicDetailId ? themes.find(t => t.id === organicDetailId) || null : null
+  const setOrganicDetailTopic = (t: TownHallTheme | null) => setOrganicDetailId(t?.id || null)
 
   // Custom question state
   const [showCustom, setShowCustom] = useState(false)
@@ -1137,22 +1139,25 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     </div>
                     {/* Scrollable comments */}
                     <div className="flex-1 overflow-y-auto p-5">
-                      <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Matching Responses ({(organicDetailTopic.example_quotes || []).length})</h3>
-                      {(organicDetailTopic.example_quotes || []).length > 0 ? (
-                        <div className="space-y-2">
-                          {(organicDetailTopic.example_quotes || []).map((q: string, i: number) => (
-                            <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
-                              <span className="text-gray-400 mr-1">{i + 1}.</span> {q}
+                      {(function() {
+                        var quotes = organicDetailTopic.example_quotes && organicDetailTopic.example_quotes.length > 0
+                          ? organicDetailTopic.example_quotes
+                          : organicDetailTopic.example_quote ? [organicDetailTopic.example_quote] : []
+                        return <>
+                          <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Matching Responses ({quotes.length})</h3>
+                          {quotes.length > 0 ? (
+                            <div className="space-y-2">
+                              {quotes.map((q: string, i: number) => (
+                                <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
+                                  <span className="text-gray-400 mr-1">{i + 1}.</span> {q}
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      ) : organicDetailTopic.example_quote ? (
-                        <div className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
-                          {organicDetailTopic.example_quote}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-400 italic">No matching responses yet</p>
-                      )}
+                          ) : (
+                            <p className="text-sm text-gray-400 italic">No matching responses yet</p>
+                          )}
+                        </>
+                      })()}
                     </div>
                   </div>
                 </div>
