@@ -176,6 +176,7 @@ export default function TownHallChat({ sessionId }: Props) {
     if (skip) { setMessages(p => [...p, { who: 'user', text: skipLabel || display.skip_label || "I'd rather not answer that", italic: true }]) }
     else if (!isDebugCmd) { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
     setInput('')
+    if (inputRef.current) inputRef.current.style.height = 'auto'
     setLoading(true)
     try {
       const r = await fetch('/api/townhall/chat', {
