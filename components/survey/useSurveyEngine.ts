@@ -167,6 +167,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         if (Object.keys(s.psychoAnswers).length) partialPayload.psychographics = s.psychoAnswers
         if (Object.values(s.demographics).some(function(v) { return !!v })) partialPayload.demographics = s.demographics
         if (Object.values(s.contactInfo).some(function(v) { return !!v })) partialPayload.contactInfo = s.contactInfo
+        if (s.conversationLog.length > 0) partialPayload.conversationLog = s.conversationLog
 
         var duration_sec = Math.round((Date.now() - s.startTime) / 1000)
         fetch('/api/respond', {

@@ -84,6 +84,34 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [jsonView, setJsonView] = useState(false)
   const [jsonCopied, setJsonCopied] = useState(false)
 
+  // Participant selection for delete
+  const [checkedPids, setCheckedPids] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [deleteToast, setDeleteToast] = useState<string | null>(null)
+  const allPidsChecked = participantList.length > 0 && participantList.every(p => checkedPids.has(p.participant_id))
+  const somePidsChecked = participantList.some(p => checkedPids.has(p.participant_id))
+  const togglePid = (pid: string) => setCheckedPids(prev => { const next = new Set(prev); next.has(pid) ? next.delete(pid) : next.add(pid); return next })
+  const toggleAllPids = () => setCheckedPids(allPidsChecked ? new Set() : new Set(participantList.map(p => p.participant_id)))
+  const deleteSelectedPids = async () => {
+    if (!somePidsChecked || deleting) return
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/townhall/sessions/' + sessionId, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete_participants: Array.from(checkedPids) }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Delete failed')
+      setCheckedPids(new Set())
+      setDeleteToast('Deleted ' + (json.deleted ?? checkedPids.size) + ' conversation' + (json.deleted !== 1 ? 's' : ''))
+      setTimeout(() => setDeleteToast(null), 3000)
+      fetchData()
+    } catch (e: any) {
+      setDeleteToast('Error: ' + e.message)
+      setTimeout(() => setDeleteToast(null), 4000)
+    } finally { setDeleting(false) }
+  }
+
   // Edit mode state — full config editing
   const [editing, setEditing] = useState(false)
   const [autoEditDone, setAutoEditDone] = useState(false)
@@ -781,9 +809,33 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         {/* ── RESPONSES TAB ─────────────────────────────────────────── */}
         {!editing && activeTab === 'responses' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* Selection bar */}
+            {somePidsChecked && (
+              <div className="flex items-center gap-3 px-4 py-2 text-xs font-semibold" style={{ background: '#FFF4EF', borderBottom: '1px solid #FBD5C2', color: HERMES }}>
+                <span>{checkedPids.size} conversation{checkedPids.size !== 1 ? 's' : ''} selected</span>
+                <button onClick={deleteSelectedPids} disabled={deleting}
+                  className="px-3 py-1 rounded-lg text-white text-xs font-semibold transition-all"
+                  style={{ background: deleting ? '#ccc' : '#dc2626' }}>
+                  {deleting ? 'Deleting...' : 'Delete selected'}
+                </button>
+                <button onClick={() => setCheckedPids(new Set())} className="text-xs text-gray-500 hover:text-gray-700 ml-auto">Clear selection</button>
+              </div>
+            )}
+            {/* Delete toast */}
+            {deleteToast && (
+              <div className={'px-4 py-2 text-xs font-semibold text-center ' + (deleteToast.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700')}>
+                {deleteToast}
+              </div>
+            )}
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                  <th className="px-3 py-2.5 w-8">
+                    <button type="button" onClick={toggleAllPids}
+                      className={"w-4 h-4 rounded border-2 flex items-center justify-center transition-all " + (allPidsChecked ? "bg-orange-500 border-orange-500" : "bg-white border-gray-300 hover:border-orange-400")}>
+                      {allPidsChecked && <span className="text-white text-[9px] font-bold leading-none">{'\u2713'}</span>}
+                    </button>
+                  </th>
                   <th className="px-4 py-2.5 text-left w-8"></th>
                   <th className="px-4 py-2.5 text-left">Date/Time</th>
                   <th className="px-4 py-2.5 text-left">Participant</th>
@@ -795,14 +847,20 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               </thead>
               <tbody>
                 {participantList.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-xs">No participants yet</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400 text-xs">No participants yet</td></tr>
                 )}
                 {[...participantList].sort((a, b) => {
                   const ta = a.last_activity || a.started_at || ''
                   const tb = b.last_activity || b.started_at || ''
                   return tb.localeCompare(ta)
                 }).map((p, i) => (
-                  <tr key={p.participant_id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                  <tr key={p.participant_id} className={"border-t border-gray-50 hover:bg-gray-50/50 " + (checkedPids.has(p.participant_id) ? "bg-orange-50/60" : "")}>
+                    <td className="px-3 py-2.5" onClick={e => { e.stopPropagation(); togglePid(p.participant_id) }}>
+                      <button type="button"
+                        className={"w-4 h-4 rounded border-2 flex items-center justify-center transition-all " + (checkedPids.has(p.participant_id) ? "bg-orange-500 border-orange-500" : "bg-white border-gray-300 hover:border-orange-400")}>
+                        {checkedPids.has(p.participant_id) && <span className="text-white text-[9px] font-bold leading-none">{'\u2713'}</span>}
+                      </button>
+                    </td>
                     <td className="px-4 py-2.5">
                       <button onClick={async () => {
                         try {

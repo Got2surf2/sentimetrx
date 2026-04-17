@@ -265,6 +265,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
+  // Handle delete_participants: remove specific participant conversations
+  if (body.delete_participants && Array.isArray(body.delete_participants)) {
+    const pids: string[] = body.delete_participants
+    if (pids.length === 0) return NextResponse.json({ error: 'No participant IDs provided' }, { status: 400 })
+    const { count: turnCount } = await db.from('townhall_turns').delete({ count: 'exact' }).eq('session_id', params.id).in('participant_id', pids)
+    await db.from('townhall_participant_responses').delete().eq('session_id', params.id).in('participant_id', pids)
+    // Recount response_counter
+    const { data: distinctParticipants } = await db.from('townhall_turns').select('participant_id').eq('session_id', params.id)
+    const uniqueRemaining = new Set((distinctParticipants || []).map(t => t.participant_id)).size
+    await db.from('townhall_sessions').update({ response_counter: uniqueRemaining }).eq('id', params.id)
+    return NextResponse.json({ deleted: pids.length, turns_deleted: turnCount ?? 0 })
+  }
+
   // Handle restart: reset to setup, clear all turns and themes
   if (body.restart) {
     await db.from('townhall_turns').delete().eq('session_id', params.id)
