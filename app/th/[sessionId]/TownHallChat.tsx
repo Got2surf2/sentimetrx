@@ -97,12 +97,21 @@ export default function TownHallChat({ sessionId }: Props) {
   useEffect(() => { scrollToLastBot() }, [messages, loading, scrollToLastBot])
   useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])
 
-  // Mobile viewport — match survey SurveyWidget approach exactly:
-  // Do NOT manually resize the wrapper. On iOS, 100dvh stays fixed when the
-  // keyboard opens. The browser natively scrolls the page to keep the focused
-  // input visible. Manually shrinking the wrapper via visualViewport.height
-  // causes the chat to re-layout in a tiny space and scroll the message away.
+  // Mobile viewport: resize wrapper to visualViewport.height so the input
+  // stays above the keyboard. Do NOT scroll on resize — the user is reading
+  // the bot message and opening the keyboard shouldn't jump them away.
   const wrapRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const onResize = () => {
+      if (wrapRef.current) {
+        wrapRef.current.style.height = vv.height + 'px'
+      }
+    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [])
 
   // Poll session via GET /api/townhall/join/:id (same endpoint, no auth needed)
   const poll = useCallback(async () => {
