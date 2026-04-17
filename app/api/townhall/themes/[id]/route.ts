@@ -28,6 +28,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     case 'dismiss':
       updates.state = 'dismissed'
       break
+    case 'undismiss':
+      updates.state = 'detected'
+      break
+    case 'reopen':
+      updates.state = 'active'
+      updates.completed_at = null
+      if (response_target) updates.response_target = (response_target as number)
+      break
     case 'pause':
       updates.state = 'paused'
       break

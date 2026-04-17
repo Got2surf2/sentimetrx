@@ -1034,15 +1034,20 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-orange-600">Organic Topics</h3>
                     <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{sorted.length} new</span>
                   </div>
-                  {/* Sortable pill nav — click to open detail popup */}
+                  {/* Sortable pill nav — click to open detail popup, sentiment-colored dot */}
                   <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-orange-200">
-                    {sorted.map((t, i) => (
-                      <button key={t.id} onClick={() => setOrganicDetailTopic(t)}
-                        className="text-[11px] font-semibold px-3 py-1 rounded-full transition-all hover:shadow-sm cursor-pointer"
-                        style={{ background: i === 0 ? '#ea580c' : i < 3 ? '#f97316' : '#fb923c', color: 'white', opacity: Math.max(0.6, 1 - i * 0.08) }}>
-                        {t.label} <span className="text-[9px] opacity-80 ml-0.5">({t.mention_count || t.match_count || 0})</span>
-                      </button>
-                    ))}
+                    {sorted.map((t, i) => {
+                      const pillSent = t.sentiment || 'neutral'
+                      const sentDot = SENT_COLOR[pillSent] || SENT_COLOR.neutral
+                      return (
+                        <button key={t.id} onClick={() => setOrganicDetailTopic(t)}
+                          className="text-[11px] font-semibold px-3 py-1 rounded-full transition-all hover:shadow-sm cursor-pointer inline-flex items-center gap-1.5"
+                          style={{ background: i === 0 ? '#ea580c' : i < 3 ? '#f97316' : '#fb923c', color: 'white', opacity: Math.max(0.6, 1 - i * 0.08) }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: sentDot, border: '1px solid rgba(255,255,255,0.5)', flexShrink: 0 }} />
+                          {t.label} <span className="text-[9px] opacity-80">({t.mention_count || t.match_count || 0})</span>
+                        </button>
+                      )
+                    })}
                   </div>
                   {/* Scrollable cards */}
                   <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
@@ -1232,8 +1237,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   </div>
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {completedTopics.map(t => (
-                      <ThemeCard key={t.id} theme={t} isActive={false} variant="completed"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
+                      <ThemeCard key={t.id} theme={t} isActive={isActive} variant="completed"
+                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                        defaultResponseTarget={defaultResponseTarget} />
                     ))}
                   </div>
                 </div>
@@ -1241,7 +1247,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
               {/* ── DISMISSED ──────────────────────────────── */}
               {dismissedTopics.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5 opacity-60">
+                <div className="bg-white rounded-xl border border-gray-100 p-5 opacity-60 hover:opacity-100 transition-opacity">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 rounded-full bg-gray-300" />
                     <h3 className="text-sm font-bold text-gray-400">Dismissed</h3>
@@ -1249,8 +1255,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   </div>
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {dismissedTopics.map(t => (
-                      <ThemeCard key={t.id} theme={t} isActive={false} variant="completed"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
+                      <ThemeCard key={t.id} theme={t} isActive={isActive} variant="dismissed"
+                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                        defaultResponseTarget={defaultResponseTarget} />
                     ))}
                   </div>
                 </div>
@@ -1435,7 +1442,7 @@ function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName,
 function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResponseTarget, onDetailClick }: {
   theme: TownHallTheme
   isActive: boolean
-  variant: 'suggested' | 'active' | 'parked' | 'completed'
+  variant: 'suggested' | 'active' | 'parked' | 'completed' | 'dismissed'
   onAction: (action: string, extras?: Record<string, unknown>) => void
   loading: boolean
   defaultResponseTarget?: number
@@ -1445,13 +1452,16 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
   const keywords = t.keywords || []
   const isSuggested = variant === 'suggested'
   const isParked = variant === 'parked'
+  const isDismissed = variant === 'dismissed'
   const isAI = t.source === 'auto_detected'
   const isCompleted = variant === 'completed'
   const [showApprove, setShowApprove] = useState(false)
+  const [showReopen, setShowReopen] = useState(false)
   const [approveTarget, setApproveTarget] = useState(defaultResponseTarget || 30)
+  const [reopenTarget, setReopenTarget] = useState(defaultResponseTarget || 30)
 
   return (
-    <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : isParked ? 'border-blue-100 bg-white' : isCompleted ? 'border-gray-100 bg-gray-50/50' : 'border-gray-200 bg-white'}`}>
+    <div className={`rounded-xl border overflow-hidden ${isSuggested ? 'border-orange-200 bg-white' : isDismissed ? 'border-gray-200 bg-gray-50/50' : isParked ? 'border-blue-100 bg-white' : isCompleted ? 'border-gray-100 bg-gray-50/50' : 'border-gray-200 bg-white'}`}>
       {sent !== 'insufficient' && <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />}
       <div className="p-4">
         {/* Header row: donut + label + badges */}
@@ -1529,6 +1539,36 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
             {t.state === 'active' && <button onClick={() => onAction('pause')} disabled={loading} className="text-[10px] text-gray-400 hover:text-gray-600 disabled:opacity-50">Pause</button>}
             {t.state === 'paused' && <button onClick={() => onAction('resume')} disabled={loading} className="text-[10px] text-orange-500 hover:text-orange-700 disabled:opacity-50">Resume</button>}
             <button onClick={() => onAction('close')} disabled={loading} className="text-[10px] text-gray-400 hover:text-red-500 disabled:opacity-50">Close</button>
+          </div>
+        )}
+        {/* Dismissed: Restore button */}
+        {isDismissed && (
+          <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+            <button onClick={() => onAction('undismiss')} disabled={loading}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-orange-600 hover:bg-orange-50 border border-orange-200 disabled:opacity-50">Restore</button>
+          </div>
+        )}
+        {/* Completed: Reopen button (with target input) */}
+        {isCompleted && isActive && !showReopen && (
+          <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+            <button onClick={() => setShowReopen(true)} disabled={loading}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-green-600 hover:bg-green-50 border border-green-200 disabled:opacity-50">Reopen</button>
+          </div>
+        )}
+        {isCompleted && showReopen && (
+          <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-500">Additional responses:</span>
+              <input type="number" min={5} max={500} value={reopenTarget}
+                onChange={e => setReopenTarget(parseInt(e.target.value) || 30)}
+                className="w-16 px-2 py-1 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-green-200" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { onAction('reopen', { response_target: t.response_count + reopenTarget }); setShowReopen(false) }} disabled={loading}
+                className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50" style={{ background: '#22c55e' }}>Confirm</button>
+              <button onClick={() => setShowReopen(false)}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-400 hover:text-gray-600">Cancel</button>
+            </div>
           </div>
         )}
       </div>
