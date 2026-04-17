@@ -514,27 +514,25 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         <div style={{ flex: 1, height: 10, background: T.bg, borderRadius: 5, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: Math.max(props.maxPct > 0 ? props.pct / props.maxPct * 100 : 0, props.pct > 0 ? 2 : 0) + '%', background: props.isUnclassified ? T.borderMid : props.color, borderRadius: 5, transition: 'width .5s' }} />
         </div>
-        {sigColor && (
-          <span
-            style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center', cursor: 'pointer' }}
-            onMouseEnter={function(e) { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null }; var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSig(sigId); setPinnedSigData({ dir: props.sig!.dir, text: plainEnglish, color: sigColor! }); setCopiedSig(false) }}
-            onMouseLeave={function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(function(cur) { return cur === sigId ? null : cur }) }, 400) }}
-            onClick={function(e) { e.stopPropagation(); var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSigData({ dir: props.sig!.dir, text: plainEnglish, color: sigColor! }); setPinnedSig(pinnedSig === sigId ? null : sigId); setCopiedSig(false) }}>
-            {'★'}
-          </span>
-        )}
-        {!sigColor && <span style={{ width: 14, flexShrink: 0 }} />}
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 36, textAlign: 'right', flexShrink: 0 }}>{props.pct}%</span>
-        <span style={{ fontSize: 10, color: T.textFaint, width: 44, textAlign: 'right', flexShrink: 0 }}>n={props.count}</span>
-        {props.avgRating != null && (function() {
-          var d = props.avgRating! - (props.overallRatAvg || 0)
+        {/* Fixed-width columns: [mention ★] [pct] [n=] [rating ★] [rating] */}
+        <span style={{ fontSize: 12, fontWeight: 800, color: sigColor || 'transparent', flexShrink: 0, width: 14, textAlign: 'center', cursor: sigColor ? 'pointer' : 'default' }}
+          {...(sigColor ? {
+            onMouseEnter: function(e: React.MouseEvent) { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null }; var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSig(sigId); setPinnedSigData({ dir: props.sig!.dir, text: plainEnglish, color: sigColor! }); setCopiedSig(false) },
+            onMouseLeave: function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(function(cur: string | null) { return cur === sigId ? null : cur }) }, 400) },
+            onClick: function(e: React.MouseEvent) { e.stopPropagation(); var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSigData({ dir: props.sig!.dir, text: plainEnglish, color: sigColor! }); setPinnedSig(pinnedSig === sigId ? null : sigId); setCopiedSig(false) },
+          } : {})}>{sigColor ? '★' : ''}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 40, textAlign: 'right', flexShrink: 0 }}>{props.pct}%</span>
+        <span style={{ fontSize: 10, color: T.textFaint, width: 52, textAlign: 'right', flexShrink: 0 }}>n={props.count}</span>
+        {(function() {
           var rs = props.ratingSig
           var rsColor = rs ? (rs.dir === 'higher' ? '#059669' : '#dc2626') : null
-          return <>
-            {rsColor && <span style={{ fontSize: 10, fontWeight: 800, color: rsColor, flexShrink: 0 }} title={'Avg rating significantly ' + rs!.dir + ' (p=' + rs!.p.toFixed(4) + ')'}>{'★'}</span>}
-            <span style={{ fontSize: 10, fontWeight: 700, width: 38, textAlign: 'right', flexShrink: 0, color: d > 0.1 ? '#059669' : d < -0.1 ? '#dc2626' : T.textMid }} title={'Avg rating: ' + props.avgRating!.toFixed(2) + ' (' + (d >= 0 ? '+' : '') + d.toFixed(2) + ' vs overall' + (rs ? ', p=' + rs.p.toFixed(4) : '') + ')'}>{props.avgRating!.toFixed(1)}</span>
-          </>
+          return <span style={{ fontSize: 10, fontWeight: 800, color: rsColor || 'transparent', width: 14, textAlign: 'center', flexShrink: 0 }} title={rs ? 'Avg rating significantly ' + rs.dir + ' (p=' + rs.p.toFixed(4) + ')' : ''}>{rsColor ? '★' : ''}</span>
         })()}
+        {props.avgRating != null ? (function() {
+          var d = props.avgRating! - (props.overallRatAvg || 0)
+          var rs = props.ratingSig
+          return <span style={{ fontSize: 10, fontWeight: 700, width: 32, textAlign: 'right', flexShrink: 0, color: d > 0.1 ? '#059669' : d < -0.1 ? '#dc2626' : T.textMid }} title={'Avg rating: ' + props.avgRating!.toFixed(2) + ' (' + (d >= 0 ? '+' : '') + d.toFixed(2) + ' vs overall' + (rs ? ', p=' + rs.p.toFixed(4) : '') + ')'}>{props.avgRating!.toFixed(1)}</span>
+        })() : ratingField ? <span style={{ width: 32, flexShrink: 0 }} /> : null}
       </div>
     )
   }
