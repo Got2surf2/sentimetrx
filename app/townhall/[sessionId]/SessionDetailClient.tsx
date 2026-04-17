@@ -1078,7 +1078,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       {sorted.map(t => (
                         <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
                           onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                          defaultResponseTarget={defaultResponseTarget} onDetailClick={() => setOrganicDetailTopic(t)} />
+                          defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} onDetailClick={() => setOrganicDetailTopic(t)} />
                       ))}
                     </div>
                   </div>
@@ -1191,7 +1191,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {activeTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees} />
                     ))}
                   </div>
                 ) : (
@@ -1211,7 +1211,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     {parkedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="parked"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                        defaultResponseTarget={defaultResponseTarget} />
+                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} />
                     ))}
                   </div>
                 </div>
@@ -1228,7 +1228,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {pendingTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} />
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees} />
                     ))}
                   </div>
                 </div>
@@ -1265,7 +1265,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     {completedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="completed"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                        defaultResponseTarget={defaultResponseTarget} />
+                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} />
                     ))}
                   </div>
                 </div>
@@ -1283,7 +1283,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     {dismissedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="dismissed"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                        defaultResponseTarget={defaultResponseTarget} />
+                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} />
                     ))}
                   </div>
                 </div>
@@ -1319,8 +1319,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 </div>
               )}
 
-              {/* Theme detection button */}
-              {isActive && (session.config as any)?.engine?.theme_detection_mode !== 'off' && (
+              {/* Theme detection + re-analyze buttons */}
+              {(session.config as any)?.engine?.theme_detection_mode !== 'off' && (
                 <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
                   <div>
                     <span className="text-sm font-semibold text-gray-700">Theme Detection</span>
@@ -1328,24 +1328,47 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       <span className="text-[10px] text-gray-400 ml-2">Auto every {(session.config as any)?.engine?.theme_detection_interval_minutes || 10} min</span>
                     )}
                   </div>
-                  <button onClick={async () => {
-                    setActionLoading('detect')
-                    try {
-                      const res = await fetch('/api/townhall/themes/detect', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ session_id: sessionId }),
-                      })
-                      const d = await res.json()
-                      if (d.error) setError(d.error)
-                    } catch { setError('Detection failed') }
-                    setActionLoading(null)
-                    await fetchData()
-                  }}
-                    disabled={actionLoading === 'detect'}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                    style={{ background: '#7c3aed' }}>
-                    {actionLoading === 'detect' ? 'Detecting...' : '\u29E1 Detect Themes'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={async () => {
+                      if (!confirm('This will clear all auto-detected topics and re-analyze from scratch. Continue?')) return
+                      setActionLoading('reanalyze')
+                      try {
+                        const res = await fetch('/api/townhall/sessions/' + sessionId, {
+                          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ reanalyze: true }),
+                        })
+                        const d = await res.json()
+                        if (d.error) setError(d.error)
+                      } catch { setError('Re-analyze failed') }
+                      setActionLoading(null)
+                      await fetchData()
+                    }}
+                      disabled={!!actionLoading}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                      style={{ background: '#dc2626' }}>
+                      {actionLoading === 'reanalyze' ? 'Re-analyzing...' : '\u21BB Re-analyze'}
+                    </button>
+                    {isActive && (
+                      <button onClick={async () => {
+                        setActionLoading('detect')
+                        try {
+                          const res = await fetch('/api/townhall/themes/detect', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ session_id: sessionId }),
+                          })
+                          const d = await res.json()
+                          if (d.error) setError(d.error)
+                        } catch { setError('Detection failed') }
+                        setActionLoading(null)
+                        await fetchData()
+                      }}
+                        disabled={!!actionLoading}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                        style={{ background: '#7c3aed' }}>
+                        {actionLoading === 'detect' ? 'Detecting...' : '\u29E1 Detect Themes'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1447,7 +1470,7 @@ function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName,
 }
 
 // ── Rich Theme Card (matches analytics style) ─────────────────────────────────
-function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResponseTarget, onDetailClick }: {
+function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResponseTarget, onDetailClick, expectedAttendees }: {
   theme: TownHallTheme
   isActive: boolean
   variant: 'suggested' | 'active' | 'parked' | 'completed' | 'dismissed'
@@ -1455,6 +1478,7 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
   loading: boolean
   defaultResponseTarget?: number
   onDetailClick?: () => void
+  expectedAttendees?: number
 }) {
   const sent = t.sentiment || 'neutral'
   const keywords = t.keywords || []
@@ -1492,7 +1516,7 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
               </div>
             </div>
             {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
-            <span className="text-[10px] text-gray-400">{t.response_count} / {t.response_target} responses{t.mention_count > 0 ? ' \u00B7 ' + t.mention_count + ' mentions' : ''}</span>
+            <span className="text-[10px] text-gray-400">{t.response_count} / {t.response_target} responses{expectedAttendees ? ' (' + Math.round(t.response_target / expectedAttendees * 100) + '% of ' + expectedAttendees + ')' : ''}{t.mention_count > 0 ? ' \u00B7 ' + t.mention_count + ' mentions' : ''}</span>
           </div>
         </div>
 

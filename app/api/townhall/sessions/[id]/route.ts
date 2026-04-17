@@ -281,11 +281,38 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const { count: turnCount } = await db.from('townhall_turns').delete({ count: 'exact' }).eq('session_id', params.id).in('participant_id', pids)
     await db.from('townhall_participant_responses').delete().eq('session_id', params.id).in('participant_id', pids)
     // Recount response_counter
-    const { count: remaining } = await db.from('townhall_turns').select('participant_id', { count: 'exact', head: true }).eq('session_id', params.id)
     const { data: distinctParticipants } = await db.from('townhall_turns').select('participant_id').eq('session_id', params.id)
     const uniqueRemaining = new Set((distinctParticipants || []).map(t => t.participant_id)).size
     await db.from('townhall_sessions').update({ response_counter: uniqueRemaining }).eq('id', params.id)
+
+    // Recalculate response_count for all themes and update state accordingly
+    const { data: themes } = await db.from('townhall_themes').select('id, response_target, state').eq('session_id', params.id)
+    if (themes) {
+      for (const theme of themes) {
+        const { count } = await db.from('townhall_turns')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', params.id)
+          .eq('theme_id', theme.id)
+          .not('user_message', 'is', null)
+          .eq('skipped', false)
+        const newCount = count || 0
+        const updates: Record<string, unknown> = { response_count: newCount }
+        if (theme.state === 'completed' && newCount < theme.response_target) {
+          updates.state = 'active'
+          updates.completed_at = null
+        }
+        await db.from('townhall_themes').update(updates).eq('id', theme.id)
+      }
+    }
     return NextResponse.json({ deleted: pids.length, turns_deleted: turnCount ?? 0 })
+  }
+
+  // Handle reanalyze: clear all auto-detected themes + re-run detection
+  if (body.reanalyze) {
+    await db.from('townhall_themes').delete().eq('session_id', params.id).eq('source', 'auto_detected')
+    const { detectThemesForSession } = await import('@/lib/townhallThemeDetection')
+    const result = await detectThemesForSession(params.id)
+    return NextResponse.json({ reanalyzed: true, ...result })
   }
 
   // Handle restart: reset to setup, clear all turns and themes
