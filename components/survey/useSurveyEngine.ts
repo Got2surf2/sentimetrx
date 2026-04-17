@@ -410,12 +410,18 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         800,
       )
       if (!data?.deflection) {
-        if (data?._debug && config.testing) showDebugPanel(data._debug)
+        if (data?._debug && config.testing) {
+          showDebugPanel(data._debug)
+          state.current.conversationLog.push({ who: 'bot', text: '[AI Thinking] ' + data._debug.join(' | '), ai: true })
+        }
         return false
       }
 
       clearInput()
-      if (data._debug && config.testing) showDebugPanel(data._debug)
+      if (data._debug && config.testing) {
+        showDebugPanel(data._debug)
+        state.current.conversationLog.push({ who: 'bot', text: '[AI Thinking] ' + data._debug.join(' | '), ai: true })
+      }
       // Log the deflection (strip HTML for clean log)
       const plainText = data.deflection.replace(/<[^>]+>/g, '')
       state.current.conversationLog.push({ who: 'bot', text: plainText, ai: true })
@@ -485,7 +491,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       })
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
-      if (data._debug && config.testing) showDebugPanel(data._debug)
+      if (data._debug && config.testing) {
+        showDebugPanel(data._debug)
+        state.current.conversationLog.push({ who: 'bot', text: '[AI Thinking] ' + data._debug.join(' | '), ai: true })
+      }
       if (data.question) return data.question
     } catch {
       // AI failed -- fall through to keyword matching

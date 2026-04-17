@@ -277,7 +277,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
       {/* Debug mode banner */}
       {debugViaUrl && (
         <div style={{ background: '#FEF3C7', borderBottom: '1px solid #FDE68A', padding: '4px 16px', fontSize: '0.6875rem', color: '#92400E', fontWeight: 600, flexShrink: 0, textAlign: 'center' }}>
-          Running in debug mode — AI reasoning visible
+          Running in verbose mode — AI reasoning visible
         </div>
       )}
 

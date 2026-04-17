@@ -328,24 +328,24 @@ RULES:
           }
 
           const nextTurn = turn_number + 1
-          await supabase.from('townhall_turns').insert({
-            session_id: session.id, participant_id, turn_number: nextTurn,
-            bot_message: deflectText, user_message: null, user_message_en: null,
-            language: language || 'en', theme_id, source: 'deflect', skipped: false,
-          })
-
-          const debugInfo = testing ? [
+          const deflectDebugInfo = testing ? [
             'DEFLECT: Participant went off-topic or asked a question',
             'Input: "' + analyzeText.slice(0, 100) + '"',
             'Topic context: "' + topicContext + '"',
             'Redirect: "' + deflectText!.slice(0, 100) + '"',
             ...(cleaned.thinking || []),
           ] : undefined
+          await supabase.from('townhall_turns').insert({
+            session_id: session.id, participant_id, turn_number: nextTurn,
+            bot_message: deflectText, user_message: null, user_message_en: null,
+            language: language || 'en', theme_id, source: 'deflect', skipped: false,
+            ...(deflectDebugInfo ? { ai_thinking: deflectDebugInfo } : {}),
+          })
 
           return NextResponse.json({
             bot_message: deflectText, theme_id, source: 'deflect',
             is_final: false, turn_number: nextTurn,
-            ...(debugInfo ? { _debug: debugInfo } : {}),
+            ...(deflectDebugInfo ? { _debug: deflectDebugInfo } : {}),
           })
         }
       } catch {
@@ -598,6 +598,7 @@ RULES:
     theme_id: resolvedThemeId,
     source: aiSource,
     skipped: false,
+    ...(testing && debug.length > 0 ? { ai_thinking: debug } : {}),
   })
 
   return NextResponse.json({
