@@ -999,17 +999,38 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
         {/* ── TOPICS TAB (main content) ────────────────────────────── */}
         {!editing && activeTab === 'topics' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Left 2/3: Topics — single unified list */}
-            <div className="lg:col-span-2 space-y-4">
+          <div className="space-y-4">
+            {/* Top bar: Opening message + QR + Live link — full width */}
+            <div className="flex gap-4 items-stretch">
+              {/* Opening message (stretches to fill) */}
+              <div className="flex-1 min-w-0">
+                {(cfg?.opening_message || cfg?.opening_question) && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-4 h-full">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Opening Message</span>
+                    <p className="text-sm text-gray-600 mt-1 italic whitespace-pre-wrap">"{cfg.opening_message || cfg.opening_question}"</p>
+                  </div>
+                )}
+              </div>
+              {/* QR + Live link (compact right side) */}
+              <div className="flex items-center gap-4 flex-shrink-0">
+                {(isSetup || isActive) && (
+                  <div className="text-center">
+                    <img
+                      src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(participantUrl) + '&margin=8'}
+                      alt="QR code" className="rounded-lg border border-gray-200" style={{ width: 120, height: 120 }} />
+                    <p className="text-[10px] text-gray-400 mt-1">Scan to join</p>
+                  </div>
+                )}
+                <a href={'/th/' + sessionId + '/live'} target="_blank" rel="noopener noreferrer"
+                  className="bg-gray-900 text-white rounded-xl p-4 text-center hover:bg-gray-800 transition-colors flex flex-col justify-center self-stretch">
+                  <span className="text-sm font-bold">Open Live Screen</span>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Full-screen projection</p>
+                </a>
+              </div>
+            </div>
 
-              {/* Opening message preview */}
-              {(cfg?.opening_message || cfg?.opening_question) && (
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Opening Message</span>
-                  <p className="text-sm text-gray-600 mt-1 italic whitespace-pre-wrap">"{cfg.opening_message || cfg.opening_question}"</p>
-                </div>
-              )}
+            {/* Full-width topics area */}
+            <div className="space-y-4">
 
               {/* Grid size toggle */}
               <div className="flex items-center gap-1">
@@ -1322,24 +1343,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   </button>
                 </div>
               )}
-            </div>
-
-            {/* Right 1/3: QR Code + Live link */}
-            <div className="space-y-4">
-              {(isSetup || isActive) && (
-                <div className="bg-white rounded-xl border border-gray-200 p-5 text-center">
-                  <h3 className="text-sm font-bold text-gray-700 mb-3">QR Code</h3>
-                  <img
-                    src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(participantUrl) + '&margin=8'}
-                    alt="QR code" className="mx-auto rounded-lg border border-gray-200" style={{ width: 200, height: 200 }} />
-                  <p className="text-xs text-gray-400 mt-2">Scan to join</p>
-                </div>
-              )}
-              <a href={'/th/' + sessionId + '/live'} target="_blank" rel="noopener noreferrer"
-                className="block bg-gray-900 text-white rounded-xl p-4 text-center hover:bg-gray-800 transition-colors">
-                <span className="text-sm font-bold">Open Live Screen</span>
-                <p className="text-[10px] text-gray-400 mt-0.5">Full-screen view for projection</p>
-              </a>
             </div>
           </div>
         )}
