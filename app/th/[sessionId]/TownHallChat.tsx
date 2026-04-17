@@ -88,21 +88,10 @@ export default function TownHallChat({ sessionId }: Props) {
   useEffect(() => { scrollBottom() }, [messages, loading, scrollBottom])
   useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])
 
-  // Mobile viewport — match survey SurveyWidget approach:
-  // On iOS, 100dvh doesn't shrink when keyboard opens. Listen to visualViewport
-  // resize and update wrapper height. Scroll chat to bottom after resize.
-  const wrapRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const onResize = () => {
-      if (wrapRef.current) {
-        wrapRef.current.style.height = vv.height + 'px'
-      }
-    }
-    vv.addEventListener('resize', onResize)
-    return () => vv.removeEventListener('resize', onResize)
-  }, [])
+  // Mobile viewport — let iOS handle the keyboard natively.
+  // The page wrapper has height:100dvh + overflow:hidden (matches survey).
+  // Do NOT manually resize via visualViewport — that fights iOS and causes
+  // the chat to re-layout and lose scroll position.
 
   // Poll session via GET /api/townhall/join/:id (same endpoint, no auth needed)
   const poll = useCallback(async () => {
@@ -326,7 +315,7 @@ export default function TownHallChat({ sessionId }: Props) {
   if (!joined && languages.length > 1 && !selectedLang) {
     const langOptions = SUPPORTED_LANGUAGES.filter(l => languages.includes(l.code))
     return (
-      <div ref={wrapRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: BG, padding: 24 }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: BG, padding: 24 }}>
         <div style={{ textAlign: 'center', maxWidth: 400, width: '100%' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>{botEmoji}</div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>{sessionName}</h1>
@@ -362,7 +351,7 @@ export default function TownHallChat({ sessionId }: Props) {
   }
 
   return (
-    <div ref={wrapRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: BG }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
       {/* iMessage-style header */}
       <div style={{ padding: '10px 16px 10px', background: '#F6F6F6', borderBottom: '1px solid #E0E0E0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column' }}>
         <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 2 }}>{botEmoji}</div>
@@ -377,7 +366,7 @@ export default function TownHallChat({ sessionId }: Props) {
       )}
 
       {/* Chat area */}
-      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
         {messages.map((m, i) => (
           <div key={i}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -413,7 +402,7 @@ export default function TownHallChat({ sessionId }: Props) {
 
       {/* Input area — changes based on phase */}
       {phase === 'chat' ? (
-        <div style={{ padding: '8px 10px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+        <div style={{ padding: '8px 10px', paddingBottom: 'max(8px, env(safe-area-inset-bottom))', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, maxHeight: '50vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="iMessage" disabled={loading} rows={1}
               style={{ flex: 1, resize: 'none', border: '1px solid #C7C7CC', borderRadius: 20, padding: '9px 14px', fontSize: 16, outline: 'none', maxHeight: 120, lineHeight: 1.4, background: loading ? '#F6F6F6' : 'white' }}
