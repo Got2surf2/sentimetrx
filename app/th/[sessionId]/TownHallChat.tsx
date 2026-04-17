@@ -75,31 +75,22 @@ export default function TownHallChat({ sessionId }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const joiningRef = useRef(false)
 
-  // Scroll to show the latest bot message from the TOP so user can read it.
-  // After user sends a message, the new bot reply should be visible starting
-  // from its first line — not scrolled to the absolute bottom.
-  const lastBotRef = useRef<HTMLDivElement>(null)
-  const scrollToLastBot = useCallback(() => {
+  // Scroll to bottom — matches survey SurveyWidget.scrollBottom exactly:
+  // Always scroll unconditionally, double retry for late-rendering DOM
+  const scrollBottom = useCallback(() => {
     const el = chatRef.current
     if (!el) return
-    const doScroll = () => {
-      if (lastBotRef.current) {
-        // Scroll the chat container so the last bot message starts at the top
-        el.scrollTop = lastBotRef.current.offsetTop - 8
-      } else {
-        el.scrollTop = 0
-      }
-    }
+    const doScroll = () => { el.scrollTop = el.scrollHeight }
     setTimeout(doScroll, 60)
     setTimeout(doScroll, 350)
   }, [])
 
-  useEffect(() => { scrollToLastBot() }, [messages, loading, scrollToLastBot])
+  useEffect(() => { scrollBottom() }, [messages, loading, scrollBottom])
   useEffect(() => { if (!loading && joined && phase === 'chat') inputRef.current?.focus() }, [loading, joined, phase])
 
-  // Mobile viewport: resize wrapper to visualViewport.height so the input
-  // stays above the keyboard. Do NOT scroll on resize — the user is reading
-  // the bot message and opening the keyboard shouldn't jump them away.
+  // Mobile viewport — match survey SurveyWidget approach:
+  // On iOS, 100dvh doesn't shrink when keyboard opens. Listen to visualViewport
+  // resize and update wrapper height. Scroll chat to bottom after resize.
   const wrapRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const vv = window.visualViewport
@@ -108,10 +99,12 @@ export default function TownHallChat({ sessionId }: Props) {
       if (wrapRef.current) {
         wrapRef.current.style.height = vv.height + 'px'
       }
+      // After viewport shrinks (keyboard open), scroll chat to bottom
+      scrollBottom()
     }
     vv.addEventListener('resize', onResize)
     return () => vv.removeEventListener('resize', onResize)
-  }, [])
+  }, [scrollBottom])
 
   // Poll session via GET /api/townhall/join/:id (same endpoint, no auth needed)
   const poll = useCallback(async () => {
@@ -371,7 +364,7 @@ export default function TownHallChat({ sessionId }: Props) {
   }
 
   return (
-    <div ref={wrapRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
+    <div ref={wrapRef} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: BG }}>
       {/* iMessage-style header */}
       <div style={{ padding: '10px 16px 10px', background: '#F6F6F6', borderBottom: '1px solid #E0E0E0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column' }}>
         <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 2 }}>{botEmoji}</div>
@@ -386,11 +379,9 @@ export default function TownHallChat({ sessionId }: Props) {
       )}
 
       {/* Chat area */}
-      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
-        {messages.map((m, i) => {
-          const isLastBot = m.who === 'bot' && !messages.slice(i + 1).some(n => n.who === 'bot')
-          return (
-          <div key={i} ref={isLastBot ? lastBotRef : undefined}>
+      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {messages.map((m, i) => (
+          <div key={i}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
               {m.who === 'bot' && (
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
@@ -411,8 +402,7 @@ export default function TownHallChat({ sessionId }: Props) {
               </div>
             )}
           </div>
-          )
-        })}
+        ))}
         {loading && (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: 'flex-start' }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
@@ -425,7 +415,7 @@ export default function TownHallChat({ sessionId }: Props) {
 
       {/* Input area — changes based on phase */}
       {phase === 'chat' ? (
-        <div style={{ padding: '8px 10px', paddingBottom: 'max(8px, env(safe-area-inset-bottom))', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+        <div style={{ padding: '8px 10px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="iMessage" disabled={loading} rows={1}
               style={{ flex: 1, resize: 'none', border: '1px solid #C7C7CC', borderRadius: 20, padding: '9px 14px', fontSize: 16, outline: 'none', maxHeight: 120, lineHeight: 1.4, background: loading ? '#F6F6F6' : 'white' }}
