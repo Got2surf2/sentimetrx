@@ -1018,15 +1018,15 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 {(isSetup || isActive) && (
                   <div className="text-center">
                     <img
-                      src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(participantUrl) + '&margin=8'}
-                      alt="QR code" className="rounded-lg border border-gray-200" style={{ width: 120, height: 120 }} />
+                      src={'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(participantUrl) + '&margin=8'}
+                      alt="QR code" className="rounded-lg border border-gray-200" style={{ width: 160, height: 160 }} />
                     <p className="text-[10px] text-gray-400 mt-1">Scan to join</p>
                   </div>
                 )}
                 <a href={'/th/' + sessionId + '/live'} target="_blank" rel="noopener noreferrer"
-                  className="bg-gray-900 text-white rounded-xl p-4 text-center hover:bg-gray-800 transition-colors flex flex-col justify-center self-stretch">
-                  <span className="text-sm font-bold">Open Live Screen</span>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Full-screen projection</p>
+                  className="rounded-lg text-center hover:bg-gray-100 transition-colors flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 self-start">
+                  <span className="text-[11px] font-semibold text-gray-600">Live Screen</span>
+                  <span className="text-[10px] text-gray-400">&rarr;</span>
                 </a>
               </div>
             </div>
