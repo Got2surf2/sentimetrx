@@ -506,6 +506,12 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         ? '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly higher than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably more likely to discuss "' + thLabel + '".'
         : '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly lower than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably less likely to discuss "' + thLabel + '".'
     ) : ''
+    var ratingPlainEnglish = props.ratingSig && props.avgRating != null ? (
+      props.ratingSig.dir === 'higher'
+        ? 'Responses mentioning "' + thLabel + '" in "' + grpLabel + '" have a significantly higher average rating (' + props.avgRating.toFixed(2) + ') compared to responses that don\'t mention this theme (p=' + props.ratingSig.p.toFixed(4) + '). This theme is associated with more positive outcomes.'
+        : 'Responses mentioning "' + thLabel + '" in "' + grpLabel + '" have a significantly lower average rating (' + props.avgRating.toFixed(2) + ') compared to responses that don\'t mention this theme (p=' + props.ratingSig.p.toFixed(4) + '). This theme is associated with more negative outcomes.'
+    ) : ''
+    var ratingSigId = sigId + '::rating'
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: props.onClick ? 'pointer' : 'default', position: 'relative' }} onClick={props.onClick}>
         <span style={{ fontSize: 11, color: props.isUnclassified ? T.textFaint : T.textMid, width: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, fontStyle: props.isUnclassified ? 'italic' : 'normal' }}>
@@ -526,7 +532,12 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         {(function() {
           var rs = props.ratingSig
           var rsColor = rs ? (rs.dir === 'higher' ? '#059669' : '#dc2626') : null
-          return <span style={{ fontSize: 10, fontWeight: 800, color: rsColor || 'transparent', width: 14, textAlign: 'center', flexShrink: 0 }} title={rs ? 'Avg rating significantly ' + rs.dir + ' (p=' + rs.p.toFixed(4) + ')' : ''}>{rsColor ? '★' : ''}</span>
+          return <span style={{ fontSize: 10, fontWeight: 800, color: rsColor || 'transparent', width: 14, textAlign: 'center', flexShrink: 0, cursor: rsColor ? 'pointer' : 'default' }}
+            {...(rsColor ? {
+              onMouseEnter: function(e: React.MouseEvent) { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null }; var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSig(ratingSigId); setPinnedSigData({ dir: rs!.dir, text: ratingPlainEnglish, color: rsColor! }); setCopiedSig(false) },
+              onMouseLeave: function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(function(cur: string | null) { return cur === ratingSigId ? null : cur }) }, 400) },
+              onClick: function(e: React.MouseEvent) { e.stopPropagation(); var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSigData({ dir: rs!.dir, text: ratingPlainEnglish, color: rsColor! }); setPinnedSig(pinnedSig === ratingSigId ? null : ratingSigId); setCopiedSig(false) },
+            } : {})}>{rsColor ? '★' : ''}</span>
         })()}
         {props.avgRating != null ? (function() {
           var d = props.avgRating! - (props.overallRatAvg || 0)
@@ -768,7 +779,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
           onClick={function(e) { e.stopPropagation() }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: pinnedSigData.color }}>
-              {pinnedSigData.dir === 'over' ? '\u25B2 Over-indexed' : '\u25BC Under-indexed'}
+              {pinnedSigData.dir === 'over' ? '\u25B2 Over-indexed' : pinnedSigData.dir === 'under' ? '\u25BC Under-indexed' : pinnedSigData.dir === 'higher' ? '\u25B2 Higher rating' : '\u25BC Lower rating'}
             </span>
             <button onClick={function(e) { e.stopPropagation(); setPinnedSig(null) }}
               style={{ fontSize: 14, background: 'transparent', border: 'none', color: T.textFaint, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>{'\u00D7'}</button>
