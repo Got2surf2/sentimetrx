@@ -13,7 +13,7 @@ import {
 } from '@/lib/themeUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
-import { sigTest } from '@/lib/statsUtils'
+import { sigTest, welchTTest } from '@/lib/statsUtils'
 import { smartOrder } from '@/lib/scaleUtils'
 import { resolveAlias } from '@/lib/aliasUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
@@ -412,13 +412,21 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
       var groupPct = Math.round(groupTotal / totalRows * 100)
       var themeCounts = themes.themes.map(function(t) {
         var matches = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) })
+        var nonMatches = rows.filter(function(r) { return !commentMatchesTheme(String(r[field] || ''), t) })
         var avgRating: number | null = null
+        var ratingSig: { dir: 'higher' | 'lower' | 'ns'; p: number } | null = null
         if (ratingField && matches.length > 0) {
-          var rSum = 0, rCnt = 0
-          matches.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) { rSum += rv; rCnt++ } })
-          if (rCnt > 0) avgRating = Math.round(rSum / rCnt * 100) / 100
+          var matchRatings: number[] = []
+          var nonMatchRatings: number[] = []
+          matches.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) matchRatings.push(rv) })
+          nonMatches.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) nonMatchRatings.push(rv) })
+          if (matchRatings.length > 0) avgRating = Math.round(matchRatings.reduce(function(a, b) { return a + b }, 0) / matchRatings.length * 100) / 100
+          if (matchRatings.length >= 5 && nonMatchRatings.length >= 5) {
+            var tt = welchTTest(matchRatings, nonMatchRatings)
+            if (tt && tt.p < 0.05) ratingSig = { dir: tt.ma > tt.mb ? 'higher' : 'lower', p: tt.p }
+          }
         }
-        return { themeId: t.id, themeName: t.name, count: matches.length, avgRating: avgRating }
+        return { themeId: t.id, themeName: t.name, count: matches.length, avgRating: avgRating, ratingSig: ratingSig }
       })
       var unclassified = rows.filter(function(r) {
         return String(r[field] || '').trim().length > 0 && !themes.themes.some(function(t) { return commentMatchesTheme(String(r[field] || ''), t) })
@@ -440,7 +448,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
         var count = tc ? tc.count : 0
         var mentionRate = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
-        return { group: g.group, count: count, mentionRate: mentionRate, groupTotal: g.groupTotal, groupPct: g.groupPct, avgRating: tc ? tc.avgRating : null }
+        return { group: g.group, count: count, mentionRate: mentionRate, groupTotal: g.groupTotal, groupPct: g.groupPct, avgRating: tc ? tc.avgRating : null, ratingSig: tc ? tc.ratingSig : null }
       })
       return { themeId: t.id, themeName: t.name, totalMatches: totalMatches, perGroup: perGroup }
     })
@@ -483,10 +491,12 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
   // ── Compare bar component ────────────────────────────────────────────────
   var [pinnedSig, setPinnedSig] = useState<string | null>(null)
+  var [pinnedSigData, setPinnedSigData] = useState<{ dir: string; text: string; color: string } | null>(null)
   var [copiedSig, setCopiedSig] = useState(false)
   var sigLeaveTimer = useRef<any>(null)
+  var [sigPopRect, setSigPopRect] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
 
-  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string; avgRating?: number | null; overallRatAvg?: number }) {
+  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string; avgRating?: number | null; overallRatAvg?: number; ratingSig?: { dir: 'higher' | 'lower' | 'ns'; p: number } | null }) {
     var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
     var sigId = (props.groupName || '') + '::' + (props.themeName || '') + '::' + props.label
     var grpLabel = props.groupName || props.label
@@ -506,32 +516,11 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         </div>
         {sigColor && (
           <span
-            style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center', cursor: 'pointer', position: 'relative' }}
-            onMouseEnter={function() { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null }; setPinnedSig(sigId); setCopiedSig(false) }}
+            style={{ fontSize: 12, fontWeight: 800, color: sigColor, flexShrink: 0, width: 14, textAlign: 'center', cursor: 'pointer' }}
+            onMouseEnter={function(e) { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null }; var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSig(sigId); setPinnedSigData({ dir: props.sig!.dir, text: plainEnglish, color: sigColor! }); setCopiedSig(false) }}
             onMouseLeave={function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(function(cur) { return cur === sigId ? null : cur }) }, 400) }}
-            onClick={function(e) { e.stopPropagation(); setPinnedSig(pinnedSig === sigId ? null : sigId); setCopiedSig(false) }}>
+            onClick={function(e) { e.stopPropagation(); var rect = (e.target as HTMLElement).getBoundingClientRect(); setSigPopRect({ top: rect.bottom + 4, left: Math.max(8, rect.left - 240) }); setPinnedSigData({ dir: props.sig!.dir, text: plainEnglish, color: sigColor! }); setPinnedSig(pinnedSig === sigId ? null : sigId); setCopiedSig(false) }}>
             {'★'}
-            {pinnedSig === sigId && (
-              <div style={{ position: 'absolute', bottom: 22, right: -10, width: 280, background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '12px 14px', zIndex: 50, textAlign: 'left', cursor: 'default' }}
-                onMouseEnter={function() { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null } }}
-                onMouseLeave={function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(function(cur) { return cur === sigId ? null : cur }) }, 400) }}
-                onClick={function(e) { e.stopPropagation() }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: sigColor }}>
-                    {props.sig!.dir === 'over' ? '\u25B2 Over-indexed' : '\u25BC Under-indexed'}
-                  </span>
-                  <button onClick={function(e) { e.stopPropagation(); setPinnedSig(null) }}
-                    style={{ fontSize: 14, background: 'transparent', border: 'none', color: T.textFaint, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>{'\u00D7'}</button>
-                </div>
-                <div style={{ fontSize: 11, color: T.textMid, lineHeight: 1.5, marginBottom: 8 }}>{plainEnglish}</div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={function(e) { e.stopPropagation(); navigator.clipboard.writeText(plainEnglish).then(function() { setCopiedSig(true) }) }}
-                    style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: copiedSig ? T.greenBg : T.bg, color: copiedSig ? T.green : T.textMid, border: '1px solid ' + (copiedSig ? T.greenMid : T.border), cursor: 'pointer' }}>
-                    {copiedSig ? '\u2713 Copied' : '\u2398 Copy'}
-                  </button>
-                </div>
-              </div>
-            )}
           </span>
         )}
         {!sigColor && <span style={{ width: 14, flexShrink: 0 }} />}
@@ -539,7 +528,12 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         <span style={{ fontSize: 10, color: T.textFaint, width: 44, textAlign: 'right', flexShrink: 0 }}>n={props.count}</span>
         {props.avgRating != null && (function() {
           var d = props.avgRating! - (props.overallRatAvg || 0)
-          return <span style={{ fontSize: 10, fontWeight: 700, width: 38, textAlign: 'right', flexShrink: 0, color: d > 0.1 ? '#059669' : d < -0.1 ? '#dc2626' : T.textMid }} title={'Avg rating: ' + props.avgRating!.toFixed(2) + ' (' + (d >= 0 ? '+' : '') + d.toFixed(2) + ' vs overall)'}>{props.avgRating!.toFixed(1)}</span>
+          var rs = props.ratingSig
+          var rsColor = rs ? (rs.dir === 'higher' ? '#059669' : '#dc2626') : null
+          return <>
+            {rsColor && <span style={{ fontSize: 10, fontWeight: 800, color: rsColor, flexShrink: 0 }} title={'Avg rating significantly ' + rs!.dir + ' (p=' + rs!.p.toFixed(4) + ')'}>{'★'}</span>}
+            <span style={{ fontSize: 10, fontWeight: 700, width: 38, textAlign: 'right', flexShrink: 0, color: d > 0.1 ? '#059669' : d < -0.1 ? '#dc2626' : T.textMid }} title={'Avg rating: ' + props.avgRating!.toFixed(2) + ' (' + (d >= 0 ? '+' : '') + d.toFixed(2) + ' vs overall' + (rs ? ', p=' + rs.p.toFixed(4) : '') + ')'}>{props.avgRating!.toFixed(1)}</span>
+          </>
         })()}
       </div>
     )
@@ -644,7 +638,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                       var pct = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
                       var pal = themeColors[ti] || THEME_PALETTE[0]
                       var sig = sigTest(count, g.groupTotal, ts ? ts.totalMatches : 0, compStats!.totalRows)
-                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} groupName={g.group} themeName={t.name} avgRating={tc ? tc.avgRating : null} overallRatAvg={compStats!.overallRatAvg} />
+                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} groupName={g.group} themeName={t.name} avgRating={tc ? tc.avgRating : null} overallRatAvg={compStats!.overallRatAvg} ratingSig={tc ? tc.ratingSig : null} />
                     })}
                     {g.unclassified > 0 && <CompareBar label="Unclassified" pct={g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0} count={g.unclassified} maxPct={maxShare} color={T.borderMid} labelColor={T.textFaint} sig={null} isUnclassified={true} />}
                   </div>
@@ -675,7 +669,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                   </div>
                   {perGroupSorted.map(function(g) {
                     var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
-                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} />
+                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} />
                   })}
                 </div>
               )
@@ -764,6 +758,29 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                 )
               })()}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fixed-position significance popover — renders outside scroll container */}
+      {pinnedSig && pinnedSigData && (
+        <div style={{ position: 'fixed', top: sigPopRect.top, left: sigPopRect.left, width: 280, background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '12px 14px', zIndex: 9999, textAlign: 'left', cursor: 'default' }}
+          onMouseEnter={function() { if (sigLeaveTimer.current) { clearTimeout(sigLeaveTimer.current); sigLeaveTimer.current = null } }}
+          onMouseLeave={function() { sigLeaveTimer.current = setTimeout(function() { setPinnedSig(null) }, 400) }}
+          onClick={function(e) { e.stopPropagation() }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: pinnedSigData.color }}>
+              {pinnedSigData.dir === 'over' ? '\u25B2 Over-indexed' : '\u25BC Under-indexed'}
+            </span>
+            <button onClick={function(e) { e.stopPropagation(); setPinnedSig(null) }}
+              style={{ fontSize: 14, background: 'transparent', border: 'none', color: T.textFaint, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>{'\u00D7'}</button>
+          </div>
+          <div style={{ fontSize: 11, color: T.textMid, lineHeight: 1.5, marginBottom: 8 }}>{pinnedSigData.text}</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={function(e) { e.stopPropagation(); navigator.clipboard.writeText(pinnedSigData!.text).then(function() { setCopiedSig(true) }) }}
+              style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: copiedSig ? T.greenBg : T.bg, color: copiedSig ? T.green : T.textMid, border: '1px solid ' + (copiedSig ? T.greenMid : T.border), cursor: 'pointer' }}>
+              {copiedSig ? '\u2713 Copied' : '\u2398 Copy'}
+            </button>
           </div>
         </div>
       )}
