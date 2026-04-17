@@ -99,12 +99,10 @@ export default function TownHallChat({ sessionId }: Props) {
       if (wrapRef.current) {
         wrapRef.current.style.height = vv.height + 'px'
       }
-      // After viewport shrinks (keyboard open), scroll chat to bottom
-      scrollBottom()
     }
     vv.addEventListener('resize', onResize)
     return () => vv.removeEventListener('resize', onResize)
-  }, [scrollBottom])
+  }, [])
 
   // Poll session via GET /api/townhall/join/:id (same endpoint, no auth needed)
   const poll = useCallback(async () => {
