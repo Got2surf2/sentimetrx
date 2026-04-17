@@ -290,12 +290,17 @@ export async function POST(req: NextRequest) {
   if (deflectionEnabled && message && !skipped && turn_number > 1) {
     const testing = !!config?.testing || !!body.debug
     const analyzeText = messageEn || message
+
+    // Sensitive topic check — always deflect if message touches a banned topic, even if it contains feedback words
+    const sensitiveTopics: string[] = config?.context?.sensitive_topics || []
+    const hitsSensitive = sensitiveTopics.length > 0 && sensitiveTopics.some((t: string) => new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(analyzeText))
+
     // Fast regex pre-check: skip deflection if response looks like genuine feedback
-    // (contains opinion/emotion words — not worth burning an AI call)
+    // BUT: always check if it hits a sensitive/banned topic
     const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|burnt|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|leaving|quit|mental|health|workload|balance)\b/i
     const QUESTION_SIGNALS = /\?\s*$|^(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
 
-    if (!FEEDBACK_SIGNALS.test(analyzeText) || QUESTION_SIGNALS.test(analyzeText)) {
+    if (hitsSensitive || !FEEDBACK_SIGNALS.test(analyzeText) || QUESTION_SIGNALS.test(analyzeText)) {
       // Possible off-topic or question — ask AI
       const currentTopic = theme_id ? (await supabase.from('townhall_themes').select('label, question').eq('id', theme_id).single()).data : null
       const topicContext = currentTopic
