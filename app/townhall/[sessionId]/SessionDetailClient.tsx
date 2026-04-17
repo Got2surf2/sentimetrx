@@ -1144,7 +1144,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                           ? organicDetailTopic.example_quotes
                           : organicDetailTopic.example_quote ? [organicDetailTopic.example_quote] : []
                         return <>
-                          <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Matching Responses ({quotes.length})</h3>
+                          <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Matching Responses ({organicDetailTopic.mention_count || organicDetailTopic.match_count || quotes.length}){quotes.length > 0 && quotes.length < (organicDetailTopic.mention_count || 0) ? <span className="text-gray-400 font-normal ml-1">· showing {quotes.length}</span> : null}</h3>
                           {quotes.length > 0 ? (
                             <div className="space-y-2">
                               {quotes.map((q: string, i: number) => (

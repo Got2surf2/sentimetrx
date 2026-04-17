@@ -144,6 +144,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       }
     }
 
+    // Also include turn-tagged responses not caught by keyword matching
+    const taggedTexts = themeIdTexts[t.id] || []
+    const quotesSet = new Set(matchedQuotes)
+    for (const text of taggedTexts) {
+      if (matchedQuotes.length >= 20) break
+      const trimmed = text.slice(0, 300)
+      if (!quotesSet.has(trimmed)) { matchedQuotes.push(trimmed); quotesSet.add(trimmed); matchCount++ }
+    }
+
     const sentiment = matchCount > 0 ? classifySentiment(totalPos, totalNeg) : (t.sentiment || 'neutral')
     const percentage = allResponseTexts.length > 0 ? Math.round(matchCount / allResponseTexts.length * 100) : 0
     const topKeywords = Object.entries(kwFreq).sort(function(a, b) { return b[1] - a[1] }).slice(0, 10).map(function(e) { return { word: e[0], count: e[1] } })
