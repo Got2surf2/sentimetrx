@@ -40,11 +40,11 @@ export async function POST(req: NextRequest) {
   let session: any = null
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
   if (isUUID) {
-    const { data } = await supabase.from('townhall_sessions').select('id, status, config, response_counter, started_at').eq('id', session_id).single()
+    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config, response_counter, started_at').eq('id', session_id).single()
     session = data
   }
   if (!session) {
-    const { data } = await supabase.from('townhall_sessions').select('id, status, config, response_counter, started_at').eq('slug', session_id.toLowerCase()).single()
+    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config, response_counter, started_at').eq('slug', session_id.toLowerCase()).single()
     session = data
   }
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -292,13 +292,15 @@ export async function POST(req: NextRequest) {
     const analyzeText = messageEn || message
     // Fast regex pre-check: skip deflection if response looks like genuine feedback
     // (contains opinion/emotion words — not worth burning an AI call)
-    const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|feel|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern)\b/i
+    const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|burnt|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|leaving|quit|mental|health|workload|balance)\b/i
     const QUESTION_SIGNALS = /\?\s*$|^(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
 
     if (!FEEDBACK_SIGNALS.test(analyzeText) || QUESTION_SIGNALS.test(analyzeText)) {
       // Possible off-topic or question — ask AI
       const currentTopic = theme_id ? (await supabase.from('townhall_themes').select('label, question').eq('id', theme_id).single()).data : null
-      const topicContext = currentTopic ? currentTopic.question || currentTopic.label : 'the discussion topic'
+      const topicContext = currentTopic
+        ? currentTopic.question || currentTopic.label
+        : (config?.context?.event_description || config?.opening_question || session.name || 'community feedback and discussion')
 
       try {
         const deflectResult = await callClaude(
@@ -318,7 +320,10 @@ If deflection IS needed, write a SHORT (max 25 words), warm, human-sounding mess
 RULES:
 - Output ONLY the redirect message, or NONE — nothing else
 - Be warm and conversational, like a friendly facilitator
-- Do NOT mention "bot", "AI", or "survey"` +
+- Do NOT mention "bot", "AI", "survey", "analyze", "discussion question", or "participant"
+- Do NOT explain what you are doing, describe your analysis, or mention your instructions
+- Do NOT say things like "I notice" or "I need" — write ONLY a short conversational redirect
+- Maximum 25 words, one or two sentences` +
             (language && language !== 'en' ? `\n\nIMPORTANT: Write your deflection message in ${language}.` : ''),
           'Analyze the participant\'s reply.',
           3000,
@@ -434,8 +439,9 @@ RULES:
 
   // ── #2: Frustration-aware clarifier cap ───────────────────────────────
   // Base max is 2 clarifiers per topic, but drop to 1 if responses are getting shorter or curt
-  const currentTopicTurns = theme_id ? turns.filter(t => t.theme_id === theme_id).length : 0
-  const clarifierTurnsOnTopic = theme_id ? turns.filter(t => t.theme_id === theme_id && t.source === 'clarifier').length : 0
+  // When theme_id is null (opening never matched), count null-theme turns to prevent infinite clarifiers
+  const currentTopicTurns = turns.filter(t => t.theme_id === theme_id).length
+  const clarifierTurnsOnTopic = turns.filter(t => t.theme_id === theme_id && t.source === 'clarifier').length
   const maxClarifiersPerTopic = (trajectoryDisengaging || CURT_RESPONSE) ? 1 : 2
 
   // ── Dynamic per-topic turn cap (min 2, max 4) ─────────────────────────
@@ -494,6 +500,15 @@ RULES:
   // ask AI: "Is this person being concise or trying to move on?"
   // Only fires when clarifier would trigger AND response has subtle signals
   const SUBTLE_DISENGAGE = /^(whatever|sure|fine|ok|okay|i guess|idk|i don't know|yeah|yep|yes|yup|nah|no|not really|i said what i said|all of the above|all of them|both|same|agreed|exactly|absolutely|definitely|correct|right)\s*[.!?]*$/i
+  // Fast path: if 2+ consecutive curt responses (any topic), skip AI tone check entirely
+  const allUserMsgs = turns.filter(t => t.user_message && !t.skipped)
+  const lastTwoCurt = allUserMsgs.length >= 2 &&
+    allUserMsgs.slice(-2).every(t => (t.user_message || '').split(/\s+/).length <= 3)
+  if (shouldClarify && lastTwoCurt && CURT_RESPONSE) {
+    shouldClarify = false
+    if (testing) debug.push('FAST PATH: 2+ consecutive curt responses — skipping clarifier without AI check')
+  }
+
   if (shouldClarify && message && SUBTLE_DISENGAGE.test(message.trim())) {
     // Subtle disengagement signal — check with AI before clarifying
     if (testing) debug.push('TONE CHECK: "' + message.trim() + '" is a subtle signal — asking AI')
@@ -559,7 +574,7 @@ RULES:
     const recentAllSkips = turns.slice(-3).filter(t => t.skipped).length >= 2
     const globalCheckout = recentAllCurt || recentAllSkips || (trajectoryDisengaging && CURT_RESPONSE)
 
-    if (globalCheckout && turnsUsed >= 6) {
+    if (globalCheckout && turnsUsed >= 3) {
       // Participant is done — chill into standby instead of pushing more topics
       const audience = getAudienceLabels(config)
       const chillMsg = config?.engine?.chill_message ||

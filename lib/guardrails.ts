@@ -41,7 +41,16 @@ export function isOutputClean(text: string): boolean {
 // ── AI output cleanup ─────────────────────────────────────────────────────
 // Strip leaked reasoning/preamble that models sometimes prefix responses with.
 export function cleanAiOutput(text: string): string {
-  return text
+  let cleaned = text
+    // Strip AI thinking/reasoning blocks that leaked
+    .replace(/\*\*REASONING:?\*\*[\s\S]*?(?=\n\n|\*\*RESPONSE|\*\*---)/gi, '')
+    .replace(/\*\*DEBUG[^*]*\*\*[\s\S]*?(?=\n\n|\*\*RESPONSE|\*\*---)/gi, '')
+    .replace(/^REASONING:?\s*/gim, '')
+    .replace(/^DEBUG:?\s*/gim, '')
+    .replace(/---RESPONSE---\s*/gi, '')
+    // Strip leaked decision/signal markers
+    .replace(/^(BUDGET|DECISION|SIGNAL|TONE|DEFLECT|SOURCE|MATCHED|SMART PROBE|NEXT TOPIC|ALL TOPICS|FAST PATH|GLOBAL CHECKOUT|STANDBY)[:\s][^\n]*\n?/gim, '')
+    // Strip original cleanup patterns
     .replace(/^(Got it|Sure|Okay|I see|Understood|Right|Interesting)[^.!?]*[.!?\-—:]\s*/gi, '')
     .replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
     .replace(/^(Here'?s?\s+(my|a|the)\s+follow[- ]?up[^.!?]*[.!?\-—:]\s*)/gi, '')
@@ -51,6 +60,10 @@ export function cleanAiOutput(text: string): string {
     .replace(/^[-—–]\s*/, '')
     .replace(/^["']|["']$/g, '')
     .trim()
+
+  // Final safety: if any internal markers leaked through, strip them
+  cleaned = cleaned.replace(/\b(theme_id|session_id|participant_id|turn_number|response_count|response_target)\b/gi, '')
+  return cleaned
 }
 
 // ── Deflection response cleanup ───────────────────────────────────────────
@@ -87,6 +100,18 @@ export function cleanDeflectResponse(raw: string, testing = false): { deflection
   text = text.replace(/^(Based on|Given|Since)[^.!?]*[.!?\-—:]\s*/gi, '')
 
   if (!text || text.length < 5 || /^NONE\b/i.test(text)) return { deflection: null, thinking }
+
+  // Catch AI character breaks — if the bot starts analyzing its own prompt, kill the deflection
+  if (/I notice|I need|haven't provided|actual participant|no actual|discussion question.*participant|provided me|analysis framework|template|placeholder|actual reply|REASONING|DECISION|DEFLECT|DEBUG/i.test(text)) return { deflection: null, thinking }
+  // Multi-line responses are character breaks (redirect should be 1-2 sentences)
+  if (text.includes('\n') && text.split('\n').filter(Boolean).length > 2) return { deflection: null, thinking }
+  // Numbered lists are always character breaks
+  if (/^\d+\.\s/m.test(text)) return { deflection: null, thinking }
+  // Too long means the AI rambled — kill it (max ~40 words for a redirect)
+  if (text.split(/\s+/).length > 40) return { deflection: null, thinking }
+  // Contains markdown formatting — character break
+  if (/\*\*|##|```/.test(text)) return { deflection: null, thinking }
+
   return { deflection: text, thinking }
 }
 
