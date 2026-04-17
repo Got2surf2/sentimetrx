@@ -785,6 +785,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               <thead>
                 <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
                   <th className="px-4 py-2.5 text-left w-8"></th>
+                  <th className="px-4 py-2.5 text-left">Date/Time</th>
                   <th className="px-4 py-2.5 text-left">Participant</th>
                   <th className="px-4 py-2.5 text-center">Turns</th>
                   <th className="px-4 py-2.5 text-center">Answered</th>
@@ -794,9 +795,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               </thead>
               <tbody>
                 {participantList.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-xs">No participants yet</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-xs">No participants yet</td></tr>
                 )}
-                {participantList.map((p, i) => (
+                {[...participantList].sort((a, b) => {
+                  const ta = a.last_activity || a.started_at || ''
+                  const tb = b.last_activity || b.started_at || ''
+                  return tb.localeCompare(ta)
+                }).map((p, i) => (
                   <tr key={p.participant_id} className="border-t border-gray-50 hover:bg-gray-50/50">
                     <td className="px-4 py-2.5">
                       <button onClick={async () => {
@@ -812,6 +817,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                       </button>
                     </td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500">{p.started_at ? new Date(p.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</td>
                     <td className="px-4 py-2.5 text-xs text-gray-500 font-mono">{p.participant_id.slice(0, 12)}...</td>
                     <td className="px-4 py-2.5 text-center text-xs text-gray-600">{p.turns}</td>
                     <td className="px-4 py-2.5 text-center text-xs text-gray-600">{p.answered}</td>

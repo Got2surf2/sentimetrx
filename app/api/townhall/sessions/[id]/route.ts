@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // Fetch turn stats
   const { data: turns } = await db
     .from('townhall_turns')
-    .select('participant_id, skipped, user_message, theme_id, source')
+    .select('participant_id, skipped, user_message, theme_id, source, created_at')
     .eq('session_id', params.id)
 
   const allTurns = turns || []
@@ -64,6 +64,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const pAnswered = pTurns.filter(t => !t.skipped && t.user_message)
     const lastTurn = pTurns[pTurns.length - 1]
     const topics = new Set(pTurns.filter(t => t.theme_id).map(t => t.theme_id))
+    const firstTurn = pTurns[0]
     return {
       participant_id: pid,
       turns: pTurns.length,
@@ -72,6 +73,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       topics: topics.size,
       last_source: lastTurn?.source || null,
       is_complete: lastTurn?.source === 'done' || pTurns.some(t => t.skipped && t.user_message === '[done]'),
+      started_at: firstTurn?.created_at || null,
+      last_activity: lastTurn?.created_at || null,
     }
   })
 
