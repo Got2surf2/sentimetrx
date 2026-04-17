@@ -319,11 +319,21 @@ RULES:
         )
 
         let deflectText = deflectResult.text?.trim() || 'NONE'
-        // Strip leaked reasoning
+        // Strip leaked reasoning — match survey deflect/route.ts cleanup exactly
         if (deflectText.includes('---RESPONSE---')) deflectText = deflectText.split('---RESPONSE---').pop()!.trim()
+        // NONE with reasoning = not a deflection (AI said NONE but explained why)
+        if (/^NONE\b/i.test(deflectText)) deflectText = 'NONE'
         if (deflectText.includes('---')) deflectText = deflectText.split('---').pop()!.trim()
-        deflectText = deflectText.replace(/^(Yes,?\s+)?(The respondent|They are|This is)[^.!?]*[.!?]\s*/gi, '')
+        if (deflectText.includes('—')) {
+          const parts = deflectText.split('—')
+          if (/respondent|participant|question|off-topic|asking|seeking|classify|redirect|feedback|on-topic/i.test(parts[0])) {
+            deflectText = parts.slice(1).join('—').trim()
+          }
+        }
+        deflectText = deflectText.replace(/^(Yes,?\s+)?(The respondent|The participant|They are|This is)[^.!?]*[.!?]\s*/gi, '')
         deflectText = deflectText.replace(/^(Got it|Sure|Okay|I see|Understood|Right)[^.!?]*[.!?\-—:]\s*/gi, '')
+        deflectText = deflectText.replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
+        deflectText = deflectText.replace(/^(Let me|I'll|I will)[^.!?]*[.!?\-—:]\s*/gi, '')
 
         if (deflectText && deflectText !== 'NONE' && deflectText.length >= 5) {
           // Custom deflection message override
