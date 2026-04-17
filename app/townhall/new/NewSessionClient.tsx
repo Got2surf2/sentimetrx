@@ -152,7 +152,7 @@ function SensitiveInput({ onAdd, placeholder }: { onAdd: (term: string) => void;
 
 // -- Topic card ---------------------------------------------------------------
 
-function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventDesc }: {
+function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventDesc, expectedAttendees }: {
   topic: TownHallGuideTopic
   index: number
   onChange: (t: TownHallGuideTopic) => void
@@ -160,6 +160,7 @@ function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventD
   industry?: string
   orgName?: string
   eventDesc?: string
+  expectedAttendees?: number
 }) {
   const [anglesText, setAnglesText] = useState(topic.follow_up_angles.join('\n'))
   const [generating, setGenerating] = useState(false)
@@ -267,14 +268,56 @@ function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventD
 
         <div>
           <Label sub="How many responses to collect on this topic">Response target</Label>
-          <input
-            type="number"
-            min={5}
-            max={500}
-            value={topic.response_target}
-            onChange={e => onChange({ ...topic, response_target: parseInt(e.target.value) || 30 })}
-            className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
-          />
+          <div className="flex items-center gap-3">
+            {expectedAttendees && expectedAttendees > 0 ? (
+              <>
+                <select
+                  value={topic.target_mode || 'fixed'}
+                  onChange={e => {
+                    const mode = e.target.value as 'fixed' | 'percentage'
+                    if (mode === 'percentage') {
+                      const pct = topic.target_pct || 30
+                      onChange({ ...topic, target_mode: mode, target_pct: pct, response_target: Math.round(expectedAttendees * pct / 100) })
+                    } else {
+                      onChange({ ...topic, target_mode: mode })
+                    }
+                  }}
+                  className="px-2 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-orange-200 bg-white"
+                >
+                  <option value="fixed">Fixed count</option>
+                  <option value="percentage">% of attendees</option>
+                </select>
+                {(topic.target_mode || 'fixed') === 'percentage' ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min={5} max={100}
+                      value={topic.target_pct || 30}
+                      onChange={e => {
+                        const pct = parseInt(e.target.value) || 30
+                        onChange({ ...topic, target_pct: pct, response_target: Math.round(expectedAttendees * pct / 100) })
+                      }}
+                      className="w-16 px-2 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+                    />
+                    <span className="text-xs text-gray-400">% = {topic.response_target} responses</span>
+                  </div>
+                ) : (
+                  <input
+                    type="number" min={5} max={5000}
+                    value={topic.response_target}
+                    onChange={e => onChange({ ...topic, response_target: parseInt(e.target.value) || 30 })}
+                    className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+                  />
+                )}
+              </>
+            ) : (
+              <input
+                type="number" min={5} max={5000}
+                value={topic.response_target}
+                onChange={e => onChange({ ...topic, response_target: parseInt(e.target.value) || 30 })}
+                className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

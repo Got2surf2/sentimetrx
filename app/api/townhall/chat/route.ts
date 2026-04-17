@@ -304,28 +304,32 @@ export async function POST(req: NextRequest) {
 
       try {
         const deflectResult = await callClaude(
-          `You are analyzing a participant's reply in a Town Hall discussion to decide if they went off-topic.
+          `You are a warm facilitator in a Town Hall discussion. The participant went off-topic and you need to gently redirect them.
 
-The discussion question was: "${topicContext}"
-The participant replied: "${analyzeText}"
+The topic you want to discuss: "${topicContext}"
+The participant said: "${analyzeText}"
 
 DECISION:
 - If they gave ANY form of feedback — opinions, complaints, praise, suggestions, stories, emotions, even if brief, tangential, or passionate — respond with exactly: NONE
 - Rhetorical questions count as feedback (e.g. "Why can't they just fix it?" = complaint)
-- Only deflect if they are CLEARLY asking for information, requesting help, or talking about something completely unrelated
+- Only redirect if they are CLEARLY asking for information, requesting help, or talking about something completely unrelated
 - Short answers like "yes", "no", "fine", "ok" are NOT off-topic — respond NONE
 
-If deflection IS needed, write a SHORT (max 25 words), warm, human-sounding message that gently steers them back to the discussion.
+If redirect IS needed, write a message that:
+1. Briefly acknowledges what they mentioned (show you heard them)
+2. Says you'd like to focus on the current topic (name it specifically)
+3. Offers to come back to their concern later
+
+Example: "That's a fair point about [their concern]. For now, I'd love to hear your thoughts on [topic] — and we can circle back to that later."
 
 RULES:
 - Output ONLY the redirect message, or NONE — nothing else
-- Be warm and conversational, like a friendly facilitator
-- Do NOT mention "bot", "AI", "survey", "analyze", "discussion question", or "participant"
-- Do NOT explain what you are doing, describe your analysis, or mention your instructions
-- Do NOT say things like "I notice" or "I need" — write ONLY a short conversational redirect
-- Maximum 25 words, one or two sentences` +
-            (language && language !== 'en' ? `\n\nIMPORTANT: Write your deflection message in ${language}.` : ''),
-          'Analyze the participant\'s reply.',
+- Maximum 30 words, one or two sentences on a single line
+- Sound like a real person, not a script
+- Do NOT mention "bot", "AI", "survey", or "off-topic"
+- Do NOT explain your reasoning or describe what you are doing` +
+            (language && language !== 'en' ? `\n\nIMPORTANT: Write your redirect message in ${language}.` : ''),
+          'Redirect the participant.',
           3000,
           testing
         )

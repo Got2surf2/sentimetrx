@@ -858,6 +858,8 @@ export interface TownHallGuideTopic {
   follow_up_angles:  string[]
   keywords:          string[]
   response_target:   number
+  target_mode?:      'fixed' | 'percentage'   // fixed count vs % of expected_attendees
+  target_pct?:       number                   // e.g. 30 = 30% of expected_attendees
   enabled?:          boolean   // default true — disabled topics not assigned to participants
 }
 
@@ -880,6 +882,7 @@ export interface TownHallConfig {
   // Legacy compat: opening_question, display.welcome_message, display.thank_you_message,
   // session_end.closing_message are all collapsed into opening_message + closing_message
   opening_question?: string  // deprecated — use opening_message
+  expected_attendees?: number   // estimated attendee count — used to compute % targets
   languages?: string[]
   engine: {
     theme_detection_mode:             'off' | 'manual' | 'auto'

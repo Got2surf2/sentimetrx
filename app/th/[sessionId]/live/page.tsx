@@ -53,6 +53,7 @@ export default function LivePresenter() {
   const [data, setData] = useState<LiveData | null>(null)
   const [error, setError] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const [showOrganic, setShowOrganic] = useState(true)
 
   const fetchData = useCallback(async () => {
     try {
@@ -93,7 +94,6 @@ export default function LivePresenter() {
   const activeThemes = themes.filter(t => t.state === 'active')
   const completedThemes = themes.filter(t => t.state === 'completed')
   const organicThemes = themes.filter(t => t.state === 'detected').sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0))
-  const [showOrganic, setShowOrganic] = useState(true)
   const totalSent = Object.values(sentiment).reduce((a, b) => a + b, 0) || 1
 
   // Elapsed time
