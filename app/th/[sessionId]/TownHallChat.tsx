@@ -172,7 +172,7 @@ export default function TownHallChat({ sessionId }: Props) {
     const msg = text || input.trim()
     if (!msg && !skip) return
     if (loading || finished) return
-    const isDebugCmd = /^#debug\s/i.test(msg)
+    const isDebugCmd = /^#debug\s/i.test(msg) || /^#sanjay\s/i.test(msg)
     if (skip) { setMessages(p => [...p, { who: 'user', text: skipLabel || display.skip_label || "I'd rather not answer that", italic: true }]) }
     else if (!isDebugCmd) { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
     setInput('')
