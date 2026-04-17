@@ -148,6 +148,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [saving, setSaving] = useState(false)
   const [editStep, setEditStep] = useState(0)
 
+  // Organic topic detail popup
+  const [organicDetailTopic, setOrganicDetailTopic] = useState<TownHallTheme | null>(null)
+
   // Custom question state
   const [showCustom, setShowCustom] = useState(false)
   const [customLabel, setCustomLabel] = useState('')
@@ -1020,20 +1023,111 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 ))}
               </div>
 
-              {/* ── AI SUGGESTED (show above active if any exist) ── */}
-              {!isSetup && suggestedTopics.length > 0 && (
+              {/* ── ORGANIC TOPICS (sorted by mentions, pill nav, scrollable cards) ── */}
+              {!isSetup && suggestedTopics.length > 0 && (function() {
+                const sorted = [...suggestedTopics].sort((a, b) => (b.mention_count || b.match_count || 0) - (a.mention_count || a.match_count || 0))
+                return (
                 <div className="rounded-xl border-2 border-orange-300 p-5" style={{ background: '#fffaf5' }}>
-                  <div className="flex items-center gap-2 mb-3">
+                  {/* Header + pill nav */}
+                  <div className="flex items-center gap-2 mb-2">
                     <div className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse" />
                     <h3 className="text-sm font-bold text-orange-600">Organic Topics</h3>
-                    <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{suggestedTopics.length} new</span>
+                    <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{sorted.length} new</span>
                   </div>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
-                    {suggestedTopics.map(t => (
-                      <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
-                        onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                        defaultResponseTarget={defaultResponseTarget} />
+                  {/* Sortable pill nav — click to open detail popup */}
+                  <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-orange-200">
+                    {sorted.map((t, i) => (
+                      <button key={t.id} onClick={() => setOrganicDetailTopic(t)}
+                        className="text-[11px] font-semibold px-3 py-1 rounded-full transition-all hover:shadow-sm cursor-pointer"
+                        style={{ background: i === 0 ? '#ea580c' : i < 3 ? '#f97316' : '#fb923c', color: 'white', opacity: Math.max(0.6, 1 - i * 0.08) }}>
+                        {t.label} <span className="text-[9px] opacity-80 ml-0.5">({t.mention_count || t.match_count || 0})</span>
+                      </button>
                     ))}
+                  </div>
+                  {/* Scrollable cards */}
+                  <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                      {sorted.map(t => (
+                        <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
+                          onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                          defaultResponseTarget={defaultResponseTarget} onDetailClick={() => setOrganicDetailTopic(t)} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                )
+              })()}
+
+              {/* ── Organic Topic Detail Popup ── */}
+              {organicDetailTopic && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={() => setOrganicDetailTopic(null)}>
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />
+                  <div onClick={e => e.stopPropagation()}
+                    style={{ position: 'relative', background: 'white', borderRadius: 16, width: '90%', maxWidth: 640, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px rgba(0,0,0,.25)' }}>
+                    {/* Header */}
+                    <div className="p-5 border-b border-gray-100 flex-shrink-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <h2 className="text-lg font-bold text-gray-900">{organicDetailTopic.label}</h2>
+                        <button onClick={() => setOrganicDetailTopic(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+                      </div>
+                      {organicDetailTopic.description && (
+                        <p className="text-sm text-gray-500 mb-3">{organicDetailTopic.description}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {(organicDetailTopic.sentiment && organicDetailTopic.sentiment !== 'insufficient') && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
+                            style={{ background: SENT_BG[organicDetailTopic.sentiment] || SENT_BG.neutral, color: SENT_COLOR[organicDetailTopic.sentiment] || SENT_COLOR.neutral }}>
+                            {organicDetailTopic.sentiment}
+                          </span>
+                        )}
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-600">Organic</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">
+                          {organicDetailTopic.mention_count || organicDetailTopic.match_count || 0} mentions · {organicDetailTopic.percentage ?? 0}% of responses
+                        </span>
+                      </div>
+                      {/* Keywords with frequency */}
+                      {(organicDetailTopic.top_keywords || organicDetailTopic.keywords || []).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {(organicDetailTopic.top_keywords || []).map((kw: any) => (
+                            <span key={kw.word} className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium border border-orange-200">
+                              {kw.word} <span className="text-orange-400">({kw.count})</span>
+                            </span>
+                          ))}
+                          {!organicDetailTopic.top_keywords && (organicDetailTopic.keywords || []).slice(0, 10).map(kw => (
+                            <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{kw}</span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Action buttons */}
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={() => { handleThemeAction(organicDetailTopic.id, 'approve', { response_target: defaultResponseTarget }); setOrganicDetailTopic(null) }}
+                          className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Approve</button>
+                        <button onClick={() => { handleThemeAction(organicDetailTopic.id, 'park'); setOrganicDetailTopic(null) }}
+                          className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200">Park</button>
+                        <button onClick={() => { handleThemeAction(organicDetailTopic.id, 'dismiss'); setOrganicDetailTopic(null) }}
+                          className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">Dismiss</button>
+                      </div>
+                    </div>
+                    {/* Scrollable comments */}
+                    <div className="flex-1 overflow-y-auto p-5">
+                      <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Matching Responses ({(organicDetailTopic.example_quotes || []).length})</h3>
+                      {(organicDetailTopic.example_quotes || []).length > 0 ? (
+                        <div className="space-y-2">
+                          {(organicDetailTopic.example_quotes || []).map((q: string, i: number) => (
+                            <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
+                              <span className="text-gray-400 mr-1">{i + 1}.</span> {q}
+                            </div>
+                          ))}
+                        </div>
+                      ) : organicDetailTopic.example_quote ? (
+                        <div className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
+                          {organicDetailTopic.example_quote}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">No matching responses yet</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1338,13 +1432,14 @@ function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName,
 }
 
 // ── Rich Theme Card (matches analytics style) ─────────────────────────────────
-function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResponseTarget }: {
+function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResponseTarget, onDetailClick }: {
   theme: TownHallTheme
   isActive: boolean
   variant: 'suggested' | 'active' | 'parked' | 'completed'
   onAction: (action: string, extras?: Record<string, unknown>) => void
   loading: boolean
   defaultResponseTarget?: number
+  onDetailClick?: () => void
 }) {
   const sent = t.sentiment || 'neutral'
   const keywords = t.keywords || []
@@ -1364,7 +1459,7 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
           <CompletionDonut current={t.response_count} target={t.response_target} size={44} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-gray-800">{t.label}</span>
+              <span className={`text-sm font-bold text-gray-800${onDetailClick ? ' hover:text-orange-600 cursor-pointer' : ''}`} onClick={onDetailClick ? (e) => { e.stopPropagation(); onDetailClick() } : undefined}>{t.label}</span>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {sent !== 'insufficient' && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"

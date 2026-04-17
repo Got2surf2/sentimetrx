@@ -960,6 +960,10 @@ export interface TownHallTheme {
   keywords:         string[]
   sentiment:        string | null
   example_quote:    string | null
+  example_quotes?:  string[]
+  match_count?:     number
+  percentage?:      number
+  top_keywords?:    { word: string; count: number }[]
   detected_at:      string | null
   approved_at:      string | null
   completed_at:     string | null

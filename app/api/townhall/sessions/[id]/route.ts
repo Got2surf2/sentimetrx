@@ -124,7 +124,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
           const score = lexiconScore(text)
           totalPos += score.pos
           totalNeg += score.neg
-          if (matchedQuotes.length < 5) matchedQuotes.push(text.slice(0, 300))
+          if (matchedQuotes.length < 20) matchedQuotes.push(text.slice(0, 300))
           for (var ki = 0; ki < keywords.length; ki++) {
             try {
               if (buildKwRegex(keywords[ki]).test(lower)) kwFreq[keywords[ki]] = (kwFreq[keywords[ki]] || 0) + 1
@@ -140,7 +140,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         const score = lexiconScore(text)
         totalPos += score.pos
         totalNeg += score.neg
-        if (matchedQuotes.length < 5) matchedQuotes.push(text.slice(0, 300))
+        if (matchedQuotes.length < 20) matchedQuotes.push(text.slice(0, 300))
       }
     }
 
@@ -272,6 +272,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const { count: turnCount } = await db.from('townhall_turns').delete({ count: 'exact' }).eq('session_id', params.id).in('participant_id', pids)
     await db.from('townhall_participant_responses').delete().eq('session_id', params.id).in('participant_id', pids)
     // Recount response_counter
+    const { count: remaining } = await db.from('townhall_turns').select('participant_id', { count: 'exact', head: true }).eq('session_id', params.id)
     const { data: distinctParticipants } = await db.from('townhall_turns').select('participant_id').eq('session_id', params.id)
     const uniqueRemaining = new Set((distinctParticipants || []).map(t => t.participant_id)).size
     await db.from('townhall_sessions').update({ response_counter: uniqueRemaining }).eq('id', params.id)
