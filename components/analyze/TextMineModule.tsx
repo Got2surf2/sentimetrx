@@ -412,21 +412,13 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
       var groupPct = Math.round(groupTotal / totalRows * 100)
       var themeCounts = themes.themes.map(function(t) {
         var matches = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) })
-        var nonMatches = rows.filter(function(r) { return !commentMatchesTheme(String(r[field] || ''), t) })
         var avgRating: number | null = null
-        var ratingSig: { dir: 'higher' | 'lower' | 'ns'; p: number } | null = null
+        var ratingValues: number[] = []
         if (ratingField && matches.length > 0) {
-          var matchRatings: number[] = []
-          var nonMatchRatings: number[] = []
-          matches.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) matchRatings.push(rv) })
-          nonMatches.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) nonMatchRatings.push(rv) })
-          if (matchRatings.length > 0) avgRating = Math.round(matchRatings.reduce(function(a, b) { return a + b }, 0) / matchRatings.length * 100) / 100
-          if (matchRatings.length >= 5 && nonMatchRatings.length >= 5) {
-            var tt = welchTTest(matchRatings, nonMatchRatings)
-            if (tt && tt.p < 0.05) ratingSig = { dir: tt.ma > tt.mb ? 'higher' : 'lower', p: tt.p }
-          }
+          matches.forEach(function(r) { var rv = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(rv)) ratingValues.push(rv) })
+          if (ratingValues.length > 0) avgRating = Math.round(ratingValues.reduce(function(a, b) { return a + b }, 0) / ratingValues.length * 100) / 100
         }
-        return { themeId: t.id, themeName: t.name, count: matches.length, avgRating: avgRating, ratingSig: ratingSig }
+        return { themeId: t.id, themeName: t.name, count: matches.length, avgRating: avgRating, ratingValues: ratingValues }
       })
       var unclassified = rows.filter(function(r) {
         return String(r[field] || '').trim().length > 0 && !themes.themes.some(function(t) { return commentMatchesTheme(String(r[field] || ''), t) })
@@ -444,11 +436,28 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
     var themeStats = themes.themes.map(function(t) {
       var totalMatches = groupStats.reduce(function(s, g) { var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id }); return s + (tc ? tc.count : 0) }, 0)
+      // Collect all rating values per group for this theme (for cross-group t-test)
+      var allGroupRatings: Record<string, number[]> = {}
+      groupStats.forEach(function(g) {
+        var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
+        allGroupRatings[g.group] = tc ? tc.ratingValues : []
+      })
       var perGroup = groupStats.map(function(g) {
         var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
         var count = tc ? tc.count : 0
         var mentionRate = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
-        return { group: g.group, count: count, mentionRate: mentionRate, groupTotal: g.groupTotal, groupPct: g.groupPct, avgRating: tc ? tc.avgRating : null, ratingSig: tc ? tc.ratingSig : null }
+        // Rating significance: this group's ratings vs all other groups' ratings for the same theme
+        var ratingSig: { dir: 'higher' | 'lower' | 'ns'; p: number } | null = null
+        if (ratingField) {
+          var thisRatings = allGroupRatings[g.group] || []
+          var restRatings: number[] = []
+          Object.keys(allGroupRatings).forEach(function(gk) { if (gk !== g.group) restRatings = restRatings.concat(allGroupRatings[gk]) })
+          if (thisRatings.length >= 5 && restRatings.length >= 5) {
+            var tt = welchTTest(thisRatings, restRatings)
+            if (tt && tt.p < 0.05) ratingSig = { dir: tt.ma > tt.mb ? 'higher' : 'lower', p: tt.p }
+          }
+        }
+        return { group: g.group, count: count, mentionRate: mentionRate, groupTotal: g.groupTotal, groupPct: g.groupPct, avgRating: tc ? tc.avgRating : null, ratingSig: ratingSig }
       })
       return { themeId: t.id, themeName: t.name, totalMatches: totalMatches, perGroup: perGroup }
     })
@@ -508,8 +517,8 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     ) : ''
     var ratingPlainEnglish = props.ratingSig && props.avgRating != null ? (
       props.ratingSig.dir === 'higher'
-        ? 'Responses mentioning "' + thLabel + '" in "' + grpLabel + '" have a significantly higher average rating (' + props.avgRating.toFixed(2) + ') compared to responses that don\'t mention this theme (p=' + props.ratingSig.p.toFixed(4) + '). This theme is associated with more positive outcomes.'
-        : 'Responses mentioning "' + thLabel + '" in "' + grpLabel + '" have a significantly lower average rating (' + props.avgRating.toFixed(2) + ') compared to responses that don\'t mention this theme (p=' + props.ratingSig.p.toFixed(4) + '). This theme is associated with more negative outcomes.'
+        ? '"' + grpLabel + '" has a significantly higher average rating (' + props.avgRating.toFixed(2) + ') for "' + thLabel + '" compared to other groups (p=' + props.ratingSig.p.toFixed(4) + '). This segment rates this theme notably higher than the rest.'
+        : '"' + grpLabel + '" has a significantly lower average rating (' + props.avgRating.toFixed(2) + ') for "' + thLabel + '" compared to other groups (p=' + props.ratingSig.p.toFixed(4) + '). This segment rates this theme notably lower than the rest.'
     ) : ''
     var ratingSigId = sigId + '::rating'
     return (
@@ -647,7 +656,8 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                       var pct = g.groupTotal > 0 ? Math.round(count / g.groupTotal * 100) : 0
                       var pal = themeColors[ti] || THEME_PALETTE[0]
                       var sig = sigTest(count, g.groupTotal, ts ? ts.totalMatches : 0, compStats!.totalRows)
-                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} groupName={g.group} themeName={t.name} avgRating={tc ? tc.avgRating : null} overallRatAvg={compStats!.overallRatAvg} ratingSig={tc ? tc.ratingSig : null} />
+                      var pg = ts ? ts.perGroup.find(function(pg) { return pg.group === g.group }) : null
+                      return <CompareBar key={t.id} label={t.name} pct={pct} count={count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={function() { onDrillTheme(t, g.group) }} groupName={g.group} themeName={t.name} avgRating={tc ? tc.avgRating : null} overallRatAvg={compStats!.overallRatAvg} ratingSig={pg ? pg.ratingSig : null} />
                     })}
                     {g.unclassified > 0 && <CompareBar label="Unclassified" pct={g.groupTotal > 0 ? Math.round(g.unclassified / g.groupTotal * 100) : 0} count={g.unclassified} maxPct={maxShare} color={T.borderMid} labelColor={T.textFaint} sig={null} isUnclassified={true} />}
                   </div>
