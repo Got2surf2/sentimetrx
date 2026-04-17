@@ -785,7 +785,7 @@ function baseSystemPrompt(config: any, language?: string): string {
   const industry = config?.industry || ''
   const langInstruction = language && language !== 'en'
     ? `\n\nIMPORTANT: The participant is using ${language}. You MUST respond ONLY in ${language}. Do NOT respond in English.`
-    : ''
+    : `\n\nIMPORTANT: Respond ONLY in English. Even if prior conversation included other languages, the participant has switched to English.`
 
   return `You are an AI moderator facilitating a town hall discussion on behalf of ${orgName}.
 ${eventDesc ? `\nEVENT: ${eventDesc}` : ''}${industry ? `\nINDUSTRY: ${industry.replace(/_/g, ' ')}` : ''}
