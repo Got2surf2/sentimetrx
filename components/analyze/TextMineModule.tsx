@@ -10,6 +10,7 @@ import {
   Theme, ThemeModel, THEME_PALETTE,
   recountThemes, sampleSize95, evenSample,
   commentMatchesTheme, getRowText, sentColor, sentBg,
+  ratingColor,
 } from '@/lib/themeUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
@@ -849,6 +850,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField)
   })
   const [ratingField, setRatingField] = useState<string | null>(_tmSaved?.ratingField || (ratingFields.length > 0 ? ratingFields[0].field : null))
+  const [colorMode, setColorMode] = useState<'sentiment' | 'rating'>(_tmSaved?.colorMode || 'sentiment')
 
   useEffect(function() {
     writeSession(_tmKey, {
@@ -857,9 +859,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       breakdownField: breakdownField, compareFields: compareFields,
       selectedValues: Array.from(selectedValues),
       compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
-      ratingField: ratingField,
+      ratingField: ratingField, colorMode: colorMode,
     })
-  }, [activeField, activeFields, subTab, themesView, showAllThemes, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, _tmKey])
+  }, [activeField, activeFields, subTab, themesView, showAllThemes, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, _tmKey])
 
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
@@ -1342,6 +1344,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   })}
                 </select>
               )}
+              {hasThemes && ratingField && (
+                <button
+                  onClick={function() { setColorMode(colorMode === 'sentiment' ? 'rating' : 'sentiment') }}
+                  title={colorMode === 'sentiment' ? 'Switch to rating gradient colors' : 'Switch to sentiment colors'}
+                  style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, borderRadius: 20, cursor: 'pointer', border: '1px solid ' + (colorMode === 'rating' ? '#d97706' + '50' : T.border), background: colorMode === 'rating' ? '#fffbeb' : T.bg, color: colorMode === 'rating' ? '#d97706' : T.textMid }}
+                >{colorMode === 'rating' ? '\u2605 Rating' : '\u25CF Sentiment'}</button>
+              )}
               {hasThemes && isDirty && (
                 <button onClick={function() { saveThemeModel() }} disabled={saving}
                   style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: T.accent, color: 'white', border: 'none', borderRadius: 20, cursor: saving ? 'not-allowed' : 'pointer' }}>
@@ -1565,32 +1574,57 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       )}
 
                       {/* ── Cards view (exact Ana.html style) ─── */}
-                      {themesView === 'cards' && (
+                      {themesView === 'cards' && (function() {
+                        // Compute rating range for normalization when in rating color mode
+                        var ratingMin = Infinity, ratingMax = -Infinity
+                        if (colorMode === 'rating' && ratingField) {
+                          visibleThemes.forEach(function(t) {
+                            if (t.avgRating != null) { ratingMin = Math.min(ratingMin, t.avgRating); ratingMax = Math.max(ratingMax, t.avgRating) }
+                          })
+                          // Also scan keyword-level ratings
+                          visibleThemes.forEach(function(t) {
+                            if (t.keywordRatings) Object.values(t.keywordRatings).forEach(function(kr) { ratingMin = Math.min(ratingMin, kr.avg); ratingMax = Math.max(ratingMax, kr.avg) })
+                          })
+                          if (!isFinite(ratingMin)) { ratingMin = 0; ratingMax = 1 }
+                          if (ratingMax === ratingMin) ratingMax = ratingMin + 1
+                        }
+                        function normRating(v: number) { return (v - ratingMin) / (ratingMax - ratingMin) }
+                        return (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
                           {visibleThemes.map(function(t) {
                             var idx = displayThemes!.themes.indexOf(t)
                             var pal = themeColors[idx] || THEME_PALETTE[0]
+                            var useRatingColor = colorMode === 'rating' && ratingField && t.avgRating != null
+                            var cardBorder = useRatingColor ? ratingColor(normRating(t.avgRating!)) : pal.border
                             var pct = totalResp > 0 ? Math.round(t.count / totalResp * 100) : (t.percentage || 0)
                             return (
                               <div key={t.id} className="theme-card"
                                 onClick={function() { handleDrillTheme(t) }}
                                 onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 18px rgba(0,0,0,.10)' }}
                                 onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '' }}
-                                style={{ background: T.bgCard, border: '2px solid ' + pal.border, borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .15s, transform .12s' }}>
+                                style={{ background: T.bgCard, border: '2px solid ' + cardBorder, borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .15s, transform .12s' }}>
                                 {/* Top row: dot + sentiment badge */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: pal.border, flexShrink: 0 }} />
-                                  <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: cardBorder, flexShrink: 0 }} />
+                                  {useRatingColor ? (
+                                    <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: ratingColor(normRating(t.avgRating!)) + '18', color: ratingColor(normRating(t.avgRating!)), fontWeight: 700 }}>{'\u2605'} {t.avgRating!.toFixed(1)}</span>
+                                  ) : (
+                                    <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
+                                  )}
                                 </div>
                                 {/* Theme name */}
                                 <div style={{ fontSize: 15, fontWeight: 800, color: T.text, marginBottom: 4 }}>{t.name}</div>
                                 {/* Description */}
                                 <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5, marginBottom: 10, minHeight: 32 }}>{t.description}</div>
-                                {/* Keywords (max 4) — click to see opinions */}
+                                {/* Keywords (max 4) — click to see opinions, show avg rating when available */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 14 }}>
                                   {(t.keywords || []).slice(0, 4).map(function(k) {
+                                    var kr = t.keywordRatings?.[k]
+                                    var kwColor = kr && colorMode === 'rating' ? ratingColor(normRating(kr.avg)) : null
                                     return <span key={k} onClick={function(e) { e.stopPropagation(); setOpinionWord(opinionWord === k ? null : k) }}
-                                      style={{ fontSize: 11, padding: '2px 8px', background: opinionWord === k ? '#eff6ff' : T.bg, color: opinionWord === k ? '#2563eb' : T.textMid, borderRadius: 20, border: '1px solid ' + (opinionWord === k ? '#bfdbfe' : T.border), cursor: 'pointer', transition: 'all .1s' }}>{k}</span>
+                                      style={{ fontSize: 11, padding: '2px 8px', background: opinionWord === k ? '#eff6ff' : kwColor ? kwColor + '15' : T.bg, color: opinionWord === k ? '#2563eb' : kwColor || T.textMid, borderRadius: 20, border: '1px solid ' + (opinionWord === k ? '#bfdbfe' : kwColor ? kwColor + '40' : T.border), cursor: 'pointer', transition: 'all .1s', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                      {k}{kr && ratingField ? <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.8 }}>{kr.avg.toFixed(1)}</span> : null}
+                                    </span>
                                   })}
                                 </div>
                                 {/* Opinion popover for clicked keyword */}
@@ -1658,11 +1692,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 {/* Count + % + CI + mini bar */}
                                 <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
                                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
-                                    <span style={{ fontSize: 13, color: T.textMid }}><strong style={{ fontSize: 18, color: pal.border }}>{t.count.toLocaleString()}</strong> responses</span>
-                                    <span style={{ fontSize: 22, fontWeight: 800, color: pal.border }}>{pct}%</span>
+                                    <span style={{ fontSize: 13, color: T.textMid }}><strong style={{ fontSize: 18, color: cardBorder }}>{t.count.toLocaleString()}</strong> responses</span>
+                                    <span style={{ fontSize: 22, fontWeight: 800, color: cardBorder }}>{pct}%</span>
                                   </div>
                                   <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>95% CI: {t.ciLow ?? 0}{'\u2013'}{t.ciHigh ?? 0}%</div>
-                                  {t.avgRating != null && (
+                                  {t.avgRating != null && !useRatingColor && (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                                       <span style={{ fontSize: 11, color: T.textMid }}>Avg Rating: <strong style={{ color: t.ratingDelta != null && t.ratingDelta > 0 ? '#059669' : t.ratingDelta != null && t.ratingDelta < -0.1 ? '#dc2626' : T.text }}>{t.avgRating.toFixed(2)}</strong></span>
                                       {t.ratingDelta != null && t.ratingDelta !== 0 && (
@@ -1673,14 +1707,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     </div>
                                   )}
                                   <div style={{ height: 5, background: T.border, borderRadius: 3, overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: pct + '%', background: pal.border, borderRadius: 3, transition: 'width .6s ease' }} />
+                                    <div style={{ height: '100%', width: pct + '%', background: cardBorder, borderRadius: 3, transition: 'width .6s ease' }} />
                                   </div>
                                 </div>
                               </div>
                             )
                           })}
                         </div>
-                      )}
+                        )
+                      })()}
 
                       {/* Breakdown distribution */}
                       {breakdownField && selectedValues.size > 0 && (

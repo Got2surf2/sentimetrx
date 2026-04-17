@@ -128,9 +128,41 @@ export async function GET(req: NextRequest) {
     const ratingPrompt = config.ratingPrompt || null
     const npsPrompt = config.npsPrompt || null
 
+    // Fetch themes from dataset_state (pre-computed, no raw text exposed)
+    let themesSummary: any[] = []
+    const { data: dsRow } = await service
+      .from('datasets')
+      .select('id')
+      .eq('study_id', link.target_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    if (dsRow) {
+      const { data: stateRow } = await service
+        .from('dataset_state')
+        .select('theme_model')
+        .eq('dataset_id', dsRow.id)
+        .single()
+      const tm = stateRow?.theme_model as any
+      if (tm?.themes?.length > 0) {
+        const totalCount = (responses || []).filter((r: any) => r.status !== 'incomplete').length
+        themesSummary = tm.themes.map((t: any) => ({
+          name: t.name,
+          description: t.description || '',
+          keywords: (t.keywords || []).slice(0, 6),
+          sentiment: t.sentiment || 'neutral',
+          count: t.count || 0,
+          percentage: t.percentage || (totalCount > 0 ? Math.round((t.count || 0) / totalCount * 100) : 0),
+          avgRating: t.avgRating ?? null,
+          ratingDelta: t.ratingDelta ?? null,
+        }))
+      }
+    }
+
     return NextResponse.json({
       type: 'study', study, responses: responses || [], expires_at: link.expires_at,
       ratingScale, ratingLabel, npsEnabled, experienceEnabled, ratingPrompt, npsPrompt,
+      themes: themesSummary,
     })
   }
 

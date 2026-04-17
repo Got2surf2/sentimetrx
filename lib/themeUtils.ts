@@ -89,6 +89,7 @@ export interface Theme {
   avgRating?: number       // avg of rating field for matching rows
   ratingDelta?: number     // avgRating - overallAvg
   ratingCount?: number     // rows that matched AND had a valid rating
+  keywordRatings?: Record<string, { avg: number; count: number; delta: number }>
 }
 
 export interface ThemeModel {
@@ -185,6 +186,12 @@ export function recountThemes(
     }
     var count = 0, totalPos = 0, totalNeg = 0
     var ratingSum = 0, ratingCnt = 0
+    // Per-keyword rating accumulators
+    var kwRatingSums: Record<string, number> = {}
+    var kwRatingCnts: Record<string, number> = {}
+    if (ratingField && t.keywords) {
+      for (var ki = 0; ki < t.keywords.length; ki++) { kwRatingSums[t.keywords[ki]] = 0; kwRatingCnts[t.keywords[ki]] = 0 }
+    }
     nonEmpty.forEach(function(r) {
       const text = fields.map(function(f) { return String(r[f] || '') }).join(' ')
       const lower = text.toLowerCase()
@@ -195,7 +202,13 @@ export function recountThemes(
         totalNeg += score.neg
         if (ratingField) {
           const rv = parseFloat(String(r[ratingField] ?? ''))
-          if (!isNaN(rv)) { ratingSum += rv; ratingCnt++ }
+          if (!isNaN(rv)) {
+            ratingSum += rv; ratingCnt++
+            // Track which keywords matched this row
+            for (var ki = 0; ki < regexes.length; ki++) {
+              if (regexes[ki].test(lower)) { kwRatingSums[t.keywords[ki]] += rv; kwRatingCnts[t.keywords[ki]]++ }
+            }
+          }
         }
       }
     })
@@ -208,6 +221,16 @@ export function recountThemes(
       ratingInfo.avgRating = Math.round(ratingSum / ratingCnt * 100) / 100
       ratingInfo.ratingDelta = Math.round((ratingInfo.avgRating - overallAvg) * 100) / 100
       ratingInfo.ratingCount = ratingCnt
+      // Per-keyword avg ratings
+      var kwRatings: Record<string, { avg: number; count: number; delta: number }> = {}
+      for (var ki = 0; ki < (t.keywords || []).length; ki++) {
+        var kw = t.keywords[ki]
+        if (kwRatingCnts[kw] > 0) {
+          var kwAvg = Math.round(kwRatingSums[kw] / kwRatingCnts[kw] * 100) / 100
+          kwRatings[kw] = { avg: kwAvg, count: kwRatingCnts[kw], delta: Math.round((kwAvg - overallAvg) * 100) / 100 }
+        }
+      }
+      if (Object.keys(kwRatings).length > 0) ratingInfo.keywordRatings = kwRatings
     }
     return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh, sentiment, ...ratingInfo }
   })
@@ -325,6 +348,20 @@ export function sentBg(s: string): string {
     neutral: '#f9fafb',
   }
   return map[s] || '#f9fafb'
+}
+
+// Rating-based color ramp: red → amber → green (0–1 normalized)
+export function ratingColor(pct: number): string {
+  if (pct <= 0.5) {
+    var r = 220, g = Math.round(80 + pct * 2 * 120)
+    return 'rgb(' + r + ',' + g + ',40)'
+  }
+  var r2 = Math.round(220 - (pct - 0.5) * 2 * 180), g2 = Math.round(160 + (pct - 0.5) * 2 * 40)
+  return 'rgb(' + r2 + ',' + g2 + ',40)'
+}
+
+export function ratingBg(pct: number): string {
+  return ratingColor(pct) + '15'
 }
 
 // Ana THEME_PALETTE -- 20 unique colors for theme cards (no repeats up to 20 themes)

@@ -45,7 +45,7 @@ export default function SharedDashboard({ params }: { params: { token: string } 
 
   if (data.type === 'study') return <SharedStudyDashboard study={data.study} responses={data.responses} expiresAt={data.expires_at}
     ratingScale={data.ratingScale} ratingLabel={data.ratingLabel} npsEnabled={data.npsEnabled} experienceEnabled={data.experienceEnabled}
-    ratingPrompt={data.ratingPrompt} npsPrompt={data.npsPrompt}
+    ratingPrompt={data.ratingPrompt} npsPrompt={data.npsPrompt} themes={data.themes || []}
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
   if (data.type === 'campaign') return <SharedCampaignDashboard campaign={data.campaign} stats={data.stats} expiresAt={data.expires_at}
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
@@ -178,10 +178,12 @@ function isSatisfactionPrompt(prompt: string): boolean {
   return keywords.some(kw => lower.includes(kw))
 }
 
-function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, ratingLabel, npsEnabled, experienceEnabled, ratingPrompt, npsPrompt, lastRefreshed, refreshing, onRefresh }: {
+const STUDY_THEME_COLORS = ['#E8632A', '#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#a21caf', '#0d9488', '#ca8a04', '#db2777', '#0891b2']
+
+function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, ratingLabel, npsEnabled, experienceEnabled, ratingPrompt, npsPrompt, themes, lastRefreshed, refreshing, onRefresh }: {
   study: any; responses: any[]; expiresAt: string
   ratingScale?: any[]; ratingLabel?: string | null; npsEnabled?: boolean; experienceEnabled?: boolean
-  ratingPrompt?: string | null; npsPrompt?: string | null
+  ratingPrompt?: string | null; npsPrompt?: string | null; themes?: any[]
   lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
 }) {
   const total = responses.length
@@ -365,6 +367,79 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
           </div>
         )}
 
+
+        {/* Themes */}
+        {themes && themes.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Themes ({themes.length})</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {themes.map((t: any, i: number) => {
+                const color = STUDY_THEME_COLORS[i % STUDY_THEME_COLORS.length]
+                return (
+                  <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div style={{ background: color, height: 4 }} />
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-gray-800">{t.name}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
+                          style={{ background: sentBgMap[t.sentiment] || sentBgMap.neutral, color: sentColorMap[t.sentiment] || sentColorMap.neutral }}>
+                          {t.sentiment}
+                        </span>
+                      </div>
+                      {t.description && (
+                        <p className="text-xs text-gray-500 mb-2 line-clamp-2">{t.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div style={{ width: Math.min(t.percentage, 100) + '%', background: color }} className="h-full rounded-full" />
+                        </div>
+                        <span className="text-xs font-bold" style={{ color }}>{t.percentage}%</span>
+                      </div>
+                      {t.keywords?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {t.keywords.slice(0, 5).map((kw: string) => (
+                            <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{kw}</span>
+                          ))}
+                        </div>
+                      )}
+                      {t.avgRating != null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-gray-500">Avg Rating: <strong style={{ color: t.ratingDelta > 0 ? '#059669' : t.ratingDelta < -0.1 ? '#dc2626' : '#374151' }}>{t.avgRating.toFixed(2)}</strong></span>
+                          {t.ratingDelta != null && t.ratingDelta !== 0 && (
+                            <span className="text-[10px] font-bold" style={{ color: t.ratingDelta > 0 ? '#059669' : '#dc2626' }}>
+                              {t.ratingDelta > 0 ? '\u25B2' : '\u25BC'} {Math.abs(t.ratingDelta).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Theme Distribution */}
+        {themes && themes.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+            <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Theme Distribution</h3>
+            <div className="space-y-2">
+              {[...themes].sort((a: any, b: any) => (b.percentage || 0) - (a.percentage || 0)).map((t: any, i: number) => {
+                const color = STUDY_THEME_COLORS[i % STUDY_THEME_COLORS.length]
+                return (
+                  <div key={i} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-700 font-medium w-28 truncate">{t.name}</span>
+                    <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                      <div style={{ width: Math.min(t.percentage, 100) + '%', background: color }} className="h-full rounded-full" />
+                    </div>
+                    <span className="text-xs font-bold w-10 text-right" style={{ color }}>{t.percentage}%</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="text-center text-xs text-gray-400 mt-6">
