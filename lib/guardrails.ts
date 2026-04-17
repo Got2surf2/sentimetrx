@@ -98,6 +98,8 @@ export function cleanDeflectResponse(raw: string, testing = false): { deflection
   text = text.replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
   text = text.replace(/^(Let me|I'll|I will)[^.!?]*[.!?\-—:]\s*/gi, '')
   text = text.replace(/^(Based on|Given|Since)[^.!?]*[.!?\-—:]\s*/gi, '')
+  // Strip leaked source labels that AI sometimes prefixes
+  text = text.replace(/^(DEFLECT|REDIRECT|NONE|DECISION|OUTPUT)[:\s]*\n*/gi, '').trim()
 
   if (!text || text.length < 5 || /^NONE\b/i.test(text)) return { deflection: null, thinking }
 
