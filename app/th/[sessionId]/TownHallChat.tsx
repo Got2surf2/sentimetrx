@@ -405,7 +405,7 @@ export default function TownHallChat({ sessionId }: Props) {
       {phase === 'chat' ? (
         <div style={{ padding: '8px 10px', paddingBottom: 'max(8px, env(safe-area-inset-bottom))', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, maxHeight: '50vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="iMessage" disabled={loading} rows={1}
+            <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="Message" disabled={loading} rows={1}
               style={{ flex: 1, resize: 'none', border: '1px solid #C7C7CC', borderRadius: 20, padding: '9px 14px', fontSize: 16, outline: 'none', maxHeight: 120, lineHeight: 1.4, background: loading ? '#F6F6F6' : 'white' }}
               onInput={e => { const t = e.target as HTMLTextAreaElement; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' }} />
             <button onClick={() => handleSend()} disabled={loading || !input.trim()}
