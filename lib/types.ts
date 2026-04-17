@@ -861,10 +861,13 @@ export interface TownHallGuideTopic {
   enabled?:          boolean   // default true — disabled topics not assigned to participants
 }
 
+export type TownHallSessionType = 'community' | 'employee' | 'customer' | 'student' | 'member' | 'other'
+
 export interface TownHallConfig {
   bot_name:  string
   bot_emoji: string
   industry?: string   // matches Industry type from industryDefaults.ts
+  session_type?: TownHallSessionType   // drives AI language: "residents" vs "team members" vs "customers" etc.
   context: {
     org_name:          string
     event_description: string

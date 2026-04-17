@@ -592,6 +592,20 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div>
+                <Label sub="Drives how the AI addresses participants and references peers">Session type</Label>
+                <select value={config.session_type || 'community'}
+                  onChange={e => setConfig(c => ({ ...c, session_type: e.target.value as any }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300">
+                  <option value="community">Community (residents, community)</option>
+                  <option value="employee">Employee (team members, organization)</option>
+                  <option value="customer">Customer (customers, customer base)</option>
+                  <option value="student">Student (students, school community)</option>
+                  <option value="member">Member (members, membership)</option>
+                  <option value="other">Other (participants, group)</option>
+                </select>
+              </div>
+
+              <div>
                 <Label>Organization name</Label>
                 <Input value={config.context.org_name} onChange={v => updateContext({ org_name: v })} placeholder="e.g. City of Springfield Planning Department" />
               </div>

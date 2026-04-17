@@ -456,6 +456,17 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     </div>
                   </div>
                 </div>
+                <ELabel>Session Type</ELabel>
+                <select value={editConfig.session_type || 'community'}
+                  onChange={e => setEditConfig((c: any) => ({ ...c, session_type: e.target.value }))}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 mb-2">
+                  <option value="community">Community (residents)</option>
+                  <option value="employee">Employee (team members)</option>
+                  <option value="customer">Customer (customers)</option>
+                  <option value="student">Student (students)</option>
+                  <option value="member">Member (members)</option>
+                  <option value="other">Other (participants)</option>
+                </select>
                 <ELabel>Organization Name</ELabel>
                 <EInput value={editConfig.context.org_name} onChange={v => updateContext({ org_name: v })} />
                 <div className="flex items-center gap-2">

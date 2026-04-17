@@ -561,8 +561,9 @@ RULES:
 
     if (globalCheckout && turnsUsed >= 6) {
       // Participant is done — chill into standby instead of pushing more topics
+      const audience = getAudienceLabels(config)
       const chillMsg = config?.engine?.chill_message ||
-        'Great to know — thanks for sharing what you did! I\'ll be here if anything else comes to mind, and I may circle back as more questions pop up based on what others are saying.'
+        'Great to know — thanks for sharing what you did! I\'ll be here if anything else comes to mind, and I may circle back as more questions pop up based on what other ' + audience.participants + ' are saying.'
       if (testing) debug.push('GLOBAL CHECKOUT: Participant disengaged across conversation — entering chill standby')
       resolvedThemeId = null
       aiSource = 'standby'
@@ -601,8 +602,9 @@ RULES:
       const hasOrganic = config?.engine?.theme_detection_mode === 'auto'
       if (hasOrganic && turnsUsed < maxTurnsForBudget - 2) {
         // Standby: thank them and let them know we may come back
+        const standbyAudience = getAudienceLabels(config)
         const standbyMsg = config?.engine?.standby_message ||
-          'That is very helpful information — thank you! Stand by while we see what some of the other participants are talking about. If new topics come up, I may circle back to get your thoughts.'
+          'That is very helpful information — thank you! Stand by while we see what some of the other ' + standbyAudience.participants + ' are talking about. If new topics come up, I may circle back to get your thoughts.'
         resolvedThemeId = null
         aiSource = 'standby'
         botMessage = standbyMsg
@@ -854,17 +856,33 @@ const SWITCH_CONFIRM: Record<string, string> = {
   en: "Sure — switching back to English!",
 }
 
+// Session type → audience language mapping
+const SESSION_TYPE_LABELS: Record<string, { participant: string; participants: string; community: string }> = {
+  community: { participant: 'resident', participants: 'residents', community: 'community' },
+  employee:  { participant: 'team member', participants: 'team members', community: 'organization' },
+  customer:  { participant: 'customer', participants: 'customers', community: 'customer base' },
+  student:   { participant: 'student', participants: 'students', community: 'school community' },
+  member:    { participant: 'member', participants: 'members', community: 'membership' },
+  other:     { participant: 'participant', participants: 'participants', community: 'group' },
+}
+
+function getAudienceLabels(config: any): { participant: string; participants: string; community: string } {
+  return SESSION_TYPE_LABELS[config?.session_type] || SESSION_TYPE_LABELS.community
+}
+
 function baseSystemPrompt(config: any, language?: string): string {
   const orgName = config?.context?.org_name || 'the organization'
   const eventDesc = config?.context?.event_description || ''
   const tone = config?.context?.tone || 'warm and conversational'
   const sensitive = config?.context?.sensitive_topics?.join(', ') || 'none'
   const industry = config?.industry || ''
+  const audience = getAudienceLabels(config)
   const langInstruction = language && language !== 'en'
     ? `\n\nIMPORTANT: The participant is using ${language}. You MUST respond ONLY in ${language}. Do NOT respond in English.`
     : `\n\nIMPORTANT: Respond ONLY in English. Even if prior conversation included other languages, the participant has switched to English.`
 
   return `You are an AI moderator facilitating a town hall discussion on behalf of ${orgName}.
+The audience is ${audience.participants} — refer to them and their peers as "${audience.participants}" (not "participants" or "users").
 ${eventDesc ? `\nEVENT: ${eventDesc}` : ''}${industry ? `\nINDUSTRY: ${industry.replace(/_/g, ' ')}` : ''}
 
 TONE: ${tone}
@@ -969,13 +987,14 @@ async function generateTransition(
   const system = withNudge(baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`, nudge)
 
   const isOrganic = nextTopic.source === 'auto_detected'
+  const audience = getAudienceLabels(config)
 
   const skipInstruction = wasSkipped
     ? `The participant chose to skip this question. Respect their choice — briefly acknowledge it (e.g. "No problem" or "Totally fine") and move on without dwelling on it. Do NOT say "That's wonderful" or anything enthusiastic about skipping.`
     : 'Acknowledge what they\'ve shared so far, then smoothly shift to the new topic.'
 
   const organicFraming = isOrganic
-    ? `\n\nIMPORTANT: This topic emerged organically from other participants' conversations. Frame your transition to reference this — e.g. "A few others have mentioned ${nextTopic.label}, so I'd love to hear your take" or "This has come up in other conversations today..." or "Some participants have been talking about ${nextTopic.label}..." — vary the phrasing naturally. Do NOT say "AI detected" or "recommended".`
+    ? `\n\nIMPORTANT: This topic emerged from listening to what other ${audience.participants} are saying. Frame it that way — e.g. "After listening to what other ${audience.participants} are saying, it seems like ${nextTopic.label} is important to the ${audience.community}, so I wanted to get your thoughts on..." or "This has been coming up in other conversations today..." or "A few other ${audience.participants} have been talking about ${nextTopic.label}..." — vary the phrasing naturally. Do NOT say "AI detected" or "recommended".`
     : ''
 
   const user = `${wasSkipped ? 'The participant declined to answer the previous question.' : 'The participant has finished discussing the previous topic.'} Now transition naturally to a new topic: "${nextTopic.label}"
@@ -986,5 +1005,5 @@ ${nextTopic.follow_up_angles?.length ? 'Angles to consider: ' + nextTopic.follow
 ${skipInstruction} Maximum 40 words. Just the message.`
 
   const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
-  return { text: (result.text && isOutputClean(result.text)) ? result.text : (isOrganic ? 'Others have been talking about ' + nextTopic.label + ' — ' + nextTopic.question : 'Let me ask you about something else — ' + nextTopic.question), thinking: result.thinking }
+  return { text: (result.text && isOutputClean(result.text)) ? result.text : (isOrganic ? 'After listening to what other ' + audience.participants + ' are saying, ' + nextTopic.label + ' seems important — ' + nextTopic.question : 'Let me ask you about something else — ' + nextTopic.question), thinking: result.thinking }
 }
