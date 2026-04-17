@@ -550,8 +550,26 @@ RULES:
     if (testing && clarifyResult.thinking.length > 0) debug.push('AI REASONING:', ...clarifyResult.thinking)
 
   } else {
+    // ── Global disengagement check ──────────────────────────────────────
+    // Before jumping to another topic, check if the participant is checking
+    // out across the whole conversation — not just this topic.
+    // Signals: last 3+ responses are all curt (<=3 words), skipped, or declining trajectory
+    const recentAll = turns.filter(t => t.user_message && !t.skipped).slice(-3)
+    const recentAllCurt = recentAll.length >= 3 && recentAll.every(t => (t.user_message || '').split(/\s+/).length <= 3)
+    const recentAllSkips = turns.slice(-3).filter(t => t.skipped).length >= 2
+    const globalCheckout = recentAllCurt || recentAllSkips || (trajectoryDisengaging && CURT_RESPONSE)
+
+    if (globalCheckout && turnsUsed >= 6) {
+      // Participant is done — chill into standby instead of pushing more topics
+      const chillMsg = config?.engine?.chill_message ||
+        'Great to know — thanks for sharing what you did! I\'ll be here if anything else comes to mind, and I may circle back as more questions pop up based on what others are saying.'
+      if (testing) debug.push('GLOBAL CHECKOUT: Participant disengaged across conversation — entering chill standby')
+      resolvedThemeId = null
+      aiSource = 'standby'
+      botMessage = chillMsg
+    } else {
+
     // ── NEXT TOPIC: Move to an unvisited topic ───────────────────────────
-    // 60/40 budget: if seed budget exhausted and organic topics exist, prefer organic
     let available = allTopics.filter(
       t => t.response_count < t.response_target && !discussedThemeIds.has(t.id)
     )
@@ -626,6 +644,7 @@ RULES:
     botMessage = transResult.text
     if (testing && transResult.thinking.length > 0) debug.push('AI REASONING:', ...transResult.thinking)
     }
+    } // end globalCheckout else
   }
 
   const nextTurnNumber = turn_number + 1
