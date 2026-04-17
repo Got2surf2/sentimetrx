@@ -908,7 +908,7 @@ async function matchResponseToTopic(
   config: any,
   response: string,
   language: string | undefined,
-  topics: { id: string; label: string; description: string | null; question: string; follow_up_angles: string[] }[],
+  topics: { id: string; label: string; description: string | null; question: string; follow_up_angles: string[]; keywords?: string[] }[],
   verbose = false,
   nudge = false,
 ): Promise<{ themeId: string | null; followUp: string; thinking: string[] }> {
@@ -955,7 +955,23 @@ Return ONLY a JSON object (no other text):
     }
   }
 
-  // Fallback: ask a generic follow-up
+  // Fallback: keyword-based matching before giving up
+  const responseLower = response.toLowerCase()
+  for (const topic of topics) {
+    // Check label match
+    if (responseLower.includes(topic.label.toLowerCase())) {
+      return { themeId: topic.id, followUp: topic.question || 'Could you tell me more about that?', thinking: ['KEYWORD FALLBACK: matched topic label "' + topic.label + '" in response'] }
+    }
+    // Check keyword match
+    const keywords = topic.keywords || []
+    for (const kw of keywords) {
+      if (kw && responseLower.includes(kw.toLowerCase())) {
+        return { themeId: topic.id, followUp: topic.question || 'Could you tell me more about that?', thinking: ['KEYWORD FALLBACK: matched keyword "' + kw + '" from topic "' + topic.label + '"'] }
+      }
+    }
+  }
+
+  // True fallback: no AI match, no keyword match
   return { themeId: null, followUp: 'That\'s interesting — could you tell me more about what you mean by that?', thinking: [] }
 }
 
