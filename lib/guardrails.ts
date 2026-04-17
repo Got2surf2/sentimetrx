@@ -102,15 +102,14 @@ export function cleanDeflectResponse(raw: string, testing = false): { deflection
   if (!text || text.length < 5 || /^NONE\b/i.test(text)) return { deflection: null, thinking }
 
   // Catch AI character breaks — if the bot starts analyzing its own prompt, kill the deflection
-  if (/I notice|I need|haven't provided|actual participant|no actual|discussion question.*participant|provided me|analysis framework|template|placeholder|actual reply|REASONING|DECISION|DEFLECT|DEBUG/i.test(text)) return { deflection: null, thinking }
-  // Multi-line responses are character breaks (redirect should be 1-2 sentences)
-  if (text.includes('\n') && text.split('\n').filter(Boolean).length > 2) return { deflection: null, thinking }
-  // Numbered lists are always character breaks
+  // Any multi-line response is suspect — a good redirect is 1-2 sentences on a single line
+  if (text.includes('\n')) return { deflection: null, thinking }
+  // Numbered lists, markdown, or very long responses
   if (/^\d+\.\s/m.test(text)) return { deflection: null, thinking }
-  // Too long means the AI rambled — kill it (max ~40 words for a redirect)
-  if (text.split(/\s+/).length > 40) return { deflection: null, thinking }
-  // Contains markdown formatting — character break
   if (/\*\*|##|```/.test(text)) return { deflection: null, thinking }
+  if (text.split(/\s+/).length > 35) return { deflection: null, thinking }
+  // Meta-language about analysis, instructions, prompts, or missing data
+  if (/I notice|I need|I can.t complete|I don.t see|haven.t provided|actual participant|no actual|discussion question|discussion topic|provided me|framework|template|placeholder|actual reply|actual response|actual topic|REASONING|DECISION|DEFLECT|DEBUG|scenario|more information|Could you.*provide|I.d be happy.*(but|however)|I appreciate you.*(but|setting|providing|testing|task)|ready to analyze|weren.t filled|your message/i.test(text)) return { deflection: null, thinking }
 
   return { deflection: text, thinking }
 }
