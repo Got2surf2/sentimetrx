@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
+import { cleanDeflectResponse } from '@/lib/guardrails'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,39 +81,13 @@ ${body.testing ? `\nDEBUG MODE — Think step by step. Before your response, exp
       messages: [{ role: 'user', content: 'Analyze the respondent\'s reply and respond accordingly.' }],
     })
 
-    let text = result.text?.trim() || 'NONE'
-    let aiThinking: string[] = []
+    const cleaned = cleanDeflectResponse(result.text || '', !!body.testing)
 
-    // Parse verbose thinking if present
-    if (body.testing && text.includes('---RESPONSE---')) {
-      const [thinkingPart, responsePart] = text.split('---RESPONSE---')
-      aiThinking = thinkingPart.trim().split('\n').filter(Boolean)
-      text = responsePart.trim()
+    if (!cleaned.deflection) {
+      return NextResponse.json({ deflection: null, ...(body.testing ? { _debug: ['DEFLECT CHECK: AI returned NONE — response is on-topic feedback, no deflection needed', ...(cleaned.thinking.length ? ['AI REASONING:', ...cleaned.thinking] : [])] } : {}) })
     }
 
-    if (text === 'NONE' || text.length < 5) {
-      return NextResponse.json({ deflection: null, ...(body.testing ? { _debug: ['DEFLECT CHECK: AI returned NONE — response is on-topic feedback, no deflection needed', ...(aiThinking.length ? ['AI REASONING:', ...aiThinking] : [])] } : {}) })
-    }
-
-    // Strip any leaked reasoning — if the model included analysis before the actual message
-    // Look for common patterns: "--- actual message" or "The respondent... --- message"
-    if (text.includes('---')) text = text.split('---').pop()!.trim()
-    if (text.includes('—')) {
-      const parts = text.split('—')
-      // If the first part looks like analysis (contains classification words), take the last part
-      if (/respondent|question|off-topic|asking|seeking|classify|redirect|pushback/i.test(parts[0])) {
-        text = parts.slice(1).join('—').trim()
-      }
-    }
-    // Strip leading analysis sentences and reasoning preamble
-    text = text.replace(/^(Yes,?\s+)?(The respondent|They are|This is)[^.!?]*[.!?]\s*/gi, '')
-    text = text.replace(/^(Got it|Sure|Okay|I see|Understood|Right)[^.!?]*[.!?\-—:]\s*/gi, '')
-    text = text.replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
-    text = text.replace(/^(Let me|I'll|I will)[^.!?]*[.!?\-—:]\s*/gi, '')
-
-    if (!text || text.length < 5 || text === 'NONE') {
-      return NextResponse.json({ deflection: null })
-    }
+    let text = cleaned.deflection
 
     // Replace {{LINK}} placeholder with actual link markup (if link configured)
     // Sanitize linkUrl and linkText to prevent XSS
@@ -126,7 +101,7 @@ ${body.testing ? `\nDEBUG MODE — Think step by step. Before your response, exp
       'DEFLECT TRIGGERED: Respondent went off-topic',
       'AI raw: "' + (result.text?.trim() || '').slice(0, 200) + '"',
       'After cleanup: "' + deflection.slice(0, 200) + '"',
-      ...(aiThinking.length ? ['AI REASONING:', ...aiThinking] : []),
+      ...(cleaned.thinking.length ? ['AI REASONING:', ...cleaned.thinking] : []),
     ] : undefined
 
     return NextResponse.json({ deflection, ...(debugInfo ? { _debug: debugInfo } : {}) })

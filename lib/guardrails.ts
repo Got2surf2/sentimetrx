@@ -53,6 +53,43 @@ export function cleanAiOutput(text: string): string {
     .trim()
 }
 
+// ── Deflection response cleanup ───────────────────────────────────────────
+// Shared cleanup for AI deflection responses (used by survey + town hall).
+// Returns null if the AI said "no deflection needed" (NONE), or the cleaned
+// redirect message if deflection is needed.
+export function cleanDeflectResponse(raw: string, testing = false): { deflection: string | null; thinking: string[] } {
+  let text = raw.trim() || 'NONE'
+  let thinking: string[] = []
+
+  // Parse verbose thinking if present (debug/testing mode)
+  if (testing && text.includes('---RESPONSE---')) {
+    const [thinkingPart, responsePart] = text.split('---RESPONSE---')
+    thinking = thinkingPart.trim().split('\n').filter(Boolean)
+    text = responsePart.trim()
+  }
+
+  // NONE with reasoning = not a deflection (AI said NONE but explained why)
+  if (/^NONE\b/i.test(text)) return { deflection: null, thinking }
+  if (text.length < 5) return { deflection: null, thinking }
+
+  // Strip leaked reasoning — dashes, em-dashes, analysis sentences
+  if (text.includes('---')) text = text.split('---').pop()!.trim()
+  if (text.includes('—')) {
+    const parts = text.split('—')
+    if (/respondent|participant|question|off-topic|asking|seeking|classify|redirect|feedback|on-topic|pushback/i.test(parts[0])) {
+      text = parts.slice(1).join('—').trim()
+    }
+  }
+  text = text.replace(/^(Yes,?\s+)?(The respondent|The participant|They are|This is)[^.!?]*[.!?]\s*/gi, '')
+  text = text.replace(/^(Got it|Sure|Okay|I see|Understood|Right)[^.!?]*[.!?\-—:]\s*/gi, '')
+  text = text.replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
+  text = text.replace(/^(Let me|I'll|I will)[^.!?]*[.!?\-—:]\s*/gi, '')
+  text = text.replace(/^(Based on|Given|Since)[^.!?]*[.!?\-—:]\s*/gi, '')
+
+  if (!text || text.length < 5 || /^NONE\b/i.test(text)) return { deflection: null, thinking }
+  return { deflection: text, thinking }
+}
+
 // For clarifier: extract the question from multi-sentence leaked output
 export function extractQuestion(text: string): string {
   let clean = cleanAiOutput(text)

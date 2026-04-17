@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { isOutputClean, cleanAiOutput } from '@/lib/guardrails'
+import { isOutputClean, cleanAiOutput, cleanDeflectResponse } from '@/lib/guardrails'
 import { checkMessage } from '@/lib/contentGuard'
 import { callAI } from '@/lib/ai'
 import { detectThemesForSession } from '@/lib/townhallThemeDetection'
@@ -318,24 +318,10 @@ RULES:
           testing
         )
 
-        let deflectText = deflectResult.text?.trim() || 'NONE'
-        // Strip leaked reasoning — match survey deflect/route.ts cleanup exactly
-        if (deflectText.includes('---RESPONSE---')) deflectText = deflectText.split('---RESPONSE---').pop()!.trim()
-        // NONE with reasoning = not a deflection (AI said NONE but explained why)
-        if (/^NONE\b/i.test(deflectText)) deflectText = 'NONE'
-        if (deflectText.includes('---')) deflectText = deflectText.split('---').pop()!.trim()
-        if (deflectText.includes('—')) {
-          const parts = deflectText.split('—')
-          if (/respondent|participant|question|off-topic|asking|seeking|classify|redirect|feedback|on-topic/i.test(parts[0])) {
-            deflectText = parts.slice(1).join('—').trim()
-          }
-        }
-        deflectText = deflectText.replace(/^(Yes,?\s+)?(The respondent|The participant|They are|This is)[^.!?]*[.!?]\s*/gi, '')
-        deflectText = deflectText.replace(/^(Got it|Sure|Okay|I see|Understood|Right)[^.!?]*[.!?\-—:]\s*/gi, '')
-        deflectText = deflectText.replace(/^(Here'?s?\s+(my|a|the)\s+)[^.!?]*[.!?\-—:]\s*/gi, '')
-        deflectText = deflectText.replace(/^(Let me|I'll|I will)[^.!?]*[.!?\-—:]\s*/gi, '')
+        const cleaned = cleanDeflectResponse(deflectResult.text || '', testing)
+        let deflectText = cleaned.deflection
 
-        if (deflectText && deflectText !== 'NONE' && deflectText.length >= 5) {
+        if (deflectText) {
           // Custom deflection message override
           if (config?.deflection?.message?.trim()) {
             deflectText = config.deflection.message.trim()
@@ -352,8 +338,8 @@ RULES:
             'DEFLECT: Participant went off-topic or asked a question',
             'Input: "' + analyzeText.slice(0, 100) + '"',
             'Topic context: "' + topicContext + '"',
-            'Redirect: "' + deflectText.slice(0, 100) + '"',
-            ...(deflectResult.thinking || []),
+            'Redirect: "' + deflectText!.slice(0, 100) + '"',
+            ...(cleaned.thinking || []),
           ] : undefined
 
           return NextResponse.json({
