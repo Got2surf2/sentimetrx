@@ -204,7 +204,7 @@ export default function TownHallChat({ sessionId }: Props) {
   }
 
   // Start post-session flow: transition → psycho → demo → done
-  const startPostSession = useCallback(async () => {
+  const startPostSession = useCallback(async (skipIntro?: boolean) => {
     const hasPsycho = psychoBank.length > 0 && psychoCount > 0
     const hasDemo = demoFields.length > 0
     if (!hasPsycho && !hasDemo) {
@@ -212,13 +212,16 @@ export default function TownHallChat({ sessionId }: Props) {
       return
     }
 
-    // Show intro message before first post-session question
     setPhase('transition')
-    const introMsg = botMessages.post_session_intro || 'Almost done — a few quick optional questions to help us understand who we heard from today.'
-    setLoading(true)
-    await typingDelay(introMsg)
-    setLoading(false)
-    setMessages(p => [...p, { who: 'bot', text: introMsg }])
+
+    // Show intro only when bot ended the conversation (is_final), not when user clicked "done"
+    if (!skipIntro) {
+      const introMsg = botMessages.post_session_intro || 'Almost done — a few quick optional questions to help us understand who we heard from today.'
+      setLoading(true)
+      await typingDelay(introMsg)
+      setLoading(false)
+      setMessages(p => [...p, { who: 'bot', text: introMsg }])
+    }
 
     if (hasPsycho) {
       // Pick random psycho questions
@@ -242,15 +245,27 @@ export default function TownHallChat({ sessionId }: Props) {
 
   const handleDone = async () => {
     setMessages(p => [...p, { who: 'user', text: doneLabel || display.done_label || "I'm done sharing", italic: true }])
-    const msg = closingMsg || display.thank_you_message || 'Thank you for your time. Your voice matters.'
-    setLoading(true)
-    await typingDelay(msg)
-    setLoading(false)
-    setMessages(p => [...p, { who: 'bot', text: msg }])
     fetch('/api/townhall/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: resolvedId, participant_id: pid, message: '[done]', turn_number: turn, theme_id: themeId, skipped: true }),
     }).catch(() => {})
-    await startPostSession()
+    // If there are post-session questions, show a warm transition; otherwise show closing message
+    const hasPsycho = psychoBank.length > 0 && psychoCount > 0
+    const hasDemo = demoFields.length > 0
+    if (hasPsycho || hasDemo) {
+      const transMsg = 'No worries at all! Before you go, I\'d like to ask a few quick questions about you — totally optional.'
+      setLoading(true)
+      await typingDelay(transMsg)
+      setLoading(false)
+      setMessages(p => [...p, { who: 'bot', text: transMsg }])
+      await startPostSession(true)
+    } else {
+      const msg = closingMsg || display.thank_you_message || 'Thank you for your time. Your voice matters.'
+      setLoading(true)
+      await typingDelay(msg)
+      setLoading(false)
+      setMessages(p => [...p, { who: 'bot', text: msg }])
+      setPhase('done')
+    }
   }
 
   const submitPostSession = async (psycho: Record<string, string>, demo: Record<string, string>) => {
