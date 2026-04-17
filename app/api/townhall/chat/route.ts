@@ -438,16 +438,24 @@ RULES:
   const clarifierTurnsOnTopic = theme_id ? turns.filter(t => t.theme_id === theme_id && t.source === 'clarifier').length : 0
   const maxClarifiersPerTopic = (trajectoryDisengaging || CURT_RESPONSE) ? 1 : 2
 
-  // ── Per-topic turn cap ────────────────────────────────────────────────
-  // Hard limit on total turns per topic (guide + clarifiers combined) to prevent hammering
-  const maxTurnsPerTopic = config?.engine?.max_turns_per_topic || 4
-  const topicTurnCapHit = currentTopicTurns >= maxTurnsPerTopic
-  if (testing && topicTurnCapHit) debug.push('SIGNAL: Topic turn cap hit (' + currentTopicTurns + '/' + maxTurnsPerTopic + ') — must move on')
+  // ── Dynamic per-topic turn cap (min 2, max 4) ─────────────────────────
+  // Goal: intelligent conversation, not filling turns. Not every person
+  // needs to be probed on every topic. Start at 2, extend only if engaged.
+  const MIN_TOPIC_TURNS = 2
+  const MAX_TOPIC_TURNS = 4
+  let dynamicTopicCap = MIN_TOPIC_TURNS
+  // Extend to 3 if participant gave a substantive response (>= 8 words) on this topic
+  const substantiveOnTopic = recentOnTopic.some(t => (t.user_message || '').split(/\s+/).length >= 8)
+  if (substantiveOnTopic && !trajectoryDisengaging && !CURT_RESPONSE) dynamicTopicCap = 3
+  // Extend to 4 only if responses are consistently rich (avg >= 10 words) and engaged
+  const avgWordsOnTopic = recentOnTopic.length > 0
+    ? recentOnTopic.reduce((sum, t) => sum + (t.user_message || '').split(/\s+/).length, 0) / recentOnTopic.length
+    : 0
+  if (avgWordsOnTopic >= 10 && !trajectoryDisengaging && !CURT_RESPONSE && recentOnTopic.length >= 2) dynamicTopicCap = MAX_TOPIC_TURNS
+  const topicTurnCapHit = currentTopicTurns >= dynamicTopicCap
+  if (testing && topicTurnCapHit) debug.push('SIGNAL: Topic turn cap hit (' + currentTopicTurns + '/' + dynamicTopicCap + ') — must move on')
 
-  // ── #4: Smart word-count threshold + 60/40 turn budget ────────────────
-  // Instead of flat 12-word cutoff, adjust based on conversation progress:
-  // - Early in conversation with many topics left → lower threshold (move on faster)
-  // - Late in conversation or few topics left → higher threshold (clarify more)
+  // ── #4: Turn budget + topic availability ──────────────────────────────
   const maxTurnsForBudget = config?.engine?.max_turns_per_participant || 20
   const seedTopics = allTopics.filter(t => t.source === 'guide')
   const organicTopics = allTopics.filter(t => t.source !== 'guide')
@@ -456,7 +464,7 @@ RULES:
   const turnsUsed = turns.length
   const turnsRemaining = maxTurnsForBudget - turnsUsed
 
-  // 60/40 budget: reserve 40% of turns for organic topics, spread seed evenly
+  // If organic topics are available and we've used most of our seed budget, prefer organic
   const seedTurnsUsed = turns.filter(t => {
     const topic = allTopics.find(a => a.id === t.theme_id)
     return topic && topic.source === 'guide'
@@ -464,28 +472,21 @@ RULES:
   const seedBudget = Math.ceil(maxTurnsForBudget * 0.6)
   const seedBudgetExhausted = seedTurnsUsed >= seedBudget && organicTopics.some(t => !discussedThemeIds.has(t.id))
 
-  // Even-spread: each seed topic gets an equal share of the seed budget
-  const turnsPerSeedTopic = seedTopics.length > 0 ? Math.max(2, Math.floor(seedBudget / seedTopics.length)) : maxTurnsPerTopic
-  const seedTopicBudgetHit = theme_id && seedTopics.some(t => t.id === theme_id) && currentTopicTurns >= turnsPerSeedTopic
-  if (testing && seedTopicBudgetHit) debug.push('SIGNAL: Seed topic even-spread budget hit (' + currentTopicTurns + '/' + turnsPerSeedTopic + ' turns)')
-
-  // Dynamic word-count threshold: 8 words if lots of topics left, 10 on last topic (conservative)
-  let clarifyWordThreshold = 12 // default
+  // Dynamic word-count threshold
+  let clarifyWordThreshold = 12
   if (topicsRemaining > 3 && turnsUsed < maxTurnsForBudget * 0.3) {
     clarifyWordThreshold = 8 // early + many topics → move on faster
   } else if (topicsRemaining <= 1) {
-    clarifyWordThreshold = 10 // last topic → be conservative, not aggressive
+    clarifyWordThreshold = 10 // last topic → conservative
   }
-  if (testing) debug.push('BUDGET: turn ' + turnsUsed + '/' + maxTurnsForBudget + ' | topics left: ' + topicsRemaining + ' | seed: ' + seedTurnsUsed + '/' + seedBudget + ' | per-seed: ' + turnsPerSeedTopic + ' | topic-cap: ' + currentTopicTurns + '/' + maxTurnsPerTopic + ' | clarify threshold: ' + clarifyWordThreshold + 'w')
+  if (testing) debug.push('BUDGET: turn ' + turnsUsed + '/' + maxTurnsForBudget + ' | topics left: ' + topicsRemaining + ' | topic-cap: ' + currentTopicTurns + '/' + dynamicTopicCap + ' (avg ' + avgWordsOnTopic.toFixed(0) + 'w) | clarify threshold: ' + clarifyWordThreshold + 'w')
 
   // ── Clarifier decision (all signals combined) ─────────────────────────
   let shouldClarify = !isOpeningResponse && !skipped && message &&
     !moveOnSignal &&                              // #1: not a "move on" signal
     !trajectoryDisengaging &&                     // #5: not disengaging
-    !topicTurnCapHit &&                           // per-topic hard cap
-    !seedTopicBudgetHit &&                        // even-spread seed budget
+    !topicTurnCapHit &&                           // dynamic per-topic cap (2-4)
     wordCount < clarifyWordThreshold &&           // #4: dynamic threshold
-    currentTopicTurns <= 3 &&                     // original: not too many turns on topic
     clarifierTurnsOnTopic < maxClarifiersPerTopic // #2: frustration-aware cap
 
   // ── #3: AI tone check on short responses ──────────────────────────────
@@ -567,11 +568,10 @@ RULES:
       debug.push('DECISION: Move to next topic')
       if (moveOnSignal) debug.push('Clarifier skipped: move-on signal detected')
       else if (trajectoryDisengaging) debug.push('Clarifier skipped: response trajectory declining')
-      else if (topicTurnCapHit) debug.push('Clarifier skipped: topic turn cap hit (' + currentTopicTurns + '/' + maxTurnsPerTopic + ')')
-      else if (seedTopicBudgetHit) debug.push('Clarifier skipped: seed topic even-spread budget hit (' + currentTopicTurns + '/' + turnsPerSeedTopic + ')')
+      else if (topicTurnCapHit) debug.push('Clarifier skipped: dynamic topic cap hit (' + currentTopicTurns + '/' + dynamicTopicCap + ')')
       else if (wordCount >= clarifyWordThreshold) debug.push('Clarifier skipped: response was ' + wordCount + ' words (>= ' + clarifyWordThreshold + ' threshold)')
       else if (clarifierTurnsOnTopic >= maxClarifiersPerTopic) debug.push('Clarifier skipped: hit max ' + maxClarifiersPerTopic + ' clarifiers on this topic')
-      else if (currentTopicTurns > 3) debug.push('Clarifier skipped: already had ' + currentTopicTurns + ' turns on this topic')
+      else if (currentTopicTurns >= dynamicTopicCap) debug.push('Clarifier skipped: dynamic cap reached (' + currentTopicTurns + '/' + dynamicTopicCap + ')')
       debug.push('Topics discussed: ' + discussedThemeIds.size + ' | Available: ' + available.length + ' (seed: ' + available.filter(t => t.source === 'guide').length + ', organic: ' + available.filter(t => t.source !== 'guide').length + ')')
     }
 
