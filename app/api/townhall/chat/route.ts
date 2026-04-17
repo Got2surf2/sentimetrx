@@ -133,10 +133,11 @@ export async function POST(req: NextRequest) {
 
       const warningMsg = check.warning || 'I appreciate you sharing — let\'s keep the conversation focused on the topic. What else is on your mind?'
       const nextTurn = turn_number + 1
-      await supabase.from('townhall_turns').insert({
+      const { error: guardInsertErr } = await supabase.from('townhall_turns').insert({
         session_id: session.id, participant_id, turn_number: nextTurn, bot_message: warningMsg,
         user_message: null, user_message_en: null, language: language || 'en', theme_id, source: 'clarifier', skipped: false,
       })
+      if (guardInsertErr) console.error('[TH Chat] INSERT guard turn failed:', guardInsertErr.message)
       return NextResponse.json({
         bot_message: warningMsg, theme_id, source: 'clarifier',
         is_final: !!check.shutdown, turn_number: nextTurn,
@@ -187,10 +188,11 @@ export async function POST(req: NextRequest) {
         .eq('session_id', session.id).eq('participant_id', participant_id).eq('turn_number', turn_number)
 
       const nextTurn = turn_number + 1
-      await supabase.from('townhall_turns').insert({
+      const { error: langInsertErr } = await supabase.from('townhall_turns').insert({
         session_id: session.id, participant_id, turn_number: nextTurn, bot_message: switchBotMsg,
-        user_message: null, user_message_en: null, language: targetLang, theme_id, source: 'language_switch', skipped: false,
+        user_message: null, user_message_en: null, language: targetLang, theme_id, source: 'guide', skipped: false,
       })
+      if (langInsertErr) console.error('[TH Chat] INSERT language switch turn failed:', langInsertErr.message)
 
       return NextResponse.json({
         bot_message: switchBotMsg,
@@ -228,12 +230,13 @@ export async function POST(req: NextRequest) {
       language: language || 'en',
       skipped: !!skipped,
     }
-    await supabase
+    const { error: updateError } = await supabase
       .from('townhall_turns')
       .update(turnUpdate)
       .eq('session_id', session.id)
       .eq('participant_id', participant_id)
       .eq('turn_number', turn_number)
+    if (updateError) console.error('[TH Chat] UPDATE turn failed:', updateError.message, '| turn:', turn_number)
 
     // Increment response_count on the theme if answered (not skipped) and theme exists
     if (theme_id && !skipped) {
@@ -335,12 +338,21 @@ RULES:
             'Redirect: "' + deflectText!.slice(0, 100) + '"',
             ...(cleaned.thinking || []),
           ] : undefined
-          await supabase.from('townhall_turns').insert({
+          const deflectInsert: Record<string, unknown> = {
             session_id: session.id, participant_id, turn_number: nextTurn,
             bot_message: deflectText, user_message: null, user_message_en: null,
             language: language || 'en', theme_id, source: 'deflect', skipped: false,
-            ...(deflectDebugInfo ? { ai_thinking: deflectDebugInfo } : {}),
-          })
+          }
+          if (deflectDebugInfo) deflectInsert.ai_thinking = deflectDebugInfo
+          let { error: deflectInsertErr } = await supabase.from('townhall_turns').insert(deflectInsert)
+          if (deflectInsertErr) {
+            console.error('[TH Chat] INSERT deflect turn failed:', deflectInsertErr.message)
+            // Retry: drop ai_thinking, fall back to 'clarifier' source (CHECK constraint compat)
+            delete deflectInsert.ai_thinking
+            deflectInsert.source = 'clarifier'
+            const { error: retryErr } = await supabase.from('townhall_turns').insert(deflectInsert)
+            if (retryErr) console.error('[TH Chat] INSERT deflect retry also failed:', retryErr.message)
+          }
 
           return NextResponse.json({
             bot_message: deflectText, theme_id, source: 'deflect',
@@ -400,6 +412,14 @@ RULES:
     recentWordCounts.every((wc: number, i: number) => i === 0 || wc <= recentWordCounts[i - 1]) &&
     wordCount > 0 && wordCount < (recentWordCounts[recentWordCounts.length - 1] || 999)
   if (testing && trajectoryDisengaging) debug.push('SIGNAL: Response trajectory declining (' + [...recentWordCounts, wordCount].join(' → ') + ' words) — disengagement detected')
+
+  // ── #7: Consecutive skip detection ────────────────────────────────────
+  // If the participant skipped on this same topic recently, they don't want to discuss it
+  const recentSkipsOnTopic = theme_id
+    ? turns.filter(t => t.theme_id === theme_id && t.skipped).length
+    : 0
+  const skipOverload = skipped && recentSkipsOnTopic >= 1  // already skipped once on this topic
+  if (testing && skipOverload) debug.push('SIGNAL: Consecutive skips on topic (' + (recentSkipsOnTopic + 1) + ') — must move on')
 
   // ── #6: Curt response detection ───────────────────────────────────────
   // Very short responses (1-3 words) that are substantive but signal "I've said enough"
@@ -610,8 +630,8 @@ RULES:
     debug.push('SOURCE: ' + aiSource + ' | TURN: ' + nextTurnNumber)
   }
 
-  // Store the new turn
-  await supabase.from('townhall_turns').insert({
+  // Store the new turn — log errors but don't fail the response
+  const insertPayload: Record<string, unknown> = {
     session_id: session.id,
     participant_id,
     turn_number: nextTurnNumber,
@@ -622,8 +642,21 @@ RULES:
     theme_id: resolvedThemeId,
     source: aiSource,
     skipped: false,
-    ...(testing && debug.length > 0 ? { ai_thinking: debug } : {}),
-  })
+  }
+  // Only include ai_thinking if column exists (migration 017 applied)
+  if (testing && debug.length > 0) insertPayload.ai_thinking = debug
+  const { error: insertError } = await supabase.from('townhall_turns').insert(insertPayload)
+  if (insertError) {
+    console.error('[TH Chat] INSERT turn failed:', insertError.message, '| session:', session.id, '| participant:', participant_id, '| turn:', nextTurnNumber, '| source:', aiSource)
+    // Retry: drop ai_thinking, fall back source to 'guide' (CHECK constraint compat)
+    delete insertPayload.ai_thinking
+    const originalSource = insertPayload.source
+    if (!['guide', 'clarifier', 'detected_theme', 'custom'].includes(String(originalSource))) {
+      insertPayload.source = 'guide'
+    }
+    const { error: retryError } = await supabase.from('townhall_turns').insert(insertPayload)
+    if (retryError) console.error('[TH Chat] INSERT retry also failed:', retryError.message)
+  }
 
   return NextResponse.json({
     bot_message: botMessage,
