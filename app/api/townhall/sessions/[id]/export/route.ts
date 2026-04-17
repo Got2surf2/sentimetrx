@@ -99,12 +99,19 @@ export async function GET(req: NextRequest, { params }: Params) {
       })
     }
 
-    const conversations = Object.entries(participants).map(([pid, turns]) => ({
-      participant_id: pid,
-      turns,
-      demographics: demoMap[pid] || null,
-      psychographics: psychoMap[pid] || null,
-    }))
+    const conversations = Object.entries(participants).map(([pid, pTurns]) => {
+      const lastUserMsg = [...pTurns].reverse().find(t => t.user)?.user || ''
+      const participantEnded = lastUserMsg.includes('[Done') || lastUserMsg.includes('[done]')
+      return {
+        participant_id: pid,
+        session_id: params.id,
+        session_name: session.name,
+        participant_ended: participantEnded,
+        turns: pTurns,
+        demographics: demoMap[pid] || null,
+        psychographics: psychoMap[pid] || null,
+      }
+    })
 
     const payload = {
       session: {

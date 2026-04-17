@@ -401,11 +401,24 @@ RULES:
     wordCount > 0 && wordCount < (recentWordCounts[recentWordCounts.length - 1] || 999)
   if (testing && trajectoryDisengaging) debug.push('SIGNAL: Response trajectory declining (' + [...recentWordCounts, wordCount].join(' → ') + ' words) — disengagement detected')
 
+  // ── #6: Curt response detection ───────────────────────────────────────
+  // Very short responses (1-3 words) that are substantive but signal "I've said enough"
+  // These aren't "move on" signals (they contain content) but indicate the participant
+  // is giving minimal engagement and shouldn't be probed further on this topic
+  const CURT_RESPONSE = wordCount > 0 && wordCount <= 3 && !isOpeningResponse
+  if (testing && CURT_RESPONSE) debug.push('SIGNAL: Curt response (' + wordCount + ' words) — participant giving minimal answers')
+
   // ── #2: Frustration-aware clarifier cap ───────────────────────────────
-  // Base max is 2 clarifiers per topic, but drop to 1 if responses are getting shorter
+  // Base max is 2 clarifiers per topic, but drop to 1 if responses are getting shorter or curt
   const currentTopicTurns = theme_id ? turns.filter(t => t.theme_id === theme_id).length : 0
   const clarifierTurnsOnTopic = theme_id ? turns.filter(t => t.theme_id === theme_id && t.source === 'clarifier').length : 0
-  const maxClarifiersPerTopic = trajectoryDisengaging ? 1 : 2
+  const maxClarifiersPerTopic = (trajectoryDisengaging || CURT_RESPONSE) ? 1 : 2
+
+  // ── Per-topic turn cap ────────────────────────────────────────────────
+  // Hard limit on total turns per topic (guide + clarifiers combined) to prevent hammering
+  const maxTurnsPerTopic = config?.engine?.max_turns_per_topic || 4
+  const topicTurnCapHit = currentTopicTurns >= maxTurnsPerTopic
+  if (testing && topicTurnCapHit) debug.push('SIGNAL: Topic turn cap hit (' + currentTopicTurns + '/' + maxTurnsPerTopic + ') — must move on')
 
   // ── #4: Smart word-count threshold + 60/40 turn budget ────────────────
   // Instead of flat 12-word cutoff, adjust based on conversation progress:
@@ -419,7 +432,7 @@ RULES:
   const turnsUsed = turns.length
   const turnsRemaining = maxTurnsForBudget - turnsUsed
 
-  // 60/40 budget: reserve 40% of turns for organic topics
+  // 60/40 budget: reserve 40% of turns for organic topics, spread seed evenly
   const seedTurnsUsed = turns.filter(t => {
     const topic = allTopics.find(a => a.id === t.theme_id)
     return topic && topic.source === 'guide'
@@ -427,19 +440,26 @@ RULES:
   const seedBudget = Math.ceil(maxTurnsForBudget * 0.6)
   const seedBudgetExhausted = seedTurnsUsed >= seedBudget && organicTopics.some(t => !discussedThemeIds.has(t.id))
 
-  // Dynamic word-count threshold: 8 words if lots of topics left, up to 15 if on last topic
+  // Even-spread: each seed topic gets an equal share of the seed budget
+  const turnsPerSeedTopic = seedTopics.length > 0 ? Math.max(2, Math.floor(seedBudget / seedTopics.length)) : maxTurnsPerTopic
+  const seedTopicBudgetHit = theme_id && seedTopics.some(t => t.id === theme_id) && currentTopicTurns >= turnsPerSeedTopic
+  if (testing && seedTopicBudgetHit) debug.push('SIGNAL: Seed topic even-spread budget hit (' + currentTopicTurns + '/' + turnsPerSeedTopic + ' turns)')
+
+  // Dynamic word-count threshold: 8 words if lots of topics left, 10 on last topic (conservative)
   let clarifyWordThreshold = 12 // default
   if (topicsRemaining > 3 && turnsUsed < maxTurnsForBudget * 0.3) {
     clarifyWordThreshold = 8 // early + many topics → move on faster
   } else if (topicsRemaining <= 1) {
-    clarifyWordThreshold = 15 // last topic → allow more clarification
+    clarifyWordThreshold = 10 // last topic → be conservative, not aggressive
   }
-  if (testing) debug.push('BUDGET: turn ' + turnsUsed + '/' + maxTurnsForBudget + ' | topics left: ' + topicsRemaining + ' | seed: ' + seedTurnsUsed + '/' + seedBudget + ' | clarify threshold: ' + clarifyWordThreshold + 'w')
+  if (testing) debug.push('BUDGET: turn ' + turnsUsed + '/' + maxTurnsForBudget + ' | topics left: ' + topicsRemaining + ' | seed: ' + seedTurnsUsed + '/' + seedBudget + ' | per-seed: ' + turnsPerSeedTopic + ' | topic-cap: ' + currentTopicTurns + '/' + maxTurnsPerTopic + ' | clarify threshold: ' + clarifyWordThreshold + 'w')
 
   // ── Clarifier decision (all signals combined) ─────────────────────────
   let shouldClarify = !isOpeningResponse && !skipped && message &&
     !moveOnSignal &&                              // #1: not a "move on" signal
     !trajectoryDisengaging &&                     // #5: not disengaging
+    !topicTurnCapHit &&                           // per-topic hard cap
+    !seedTopicBudgetHit &&                        // even-spread seed budget
     wordCount < clarifyWordThreshold &&           // #4: dynamic threshold
     currentTopicTurns <= 3 &&                     // original: not too many turns on topic
     clarifierTurnsOnTopic < maxClarifiersPerTopic // #2: frustration-aware cap
@@ -448,7 +468,7 @@ RULES:
   // For borderline cases (short response that would trigger clarifier),
   // ask AI: "Is this person being concise or trying to move on?"
   // Only fires when clarifier would trigger AND response has subtle signals
-  const SUBTLE_DISENGAGE = /^(whatever|sure|fine|ok|okay|i guess|idk|i don't know|yeah|yep|nah|no|not really|i said what i said)\s*[.!?]*$/i
+  const SUBTLE_DISENGAGE = /^(whatever|sure|fine|ok|okay|i guess|idk|i don't know|yeah|yep|yes|yup|nah|no|not really|i said what i said|all of the above|all of them|both|same|agreed|exactly|absolutely|definitely|correct|right)\s*[.!?]*$/i
   if (shouldClarify && message && SUBTLE_DISENGAGE.test(message.trim())) {
     // Subtle disengagement signal — check with AI before clarifying
     if (testing) debug.push('TONE CHECK: "' + message.trim() + '" is a subtle signal — asking AI')
@@ -523,6 +543,8 @@ RULES:
       debug.push('DECISION: Move to next topic')
       if (moveOnSignal) debug.push('Clarifier skipped: move-on signal detected')
       else if (trajectoryDisengaging) debug.push('Clarifier skipped: response trajectory declining')
+      else if (topicTurnCapHit) debug.push('Clarifier skipped: topic turn cap hit (' + currentTopicTurns + '/' + maxTurnsPerTopic + ')')
+      else if (seedTopicBudgetHit) debug.push('Clarifier skipped: seed topic even-spread budget hit (' + currentTopicTurns + '/' + turnsPerSeedTopic + ')')
       else if (wordCount >= clarifyWordThreshold) debug.push('Clarifier skipped: response was ' + wordCount + ' words (>= ' + clarifyWordThreshold + ' threshold)')
       else if (clarifierTurnsOnTopic >= maxClarifiersPerTopic) debug.push('Clarifier skipped: hit max ' + maxClarifiersPerTopic + ' clarifiers on this topic')
       else if (currentTopicTurns > 3) debug.push('Clarifier skipped: already had ' + currentTopicTurns + ' turns on this topic')
@@ -530,17 +552,19 @@ RULES:
     }
 
     if (available.length === 0) {
-      const revisit = allTopics
-        .filter(t => t.response_count < t.response_target)
-        .sort((a: any, b: any) => (b.response_target - b.response_count) - (a.response_target - a.response_count))
-      if (revisit.length > 0) {
-        const nextTopic = revisit[0]
-        resolvedThemeId = nextTopic.id
-        aiSource = 'revisit'
-        if (testing) debug.push('ALL TOPICS VISITED — revisiting "' + nextTopic.label + '" (most headroom: ' + nextTopic.response_count + '/' + nextTopic.response_target + ')')
-        const clarifyResult = await generateClarifier(config, message, turns, language, testing, toneNudge)
-        botMessage = clarifyResult.text
-        if (testing && clarifyResult.thinking.length > 0) debug.push('AI REASONING:', ...clarifyResult.thinking)
+      // All topics covered — don't revisit/hammer. Either standby or wrap up.
+      if (testing) debug.push('ALL TOPICS VISITED — entering standby or wrap-up')
+
+      // If organic topic detection is on, enter standby mode (topics may emerge from other participants)
+      const hasOrganic = config?.engine?.theme_detection_mode === 'auto'
+      if (hasOrganic && turnsUsed < maxTurnsForBudget - 2) {
+        // Standby: thank them and let them know we may come back
+        const standbyMsg = config?.engine?.standby_message ||
+          'That is very helpful information — thank you! Stand by while we see what some of the other participants are talking about. If new topics come up, I may circle back to get your thoughts.'
+        resolvedThemeId = null
+        aiSource = 'standby'
+        botMessage = standbyMsg
+        if (testing) debug.push('STANDBY: Organic detection active + turns remaining — parking conversation')
       } else {
         return wrapUp(config)
       }

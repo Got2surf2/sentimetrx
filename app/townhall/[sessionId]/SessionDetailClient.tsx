@@ -866,6 +866,12 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     )}
                   </div>
                 ))}
+                {/* Participant ended flag */}
+                {convModal.turns.some((t: any) => t.user?.includes('[Done') || t.user?.includes('[done]')) && (
+                  <div className="flex justify-center mt-2">
+                    <span className="text-[10px] px-3 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">Participant chose to end conversation</span>
+                  </div>
+                )}
               </div>
 
               {/* Footer: JSON + PPTX buttons */}
