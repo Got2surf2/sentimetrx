@@ -13,6 +13,31 @@ const IMSG_BLUE = '#007AFF'
 const IMSG_GRAY = '#E9E9EB'
 const BG = '#FFFFFF'
 
+// Pick Sarina blue or Hermes orange for branding — whichever contrasts better
+function pickBrandColor(bgHex: string): string {
+  const SARINA_BLUE = '#00b4d8'
+  const HERMES_ORANGE = '#E8632A'
+  const hex = (bgHex || '#00b4d8').replace('#', '')
+  const r = parseInt(hex.slice(0, 2), 16) || 0
+  const g = parseInt(hex.slice(2, 4), 16) || 0
+  const b = parseInt(hex.slice(4, 6), 16) || 0
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  let hue = 0
+  if (max !== min) {
+    const d = max - min
+    if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) * 60
+    else if (max === g) hue = ((b - r) / d + 2) * 60
+    else hue = ((r - g) / d + 4) * 60
+  }
+  const isBlueish = hue >= 160 && hue <= 260
+  const isOrangeish = (hue >= 0 && hue <= 50) || hue >= 340
+  if (isBlueish) return HERMES_ORANGE
+  if (isOrangeish) return SARINA_BLUE
+  if (lum < 0.45) return SARINA_BLUE
+  return HERMES_ORANGE
+}
+
 // Client-side bleep — replace profanity with asterisks for display
 function clientBleep(text: string): string {
   return text
@@ -37,6 +62,7 @@ export default function TownHallChat({ sessionId }: Props) {
   const [sessionName, setSessionName] = useState('')
   const [botName, setBotName] = useState('Town Hall')
   const [botEmoji, setBotEmoji] = useState('\uD83D\uDCAC')
+  const [headerColor, setHeaderColor] = useState('#00b4d8')
   const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'paused' | 'ended' | 'notfound'>('loading')
   const [display, setDisplay] = useState<any>({})
   const [closingMsg, setClosingMsg] = useState('')
@@ -103,6 +129,7 @@ export default function TownHallChat({ sessionId }: Props) {
       setSessionName(d.name || '')
       setBotName(d.bot_name || 'Town Hall')
       setBotEmoji(d.bot_emoji || '\uD83D\uDCAC')
+      if (d.header_color) setHeaderColor(d.header_color)
       setLanguages(d.languages || [])
       setDisplay(d.display || {})
       setClosingMsg(d.closing_message || '')
@@ -368,11 +395,33 @@ export default function TownHallChat({ sessionId }: Props) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
-      {/* iMessage-style header */}
-      <div style={{ padding: '10px 16px 10px', background: '#F6F6F6', borderBottom: '1px solid #E0E0E0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column' }}>
-        <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 2 }}>{botEmoji}</div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#000' }}>{botName}</div>
-      </div>
+      {/* Survey-style header — gradient bg, bot emoji + name left, branding right */}
+      {(() => {
+        const hdrGradient = `linear-gradient(135deg, ${headerColor}, ${headerColor}cc)`
+        const hdrHex = headerColor.replace('#', '')
+        const hdrLum = (0.299 * (parseInt(hdrHex.slice(0, 2), 16) || 0) + 0.587 * (parseInt(hdrHex.slice(2, 4), 16) || 0) + 0.114 * (parseInt(hdrHex.slice(4, 6), 16) || 0)) / 255
+        const byColor = hdrLum < 0.45 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)'
+        const brandColor = pickBrandColor(headerColor)
+        return (
+          <div style={{ background: hdrGradient, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, zIndex: 10 }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>
+              {botEmoji}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, color: 'white', fontSize: '0.9375rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{botName}</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sessionName}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <span className="live-dot" />
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.6875rem' }}>Live conversation</span>
+              </div>
+            </div>
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1, gap: 2 }}>
+              <span style={{ color: byColor, fontSize: '0.5rem', fontWeight: 500, letterSpacing: '0.06em' }}>by</span>
+              <span style={{ color: brandColor, fontSize: '0.625rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>DATANAUTIX</span>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Debug mode banner */}
       {testing && (
@@ -387,7 +436,7 @@ export default function TownHallChat({ sessionId }: Props) {
           <div key={i}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: m.who === 'user' ? 'flex-end' : 'flex-start' }}>
               {m.who === 'bot' && (
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: headerColor + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{botEmoji}</div>
               )}
               <div style={{
                 maxWidth: '75%', padding: '9px 14px',

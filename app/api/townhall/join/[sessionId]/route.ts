@@ -65,6 +65,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     psychographicBank: config?.psychographicBank || [],
     psychoCount: config?.psychoCount || 3,
     testing: !!config?.testing,
+    header_color: config?.header_color || '#00b4d8',
   })
 }
 
