@@ -1,7 +1,7 @@
 'use client'
 
 // components/ui/LottieLoader.tsx
-// Plays the Lottie animation from /public/loading-spinner.json using lottie-web.
+// Plays the Lottie animation from /public/morphing-particle-loader.json using lottie-web.
 
 import { useEffect, useRef } from 'react'
 
@@ -11,23 +11,30 @@ interface Props {
   className?: string
 }
 
-export default function LottieLoader({ size = 120, message, className }: Props) {
+export default function LottieLoader({ size = 140, message, className }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(function() {
     if (!containerRef.current) return
+    var cancelled = false
     var anim: any = null
+    // Clear any leftover SVG from a prior mount (React 18 Strict Mode race)
+    containerRef.current.innerHTML = ''
     import('lottie-web').then(function(mod) {
+      if (cancelled || !containerRef.current) return
       var lottie = mod.default || mod
       anim = lottie.loadAnimation({
-        container:  containerRef.current!,
+        container:  containerRef.current,
         renderer:   'svg',
         loop:       true,
         autoplay:   true,
         path:       '/morphing-particle-loader.json',
       })
     })
-    return function() { if (anim) anim.destroy() }
+    return function() {
+      cancelled = true
+      if (anim) anim.destroy()
+    }
   }, [])
 
   return (
