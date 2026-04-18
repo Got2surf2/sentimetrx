@@ -150,7 +150,11 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   // Topic detail popup — store ID, look up from live themes for fresh data
   const [detailTopicId, setDetailTopicId] = useState<string | null>(null)
   const detailTopic = detailTopicId ? themes.find(t => t.id === detailTopicId) || null : null
-  const setDetailTopic = (t: TownHallTheme | null) => setDetailTopicId(t?.id || null)
+  const setDetailTopic = (t: TownHallTheme | null) => {
+    setDetailTopicId(t?.id || null)
+    // Fetch full analytics (quotes, match reasons) on-demand when opening detail popup
+    if (t) fetchData(true)
+  }
 
   // Compact vs expanded view for topic sections
   const [compactView, setCompactView] = useState(false)
@@ -166,9 +170,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const updateSessionEnd = (partial: Partial<TownHallConfig['session_end']>) => setEditConfig(c => c ? { ...c, session_end: { ...c.session_end, ...partial } } : c)
   const updateDisplay = (partial: Partial<TownHallConfig['display']>) => setEditConfig(c => c ? { ...c, display: { ...c.display, ...partial } } : c)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (analytics?: boolean) => {
     try {
-      const res = await fetch('/api/townhall/sessions/' + sessionId + '?analytics=true')
+      const url = '/api/townhall/sessions/' + sessionId + (analytics ? '?analytics=true' : '')
+      const res = await fetch(url)
       if (!res.ok) return
       const data = await res.json()
       setSession(data.session)
@@ -179,11 +184,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setLoading(false)
   }, [sessionId])
 
+  const needsPolling = !session || session.status === 'active' || session.status === 'paused' || session.status === 'setup'
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 4000)
+    if (!needsPolling) return // ended/closed — no polling, just the initial fetch
+    const interval = setInterval(() => fetchData(), 4000)
     return () => clearInterval(interval)
-  }, [fetchData])
+  }, [fetchData, needsPolling])
 
   // Auto-enter edit mode on first load — only for setup sessions (not active/paused/ended)
   useEffect(() => {
