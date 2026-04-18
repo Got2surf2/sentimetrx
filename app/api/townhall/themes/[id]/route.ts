@@ -40,6 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       updates.state = 'paused'
       break
     case 'resume':
+    case 'activate':
       updates.state = 'active'
       break
     case 'close':
