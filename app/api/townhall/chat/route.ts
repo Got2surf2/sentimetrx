@@ -296,6 +296,7 @@ export async function POST(req: NextRequest) {
     const hitsSensitive = sensitiveTopics.length > 0 && sensitiveTopics.some((t: string) => new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(analyzeText))
 
     // Fast regex pre-check: skip deflection if response looks like genuine feedback
+    // (contains opinion/emotion words — not worth burning an AI call)
     // BUT: always check if it hits a sensitive/banned topic
     const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|burnt|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|leaving|quit|mental|health|workload|balance)\b/i
     const QUESTION_SIGNALS = /\?\s*$|^(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
@@ -680,6 +681,7 @@ RULES:
   }
 
   // Store the new turn — log errors but don't fail the response
+  const resolvedThemeLabel = resolvedThemeId ? (allTopics.find(t => t.id === resolvedThemeId)?.label || null) : null
   const insertPayload: Record<string, unknown> = {
     session_id: session.id,
     participant_id,
@@ -689,6 +691,7 @@ RULES:
     user_message_en: null,
     language: language || 'en',
     theme_id: resolvedThemeId,
+    theme_label: resolvedThemeLabel,
     source: aiSource,
     skipped: false,
   }

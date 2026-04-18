@@ -8,6 +8,10 @@ ALTER TABLE townhall_turns
 
 COMMENT ON COLUMN townhall_turns.ai_thinking IS 'AI reasoning steps captured in verbose mode (array of strings)';
 
+-- Snapshot the topic label at time of response (survives renames)
+ALTER TABLE townhall_turns
+  ADD COLUMN IF NOT EXISTS theme_label TEXT DEFAULT NULL;
+
 -- Drop old restrictive source CHECK and replace with updated list
 ALTER TABLE townhall_turns DROP CONSTRAINT IF EXISTS townhall_turns_source_check;
 ALTER TABLE townhall_turns ADD CONSTRAINT townhall_turns_source_check

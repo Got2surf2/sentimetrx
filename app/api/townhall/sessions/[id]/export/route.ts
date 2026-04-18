@@ -39,7 +39,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Fetch all turns
   const { data: turns } = await db
     .from('townhall_turns')
-    .select('participant_id, turn_number, bot_message, user_message, user_message_en, language, theme_id, source, skipped, created_at')
+    .select('participant_id, turn_number, bot_message, user_message, user_message_en, language, theme_id, theme_label, source, skipped, created_at')
     .eq('session_id', params.id)
     .order('created_at', { ascending: true })
     .range(0, 49999)
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         user: t.user_message,
         user_en: t.user_message_en,
         language: t.language,
-        topic: themeMap[t.theme_id] || null,
+        topic: t.theme_label || themeMap[t.theme_id] || null,
         source: t.source,
         skipped: t.skipped,
         time: t.created_at,
@@ -182,7 +182,7 @@ function buildCsv(
     return [
       esc(t.participant_id),
       esc(t.turn_number),
-      esc(t.theme_id ? themeMap[t.theme_id] || '' : ''),
+      esc(t.theme_label || (t.theme_id ? themeMap[t.theme_id] || '' : '')),
       esc(t.source || ''),
       esc(t.bot_message || ''),
       esc(t.user_message || ''),
