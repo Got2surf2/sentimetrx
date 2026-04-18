@@ -466,6 +466,31 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         for (const t of toReactivate) {
           await db.from('townhall_themes').update({ state: 'active' }).eq('id', t.id)
         }
+
+        // Update existing guide themes with current guide data (label, description, keywords, question, target)
+        const guideThemes = (existingThemes || []).filter(t => t.source === 'guide')
+        for (const theme of guideThemes) {
+          // Match by label (case-insensitive) — the guide topic that corresponds to this theme
+          const guideTopic = guide.find((g: any) => g.label.toLowerCase().trim() === theme.label.toLowerCase())
+          if (guideTopic) {
+            await db.from('townhall_themes').update({
+              label: guideTopic.label,
+              description: guideTopic.description || null,
+              question: guideTopic.opening_question || '',
+              follow_up_angles: guideTopic.follow_up_angles || [],
+              keywords: guideTopic.keywords || [],
+              response_target: guideTopic.response_target || 30,
+            }).eq('id', theme.id)
+          }
+        }
+
+        // Remove themes for guide topics that were completely deleted from the guide
+        const guideLabelsLower = guide.map((g: any) => g.label.toLowerCase().trim()).filter(Boolean)
+        const orphaned = guideThemes.filter(t => !guideLabelsLower.includes(t.label.toLowerCase()))
+        for (const t of orphaned) {
+          // Don't delete — dismiss so data is preserved, but topic disappears from active view
+          await db.from('townhall_themes').update({ state: 'dismissed' }).eq('id', t.id)
+        }
       }
     }
   }
