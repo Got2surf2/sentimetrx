@@ -1159,23 +1159,46 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                         </>}
                       </div>
                     </div>
-                    {/* Scrollable comments */}
+                    {/* Scrollable comments with match reason */}
                     <div className="flex-1 overflow-y-auto p-5">
                       <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">
                         Matching Responses ({mentionCount})
                         {quotes.length > 0 && quotes.length < mentionCount ? <span className="text-gray-400 font-normal ml-1">· showing {quotes.length}</span> : null}
                       </h3>
-                      {quotes.length > 0 ? (
-                        <div className="space-y-2">
-                          {quotes.map((q: string, i: number) => (
-                            <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
-                              <span className="text-gray-400 mr-1">{i + 1}.</span> {q}
+                      {(() => {
+                        // Use quote_matches if available (has match reason), fall back to plain quotes
+                        const qm = (detailTopic as any).quote_matches as { text: string; match: string }[] | undefined
+                        if (qm && qm.length > 0) {
+                          return (
+                            <div className="space-y-2">
+                              {qm.map((q, i) => (
+                                <div key={i} className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+                                  <div className="text-sm text-gray-700 leading-relaxed">
+                                    <span className="text-gray-400 mr-1">{i + 1}.</span> {q.text}
+                                  </div>
+                                  <div className="mt-1">
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${q.match === 'AI-assigned' ? 'bg-purple-100 text-purple-600' : 'bg-amber-100 text-amber-600'}`}>
+                                      {q.match}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-400 italic">No matching responses yet</p>
-                      )}
+                          )
+                        }
+                        if (quotes.length > 0) {
+                          return (
+                            <div className="space-y-2">
+                              {quotes.map((q: string, i: number) => (
+                                <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
+                                  <span className="text-gray-400 mr-1">{i + 1}.</span> {q}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        }
+                        return <p className="text-sm text-gray-400 italic">No matching responses yet</p>
+                      })()}
                     </div>
                   </div>
                 </div>

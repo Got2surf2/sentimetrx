@@ -104,53 +104,103 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  // Per-theme analytics
+  // Per-theme analytics — two strategies:
+  // 1) Seed/guide/custom topics: use theme_id assignment (AI-matched during conversation) as primary
+  // 2) Organic/auto_detected topics: use keyword matching (detected from text patterns)
   const enrichedThemes = (themes || []).map(function(t: any) {
     const keywords: string[] = t.keywords || []
-    const regexes = keywords.slice(0, 15).map(function(kw: string) {
-      try { return buildKwRegex(kw) } catch { return null }
-    }).filter(Boolean) as RegExp[]
-
+    const isOrganic = t.source === 'auto_detected'
     let matchCount = 0, totalPos = 0, totalNeg = 0
-    const matchedQuotes: string[] = []
+    const matchedQuotes: { text: string; match: string }[] = []
     const kwFreq: Record<string, number> = {}
+    const seenTexts = new Set<string>()
 
-    if (regexes.length > 0) {
-      // Keyword-based matching (auto-detected themes with keywords)
-      for (const text of allResponseTexts) {
-        const lower = text.toLowerCase()
-        if (regexes.some(function(re) { return re.test(lower) })) {
-          matchCount++
-          const score = lexiconScore(text)
-          totalPos += score.pos
-          totalNeg += score.neg
-          if (matchedQuotes.length < 20) matchedQuotes.push(text.slice(0, 300))
-          for (var ki = 0; ki < keywords.length; ki++) {
-            try {
-              if (buildKwRegex(keywords[ki]).test(lower)) kwFreq[keywords[ki]] = (kwFreq[keywords[ki]] || 0) + 1
-            } catch {}
-          }
-        }
-      }
-    } else {
-      // Fallback for guide/custom themes without keywords: use turn-level theme_id tagging
+    if (!isOrganic) {
+      // SEED/GUIDE/CUSTOM: primary = AI-assigned theme_id on each turn
       const tagged = themeIdTexts[t.id] || []
       matchCount = tagged.length
       for (const text of tagged) {
         const score = lexiconScore(text)
         totalPos += score.pos
         totalNeg += score.neg
-        if (matchedQuotes.length < 20) matchedQuotes.push(text.slice(0, 300))
+        const trimmed = text.slice(0, 300)
+        if (matchedQuotes.length < 20 && !seenTexts.has(trimmed)) {
+          matchedQuotes.push({ text: trimmed, match: 'AI-assigned' })
+          seenTexts.add(trimmed)
+        }
+        // Still track keyword frequency for display
+        const lower = text.toLowerCase()
+        for (var ki = 0; ki < keywords.length; ki++) {
+          try {
+            if (buildKwRegex(keywords[ki]).test(lower)) kwFreq[keywords[ki]] = (kwFreq[keywords[ki]] || 0) + 1
+          } catch {}
+        }
       }
-    }
+      // Supplement: keyword matches NOT already tagged (catches responses about this topic assigned to another)
+      if (keywords.length > 0) {
+        const regexes = keywords.slice(0, 15).map(function(kw: string) {
+          try { return buildKwRegex(kw) } catch { return null }
+        }).filter(Boolean) as RegExp[]
+        for (const text of allResponseTexts) {
+          const lower = text.toLowerCase()
+          const trimmed = text.slice(0, 300)
+          if (!seenTexts.has(trimmed) && regexes.some(function(re) { return re.test(lower) })) {
+            // Find which keyword matched
+            let matchedKw = ''
+            for (var mki = 0; mki < keywords.length; mki++) {
+              try { if (buildKwRegex(keywords[mki]).test(lower)) { matchedKw = keywords[mki]; break } } catch {}
+            }
+            if (matchedQuotes.length < 20) {
+              matchedQuotes.push({ text: trimmed, match: 'keyword: ' + matchedKw })
+              seenTexts.add(trimmed)
+            }
+          }
+        }
+      }
+    } else {
+      // ORGANIC: keyword matching is the primary source
+      const regexes = keywords.slice(0, 15).map(function(kw: string) {
+        try { return buildKwRegex(kw) } catch { return null }
+      }).filter(Boolean) as RegExp[]
 
-    // Also include turn-tagged responses not caught by keyword matching
-    const taggedTexts = themeIdTexts[t.id] || []
-    const quotesSet = new Set(matchedQuotes)
-    for (const text of taggedTexts) {
-      if (matchedQuotes.length >= 20) break
-      const trimmed = text.slice(0, 300)
-      if (!quotesSet.has(trimmed)) { matchedQuotes.push(trimmed); quotesSet.add(trimmed); matchCount++ }
+      if (regexes.length > 0) {
+        for (const text of allResponseTexts) {
+          const lower = text.toLowerCase()
+          if (regexes.some(function(re) { return re.test(lower) })) {
+            matchCount++
+            const score = lexiconScore(text)
+            totalPos += score.pos
+            totalNeg += score.neg
+            const trimmed = text.slice(0, 300)
+            // Find which keyword matched
+            let matchedKw = ''
+            for (var oki = 0; oki < keywords.length; oki++) {
+              try { if (buildKwRegex(keywords[oki]).test(lower)) { matchedKw = keywords[oki]; kwFreq[keywords[oki]] = (kwFreq[keywords[oki]] || 0) + 1; break } } catch {}
+            }
+            // Count remaining keyword hits
+            for (var oki2 = 0; oki2 < keywords.length; oki2++) {
+              if (keywords[oki2] === matchedKw) continue
+              try { if (buildKwRegex(keywords[oki2]).test(lower)) kwFreq[keywords[oki2]] = (kwFreq[keywords[oki2]] || 0) + 1 } catch {}
+            }
+            if (matchedQuotes.length < 20 && !seenTexts.has(trimmed)) {
+              matchedQuotes.push({ text: trimmed, match: 'keyword: ' + matchedKw })
+              seenTexts.add(trimmed)
+            }
+          }
+        }
+      }
+      // Also include theme_id-tagged turns
+      const taggedTexts = themeIdTexts[t.id] || []
+      for (const text of taggedTexts) {
+        const trimmed = text.slice(0, 300)
+        if (!seenTexts.has(trimmed)) {
+          const score = lexiconScore(text)
+          totalPos += score.pos
+          totalNeg += score.neg
+          matchCount++
+          if (matchedQuotes.length < 20) { matchedQuotes.push({ text: trimmed, match: 'AI-assigned' }); seenTexts.add(trimmed) }
+        }
+      }
     }
 
     const sentiment = matchCount > 0 ? classifySentiment(totalPos, totalNeg) : (t.sentiment || 'neutral')
@@ -162,9 +212,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       sentiment,
       match_count: matchCount,
       mention_count: matchCount,
-      response_count: t.source === 'auto_detected' ? matchCount : t.response_count,
+      response_count: isOrganic ? matchCount : (matchCount || t.response_count),
       percentage,
-      example_quotes: matchedQuotes,
+      example_quotes: matchedQuotes.map(function(q) { return q.text }),
+      quote_matches: matchedQuotes,
       top_keywords: topKeywords,
     }
   })
@@ -310,14 +361,36 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ deleted: pids.length, turns_deleted: turnCount ?? 0 })
   }
 
-  // Handle reanalyze: clear all auto-detected themes + re-run detection
+  // Handle reanalyze: clear all auto-detected themes, reset seed counts, re-run detection
   if (body.reanalyze) {
-    // Delete all auto-detected themes (keep guide + custom)
+    // Delete all auto-detected (organic) themes
     await db.from('townhall_themes').delete().eq('session_id', params.id).eq('source', 'auto_detected')
-    // Re-run theme detection
-    const { detectThemesForSession } = await import('@/lib/townhallThemeDetection')
-    const result = await detectThemesForSession(params.id)
-    return NextResponse.json({ reanalyzed: true, ...result })
+    // Reset response_count on seed/guide themes (will be recalculated from theme_id assignments)
+    const { data: guideThemes } = await db.from('townhall_themes').select('id').eq('session_id', params.id).in('source', ['guide', 'custom'])
+    if (guideThemes?.length) {
+      // Count actual turns tagged with each theme_id
+      const { data: turnCounts } = await db
+        .from('townhall_turns')
+        .select('theme_id')
+        .eq('session_id', params.id)
+        .not('skipped', 'eq', true)
+        .not('user_message', 'is', null)
+      const countMap: Record<string, number> = {}
+      for (const t of turnCounts || []) {
+        if (t.theme_id) countMap[t.theme_id] = (countMap[t.theme_id] || 0) + 1
+      }
+      for (const theme of guideThemes) {
+        await db.from('townhall_themes').update({ response_count: countMap[theme.id] || 0 }).eq('id', theme.id)
+      }
+    }
+    // Re-run organic theme detection (only if there are responses)
+    const { count } = await db.from('townhall_turns').select('id', { count: 'exact', head: true }).eq('session_id', params.id).not('user_message', 'is', null)
+    if ((count || 0) > 0) {
+      const { detectThemesForSession } = await import('@/lib/townhallThemeDetection')
+      const result = await detectThemesForSession(params.id)
+      return NextResponse.json({ reanalyzed: true, ...result })
+    }
+    return NextResponse.json({ reanalyzed: true, organic_detected: 0 })
   }
 
   // Handle restart: reset to setup, clear all turns and themes
