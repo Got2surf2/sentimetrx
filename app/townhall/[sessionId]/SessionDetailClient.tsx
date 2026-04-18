@@ -56,7 +56,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}
 .hdr-text{color:#fff;font-weight:600;font-size:14px}
 .hdr-sub{color:rgba(255,255,255,.5);font-size:11px}
-.brand{margin-left:auto;color:rgba(255,255,255,.4);font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.brand{margin-left:auto;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;text-align:right;line-height:1.4}
+.brand-sub{color:rgba(255,255,255,.4);font-size:8px;font-weight:400;text-transform:none;letter-spacing:0}
+.footer a{color:#E8632A;text-decoration:none}
+.footer a:hover{text-decoration:underline}
 .chat{padding:16px;display:flex;flex-direction:column;gap:10px;flex:1;overflow-y:auto}
 .row{display:flex;align-items:flex-end;gap:8px;max-width:85%}
 .row.user{flex-direction:row-reverse;align-self:flex-end}
@@ -69,9 +72,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .footer{text-align:center;padding:10px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0}
 </style></head><body>
 <div class="wrap">
-<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${pid.slice(0, 12)}...</div></div><div class="brand">DATANAUTIX</div></div>
+<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${pid.slice(0, 12)}...</div></div><div class="brand"><span style="color:#E8632A">DATANAUTIX</span><br><span class="brand-sub">powered by</span></div></div>
 <div class="chat">${turns.map((t: any) => { let o = ''; if (t.bot) o += '<div class="row bot"><div class="sm-av">' + botEmoji + '</div><div class="bubble">' + esc(t.bot) + '</div></div>'; if (t.user && !t.skipped) o += '<div class="row user"><div class="bubble">' + esc(t.user) + '</div></div>'; if (t.skipped) o += '<div class="row skip"><div class="bubble">' + esc(t.user || 'skipped') + '</div></div>'; return o }).join('')}</div>
-<div class="footer">Datanautix — datanautix.com</div>
+<div class="footer"><a href="https://datanautix.com" target="_blank">datanautix.com</a></div>
 </div></body></html>`
 }
 

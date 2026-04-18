@@ -366,7 +366,10 @@ function generateConversationHtml(msgs: ConvMsg[], botName: string, botEmoji: st
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
 .wrap{width:100%;max-width:400px;height:min(90vh,750px);border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;background:#f8fafc}
 .hdr{padding:14px 16px;display:flex;align-items:center;gap:12px;background:${theme.headerGradient || theme.primaryColor};flex-shrink:0}
-.brand{margin-left:auto;color:rgba(255,255,255,.4);font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.brand{margin-left:auto;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;text-align:right;line-height:1.4}
+.brand-sub{color:rgba(255,255,255,.4);font-size:8px;font-weight:400;text-transform:none;letter-spacing:0}
+.footer a{color:#E8632A;text-decoration:none}
+.footer a:hover{text-decoration:underline}
 .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}
 .hdr-text{color:#fff;font-weight:600;font-size:14px}
 .hdr-sub{color:rgba(255,255,255,.5);font-size:11px}
@@ -381,9 +384,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .footer{text-align:center;padding:10px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0}
 </style></head><body>
 <div class="wrap">
-<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${response.completed_at ? new Date(response.completed_at).toLocaleString() : ''}</div></div><div class="brand">DATANAUTIX</div></div>
+<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${response.completed_at ? new Date(response.completed_at).toLocaleString() : ''}</div></div><div class="brand"><span style="color:#E8632A">DATANAUTIX</span><br><span class="brand-sub">powered by</span></div></div>
 <div class="chat">${msgs.map(m => '<div class="row ' + m.who + '">' + (m.who === 'bot' ? '<div class="sm-av">' + botEmoji + '</div>' : '') + '<div class="bubble">' + m.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</div></div>').join('\n')}</div>
-<div class="footer">Datanautix — datanautix.com</div>
+<div class="footer"><a href="https://datanautix.com" target="_blank">datanautix.com</a></div>
 </div></body></html>`
 }
 
