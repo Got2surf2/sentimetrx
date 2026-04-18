@@ -20,6 +20,8 @@ export async function POST(req: NextRequest) {
   if (!type || !target_id) return NextResponse.json({ error: 'type and target_id required' }, { status: 400 })
   if (!['study', 'campaign', 'townhall', 'conversation'].includes(type)) return NextResponse.json({ error: 'type must be study, campaign, townhall, or conversation' }, { status: 400 })
 
+  const service = createServiceRoleClient()
+
   // For conversation shares, store the rendered HTML in metadata
   if (type === 'conversation' && body.html) {
     const expiryHours2: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
@@ -39,8 +41,6 @@ export async function POST(req: NextRequest) {
   const expiryHours: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
   const hours = expiryHours[expires_in] || 168 // default 7 days
   const expiresAt = new Date(Date.now() + hours * 3600 * 1000)
-
-  const service = createServiceRoleClient()
 
   const { data, error } = await service
     .from('shared_links')

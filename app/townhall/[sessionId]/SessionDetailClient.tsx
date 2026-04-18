@@ -43,6 +43,38 @@ const STATE_BADGE: Record<string, { bg: string; text: string; label: string }> =
   dismissed: { bg: '#fee2e2', text: '#991b1b', label: 'Dismissed' },
 }
 
+function buildTHConversationHtml(botName: string, botEmoji: string, gradient: string, pid: string, turns: any[]) {
+  const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${botName} Conversation</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.wrap{width:100%;max-width:400px;height:min(90vh,750px);border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;background:#f8fafc}
+.hdr{padding:14px 16px;display:flex;align-items:center;gap:12px;background:${gradient};flex-shrink:0}
+.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}
+.hdr-text{color:#fff;font-weight:600;font-size:14px}
+.hdr-sub{color:rgba(255,255,255,.5);font-size:11px}
+.brand{margin-left:auto;color:rgba(255,255,255,.4);font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.chat{padding:16px;display:flex;flex-direction:column;gap:10px;flex:1;overflow-y:auto}
+.row{display:flex;align-items:flex-end;gap:8px;max-width:85%}
+.row.user{flex-direction:row-reverse;align-self:flex-end}
+.row.bot{align-self:flex-start}
+.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:${gradient}}
+.bubble{padding:8px 12px;font-size:13px;line-height:1.5;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}
+.bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:4px}
+.user .bubble{background:#007AFF;color:#fff;border-bottom-right-radius:4px;font-weight:500}
+.skip .bubble{background:#f9fafb;color:#9ca3af;font-style:italic;border-bottom-right-radius:4px;font-size:12px}
+.footer{text-align:center;padding:10px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0}
+</style></head><body>
+<div class="wrap">
+<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${pid.slice(0, 12)}...</div></div><div class="brand">DATANAUTIX</div></div>
+<div class="chat">${turns.map((t: any) => { let o = ''; if (t.bot) o += '<div class="row bot"><div class="sm-av">' + botEmoji + '</div><div class="bubble">' + esc(t.bot) + '</div></div>'; if (t.user && !t.skipped) o += '<div class="row user"><div class="bubble">' + esc(t.user) + '</div></div>'; if (t.skipped) o += '<div class="row skip"><div class="bubble">' + esc(t.user || 'skipped') + '</div></div>'; return o }).join('')}</div>
+<div class="footer">Datanautix — datanautix.com</div>
+</div></body></html>`
+}
+
 function CompletionDonut({ current, target, size = 40 }: { current: number; target: number; size?: number }) {
   const pct = Math.min(100, Math.round((current / Math.max(target, 1)) * 100))
   const r = (size - 6) / 2
@@ -924,79 +956,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <span className="text-sm font-bold text-gray-700">Conversation</span>
                   <span className="text-xs text-gray-400 ml-2 font-mono">{convModal.pid.slice(0, 12)}...</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => {
-                    const botName = cfg?.bot_name || 'Town Hall'
-                    const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
-                    const primary = cfg?.theme?.primaryColor || '#007AFF'
-                    const gradient = cfg?.theme?.headerGradient || primary
-                    const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${botName} Conversation</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
-.wrap{width:100%;max-width:400px;border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15)}
-.hdr{padding:16px;display:flex;align-items:center;gap:12px;background:${gradient}}
-.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}
-.hdr-text{color:#fff;font-weight:600;font-size:14px}
-.hdr-sub{color:rgba(255,255,255,.5);font-size:11px}
-.chat{padding:16px;display:flex;flex-direction:column;gap:10px;background:#f8fafc}
-.row{display:flex;align-items:flex-end;gap:8px;max-width:85%}
-.row.user{flex-direction:row-reverse;align-self:flex-end}
-.row.bot{align-self:flex-start}
-.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:${gradient}}
-.bubble{padding:8px 12px;font-size:13px;line-height:1.5;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}
-.bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:4px}
-.user .bubble{background:#007AFF;color:#fff;border-bottom-right-radius:4px;font-weight:500}
-.skip .bubble{background:#f9fafb;color:#9ca3af;font-style:italic;border-bottom-right-radius:4px;font-size:12px}
-.footer{text-align:center;padding:12px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff}
-</style></head><body>
-<div class="wrap">
-<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${convModal.pid.slice(0, 12)}...</div></div></div>
-<div class="chat">${convModal.turns.map((t: any) => {
-  let out = ''
-  if (t.bot) out += '<div class="row bot"><div class="sm-av">' + botEmoji + '</div><div class="bubble">' + t.bot.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</div></div>\n'
-  if (t.user && !t.skipped) out += '<div class="row user"><div class="bubble">' + t.user.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</div></div>\n'
-  if (t.skipped) out += '<div class="row skip"><div class="bubble">' + (t.user || 'skipped').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div></div>\n'
-  return out
-}).join('')}</div>
-<div class="footer">Datanautix — datanautix.com</div>
-</div></body></html>`
-                    const blob = new Blob([html], { type: 'text/html' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url; a.download = botName.replace(/[^a-zA-Z0-9 ]/g, '') + ' conversation.html'
-                    a.click(); URL.revokeObjectURL(url)
-                  }} className="text-xs text-gray-400 hover:text-orange-600 font-medium" title="Download as HTML">
-                    Download
-                  </button>
-                  <button onClick={async () => {
-                    setConvShareState('sharing')
-                    try {
-                      const botName = cfg?.bot_name || 'Town Hall'
-                      const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
-                      const primary = cfg?.theme?.primaryColor || '#007AFF'
-                      const gradient = cfg?.theme?.headerGradient || primary
-                      const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${botName} Conversation</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}.wrap{width:100%;max-width:400px;border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15)}.hdr{padding:16px;display:flex;align-items:center;gap:12px;background:${gradient}}.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}.hdr-text{color:#fff;font-weight:600;font-size:14px}.hdr-sub{color:rgba(255,255,255,.5);font-size:11px}.chat{padding:16px;display:flex;flex-direction:column;gap:10px;background:#f8fafc}.row{display:flex;align-items:flex-end;gap:8px;max-width:85%}.row.user{flex-direction:row-reverse;align-self:flex-end}.row.bot{align-self:flex-start}.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:${gradient}}.bubble{padding:8px 12px;font-size:13px;line-height:1.5;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}.bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:4px}.user .bubble{background:#007AFF;color:#fff;border-bottom-right-radius:4px;font-weight:500}.skip .bubble{background:#f9fafb;color:#9ca3af;font-style:italic;border-bottom-right-radius:4px;font-size:12px}.footer{text-align:center;padding:12px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff}</style></head><body>
-<div class="wrap"><div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${convModal!.pid.slice(0, 12)}...</div></div></div>
-<div class="chat">${convModal!.turns.map((t: any) => { let o = ''; if (t.bot) o += '<div class="row bot"><div class="sm-av">' + botEmoji + '</div><div class="bubble">' + t.bot.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</div></div>'; if (t.user && !t.skipped) o += '<div class="row user"><div class="bubble">' + t.user.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</div></div>'; if (t.skipped) o += '<div class="row skip"><div class="bubble">' + (t.user||'skipped').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div></div>'; return o }).join('')}</div>
-<div class="footer">Datanautix — datanautix.com</div></div></body></html>`
-                      const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: sessionId, html, expires_in: '30d' }) })
-                      const data = await res.json()
-                      if (data.url) { await navigator.clipboard.writeText(data.url); setConvShareState('copied'); setTimeout(() => setConvShareState('idle'), 3000) }
-                      else setConvShareState('idle')
-                    } catch { setConvShareState('idle') }
-                  }} disabled={convShareState === 'sharing'}
-                    className="text-xs font-medium hover:text-green-600 transition-colors"
-                    style={{ color: convShareState === 'copied' ? '#16a34a' : '#9ca3af' }}>
-                    {convShareState === 'sharing' ? '...' : convShareState === 'copied' ? 'Link copied!' : 'Share'}
-                  </button>
-                  <button onClick={() => { setConvModal(null); setConvShareState('idle') }} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
-                </div>
+                <button onClick={() => { setConvModal(null); setConvShareState('idle') }} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
                 {convModal.turns.map((t: any, i: number) => (
@@ -1027,8 +987,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
                 )}
               </div>
 
-              {/* Footer: JSON + PPTX buttons */}
+              {/* Footer: Share + Download + JSON + PPTX */}
               <div className="flex items-center gap-2 px-5 py-3 border-t border-gray-100 flex-shrink-0">
+                <button onClick={async () => {
+                  setConvShareState('sharing')
+                  const botName = cfg?.bot_name || 'Town Hall'
+                  const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
+                  const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || '#007AFF'
+                  const html = buildTHConversationHtml(botName, botEmoji, gradient, convModal!.pid, convModal!.turns)
+                  try {
+                    const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: sessionId, html, expires_in: '30d' }) })
+                    const data = await res.json()
+                    if (data.url) { await navigator.clipboard.writeText(data.url); setConvShareState('copied'); setTimeout(() => setConvShareState('idle'), 3000) }
+                    else setConvShareState('idle')
+                  } catch { setConvShareState('idle') }
+                }} disabled={convShareState === 'sharing'}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                  style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                  {convShareState === 'sharing' ? 'Creating...' : convShareState === 'copied' ? 'Link copied!' : 'Share'}
+                </button>
+                <button onClick={() => {
+                  const botName = cfg?.bot_name || 'Town Hall'
+                  const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
+                  const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || '#007AFF'
+                  const html = buildTHConversationHtml(botName, botEmoji, gradient, convModal!.pid, convModal!.turns)
+                  const blob = new Blob([html], { type: 'text/html' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a'); a.href = url; a.download = botName.replace(/[^a-zA-Z0-9 ]/g, '') + ' conversation.html'; a.click(); URL.revokeObjectURL(url)
+                }}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                  style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                  Download
+                </button>
                 <button onClick={() => { setJsonView(true); setJsonCopied(false) }}
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
                   style={{ background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd' }}>

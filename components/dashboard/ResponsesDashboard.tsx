@@ -363,13 +363,14 @@ function generateConversationHtml(msgs: ConvMsg[], botName: string, botEmoji: st
 <title>${botName} Conversation</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
-.wrap{width:100%;max-width:400px;border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15)}
-.hdr{padding:16px;display:flex;align-items:center;gap:12px;background:${theme.headerGradient || theme.primaryColor}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.wrap{width:100%;max-width:400px;height:min(90vh,750px);border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;background:#f8fafc}
+.hdr{padding:14px 16px;display:flex;align-items:center;gap:12px;background:${theme.headerGradient || theme.primaryColor};flex-shrink:0}
+.brand{margin-left:auto;color:rgba(255,255,255,.4);font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}
 .hdr-text{color:#fff;font-weight:600;font-size:14px}
 .hdr-sub{color:rgba(255,255,255,.5);font-size:11px}
-.chat{padding:16px;display:flex;flex-direction:column;gap:10px;background:#f8fafc}
+.chat{padding:16px;display:flex;flex-direction:column;gap:10px;flex:1;overflow-y:auto}
 .row{display:flex;align-items:flex-end;gap:8px;max-width:85%}
 .row.user{flex-direction:row-reverse;align-self:flex-end}
 .row.bot{align-self:flex-start}
@@ -377,10 +378,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .bubble{padding:8px 12px;font-size:13px;line-height:1.5;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}
 .bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:4px}
 .user .bubble{background:${theme.primaryColor};color:#fff;border-bottom-right-radius:4px;font-weight:500}
-.footer{text-align:center;padding:12px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff}
+.footer{text-align:center;padding:10px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0}
 </style></head><body>
 <div class="wrap">
-<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${response.completed_at ? new Date(response.completed_at).toLocaleString() : ''}</div></div></div>
+<div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${response.completed_at ? new Date(response.completed_at).toLocaleString() : ''}</div></div><div class="brand">DATANAUTIX</div></div>
 <div class="chat">${msgs.map(m => '<div class="row ' + m.who + '">' + (m.who === 'bot' ? '<div class="sm-av">' + botEmoji + '</div>' : '') + '<div class="bubble">' + m.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</div></div>').join('\n')}</div>
 <div class="footer">Datanautix — datanautix.com</div>
 </div></body></html>`
