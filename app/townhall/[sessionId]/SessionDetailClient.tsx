@@ -140,7 +140,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   // Sensitive topics AI
   const [suggestingTopics, setSuggestingTopics] = useState(false)
   const [suggestedCategories, setSuggestedCategories] = useState<{ name: string; terms: string[] }[] | null>(null)
-  const [fanningTerm, setFanningTerm] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editSlug, setEditSlug] = useState('')
   const [editConfig, setEditConfig] = useState<TownHallConfig | null>(null)
@@ -556,27 +555,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     ))}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-1 mb-1">
-                  {(editConfig.context.sensitive_topics || []).map((tag: string, i: number) => (
-                    <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-50 text-[9px] text-red-600 border border-red-200">
-                      {tag}
-                      <button onClick={async () => {
-                        setFanningTerm(tag)
-                        try {
-                          const res = await fetch('/api/townhall/suggest-sensitive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fan_term: tag }) })
-                          const data = await res.json()
-                          if (data.terms?.length) {
-                            const existing = new Set((editConfig.context.sensitive_topics || []).map((t: string) => t.toLowerCase()))
-                            const newTerms = data.terms.filter((t: string) => !existing.has(t.toLowerCase()))
-                            if (newTerms.length) updateContext({ sensitive_topics: [...(editConfig.context.sensitive_topics || []), ...newTerms] })
-                          }
-                        } catch {}
-                        setFanningTerm(null)
-                      }} disabled={fanningTerm === tag}
-                        className="text-red-300 hover:text-purple-500 disabled:animate-pulse" title="Expand">{fanningTerm === tag ? '...' : '\u2728'}</button>
-                      <button onClick={() => updateContext({ sensitive_topics: (editConfig.context.sensitive_topics || []).filter((_: string, j: number) => j !== i) })} className="text-red-300 hover:text-red-600">&times;</button>
-                    </span>
-                  ))}
+                <div className="mb-1">
+                  <ExpandableTerms
+                    terms={editConfig.context.sensitive_topics || []}
+                    onChange={terms => updateContext({ sensitive_topics: terms })}
+                    color="red"
+                    context={editConfig.context.event_description}
+                  />
                 </div>
                 <EInputCSV value={editConfig.context.sensitive_topics || []} onChange={v => updateContext({ sensitive_topics: v })} />
                 <ELabel>Priority Areas <span className="font-normal text-gray-400">(comma-separated)</span></ELabel>
@@ -1395,6 +1380,112 @@ function DescGradePillSmall({ score }: { score: number }) {
 }
 
 // ── Edit Topic Card with AI Generate ───────────────────────────────────────────
+// -- Expand toggles for keywords / sensitive terms ----------------------------
+
+type ExpansionMap = Record<string, { similar?: string[]; associated?: string[] }>
+
+function ExpandableTerms({ terms, onChange, color = 'purple', context }: {
+  terms: string[]
+  onChange: (terms: string[]) => void
+  color?: 'purple' | 'red'
+  context?: string
+}) {
+  const [expansions, setExpansions] = useState<ExpansionMap>({})
+  const [loading, setLoading] = useState<Record<string, string | null>>({})
+
+  const toggleExpand = async (term: string, mode: 'similar' | 'associated') => {
+    const current = expansions[term]?.[mode]
+    if (current) {
+      const toRemove = new Set(current)
+      const updated = terms.filter(t => !toRemove.has(t))
+      setExpansions(prev => {
+        const next = { ...prev }
+        if (next[term]) { const e = { ...next[term] }; delete e[mode]; next[term] = e }
+        return next
+      })
+      onChange(updated)
+      return
+    }
+    setLoading(prev => ({ ...prev, [term]: mode }))
+    try {
+      const res = await fetch('/api/townhall/expand-terms', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term, mode, context }),
+      })
+      const data = await res.json()
+      if (data.terms?.length) {
+        const existing = new Set(terms.map(t => t.toLowerCase()))
+        const newTerms = data.terms.filter((t: string) => !existing.has(t.toLowerCase()) && t.toLowerCase() !== term.toLowerCase())
+        if (newTerms.length) {
+          setExpansions(prev => ({ ...prev, [term]: { ...prev[term], [mode]: newTerms } }))
+          const idx = terms.indexOf(term)
+          const updated = [...terms]
+          updated.splice(idx + 1, 0, ...newTerms)
+          onChange(updated)
+        }
+      }
+    } catch {}
+    setLoading(prev => ({ ...prev, [term]: null }))
+  }
+
+  const expandedSet = new Set<string>()
+  Object.values(expansions).forEach(e => {
+    e.similar?.forEach(t => expandedSet.add(t))
+    e.associated?.forEach(t => expandedSet.add(t))
+  })
+
+  const bg = color === 'red' ? 'bg-red-50' : 'bg-purple-50'
+  const text = color === 'red' ? 'text-red-600' : 'text-purple-600'
+  const border = color === 'red' ? 'border-red-200' : 'border-purple-200'
+  const expandedBg = color === 'red' ? 'bg-red-50/50' : 'bg-purple-50/50'
+  const expandedBorder = color === 'red' ? 'border-red-100' : 'border-purple-100'
+  const expandedText = color === 'red' ? 'text-red-400' : 'text-purple-400'
+
+  if (terms.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap gap-1 items-center">
+      {terms.map(kw => {
+        const isExpanded = expandedSet.has(kw)
+        const hasSimilar = !!expansions[kw]?.similar
+        const hasAssociated = !!expansions[kw]?.associated
+        const isLoading = loading[kw]
+
+        return (
+          <span key={kw} className={`text-[9px] px-1.5 py-0.5 rounded-full border flex items-center gap-0.5 ${isExpanded ? `${expandedBg} ${expandedText} ${expandedBorder}` : `${bg} ${text} ${border}`}`}>
+            {kw}
+            {!isExpanded && (
+              <>
+                <button onClick={() => toggleExpand(kw, 'similar')}
+                  disabled={!!isLoading}
+                  className={`px-0.5 py-0 rounded text-[7px] font-bold leading-none transition-colors ${hasSimilar ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-blue-200 hover:text-blue-600'}`}
+                  title={hasSimilar ? 'Remove similar terms' : 'Similar word forms'}>
+                  {isLoading === 'similar' ? '·' : 'S'}
+                </button>
+                <button onClick={() => toggleExpand(kw, 'associated')}
+                  disabled={!!isLoading}
+                  className={`px-0.5 py-0 rounded text-[7px] font-bold leading-none transition-colors ${hasAssociated ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500 hover:bg-emerald-200 hover:text-emerald-600'}`}
+                  title={hasAssociated ? 'Remove associated terms' : 'Associated terms'}>
+                  {isLoading === 'associated' ? '·' : 'A'}
+                </button>
+              </>
+            )}
+            <button onClick={() => {
+              if (expansions[kw]) {
+                const toRemove = new Set([...(expansions[kw].similar || []), ...(expansions[kw].associated || [])])
+                setExpansions(prev => { const next = { ...prev }; delete next[kw]; return next })
+                onChange(terms.filter(t => t !== kw && !toRemove.has(t)))
+              } else {
+                onChange(terms.filter(t => t !== kw))
+              }
+            }} className={`${isExpanded ? expandedText : text} opacity-50 hover:opacity-100 hover:text-red-500`}>&times;</button>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName, eventDesc }: {
   topic: TownHallGuideTopic; index: number
   onChange: (partial: Partial<TownHallGuideTopic>) => void
@@ -1449,15 +1540,13 @@ function EditTopicCard({ topic: t, index, onChange, onRemove, industry, orgName,
       <EInputCSV value={t.follow_up_angles || []} onChange={v => onChange({ follow_up_angles: v })} placeholder="Follow-up angles (comma-separated)" />
       {t.keywords?.length > 0 && (
         <div>
-          <label className="text-[10px] font-semibold text-gray-500 block mb-1">Keywords</label>
-          <div className="flex flex-wrap gap-1">
-            {t.keywords.map(kw => (
-              <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 flex items-center gap-0.5">
-                {kw}
-                <button onClick={() => onChange({ keywords: t.keywords.filter(k => k !== kw) })} className="text-purple-300 hover:text-red-400">&times;</button>
-              </span>
-            ))}
-          </div>
+          <label className="text-[10px] font-semibold text-gray-500 block mb-1">Keywords <span className="font-normal text-gray-400">— S = similar forms, A = associated terms</span></label>
+          <ExpandableTerms
+            terms={t.keywords}
+            onChange={kws => onChange({ keywords: kws })}
+            color="purple"
+            context={t.description || t.label}
+          />
         </div>
       )}
       <div className="flex items-center gap-2">
