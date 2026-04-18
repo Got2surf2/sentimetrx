@@ -370,14 +370,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .brand-sub{color:rgba(255,255,255,.4);font-size:8px;font-weight:400;text-transform:none;letter-spacing:0}
 .footer a{color:#E8632A;text-decoration:none}
 .footer a:hover{text-decoration:underline}
-.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}
+.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);font-size:16px;flex-shrink:0}
 .hdr-text{color:#fff;font-weight:600;font-size:14px}
 .hdr-sub{color:rgba(255,255,255,.5);font-size:11px}
 .chat{padding:16px;display:flex;flex-direction:column;gap:10px;flex:1;overflow-y:auto}
 .row{display:flex;align-items:flex-end;gap:8px;max-width:85%}
 .row.user{flex-direction:row-reverse;align-self:flex-end}
 .row.bot{align-self:flex-start}
-.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:${theme.botAvatarGradient || theme.primaryColor}}
+.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:${theme.primaryColor}20}
 .bubble{padding:8px 12px;font-size:13px;line-height:1.5;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}
 .bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:4px}
 .user .bubble{background:${theme.primaryColor};color:#fff;border-bottom-right-radius:4px;font-weight:500}

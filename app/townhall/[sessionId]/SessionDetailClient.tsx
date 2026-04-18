@@ -53,7 +53,7 @@ function buildTHConversationHtml(botName: string, botEmoji: string, gradient: st
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
 .wrap{width:100%;max-width:400px;height:min(90vh,750px);border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;background:#f8fafc}
 .hdr{padding:14px 16px;display:flex;align-items:center;gap:12px;background:${gradient};flex-shrink:0}
-.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}
+.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);font-size:16px;flex-shrink:0}
 .hdr-text{color:#fff;font-weight:600;font-size:14px}
 .hdr-sub{color:rgba(255,255,255,.5);font-size:11px}
 .brand{margin-left:auto;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;text-align:right;line-height:1.4}
@@ -64,7 +64,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .row{display:flex;align-items:flex-end;gap:8px;max-width:85%}
 .row.user{flex-direction:row-reverse;align-self:flex-end}
 .row.bot{align-self:flex-start}
-.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:${gradient}}
+.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:#00b4d820}
 .bubble{padding:8px 12px;font-size:13px;line-height:1.5;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}
 .bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:4px}
 .user .bubble{background:#007AFF;color:#fff;border-bottom-right-radius:4px;font-weight:500}
@@ -996,7 +996,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   setConvShareState('sharing')
                   const botName = cfg?.bot_name || 'Town Hall'
                   const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
-                  const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || '#007AFF'
+                  const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || 'linear-gradient(135deg, #00b4d8, #0077a8)'
                   const html = buildTHConversationHtml(botName, botEmoji, gradient, convModal!.pid, convModal!.turns)
                   try {
                     const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: sessionId, html, expires_in: '30d' }) })
@@ -1012,7 +1012,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 <button onClick={() => {
                   const botName = cfg?.bot_name || 'Town Hall'
                   const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
-                  const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || '#007AFF'
+                  const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || 'linear-gradient(135deg, #00b4d8, #0077a8)'
                   const html = buildTHConversationHtml(botName, botEmoji, gradient, convModal!.pid, convModal!.turns)
                   const blob = new Blob([html], { type: 'text/html' })
                   const url = URL.createObjectURL(blob)
