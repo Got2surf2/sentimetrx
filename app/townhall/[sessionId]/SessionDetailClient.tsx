@@ -184,13 +184,17 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setLoading(false)
   }, [sessionId])
 
-  const needsPolling = !session || session.status === 'active' || session.status === 'paused' || session.status === 'setup'
+  const sessionStatusRef = useRef(session?.status)
+  sessionStatusRef.current = session?.status
   useEffect(() => {
     fetchData()
-    if (!needsPolling) return // ended/closed — no polling, just the initial fetch
-    const interval = setInterval(() => fetchData(), 4000)
+    const interval = setInterval(() => {
+      const s = sessionStatusRef.current
+      if (s && s !== 'active' && s !== 'paused' && s !== 'setup') return // ended — skip
+      fetchData()
+    }, 4000)
     return () => clearInterval(interval)
-  }, [fetchData, needsPolling])
+  }, [fetchData])
 
   // Auto-enter edit mode on first load — only for setup sessions (not active/paused/ended)
   useEffect(() => {
