@@ -1062,7 +1062,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   </div>
                   {/* Scrollable cards */}
                   <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
-                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                       {sorted.map(t => (
                         <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
                           onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
@@ -1251,7 +1251,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       })}
                     </div>
                   ) : (
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {activeTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
                         onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
@@ -1282,7 +1282,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       ))}
                     </div>
                   ) : (
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {parkedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="parked"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
@@ -1312,7 +1312,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       ))}
                     </div>
                   ) : (
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {pendingTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
                         onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
@@ -1361,7 +1361,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       ))}
                     </div>
                   ) : (
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {completedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="completed"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
@@ -1391,7 +1391,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       ))}
                     </div>
                   ) : (
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
                     {dismissedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="dismissed"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
