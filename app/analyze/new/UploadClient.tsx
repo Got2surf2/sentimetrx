@@ -8,12 +8,13 @@ import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
+import RedditWizard from '@/components/analyze/RedditWizard'
 
 const HERMES     = '#E8632A'
 const CHUNK_SIZE = 50                   // rows per POST
 const MAX_BYTES  = 3 * 1024 * 1024     // 3 MB safety ceiling per POST
 
-type SourceMode = 'select' | 'upload' | 'google_reviews'
+type SourceMode = 'select' | 'upload' | 'google_reviews' | 'reddit'
 type Step = 1 | 2 | 3
 
 interface ParsedFile {
@@ -358,6 +359,12 @@ export default function UploadClient() {
               <h3 className="font-bold text-gray-800 mb-1 group-hover:text-orange-700">Download Google Reviews</h3>
               <p className="text-xs text-gray-400">Search for a brand, select locations, pull all reviews</p>
             </button>
+            <button onClick={function() { setSourceMode('reddit') }}
+              className="bg-white border-2 border-gray-200 rounded-2xl p-6 text-left hover:border-orange-400 hover:bg-orange-50 transition-all group">
+              <div className="text-3xl mb-3">💬</div>
+              <h3 className="font-bold text-gray-800 mb-1 group-hover:text-orange-700">Download Reddit Posts</h3>
+              <p className="text-xs text-gray-400">Search Reddit, select threads, download all comments</p>
+            </button>
           </div>
         </div>
       )}
@@ -365,6 +372,11 @@ export default function UploadClient() {
       {/* Google Reviews wizard */}
       {sourceMode === 'google_reviews' && (
         <GoogleReviewsWizard onBack={function() { setSourceMode('select') }} />
+      )}
+
+      {/* Reddit wizard */}
+      {sourceMode === 'reddit' && (
+        <RedditWizard onBack={function() { setSourceMode('select') }} />
       )}
 
       {/* Upload flow */}

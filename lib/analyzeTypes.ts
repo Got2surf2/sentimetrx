@@ -255,3 +255,37 @@ export interface ReviewSourceLocation {
   error_message:     string | null
   created_at:        string
 }
+
+// -- Reddit types -------------------------------------------------------------
+
+export interface RedditSource {
+  id:              string
+  org_id:          string
+  dataset_id:      string | null
+  search_query:    string
+  subreddits:      string[]
+  status:          'pending' | 'downloading' | 'done' | 'error'
+  total_posts:     number
+  total_comments:  number
+  error_message:   string | null
+  created_by:      string
+  created_at:      string
+  updated_at:      string
+}
+
+export interface RedditSourceThread {
+  id:                string
+  reddit_source_id:  string
+  thread_id:         string
+  subreddit:         string
+  title:             string
+  author:            string | null
+  score:             number
+  comment_count:     number
+  permalink:         string | null
+  created_utc:       string | null
+  selected:          boolean
+  total_pulled:      number
+  error_message:     string | null
+  created_at:        string
+}
