@@ -3,264 +3,123 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 
-// ── 20 Scripted Personas — City Council Development Plan Town Hall ──────
+// ── Persona Profile (no scripted lines — AI generates responses) ───────
 
 interface Persona {
   name: string
   bio: string
+  attitude: string
+  style: string
+  concerns: string
+  edge?: string
   sentiment: 'positive' | 'negative' | 'mixed'
-  responses: string[]    // Sent in order across turns
-  flags?: string[]       // Edge cases this persona tests
+  flags?: string[]
+  switch_language?: string
 }
 
-const PERSONAS: Persona[] = [
-  {
-    name: 'Long-time homeowner (20 yrs)',
-    bio: 'Loves the neighborhood, worried about density',
-    sentiment: 'mixed',
-    responses: [
-      "I've lived here for twenty years and I chose this neighborhood because of the quiet streets and big yards. I'm worried this development plan is going to change everything that made this place special.",
-      "Look, I'm not against progress. But when you start talking about multi-family housing on lots that have always been single-family, that changes the whole feel. Traffic, noise, parking — it all gets worse.",
-      "What I'd really like to see is some kind of height limit. Three stories max. That way you get some density without it feeling like you're living in a canyon.",
-      "The mature trees on Elm Street — those have been here longer than any of us. If the plan involves cutting those down for road widening, you're going to have a fight on your hands.",
-      "I guess what I'm saying is, involve us in the details. Don't just show up with a finished plan and ask us to rubber stamp it."
-    ],
-  },
-  {
-    name: 'Young renter, priced out',
-    bio: 'Can\'t afford to buy, frustrated about affordability',
-    sentiment: 'negative',
-    responses: [
-      "I've been renting here for four years and every year my rent goes up. I make decent money but I can't even think about buying in this neighborhood. The development plan needs to address affordability or it's just helping people who already have money.",
-      "Every new project they build around here is luxury condos or townhomes starting at $450K. Who is that for? Not people like me who work in this community every day.",
-      "I'd love to see the plan include some percentage of affordable units — like actually affordable, not 'affordable' in air quotes where it's still $1,800 a month.",
-      "My friends have all moved to the suburbs because they can't afford it here. That's not healthy for a neighborhood. You need young people, you need diversity of income.",
-      "If this plan doesn't have teeth on affordability — actual mandates, not just 'incentives' for developers — then it's just going to accelerate gentrification."
-    ],
-  },
-  {
-    name: 'Parent of school-age kids',
-    bio: 'Excited about parks, wants safer streets near schools',
-    sentiment: 'positive',
-    responses: [
-      "I'm really excited about the new park space in the plan. My kids are 7 and 10 and we're always looking for places to play that aren't a 20-minute drive away.",
-      "The crosswalks near Lincoln Elementary are honestly scary. Cars fly through there at 40 mph during drop-off. If the development plan can address pedestrian safety, that alone would be huge.",
-      "I love the idea of a community center with after-school programs. Right now there's nothing for kids between 3pm and 6pm unless you can afford private programs.",
-      "One thing I'd add — the playground equipment at Memorial Park is from like 2005. If we're investing in the neighborhood, can we update that too?",
-      "Overall I'm supportive. This feels like a plan that actually thinks about families, not just developers trying to maximize units."
-    ],
-  },
-  {
-    name: 'Small business owner on Main St',
-    bio: 'Supports foot traffic but worried about parking',
-    sentiment: 'mixed',
-    responses: [
-      "I run a coffee shop on Main Street. More residents means more customers, so I'm generally supportive. But I'm worried about what happens during the construction phase — that killed two businesses on Oak Ave last year.",
-      "Parking is already tight. If you add 200 units and don't add parking, my customers are going to stop coming because they can't find a spot. It's simple math.",
-      "I'd love to see the plan include some street-level retail requirements. Don't let developers build blank walls at ground level — that kills the walkability everyone says they want.",
-      "The construction timeline matters too. If Main Street is torn up for 18 months, I need to know now so I can plan. Surprises kill small businesses.",
-      "Can we get some kind of small business impact fund in the plan? Even temporary rent relief during construction would help shops like mine survive it."
-    ],
-  },
-  {
-    name: 'Retired teacher, fixed income',
-    bio: 'Property taxes crushing her, fears more increases',
-    sentiment: 'negative',
-    responses: [
-      "I'm on a fixed income. I retired from teaching after 35 years. My property taxes have gone up 40% in the last five years and I'm honestly not sure how much longer I can afford to stay in my own home.",
-      "Every time they 'improve' the neighborhood, my assessment goes up. New park? Assessment goes up. New sidewalks? Assessment goes up. It feels like I'm being taxed out of my own community.",
-      "Nobody at the council ever talks about protecting long-time residents from being displaced by rising costs. It's all about attracting new people and new money.",
-      "I taught half the kids in this neighborhood. Now their parents can't afford to stay either. There needs to be a homestead exemption or some kind of freeze for seniors.",
-      "I'm not against development. I just want to know that someone at that table is thinking about people like me who are already here and struggling."
-    ],
-  },
-  {
-    name: 'Cyclist and transit advocate',
-    bio: 'Wants bike lanes and bus routes, not more cars',
-    sentiment: 'positive',
-    responses: [
-      "I bike to work every day and honestly, the infrastructure is dangerous. The development plan is a once-in-a-generation chance to build protected bike lanes and I really hope the council takes it seriously.",
-      "Every transportation study shows that adding lanes doesn't reduce traffic — it induces demand. We should be investing in bus rapid transit and bike infrastructure instead of wider roads.",
-      "The bus route on Washington Ave was cut three years ago and now there's no public transit option for the entire south side. This plan needs to bring that back.",
-      "I love that the plan mentions 'complete streets.' That's the right framework. Sidewalks, bike lanes, bus shelters, street trees — design for people, not just cars.",
-      "Cities that invest in multimodal transportation see property values go up and traffic go down. This isn't radical — it's what every successful city is doing."
-    ],
-  },
-  {
-    name: 'Contractor who builds locally',
-    bio: 'Sees economic opportunity, wants faster permitting',
-    sentiment: 'positive',
-    responses: [
-      "As someone who builds in this area, I'm excited about the development plan. It means jobs for local tradespeople and a chance to modernize some aging infrastructure.",
-      "The biggest bottleneck right now is permitting. It takes 8-10 months to get a permit approved for a simple renovation. If we're talking about large-scale development, that process needs to be streamlined.",
-      "I'd advocate for local hiring requirements in the plan. Make sure the jobs go to people who live here, not to out-of-state contractors who undercut on labor.",
-      "The stormwater requirements are outdated. If we're adding density, we need to invest in modern drainage or we're going to see flooding like we had on Pine Street last spring.",
-      "I'm ready to build. Just tell me the rules are clear, the timeline is realistic, and the inspections won't take six weeks each."
-    ],
-  },
-  {
-    name: 'HOA board president (NIMBY)',
-    bio: 'Wants development but not near his subdivision',
-    sentiment: 'mixed',
-    responses: [
-      "I represent the Lakewood Estates HOA — 240 homes. We're not opposed to development in principle. But the proposed rezoning on the parcel adjacent to our community is very concerning.",
-      "Our property values are the highest in the district. If you put a five-story mixed-use building 50 feet from our back fences, you're going to destroy what people paid a premium for.",
-      "Why can't the high-density development go on the old industrial lots on the east side? There's plenty of space there that wouldn't impact existing residential neighborhoods.",
-      "We've spent $2 million on community amenities — pool, clubhouse, trails. We didn't make that investment so the council could change the zoning next door and undermine it all.",
-      "I'm asking the council to create buffer zones. At minimum 200 feet between existing single-family and any new multi-family. That's a reasonable compromise."
-    ],
-  },
-  {
-    name: 'Environmental activist',
-    bio: 'Opposes tree removal, worried about flooding',
-    sentiment: 'negative',
-    responses: [
-      "The plan calls for removing 47 mature oaks to widen Carter Boulevard. Those trees are 60-80 years old. Once they're gone, they're gone. You can't replace that canopy with saplings.",
-      "Has anyone done a real environmental impact study? The wetlands along the creek are a natural flood buffer. If you develop that area, you're putting hundreds of homes at risk during heavy rain.",
-      "We had three flooding events last year — three. And the solution is to add more impervious surface? That's not development, that's a disaster waiting to happen.",
-      "I want to see green infrastructure in this plan. Bioswales, rain gardens, permeable pavement. Not just pipes and concrete that push the water problem downstream.",
-      "The city's own climate plan says we need to increase tree canopy by 20% by 2035. This development plan directly contradicts that goal. Has anyone even read both documents?"
-    ],
-  },
-  {
-    name: 'Restaurant owner near proposed site',
-    bio: 'More customers good, but construction impact',
-    sentiment: 'mixed',
-    responses: [
-      "I own the Italian place on 3rd Avenue. Long-term, more residents nearby would be great for my business. But I survived COVID barely — I can't survive two years of construction blocking my entrance.",
-      "When they did the water main work on Central Ave, foot traffic dropped 60% for the restaurants on that block. Two closed permanently. I don't want that to happen to us.",
-      "If the timeline is realistic and there's a plan to maintain access during construction, I can work with that. But I need specifics, not just promises.",
-      "Could the city consider a temporary property tax reduction for businesses in the construction zone? That would help offset the revenue loss during the build-out.",
-      "I'd also love to see more outdoor dining space in the plan. Wider sidewalks with café seating would benefit every restaurant on the block, not just during construction but permanently."
-    ],
-  },
-  {
-    name: 'Angry resident about traffic',
-    bio: 'Ranting about dangerous intersection, emotional',
-    sentiment: 'negative',
-    responses: [
-      "The intersection at Oak and 5th is a death trap. I've seen three accidents there in the last year, including one where a kid on a bike got hit. And now you want to add MORE traffic to this area?",
-      "I've called the city about that intersection SEVEN times. Seven! Nobody calls back, nobody fixes the light timing, nobody adds a turn signal. And now you're talking about development?",
-      "A woman in my neighborhood was T-boned at that intersection last March. She spent two weeks in the hospital. Her family is still dealing with the medical bills. This isn't abstract — people are getting hurt.",
-      "Fix the infrastructure we have before building new stuff. That's all I'm asking. The roads are crumbling, the signals are from the 1990s, and you want to pour money into shiny new projects.",
-      "I'm not going to stop showing up to these meetings until something changes. Every single one. Until someone at that council table actually does something about traffic safety."
-    ],
-  },
-  {
-    name: 'New resident, just moved in',
-    bio: 'Chose neighborhood for walkability, excited',
-    sentiment: 'positive',
-    responses: [
-      "We moved here six months ago specifically because of the development plan. We came from the suburbs and wanted a walkable neighborhood where we didn't need two cars.",
-      "The mixed-use concept is exactly what modern neighborhoods need. I love being able to walk to a coffee shop, a grocery store, and a park all within ten minutes.",
-      "Back where we moved from, everything was strip malls and parking lots. This plan feels like it's building something with actual character and community identity.",
-      "I'd love to see the plan include co-working spaces. A lot of people work remotely now and having a local workspace option would reduce the need for commuting entirely.",
-      "We're planning to be here long-term and raise our kids here. Knowing the neighborhood has a thoughtful development vision makes us feel like we made the right choice."
-    ],
-  },
-  {
-    name: 'Politically motivated resident',
-    bio: 'Blames the mayor, compares to corruption elsewhere',
-    sentiment: 'mixed',
-    flags: ['sensitive-politics'],
-    responses: [
-      "Let's be honest about what's really going on here. The mayor's biggest campaign donor is the developer who stands to make millions from this rezoning. Does anyone else find that suspicious?",
-      "This is exactly what happened in that scandal in the next county over — council members voting on projects where they had financial interests. I want to know who on this council has ties to the developers involved.",
-      "I voted for better schools and roads, not for handing public land over to private developers at below-market rates. This feels like the kind of backroom deal that voters hate.",
-      "The transparency here is terrible. Why were the developer meetings held behind closed doors? If this plan is so great, why wasn't the community involved from day one?",
-      "I'm not saying anyone is corrupt. I'm saying the optics are bad and the process has not been transparent enough to build public trust. That's a governance failure."
-    ],
-  },
-  {
-    name: 'Resident with biased housing concerns',
-    bio: 'Links new housing to demographic fears',
-    sentiment: 'negative',
-    flags: ['sensitive-discrimination'],
-    responses: [
-      "I'm concerned about who these new affordable units are going to attract. Our neighborhood has always been safe and quiet, and I've heard about what happens when you concentrate low-income housing.",
-      "Look, I'm not trying to be insensitive but property crime goes up when you add Section 8 housing. That's just statistics. Has anyone looked at what happened in Riverside when they did this?",
-      "My neighbors and I worked hard to buy in this neighborhood. We don't want to see it go downhill because someone decided to social engineer the demographics.",
-      "I pay a lot in property taxes to live in a nice area. I don't think it's unreasonable to want some say in who's moving in next door.",
-      "Can we at least get a commitment that the new housing will have the same standards? Same maintenance requirements, same HOA rules, same expectations for behavior?"
-    ],
-  },
-  {
-    name: 'Single mom, works two jobs',
-    bio: 'Needs childcare and affordability, not luxury',
-    sentiment: 'mixed',
-    responses: [
-      "I work two jobs and I'm raising two kids by myself. When I look at this plan, I don't see anything for people like me. I see luxury townhomes and fancy restaurants. Where's the daycare? Where's the affordable grocery store?",
-      "The nearest childcare that I can actually afford is a 40-minute bus ride. If this plan added a subsidized childcare center, that alone would change my life and a lot of other parents' lives.",
-      "I can barely make rent now. Every time something new gets built in this neighborhood, rents go up within a year. How do I know this plan won't push me out entirely?",
-      "I don't need a wine bar or a yoga studio. I need a laundromat that's open past 8pm and a bus that runs on weekends. Can we please think about what working families actually need?",
-      "I want my kids to grow up here. This is their school, their friends, their community. But if development means displacement, then it's not development — it's just pushing poor people somewhere else."
-    ],
-  },
-  {
-    name: 'Elderly resident with mobility issues',
-    bio: 'Loves sidewalk improvements, wants accessibility',
-    sentiment: 'positive',
-    responses: [
-      "I use a walker and the sidewalks on my block are a disaster. Cracked, uneven, tree roots pushing them up. The plan to rebuild sidewalks throughout the neighborhood would make a real difference for people like me.",
-      "I want to mention ADA compliance. A lot of the curb cuts in this area don't meet current standards. If we're going to rebuild, let's do it right so everyone can get around safely.",
-      "Bus shelters with benches and shade would be wonderful. I take the bus to my doctor's appointments and right now I stand in the sun waiting because there's nowhere to sit.",
-      "I appreciate that someone is thinking about streetlights too. I don't go out after dark anymore because the lighting on Maple Street is terrible. I've tripped twice on broken pavement I couldn't see.",
-      "This neighborhood has been good to me for 30 years. Making it accessible and safe for older residents — that's not just kind, it's practical. We're a growing part of the population."
-    ],
-  },
-  {
-    name: 'Disengaged teenager',
-    bio: 'Dragged here by parent, minimal responses',
-    sentiment: 'negative',
-    flags: ['curt-detection'],
-    responses: [
-      "idk my mom made me come",
-      "sure I guess",
-      "whatever",
-      "not really",
-      "can I go now"
-    ],
-  },
-  {
-    name: 'Off-topic dog park enthusiast',
-    bio: 'Only wants to talk about dog parks, ignores questions',
-    sentiment: 'mixed',
-    flags: ['off-topic-redirect'],
-    responses: [
-      "Before we talk about anything else, I want to bring up the dog park situation. We have ONE dog park for the entire east side and it's basically a mud pit. We need at least two more.",
-      "I started a petition for a dog park on the vacant lot on Birch Street. We have 847 signatures. I have copies if anyone wants one. Dogs are family and they deserve proper recreation space.",
-      "Did you know that neighborhoods with dog parks see a 12% increase in social cohesion? I read a study about it. It's not just about dogs — it's about community building.",
-      "I don't really have opinions about the road stuff but PLEASE can someone address the dog waste stations? We need more of them and they need to actually be stocked with bags.",
-      "Every other city our size has at least four dog parks. We have one. One! And it doesn't even have a separate area for small dogs. My Chihuahua is terrified."
-    ],
-  },
-  {
-    name: 'Spanish-speaking resident',
-    bio: 'Starts English, switches to Spanish mid-conversation',
-    sentiment: 'positive',
-    flags: ['language-switch'],
-    responses: [
-      "I think the development plan is very good for our neighborhood. My family has lived here for twelve years and we want to see it grow.",
-      "The community garden idea is beautiful. Many families in our area grow their own vegetables and having a dedicated space would bring everyone together.",
-      "Me gustaría que el plan incluya más opciones de transporte público. Muchas familias aquí no tienen carro y dependen del autobús para ir al trabajo y llevar a los niños a la escuela.",
-      "También necesitamos más señalización en español. Muchos de mis vecinos no hablan inglés y no entienden los avisos de construcción o los cambios en las rutas de tráfico.",
-      "Gracias por escucharnos. Es importante que toda la comunidad tenga voz en estos cambios, no solo los que hablan inglés o los que tienen más dinero."
-    ],
-  },
-  {
-    name: 'Hostile/profane resident',
-    bio: 'Escalating frustration, uses profanity',
-    sentiment: 'negative',
-    flags: ['content-safety'],
-    responses: [
-      "This whole plan is a joke. You're going to ruin this neighborhood just to line some developer's pockets. I've been to three of these meetings and nothing ever changes.",
-      "Oh great, another 'community input session' where you pretend to listen and then do whatever the hell you were going to do anyway. What a waste of my time.",
-      "The last 'improvement' project left my street torn up for eight months. Eight damn months! And the road is STILL worse than before they started. This is bullshit.",
-      "You want my honest opinion? This plan is crap and everyone on that council knows it. They don't give a damn about us — they care about tax revenue and campaign donations.",
-      "I'm done being polite about this. Fix the roads, lower my taxes, and stop building overpriced condos nobody can afford. That's it. That's the whole plan you need."
-    ],
-  },
+// ── Persona Packs ──────────────────────────────────────────────────────
+
+const COMMUNITY_PACK: Persona[] = [
+  { name: 'Long-time homeowner', bio: 'Lived in the neighborhood 20+ years, raised kids here, deeply invested in community character', attitude: 'Protective but reasonable', style: 'Personal stories, references history', concerns: 'Density changes, traffic, property values, neighborhood character', sentiment: 'mixed' },
+  { name: 'Young renter, priced out', bio: 'Renting for 4 years, decent income but can\'t afford to buy, watches friends leave', attitude: 'Frustrated, feels unheard', style: 'Direct, occasionally sarcastic', concerns: 'Affordability, gentrification, luxury development vs real needs', sentiment: 'negative' },
+  { name: 'Parent of school-age kids', bio: 'Two kids ages 7 and 10, active in school PTA, walks kids to school', attitude: 'Enthusiastic about kid-friendly improvements', style: 'Practical, solution-oriented', concerns: 'Pedestrian safety, parks, after-school programs, playgrounds', sentiment: 'positive' },
+  { name: 'Small business owner', bio: 'Runs a shop on the main commercial street, survived COVID barely', attitude: 'Cautiously supportive but worried about disruption', style: 'Business-minded, talks numbers', concerns: 'Parking, construction impact, foot traffic, small business survival', sentiment: 'mixed' },
+  { name: 'Retired teacher on fixed income', bio: '35-year teaching career, now on pension, property taxes rising', attitude: 'Worried about displacement, feels forgotten', style: 'Emotional, references teaching career and students', concerns: 'Property taxes, senior displacement, cost of living', sentiment: 'negative' },
+  { name: 'Transit and cycling advocate', bio: 'Bikes to work daily, active in local transit coalition', attitude: 'Passionate, well-researched', style: 'Cites studies, uses urbanist language', concerns: 'Bike infrastructure, bus routes, car dependency, walkability', sentiment: 'positive' },
+  { name: 'Local contractor', bio: 'Builds and renovates in the area, employs local tradespeople', attitude: 'Optimistic about opportunity', style: 'Practical, talks process and timelines', concerns: 'Permitting delays, local hiring, stormwater, building codes', sentiment: 'positive' },
+  { name: 'HOA board president', bio: 'Represents 200+ homes in a subdivision adjacent to development', attitude: 'Not opposed in principle but protective of his neighborhood', style: 'Formal, uses property value arguments', concerns: 'Buffer zones, height limits, rezoning near existing homes', edge: 'Classic NIMBY — wants development elsewhere', sentiment: 'mixed' },
+  { name: 'Environmental activist', bio: 'Member of local conservation group, monitors flooding and tree canopy', attitude: 'Alarmed, data-driven', style: 'Cites specific trees, flood events, environmental studies', concerns: 'Tree removal, flooding, impervious surfaces, green infrastructure', sentiment: 'negative' },
+  { name: 'Restaurant owner near construction', bio: 'Runs a popular restaurant near proposed development, fears construction impact', attitude: 'Supportive long-term but anxious about survival', style: 'Tells specific stories from past construction impacts', concerns: 'Construction timeline, access during build, revenue loss, tax relief', sentiment: 'mixed' },
+  { name: 'New resident who chose the area', bio: 'Moved here 6 months ago specifically for the development plan, from suburbs', attitude: 'Enthusiastic, wants walkability', style: 'Compares to where they moved from', concerns: 'Walkability, mixed-use, co-working, modern amenities', sentiment: 'positive' },
+  { name: 'Single parent working two jobs', bio: 'Raising two kids alone, needs practical infrastructure', attitude: 'Exhausted, pragmatic, feels invisible in planning', style: 'Blunt about real needs vs luxury amenities', concerns: 'Childcare, affordable transit, laundromat, weekend bus service', sentiment: 'mixed' },
+  { name: 'Elderly resident with mobility issues', bio: 'Uses a walker, depends on bus, has lived here 30 years', attitude: 'Grateful for improvements, advocates for accessibility', style: 'Specific about ADA issues, sidewalk conditions', concerns: 'Sidewalks, curb cuts, bus shelters, lighting, benches', sentiment: 'positive' },
+  // Edge cases
+  { name: 'Disengaged teenager', bio: 'Dragged here by parent, does not want to participate', attitude: 'Completely disinterested', style: 'Minimal words, no engagement', concerns: '', sentiment: 'negative', flags: ['curt-detection'] },
+  { name: 'Off-topic enthusiast', bio: 'Has a single pet issue and will not stop talking about it', attitude: 'Obsessively focused on their issue', style: 'Ignores questions, pivots every answer back to their topic', concerns: 'Their one pet issue only', sentiment: 'mixed', flags: ['off-topic-redirect'] },
+  { name: 'Non-English speaker', bio: 'Bilingual resident, starts in English but more comfortable in their native language', attitude: 'Eager to participate, wants to be heard', style: 'Starts in English, switches language around turn 3', concerns: 'Representation, signage in their language, transit access', sentiment: 'positive', flags: ['language-switch'], switch_language: 'es' },
+  { name: 'Frustrated profanity user', bio: 'Has attended many meetings with no results, patience exhausted', attitude: 'Escalating hostility, uses mild profanity', style: 'Starts irritated, gets more aggressive each turn', concerns: 'Broken promises, government waste, ignored complaints', sentiment: 'negative', flags: ['content-safety'] },
+  { name: 'Political conspiracy theorist', bio: 'Sees corruption everywhere, references specific officials and donors', attitude: 'Suspicious, confrontational', style: 'Names names, references backroom deals and campaign money', concerns: 'Transparency, developer influence, closed-door meetings', sentiment: 'mixed', flags: ['sensitive-politics'] },
+  { name: 'Coded discrimination commenter', bio: 'Concerned about "who moves in" using property values and crime statistics as cover', attitude: 'Uses plausible deniability, coded language', style: 'Says "I\'m not trying to be insensitive but..." frequently', concerns: 'Property crime, "neighborhood character", Section 8, "those people"', sentiment: 'negative', flags: ['sensitive-discrimination'] },
 ]
+
+const EMPLOYEE_PACK: Persona[] = [
+  { name: 'Veteran employee (15 years)', bio: 'Has seen many changes, institutional knowledge, approaching burnout', attitude: 'Cynical but cares deeply', style: 'References past initiatives that failed', concerns: 'Workload, recognition, broken promises, institutional memory', sentiment: 'mixed' },
+  { name: 'Enthusiastic new hire', bio: 'Joined 3 months ago, full of energy and ideas', attitude: 'Optimistic, wants to contribute', style: 'Suggests ideas freely, asks why things are done a certain way', concerns: 'Onboarding, career growth, mentorship, innovation', sentiment: 'positive' },
+  { name: 'Middle manager squeezed both ways', bio: 'Manages a team of 8, reports to VP, pressure from both directions', attitude: 'Pragmatic, stretched thin', style: 'Talks about competing priorities and resource constraints', concerns: 'Headcount, budget cuts, team morale, unclear priorities', sentiment: 'mixed' },
+  { name: 'Remote worker feeling disconnected', bio: 'Went remote during COVID, never came back, feels out of the loop', attitude: 'Worried about being forgotten', style: 'Mentions missing hallway conversations and informal updates', concerns: 'Remote inclusion, communication tools, promotion equity, isolation', sentiment: 'negative' },
+  { name: 'Hourly front-line worker', bio: 'Customer-facing role, no work-from-home option, different reality from corporate', attitude: 'Feels like two different companies exist', style: 'Contrasts corporate perks with frontline reality', concerns: 'Scheduling, break room conditions, pay equity, recognition', sentiment: 'negative' },
+  { name: 'High performer considering leaving', bio: 'Top performer, has an offer from a competitor, testing whether leadership listens', attitude: 'Quiet frustration, measured', style: 'Asks probing questions about direction and values', concerns: 'Growth ceiling, compensation, mission alignment, leadership trust', sentiment: 'mixed' },
+  { name: 'Working parent juggling everything', bio: 'Two kids under 5, partner also works, dependent on schedule flexibility', attitude: 'Grateful for flexibility but needs more support', style: 'Practical, talks about real daily challenges', concerns: 'Flexible hours, childcare support, meeting overload, PTO', sentiment: 'mixed' },
+  { name: 'DEI champion', bio: 'Active in employee resource groups, advocates for inclusive policies', attitude: 'Passionate about representation', style: 'Cites data on diversity gaps, shares personal experiences', concerns: 'Hiring practices, promotion equity, ERG funding, inclusive culture', sentiment: 'positive' },
+  { name: 'IT/ops person nobody listens to', bio: 'Maintains the systems everyone depends on, rarely consulted on decisions', attitude: 'Mildly resentful, technically precise', style: 'Points out downstream effects of decisions', concerns: 'Technical debt, tool sprawl, change management, being consulted', sentiment: 'negative' },
+  { name: 'Executive skeptic', bio: 'Director-level, privately questions the strategy', attitude: 'Diplomatically critical', style: 'Asks pointed questions framed as curiosity', concerns: 'Strategy clarity, market position, resource allocation', sentiment: 'mixed' },
+  { name: 'Burned out team lead', bio: 'Carrying the workload of two people since layoffs, exhausted', attitude: 'Beyond frustrated, considering a break', style: 'Short sentences, heavy sighs', concerns: 'Workload, backfills, mental health, unsustainable pace', sentiment: 'negative' },
+  // Edge cases
+  { name: 'Disengaged attendee', bio: 'Mandatory attendance, multitasking, minimal participation', attitude: 'Checked out', style: 'One-word answers', concerns: '', sentiment: 'negative', flags: ['curt-detection'] },
+  { name: 'Benefits obsessive', bio: 'Only cares about one topic: benefits/compensation', attitude: 'Single-minded', style: 'Ignores every question, steers to benefits', concerns: 'Health insurance, 401k match, PTO policy', sentiment: 'mixed', flags: ['off-topic-redirect'] },
+  { name: 'Non-English speaking employee', bio: 'Works in operations, stronger in native language', attitude: 'Wants to contribute but language barrier', style: 'Starts in English, switches mid-conversation', concerns: 'Language support, safety signage, inclusion', sentiment: 'positive', flags: ['language-switch'], switch_language: 'es' },
+  { name: 'Angry about layoffs', bio: 'Lost close colleagues in recent layoffs, patience gone', attitude: 'Hostile, uses profanity', style: 'Escalates each turn', concerns: 'Layoff decisions, severance, leadership accountability', sentiment: 'negative', flags: ['content-safety'] },
+]
+
+const CUSTOMER_PACK: Persona[] = [
+  { name: 'Loyal long-term customer', bio: 'Using the product/service for 5+ years, evangelizes to friends', attitude: 'Supportive but has wish list', style: 'References specific features and history', concerns: 'Feature requests, loyalty rewards, product direction', sentiment: 'positive' },
+  { name: 'Recently churned customer', bio: 'Left 3 months ago, came back reluctantly', attitude: 'Wary, testing whether things improved', style: 'Compares to competitors, skeptical', concerns: 'What drove them away, trust, reliability', sentiment: 'mixed' },
+  { name: 'Price-sensitive shopper', bio: 'Always comparing prices, switches for deals', attitude: 'Transactional, value-focused', style: 'Talks numbers, compares competitors', concerns: 'Pricing, bundles, hidden fees, value for money', sentiment: 'mixed' },
+  { name: 'Power user / super fan', bio: 'Uses every feature, knows the product better than some employees', attitude: 'Enthusiastic but opinionated', style: 'Suggests specific improvements, references advanced features', concerns: 'Performance, advanced features, API access, customization', sentiment: 'positive' },
+  { name: 'First-time customer', bio: 'Just started, still figuring it out', attitude: 'Cautiously optimistic', style: 'Asks basic questions, compares to what they used before', concerns: 'Onboarding, learning curve, documentation, first impressions', sentiment: 'positive' },
+  { name: 'Angry support escalation', bio: 'Had a terrible support experience, still unresolved', attitude: 'Furious, wants accountability', style: 'References specific ticket numbers and dates', concerns: 'Support quality, resolution time, being passed around', sentiment: 'negative' },
+  { name: 'Enterprise buyer', bio: 'Evaluating for a team of 200, decision-maker', attitude: 'Professional, ROI-focused', style: 'Asks about scale, security, compliance, contracts', concerns: 'Enterprise features, SLAs, data privacy, bulk pricing', sentiment: 'mixed' },
+  { name: 'Accessibility advocate', bio: 'Uses assistive technology, encounters barriers regularly', attitude: 'Patient but persistent', style: 'Specific about WCAG violations and screen reader issues', concerns: 'Accessibility, inclusive design, ADA compliance', sentiment: 'mixed' },
+  { name: 'Small business owner user', bio: 'Uses the product to run their business, any downtime costs money', attitude: 'Dependent and nervous about changes', style: 'Talks about business impact of every decision', concerns: 'Reliability, breaking changes, migration paths, pricing stability', sentiment: 'mixed' },
+  // Edge cases
+  { name: 'One-word reviewer', bio: 'Gives minimal feedback, rates things 3 stars with no explanation', attitude: 'Indifferent', style: 'Barely responds', concerns: '', sentiment: 'negative', flags: ['curt-detection'] },
+  { name: 'Feature request broken record', bio: 'Wants one specific feature and brings it up constantly', attitude: 'Fixated', style: 'Steers every answer to their feature request', concerns: 'Their one feature request', sentiment: 'mixed', flags: ['off-topic-redirect'] },
+  { name: 'International customer', bio: 'Non-English speaking user in a growing market', attitude: 'Eager but language barrier', style: 'Starts English, switches to native language', concerns: 'Localization, local payment methods, support in their language', sentiment: 'positive', flags: ['language-switch'], switch_language: 'es' },
+  { name: 'Raging reviewer', bio: 'Left a 1-star review, still angry, escalating', attitude: 'Hostile, uses profanity', style: 'Gets worse each turn', concerns: 'Product failure, refund, accountability', sentiment: 'negative', flags: ['content-safety'] },
+]
+
+const RESTAURANT_PACK: Persona[] = [
+  { name: 'Regular diner (weekly)', bio: 'Comes in every week, knows the staff by name, has a usual order', attitude: 'Loyal but notices every change', style: 'References specific dishes and past visits', concerns: 'Menu consistency, portion sizes, favorite dishes staying, atmosphere', sentiment: 'positive' },
+  { name: 'First-time visitor', bio: 'Trying the restaurant for the first time based on a recommendation', attitude: 'Curious, forming first impressions', style: 'Compares to other restaurants, comments on ambiance', concerns: 'Menu clarity, welcome experience, value, atmosphere', sentiment: 'positive' },
+  { name: 'Food allergy parent', bio: 'Child has severe nut allergy, hypervigilant about cross-contamination', attitude: 'Anxious but appreciative when accommodated', style: 'Asks detailed ingredient questions, needs staff knowledge', concerns: 'Allergen labeling, kitchen protocols, staff training, safe options', sentiment: 'mixed' },
+  { name: 'Date night couple', bio: 'Uses the restaurant for special occasions, cares about ambiance', attitude: 'Wants a great experience, judges the details', style: 'Talks about lighting, noise, service timing', concerns: 'Noise level, wait times, romantic atmosphere, cocktail quality', sentiment: 'mixed' },
+  { name: 'Delivery/takeout customer', bio: 'Orders 2-3 times a week via delivery app, rarely dines in', attitude: 'Convenient but frustrated by packaging and delivery issues', style: 'Compares in-restaurant vs delivered quality', concerns: 'Packaging, food temp on arrival, delivery accuracy, app experience', sentiment: 'mixed' },
+  { name: 'Yelp/Google reviewer', bio: 'Reviews every restaurant they visit, has a following', attitude: 'Evaluating everything for public review', style: 'Detailed observations, judges presentation and consistency', concerns: 'Photo-worthy plating, consistency, service attitude, unique offerings', sentiment: 'mixed' },
+  { name: 'Budget-conscious family', bio: 'Family of 5, needs kid menu and reasonable prices', attitude: 'Loves the food but watches the bill', style: 'Calculates value, mentions kids\' preferences', concerns: 'Kids menu quality, portion value, family-friendliness, noise tolerance', sentiment: 'positive' },
+  { name: 'Brunch enthusiast', bio: 'Lives for weekend brunch, tries every new spot', attitude: 'Adventurous eater, Instagram-aware', style: 'Talks about trendy items, presentation, drinks', concerns: 'Brunch menu creativity, cocktails, wait times on weekends, ambiance', sentiment: 'positive' },
+  { name: 'Long-time server/staff member', bio: 'Worked here 3 years, knows operations inside and out', attitude: 'Cares about the place but feels overworked', style: 'Speaks from behind-the-scenes experience', concerns: 'Staffing, tip distribution, schedule flexibility, management communication', sentiment: 'mixed' },
+  { name: 'Neighboring business owner', bio: 'Runs a shop next door, shares parking and foot traffic', attitude: 'Collaborative but territorial about shared resources', style: 'Talks about neighborhood synergy and conflicts', concerns: 'Shared parking, noise, dumpster placement, mutual customer traffic', sentiment: 'mixed' },
+  { name: 'Health-conscious diner', bio: 'Counts macros, needs nutritional info, prefers whole foods', attitude: 'Appreciative of healthy options, frustrated by lack of info', style: 'Asks about ingredients, cooking methods, substitutions', concerns: 'Nutritional transparency, healthy options, ingredient quality, customization', sentiment: 'mixed' },
+  // Edge cases
+  { name: 'Hangry complainer', bio: 'Waited too long, increasingly hostile about service', attitude: 'Escalating frustration', style: 'Gets more aggressive each turn', concerns: 'Wait times, slow service, cold food', sentiment: 'negative', flags: ['content-safety'] },
+  { name: 'Non-English speaking diner', bio: 'Tourist or immigrant, struggles with English menu', attitude: 'Wants to enjoy the meal but communication is hard', style: 'Starts in English, switches to native language', concerns: 'Menu translation, dietary communication, feeling welcome', sentiment: 'positive', flags: ['language-switch'], switch_language: 'es' },
+  { name: 'Silent eater', bio: 'Eats alone, headphones in, gives minimal feedback', attitude: 'Not rude, just private', style: 'One-word answers', concerns: '', sentiment: 'mixed', flags: ['curt-detection'] },
+]
+
+const STAKEHOLDER_PACK: Persona[] = [
+  { name: 'Board member', bio: 'Serves on the board, fiduciary responsibility, governance focus', attitude: 'Strategic, risk-aware', style: 'Asks about metrics, compliance, fiduciary duty', concerns: 'ROI, risk management, governance, strategic alignment', sentiment: 'mixed' },
+  { name: 'Major donor/investor', bio: 'Significant financial contributor, expects impact and transparency', attitude: 'Expects accountability', style: 'Talks about impact per dollar, reporting', concerns: 'Impact measurement, financial transparency, reporting cadence', sentiment: 'mixed' },
+  { name: 'Community partner (nonprofit)', bio: 'Runs a partner organization, co-delivers services', attitude: 'Collaborative but protective of their mission', style: 'References partnership agreements and shared clients', concerns: 'Coordination, credit sharing, funding allocation, overlap', sentiment: 'positive' },
+  { name: 'Government liaison', bio: 'City/county contact, manages grants and compliance', attitude: 'Bureaucratic but supportive', style: 'References regulations, deadlines, reporting requirements', concerns: 'Compliance, grant deliverables, audit readiness, timelines', sentiment: 'mixed' },
+  { name: 'Vendor/supplier', bio: 'Provides goods or services, depends on the relationship', attitude: 'Wants stability and clear expectations', style: 'Talks about contracts, payment terms, communication', concerns: 'Payment reliability, contract terms, volume commitments, feedback loops', sentiment: 'mixed' },
+  { name: 'Media/press contact', bio: 'Local journalist covering the organization', attitude: 'Seeking the story, asks probing questions', style: 'Journalistic — who, what, when, why, how much', concerns: 'Transparency, public interest stories, access, accuracy', sentiment: 'mixed' },
+  { name: 'Volunteer coordinator', bio: 'Manages 50+ volunteers, bridge between org and community', attitude: 'Passionate but overwhelmed', style: 'Talks about volunteer experience and retention', concerns: 'Volunteer training, appreciation, burnout, scheduling tools', sentiment: 'positive' },
+  { name: 'Beneficiary/client', bio: 'Receives services from the organization, lived experience', attitude: 'Grateful but has real feedback on gaps', style: 'Personal stories, specific about what worked and what didn\'t', concerns: 'Service quality, wait times, dignity, follow-through', sentiment: 'mixed' },
+  { name: 'Skeptical taxpayer', bio: 'Questions how public money is spent, attends meetings to hold accountable', attitude: 'Adversarial but legitimate', style: 'Demands numbers, questions overhead, cites waste', concerns: 'Overhead ratio, executive compensation, measurable outcomes', sentiment: 'negative' },
+  { name: 'Peer organization leader', bio: 'Runs a similar org in another region, sharing best practices', attitude: 'Collegial, comparative', style: 'References what they do differently, benchmarking', concerns: 'Best practices, benchmarks, collaboration opportunities', sentiment: 'positive' },
+  // Edge cases
+  { name: 'Disengaged board appointee', bio: 'Political appointment, doesn\'t engage meaningfully', attitude: 'Going through the motions', style: 'Minimal responses', concerns: '', sentiment: 'mixed', flags: ['curt-detection'] },
+  { name: 'Agenda-driven lobbyist', bio: 'Represents an interest group, every answer steers to their cause', attitude: 'Relentless advocacy', style: 'Pivots every topic to their agenda', concerns: 'Their single legislative/policy priority', sentiment: 'mixed', flags: ['off-topic-redirect'] },
+  { name: 'International partner', bio: 'Partner from another country, language barrier', attitude: 'Eager to collaborate despite communication challenges', style: 'Switches to native language when complex topics arise', concerns: 'Cultural sensitivity, translation, international standards', sentiment: 'positive', flags: ['language-switch'], switch_language: 'es' },
+]
+
+const PACKS: Record<string, { label: string; personas: Persona[] }> = {
+  community: { label: 'Community', personas: COMMUNITY_PACK },
+  employee: { label: 'Employee', personas: EMPLOYEE_PACK },
+  customer: { label: 'Customer', personas: CUSTOMER_PACK },
+  restaurant: { label: 'Restaurant', personas: RESTAURANT_PACK },
+  stakeholder: { label: 'Stakeholder', personas: STAKEHOLDER_PACK },
+}
 
 // ── Simulator ──────────────────────────────────────────────────────────
 
@@ -272,8 +131,10 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 export default function TownHallSimulatorPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [selectedId, setSelectedId] = useState('')
-  const [count, setCount] = useState(20)
+  const [pack, setPack] = useState('community')
+  const [count, setCount] = useState(15)
   const [turnsPerParticipant, setTurnsPerParticipant] = useState(4)
+  const [enabledPersonas, setEnabledPersonas] = useState<Record<number, boolean>>({})
   const [running, setRunning] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [progress, setProgress] = useState({ done: 0, total: 0, ok: 0, fail: 0 })
@@ -286,6 +147,22 @@ export default function TownHallSimulatorPage() {
       .then(data => setSessions(Array.isArray(data) ? data : []))
       .catch(() => {})
   }, [])
+
+  // Auto-select pack based on session type
+  useEffect(() => {
+    const s = sessions.find(s => s.id === selectedId)
+    if (s?.config?.session_type) {
+      const type = s.config.session_type
+      if (PACKS[type]) setPack(type)
+    }
+  }, [selectedId, sessions])
+
+  // Reset enabled personas when pack changes
+  useEffect(() => {
+    const all: Record<number, boolean> = {}
+    PACKS[pack].personas.forEach((_, i) => { all[i] = true })
+    setEnabledPersonas(all)
+  }, [pack])
 
   const addLog = useCallback((text: string, type: LogEntry['type'] = 'ok') => {
     setLogs(prev => [...prev, { text, type }])
@@ -301,18 +178,24 @@ export default function TownHallSimulatorPage() {
     const session = sessions.find(s => s.id === selectedId)
     if (!session) { addLog('Session not found', 'err'); setRunning(false); return }
 
+    const currentPack = PACKS[pack]
+    const allPersonas = currentPack.personas.filter((_, i) => enabledPersonas[i] !== false)
+    const participantCount = Math.min(count, allPersonas.length)
+    const shuffled = [...allPersonas].sort(() => Math.random() - 0.5).slice(0, participantCount)
+
+    const cfg = session.config || {}
+    const topics = (session.discussion_guide || []).filter((t: any) => t.enabled !== false).map((t: any) => t.label)
+    const sessionContext = {
+      org_name: cfg.context?.org_name || '',
+      event_description: cfg.context?.event_description || '',
+      topics,
+    }
+
     addLog(`Session: "${session.name}" (${session.status})`, 'info')
+    addLog(`Pack: ${currentPack.label} — ${participantCount} personas, ${turnsPerParticipant} turns each`, 'info')
+    addLog(`Topics: ${topics.join(', ') || 'none'}`, 'info')
+    addLog(`AI-generated responses (not scripted)\n`, 'dim')
 
-    // Cap to available personas
-    const participantCount = Math.min(count, PERSONAS.length)
-    if (count > PERSONAS.length) addLog(`Capped to ${PERSONAS.length} scripted personas`, 'info')
-
-    addLog(`Simulating ${participantCount} personas, up to ${turnsPerParticipant} turns each`, 'info')
-
-    // Shuffle personas for variety
-    const shuffled = [...PERSONAS].sort(() => Math.random() - 0.5).slice(0, participantCount)
-
-    // Make sure session is active
     if (session.status === 'setup') {
       addLog('Starting session...', 'info')
       try {
@@ -335,14 +218,9 @@ export default function TownHallSimulatorPage() {
       const pid = 'sim_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
       const flags = persona.flags?.length ? ` [${persona.flags.join(', ')}]` : ''
       addLog(`── ${persona.name} (${persona.sentiment})${flags}`, 'info')
-      addLog(`   ${persona.bio}`, 'dim')
+      addLog(`   ${persona.bio.slice(0, 100)}`, 'dim')
 
-      // Detect if this persona switches language
-      const isLanguageSwitcher = persona.flags?.includes('language-switch')
-
-      // Join
-      let turnNumber = 0
-      let themeId: string | null = null
+      let turnNumber = 0, themeId: string | null = null, lastBotMessage = ''
       try {
         const jr = await fetch('/api/townhall/join/' + selectedId, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -352,63 +230,64 @@ export default function TownHallSimulatorPage() {
         if (jd.error) { addLog(`   Join failed: ${jd.error}`, 'err'); fail++; continue }
         turnNumber = jd.turn_number || 1
         themeId = jd.theme_id || null
+        lastBotMessage = jd.bot_message || ''
       } catch (e) { addLog(`   Join failed: ${(e as Error).message}`, 'err'); fail++; continue }
 
-      // Chat turns — use scripted responses in order
-      const maxTurns = Math.min(turnsPerParticipant, persona.responses.length)
-      for (let t = 0; t < maxTurns; t++) {
+      let currentLang = 'en'
+      for (let t = 0; t < turnsPerParticipant; t++) {
         if (stopRef.current) break
 
-        const message = persona.responses[t]
-        // Detect language for the Spanish switcher
-        const isSpanish = isLanguageSwitcher && /[áéíóúñ¿¡]/.test(message)
-        const lang = isSpanish ? 'es' : 'en'
+        let message: string
+        try {
+          const simRes = await fetch('/api/townhall/simulate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ persona, bot_message: lastBotMessage, session_context: sessionContext, turn_number: t + 1, language: currentLang }),
+          })
+          const simData = await simRes.json()
+          message = simData.message || 'That\'s an important issue.'
+          if (simData.language) currentLang = simData.language
+        } catch {
+          message = 'I think that matters to our community.'
+        }
 
         try {
           const cr = await fetch('/api/townhall/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              session_id: selectedId, participant_id: pid,
-              message, turn_number: turnNumber, theme_id: themeId,
-              skipped: false, language: lang,
-            }),
+            body: JSON.stringify({ session_id: selectedId, participant_id: pid, message, turn_number: turnNumber, theme_id: themeId, skipped: false, language: currentLang }),
           })
           const cd = await cr.json()
-          const preview = message.length > 70 ? message.slice(0, 70) + '...' : message
-          if (cd.is_final) {
-            addLog(`   Turn ${t + 1}: "${preview}" → FINAL (${cd.source || '?'})`, 'ok')
-            ok++; turnsDone++
-            break
-          }
-          turnNumber = cd.turn_number
-          themeId = cd.theme_id
+          const preview = message.length > 60 ? message.slice(0, 60) + '...' : message
+          const src = cd.source || 'guide'
+          const final = cd.is_final ? ' [FINAL]' : ''
+          addLog(`   T${t + 1}: "${preview}" → ${src}${final}${currentLang !== 'en' ? ` [${currentLang.toUpperCase()}]` : ''}`)
+          turnNumber = cd.turn_number || turnNumber + 1
+          themeId = cd.theme_id || themeId
+          lastBotMessage = cd.bot_message || ''
           ok++
-          addLog(`   Turn ${t + 1}: "${preview}" → ${cd.source || '?'}${isSpanish ? ' [ES]' : ''}`)
+          if (cd.is_final) break
         } catch (e) {
           fail++
-          addLog(`   Turn ${t + 1}: ERROR ${(e as Error).message}`, 'err')
+          addLog(`   T${t + 1}: ERROR ${(e as Error).message}`, 'err')
         }
 
         turnsDone++
         setProgress({ done: turnsDone, total: totalTurns, ok, fail })
-
-        // Delay between turns
-        await sleep(200)
+        await sleep(300)
       }
 
-      // Rate limit pause every 5 participants
       if ((p + 1) % 5 === 0 && p < participantCount - 1 && !stopRef.current) {
-        addLog('Pausing for rate limit...', 'dim')
-        await sleep(2000)
+        addLog('   [pause 3s]', 'dim')
+        await sleep(3000)
       }
     }
 
     addLog(`\nDone! ${ok} turns saved, ${fail} failed across ${participantCount} personas.`, 'info')
     setRunning(false)
-  }, [selectedId, count, turnsPerParticipant, sessions, addLog])
+  }, [selectedId, count, pack, turnsPerParticipant, enabledPersonas, sessions, addLog])
 
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
   const selected = sessions.find(s => s.id === selectedId)
+  const currentPack = PACKS[pack]
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -416,7 +295,7 @@ export default function TownHallSimulatorPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold text-gray-800">Town Hall Simulator</h1>
-            <p className="text-sm text-gray-500">20 scripted personas — city council development plan feedback</p>
+            <p className="text-sm text-gray-500">AI-driven personas — responses generated from profiles + session topics</p>
           </div>
           <Link href="/admin/simulator" className="text-xs text-teal-600 hover:text-teal-800 font-medium">
             Survey Simulator →
@@ -424,7 +303,6 @@ export default function TownHallSimulatorPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-          {/* Session picker */}
           <div className="mb-4">
             <label className="block text-xs font-semibold text-gray-500 mb-1">Session</label>
             <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
@@ -440,48 +318,64 @@ export default function TownHallSimulatorPage() {
             <div className="text-sm text-orange-700 bg-orange-50 rounded-lg px-3 py-2 mb-4">
               <strong>{selected.name}</strong> — {selected.discussion_guide?.length || 0} topics
               {selected.status !== 'setup' && selected.status !== 'active' && (
-                <span className="text-amber-600 ml-2">(session is {selected.status} — will need restart)</span>
+                <span className="text-amber-600 ml-2">(session is {selected.status})</span>
               )}
             </div>
           )}
 
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-1">Persona Pack</label>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(PACKS).map(([key, p]) => (
+                <button key={key} onClick={() => setPack(key)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
+                  style={{ background: pack === key ? '#fff4ef' : '#f9fafb', border: '1px solid ' + (pack === key ? '#E8632A' : '#e5e7eb'), color: pack === key ? '#E8632A' : '#6b7280' }}>
+                  {p.label} ({p.personas.length})
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Participants (max {PERSONAS.length})</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Participants (max {currentPack.personas.length})</label>
               <input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
-                min={1} max={PERSONAS.length}
+                min={1} max={currentPack.personas.length}
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-orange-400 focus:outline-none" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Turns per Participant</label>
               <input type="number" value={turnsPerParticipant} onChange={e => setTurnsPerParticipant(parseInt(e.target.value) || 4)}
-                min={1} max={5}
+                min={1} max={6}
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-orange-400 focus:outline-none" />
             </div>
           </div>
 
-          {/* Persona preview */}
           <details className="mb-4">
             <summary className="text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700">
-              Preview personas ({PERSONAS.length} scripted)
+              Personas ({Object.values(enabledPersonas).filter(Boolean).length}/{currentPack.personas.length} enabled)
             </summary>
-            <div className="mt-2 max-h-60 overflow-y-auto border border-gray-100 rounded-lg">
+            <div className="mt-2 max-h-72 overflow-y-auto border border-gray-100 rounded-lg">
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    <th className="text-left px-3 py-1.5 text-gray-500 font-semibold">#</th>
+                    <th className="text-left px-3 py-1.5 text-gray-500 font-semibold w-8"></th>
                     <th className="text-left px-3 py-1.5 text-gray-500 font-semibold">Persona</th>
                     <th className="text-left px-3 py-1.5 text-gray-500 font-semibold">Sentiment</th>
                     <th className="text-left px-3 py-1.5 text-gray-500 font-semibold">Edge case</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {PERSONAS.map((p, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="px-3 py-1 text-gray-400">{i + 1}</td>
+                  {currentPack.personas.map((p, i) => (
+                    <tr key={i} className={'border-t border-gray-50' + (enabledPersonas[i] === false ? ' opacity-40' : '')}>
+                      <td className="px-3 py-1">
+                        <input type="checkbox" checked={enabledPersonas[i] !== false}
+                          onChange={e => setEnabledPersonas(prev => ({ ...prev, [i]: e.target.checked }))}
+                          className="rounded" />
+                      </td>
                       <td className="px-3 py-1">
                         <span className="font-medium text-gray-700">{p.name}</span>
-                        <span className="text-gray-400 ml-1">— {p.bio}</span>
+                        <span className="text-gray-400 ml-1 hidden sm:inline">— {p.bio.slice(0, 60)}{p.bio.length > 60 ? '...' : ''}</span>
                       </td>
                       <td className="px-3 py-1">
                         <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
@@ -549,4 +443,3 @@ export default function TownHallSimulatorPage() {
     </div>
   )
 }
-
