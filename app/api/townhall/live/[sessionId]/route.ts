@@ -67,6 +67,16 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     }
   }
 
+  // Compute live response_count per theme from turns
+  const { data: turnCountRows } = await db
+    .from('townhall_turns')
+    .select('theme_id')
+    .eq('session_id', params.sessionId)
+    .not('user_message', 'is', null)
+    .eq('skipped', false)
+  const liveCounts: Record<string, number> = {}
+  for (const r of turnCountRows || []) { if (r.theme_id) liveCounts[r.theme_id] = (liveCounts[r.theme_id] || 0) + 1 }
+
   // Per-theme enrichment (keyword matching for counts)
   const allTexts = answered.map(t => (t.user_message_en || t.user_message || '').trim()).filter(Boolean)
   const enrichedThemes = (themes || []).map(t => {
@@ -99,7 +109,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
       state: t.state,
       source: t.source,
       sentiment: t.sentiment || 'neutral',
-      response_count: t.response_count,
+      response_count: liveCounts[t.id] || 0,
       response_target: t.response_target,
       mention_count: matchCount || t.mention_count,
       percentage: pct,

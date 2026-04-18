@@ -242,22 +242,22 @@ export async function POST(req: NextRequest) {
       .eq('turn_number', turn_number)
     if (updateError) console.error('[TH Chat] UPDATE turn failed:', updateError.message, '| turn:', turn_number)
 
-    // Increment response_count on the theme if answered (not skipped) and theme exists
+    // Check if theme hit its response target (live count from turns, no cached counter)
     if (theme_id && !skipped) {
+      const { count: liveCount } = await supabase
+        .from('townhall_turns')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', session.id)
+        .eq('theme_id', theme_id)
+        .not('user_message', 'is', null)
+        .eq('skipped', false)
       const { data: theme } = await supabase
         .from('townhall_themes')
-        .select('response_count, response_target')
+        .select('response_target, state')
         .eq('id', theme_id)
         .single()
-
-      if (theme) {
-        const newCount = (theme.response_count || 0) + 1
-        const updates: Record<string, unknown> = { response_count: newCount }
-        if (newCount >= theme.response_target) {
-          updates.state = 'completed'
-          updates.completed_at = new Date().toISOString()
-        }
-        await supabase.from('townhall_themes').update(updates).eq('id', theme_id)
+      if (theme && (liveCount || 0) >= theme.response_target && theme.state === 'active') {
+        await supabase.from('townhall_themes').update({ state: 'completed', completed_at: new Date().toISOString() }).eq('id', theme_id)
       }
     }
 
@@ -395,15 +395,28 @@ RULES:
 
   const turns = history || []
 
-  // Fetch all active themes
+  // Fetch all active themes + compute live response counts from turns
   const { data: activeThemes } = await supabase
     .from('townhall_themes')
-    .select('id, label, description, question, follow_up_angles, keywords, source, response_count, response_target')
+    .select('id, label, description, question, follow_up_angles, keywords, source, response_target')
     .eq('session_id', session.id)
     .eq('state', 'active')
-    .order('response_count', { ascending: true })
 
-  const allTopics = activeThemes || []
+  // Live count: how many non-skipped user turns per theme_id
+  const { data: turnCounts } = await supabase
+    .from('townhall_turns')
+    .select('theme_id')
+    .eq('session_id', session.id)
+    .not('user_message', 'is', null)
+    .eq('skipped', false)
+  const liveCountMap: Record<string, number> = {}
+  for (const t of turnCounts || []) {
+    if (t.theme_id) liveCountMap[t.theme_id] = (liveCountMap[t.theme_id] || 0) + 1
+  }
+
+  const allTopics = (activeThemes || [])
+    .map(t => ({ ...t, response_count: liveCountMap[t.id] || 0 }))
+    .sort((a, b) => a.response_count - b.response_count)
 
   // ── DETERMINE WHAT TO DO NEXT ──────────────────────────────────────────
 

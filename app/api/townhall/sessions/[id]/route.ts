@@ -81,7 +81,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const wantsAnalytics = _req.nextUrl.searchParams.get('analytics') === 'true'
 
   if (!wantsAnalytics) {
-    return NextResponse.json({ session, themes: themes || [], stats, participants: participantSummary })
+    // Compute live response_count from turns (no cached counter)
+    const { data: turnCountRows } = await db
+      .from('townhall_turns')
+      .select('theme_id')
+      .eq('session_id', params.id)
+      .not('user_message', 'is', null)
+      .eq('skipped', false)
+    const liveCounts: Record<string, number> = {}
+    for (const r of turnCountRows || []) { if (r.theme_id) liveCounts[r.theme_id] = (liveCounts[r.theme_id] || 0) + 1 }
+    const themesWithLiveCounts = (themes || []).map((t: any) => ({ ...t, response_count: liveCounts[t.id] || 0 }))
+    return NextResponse.json({ session, themes: themesWithLiveCounts, stats, participants: participantSummary })
   }
 
   // ── Analytics mode: enrich themes with keyword matching, sentiment, quotes ──
@@ -212,7 +222,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       sentiment,
       match_count: matchCount,
       mention_count: matchCount,
-      response_count: isOrganic ? matchCount : (matchCount || t.response_count),
+      response_count: isOrganic ? matchCount : (themeIdTexts[t.id]?.length || 0),
       percentage,
       example_quotes: matchedQuotes.map(function(q) { return q.text }),
       quote_matches: matchedQuotes,
@@ -338,49 +348,41 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const uniqueRemaining = new Set((distinctParticipants || []).map(t => t.participant_id)).size
     await db.from('townhall_sessions').update({ response_counter: uniqueRemaining }).eq('id', params.id)
 
-    // Recalculate response_count for all themes and update state accordingly
-    const { data: themes } = await db.from('townhall_themes').select('id, response_target, state').eq('session_id', params.id)
-    if (themes) {
-      for (const theme of themes) {
-        const { count } = await db.from('townhall_turns')
-          .select('id', { count: 'exact', head: true })
-          .eq('session_id', params.id)
-          .eq('theme_id', theme.id)
-          .not('user_message', 'is', null)
-          .eq('skipped', false)
-        const newCount = count || 0
-        const updates: Record<string, unknown> = { response_count: newCount }
-        // Un-complete themes that dropped below target
-        if (theme.state === 'completed' && newCount < theme.response_target) {
-          updates.state = 'active'
-          updates.completed_at = null
+    // Un-complete themes that dropped below target after deletion (response_count computed live)
+    const { data: allThemes } = await db.from('townhall_themes').select('id, response_target, state').eq('session_id', params.id)
+    if (allThemes) {
+      const { data: turnCounts } = await db.from('townhall_turns').select('theme_id').eq('session_id', params.id).not('user_message', 'is', null).eq('skipped', false)
+      const countMap: Record<string, number> = {}
+      for (const t of turnCounts || []) { if (t.theme_id) countMap[t.theme_id] = (countMap[t.theme_id] || 0) + 1 }
+      for (const theme of allThemes) {
+        if (theme.state === 'completed' && (countMap[theme.id] || 0) < theme.response_target) {
+          await db.from('townhall_themes').update({ state: 'active', completed_at: null }).eq('id', theme.id)
         }
-        await db.from('townhall_themes').update(updates).eq('id', theme.id)
       }
     }
     return NextResponse.json({ deleted: pids.length, turns_deleted: turnCount ?? 0 })
   }
 
-  // Handle reanalyze: clear all auto-detected themes, reset seed counts, re-run detection
+  // Handle reanalyze: clear all auto-detected themes, fix completed states, re-run detection
   if (body.reanalyze) {
     // Delete all auto-detected (organic) themes
     await db.from('townhall_themes').delete().eq('session_id', params.id).eq('source', 'auto_detected')
-    // Reset response_count on seed/guide themes (will be recalculated from theme_id assignments)
-    const { data: guideThemes } = await db.from('townhall_themes').select('id').eq('session_id', params.id).in('source', ['guide', 'custom'])
+    // Un-complete seed themes that lost their responses (response_count is now computed live)
+    const { data: guideThemes } = await db.from('townhall_themes').select('id, response_target, state').eq('session_id', params.id).in('source', ['guide', 'custom'])
     if (guideThemes?.length) {
-      // Count actual turns tagged with each theme_id
       const { data: turnCounts } = await db
         .from('townhall_turns')
         .select('theme_id')
         .eq('session_id', params.id)
-        .not('skipped', 'eq', true)
         .not('user_message', 'is', null)
+        .eq('skipped', false)
       const countMap: Record<string, number> = {}
-      for (const t of turnCounts || []) {
-        if (t.theme_id) countMap[t.theme_id] = (countMap[t.theme_id] || 0) + 1
-      }
+      for (const t of turnCounts || []) { if (t.theme_id) countMap[t.theme_id] = (countMap[t.theme_id] || 0) + 1 }
       for (const theme of guideThemes) {
-        await db.from('townhall_themes').update({ response_count: countMap[theme.id] || 0 }).eq('id', theme.id)
+        const liveCount = countMap[theme.id] || 0
+        if (theme.state === 'completed' && liveCount < theme.response_target) {
+          await db.from('townhall_themes').update({ state: 'active', completed_at: null }).eq('id', theme.id)
+        }
       }
     }
     // Re-run organic theme detection (only if there are responses)
