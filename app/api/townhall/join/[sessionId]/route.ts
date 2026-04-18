@@ -60,7 +60,8 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
       post_session_demo:   config?.messages?.post_session_demo   || 'A couple of optional questions about you.',
       post_session_thanks: config?.messages?.post_session_thanks || 'Thanks for sharing! Your input helps us understand our community better.',
     },
-    // Post-session question config (for rendering after chat ends)
+    // Question config
+    questionPosition: config?.questionPosition || 'after',
     demoFields: config?.demoFields || [],
     psychographicBank: config?.psychographicBank || [],
     psychoCount: config?.psychoCount || 3,
@@ -191,6 +192,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     bot_message: botMessage,
     closing_message: translatedClosing,
     bot_messages: translatedMessages,
+    questionPosition: config?.questionPosition || 'after',
     psychographicBank: translatedPsychoBank,
     demoFields: translatedDemoFields,
     theme_id: null,

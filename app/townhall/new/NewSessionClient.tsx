@@ -1107,8 +1107,29 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-2">When to Ask</h3>
+                <p className="text-xs text-gray-400 mb-3">Should demographic and psychographic questions be asked before or after the conversation?</p>
+                <div className="flex gap-2">
+                  {(['before', 'after'] as const).map(pos => {
+                    const active = (config.questionPosition || 'after') === pos
+                    return (
+                      <button key={pos} type="button" onClick={() => setConfig(c => ({ ...c, questionPosition: pos }))}
+                        className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                        style={{
+                          background: active ? '#fff4ef' : '#f9fafb',
+                          border: '1.5px solid ' + (active ? HERMES : '#e5e7eb'),
+                          color: active ? HERMES : '#6b7280',
+                        }}>
+                        {pos === 'before' ? 'Before conversation' : 'After conversation'}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="text-sm font-bold text-gray-700 mb-2">Demographics</h3>
-                <p className="text-xs text-gray-400 mb-4">After the conversation ends, participants can optionally answer these questions.</p>
+                <p className="text-xs text-gray-400 mb-4">{(config.questionPosition || 'after') === 'before' ? 'Before the conversation starts, participants can optionally answer these questions.' : 'After the conversation ends, participants can optionally answer these questions.'}</p>
                 <div className="space-y-1">
                   {DEMO_BANK.map(d => {
                     const current = config.demoFields || DEMO_BANK.map(b => ({ ...b, enabled: b.key === 'age' || b.key === 'gender' || b.key === 'zip' }))

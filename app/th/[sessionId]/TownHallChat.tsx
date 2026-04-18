@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import type { DemoField, PsychoQuestion } from '@/lib/types'
 
-type Phase = 'chat' | 'transition' | 'psycho' | 'demo' | 'submitting' | 'done'
+type Phase = 'pre-psycho' | 'pre-demo' | 'pre-submitting' | 'chat' | 'transition' | 'psycho' | 'demo' | 'submitting' | 'done'
 interface Message { who: 'bot' | 'user'; text: string; italic?: boolean; _debug?: string[] }
 interface Props { sessionId: string }
 
@@ -82,7 +82,8 @@ export default function TownHallChat({ sessionId }: Props) {
   const [turn, setTurn] = useState(0)
   const [themeId, setThemeId] = useState<string | null>(null)
 
-  // Post-session question state
+  // Question config
+  const [questionPosition, setQuestionPosition] = useState<'before' | 'after'>('after')
   const [demoFields, setDemoFields] = useState<DemoField[]>([])
   const [psychoBank, setPsychoBank] = useState<PsychoQuestion[]>([])
   const [psychoCount, setPsychoCount] = useState(3)
@@ -91,10 +92,11 @@ export default function TownHallChat({ sessionId }: Props) {
   const [psychoAnswers, setPsychoAnswers] = useState<Record<string, string>>({})
   const [demoAnswers, setDemoAnswers] = useState<Record<string, string>>({})
   const [botMessages, setBotMessages] = useState({ post_session_intro: '', post_session_demo: '', post_session_thanks: '' })
+  const [pendingOpeningMsg, setPendingOpeningMsg] = useState('')
   const [testing, setTesting] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
 
-  const finished = phase !== 'chat'
+  const finished = phase !== 'chat' && phase !== 'pre-psycho' && phase !== 'pre-demo' && phase !== 'pre-submitting'
 
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -135,6 +137,7 @@ export default function TownHallChat({ sessionId }: Props) {
       setClosingMsg(d.closing_message || '')
       if (d.opening_message) setDisplay((prev: any) => ({ ...prev, opening_message: d.opening_message }))
       if (d.bot_messages) setBotMessages(d.bot_messages)
+      if (d.questionPosition) setQuestionPosition(d.questionPosition)
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
       if (d.psychographicBank) setPsychoBank(d.psychographicBank)
       if (d.psychoCount != null) setPsychoCount(d.psychoCount)
@@ -182,9 +185,45 @@ export default function TownHallChat({ sessionId }: Props) {
       if (d.closing_message) setClosingMsg(d.closing_message)
       if (d.psychographicBank) setPsychoBank(d.psychographicBank)
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
+      const qPos = d.questionPosition || 'after'
+      setQuestionPosition(qPos)
       if (d.debug_mode) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ACTIVE]', 'color: #E8632A; font-weight: bold; font-size: 14px', 'Session ID matched — verbose AI reasoning enabled') }
       setJoined(true)
-      // Show typing dots, then reveal message
+
+      // Pre-session questions: show psycho/demo before the conversation
+      if (qPos === 'before') {
+        const enabledDemo = (d.demoFields || []).filter((f: DemoField) => f.enabled)
+        const bank = d.psychographicBank || []
+        const count = d.psychoCount ?? psychoCount
+        const hasPsycho = bank.length > 0 && count > 0
+        const hasDemo = enabledDemo.length > 0
+        if (hasPsycho || hasDemo) {
+          // Store the opening message to show after questions are done
+          setPendingOpeningMsg(d.bot_message)
+          const introMsg = 'Before we begin, a few quick optional questions to help us understand who we\'re hearing from.'
+          setLoading(true)
+          await typingDelay(introMsg)
+          setLoading(false)
+          setMessages([{ who: 'bot', text: introMsg }])
+          if (hasPsycho) {
+            const pool = [...bank]
+            const picked: PsychoQuestion[] = []
+            const n = Math.min(count, pool.length)
+            while (picked.length < n && pool.length > 0) {
+              const idx = Math.floor(Math.random() * pool.length)
+              picked.push(...pool.splice(idx, 1))
+            }
+            setPsychoQuestions(picked)
+            setPsychoIdx(0)
+            setPhase('pre-psycho')
+          } else {
+            setPhase('pre-demo')
+          }
+          return
+        }
+      }
+
+      // Normal flow: show opening message immediately
       setLoading(true)
       await typingDelay(d.bot_message)
       setLoading(false)
@@ -231,7 +270,12 @@ export default function TownHallChat({ sessionId }: Props) {
   }
 
   // Start post-session flow: transition → psycho → demo → done
+  // If questionPosition is 'before', questions were already asked — skip straight to done
   const startPostSession = useCallback(async (skipIntro?: boolean) => {
+    if (questionPosition === 'before') {
+      setPhase('done')
+      return
+    }
     const hasPsycho = psychoBank.length > 0 && psychoCount > 0
     const hasDemo = demoFields.length > 0
     if (!hasPsycho && !hasDemo) {
@@ -268,31 +312,31 @@ export default function TownHallChat({ sessionId }: Props) {
     } else {
       setPhase('done')
     }
-  }, [psychoBank, psychoCount, demoFields, botMessages])
+  }, [questionPosition, psychoBank, psychoCount, demoFields, botMessages])
 
   const handleDone = async () => {
     setMessages(p => [...p, { who: 'user', text: doneLabel || display.done_label || "I'm done sharing", italic: true }])
     fetch('/api/townhall/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: resolvedId, participant_id: pid, message: '[done]', turn_number: turn, theme_id: themeId, skipped: true }),
     }).catch(() => {})
-    // If there are post-session questions, show a warm transition; otherwise show closing message
+    // If questions were asked before the conversation, skip post-session flow
     const hasPsycho = psychoBank.length > 0 && psychoCount > 0
     const hasDemo = demoFields.length > 0
-    if (hasPsycho || hasDemo) {
-      const transMsg = 'No worries at all! Before you go, I\'d like to ask a few quick questions about you — totally optional.'
-      setLoading(true)
-      await typingDelay(transMsg)
-      setLoading(false)
-      setMessages(p => [...p, { who: 'bot', text: transMsg }])
-      await startPostSession(true)
-    } else {
+    if (questionPosition === 'before' || (!hasPsycho && !hasDemo)) {
       const msg = closingMsg || display.thank_you_message || 'Thank you for your time. Your voice matters.'
       setLoading(true)
       await typingDelay(msg)
       setLoading(false)
       setMessages(p => [...p, { who: 'bot', text: msg }])
       setPhase('done')
+      return
     }
+    const transMsg = 'No worries at all! Before you go, I\'d like to ask a few quick questions about you — totally optional.'
+    setLoading(true)
+    await typingDelay(transMsg)
+    setLoading(false)
+    setMessages(p => [...p, { who: 'bot', text: transMsg }])
+    await startPostSession(true)
   }
 
   const submitPostSession = async (psycho: Record<string, string>, demo: Record<string, string>) => {
@@ -321,6 +365,34 @@ export default function TownHallChat({ sessionId }: Props) {
     setLoading(false)
     setMessages(p => [...p, { who: 'bot', text: thankMsg }])
     setPhase('done')
+  }
+
+  // Submit pre-session questions, then start the conversation
+  const submitPreSession = async (psycho: Record<string, string>, demo: Record<string, string>) => {
+    // Inject demo answers into chat stream
+    const filledDemo = Object.entries(demo).filter(([, v]) => v)
+    if (filledDemo.length > 0) {
+      const demoText = filledDemo.map(([k, v]) => {
+        const field = demoFields.find(f => f.key === k)
+        return `${field?.label || k}: ${v}`
+      }).join('\n')
+      setMessages(p => [...p, { who: 'user', text: demoText, italic: true }])
+    }
+    setPhase('pre-submitting')
+    try {
+      await fetch('/api/townhall/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: resolvedId, participant_id: pid, psychographics: psycho, demographics: demo }),
+      })
+    } catch { /* silently fail */ }
+    // Now show the opening message and start the conversation
+    const openMsg = pendingOpeningMsg || 'Welcome! Share your thoughts.'
+    setLoading(true)
+    await typingDelay(openMsg)
+    setLoading(false)
+    setMessages(p => [...p, { who: 'bot', text: openMsg }])
+    setPhase('chat')
   }
 
   const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
@@ -481,6 +553,86 @@ export default function TownHallChat({ sessionId }: Props) {
             <button onClick={handleDone} disabled={loading} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>{doneLabel || display.done_label || "I'm done sharing"}</button>
           </div>
         </div>
+      ) : phase === 'pre-psycho' && psychoQuestions[psychoIdx] ? (
+        <div style={{ padding: '12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', flexShrink: 0 }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8, lineHeight: 1.4 }}>{psychoQuestions[psychoIdx].q}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {psychoQuestions[psychoIdx].opts.map(opt => (
+              <button key={opt} onClick={async () => {
+                const q = psychoQuestions[psychoIdx]
+                setPsychoAnswers(p => ({ ...p, [q.key]: opt }))
+                setMessages(p => [...p, { who: 'user', text: opt }])
+                const nextIdx = psychoIdx + 1
+                if (nextIdx < psychoQuestions.length) {
+                  setPsychoIdx(nextIdx)
+                  setLoading(true)
+                  await typingDelay(psychoQuestions[nextIdx].q)
+                  setLoading(false)
+                } else if (demoFields.length > 0) {
+                  setPhase('pre-demo')
+                  setLoading(true)
+                  const demoMsg = botMessages.post_session_demo || 'A couple of optional questions about you.'
+                  await typingDelay(demoMsg)
+                  setMessages(p => [...p, { who: 'bot', text: demoMsg }])
+                  setLoading(false)
+                } else {
+                  submitPreSession({ ...psychoAnswers, [q.key]: opt }, {})
+                }
+              }}
+                style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E0E0E0', background: 'white', fontSize: 15, color: '#374151', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseOver={e => { (e.target as HTMLElement).style.borderColor = IMSG_BLUE; (e.target as HTMLElement).style.background = '#EBF5FF' }}
+                onMouseOut={e => { (e.target as HTMLElement).style.borderColor = '#E0E0E0'; (e.target as HTMLElement).style.background = 'white' }}>
+                {opt}
+              </button>
+            ))}
+          </div>
+          <button onClick={async () => {
+            const nextIdx = psychoIdx + 1
+            setMessages(p => [...p, { who: 'user', text: 'Skipped', italic: true }])
+            if (nextIdx < psychoQuestions.length) {
+              setPsychoIdx(nextIdx)
+            } else if (demoFields.length > 0) {
+              setPhase('pre-demo')
+            } else {
+              submitPreSession(psychoAnswers, {})
+            }
+          }} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 12, cursor: 'pointer', marginTop: 6, width: '100%', textAlign: 'center' }}>
+            Skip this question
+          </button>
+        </div>
+      ) : phase === 'pre-demo' ? (
+        <div style={{ padding: '12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', flexShrink: 0, maxHeight: '50vh', overflowY: 'auto' }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Tell us a bit about yourself <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optional)</span></p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {demoFields.map(f => (
+              <div key={f.key}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>{f.label}</label>
+                {f.type === 'select' && f.options ? (
+                  <select value={demoAnswers[f.key] || ''} onChange={e => setDemoAnswers(p => ({ ...p, [f.key]: e.target.value }))}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #D1D5DB', fontSize: 14, background: 'white', color: '#374151', outline: 'none' }}>
+                    <option value="">Select...</option>
+                    {f.options.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" value={demoAnswers[f.key] || ''} onChange={e => setDemoAnswers(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.label}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #D1D5DB', fontSize: 14, background: 'white', color: '#374151', outline: 'none', boxSizing: 'border-box' }} />
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={() => submitPreSession(psychoAnswers, demoAnswers)}
+              style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: 'none', background: IMSG_BLUE, color: 'white', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+              Continue
+            </button>
+            <button onClick={() => submitPreSession(psychoAnswers, {})}
+              style={{ padding: '11px 16px', borderRadius: 12, border: '1px solid #D1D5DB', background: 'white', color: '#8E8E93', fontSize: 14, cursor: 'pointer' }}>
+              Skip
+            </button>
+          </div>
+        </div>
+      ) : phase === 'pre-submitting' ? (
+        <div style={{ padding: '16px 12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', textAlign: 'center', flexShrink: 0 }}><p style={{ color: '#8E8E93', fontSize: 13 }}>Starting conversation...</p></div>
       ) : phase === 'psycho' && psychoQuestions[psychoIdx] ? (
         <div style={{ padding: '12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', flexShrink: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8, lineHeight: 1.4 }}>{psychoQuestions[psychoIdx].q}</p>

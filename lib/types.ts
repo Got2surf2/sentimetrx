@@ -908,7 +908,8 @@ export interface TownHallConfig {
     post_session_demo?:    string   // before demo form (default: "A couple of optional questions about you.")
     post_session_thanks?:  string   // after submitting (default: "Thanks for sharing!")
   }
-  // Post-session demographic & psychographic questions (optional)
+  // When to ask demographic & psychographic questions: before or after the conversation
+  questionPosition?:   'before' | 'after'   // default 'after'
   demoFields?:         DemoField[]
   psychographicBank?:  PsychoQuestion[]
   psychoCount?:        number   // how many psycho questions to randomly show (default 3)
