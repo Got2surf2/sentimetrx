@@ -191,6 +191,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   useEffect(() => {
     fetchData()
     const interval = setInterval(() => {
+      if (document.hidden) return // tab not visible — skip polling
       const s = sessionStatusRef.current
       if (s && s !== 'active' && s !== 'paused' && s !== 'setup') return // ended — skip
       fetchData()
