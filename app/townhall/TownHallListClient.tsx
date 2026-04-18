@@ -350,11 +350,11 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           {archived ? 'Unarchive' : 'Archive'}
                         </button>
 
-                        {/* Row 3: Launch, Duplicate, Share (gray/blue) */}
+                        {/* Row 3: Manage, Duplicate, Share (gray/blue) */}
                         <Link href={'/townhall/' + s.id} target="_blank"
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
                           style={{ background: '#f3f4f6', color: '#4b5563', border: '1px solid #e5e7eb' }}>
-                          Launch
+                          Manage
                         </Link>
                         <button onClick={() => handleDuplicate(s.id)}
                           className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
