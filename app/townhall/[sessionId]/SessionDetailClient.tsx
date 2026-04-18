@@ -1603,58 +1603,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 </div>
               )}
 
-              {/* Theme detection + re-analyze buttons */}
-              {(session.config as any)?.engine?.theme_detection_mode !== 'off' && (
-                <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-semibold text-gray-700">Theme Detection</span>
-                    {(session.config as any)?.engine?.theme_detection_mode === 'auto' && (
-                      <span className="text-[10px] text-gray-400 ml-2">Auto every {(session.config as any)?.engine?.theme_detection_interval_minutes || 10} min</span>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={async () => {
-                      if (!confirm('This will clear all auto-detected topics and re-analyze from scratch. Continue?')) return
-                      setActionLoading('reanalyze')
-                      try {
-                        const res = await fetch('/api/townhall/sessions/' + sessionId, {
-                          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ reanalyze: true }),
-                        })
-                        const d = await res.json()
-                        if (d.error) setError(d.error)
-                      } catch { setError('Re-analyze failed') }
-                      setActionLoading(null)
-                      await fetchData()
-                    }}
-                      disabled={!!actionLoading}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                      style={{ background: '#dc2626' }}>
-                      {actionLoading === 'reanalyze' ? 'Re-analyzing...' : '\u21BB Re-analyze'}
-                    </button>
-                    {isActive && (
-                      <button onClick={async () => {
-                        setActionLoading('detect')
-                        try {
-                          const res = await fetch('/api/townhall/themes/detect', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ session_id: sessionId }),
-                          })
-                          const d = await res.json()
-                          if (d.error) setError(d.error)
-                        } catch { setError('Detection failed') }
-                        setActionLoading(null)
-                        await fetchData()
-                      }}
-                        disabled={!!actionLoading}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                        style={{ background: '#7c3aed' }}>
-                        {actionLoading === 'detect' ? 'Detecting...' : '\u29E1 Detect Themes'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
