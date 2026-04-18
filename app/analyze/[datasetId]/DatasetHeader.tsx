@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
+import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 
 interface DatasetMeta {
   id: string; name: string; source: 'upload' | 'study' | 'google_reviews'; visibility: 'private' | 'public'
@@ -40,6 +41,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [apiKey,      setApiKey]      = useState('')
   var [aiEnabled,   setAiEnabled]   = useState(false)
   var [showExport,  setShowExport]  = useState(false)
+  var [showShareAnalytics, setShowShareAnalytics] = useState(false)
 
   useEffect(function() {
     try {
@@ -83,6 +85,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           datasetId={dataset.id}
           datasetName={dataset.name}
           onClose={function() { setShowExport(false) }}
+        />
+      )}
+      {showShareAnalytics && (
+        <ShareAnalyticsModal
+          datasetId={dataset.id}
+          datasetName={dataset.name}
+          onClose={function() { setShowShareAnalytics(false) }}
         />
       )}
       <div style={{ background: HERMES, padding: '0 0 0 20px', height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
@@ -137,6 +146,17 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               cursor: 'pointer', flexShrink: 0,
             }}>
             {'\uD83C\uDFAC'} StoryTime
+          </button>
+
+          {/* Share Analytics button */}
+          <button onClick={function() { setShowShareAnalytics(true) }}
+            style={{
+              padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 12, fontWeight: 600, color: filterCount > 0 ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.6)',
+              background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+              cursor: 'pointer', flexShrink: 0,
+            }}>
+            {'\uD83D\uDCCA'} Share Analytics
           </button>
 
           {/* Save Session button */}

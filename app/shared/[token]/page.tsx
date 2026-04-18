@@ -51,6 +51,8 @@ export default function SharedDashboard({ params }: { params: { token: string } 
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
   if (data.type === 'townhall') return <SharedTownHallDashboard session={data.session} themes={data.themes} stats={data.stats} expiresAt={data.expires_at}
     lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
+  if (data.type === 'analytics') return <SharedAnalyticsDashboard token={params.token} expiresAt={data.expires_at}
+    lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={() => fetchData(true)} />
   return null
 }
 
@@ -650,6 +652,215 @@ function SharedTownHallDashboard({ session, themes, stats, expiresAt, lastRefres
 
         <div className="text-center text-xs text-gray-400 mt-6">
           Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span> — <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: HERMES }}>datanautix.com</a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Shared Analytics Dashboard (filtered vs benchmark with outlier flags) ───
+
+function OutlierBadge({ outlier, metric }: { outlier: any; metric?: string }) {
+  if (!outlier || !outlier.significant) return null
+  const isAbove = outlier.direction === 'above' || outlier.direction === 'over'
+  const color = isAbove ? '#059669' : '#dc2626'
+  const bg = isAbove ? '#f0fdf4' : '#fef2f2'
+  const arrow = isAbove ? '\u25B2' : '\u25BC'
+  const label = isAbove ? 'Significantly above' : 'Significantly below'
+  const pLabel = outlier.p < 0.001 ? 'p<0.001' : outlier.p < 0.01 ? 'p<0.01' : 'p<0.05'
+  return (
+    <span title={`z=${outlier.z.toFixed(2)}, ${pLabel}`}
+      style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: bg, color, display: 'inline-flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+      {arrow} {label} ({pLabel})
+    </span>
+  )
+}
+
+function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing, onRefresh }: {
+  token: string; expiresAt: string
+  lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
+}) {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const r = await fetch('/api/share/analytics?token=' + token, { cache: 'no-store' })
+        const d = await r.json()
+        if (d.error) setError(d.error)
+        else setData(d)
+      } catch { setError('Failed to load analytics') }
+      finally { setLoading(false) }
+    }
+    load()
+  }, [token])
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-gray-400 text-sm">Loading analytics...</div>
+    </div>
+  )
+
+  if (error) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center max-w-sm">
+        <div className="text-3xl mb-3">{'\uD83D\uDCCA'}</div>
+        <h1 className="text-lg font-bold text-gray-800 mb-2">Analytics Unavailable</h1>
+        <p className="text-sm text-gray-500">{error}</p>
+      </div>
+    </div>
+  )
+
+  const numericEntries = Object.entries(data.numeric || {}) as [string, any][]
+  const themes = data.themes || []
+  const filterSummary = data.filterSummary || {}
+  const filterFields = Object.entries(filterSummary)
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="max-w-4xl mx-auto">
+
+        {/* Header */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-4">
+          <h1 className="text-xl font-bold text-gray-800 mb-1">{data.label}</h1>
+          <p className="text-sm text-gray-500 mb-3">{data.datasetName}</p>
+          {filterFields.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {filterFields.map(([label, value]) => (
+                <span key={label} className="text-[11px] px-3 py-1 rounded-full font-medium"
+                  style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                  {label}: {String(value)}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-400">Shared analytics · Expires {new Date(expiresAt).toLocaleDateString()}</p>
+        </div>
+
+        <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} />
+
+        {/* Response counts */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-2xl font-bold" style={{ color: HERMES }}>{data.filtered.n}</div>
+            <div className="text-xs text-gray-500">{data.label} Responses</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-2xl font-bold text-gray-600">{data.benchmark.n}</div>
+            <div className="text-xs text-gray-500">System Benchmark</div>
+          </div>
+        </div>
+
+        {/* Numeric metrics comparison */}
+        {numericEntries.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Metrics Comparison</h3>
+            <div className="space-y-3">
+              {numericEntries.map(([field, m]) => {
+                const fMean = m.filtered.n > 0 ? m.filtered.mean.toFixed(2) : 'N/A'
+                const bMean = m.benchmark.n > 0 ? m.benchmark.mean.toFixed(2) : 'N/A'
+                const delta = m.filtered.n > 0 && m.benchmark.n > 0 ? (m.filtered.mean - m.benchmark.mean) : null
+                const maxVal = Math.max(m.filtered.mean || 0, m.benchmark.mean || 0)
+
+                return (
+                  <div key={field} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-bold text-gray-800">{m.label}</span>
+                      <OutlierBadge outlier={m.outlier} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">{data.label}</div>
+                        <div className="text-xl font-bold" style={{ color: HERMES }}>{fMean}</div>
+                        <div className="text-[10px] text-gray-400">n={m.filtered.n}</div>
+                        <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: maxVal > 0 ? Math.min((m.filtered.mean / maxVal) * 100, 100) + '%' : '0%', background: HERMES }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Benchmark</div>
+                        <div className="text-xl font-bold text-gray-600">{bMean}</div>
+                        <div className="text-[10px] text-gray-400">n={m.benchmark.n}</div>
+                        <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: maxVal > 0 ? Math.min((m.benchmark.mean / maxVal) * 100, 100) + '%' : '0%', background: '#9ca3af' }} />
+                        </div>
+                      </div>
+                    </div>
+                    {delta !== null && (
+                      <div className="mt-2 text-right">
+                        <span className="text-xs font-bold" style={{ color: delta > 0 ? '#059669' : delta < 0 ? '#dc2626' : '#6b7280' }}>
+                          {delta > 0 ? '+' : ''}{delta.toFixed(2)} difference
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Theme comparison */}
+        {themes.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Theme Analysis</h3>
+            <div className="space-y-3">
+              {themes.map((t: any, i: number) => {
+                const color = STUDY_THEME_COLORS[i % STUDY_THEME_COLORS.length]
+                const fPct = Math.round(t.filtered.rate * 100)
+                const bPct = Math.round(t.benchmark.rate * 100)
+                const maxPct = Math.max(fPct, bPct, 1)
+
+                return (
+                  <div key={t.name} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div style={{ background: color, height: 4 }} />
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-gray-800">{t.name}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
+                            style={{ background: sentBgMap[t.sentiment] || sentBgMap.neutral, color: sentColorMap[t.sentiment] || sentColorMap.neutral }}>
+                            {t.sentiment}
+                          </span>
+                        </div>
+                        <OutlierBadge outlier={t.outlier} />
+                      </div>
+                      {t.description && <p className="text-xs text-gray-500 mb-3">{t.description}</p>}
+
+                      {/* Side-by-side bars */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">{data.label}</span>
+                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: (fPct / maxPct * 100) + '%', background: color }} />
+                          </div>
+                          <span className="text-xs font-bold w-16 text-right" style={{ color }}>{fPct}%</span>
+                          <span className="text-[10px] text-gray-400 w-12 text-right">({t.filtered.count})</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Benchmark</span>
+                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: (bPct / maxPct * 100) + '%', background: '#9ca3af' }} />
+                          </div>
+                          <span className="text-xs font-bold text-gray-500 w-16 text-right">{bPct}%</span>
+                          <span className="text-[10px] text-gray-400 w-12 text-right">({t.benchmark.count})</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="text-center text-xs text-gray-400 mt-6">
+          Powered by <span style={{ color: HERMES, fontWeight: 600 }}>sentimetrx.ai</span> — to learn more go to{' '}
+          <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
+            className="font-semibold underline" style={{ color: HERMES }}>datanautix.com</a>
         </div>
       </div>
     </div>

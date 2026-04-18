@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
   const { type, target_id, expires_in } = body
   if (!type || !target_id) return NextResponse.json({ error: 'type and target_id required' }, { status: 400 })
-  if (!['study', 'campaign', 'townhall', 'conversation'].includes(type)) return NextResponse.json({ error: 'type must be study, campaign, townhall, or conversation' }, { status: 400 })
+  if (!['study', 'campaign', 'townhall', 'conversation', 'analytics'].includes(type)) return NextResponse.json({ error: 'type must be study, campaign, townhall, conversation, or analytics' }, { status: 400 })
 
   const service = createServiceRoleClient()
 
@@ -35,6 +35,21 @@ export async function POST(req: NextRequest) {
     if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 })
     const baseUrl2 = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
     return NextResponse.json({ url: `${baseUrl2}/shared/conversation/${convData.token}`, token: convData.token, expires_at: convData.expires_at }, { status: 201 })
+  }
+
+  // For analytics shares, store filter criteria in metadata
+  if (type === 'analytics' && body.metadata) {
+    const expiryHours2: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 }
+    const hours2 = expiryHours2[expires_in] || 168
+    const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
+    const { data: aData, error: aErr } = await service
+      .from('shared_links')
+      .insert({ type: 'analytics', target_id, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: body.metadata })
+      .select('token, expires_at')
+      .single()
+    if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 })
+    const baseUrl2 = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    return NextResponse.json({ url: `${baseUrl2}/shared/${aData.token}`, token: aData.token, expires_at: aData.expires_at }, { status: 201 })
   }
 
   // Calculate expiry
@@ -231,6 +246,15 @@ export async function GET(req: NextRequest) {
         example_quote: t.example_quote || '',
       })),
       stats: { participants: participants.size, responses: totalResponses, avg_words: avgWords },
+      expires_at: link.expires_at,
+    })
+  }
+
+  if (link.type === 'analytics') {
+    // Return minimal info — the heavy lifting is done by /api/share/analytics
+    return NextResponse.json({
+      type: 'analytics',
+      metadata: link.metadata,
       expires_at: link.expires_at,
     })
   }
