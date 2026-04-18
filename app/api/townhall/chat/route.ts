@@ -242,24 +242,8 @@ export async function POST(req: NextRequest) {
       .eq('turn_number', turn_number)
     if (updateError) console.error('[TH Chat] UPDATE turn failed:', updateError.message, '| turn:', turn_number)
 
-    // Check if theme hit its response target (live count from turns, no cached counter)
-    if (theme_id && !skipped) {
-      const { count: liveCount } = await supabase
-        .from('townhall_turns')
-        .select('id', { count: 'exact', head: true })
-        .eq('session_id', session.id)
-        .eq('theme_id', theme_id)
-        .not('user_message', 'is', null)
-        .eq('skipped', false)
-      const { data: theme } = await supabase
-        .from('townhall_themes')
-        .select('response_target, state')
-        .eq('id', theme_id)
-        .single()
-      if (theme && (liveCount || 0) >= theme.response_target && theme.state === 'active') {
-        await supabase.from('townhall_themes').update({ state: 'completed', completed_at: new Date().toISOString() }).eq('id', theme_id)
-      }
-    }
+    // Note: topics that hit their response target stay active (facilitator manually closes).
+    // The next-topic selection below deprioritizes target-reached topics.
 
     // Increment session response counter
     const newCounter = (session.response_counter || 0) + 1
@@ -607,9 +591,10 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
     } else {
 
     // ── NEXT TOPIC: Move to an unvisited topic ───────────────────────────
-    let available = allTopics.filter(
-      t => t.response_count < t.response_target && !discussedThemeIds.has(t.id)
-    )
+    // Prefer under-target topics, but include target-reached ones as fallback (deprioritized)
+    const underTarget = allTopics.filter(t => t.response_count < t.response_target && !discussedThemeIds.has(t.id))
+    const overTarget = allTopics.filter(t => t.response_count >= t.response_target && !discussedThemeIds.has(t.id))
+    let available = underTarget.length > 0 ? underTarget : overTarget
 
     if (seedBudgetExhausted) {
       const organicAvailable = available.filter(t => t.source !== 'guide')

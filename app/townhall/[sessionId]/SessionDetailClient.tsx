@@ -158,6 +158,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
   // Compact vs expanded view for topic sections
   const [compactView, setCompactView] = useState(false)
+  // Group by status (Active/Parked/Completed/Dismissed) or by source (Active/Seed/Organic)
+  const [viewMode, setViewMode] = useState<'status' | 'source'>('status')
 
   // Custom question state
   const [showCustom, setShowCustom] = useState(false)
@@ -312,13 +314,17 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const isPaused = session.status === 'paused'
   const isEnded = session.status === 'ended'
 
-  // Separate themes into sections
+  // Separate themes into sections — by status
   const activeTopics = themes.filter(t => t.state === 'active')
   const pendingTopics = themes.filter(t => t.state === 'paused')
   const suggestedTopics = themes.filter(t => t.state === 'detected')
   const parkedTopics = themes.filter(t => t.state === 'parked')
   const completedTopics = themes.filter(t => t.state === 'completed')
   const dismissedTopics = themes.filter(t => t.state === 'dismissed')
+  // By source
+  const seedTopics = themes.filter(t => t.source === 'guide')
+  const organicTopics = themes.filter(t => t.source === 'auto_detected')
+  const customTopics = themes.filter(t => t.source === 'custom')
   const defaultResponseTarget = cfg?.engine?.default_response_target || 30
 
   return (
@@ -1033,17 +1039,43 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
             {/* Full-width topics area */}
             <div className="space-y-4">
 
-              {/* Grid size toggle */}
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-gray-400 mr-1">Grid:</span>
-                {[2, 3, 4].map(n => (
-                  <button key={n} onClick={() => setGridCols(n)}
-                    className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all"
-                    style={{ background: gridCols === n ? '#fff4ef' : '#f9fafb', border: '1px solid ' + (gridCols === n ? '#E8632A' : '#e5e7eb'), color: gridCols === n ? '#E8632A' : '#6b7280' }}>
-                    {n}
-                  </button>
-                ))}
+              {/* Controls: Grid size + View mode + Compact toggle */}
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-gray-400 mr-1">Grid:</span>
+                  {[1, 2, 3, 4].map(n => (
+                    <button key={n} onClick={() => setGridCols(n)}
+                      className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all"
+                      style={{ background: gridCols === n ? '#fff4ef' : '#f9fafb', border: '1px solid ' + (gridCols === n ? '#E8632A' : '#e5e7eb'), color: gridCols === n ? '#E8632A' : '#6b7280' }}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                {!isSetup && themes.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400 mr-1">View:</span>
+                      <button onClick={() => setViewMode('status')}
+                        className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all"
+                        style={{ background: viewMode === 'status' ? '#fff4ef' : '#f9fafb', border: '1px solid ' + (viewMode === 'status' ? '#E8632A' : '#e5e7eb'), color: viewMode === 'status' ? '#E8632A' : '#6b7280' }}>
+                        By Status
+                      </button>
+                      <button onClick={() => setViewMode('source')}
+                        className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all"
+                        style={{ background: viewMode === 'source' ? '#fff4ef' : '#f9fafb', border: '1px solid ' + (viewMode === 'source' ? '#E8632A' : '#e5e7eb'), color: viewMode === 'source' ? '#E8632A' : '#6b7280' }}>
+                        By Source
+                      </button>
+                    </div>
+                    <button onClick={() => setCompactView(v => !v)}
+                      className="text-[10px] font-medium px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                      {compactView ? 'Expanded' : 'Compact'}
+                    </button>
+                  </>
+                )}
               </div>
+
+              {/* ── TOPIC SECTIONS ── */}
+              {viewMode === 'status' && (<>
 
               {/* ── ORGANIC TOPICS (sorted by mentions, pill nav, scrollable cards) ── */}
               {!isSetup && suggestedTopics.length > 0 && (function() {
@@ -1222,12 +1254,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="w-2 h-2 rounded-full bg-green-500" />
                   <h3 className="text-sm font-bold text-green-700">Active</h3>
                   <span className="text-[10px] text-gray-400">{isSetup ? (session.discussion_guide || []).filter((t: any) => t.enabled !== false).length : activeTopics.length}</span>
-                  {!isSetup && activeTopics.length > 0 && (
-                    <button onClick={() => setCompactView(v => !v)}
-                      className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                      {compactView ? 'Expanded' : 'Compact'}
-                    </button>
-                  )}
                 </div>
 
                 {isSetup ? (
@@ -1413,6 +1439,139 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   )}
                 </div>
               )}
+
+              </>)}
+
+              {/* ── SOURCE VIEW ── */}
+              {viewMode === 'source' && !isSetup && (<>
+                {/* Active (any source) */}
+                <div className="bg-white rounded-xl border border-green-200 p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    <h3 className="text-sm font-bold text-green-700">Active</h3>
+                    <span className="text-[10px] text-gray-400">{activeTopics.length}</span>
+                  </div>
+                  {activeTopics.length > 0 ? (
+                    compactView ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeTopics.map(t => {
+                          const s = t.sentiment || 'neutral'
+                          const targetReached = t.response_count >= t.response_target
+                          return (
+                            <button key={t.id} onClick={() => setDetailTopic(t)}
+                              className="text-[11px] font-semibold px-3 py-1.5 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 inline-flex items-center gap-1.5 transition-colors">
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: SENT_COLOR[s] || SENT_COLOR.neutral, flexShrink: 0 }} />
+                              {t.label}
+                              <span className="text-[9px] text-green-400">{t.response_count}/{t.response_target}</span>
+                              {targetReached && <span className="text-[9px]">✓</span>}
+                              <span className={`text-[8px] px-1 rounded ${t.source === 'guide' ? 'bg-blue-100 text-blue-500' : t.source === 'auto_detected' ? 'bg-emerald-100 text-emerald-500' : 'bg-gray-100 text-gray-400'}`}>
+                                {t.source === 'guide' ? 'S' : t.source === 'auto_detected' ? 'O' : 'C'}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
+                        {activeTopics.map(t => (
+                          <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
+                            onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
+                            onDetailClick={() => setDetailTopic(t)} />
+                        ))}
+                      </div>
+                    )
+                  ) : (
+                    <p className="text-xs text-gray-400">No active topics.</p>
+                  )}
+                </div>
+
+                {/* Seed Topics (all guide-sourced, grouped by state) */}
+                {seedTopics.length > 0 && (
+                  <div className="bg-white rounded-xl border border-blue-200 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      <h3 className="text-sm font-bold text-blue-700">Seed Topics</h3>
+                      <span className="text-[10px] text-blue-400">{seedTopics.length}</span>
+                    </div>
+                    {compactView ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {seedTopics.map(t => {
+                          const targetReached = t.response_count >= t.response_target
+                          return (
+                            <button key={t.id} onClick={() => setDetailTopic(t)}
+                              className="text-[11px] font-semibold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 inline-flex items-center gap-1.5 transition-colors">
+                              {t.label}
+                              <span className="text-[9px] text-blue-400">{t.response_count}/{t.response_target}</span>
+                              {targetReached && <span className="text-[9px]">✓</span>}
+                              <span className={`text-[8px] px-1 rounded ${
+                                t.state === 'active' ? 'bg-green-100 text-green-600' :
+                                t.state === 'completed' ? 'bg-blue-100 text-blue-600' :
+                                t.state === 'parked' ? 'bg-amber-100 text-amber-600' :
+                                t.state === 'paused' ? 'bg-amber-100 text-amber-500' :
+                                t.state === 'dismissed' ? 'bg-gray-100 text-gray-400' :
+                                'bg-gray-100 text-gray-400'
+                              }`}>{t.state}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
+                        {seedTopics.map(t => (
+                          <ThemeCard key={t.id} theme={t} isActive={isActive}
+                            variant={t.state === 'completed' ? 'completed' : t.state === 'dismissed' ? 'dismissed' : t.state === 'parked' ? 'parked' : 'active'}
+                            onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                            defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
+                            onDetailClick={() => setDetailTopic(t)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Organic Topics (all auto_detected, grouped by state) */}
+                {organicTopics.length > 0 && (
+                  <div className="rounded-xl border-2 border-emerald-200 p-5" style={{ background: '#f0fdf4' }}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <h3 className="text-sm font-bold text-emerald-600">Organic Topics</h3>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-bold">{organicTopics.length}</span>
+                    </div>
+                    {compactView ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {organicTopics.sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0)).map(t => {
+                          const s = t.sentiment || 'neutral'
+                          return (
+                            <button key={t.id} onClick={() => setDetailTopic(t)}
+                              className="text-[11px] font-semibold px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 inline-flex items-center gap-1.5 transition-colors">
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: SENT_COLOR[s] || SENT_COLOR.neutral, flexShrink: 0 }} />
+                              {t.label}
+                              <span className="text-[9px] text-emerald-400">{t.mention_count || t.response_count || 0}</span>
+                              <span className={`text-[8px] px-1 rounded ${
+                                t.state === 'active' ? 'bg-green-100 text-green-600' :
+                                t.state === 'detected' ? 'bg-orange-100 text-orange-600' :
+                                t.state === 'parked' ? 'bg-amber-100 text-amber-600' :
+                                t.state === 'dismissed' ? 'bg-gray-100 text-gray-400' :
+                                'bg-gray-100 text-gray-400'
+                              }`}>{t.state === 'detected' ? 'new' : t.state}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
+                        {organicTopics.sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0)).map(t => (
+                          <ThemeCard key={t.id} theme={t} isActive={isActive}
+                            variant={t.state === 'detected' ? 'suggested' : t.state === 'dismissed' ? 'dismissed' : t.state === 'parked' ? 'parked' : t.state === 'completed' ? 'completed' : 'active'}
+                            onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                            defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
+                            onDetailClick={() => setDetailTopic(t)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>)}
 
               {/* Custom question push */}
               {isActive && (
@@ -1742,6 +1901,7 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
                 {t.source === 'guide' && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-600">Seed</span>}
                 {t.source === 'custom' && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">Custom</span>}
                 {t.state === 'paused' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-600">Paused</span>}
+                {t.state === 'active' && t.response_count >= t.response_target && t.response_target > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-green-100 text-green-600">✓ Target</span>}
               </div>
             </div>
             {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
