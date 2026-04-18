@@ -81,6 +81,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [error, setError] = useState<string | null>(null)
   const [participantList, setParticipantList] = useState<any[]>([])
   const [convModal, setConvModal] = useState<{ pid: string; turns: any[]; demographics?: any; psychographics?: any } | null>(null)
+  const [convShareState, setConvShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
   const [jsonView, setJsonView] = useState(false)
   const [jsonCopied, setJsonCopied] = useState(false)
 
@@ -970,7 +971,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
                   }} className="text-xs text-gray-400 hover:text-orange-600 font-medium" title="Download as HTML">
                     Download
                   </button>
-                  <button onClick={() => setConvModal(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+                  <button onClick={async () => {
+                    setConvShareState('sharing')
+                    try {
+                      const botName = cfg?.bot_name || 'Town Hall'
+                      const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
+                      const primary = cfg?.theme?.primaryColor || '#007AFF'
+                      const gradient = cfg?.theme?.headerGradient || primary
+                      const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${botName} Conversation</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}.wrap{width:100%;max-width:400px;border-radius:24px;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,.15)}.hdr{padding:16px;display:flex;align-items:center;gap:12px;background:${gradient}}.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);font-size:16px;flex-shrink:0}.hdr-text{color:#fff;font-weight:600;font-size:14px}.hdr-sub{color:rgba(255,255,255,.5);font-size:11px}.chat{padding:16px;display:flex;flex-direction:column;gap:10px;background:#f8fafc}.row{display:flex;align-items:flex-end;gap:8px;max-width:85%}.row.user{flex-direction:row-reverse;align-self:flex-end}.row.bot{align-self:flex-start}.sm-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:${gradient}}.bubble{padding:8px 12px;font-size:13px;line-height:1.5;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}.bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:4px}.user .bubble{background:#007AFF;color:#fff;border-bottom-right-radius:4px;font-weight:500}.skip .bubble{background:#f9fafb;color:#9ca3af;font-style:italic;border-bottom-right-radius:4px;font-size:12px}.footer{text-align:center;padding:12px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff}</style></head><body>
+<div class="wrap"><div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${convModal!.pid.slice(0, 12)}...</div></div></div>
+<div class="chat">${convModal!.turns.map((t: any) => { let o = ''; if (t.bot) o += '<div class="row bot"><div class="sm-av">' + botEmoji + '</div><div class="bubble">' + t.bot.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</div></div>'; if (t.user && !t.skipped) o += '<div class="row user"><div class="bubble">' + t.user.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</div></div>'; if (t.skipped) o += '<div class="row skip"><div class="bubble">' + (t.user||'skipped').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div></div>'; return o }).join('')}</div>
+<div class="footer">Datanautix — datanautix.com</div></div></body></html>`
+                      const res = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: sessionId, html, expires_in: '30d' }) })
+                      const data = await res.json()
+                      if (data.url) { await navigator.clipboard.writeText(data.url); setConvShareState('copied'); setTimeout(() => setConvShareState('idle'), 3000) }
+                      else setConvShareState('idle')
+                    } catch { setConvShareState('idle') }
+                  }} disabled={convShareState === 'sharing'}
+                    className="text-xs font-medium hover:text-green-600 transition-colors"
+                    style={{ color: convShareState === 'copied' ? '#16a34a' : '#9ca3af' }}>
+                    {convShareState === 'sharing' ? '...' : convShareState === 'copied' ? 'Link copied!' : 'Share'}
+                  </button>
+                  <button onClick={() => { setConvModal(null); setConvShareState('idle') }} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">

@@ -389,6 +389,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 function ShareConversationButton({ msgs, botName, botEmoji, theme, response, studyConfig, isLight, subtleText }: {
   msgs: ConvMsg[]; botName: string; botEmoji: string; theme: any; response: any; studyConfig: any; isLight: boolean; subtleText: string
 }) {
+  const [sharing, setSharing] = useState(false)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   const download = () => {
@@ -402,21 +404,33 @@ function ShareConversationButton({ msgs, botName, botEmoji, theme, response, stu
     URL.revokeObjectURL(url)
   }
 
-  const copyLink = async () => {
-    const html = generateConversationHtml(msgs, botName, botEmoji, theme, response)
-    const blob = new Blob([html], { type: 'text/html' })
+  const share = async () => {
+    setSharing(true)
     try {
-      await navigator.clipboard.write([new ClipboardItem({ 'text/html': blob })])
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Fallback: download instead
-      download()
-    }
+      const html = generateConversationHtml(msgs, botName, botEmoji, theme, response)
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'conversation', target_id: response.id || response.study_id || '00000000-0000-0000-0000-000000000000', html, expires_in: '30d' }),
+      })
+      const data = await res.json()
+      if (data.url) {
+        setShareUrl(data.url)
+        await navigator.clipboard.writeText(data.url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 3000)
+      }
+    } catch {}
+    setSharing(false)
   }
 
   return (
     <div className="flex gap-1">
+      <button onClick={share} disabled={sharing}
+        className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
+        style={{ background: isLight ? '#f0fdf4' : 'rgba(34,197,94,0.15)', color: '#16a34a', border: '1px solid ' + (isLight ? '#bbf7d0' : 'rgba(34,197,94,0.3)') }}>
+        {sharing ? 'Creating...' : copied ? 'Link copied!' : shareUrl ? 'Copy link' : 'Share'}
+      </button>
       <button onClick={download}
         className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
         style={{ background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)', color: subtleText }}
