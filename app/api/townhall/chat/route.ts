@@ -298,10 +298,10 @@ export async function POST(req: NextRequest) {
     // Fast regex pre-check: skip deflection if response looks like genuine feedback
     // (contains opinion/emotion words — not worth burning an AI call)
     // BUT: always check if it hits a sensitive/banned topic
-    const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|burnt|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|leaving|quit|mental|health|workload|balance)\b/i
-    const QUESTION_SIGNALS = /\?\s*$|^(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
+    const FEEDBACK_SIGNALS = /\b(good|great|bad|terrible|love|hate|like|dislike|think|thinking|feel|feeling|believe|wish|hope|want|need|prefer|enjoy|annoyed|frustrated|frustrating|happy|disappointed|amazing|awful|horrible|excellent|worst|best|opinion|suggest|recommend|improve|issue|problem|concern|stress|stressed|struggling|burnout|burnt|overwhelm|exhausted|tired|anxious|depressed|worried|scared|afraid|angry|upset|hurt|suffering|difficult|tough|hard|leaving|quit|mental|health|workload|balance|worried|scary|dangerous|expensive|affordable|affordable|crowded|noisy|ugly|beautiful|broken|fix|change|build|add|remove|stop|start|keep|maintain|invest|spend|waste|ruin|destroy|save|protect|support|oppose|against|favor|agree|disagree|should|shouldn't|must|can't|won't|important|critical|essential|ridiculous|absurd|outrageous|unfair|fair|wrong|right|better|worse|enough|lack|missing|too much|too many|not enough|overflow|traffic|parking|safety|crime|noise|pollution|taxes|rent|cost|price|development|housing|schools|parks|roads|transit|bus|bike|walk|sidewalk)\b/i
+    const QUESTION_SIGNALS = /^\s*(who|what|where|when|why|how|can you|could you|do you|is there|are there|will you|would you)\b/i
 
-    if (hitsSensitive || !FEEDBACK_SIGNALS.test(analyzeText) || QUESTION_SIGNALS.test(analyzeText)) {
+    if (hitsSensitive || (!FEEDBACK_SIGNALS.test(analyzeText) && QUESTION_SIGNALS.test(analyzeText))) {
       // Possible off-topic or question — ask AI
       const currentTopic = theme_id ? (await supabase.from('townhall_themes').select('label, question').eq('id', theme_id).single()).data : null
       const topicContext = currentTopic
@@ -310,30 +310,28 @@ export async function POST(req: NextRequest) {
 
       try {
         const deflectResult = await callClaude(
-          `You are a warm facilitator in a Town Hall discussion. The participant went off-topic and you need to gently redirect them.
+          `You are a facilitator in a Town Hall discussion. Decide if the participant's message needs redirection.
 
-The topic you want to discuss: "${topicContext}"
-The participant said: "${analyzeText}"
+Topic being discussed: "${topicContext}"
+Participant said: "${analyzeText}"
+${hitsSensitive ? 'WARNING: This message touches a SENSITIVE/BANNED topic. You MUST redirect away from it gently.' : ''}
 
-DECISION:
-- If they gave ANY form of feedback — opinions, complaints, praise, suggestions, stories, emotions, even if brief, tangential, or passionate — respond with exactly: NONE
-- Rhetorical questions count as feedback (e.g. "Why can't they just fix it?" = complaint)
-- Only redirect if they are CLEARLY asking for information, requesting help, or talking about something completely unrelated
-- Short answers like "yes", "no", "fine", "ok" are NOT off-topic — respond NONE
+RESPOND WITH EXACTLY "NONE" (no redirect needed) IF:
+- They gave ANY opinion, complaint, praise, suggestion, story, or emotion about ANYTHING related to community, neighborhood, city, development, infrastructure, housing, schools, parks, transportation, taxes, safety, environment, or quality of life
+- They answered a question, even briefly or tangentially
+- They used a rhetorical question ("Why can't they fix it?" = complaint, NOT a question)
+- They are passionate, angry, or emotional — that is feedback, not off-topic
+- Their message is short ("ok", "sure", "not really")
 
-If redirect IS needed, write a message that:
-1. Briefly acknowledges what they mentioned (show you heard them)
-2. Says you'd like to focus on the current topic (name it specifically)
-3. Offers to come back to their concern later
+REDIRECT ONLY IF:
+- They are asking the bot for factual information ("What time does city hall open?")
+- They are talking about something truly unrelated to the community/city/development (e.g., sports scores, personal medical advice)
+${hitsSensitive ? '- OR their message touches the sensitive/banned topic flagged above — redirect gently WITHOUT naming the sensitive topic' : ''}
 
-Example: "That's a fair point about [their concern]. For now, I'd love to hear your thoughts on [topic] — and we can circle back to that later."
+When in doubt, respond NONE. We NEVER want to redirect genuine community feedback.
 
-RULES:
-- Output ONLY the redirect message, or NONE — nothing else
-- Maximum 30 words, one or two sentences on a single line
-- Sound like a real person, not a script
-- Do NOT mention "bot", "AI", "survey", or "off-topic"
-- Do NOT explain your reasoning or describe what you are doing` +
+If redirecting: write 1-2 sentences (max 30 words), acknowledge their point, steer back to the topic.
+Output ONLY "NONE" or the redirect message. Nothing else.` +
             (language && language !== 'en' ? `\n\nIMPORTANT: Write your redirect message in ${language}.` : ''),
           'Redirect the participant.',
           3000,
