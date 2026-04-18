@@ -161,6 +161,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       ...t,
       sentiment,
       match_count: matchCount,
+      mention_count: matchCount,
+      response_count: t.source === 'auto_detected' ? matchCount : t.response_count,
       percentage,
       example_quotes: matchedQuotes,
       top_keywords: topKeywords,
@@ -297,6 +299,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           .eq('skipped', false)
         const newCount = count || 0
         const updates: Record<string, unknown> = { response_count: newCount }
+        // Un-complete themes that dropped below target
         if (theme.state === 'completed' && newCount < theme.response_target) {
           updates.state = 'active'
           updates.completed_at = null
@@ -309,7 +312,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Handle reanalyze: clear all auto-detected themes + re-run detection
   if (body.reanalyze) {
+    // Delete all auto-detected themes (keep guide + custom)
     await db.from('townhall_themes').delete().eq('session_id', params.id).eq('source', 'auto_detected')
+    // Re-run theme detection
     const { detectThemesForSession } = await import('@/lib/townhallThemeDetection')
     const result = await detectThemesForSession(params.id)
     return NextResponse.json({ reanalyzed: true, ...result })

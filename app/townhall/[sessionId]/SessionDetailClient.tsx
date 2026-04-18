@@ -165,7 +165,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/townhall/sessions/' + sessionId)
+      const res = await fetch('/api/townhall/sessions/' + sessionId + '?analytics=true')
       if (!res.ok) return
       const data = await res.json()
       setSession(data.session)
