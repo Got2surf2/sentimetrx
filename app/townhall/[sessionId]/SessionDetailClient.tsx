@@ -147,10 +147,13 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [saving, setSaving] = useState(false)
   const [editStep, setEditStep] = useState(0)
 
-  // Organic topic detail popup — store ID, look up from live themes for fresh data
-  const [organicDetailId, setOrganicDetailId] = useState<string | null>(null)
-  const organicDetailTopic = organicDetailId ? themes.find(t => t.id === organicDetailId) || null : null
-  const setOrganicDetailTopic = (t: TownHallTheme | null) => setOrganicDetailId(t?.id || null)
+  // Topic detail popup — store ID, look up from live themes for fresh data
+  const [detailTopicId, setDetailTopicId] = useState<string | null>(null)
+  const detailTopic = detailTopicId ? themes.find(t => t.id === detailTopicId) || null : null
+  const setDetailTopic = (t: TownHallTheme | null) => setDetailTopicId(t?.id || null)
+
+  // Compact vs expanded view for topic sections
+  const [compactView, setCompactView] = useState(false)
 
   // Custom question state
   const [showCustom, setShowCustom] = useState(false)
@@ -1048,7 +1051,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       const pillSent = t.sentiment || 'neutral'
                       const sentDot = SENT_COLOR[pillSent] || SENT_COLOR.neutral
                       return (
-                        <button key={t.id} onClick={() => setOrganicDetailTopic(t)}
+                        <button key={t.id} onClick={() => setDetailTopic(t)}
                           className="text-[11px] font-semibold px-3 py-1 rounded-full transition-all hover:shadow-sm cursor-pointer inline-flex items-center gap-1.5"
                           style={{ background: i === 0 ? '#ea580c' : i < 3 ? '#f97316' : '#fb923c', color: 'white', opacity: Math.max(0.6, 1 - i * 0.08) }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: sentDot, border: '1px solid rgba(255,255,255,0.5)', flexShrink: 0 }} />
@@ -1063,7 +1066,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       {sorted.map(t => (
                         <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
                           onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                          defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} onDetailClick={() => setOrganicDetailTopic(t)} />
+                          defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} onDetailClick={() => setDetailTopic(t)} />
                       ))}
                     </div>
                   </div>
@@ -1071,82 +1074,113 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                 )
               })()}
 
-              {/* ── Organic Topic Detail Popup ── */}
-              {organicDetailTopic && (
+              {/* ── Topic Detail Popup (works for any topic type) ── */}
+              {detailTopic && (function() {
+                const isOrganic = detailTopic.source === 'auto_detected'
+                const isSeed = detailTopic.source === 'guide'
+                const isCustom = detailTopic.source === 'custom'
+                const topicState = detailTopic.state || 'detected'
+                const quotes = detailTopic.example_quotes && detailTopic.example_quotes.length > 0
+                  ? detailTopic.example_quotes
+                  : detailTopic.example_quote ? [detailTopic.example_quote] : []
+                const mentionCount = detailTopic.mention_count || detailTopic.match_count || detailTopic.response_count || 0
+
+                return (
                 <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onClick={() => setOrganicDetailTopic(null)}>
+                  onClick={() => setDetailTopic(null)}>
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />
                   <div onClick={e => e.stopPropagation()}
                     style={{ position: 'relative', background: 'white', borderRadius: 16, width: '90%', maxWidth: 640, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px rgba(0,0,0,.25)' }}>
                     {/* Header */}
                     <div className="p-5 border-b border-gray-100 flex-shrink-0">
                       <div className="flex items-center justify-between mb-2">
-                        <h2 className="text-lg font-bold text-gray-900">{organicDetailTopic.label}</h2>
-                        <button onClick={() => setOrganicDetailTopic(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+                        <h2 className="text-lg font-bold text-gray-900">{detailTopic.label}</h2>
+                        <button onClick={() => setDetailTopic(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
                       </div>
-                      {organicDetailTopic.description && (
-                        <p className="text-sm text-gray-500 mb-3">{organicDetailTopic.description}</p>
+                      {detailTopic.description && (
+                        <p className="text-sm text-gray-500 mb-3">{detailTopic.description}</p>
                       )}
                       <div className="flex flex-wrap gap-2 mb-3">
-                        {(organicDetailTopic.sentiment && organicDetailTopic.sentiment !== 'insufficient') && (
+                        {(detailTopic.sentiment && detailTopic.sentiment !== 'insufficient') && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize"
-                            style={{ background: SENT_BG[organicDetailTopic.sentiment] || SENT_BG.neutral, color: SENT_COLOR[organicDetailTopic.sentiment] || SENT_COLOR.neutral }}>
-                            {organicDetailTopic.sentiment}
+                            style={{ background: SENT_BG[detailTopic.sentiment] || SENT_BG.neutral, color: SENT_COLOR[detailTopic.sentiment] || SENT_COLOR.neutral }}>
+                            {detailTopic.sentiment}
                           </span>
                         )}
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-600">Organic</span>
+                        {isOrganic && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-600">Organic</span>}
+                        {isSeed && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-600">Seed</span>}
+                        {isCustom && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-gray-100 text-gray-500">Custom</span>}
                         <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">
-                          {organicDetailTopic.mention_count || organicDetailTopic.match_count || 0} mentions · {organicDetailTopic.percentage ?? 0}% of responses
+                          {mentionCount} {isSeed ? 'responses' : 'mentions'}{detailTopic.response_target ? ` / ${detailTopic.response_target}` : ''} · {detailTopic.percentage ?? 0}% of responses
                         </span>
                       </div>
                       {/* Keywords with frequency */}
-                      {(organicDetailTopic.top_keywords || organicDetailTopic.keywords || []).length > 0 && (
+                      {(detailTopic.top_keywords || detailTopic.keywords || []).length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
-                          {(organicDetailTopic.top_keywords || []).map((kw: any) => (
+                          {(detailTopic.top_keywords || []).map((kw: any) => (
                             <span key={kw.word} className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium border border-orange-200">
                               {kw.word} <span className="text-orange-400">({kw.count})</span>
                             </span>
                           ))}
-                          {!organicDetailTopic.top_keywords && (organicDetailTopic.keywords || []).slice(0, 10).map(kw => (
+                          {!detailTopic.top_keywords && (detailTopic.keywords || []).slice(0, 10).map(kw => (
                             <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{kw}</span>
                           ))}
                         </div>
                       )}
-                      {/* Action buttons */}
+                      {/* Context-appropriate action buttons */}
                       <div className="flex gap-2 mt-3">
-                        <button onClick={() => { handleThemeAction(organicDetailTopic.id, 'approve', { response_target: defaultResponseTarget }); setOrganicDetailTopic(null) }}
-                          className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Approve</button>
-                        <button onClick={() => { handleThemeAction(organicDetailTopic.id, 'park'); setOrganicDetailTopic(null) }}
-                          className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200">Park</button>
-                        <button onClick={() => { handleThemeAction(organicDetailTopic.id, 'dismiss'); setOrganicDetailTopic(null) }}
-                          className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">Dismiss</button>
+                        {topicState === 'detected' && <>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'approve', { response_target: defaultResponseTarget }); setDetailTopic(null) }}
+                            className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Approve</button>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'park'); setDetailTopic(null) }}
+                            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200">Park</button>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'dismiss'); setDetailTopic(null) }}
+                            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">Dismiss</button>
+                        </>}
+                        {topicState === 'active' && <>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'close'); setDetailTopic(null) }}
+                            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200">Close</button>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'park'); setDetailTopic(null) }}
+                            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-amber-600 hover:bg-amber-50 border border-amber-200">Park</button>
+                        </>}
+                        {topicState === 'parked' && <>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'activate'); setDetailTopic(null) }}
+                            className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Activate</button>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'dismiss'); setDetailTopic(null) }}
+                            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-500 border border-gray-200">Dismiss</button>
+                        </>}
+                        {topicState === 'completed' && <>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'reopen'); setDetailTopic(null) }}
+                            className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Reopen</button>
+                        </>}
+                        {topicState === 'dismissed' && <>
+                          <button onClick={() => { handleThemeAction(detailTopic.id, 'undismiss'); setDetailTopic(null) }}
+                            className="text-[11px] font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90" style={{ background: '#22c55e' }}>Restore</button>
+                        </>}
                       </div>
                     </div>
                     {/* Scrollable comments */}
                     <div className="flex-1 overflow-y-auto p-5">
-                      {(function() {
-                        var quotes = organicDetailTopic.example_quotes && organicDetailTopic.example_quotes.length > 0
-                          ? organicDetailTopic.example_quotes
-                          : organicDetailTopic.example_quote ? [organicDetailTopic.example_quote] : []
-                        return <>
-                          <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Matching Responses ({organicDetailTopic.mention_count || organicDetailTopic.match_count || quotes.length}){quotes.length > 0 && quotes.length < (organicDetailTopic.mention_count || 0) ? <span className="text-gray-400 font-normal ml-1">· showing {quotes.length}</span> : null}</h3>
-                          {quotes.length > 0 ? (
-                            <div className="space-y-2">
-                              {quotes.map((q: string, i: number) => (
-                                <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
-                                  <span className="text-gray-400 mr-1">{i + 1}.</span> {q}
-                                </div>
-                              ))}
+                      <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">
+                        Matching Responses ({mentionCount})
+                        {quotes.length > 0 && quotes.length < mentionCount ? <span className="text-gray-400 font-normal ml-1">· showing {quotes.length}</span> : null}
+                      </h3>
+                      {quotes.length > 0 ? (
+                        <div className="space-y-2">
+                          {quotes.map((q: string, i: number) => (
+                            <div key={i} className="border border-gray-100 rounded-lg p-3 text-sm text-gray-700 leading-relaxed bg-gray-50/50">
+                              <span className="text-gray-400 mr-1">{i + 1}.</span> {q}
                             </div>
-                          ) : (
-                            <p className="text-sm text-gray-400 italic">No matching responses yet</p>
-                          )}
-                        </>
-                      })()}
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">No matching responses yet</p>
+                      )}
                     </div>
                   </div>
                 </div>
-              )}
+                )
+              })()}
 
               {/* ── ACTIVE ──────────────────────────────────── */}
               <div className="bg-white rounded-xl border border-green-200 p-5">
@@ -1154,6 +1188,12 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   <div className="w-2 h-2 rounded-full bg-green-500" />
                   <h3 className="text-sm font-bold text-green-700">Active</h3>
                   <span className="text-[10px] text-gray-400">{isSetup ? (session.discussion_guide || []).filter((t: any) => t.enabled !== false).length : activeTopics.length}</span>
+                  {!isSetup && activeTopics.length > 0 && (
+                    <button onClick={() => setCompactView(v => !v)}
+                      className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                      {compactView ? 'Expanded' : 'Compact'}
+                    </button>
+                  )}
                 </div>
 
                 {isSetup ? (
@@ -1173,12 +1213,29 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     )}
                   </div>
                 ) : activeTopics.length > 0 ? (
+                  compactView ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeTopics.map(t => {
+                        const s = t.sentiment || 'neutral'
+                        return (
+                          <button key={t.id} onClick={() => setDetailTopic(t)}
+                            className="text-[11px] font-semibold px-3 py-1.5 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 inline-flex items-center gap-1.5 transition-colors">
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: SENT_COLOR[s] || SENT_COLOR.neutral, flexShrink: 0 }} />
+                            {t.label}
+                            <span className="text-[9px] text-green-400">{t.response_count}/{t.response_target}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {activeTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees} />
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
+                        onDetailClick={() => setDetailTopic(t)} />
                     ))}
                   </div>
+                  )
                 ) : (
                   <p className="text-xs text-gray-400">No active topics.</p>
                 )}
@@ -1192,13 +1249,25 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-blue-700">Parked</h3>
                     <span className="text-[10px] text-blue-400">{parkedTopics.length}</span>
                   </div>
+                  {compactView ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {parkedTopics.map(t => (
+                        <button key={t.id} onClick={() => setDetailTopic(t)}
+                          className="text-[11px] font-semibold px-3 py-1.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 inline-flex items-center gap-1.5">
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {parkedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="parked"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} />
+                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
+                        onDetailClick={() => setDetailTopic(t)} />
                     ))}
                   </div>
+                  )}
                 </div>
               )}
 
@@ -1210,12 +1279,24 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-amber-700">Pending</h3>
                     <span className="text-[10px] text-amber-400">{pendingTopics.length}</span>
                   </div>
+                  {compactView ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {pendingTopics.map(t => (
+                        <button key={t.id} onClick={() => setDetailTopic(t)}
+                          className="text-[11px] font-semibold px-3 py-1.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 inline-flex items-center gap-1.5">
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {pendingTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="active"
-                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees} />
+                        onAction={(action) => handleThemeAction(t.id, action)} loading={actionLoading === t.id} expectedAttendees={cfg?.expected_attendees}
+                        onDetailClick={() => setDetailTopic(t)} />
                     ))}
                   </div>
+                  )}
                 </div>
               )}
 
@@ -1246,13 +1327,26 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-blue-700">Closed</h3>
                     <span className="text-[10px] text-blue-400">{completedTopics.length}</span>
                   </div>
+                  {compactView ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {completedTopics.map(t => (
+                        <button key={t.id} onClick={() => setDetailTopic(t)}
+                          className="text-[11px] font-semibold px-3 py-1.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 inline-flex items-center gap-1.5">
+                          {t.label}
+                          <span className="text-[9px] text-blue-400">{t.response_count}/{t.response_target}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {completedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="completed"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} />
+                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
+                        onDetailClick={() => setDetailTopic(t)} />
                     ))}
                   </div>
+                  )}
                 </div>
               )}
 
@@ -1264,13 +1358,25 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <h3 className="text-sm font-bold text-gray-400">Dismissed</h3>
                     <span className="text-[10px] text-gray-300">{dismissedTopics.length}</span>
                   </div>
+                  {compactView ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {dismissedTopics.map(t => (
+                        <button key={t.id} onClick={() => setDetailTopic(t)}
+                          className="text-[11px] font-medium px-3 py-1.5 rounded-full bg-gray-50 text-gray-400 border border-gray-200 hover:bg-gray-100 inline-flex items-center gap-1.5">
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(' + (gridCols >= 4 ? '220px' : gridCols >= 3 ? '260px' : '300px') + ', 1fr))' }}>
                     {dismissedTopics.map(t => (
                       <ThemeCard key={t.id} theme={t} isActive={isActive} variant="dismissed"
                         onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} />
+                        defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees}
+                        onDetailClick={() => setDetailTopic(t)} />
                     ))}
                   </div>
+                  )}
                 </div>
               )}
 
