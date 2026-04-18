@@ -184,6 +184,17 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 - Theme visualization, auto-refresh
 - Audit: all access logged with `last_accessed_at`
 
+### Shared Analytics Links (Filtered vs Benchmark)
+- **Purpose**: Send a stakeholder a view of how their subset (e.g., a specific restaurant) performs vs the system aggregate, without exposing individual data from other entities
+- **Share type**: `analytics` — stored in `shared_links` with filter criteria in `metadata` JSONB
+- **API**: `GET /api/share/analytics?token=...` — splits `dataset_rows_flat` into filtered and benchmark sets, returns only aggregates
+- **UI**: "Share Analytics" button in Ana header bar opens `ShareAnalyticsModal` — use current active filters or pick new categorical filters, set label + expiry
+- **Outlier Detection**:
+  - **Numeric metrics**: z-score comparison of filtered mean vs benchmark (Welch-style SE). Flagged at p<0.05
+  - **Theme frequencies**: two-proportion z-test of filtered rate vs benchmark rate. Flagged at p<0.05
+- **Privacy safeguards**: minimum sample sizes enforced (n=10 filtered, n=10 benchmark, n=5 theme count). Benchmark data is aggregate-only — no individual rows or identifiable data exposed
+- **Shared view**: side-by-side bars for each metric/theme, green/red outlier badges with p-values, filter criteria pills in header
+
 ---
 
 ## Key Files
@@ -205,4 +216,6 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 | `lib/analyzeTypes.ts` | TypeScript interfaces |
 | `lib/timeBucket.ts` | Time series bucketing (hourly/daily/weekly/monthly/quarterly) |
 | `lib/aliasUtils.ts` | Value aliases & remapping |
+| `components/analyze/ShareAnalyticsModal.tsx` | Share analytics link creator |
+| `app/api/share/analytics/route.ts` | Filtered vs benchmark analytics API |
 | `app/api/datasets/[id]/` | All dataset API routes |
