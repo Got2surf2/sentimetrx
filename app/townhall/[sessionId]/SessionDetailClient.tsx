@@ -954,12 +954,19 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
         {convModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConvModal(null)}>
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
-                <div>
-                  <span className="text-sm font-bold text-gray-700">Conversation</span>
-                  <span className="text-xs text-gray-400 ml-2 font-mono">{convModal.pid.slice(0, 12)}...</span>
+              {/* Colored header bar */}
+              <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ background: cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || 'linear-gradient(135deg, #00b4d8, #0077a8)', borderRadius: '16px 16px 0 0' }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{cfg?.bot_emoji || '\uD83D\uDCAC'}</span>
+                  <div>
+                    <span className="text-sm font-bold text-white">{cfg?.bot_name || 'Conversation'}</span>
+                    <span className="text-xs text-white/60 ml-2 font-mono">{convModal.pid.slice(0, 12)}...</span>
+                  </div>
                 </div>
-                <button onClick={() => { setConvModal(null); setConvShareState('idle') }} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-white/70 font-medium">Powered by <a href="https://datanautix.com" target="_blank" rel="noopener noreferrer" className="font-bold text-white/90 hover:text-white">DATANAUTIX</a></span>
+                  <button onClick={() => { setConvModal(null); setConvShareState('idle') }} className="text-white/70 hover:text-white text-lg">&times;</button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
                 {convModal.turns.map((t: any, i: number) => (
