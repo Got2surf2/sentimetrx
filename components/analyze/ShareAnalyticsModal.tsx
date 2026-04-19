@@ -68,6 +68,23 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
   var effectiveFilters = useCurrentFilters ? activeFilters : customFilters
   var hasFilters = Object.keys(effectiveFilters).length > 0
 
+  // Compute benchmark context: values NOT selected (the comparison group)
+  var benchmarkInfo = (function() {
+    var entries = Object.entries(effectiveFilters)
+    if (entries.length === 0) return null
+    var results: { field: string; label: string; selected: string[]; benchmark: string[]; total: number }[] = []
+    entries.forEach(function(entry) {
+      var field = entry[0], f = entry[1]
+      if (f.type !== 'cat') return
+      var opt = filterOptions.find(function(o) { return o.field === field })
+      if (!opt || !opt.values) return
+      var selectedVals = Array.from(f.values)
+      var benchmarkVals = opt.values.filter(function(v) { return !f.values.has(v) })
+      results.push({ field: field, label: opt.label || field, selected: selectedVals, benchmark: benchmarkVals, total: opt.values.length })
+    })
+    return results.length > 0 ? results : null
+  })()
+
   function addFilterFromSelection() {
     if (!selectedField || selectedValues.size === 0) return
     setCustomFilters(function(prev) {
@@ -271,6 +288,41 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
                     )}
                   </>
                 )}
+              </div>
+            )}
+
+            {/* Benchmark preview */}
+            {hasFilters && benchmarkInfo && (
+              <div style={{ marginBottom: 16, padding: 12, background: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', marginBottom: 6, textTransform: 'uppercase' }}>Benchmark Comparison</div>
+                {benchmarkInfo.map(function(b) {
+                  return (
+                    <div key={b.field} style={{ marginBottom: benchmarkInfo.length > 1 ? 8 : 0 }}>
+                      <div style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{b.label}:</span>{' '}
+                        <span style={{ color: HERMES, fontWeight: 600 }}>{b.selected.length === 1 ? b.selected[0] : b.selected.length + ' selected'}</span>
+                        {' '}vs. benchmark
+                      </div>
+                      {b.benchmark.length === 0 ? (
+                        <div style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>No other values — benchmark will include all entries.</div>
+                      ) : b.benchmark.length <= 8 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                          {b.benchmark.map(function(v) {
+                            return (
+                              <span key={v} style={{ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1' }}>
+                                {v}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                          Compared against <span style={{ fontWeight: 700, color: '#0284c7' }}>{b.benchmark.length}</span> others in the group of {b.total} total.
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
 
