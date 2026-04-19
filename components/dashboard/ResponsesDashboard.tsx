@@ -224,8 +224,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
         {/* Table */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
           {loading ? (
-            <div className="py-16 flex justify-center">
-              <LottieLoader size={100} message="Loading responses..." />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+              <LottieLoader size={140} message="Loading responses..." />
             </div>
           ) : responses.length === 0 ? (
             <div className="py-16 text-center">

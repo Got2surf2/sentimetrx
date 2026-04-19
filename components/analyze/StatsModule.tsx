@@ -1189,8 +1189,8 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
 
       {/* Running spinner */}
       {running && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
-          <LottieLoader size={80} message={'Scanning ' + numFields.length + ' numeric \u00D7 ' + catFields.length + ' categorical fields\u2026'} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, padding: '48px 0' }}>
+          <LottieLoader size={120} message={'Scanning ' + numFields.length + ' numeric \u00D7 ' + catFields.length + ' categorical fields\u2026'} />
         </div>
       )}
 
@@ -1918,8 +1918,8 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
 
           {/* ── Loading spinner ── */}
           {rowsLoading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
-              <LottieLoader size={80} message="Loading data for statistical analysis..." />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, padding: 60 }}>
+              <LottieLoader size={120} message="Loading data for statistical analysis..." />
             </div>
           )}
 

@@ -97,8 +97,8 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
         )}
 
         {loading && !summary && (
-          <div className="py-20 flex justify-center">
-            <LottieLoader size={100} message="Loading analytics..." />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+            <LottieLoader size={140} message="Loading analytics..." />
           </div>
         )}
 

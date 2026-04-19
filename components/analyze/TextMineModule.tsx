@@ -1389,8 +1389,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                 {/* Rows still loading */}
                 {!rowsLoaded && rowsLoading && !rowsError && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
-                    <LottieLoader size={80} message="Loading dataset rows..." />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
+                    <LottieLoader size={120} message="Loading dataset rows..." />
                   </div>
                 )}
 

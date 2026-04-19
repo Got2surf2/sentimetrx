@@ -618,7 +618,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var needsRows = catField.startsWith('__') || colorByField.startsWith('__')
   var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
 
   // Build crosstab: from aggregation API or from rows
@@ -846,7 +846,7 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }:
 
 function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) {
@@ -895,7 +895,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
   var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
   var [showAllKPI, setShowAllKPI] = useState(false)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
 
   // Build stats from aggregation API or rows
   var stats: { label: string; avg: number; median: number; min: number; max: number; n: number }[] = []
@@ -1015,7 +1015,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     }
   }, [mode, loaded, selectedOE, scoreField])
 
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
 
   var groupField = groupByField || (hasThemes ? '__themes__' : '')
   if (!groupField) return <EmptyChart msg="Add themes in TextMine, or assign a categorical 'Group by' field to see score drivers." />
@@ -1386,7 +1386,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
 
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
@@ -1403,7 +1403,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
   if (!needsRows && aggData && aggData.grid) {
     grid = aggData.grid
@@ -1445,7 +1445,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var loaded = aggLoaded && aggData?.series ? true : rowsLoaded
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
 
   // ── Build traces — with optional categorical breakdown ──────────────
   var traces: any[] = []
@@ -1596,7 +1596,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
 
 function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string }) {
   var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
   var ganttFieldObj = schema.find(function(f) { return f.field === catField })
@@ -1608,7 +1608,7 @@ function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; sc
   var { rows: allRows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
   var [page, setPage] = useState(0)
   var PAGE = 50
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 40 }}><LottieLoader size={80} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var total = allRows.length
   var rows = allRows.slice(page * PAGE, (page + 1) * PAGE)
   // Use allFields from enrichment context — includes __themes__ and __mapped__

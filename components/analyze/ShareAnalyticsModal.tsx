@@ -78,8 +78,9 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
       if (f.type !== 'cat') return
       var opt = filterOptions.find(function(o) { return o.field === field })
       if (!opt || !opt.values) return
-      var selectedVals = Array.from(f.values)
-      var benchmarkVals = opt.values.filter(function(v) { return !f.values.has(v) })
+      var selectedSet = f.values as Set<string>
+      var selectedVals = Array.from(selectedSet)
+      var benchmarkVals = opt.values.filter(function(v) { return !selectedSet.has(v) })
       results.push({ field: field, label: opt.label || field, selected: selectedVals, benchmark: benchmarkVals, total: opt.values.length })
     })
     return results.length > 0 ? results : null
@@ -297,7 +298,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', marginBottom: 6, textTransform: 'uppercase' }}>Benchmark Comparison</div>
                 {benchmarkInfo.map(function(b) {
                   return (
-                    <div key={b.field} style={{ marginBottom: benchmarkInfo.length > 1 ? 8 : 0 }}>
+                    <div key={b.field} style={{ marginBottom: benchmarkInfo!.length > 1 ? 8 : 0 }}>
                       <div style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}>
                         <span style={{ fontWeight: 600 }}>{b.label}:</span>{' '}
                         <span style={{ color: HERMES, fontWeight: 600 }}>{b.selected.length === 1 ? b.selected[0] : b.selected.length + ' selected'}</span>

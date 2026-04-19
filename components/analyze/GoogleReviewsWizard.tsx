@@ -210,7 +210,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
             </div>
             {searching && (
               <div className="flex items-center gap-3 py-2">
-                <LottieLoader size={32} message="Searching Google Maps..." />
+                <LottieLoader size={56} message="Searching Google Maps..." />
               </div>
             )}
           </div>
@@ -373,7 +373,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
 
           {creating && (
             <div className="flex flex-col gap-3 items-center py-2">
-              <LottieLoader size={64} message={statusMsg || 'Creating...'} />
+              <LottieLoader size={96} message={statusMsg || 'Creating...'} />
             </div>
           )}
 

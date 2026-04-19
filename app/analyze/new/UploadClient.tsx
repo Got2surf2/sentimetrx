@@ -545,7 +545,7 @@ export default function UploadClient() {
 
           {creating && (
             <div className="flex flex-col gap-3 items-center py-2">
-              <LottieLoader size={64} message={uploadMsg || 'Uploading...'} />
+              <LottieLoader size={96} message={uploadMsg || 'Uploading...'} />
               <div className="w-full flex flex-col gap-1">
                 <div className="flex justify-between text-xs text-gray-400">
                   <span>{uploadPct}% complete</span>
