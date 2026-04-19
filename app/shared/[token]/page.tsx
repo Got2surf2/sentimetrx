@@ -717,6 +717,9 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
   const themes = data.themes || []
   const filterSummary = data.filterSummary || {}
   const filterFields = Object.entries(filterSummary)
+  const benchmarkSummary = data.benchmarkSummary || {}
+  const benchmarkFields = Object.entries(benchmarkSummary) as [string, { values: string[]; total: number }][]
+  const totalN = data.total?.n || (data.filtered.n + data.benchmark.n)
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -726,30 +729,70 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
         <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-4">
           <h1 className="text-xl font-bold text-gray-800 mb-1">{data.label}</h1>
           <p className="text-sm text-gray-500 mb-3">{data.datasetName}</p>
+
+          {/* Selected filter values */}
           {filterFields.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {filterFields.map(([label, value]) => (
-                <span key={label} className="text-[11px] px-3 py-1 rounded-full font-medium"
-                  style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                  {label}: {String(value)}
-                </span>
-              ))}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: HERMES, textTransform: 'uppercase', marginBottom: 4 }}>Filtered Selection</div>
+              <div className="flex flex-wrap gap-2">
+                {filterFields.map(([label, value]) => (
+                  <span key={label} className="text-[11px] px-3 py-1 rounded-full font-medium"
+                    style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                    {label}: {String(value)}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
+
+          {/* Benchmark group values */}
+          {benchmarkFields.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', marginBottom: 4 }}>Benchmark Group</div>
+              {benchmarkFields.map(function([label, info]) {
+                if (info.values.length === 0) {
+                  return <div key={label} style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>No other values in benchmark</div>
+                }
+                if (info.values.length <= 8) {
+                  return (
+                    <div key={label} className="flex flex-wrap gap-1.5" style={{ marginBottom: 4 }}>
+                      {info.values.map(function(v) {
+                        return (
+                          <span key={v} style={{ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1' }}>
+                            {v}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+                return (
+                  <div key={label} style={{ fontSize: 11, color: '#6b7280' }}>
+                    Compared against <span style={{ fontWeight: 700, color: '#0284c7' }}>{info.values.length}</span> others in the group of {info.total} total
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           <p className="text-xs text-gray-400">Shared analytics · Expires {new Date(expiresAt).toLocaleDateString()}</p>
         </div>
 
         <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} />
 
         {/* Response counts */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold" style={{ color: HERMES }}>{data.filtered.n}</div>
-            <div className="text-xs text-gray-500">{data.label} Responses</div>
+            <div className="text-2xl font-bold" style={{ color: HERMES }}>{data.filtered.n.toLocaleString()}</div>
+            <div className="text-xs text-gray-500">{data.label}</div>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-gray-600">{data.benchmark.n}</div>
-            <div className="text-xs text-gray-500">System Benchmark</div>
+            <div className="text-2xl font-bold text-gray-600">{data.benchmark.n.toLocaleString()}</div>
+            <div className="text-xs text-gray-500">Benchmark</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-2xl font-bold text-gray-400">{totalN.toLocaleString()}</div>
+            <div className="text-xs text-gray-500">Total in Dataset</div>
           </div>
         </div>
 

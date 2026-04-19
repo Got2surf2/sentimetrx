@@ -217,9 +217,18 @@ export async function GET(req: NextRequest) {
 
   // Compute categorical distributions for the filter fields themselves
   const filterFieldSummary: Record<string, string> = {}
+  const benchmarkFieldSummary: Record<string, { values: string[]; total: number }> = {}
   for (const [field, f] of Object.entries(meta.filters)) {
     if (f.type === 'cat') {
       filterFieldSummary[fieldLabels[field] || field] = f.values.join(', ')
+      // Compute distinct values from actual data for this field
+      const allDistinct = new Set<string>()
+      for (const row of allRows) {
+        const val = row[field]
+        if (val != null && String(val).trim() !== '') allDistinct.add(String(val))
+      }
+      const benchmarkValues = Array.from(allDistinct).filter(v => !f.values.includes(v)).sort()
+      benchmarkFieldSummary[fieldLabels[field] || field] = { values: benchmarkValues, total: allDistinct.size }
     } else if (f.type === 'range') {
       filterFieldSummary[fieldLabels[field] || field] = f.values[0] + ' - ' + f.values[1]
     }
@@ -230,7 +239,9 @@ export async function GET(req: NextRequest) {
     datasetName: dataset.name,
     filtered: { n: totalFiltered },
     benchmark: { n: totalBenchmark },
+    total: { n: totalAll },
     filterSummary: filterFieldSummary,
+    benchmarkSummary: benchmarkFieldSummary,
     numeric: numericResults,
     themes: themeResults,
     expires_at: link.expires_at,
