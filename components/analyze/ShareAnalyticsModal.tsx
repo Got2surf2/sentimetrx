@@ -30,6 +30,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
   var [label, setLabel] = useState('')
   var [expiry, setExpiry] = useState('7d')
   var [creating, setCreating] = useState(false)
+  var [createError, setCreateError] = useState('')
   var [shareUrl, setShareUrl] = useState('')
   var [copied, setCopied] = useState(false)
 
@@ -89,6 +90,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
   async function handleCreate() {
     if (!hasFilters) return
     setCreating(true)
+    setCreateError('')
     try {
       var serialized = serializeFilters(effectiveFilters)
       var res = await fetch('/api/share', {
@@ -105,12 +107,16 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
           },
         }),
       })
+      var data = await res.json()
       if (res.ok) {
-        var data = await res.json()
         setShareUrl(data.url)
         setStep('created')
+      } else {
+        setCreateError(data.error || 'Failed to create link')
       }
-    } catch {}
+    } catch (err: any) {
+      setCreateError(err?.message || 'Failed to create link')
+    }
     finally { setCreating(false) }
   }
 
@@ -287,6 +293,12 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
                 })}
               </div>
             </div>
+
+            {createError && (
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, color: '#dc2626' }}>
+                {createError}
+              </div>
+            )}
 
             {/* Create button */}
             <button onClick={handleCreate} disabled={creating || !hasFilters}
