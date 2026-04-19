@@ -726,56 +726,59 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
       <div className="max-w-4xl mx-auto">
 
         {/* Header */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-4">
-          <h1 className="text-xl font-bold text-gray-800 mb-1">{data.label}</h1>
-          <p className="text-sm text-gray-500 mb-3">{data.datasetName}</p>
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-4">
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: filterFields.length > 0 ? 10 : 0 }}>
+            <h1 className="text-lg font-bold text-gray-800">{data.label}</h1>
+            <span className="text-xs text-gray-400">Expires {new Date(expiresAt).toLocaleDateString()}</span>
+          </div>
 
-          {/* Selected filter values */}
-          {filterFields.length > 0 && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: HERMES, textTransform: 'uppercase', marginBottom: 4 }}>Filtered Selection</div>
-              <div className="flex flex-wrap gap-2">
-                {filterFields.map(([label, value]) => (
-                  <span key={label} className="text-[11px] px-3 py-1 rounded-full font-medium"
-                    style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                    {label}: {String(value)}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Filter pills + benchmark pills on one row */}
+          {(filterFields.length > 0 || benchmarkFields.length > 0) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap' }}>
+              {/* Filtered selection */}
+              {filterFields.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {filterFields.map(([label, value]) => (
+                    <span key={label} className="text-[11px] px-3 py-1 rounded-full font-medium"
+                      style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
+                      {label}: {String(value)}
+                    </span>
+                  ))}
+                </div>
+              )}
 
-          {/* Benchmark group values */}
-          {benchmarkFields.length > 0 && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', marginBottom: 4 }}>Benchmark Group</div>
-              {benchmarkFields.map(function([label, info]) {
-                if (info.values.length === 0) {
-                  return <div key={label} style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>No other values in benchmark</div>
-                }
-                if (info.values.length <= 8) {
-                  return (
-                    <div key={label} className="flex flex-wrap gap-1.5" style={{ marginBottom: 4 }}>
-                      {info.values.map(function(v) {
+              {/* Divider */}
+              {filterFields.length > 0 && benchmarkFields.length > 0 && (
+                <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 12px', flexShrink: 0 }} />
+              )}
+
+              {/* Benchmark pills */}
+              {benchmarkFields.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', flexShrink: 0 }}>vs</span>
+                  {benchmarkFields.map(function([label, info]) {
+                    if (info.values.length === 0) {
+                      return <span key={label} style={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>No benchmark</span>
+                    }
+                    if (info.values.length <= 8) {
+                      return info.values.map(function(v) {
                         return (
                           <span key={v} style={{ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1' }}>
                             {v}
                           </span>
                         )
-                      })}
-                    </div>
-                  )
-                }
-                return (
-                  <div key={label} style={{ fontSize: 11, color: '#6b7280' }}>
-                    Compared against <span style={{ fontWeight: 700, color: '#0284c7' }}>{info.values.length}</span> others in the group of {info.total} total
-                  </div>
-                )
-              })}
+                      })
+                    }
+                    return (
+                      <span key={label} style={{ fontSize: 10, color: '#0284c7', fontWeight: 600 }}>
+                        {info.values.length} others
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
-
-          <p className="text-xs text-gray-400">Shared analytics · Expires {new Date(expiresAt).toLocaleDateString()}</p>
         </div>
 
         <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} />
