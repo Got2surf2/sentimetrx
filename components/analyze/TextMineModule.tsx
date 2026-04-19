@@ -20,6 +20,7 @@ import { resolveAlias } from '@/lib/aliasUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
+import SignalsView from '@/components/analyze/textmine/SignalsView'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
@@ -831,7 +832,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [activeField, setActiveField] = useState<string | null>(_tmSaved?.activeField || null)
   const [activeFields, setActiveFields] = useState<string[]>(_tmSaved?.activeFields || [])
   const [subTab, setSubTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
-  const [themesView, setThemesView] = useState<'distribution' | 'cards'>(_tmSaved?.themesView || 'cards')
+  const [themesView, setThemesView] = useState<'distribution' | 'cards' | 'signals'>(_tmSaved?.themesView || 'cards')
+  const [signalCutoffs, setSignalCutoffs] = useState<{ mainstream: number; noise: number }>(_tmSaved?.signalCutoffs || { mainstream: 70, noise: 30 })
   const [showAllThemes, setShowAllThemes] = useState(_tmSaved?.showAllThemes || false)
   const [compareViewMode, setCompareViewMode] = useState<'group' | 'theme'>(_tmSaved?.compareViewMode || 'group')
   const [compareSmartAxes, setCompareSmartAxes] = useState(_tmSaved?.compareSmartAxes !== undefined ? _tmSaved.compareSmartAxes : true)
@@ -855,13 +857,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   useEffect(function() {
     writeSession(_tmKey, {
       activeField: activeField, activeFields: activeFields, subTab: subTab,
-      themesView: themesView, showAllThemes: showAllThemes,
+      themesView: themesView, showAllThemes: showAllThemes, signalCutoffs: signalCutoffs,
       breakdownField: breakdownField, compareFields: compareFields,
       selectedValues: Array.from(selectedValues),
       compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
       ratingField: ratingField, colorMode: colorMode,
     })
-  }, [activeField, activeFields, subTab, themesView, showAllThemes, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, _tmKey])
+  }, [activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, _tmKey])
 
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
@@ -1462,10 +1464,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           </p>
                         </div>
                         <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border, flexShrink: 0 }}>
-                          {[['distribution', '\u2261 Distribution'], ['cards', '\u229E Cards']].map(function(pair) {
+                          {[['distribution', '\u2261 Distribution'], ['cards', '\u229E Cards'], ...(datasetSource === 'reddit' ? [['signals', '\u26A1 Signals']] : [])].map(function(pair) {
                             var v = pair[0]; var lbl = pair[1]
                             return (
-                              <button key={v} onClick={function() { setThemesView(v as 'distribution' | 'cards') }}
+                              <button key={v} onClick={function() { setThemesView(v as 'distribution' | 'cards' | 'signals') }}
                                 style={{ fontSize: 12, fontWeight: themesView === v ? 700 : 500, padding: '5px 14px', borderRadius: 18, background: themesView === v ? T.accent : 'transparent', color: themesView === v ? 'white' : T.textMute, border: 'none', cursor: 'pointer', transition: 'background .15s' }}>
                                 {lbl}
                               </button>
@@ -1717,8 +1719,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         )
                       })()}
 
+                      {/* ── Signals view (Reddit only) ─── */}
+                      {themesView === 'signals' && datasetSource === 'reddit' && (
+                        <SignalsView
+                          rows={filteredRows}
+                          mainstreamCutoff={signalCutoffs.mainstream}
+                          noiseCutoff={signalCutoffs.noise}
+                          onCutoffChange={function(m, n) { setSignalCutoffs({ mainstream: m, noise: n }) }}
+                        />
+                      )}
+
                       {/* Breakdown distribution */}
-                      {breakdownField && selectedValues.size > 0 && (
+                      {breakdownField && selectedValues.size > 0 && themesView !== 'signals' && (
                         <BreakdownDist themes={displayThemes || themes} parsedData={filteredRows} activeField={activeField || themes!.fieldName} breakdownField={breakdownField} selectedValues={selectedValues} themeColors={themeColors} onDrillTheme={handleDrillTheme} ratingField={ratingField} />
                       )}
                     </div>
@@ -1738,6 +1750,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     themeColors={themeColors}
                     parsedData={filteredRows}
                     activeField={activeField || themes!.fieldName}
+                    isReddit={datasetSource === 'reddit'}
                     onWordClick={function(word) {
                       // Single click: show opinion popover (toggle)
                       if (word) setOpinionWord(opinionWord === word ? null : word)

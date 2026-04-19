@@ -40,19 +40,24 @@ interface Props {
   activeField: string
   activeFields?: string[]
   onWordClick?: (word: string | null, themeIdx: number, type: string) => void
+  isReddit?: boolean
 }
 
-function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, sentiment, colorBy, onClick }: {
+function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, sentiment, colorBy, onClick, signalScore, maxSignal, sizeBy }: {
   word: string; freq: number; themeIdx: number; dimmed: boolean
   themeColors: Record<number, typeof THEME_PALETTE[0]>; maxFreq: number
   totalResponses: number
   sentiment?: { positive: number; negative: number; neutral: number }
   colorBy?: 'theme' | 'sentiment'
   onClick?: () => void
+  signalScore?: number; maxSignal?: number; sizeBy?: 'frequency' | 'signal'
 }) {
   const [hov, setHov] = useState(false)
   const pal = (!dimmed && themeIdx >= 0 && colorBy !== 'sentiment') ? (themeColors[themeIdx] || THEME_PALETTE[0]) : null
-  const size = 12 + Math.round((freq / Math.max(maxFreq, 1)) * 20)
+  const useSignal = sizeBy === 'signal' && signalScore != null && maxSignal
+  const sizeValue = useSignal ? Math.abs(signalScore!) : freq
+  const sizeMax = useSignal ? Math.max(maxSignal!, 1) : Math.max(maxFreq, 1)
+  const size = 12 + Math.round((sizeValue / sizeMax) * 20)
   const pct = totalResponses > 0 ? Math.round(freq / totalResponses * 100) : 0
 
   // Sentiment coloring
@@ -79,7 +84,7 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
   return (
     <span
       onClick={onClick}
-      title={word + ': ' + freq + ' occurrences (' + pct + '%)' + (sentiment ? ' | +' + sentiment.positive + ' -' + sentiment.negative : '')}
+      title={word + ': ' + freq + ' occurrences (' + pct + '%)' + (useSignal ? ' | avg score: ' + Math.round(signalScore!) : '') + (sentiment ? ' | +' + sentiment.positive + ' -' + sentiment.negative : '')}
       style={{
         fontSize: size, fontWeight: freq > maxFreq * 0.5 ? 700 : 500,
         color: wordColor, background: wordBg,
@@ -96,9 +101,10 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
   )
 }
 
-export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick }: Props) {
+export default function WordCloud({ themes, themeColors, parsedData, activeField, activeFields, onWordClick, isReddit }: Props) {
   const [cloudMode, setCloudMode] = useState<'frequency' | 'grouped'>('grouped')
   const [colorBy, setColorBy] = useState<'theme' | 'sentiment'>('theme')
+  const [sizeBy, setSizeBy] = useState<'frequency' | 'signal'>('frequency')
   const [activeThemes, setActiveThemes] = useState<Set<number> | null>(null)
   const [hoveredTheme, setHoveredTheme] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
@@ -151,6 +157,30 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   if (!allWords.length) return null
 
   const maxFreq = Math.max(...allWords.map(function(w) { return w.freq }), 1)
+
+  // Compute per-word average score for signal strength sizing (Reddit only)
+  var wordSignals = useMemo(function() {
+    if (!isReddit) return {} as Record<string, { totalScore: number; count: number; avg: number }>
+    var map: Record<string, { totalScore: number; count: number; avg: number }> = {}
+    var wordSet = new Set(allWords.map(function(w) { return w.word }))
+    parsedData.forEach(function(row) {
+      var text = getRowText(row, fields).toLowerCase()
+      if (!text) return
+      var score = Number(row.score) || 0
+      var words = text.split(/\W+/)
+      var seen = new Set<string>()
+      words.forEach(function(w) {
+        if (wordSet.has(w) && !seen.has(w)) {
+          seen.add(w)
+          if (!map[w]) map[w] = { totalScore: 0, count: 0, avg: 0 }
+          map[w].totalScore += score
+          map[w].count++
+        }
+      })
+    })
+    Object.values(map).forEach(function(v) { v.avg = v.count > 0 ? v.totalScore / v.count : 0 })
+    return map
+  }, [parsedData.length, allWords.length, isReddit])
 
   // Compute per-word sentiment in a single pass (much faster than per-word extraction)
   var wordSentiments = useMemo(function() {
@@ -224,6 +254,12 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   var filteredWords = allWords.filter(function(w) { return w.themeIdx < 0 || visibleThemeIdxs.has(w.themeIdx) })
   if (!filteredWords.length && !showAll) filteredWords = allWords.slice(0, 10) // fallback: show top 10
 
+  // Max signal score for sizing in signal strength mode
+  var maxSignal = 1
+  if (isReddit && Object.keys(wordSignals).length > 0) {
+    maxSignal = Math.max(1, ...Object.values(wordSignals).map(function(v) { return Math.abs(v.avg) }))
+  }
+
   return (
     <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '18px 20px' }}>
       {/* Mode toggle + Show All */}
@@ -256,6 +292,27 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
             )
           })}
           </div>
+          {isReddit && (
+          <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
+            {(['frequency', 'signal'] as const).map(function(mode) {
+            return (
+              <button
+                key={mode}
+                onClick={function() { setSizeBy(mode) }}
+                style={{
+                  padding: '4px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6,
+                  background: sizeBy === mode ? T.bgCard : 'transparent',
+                  color: sizeBy === mode ? '#d97706' : T.textMute,
+                  border: 'none', cursor: 'pointer',
+                  boxShadow: sizeBy === mode ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                }}
+              >
+                {mode === 'frequency' ? 'Frequency' : 'Signal Strength'}
+              </button>
+            )
+          })}
+          </div>
+          )}
           <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 8, padding: 2, border: '1px solid ' + T.border }}>
             {(['frequency', 'grouped'] as const).map(function(mode) {
             return (
@@ -318,7 +375,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
               let dimmed = false
               if (hoveredTheme !== null) dimmed = w.themeIdx !== hoveredTheme
               else if (activeThemes !== null) dimmed = w.themeIdx >= 0 && !activeThemes.has(w.themeIdx)
-              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} onClick={function() { if (onWordClick) onWordClick(w.word, w.themeIdx, w.themeIdx >= 0 ? 'keyword' : 'word') }} />
+              return <Word key={w.word} {...w} dimmed={dimmed} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} signalScore={wordSignals[w.word]?.avg} maxSignal={maxSignal} sizeBy={sizeBy} onClick={function() { if (onWordClick) onWordClick(w.word, w.themeIdx, w.themeIdx >= 0 ? 'keyword' : 'word') }} />
             })}
           </div>
         </div>
@@ -356,7 +413,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', alignItems: 'baseline' }}>
                     {tWords.map(function(w) {
-                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
+                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} signalScore={wordSignals[w.word]?.avg} maxSignal={maxSignal} sizeBy={sizeBy} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
                     })}
                   </div>
                 </div>
