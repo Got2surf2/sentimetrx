@@ -571,30 +571,39 @@ export default function RedditWizard({ onBack }: Props) {
             <p className="text-xs text-gray-400 mt-1">Each comment becomes one row in your dataset for TextMine analysis.</p>
           </div>
 
+          {/* Download progress — centered overlay */}
           {creating && (
-            <div className="flex flex-col gap-4 items-center py-4">
-              <LottieLoader size={96} message={statusMsg || 'Creating...'} />
-              {dlProgress.threadsTotal > 0 && (
-                <div style={{ width: '100%', maxWidth: 400 }}>
-                  {/* Progress bar */}
-                  <div style={{ width: '100%', height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
-                    <div style={{
-                      width: Math.round((dlProgress.threadsDown / dlProgress.threadsTotal) * 100) + '%',
-                      height: '100%', background: HERMES, borderRadius: 4,
-                      transition: 'width 0.3s ease',
-                    }} />
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 2000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div style={{
+                background: 'white', borderRadius: 20, padding: '40px 36px', textAlign: 'center',
+                boxShadow: '0 24px 64px rgba(0,0,0,.28)', maxWidth: 440, width: '90%',
+              }}>
+                <LottieLoader size={96} message={statusMsg || 'Creating...'} />
+                {dlProgress.threadsTotal > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    {/* Progress bar */}
+                    <div style={{ width: '100%', height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
+                      <div style={{
+                        width: Math.round((dlProgress.threadsDown / dlProgress.threadsTotal) * 100) + '%',
+                        height: '100%', background: HERMES, borderRadius: 4,
+                        transition: 'width 0.3s ease',
+                      }} />
+                    </div>
+                    {/* Stats */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280' }}>
+                      <span style={{ fontWeight: 600 }}>
+                        {dlProgress.threadsDown} of {dlProgress.threadsTotal} threads
+                      </span>
+                      <span style={{ fontWeight: 700, color: '#111827' }}>
+                        {dlProgress.comments.toLocaleString()} comments
+                      </span>
+                    </div>
                   </div>
-                  {/* Stats */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280' }}>
-                    <span style={{ fontWeight: 600 }}>
-                      {dlProgress.threadsDown} of {dlProgress.threadsTotal} threads
-                    </span>
-                    <span style={{ fontWeight: 700, color: '#111827' }}>
-                      {dlProgress.comments.toLocaleString()} comments
-                    </span>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 
@@ -602,15 +611,17 @@ export default function RedditWizard({ onBack }: Props) {
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{createError}</div>
           )}
 
+          {!creating && (
           <div className="flex gap-3">
-            <button onClick={function() { setStep(2) }} disabled={creating}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 disabled:opacity-50">Back</button>
-            <button onClick={handleCreate} disabled={creating || !datasetName.trim()}
+            <button onClick={function() { setStep(2) }}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600">Back</button>
+            <button onClick={handleCreate} disabled={!datasetName.trim()}
               className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all"
               style={{ background: HERMES }}>
-              {creating ? 'Downloading...' : 'Start Download'}
+              Start Download
             </button>
           </div>
+          )}
         </div>
       )}
     </div>

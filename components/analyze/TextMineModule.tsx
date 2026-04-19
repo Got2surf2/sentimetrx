@@ -1394,8 +1394,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   </div>
                 )}
 
+                {/* Still initializing — show loader */}
+                {rowsLoaded && !hasThemes && !loading && (computing || industryLoading) && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
+                    <LottieLoader size={96} message="Preparing analytics..." />
+                  </div>
+                )}
+
                 {/* Empty state — no themes yet */}
-                {rowsLoaded && !hasThemes && !loading && (
+                {rowsLoaded && !hasThemes && !loading && !computing && !industryLoading && (
                   <div style={{ textAlign: 'center', padding: '48px 20px', maxWidth: 440, margin: '0 auto' }}>
                     <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #fff3ee, #ffe4d6)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 28 }}>
                       <span style={{ color: T.accent, fontWeight: 900, fontStyle: 'italic' }}>A</span>

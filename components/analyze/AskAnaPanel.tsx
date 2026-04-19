@@ -188,24 +188,24 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose }
 
       {/* Header */}
       <div style={{
-        padding: '14px 16px', borderBottom: '1px solid #e5e7eb',
+        padding: '12px 16px', borderBottom: 'none',
         display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
-        background: '#fafafa',
+        background: HERMES,
       }}>
         <div style={{
-          width: 32, height: 32, borderRadius: 8, background: HERMES,
+          width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,.2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 14, fontWeight: 900, color: 'white',
+          fontSize: 15, fontWeight: 900, color: 'white',
         }}>A</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>Ask Ana</div>
-          <div style={{ fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{datasetName}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'white', letterSpacing: '-.2px' }}>Ask Ana</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{datasetName}</div>
         </div>
         {hasMessages && (
           <button onClick={handleClear}
             style={{
-              fontSize: 11, fontWeight: 600, color: '#9ca3af', background: 'none',
-              border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 10px',
+              fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.8)', background: 'rgba(255,255,255,.15)',
+              border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, padding: '4px 10px',
               cursor: 'pointer',
             }}>
             Clear
@@ -213,7 +213,7 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose }
         )}
         <button onClick={onClose}
           style={{
-            fontSize: 18, color: '#9ca3af', background: 'none', border: 'none',
+            fontSize: 18, color: 'rgba(255,255,255,.7)', background: 'none', border: 'none',
             cursor: 'pointer', padding: '0 4px', lineHeight: 1,
           }}>{'\u00D7'}</button>
       </div>
@@ -255,24 +255,29 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose }
           var isUser = m.role === 'user'
           return (
             <div key={m.id} style={{
-              display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start',
+              display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start',
             }}>
-              {!isUser && (
+              <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+                {!isUser && (
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%', background: HERMES,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 900, color: 'white', flexShrink: 0, marginRight: 8, marginTop: 2,
+                  }}>A</div>
+                )}
                 <div style={{
-                  width: 28, height: 28, borderRadius: '50%', background: HERMES,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 900, color: 'white', flexShrink: 0, marginRight: 8, marginTop: 2,
-                }}>A</div>
-              )}
-              <div style={{
-                maxWidth: '80%', padding: '9px 14px',
-                borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                background: isUser ? IMSG_BLUE : IMSG_GRAY,
-                color: isUser ? 'white' : '#000',
-                fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}>
-                {isUser ? m.content : <FormattedResponse text={m.content} streaming={m.streaming} />}
+                  maxWidth: '80%', padding: '9px 14px',
+                  borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                  background: isUser ? IMSG_BLUE : IMSG_GRAY,
+                  color: isUser ? 'white' : '#000',
+                  fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}>
+                  {isUser ? m.content : <FormattedResponse text={m.content} streaming={m.streaming} />}
+                </div>
               </div>
+              {!isUser && !m.streaming && m.content && (
+                <CopyButton text={m.content} />
+              )}
             </div>
           )
         })}
@@ -374,6 +379,37 @@ function FormattedResponse({ text, streaming }: { text: string; streaming?: bool
   }
 
   return <>{elements}{streaming && <span style={{ animation: 'blink 1s infinite' }}>{'\u258C'}</span>}<style>{`@keyframes blink { 0%,50% { opacity: 1 } 51%,100% { opacity: 0 } }`}</style></>
+}
+
+// Copy button for assistant messages
+function CopyButton({ text }: { text: string }) {
+  var [copied, setCopied] = useState(false)
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(function() {
+      setCopied(true)
+      setTimeout(function() { setCopied(false) }, 2000)
+    })
+  }
+  return (
+    <button onClick={handleCopy}
+      style={{
+        marginLeft: 36, marginTop: 3, fontSize: 10, color: copied ? '#059669' : '#9ca3af',
+        background: 'none', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 3, padding: 0,
+        transition: 'color .15s',
+      }}>
+      {copied ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
 }
 
 // Handle inline formatting: **bold**, *italic*, "quotes"
