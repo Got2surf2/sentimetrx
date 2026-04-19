@@ -307,6 +307,21 @@ export function buildRedditSchema(): SchemaConfig {
   return { fields, primaryTextField: 'body', autoDetected: false, version: 1 }
 }
 
+export function buildTownHallSchema(): SchemaConfig {
+  const fields: SchemaFieldConfig[] = [
+    { field: 'turn_id',          type: 'id' },
+    { field: 'participant_id',   type: 'categorical', label: 'Participant' },
+    { field: 'turn_number',      type: 'numeric',     label: 'Turn Number' },
+    { field: 'bot_message',      type: 'open-ended',  sqt: 'open-text', label: 'Bot Question' },
+    { field: 'user_message',     type: 'open-ended',  sqt: 'open-text', label: 'Response' },
+    { field: 'topic',            type: 'categorical', label: 'Topic' },
+    { field: 'source',           type: 'categorical', label: 'Turn Source' },
+    { field: 'language',         type: 'categorical', label: 'Language' },
+    { field: 'responded_at',     type: 'date',        label: 'Date' },
+  ]
+  return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }
+}
+
 export function emptyThemeModel() {
   return { themes: [] as unknown[], aiGenerated: false, version: 1 }
 }

@@ -17,7 +17,7 @@ interface Props {
 }
 
 interface Filters {
-  source:     'all' | 'study' | 'upload' | 'google_reviews'
+  source:     'all' | 'study' | 'upload' | 'google_reviews' | 'reddit' | 'townhall'
   visibility: 'all' | 'private' | 'public'
   status:     'all' | 'active' | 'archived'
 }

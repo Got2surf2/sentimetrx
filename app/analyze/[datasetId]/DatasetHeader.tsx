@@ -11,7 +11,7 @@ import ExportModal from '@/components/analyze/ExportModal'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 
@@ -163,7 +163,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           </button>
 
           {/* Ask Ana — visible for reddit datasets when AI is enabled */}
-          {dataset.source === 'reddit' && aiEnabled && onAskAna && (
+          {(dataset.source === 'reddit' || dataset.source === 'townhall') && aiEnabled && onAskAna && (
             <button onClick={onAskAna}
               style={{
                 padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
@@ -270,11 +270,11 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           <span style={{
             fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
             borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
-            background: dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : dataset.source === 'reddit' ? 'rgba(251,146,60,.25)' : 'rgba(255,255,255,.12)',
-            color: dataset.source === 'study' ? '#bae6fd' : dataset.source === 'google_reviews' ? '#bfdbfe' : dataset.source === 'reddit' ? '#fed7aa' : 'rgba(255,255,255,.6)',
-            border: dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : dataset.source === 'google_reviews' ? '1px solid rgba(96,165,250,.4)' : dataset.source === 'reddit' ? '1px solid rgba(251,146,60,.4)' : '1px solid rgba(255,255,255,.2)',
+            background: dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : dataset.source === 'reddit' ? 'rgba(16,185,129,.25)' : dataset.source === 'townhall' ? 'rgba(139,92,246,.25)' : 'rgba(255,255,255,.12)',
+            color: dataset.source === 'study' ? '#bae6fd' : dataset.source === 'google_reviews' ? '#bfdbfe' : dataset.source === 'reddit' ? '#a7f3d0' : dataset.source === 'townhall' ? '#ddd6fe' : 'rgba(255,255,255,.6)',
+            border: dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : dataset.source === 'google_reviews' ? '1px solid rgba(96,165,250,.4)' : dataset.source === 'reddit' ? '1px solid rgba(16,185,129,.4)' : dataset.source === 'townhall' ? '1px solid rgba(139,92,246,.4)' : '1px solid rgba(255,255,255,.2)',
           }}>
-            {dataset.source === 'study' ? 'Sarina' : dataset.source === 'google_reviews' ? 'Google Reviews' : dataset.source === 'reddit' ? 'Reddit' : 'Upload'}
+            {dataset.source === 'study' ? 'Sarina' : dataset.source === 'google_reviews' ? 'Google Reviews' : dataset.source === 'reddit' ? 'Reddit' : dataset.source === 'townhall' ? 'Town Hall' : 'Upload'}
           </span>
         </div>
 

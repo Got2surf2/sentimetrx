@@ -67,7 +67,7 @@ interface Props {
   schema:            SchemaConfig
   analytics:         DatasetAnalytics | null
   savedThemeModel:   ThemeModel | null
-  datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit'
+  datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall'
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
 }

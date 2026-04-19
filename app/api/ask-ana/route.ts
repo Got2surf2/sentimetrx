@@ -105,6 +105,7 @@ export async function POST(req: Request) {
 
   // Build system prompt
   const sourceLabel = dataset.source === 'reddit' ? 'Reddit comments and posts'
+    : dataset.source === 'townhall' ? 'Town Hall discussion responses'
     : dataset.source === 'study' ? 'survey responses'
     : dataset.source === 'google_reviews' ? 'Google Reviews'
     : 'data entries'
@@ -223,6 +224,19 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
       if (r.post_date) parts.push('Date: ' + r.post_date)
       if (r.depth != null) parts.push(Number(r.depth) === -1 ? 'Type: Post' : 'Type: Comment (depth ' + r.depth + ')')
       parts.push('Text: ' + (r.body || ''))
+      return '[' + (i + 1) + '] ' + parts.join(' | ')
+    }).join('\n')
+  }
+
+  // For Town Hall: focus on conversation data
+  if (source === 'townhall') {
+    return rows.map(function(r, i) {
+      const parts: string[] = []
+      if (r.participant_id) parts.push('Participant: ' + r.participant_id)
+      if (r.topic) parts.push('Topic: ' + r.topic)
+      if (r.bot_message) parts.push('Q: ' + r.bot_message)
+      parts.push('A: ' + (r.user_message || ''))
+      if (r.responded_at) parts.push('Date: ' + String(r.responded_at).slice(0, 10))
       return '[' + (i + 1) + '] ' + parts.join(' | ')
     }).join('\n')
   }

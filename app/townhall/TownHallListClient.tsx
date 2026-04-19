@@ -366,6 +366,9 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
                           {shareLoading === s.id ? 'Copied!' : 'Share'}
                         </button>
+
+                        {/* Row 4: Analyze in Ana (purple, spans full width) */}
+                        <AnalyzeInAnaButton sessionId={s.id} />
                       </div>
                     </div>
                   </div>
@@ -396,5 +399,33 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
         </div>
       )}
     </>
+  )
+}
+
+// Inline component: Analyze in Ana button for TH cards
+function AnalyzeInAnaButton({ sessionId }: { sessionId: string }) {
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('')
+
+  async function handleClick() {
+    setLoading(true)
+    setStatus('Syncing...')
+    try {
+      const res = await fetch('/api/townhall/sessions/' + sessionId + '/analyze', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setStatus(data.error || 'Failed'); setLoading(false); return }
+      window.location.href = '/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : '')
+    } catch {
+      setStatus('Error')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button onClick={handleClick} disabled={loading}
+      className="col-span-3 text-xs py-1.5 rounded-lg font-semibold transition-all text-center"
+      style={{ background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+      {loading ? status : '\uD83D\uDCCA Analyze in Ana'}
+    </button>
   )
 }

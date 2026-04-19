@@ -12,7 +12,7 @@ import DatasetHeader from './DatasetHeader'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number; sqt?: string | null; scoreField?: boolean }
