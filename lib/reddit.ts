@@ -41,10 +41,15 @@ export interface RedditThread {
   author: string
   selftext: string
   score: number
+  ups: number
+  downs: number
+  upvote_ratio: number
   comment_count: number
   permalink: string
   created_utc: number
   url: string
+  gilded: number
+  total_awards: number
 }
 
 export interface RedditComment {
@@ -55,6 +60,12 @@ export interface RedditComment {
   author: string
   body: string
   score: number
+  ups: number
+  downs: number
+  controversiality: number
+  is_submitter: boolean
+  gilded: number
+  total_awards: number
   permalink: string
   created_utc: number
   depth: number
@@ -101,10 +112,15 @@ export async function searchPosts(query: string, subreddit?: string, sort: strin
       author: d.author || '[deleted]',
       selftext: d.selftext || '',
       score: d.score || 0,
+      ups: d.ups || 0,
+      downs: d.downs || 0,
+      upvote_ratio: d.upvote_ratio || 0,
       comment_count: d.num_comments || 0,
       permalink: d.permalink,
       created_utc: d.created_utc,
       url: d.url,
+      gilded: d.gilded || 0,
+      total_awards: d.total_awards_received || 0,
     }
   })
 }
@@ -129,10 +145,15 @@ export async function fetchThreadComments(permalink: string, limit: number = 500
     author: postData.author || '[deleted]',
     selftext: postData.selftext || '',
     score: postData.score || 0,
+    ups: postData.ups || 0,
+    downs: postData.downs || 0,
+    upvote_ratio: postData.upvote_ratio || 0,
     comment_count: postData.num_comments || 0,
     permalink: postData.permalink,
     created_utc: postData.created_utc,
     url: postData.url,
+    gilded: postData.gilded || 0,
+    total_awards: postData.total_awards_received || 0,
   }
 
   const comments: RedditComment[] = []
@@ -162,6 +183,12 @@ function flattenComments(
       author: d.author || '[deleted]',
       body: d.body,
       score: d.score || 0,
+      ups: d.ups || 0,
+      downs: d.downs || 0,
+      controversiality: d.controversiality || 0,
+      is_submitter: !!d.is_submitter,
+      gilded: d.gilded || 0,
+      total_awards: d.total_awards_received || 0,
       permalink: d.permalink || '',
       created_utc: d.created_utc,
       depth: depth,
@@ -189,10 +216,15 @@ export async function fetchSubredditPosts(subreddit: string, sort: string = 'hot
       author: d.author || '[deleted]',
       selftext: d.selftext || '',
       score: d.score || 0,
+      ups: d.ups || 0,
+      downs: d.downs || 0,
+      upvote_ratio: d.upvote_ratio || 0,
       comment_count: d.num_comments || 0,
       permalink: d.permalink,
       created_utc: d.created_utc,
       url: d.url,
+      gilded: d.gilded || 0,
+      total_awards: d.total_awards_received || 0,
     }
   })
 }

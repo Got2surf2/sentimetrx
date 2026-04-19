@@ -293,16 +293,22 @@ export function buildGoogleReviewsSchema(): SchemaConfig {
 
 export function buildRedditSchema(): SchemaConfig {
   const fields: SchemaFieldConfig[] = [
-    { field: 'comment_id',    type: 'id' },
-    { field: 'author',        type: 'categorical', label: 'Author' },
-    { field: 'body',          type: 'open-ended',  sqt: 'open-text', label: 'Comment' },
-    { field: 'score',         type: 'numeric',     label: 'Score' },
-    { field: 'post_date',     type: 'date',        label: 'Date' },
-    { field: 'subreddit',     type: 'categorical', label: 'Subreddit' },
-    { field: 'thread_title',  type: 'categorical', label: 'Thread' },
-    { field: 'thread_id',     type: 'id' },
-    { field: 'depth',         type: 'numeric',     label: 'Reply Depth' },
-    { field: 'permalink',     type: 'ignore',      label: 'Link' },
+    { field: 'comment_id',      type: 'id' },
+    { field: 'author',          type: 'categorical', label: 'Author' },
+    { field: 'body',            type: 'open-ended',  sqt: 'open-text', label: 'Comment' },
+    { field: 'score',           type: 'numeric',     label: 'Score (net)' },
+    { field: 'ups',             type: 'numeric',     label: 'Upvotes' },
+    { field: 'downs',           type: 'numeric',     label: 'Downvotes' },
+    { field: 'controversiality', type: 'numeric',    label: 'Controversial' },
+    { field: 'is_submitter',    type: 'categorical', label: 'Is OP' },
+    { field: 'gilded',          type: 'numeric',     label: 'Gilded' },
+    { field: 'total_awards',    type: 'numeric',     label: 'Awards' },
+    { field: 'post_date',       type: 'date',        label: 'Date' },
+    { field: 'subreddit',       type: 'categorical', label: 'Subreddit' },
+    { field: 'thread_title',    type: 'categorical', label: 'Thread' },
+    { field: 'thread_id',       type: 'id' },
+    { field: 'depth',           type: 'numeric',     label: 'Reply Depth' },
+    { field: 'permalink',       type: 'ignore',      label: 'Link' },
   ]
   return { fields, primaryTextField: 'body', autoDetected: false, version: 1 }
 }
