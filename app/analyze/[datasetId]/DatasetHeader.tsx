@@ -134,8 +134,8 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
         </div>
 
-        {/* Module tabs */}
-        <div style={{ display: 'flex', alignItems: 'stretch', paddingLeft: 4, flexShrink: 0 }}>
+        {/* Module tabs — shrinks when space is tight */}
+        <div style={{ display: 'flex', alignItems: 'stretch', paddingLeft: 4, flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
           {TABS.map(function(tab) {
             var isActive = activeTab === tab.key
             var href = '/analyze/' + dataset.id + '/' + tab.key
@@ -271,8 +271,8 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
-        {/* Source pill — hidden when overflowing */}
-        {!overflowing && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
+        {/* Source pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
           <span style={{
             fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
             borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
@@ -282,10 +282,10 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           }}>
             {dataset.source === 'study' ? 'Sarina' : dataset.source === 'google_reviews' ? 'Google Reviews' : dataset.source === 'reddit' ? 'Reddit' : dataset.source === 'townhall' ? 'Town Hall' : 'Upload'}
           </span>
-        </div>}
+        </div>
 
-        {/* Row count + Sync — hidden when overflowing */}
-        {!overflowing && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
+        {/* Row count + Sync */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{dataset.row_count.toLocaleString()} rows</span>
           {dataset.source === 'study' && (
             <button onClick={handleSync}
@@ -299,7 +299,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               {reviewSyncing ? 'Syncing...' : 'Sync Reviews'}
             </button>
           )}
-        </div>}
+        </div>
 
         {/* AI toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', flexShrink: 0 }}>
