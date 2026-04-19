@@ -13,6 +13,7 @@ export const maxDuration = 60
 const ROW_CAP       = 10000
 const SAMPLE_MAX    = 200    // max rows sent to Claude
 const TEXT_TRUNCATE = 300    // max chars per text field
+const URL_ONLY_RE   = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
 interface Message {
   role: 'user' | 'assistant'
@@ -103,9 +104,49 @@ export async function POST(req: Request) {
     })
   }
 
-  // Random sample if too many rows — Fisher-Yates shuffle, take first SAMPLE_MAX
+  // Filter out URL-only rows (no meaningful text content)
+  filteredRows = filteredRows.filter(function(r) {
+    var text = String(r.body || r.user_message || r.review_text || '').trim()
+    return text && !URL_ONLY_RE.test(text)
+  })
+
+  // Reddit: vote-weighted sampling — only mainstream + controversial comments
   const totalFiltered = filteredRows.length
   let sampled = false
+  let signalNote = ''
+
+  if (dataset.source === 'reddit' && filteredRows.length > 0) {
+    // Per-thread percentile classification (same logic as SignalsView)
+    const MAINSTREAM_CUTOFF = 70
+    const NOISE_CUTOFF = 30
+    const threads: Record<string, { score: number; row: Record<string, unknown> }[]> = {}
+    filteredRows.forEach(function(r) {
+      const tid = String(r.thread_id || 'unknown')
+      if (!threads[tid]) threads[tid] = []
+      threads[tid].push({ score: Number(r.score) || 0, row: r })
+    })
+
+    const signalRows: Record<string, unknown>[] = []
+    Object.values(threads).forEach(function(entries) {
+      const sorted = [...entries].sort(function(a, b) { return b.score - a.score })
+      const count = sorted.length
+      sorted.forEach(function(entry, rank) {
+        const percentile = count > 1 ? Math.round((1 - rank / (count - 1)) * 100) : 50
+        if (percentile >= NOISE_CUTOFF && entry.score >= 0) {
+          signalRows.push(entry.row)
+        }
+      })
+    })
+
+    if (signalRows.length >= 10) {
+      filteredRows = signalRows
+      signalNote = '\n\nNote: Only mainstream and controversial comments are included (top ' + (100 - NOISE_CUTOFF) + '% by score within each thread). ' + (totalFiltered - signalRows.length) + ' noise/fringe comments excluded.'
+    }
+    // If fewer than 10 signal rows, fall back to all rows
+  }
+
+  // Random sample if still too many rows
+  const afterSignalCount = filteredRows.length
   if (filteredRows.length > SAMPLE_MAX) {
     for (let i = filteredRows.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
@@ -126,18 +167,22 @@ export async function POST(req: Request) {
     : 'data entries'
 
   const sampleNote = sampled
-    ? '\n\nNote: This is a representative sample of ' + filteredRows.length + ' rows from ' + totalFiltered + ' total matching rows. Base your analysis on patterns in this sample.'
+    ? '\n\nNote: This is a representative sample of ' + filteredRows.length + ' rows from ' + afterSignalCount + ' signal rows. Base your analysis on patterns in this sample.'
     : ''
 
   const filterNote = filters && Object.keys(filters).length > 0
-    ? '\n\nNote: The user has active filters applied. You are seeing ' + totalFiltered + ' of ' + allRows.length + ' total rows.' + (sampled ? ' (sampled to ' + filteredRows.length + ')' : '')
+    ? '\n\nNote: The user has active filters applied. You are seeing ' + totalFiltered + ' of ' + allRows.length + ' total rows.'
     : ''
 
-  const systemPrompt = `You are Ana, a helpful data analyst. You have been given a dataset of ${totalFiltered} ${sourceLabel} from "${dataset.name}".
+  const redditContext = dataset.source === 'reddit'
+    ? '\n\nThis is Reddit data. Comments with high scores represent mainstream views (community consensus). Comments in the middle range are controversial (mixed reception). Noise and fringe comments (low/negative scores) have been excluded. If the user asks about fringe or rejected views, let them know those are filtered out and they can check the Signals view for that analysis.'
+    : ''
+
+  const systemPrompt = `You are Ana, a helpful data analyst. You have been given a dataset of ${filteredRows.length} ${sourceLabel} from "${dataset.name}".
 
 Answer the user's question based ONLY on this data. Be specific and cite actual quotes when relevant (use quotation marks). If the data doesn't contain enough information to answer, say so.
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${filterNote}${sampleNote}
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${filterNote}${signalNote}${sampleNote}${redditContext}
 
 Here is the dataset:
 ${dataContext}`
