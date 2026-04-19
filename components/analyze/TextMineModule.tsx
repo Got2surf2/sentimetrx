@@ -1394,15 +1394,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   </div>
                 )}
 
-                {/* Still initializing — show loader while computing or waiting for display */}
-                {rowsLoaded && !loading && (computing || industryLoading || (hasThemes && !displayThemes)) && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
-                    <LottieLoader size={96} message="Preparing analytics..." />
-                  </div>
-                )}
-
                 {/* Empty state — no themes yet */}
-                {rowsLoaded && !hasThemes && !loading && !computing && !industryLoading && (
+                {rowsLoaded && !hasThemes && !loading && (
                   <div style={{ textAlign: 'center', padding: '48px 20px', maxWidth: 440, margin: '0 auto' }}>
                     <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #fff3ee, #ffe4d6)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 28 }}>
                       <span style={{ color: T.accent, fontWeight: 900, fontStyle: 'italic' }}>A</span>
@@ -1832,8 +1825,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     />
                   </>
                 ) : (
-                  <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
-                    Run a TextMine analysis first, then click a theme to browse comments.
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
+                    <LottieLoader size={96} message="Loading..." />
                   </div>
                 )}
               </div>
