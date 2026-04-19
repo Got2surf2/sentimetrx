@@ -186,9 +186,9 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose }
         .ask-ana-input:focus { outline: none; border-color: ${HERMES} !important; box-shadow: 0 0 0 3px rgba(232,99,42,.15) !important; }
       `}</style>
 
-      {/* Header */}
+      {/* Header — matches TopNav h-14 (56px) */}
       <div style={{
-        padding: '12px 16px', borderBottom: 'none',
+        height: 56, padding: '0 16px', borderBottom: 'none',
         display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
         background: HERMES,
       }}>
