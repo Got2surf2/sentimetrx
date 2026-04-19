@@ -100,7 +100,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
         <button onClick={function() { router.push('/analyze/new') }}
           className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
           style={{ background: HERMES }}>
-          + Upload Dataset
+          + New Dataset
         </button>
       </div>
 
