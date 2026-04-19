@@ -11,7 +11,7 @@ import ExportModal from '@/components/analyze/ExportModal'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study' | 'google_reviews'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 
@@ -24,6 +24,8 @@ interface Props {
   onSaveSession?: () => void
   sessionSaving?: boolean
   sessionSaved?: boolean
+  onAskAna?: () => void
+  askAnaOpen?: boolean
 }
 
 var HERMES = '#E8632A'
@@ -35,7 +37,7 @@ var TABS = [
   { key: 'settings', label: 'Schema', icon: '\u2699' },
 ]
 
-export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick, onSaveSession, sessionSaving, sessionSaved }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
   var router = useRouter()
   var pathname = usePathname()
 
@@ -159,6 +161,21 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
             Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
           </button>
+
+          {/* Ask Ana — visible for reddit datasets when AI is enabled */}
+          {dataset.source === 'reddit' && aiEnabled && onAskAna && (
+            <button onClick={onAskAna}
+              style={{
+                padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 13, fontWeight: askAnaOpen ? 700 : 500,
+                color: askAnaOpen ? 'white' : 'rgba(255,255,255,.65)',
+                background: askAnaOpen ? 'rgba(255,255,255,.18)' : 'transparent',
+                border: 'none', borderBottom: askAnaOpen ? '3px solid white' : '3px solid transparent',
+                cursor: 'pointer', flexShrink: 0, transition: 'all .15s', whiteSpace: 'nowrap',
+              }}>
+              {'\uD83D\uDCAC'} Ask Ana
+            </button>
+          )}
         </div>
 
         {/* Action buttons — hidden when overflowing, replaced by More */}
@@ -253,11 +270,11 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           <span style={{
             fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
             borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
-            background: dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : 'rgba(255,255,255,.12)',
-            color: dataset.source === 'study' ? '#bae6fd' : dataset.source === 'google_reviews' ? '#bfdbfe' : 'rgba(255,255,255,.6)',
-            border: dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : dataset.source === 'google_reviews' ? '1px solid rgba(96,165,250,.4)' : '1px solid rgba(255,255,255,.2)',
+            background: dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : dataset.source === 'reddit' ? 'rgba(251,146,60,.25)' : 'rgba(255,255,255,.12)',
+            color: dataset.source === 'study' ? '#bae6fd' : dataset.source === 'google_reviews' ? '#bfdbfe' : dataset.source === 'reddit' ? '#fed7aa' : 'rgba(255,255,255,.6)',
+            border: dataset.source === 'study' ? '1px solid rgba(56,189,248,.4)' : dataset.source === 'google_reviews' ? '1px solid rgba(96,165,250,.4)' : dataset.source === 'reddit' ? '1px solid rgba(251,146,60,.4)' : '1px solid rgba(255,255,255,.2)',
           }}>
-            {dataset.source === 'study' ? 'Sarina' : dataset.source === 'google_reviews' ? 'Google Reviews' : 'Upload'}
+            {dataset.source === 'study' ? 'Sarina' : dataset.source === 'google_reviews' ? 'Google Reviews' : dataset.source === 'reddit' ? 'Reddit' : 'Upload'}
           </span>
         </div>
 

@@ -169,7 +169,7 @@ export interface Dataset {
   id:             string
   name:           string
   description:    string | null
-  source:         'upload' | 'study' | 'google_reviews'
+  source:         'upload' | 'study' | 'google_reviews' | 'reddit'
   study_id:       string | null
   org_id:         string
   client_id:      string | null

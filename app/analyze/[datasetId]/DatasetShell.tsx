@@ -7,11 +7,12 @@ import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
 import { filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
+import AskAnaPanel from '@/components/analyze/AskAnaPanel'
 import DatasetHeader from './DatasetHeader'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study' | 'google_reviews'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 interface SchemaField { field: string; type: string; label?: string; values?: string[]; min?: number; max?: number; sqt?: string | null; scoreField?: boolean }
@@ -33,6 +34,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
   const [chipsExpanded, setChipsExpanded] = useState(false)
   const [sessionSaving, setSessionSaving] = useState(false)
   const [sessionSaved, setSessionSaved] = useState(false)
+  const [askAnaOpen, setAskAnaOpen] = useState(false)
 
   // Build aliases from schema
   const aliases: Record<string, string> = {}
@@ -155,7 +157,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
 
   return (
     <>
-      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} />
+      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {
@@ -204,6 +206,16 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {children}
       </main>
+
+      {/* Ask Ana slide-out panel */}
+      {askAnaOpen && (
+        <AskAnaPanel
+          datasetId={datasetId}
+          datasetName={dataset.name}
+          filters={filters}
+          onClose={function() { setAskAnaOpen(false) }}
+        />
+      )}
 
       {/* Global FiltersModal */}
       {showFilters && (
