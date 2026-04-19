@@ -59,7 +59,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     }
     checkOverflow()
     window.addEventListener('resize', checkOverflow)
-    return function() { window.removeEventListener('resize', checkOverflow) }
+    // Also observe container size changes (e.g. Ask Ana panel open/close)
+    var observer: ResizeObserver | null = null
+    if (headerRef.current) {
+      observer = new ResizeObserver(checkOverflow)
+      observer.observe(headerRef.current)
+    }
+    return function() { window.removeEventListener('resize', checkOverflow); if (observer) observer.disconnect() }
   }, [])
 
   useEffect(function() {
