@@ -1394,8 +1394,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   </div>
                 )}
 
-                {/* Still initializing — show loader */}
-                {rowsLoaded && !hasThemes && !loading && (computing || industryLoading) && (
+                {/* Still initializing — show loader while computing or waiting for display */}
+                {rowsLoaded && !loading && (computing || industryLoading || (hasThemes && !displayThemes)) && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
                     <LottieLoader size={96} message="Preparing analytics..." />
                   </div>
