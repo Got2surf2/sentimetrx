@@ -7,6 +7,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60
+
 interface Props { params: { datasetId: string } }
 
 export async function POST(request: Request, { params }: Props) {
@@ -70,6 +73,7 @@ export async function POST(request: Request, { params }: Props) {
       result = await callAI({
         tier: 'standard',
         maxTokens: 4000,
+        timeoutMs: 60000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
         apiKey,
