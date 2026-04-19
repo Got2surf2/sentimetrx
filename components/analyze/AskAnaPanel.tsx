@@ -5,6 +5,8 @@
 // User asks freeform questions about their dataset, Ana answers based on the actual data.
 
 import { useState, useRef, useEffect } from 'react'
+import { serializeFilters } from '@/lib/filterUtils'
+import type { Filters } from '@/lib/filterUtils'
 
 interface Message {
   id: string
@@ -16,7 +18,7 @@ interface Message {
 interface Props {
   datasetId: string
   datasetName: string
-  filters?: Record<string, any>
+  filters?: Filters
   onClose: () => void
 }
 
@@ -67,18 +69,9 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose }
       .map(function(m) { return { role: m.role, content: m.content } })
 
     // Serialize filters for the API
-    var serializedFilters: Record<string, any> | undefined
-    if (filters && Object.keys(filters).length > 0) {
-      serializedFilters = {}
-      Object.entries(filters).forEach(function(entry) {
-        var field = entry[0], f = entry[1] as any
-        if (f.type === 'cat') {
-          serializedFilters![field] = { type: 'cat', values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
-        } else {
-          serializedFilters![field] = f
-        }
-      })
-    }
+    var serializedFilters = filters && Object.keys(filters).length > 0
+      ? serializeFilters(filters)
+      : undefined
 
     try {
       var res = await fetch('/api/ask-ana', {

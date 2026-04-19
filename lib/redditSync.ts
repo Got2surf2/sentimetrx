@@ -2,7 +2,7 @@
 // On-demand download of Reddit thread comments into dataset_rows_flat
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { fetchThreadComments, type RedditComment } from './reddit'
+import { fetchThreadComments, commentToRow, type RedditComment } from './reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from './datasetUtils'
 import { computeAnalytics, computeAnalyticsSQL } from './analyticsCompute'
 
@@ -156,30 +156,6 @@ export async function syncRedditSource(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function commentToRow(c: RedditComment): Record<string, unknown> {
-  const dateStr = c.created_utc
-    ? new Date(c.created_utc * 1000).toISOString().split('T')[0]
-    : ''
-  return {
-    comment_id: c.comment_id,
-    author: c.author,
-    body: c.body,
-    score: c.score,
-    ups: c.ups,
-    downs: c.downs,
-    controversiality: c.controversiality,
-    is_submitter: c.is_submitter,
-    gilded: c.gilded,
-    total_awards: c.total_awards,
-    post_date: dateStr,
-    subreddit: c.subreddit,
-    thread_title: c.thread_title,
-    thread_id: c.thread_id,
-    depth: c.depth,
-    permalink: c.permalink ? `https://www.reddit.com${c.permalink}` : '',
-  }
-}
 
 async function insertRedditRows(service: SupabaseClient, datasetId: string, rows: Record<string, unknown>[]): Promise<void> {
   const syncTimestamp = new Date().toISOString()

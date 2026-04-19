@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { fetchThreadComments, type RedditComment } from '@/lib/reddit'
+import { fetchThreadComments, commentToRow, type RedditComment } from '@/lib/reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
@@ -13,30 +13,6 @@ export const maxDuration = 60
 interface Params { params: { sourceId: string } }
 
 const CHUNK_SIZE = 50
-
-function commentToRow(c: RedditComment): Record<string, unknown> {
-  var dateStr = c.created_utc
-    ? new Date(c.created_utc * 1000).toISOString().split('T')[0]
-    : ''
-  return {
-    comment_id: c.comment_id,
-    author: c.author,
-    body: c.body,
-    score: c.score,
-    ups: c.ups,
-    downs: c.downs,
-    controversiality: c.controversiality,
-    is_submitter: c.is_submitter,
-    gilded: c.gilded,
-    total_awards: c.total_awards,
-    post_date: dateStr,
-    subreddit: c.subreddit,
-    thread_title: c.thread_title,
-    thread_id: c.thread_id,
-    depth: c.depth,
-    permalink: c.permalink ? 'https://www.reddit.com' + c.permalink : '',
-  }
-}
 
 export async function POST(req: Request, { params }: Params) {
   try {
