@@ -54,12 +54,13 @@ export default function RedditWizard({ onBack }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sortBy, setSortBy] = useState<SortMode>('date')
 
-  // Step 3: Confirm + Download + sample size
+  // Step 3: Confirm + Download + sample size + progress
   const [datasetName, setDatasetName] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
   const [maxCommentsPerThread, setMaxCommentsPerThread] = useState(REDDIT_COMMENTS_PER_THREAD)
+  const [dlProgress, setDlProgress] = useState({ threadsDown: 0, threadsTotal: 0, comments: 0 })
 
   // -- Step 1: Search --------------------------------------------------------
 
@@ -163,9 +164,12 @@ export default function RedditWizard({ onBack }: Props) {
     if (!datasetName.trim() || selectedThreads.length === 0) return
     setCreating(true)
     setCreateError('')
-    setStatusMsg('Creating dataset and downloading comments...')
+    setDlProgress({ threadsDown: 0, threadsTotal: selectedThreads.length, comments: 0 })
+    setStatusMsg('Creating dataset...')
+
     try {
-      const res = await fetch('/api/reddit-sources', {
+      // 1. Create source + dataset (no download yet)
+      var createRes = await fetch('/api/reddit-sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -175,16 +179,54 @@ export default function RedditWizard({ onBack }: Props) {
           max_comments_per_thread: maxCommentsPerThread,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) { setCreateError(data.error || 'Failed to create'); return }
+      var createData = await createRes.json()
+      if (!createRes.ok) { setCreateError(createData.error || 'Failed to create'); setCreating(false); return }
+
+      var sourceId = createData.source_id
+      var datasetId = createData.dataset_id
+      var totalComments = 0
+      var errors: string[] = []
+
+      // 2. Download each thread one by one
+      for (var idx = 0; idx < selectedThreads.length; idx++) {
+        var thread = selectedThreads[idx]
+        setStatusMsg('Downloading thread ' + (idx + 1) + ' of ' + selectedThreads.length + '...')
+        setDlProgress({ threadsDown: idx, threadsTotal: selectedThreads.length, comments: totalComments })
+
+        try {
+          var dlRes = await fetch('/api/reddit-sources/' + sourceId + '/download-thread', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ thread_id: thread.thread_id, max_comments: maxCommentsPerThread }),
+          })
+          var dlData = await dlRes.json()
+          if (dlRes.ok) {
+            totalComments += dlData.comments || 0
+          } else {
+            errors.push(thread.title.slice(0, 40) + ': ' + (dlData.error || 'failed'))
+          }
+        } catch (e: any) {
+          errors.push(thread.title.slice(0, 40) + ': ' + (e?.message || 'failed'))
+        }
+
+        setDlProgress({ threadsDown: idx + 1, threadsTotal: selectedThreads.length, comments: totalComments })
+      }
+
+      // 3. Finalize — build schema + compute analytics
+      setStatusMsg('Finalizing dataset...')
+      try {
+        await fetch('/api/reddit-sources/' + sourceId + '/sync', { method: 'POST' })
+      } catch {}
 
       setStatusMsg(
-        'Downloaded ' + (data.total_comments || 0).toLocaleString() + ' comments from ' +
-        (data.total_posts || 0) + ' threads. Redirecting...'
+        'Downloaded ' + totalComments.toLocaleString() + ' comments from ' +
+        selectedThreads.length + ' threads.' + (errors.length > 0 ? ' (' + errors.length + ' errors)' : '') +
+        ' Redirecting...'
       )
+      setDlProgress({ threadsDown: selectedThreads.length, threadsTotal: selectedThreads.length, comments: totalComments })
 
       setTimeout(function() {
-        router.push('/analyze/' + data.dataset_id + '/settings')
+        router.push('/analyze/' + datasetId + '/settings')
       }, 1500)
     } catch (err: any) {
       setCreateError(err?.message || 'Failed')
@@ -488,8 +530,29 @@ export default function RedditWizard({ onBack }: Props) {
           </div>
 
           {creating && (
-            <div className="flex flex-col gap-3 items-center py-2">
+            <div className="flex flex-col gap-4 items-center py-4">
               <LottieLoader size={96} message={statusMsg || 'Creating...'} />
+              {dlProgress.threadsTotal > 0 && (
+                <div style={{ width: '100%', maxWidth: 400 }}>
+                  {/* Progress bar */}
+                  <div style={{ width: '100%', height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
+                    <div style={{
+                      width: Math.round((dlProgress.threadsDown / dlProgress.threadsTotal) * 100) + '%',
+                      height: '100%', background: HERMES, borderRadius: 4,
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </div>
+                  {/* Stats */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280' }}>
+                    <span style={{ fontWeight: 600 }}>
+                      {dlProgress.threadsDown} of {dlProgress.threadsTotal} threads
+                    </span>
+                    <span style={{ fontWeight: 700, color: '#111827' }}>
+                      {dlProgress.comments.toLocaleString()} comments
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,46 +1,99 @@
 // app/api/reddit-sources/[sourceId]/sync/route.ts
-// POST — manually trigger a Reddit download for a source
+// POST — finalize a Reddit source after per-thread downloads: build schema + compute analytics
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { syncRedditSource } from '@/lib/redditSync'
+import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
+import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+export const maxDuration = 60
 
 interface Params { params: { sourceId: string } }
 
 export async function POST(_req: Request, { params }: Params) {
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    var supabase = createClient()
+    var { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: userData } = await supabase
-      .from('users')
-      .select('org_id')
-      .eq('id', user.id)
-      .single()
-
-    const orgId = userData?.org_id
+    var { data: userData } = await supabase
+      .from('users').select('org_id').eq('id', user.id).single()
+    var orgId = userData?.org_id
     if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
-    const service = createServiceRoleClient()
+    var service = createServiceRoleClient()
 
     // Verify ownership
-    const { data: source } = await service
+    var { data: source } = await service
       .from('reddit_sources')
-      .select('id')
+      .select('id, dataset_id, org_id')
       .eq('id', params.sourceId)
       .eq('org_id', orgId)
       .single()
-    if (!source) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!source || !source.dataset_id) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const result = await syncRedditSource(params.sourceId, service)
+    var datasetId = source.dataset_id
 
-    return NextResponse.json(result)
+    // Count totals from thread records
+    var { data: threads } = await service
+      .from('reddit_source_threads')
+      .select('total_pulled, error_message')
+      .eq('reddit_source_id', source.id)
+    var totalComments = 0
+    var errored = 0
+    ;(threads || []).forEach(function(t: any) {
+      totalComments += t.total_pulled || 0
+      if (t.error_message) errored++
+    })
+
+    // Update source status
+    await service.from('reddit_sources').update({
+      status: errored > 0 && totalComments === 0 ? 'error' : 'done',
+      total_comments: totalComments,
+      total_posts: (threads || []).filter(function(t: any) { return t.total_pulled > 0 }).length,
+      updated_at: new Date().toISOString(),
+    }).eq('id', source.id)
+
+    // Build schema + compute analytics
+    var { data: stateRow } = await service
+      .from('dataset_state').select('schema_config').eq('dataset_id', datasetId).single()
+    var schema = stateRow?.schema_config
+    if (!schema?.fields?.length) {
+      // Grab sample rows for stats enrichment
+      var { data: sampleFlat } = await service
+        .from('dataset_rows_flat')
+        .select('data')
+        .eq('dataset_id', datasetId)
+        .limit(100)
+      var sampleRows = (sampleFlat || []).map(function(r: any) { return r.data })
+      schema = buildRedditSchema()
+      schema = enrichSchemaWithStats(schema, sampleRows)
+      await service.from('dataset_state').update({
+        schema_config: schema, updated_at: new Date().toISOString(),
+      }).eq('dataset_id', datasetId)
+    }
+
+    if (schema?.fields?.length) {
+      try {
+        var flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', datasetId)
+        var analytics = (flatCheck.count || 0) > 0
+          ? await computeAnalyticsSQL(service, datasetId, schema)
+          : await computeAnalytics(service, datasetId, schema)
+        await service.from('dataset_state').update({
+          analytics, updated_at: new Date().toISOString(),
+        }).eq('dataset_id', datasetId)
+      } catch (err) { console.error('[reddit/sync] analytics compute failed:', err) }
+    }
+
+    return NextResponse.json({
+      status: 'done',
+      total_comments: totalComments,
+      total_threads: (threads || []).length,
+      errored: errored,
+    })
   } catch (err: any) {
     console.error('[reddit-sources/sync] error:', err)
-    return NextResponse.json({ error: err?.message || 'Sync failed' }, { status: 500 })
+    return NextResponse.json({ error: err?.message || 'Finalize failed' }, { status: 500 })
   }
 }

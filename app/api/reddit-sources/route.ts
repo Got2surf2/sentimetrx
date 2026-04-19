@@ -1,13 +1,12 @@
 // app/api/reddit-sources/route.ts
-// POST /api/reddit-sources — create a reddit source + dataset + start download
+// POST /api/reddit-sources — create a reddit source + dataset (no auto-download)
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
-import { syncRedditSource } from '@/lib/redditSync'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300 // 5 min — downloading can take a while
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   try {
@@ -107,17 +106,11 @@ export async function POST(req: Request) {
 
     if (thrErr) return NextResponse.json({ error: thrErr.message }, { status: 500 })
 
-    // 5. Start the download immediately (on-demand)
-    const syncResult = await syncRedditSource(source.id, service, max_comments_per_thread || 500)
-
     return NextResponse.json({
-      source_id:       source.id,
-      dataset_id:      dataset.id,
-      threads:         threads.length,
-      total_comments:  syncResult.total_comments,
-      total_posts:     syncResult.total_posts,
-      status:          syncResult.errors.length > 0 ? 'partial' : 'done',
-      errors:          syncResult.errors,
+      source_id:  source.id,
+      dataset_id: dataset.id,
+      threads:    threads.length,
+      status:     'created',
     }, { status: 201 })
   } catch (err: any) {
     console.error('[reddit-sources] create error:', err)
