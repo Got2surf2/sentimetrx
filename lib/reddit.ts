@@ -3,7 +3,7 @@
 // Uses .json endpoint appended to Reddit URLs
 
 const USER_AGENT = 'sentimetrx:reddit-downloader:v1.0 (by /u/sentimetrx)'
-const BASE = 'https://www.reddit.com'
+const BASE = 'https://old.reddit.com'
 const RATE_DELAY = 1200 // ms between requests to respect rate limits
 
 let lastRequest = 0
