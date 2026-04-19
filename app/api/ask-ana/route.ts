@@ -103,16 +103,15 @@ export async function POST(req: Request) {
     })
   }
 
-  // Sample if too many rows — systematic sampling to keep distribution
+  // Random sample if too many rows — Fisher-Yates shuffle, take first SAMPLE_MAX
   const totalFiltered = filteredRows.length
   let sampled = false
   if (filteredRows.length > SAMPLE_MAX) {
-    const step = Math.ceil(filteredRows.length / SAMPLE_MAX)
-    const sampledRows: Record<string, unknown>[] = []
-    for (let i = 0; i < filteredRows.length && sampledRows.length < SAMPLE_MAX; i += step) {
-      sampledRows.push(filteredRows[i])
+    for (let i = filteredRows.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      var tmp = filteredRows[i]; filteredRows[i] = filteredRows[j]; filteredRows[j] = tmp
     }
-    filteredRows = sampledRows
+    filteredRows = filteredRows.slice(0, SAMPLE_MAX)
     sampled = true
   }
 
