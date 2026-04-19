@@ -9,6 +9,9 @@ import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES = '#E8632A'
 
+// Reddit public JSON API returns max ~500 comments per thread request
+const REDDIT_COMMENTS_PER_THREAD = 500
+
 interface RedditThread {
   thread_id: string
   subreddit: string
@@ -29,6 +32,7 @@ interface SubredditResult {
 }
 
 type WizardStep = 1 | 2 | 3
+type SortMode = 'date' | 'score' | 'comments'
 
 interface Props {
   onBack: () => void
@@ -46,14 +50,16 @@ export default function RedditWizard({ onBack }: Props) {
   const [subreddits, setSubreddits] = useState<SubredditResult[]>([])
   const [filterSub, setFilterSub] = useState('')
 
-  // Step 2: Selection
+  // Step 2: Selection + sorting
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [sortBy, setSortBy] = useState<SortMode>('date')
 
-  // Step 3: Confirm + Download
+  // Step 3: Confirm + Download + sample size
   const [datasetName, setDatasetName] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
+  const [maxCommentsPerThread, setMaxCommentsPerThread] = useState(REDDIT_COMMENTS_PER_THREAD)
 
   // -- Step 1: Search --------------------------------------------------------
 
@@ -75,13 +81,17 @@ export default function RedditWizard({ onBack }: Props) {
         return
       }
       setSubreddits(data.subreddits || [])
-      setThreads(data.posts || [])
+      // Sort by date (newest first) by default
+      var posts = (data.posts || []) as RedditThread[]
+      posts.sort(function(a, b) { return b.created_utc - a.created_utc })
+      setThreads(posts)
       // Auto-select all threads
       const all = new Set<string>()
-      ;(data.posts || []).forEach(function(t: RedditThread) { all.add(t.thread_id) })
+      posts.forEach(function(t: RedditThread) { all.add(t.thread_id) })
       setSelected(all)
+      setSortBy('date')
       setDatasetName('Reddit: ' + keyword.trim())
-      if (data.posts?.length) setStep(2)
+      if (posts.length) setStep(2)
     } catch (err: any) {
       setSearchError(err?.message || 'Search failed')
     } finally {
@@ -89,16 +99,23 @@ export default function RedditWizard({ onBack }: Props) {
     }
   }
 
-  // -- Step 2: Selection helpers ---------------------------------------------
+  // -- Step 2: Selection + sorting helpers -----------------------------------
 
-  function toggleAll() {
-    if (selected.size === threads.length) {
-      setSelected(new Set())
-    } else {
-      const all = new Set<string>()
-      threads.forEach(function(t) { all.add(t.thread_id) })
-      setSelected(all)
-    }
+  // Sort threads based on current mode
+  var sortedThreads = threads.slice().sort(function(a, b) {
+    if (sortBy === 'date') return b.created_utc - a.created_utc
+    if (sortBy === 'score') return b.score - a.score
+    return b.comment_count - a.comment_count
+  })
+
+  function selectAll() {
+    const all = new Set<string>()
+    threads.forEach(function(t) { all.add(t.thread_id) })
+    setSelected(all)
+  }
+
+  function deselectAll() {
+    setSelected(new Set())
   }
 
   function toggleThread(threadId: string) {
@@ -108,7 +125,8 @@ export default function RedditWizard({ onBack }: Props) {
     setSelected(next)
   }
 
-  const selectedThreads = threads.filter(function(t) { return selected.has(t.thread_id) })
+  const selectedThreads = sortedThreads.filter(function(t) { return selected.has(t.thread_id) })
+  const unselectedThreads = sortedThreads.filter(function(t) { return !selected.has(t.thread_id) })
   const estimatedComments = selectedThreads.reduce(function(sum, t) { return sum + t.comment_count }, 0)
 
   // Group threads by subreddit
@@ -130,6 +148,15 @@ export default function RedditWizard({ onBack }: Props) {
     setSelected(next)
   }
 
+  // -- Step 3: Sample size helpers -------------------------------------------
+
+  // Realistic download estimate: Reddit API returns max ~500 per thread
+  var realisticComments = selectedThreads.reduce(function(sum, t) {
+    return sum + Math.min(t.comment_count, maxCommentsPerThread)
+  }, 0)
+
+  var recommendedMax = REDDIT_COMMENTS_PER_THREAD
+
   // -- Step 3: Create --------------------------------------------------------
 
   async function handleCreate() {
@@ -145,6 +172,7 @@ export default function RedditWizard({ onBack }: Props) {
           search_query: keyword.trim(),
           dataset_name: datasetName.trim(),
           threads: selectedThreads,
+          max_comments_per_thread: maxCommentsPerThread,
         }),
       })
       const data = await res.json()
@@ -172,6 +200,33 @@ export default function RedditWizard({ onBack }: Props) {
   function formatScore(n: number): string {
     if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
     return String(n)
+  }
+
+  // Shared thread row renderer
+  function renderThreadRow(t: RedditThread, isSelected: boolean) {
+    return (
+      <tr key={t.thread_id}
+        onClick={function() { toggleThread(t.thread_id) }}
+        style={{ cursor: 'pointer', borderTop: '1px solid ' + (isSelected ? '#f0fdf4' : '#f3f4f6'), opacity: isSelected ? 1 : 0.6, transition: 'all .1s' }}
+        onMouseEnter={function(e) { var el = e.currentTarget as HTMLTableRowElement; el.style.background = isSelected ? '#fef2f2' : '#ecfdf5'; if (!isSelected) el.style.opacity = '1' }}
+        onMouseLeave={function(e) { var el = e.currentTarget as HTMLTableRowElement; el.style.background = ''; if (!isSelected) el.style.opacity = '0.6' }}>
+        <td style={{ padding: '6px 14px', width: 28 }}>
+          <input type="checkbox" checked={isSelected} readOnly style={{ accentColor: isSelected ? '#059669' : HERMES, width: 14, height: 14, cursor: 'pointer' }} />
+        </td>
+        <td style={{ padding: '6px 6px' }}>
+          <div style={{ fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>{t.title}</div>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+            r/{t.subreddit} · {formatDate(t.created_utc)} · u/{t.author}
+          </div>
+        </td>
+        <td style={{ padding: '6px 6px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12, width: 55, whiteSpace: 'nowrap' }}>
+          {'\u2B06'} {formatScore(t.score)}
+        </td>
+        <td style={{ padding: '6px 14px', textAlign: 'right', color: '#6b7280', fontSize: 12, width: 80, whiteSpace: 'nowrap' }}>
+          {t.comment_count.toLocaleString()} comments
+        </td>
+      </tr>
+    )
   }
 
   // -- Render ----------------------------------------------------------------
@@ -265,15 +320,45 @@ export default function RedditWizard({ onBack }: Props) {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-3">
+            {/* Header with select/deselect + sort */}
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-gray-800">Threads</h3>
                 <p className="text-xs text-gray-400">{selected.size} of {threads.length} selected · {estimatedComments.toLocaleString()} comments</p>
               </div>
-              <button onClick={toggleAll}
-                className="text-xs font-semibold hover:underline" style={{ color: HERMES }}>
-                {selected.size === threads.length ? 'Deselect All' : 'Select All'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={selectAll}
+                  className="text-xs font-semibold hover:underline" style={{ color: selected.size === threads.length ? '#9ca3af' : '#059669' }}>
+                  Select All
+                </button>
+                <span style={{ color: '#d1d5db', fontSize: 10 }}>|</span>
+                <button onClick={deselectAll}
+                  className="text-xs font-semibold hover:underline" style={{ color: selected.size === 0 ? '#9ca3af' : '#dc2626' }}>
+                  Deselect All
+                </button>
+              </div>
+            </div>
+
+            {/* Sort controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>Sort by:</span>
+              {([
+                { key: 'date' as SortMode, label: 'Newest' },
+                { key: 'score' as SortMode, label: 'Top Score' },
+                { key: 'comments' as SortMode, label: 'Most Comments' },
+              ]).map(function(opt) {
+                return (
+                  <button key={opt.key} onClick={function() { setSortBy(opt.key) }}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
+                      border: '1px solid ' + (sortBy === opt.key ? '#fbd5c2' : '#e5e7eb'),
+                      background: sortBy === opt.key ? '#fff4ef' : '#f9fafb',
+                      color: sortBy === opt.key ? HERMES : '#6b7280',
+                    }}>
+                    {opt.label}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Subreddit filter pills */}
@@ -297,8 +382,9 @@ export default function RedditWizard({ onBack }: Props) {
               </div>
             )}
 
-            {/* Selected threads */}
+            {/* Thread lists */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Selected pane */}
               <div style={{ border: '1px solid #d1fae5', borderRadius: 12, overflow: 'hidden' }}>
                 <div style={{ background: '#ecfdf5', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>Selected ({selectedThreads.length})</span>
@@ -310,31 +396,7 @@ export default function RedditWizard({ onBack }: Props) {
                   ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <tbody>
-                        {selectedThreads.map(function(t) {
-                          return (
-                            <tr key={t.thread_id}
-                              onClick={function() { toggleThread(t.thread_id) }}
-                              style={{ cursor: 'pointer', borderTop: '1px solid #f0fdf4', transition: 'background .1s' }}
-                              onMouseEnter={function(e) { (e.currentTarget as HTMLTableRowElement).style.background = '#fef2f2' }}
-                              onMouseLeave={function(e) { (e.currentTarget as HTMLTableRowElement).style.background = '' }}>
-                              <td style={{ padding: '6px 14px', width: 28 }}>
-                                <input type="checkbox" checked readOnly style={{ accentColor: '#059669', width: 14, height: 14, cursor: 'pointer' }} />
-                              </td>
-                              <td style={{ padding: '6px 6px' }}>
-                                <div style={{ fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>{t.title}</div>
-                                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                                  r/{t.subreddit} · {formatDate(t.created_utc)} · u/{t.author}
-                                </div>
-                              </td>
-                              <td style={{ padding: '6px 6px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12, width: 55, whiteSpace: 'nowrap' }}>
-                                {'\u2B06'} {formatScore(t.score)}
-                              </td>
-                              <td style={{ padding: '6px 14px', textAlign: 'right', color: '#6b7280', fontSize: 12, width: 80, whiteSpace: 'nowrap' }}>
-                                {t.comment_count.toLocaleString()} comments
-                              </td>
-                            </tr>
-                          )
-                        })}
+                        {selectedThreads.map(function(t) { return renderThreadRow(t, true) })}
                       </tbody>
                     </table>
                   )}
@@ -342,48 +404,20 @@ export default function RedditWizard({ onBack }: Props) {
               </div>
 
               {/* Unselected pane */}
-              {(function() {
-                var unselected = threads.filter(function(t) { return !selected.has(t.thread_id) })
-                if (unselected.length === 0) return null
-                return (
-                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                    <div style={{ background: '#f9fafb', padding: '8px 14px' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>Available ({unselected.length})</span>
-                    </div>
-                    <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <tbody>
-                          {unselected.map(function(t) {
-                            return (
-                              <tr key={t.thread_id}
-                                onClick={function() { toggleThread(t.thread_id) }}
-                                style={{ cursor: 'pointer', borderTop: '1px solid #f3f4f6', opacity: 0.6, transition: 'all .1s' }}
-                                onMouseEnter={function(e) { var el = e.currentTarget as HTMLTableRowElement; el.style.background = '#ecfdf5'; el.style.opacity = '1' }}
-                                onMouseLeave={function(e) { var el = e.currentTarget as HTMLTableRowElement; el.style.background = ''; el.style.opacity = '0.6' }}>
-                                <td style={{ padding: '6px 14px', width: 28 }}>
-                                  <input type="checkbox" checked={false} readOnly style={{ accentColor: HERMES, width: 14, height: 14, cursor: 'pointer' }} />
-                                </td>
-                                <td style={{ padding: '6px 6px' }}>
-                                  <div style={{ fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>{t.title}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                                    r/{t.subreddit} · {formatDate(t.created_utc)} · u/{t.author}
-                                  </div>
-                                </td>
-                                <td style={{ padding: '6px 6px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12, width: 55, whiteSpace: 'nowrap' }}>
-                                  {'\u2B06'} {formatScore(t.score)}
-                                </td>
-                                <td style={{ padding: '6px 14px', textAlign: 'right', color: '#6b7280', fontSize: 12, width: 80, whiteSpace: 'nowrap' }}>
-                                  {t.comment_count.toLocaleString()} comments
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+              {unselectedThreads.length > 0 && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ background: '#f9fafb', padding: '8px 14px' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>Available ({unselectedThreads.length})</span>
                   </div>
-                )
-              })()}
+                  <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <tbody>
+                        {unselectedThreads.map(function(t) { return renderThreadRow(t, false) })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -411,8 +445,8 @@ export default function RedditWizard({ onBack }: Props) {
               ['Search query',       keyword],
               ['Threads selected',   selected.size + ' of ' + threads.length],
               ['Estimated comments', estimatedComments.toLocaleString()],
+              ['Downloadable',       realisticComments.toLocaleString() + ' (API limit: ' + maxCommentsPerThread + '/thread)'],
               ['Subreddits',         Array.from(new Set(selectedThreads.map(function(t) { return 'r/' + t.subreddit }))).join(', ')],
-              ['Download type',      'On-demand (one-time download)'],
             ] as [string, string][]).map(function([label, val]) {
               return (
                 <div key={label} className="flex justify-between text-sm">
@@ -421,6 +455,35 @@ export default function RedditWizard({ onBack }: Props) {
                 </div>
               )
             })}
+
+            {/* Sample size selector */}
+            <div style={{ marginTop: 8, padding: 14, background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Comments per thread</label>
+                <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>Recommended: {recommendedMax}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="range"
+                  min={50}
+                  max={500}
+                  step={50}
+                  value={maxCommentsPerThread}
+                  onChange={function(e) { setMaxCommentsPerThread(Number(e.target.value)) }}
+                  style={{ flex: 1, accentColor: HERMES }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', minWidth: 36, textAlign: 'right' }}>{maxCommentsPerThread}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ fontSize: 10, color: '#9ca3af' }}>50</span>
+                <span style={{ fontSize: 10, color: '#9ca3af' }}>500 (max)</span>
+              </div>
+              <p style={{ fontSize: 11, color: '#6b7280', marginTop: 8, lineHeight: 1.5 }}>
+                Reddit's public API returns up to ~500 top-level + nested comments per thread.
+                Lower values download faster. {realisticComments.toLocaleString()} comments estimated at current setting.
+              </p>
+            </div>
+
             <p className="text-xs text-gray-400 mt-1">Each comment becomes one row in your dataset for TextMine analysis.</p>
           </div>
 

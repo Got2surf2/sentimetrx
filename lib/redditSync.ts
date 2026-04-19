@@ -24,6 +24,7 @@ const CHUNK_SIZE = 50
 export async function syncRedditSource(
   sourceId: string,
   service: SupabaseClient,
+  maxCommentsPerThread: number = 500,
 ): Promise<RedditSyncResult> {
   const result: RedditSyncResult = {
     total_comments: 0, total_posts: 0,
@@ -85,7 +86,7 @@ export async function syncRedditSource(
         continue
       }
 
-      const { post, comments } = await fetchThreadComments(permalink)
+      const { post, comments } = await fetchThreadComments(permalink, maxCommentsPerThread)
       result.total_posts++
 
       // Add the post itself as a row (if it has body text)

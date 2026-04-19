@@ -111,9 +111,9 @@ export async function searchPosts(query: string, subreddit?: string, sort: strin
 
 // ── Fetch all comments for a thread ──────────────────────────────────────────
 
-export async function fetchThreadComments(permalink: string): Promise<{ post: RedditThread; comments: RedditComment[] }> {
+export async function fetchThreadComments(permalink: string, limit: number = 500): Promise<{ post: RedditThread; comments: RedditComment[] }> {
   // Reddit returns [post_listing, comment_listing]
-  const data = await redditGet(`${permalink}.json?limit=500&depth=10&sort=top`)
+  const data = await redditGet(`${permalink}.json?limit=${Math.min(limit, 500)}&depth=10&sort=top`)
 
   if (!Array.isArray(data) || data.length < 2) {
     throw new Error('Unexpected Reddit thread response format')

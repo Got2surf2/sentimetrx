@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
     const body = await req.json()
-    const { search_query, dataset_name, threads } = body
+    const { search_query, dataset_name, threads, max_comments_per_thread } = body
 
     if (!search_query?.trim()) return NextResponse.json({ error: 'search_query is required' }, { status: 400 })
     if (!threads?.length) return NextResponse.json({ error: 'At least one thread is required' }, { status: 400 })
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
     if (thrErr) return NextResponse.json({ error: thrErr.message }, { status: 500 })
 
     // 5. Start the download immediately (on-demand)
-    const syncResult = await syncRedditSource(source.id, service)
+    const syncResult = await syncRedditSource(source.id, service, max_comments_per_thread || 500)
 
     return NextResponse.json({
       source_id:       source.id,
