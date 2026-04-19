@@ -157,6 +157,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
 
   return (
     <>
+      <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
@@ -206,6 +207,8 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {children}
       </main>
+
+      </div>
 
       {/* Ask Ana slide-out panel */}
       {askAnaOpen && (
