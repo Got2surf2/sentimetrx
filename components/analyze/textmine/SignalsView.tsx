@@ -32,7 +32,7 @@ var DEFAULT_VISIBLE = 5
 // Detect if text is primarily a URL (no meaningful content)
 var URL_RE = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
-var TIER_KEYS: Array<'mainstream' | 'controversial' | 'fringe' | 'noise'> = ['mainstream', 'controversial', 'fringe', 'noise']
+var TIER_KEYS: Array<'mainstream' | 'controversial' | 'fringe' | 'noise'> = ['mainstream', 'controversial', 'noise', 'fringe']
 
 var TIER_STYLES = {
   mainstream:    { label: 'Mainstream',    color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: '\u2B06' },
@@ -193,11 +193,12 @@ export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCut
 
       {/* Comment panel — shows for the selected tier */}
       {activeTier && activeStyle && activeItems.length > 0 && (
-        <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 320px)' }}>
           {/* Header with collapse */}
           <div style={{
             padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8,
             background: activeStyle.bg, borderBottom: '1px solid ' + activeStyle.border,
+            flexShrink: 0,
           }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: activeStyle.color }}>{activeStyle.icon} {activeStyle.label}</span>
             <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{activeItems.length} comments</span>
@@ -218,8 +219,8 @@ export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCut
             </div>
           </div>
 
-          {/* Comments — all shown */}
-          <div style={{ padding: '4px 0' }}>
+          {/* Comments — scrollable */}
+          <div style={{ padding: '4px 0', overflowY: 'auto', flex: 1 }}>
             {activeItems.map(function(c, i) {
               return (
                 <div key={i} style={{ padding: '10px 16px', borderBottom: i < activeItems.length - 1 ? '1px solid #f9fafb' : 'none' }}>
