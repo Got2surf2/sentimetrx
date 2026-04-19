@@ -1,7 +1,8 @@
 // app/api/ask-ana/route.ts
 // POST /api/ask-ana — streaming AI Q&A against dataset rows
-// Sends dataset rows as context to Claude alongside conversation history.
-// Streams the response back via SSE for real-time display.
+// Uses Anthropic prompt caching so the dataset context is sent once and reused
+// for follow-up questions within a 5-minute window.
+// Samples large datasets (max 200 rows) and truncates long text (300 chars).
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -9,7 +10,9 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-const ROW_CAP = 10000
+const ROW_CAP       = 10000
+const SAMPLE_MAX    = 200    // max rows sent to Claude
+const TEXT_TRUNCATE = 300    // max chars per text field
 
 interface Message {
   role: 'user' | 'assistant'
@@ -100,6 +103,19 @@ export async function POST(req: Request) {
     })
   }
 
+  // Sample if too many rows — systematic sampling to keep distribution
+  const totalFiltered = filteredRows.length
+  let sampled = false
+  if (filteredRows.length > SAMPLE_MAX) {
+    const step = Math.ceil(filteredRows.length / SAMPLE_MAX)
+    const sampledRows: Record<string, unknown>[] = []
+    for (let i = 0; i < filteredRows.length && sampledRows.length < SAMPLE_MAX; i += step) {
+      sampledRows.push(filteredRows[i])
+    }
+    filteredRows = sampledRows
+    sampled = true
+  }
+
   // Format rows for context — keep it compact
   const dataContext = formatRowsForContext(filteredRows, dataset.source)
 
@@ -110,15 +126,19 @@ export async function POST(req: Request) {
     : dataset.source === 'google_reviews' ? 'Google Reviews'
     : 'data entries'
 
-  const filterNote = filters && Object.keys(filters).length > 0
-    ? '\n\nNote: The user has active filters applied. You are seeing ' + filteredRows.length + ' of ' + allRows.length + ' total rows.'
+  const sampleNote = sampled
+    ? '\n\nNote: This is a representative sample of ' + filteredRows.length + ' rows from ' + totalFiltered + ' total matching rows. Base your analysis on patterns in this sample.'
     : ''
 
-  const systemPrompt = `You are Ana, a helpful data analyst. You have been given a dataset of ${filteredRows.length} ${sourceLabel} from "${dataset.name}".
+  const filterNote = filters && Object.keys(filters).length > 0
+    ? '\n\nNote: The user has active filters applied. You are seeing ' + totalFiltered + ' of ' + allRows.length + ' total rows.' + (sampled ? ' (sampled to ' + filteredRows.length + ')' : '')
+    : ''
+
+  const systemPrompt = `You are Ana, a helpful data analyst. You have been given a dataset of ${totalFiltered} ${sourceLabel} from "${dataset.name}".
 
 Answer the user's question based ONLY on this data. Be specific and cite actual quotes when relevant (use quotation marks). If the data doesn't contain enough information to answer, say so.
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${filterNote}
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${filterNote}${sampleNote}
 
 Here is the dataset:
 ${dataContext}`
@@ -136,7 +156,9 @@ ${dataContext}`
     return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
   }
 
-  // Stream response from Anthropic
+  // Stream response from Anthropic with prompt caching
+  // The system prompt (with dataset) is marked as cacheable so follow-up
+  // questions reuse the cached context instead of re-sending all rows.
   const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -148,7 +170,13 @@ ${dataContext}`
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       stream: true,
-      system: systemPrompt,
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       messages,
     }),
   })
@@ -209,6 +237,12 @@ ${dataContext}`
   })
 }
 
+// Truncate text to max length, adding ellipsis
+function truncate(text: string, max: number): string {
+  if (!text || text.length <= max) return text
+  return text.slice(0, max) + '...'
+}
+
 // Format rows compactly for the system prompt context
 function formatRowsForContext(rows: Record<string, unknown>[], source: string): string {
   if (rows.length === 0) return '(no data)'
@@ -219,11 +253,11 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
       const parts: string[] = []
       if (r.author) parts.push('Author: ' + r.author)
       if (r.subreddit) parts.push('r/' + r.subreddit)
-      if (r.thread_title) parts.push('Thread: ' + r.thread_title)
+      if (r.thread_title) parts.push('Thread: ' + truncate(String(r.thread_title), 80))
       if (r.score != null) parts.push('Score: ' + r.score)
       if (r.post_date) parts.push('Date: ' + r.post_date)
       if (r.depth != null) parts.push(Number(r.depth) === -1 ? 'Type: Post' : 'Type: Comment (depth ' + r.depth + ')')
-      parts.push('Text: ' + (r.body || ''))
+      parts.push('Text: ' + truncate(String(r.body || ''), TEXT_TRUNCATE))
       return '[' + (i + 1) + '] ' + parts.join(' | ')
     }).join('\n')
   }
@@ -234,8 +268,8 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
       const parts: string[] = []
       if (r.participant_id) parts.push('Participant: ' + r.participant_id)
       if (r.topic) parts.push('Topic: ' + r.topic)
-      if (r.bot_message) parts.push('Q: ' + r.bot_message)
-      parts.push('A: ' + (r.user_message || ''))
+      if (r.bot_message) parts.push('Q: ' + truncate(String(r.bot_message), 120))
+      parts.push('A: ' + truncate(String(r.user_message || ''), TEXT_TRUNCATE))
       if (r.responded_at) parts.push('Date: ' + String(r.responded_at).slice(0, 10))
       return '[' + (i + 1) + '] ' + parts.join(' | ')
     }).join('\n')
@@ -245,7 +279,10 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
   return rows.map(function(r, i) {
     const parts = Object.entries(r)
       .filter(function(e) { return e[1] != null && e[1] !== '' })
-      .map(function(e) { return e[0] + ': ' + e[1] })
+      .map(function(e) {
+        const val = typeof e[1] === 'string' ? truncate(e[1], TEXT_TRUNCATE) : e[1]
+        return e[0] + ': ' + val
+      })
     return '[' + (i + 1) + '] ' + parts.join(' | ')
   }).join('\n')
 }
