@@ -53,6 +53,7 @@ export async function POST(req: Request, { params }: Params) {
       .eq('org_id', orgId)
       .single()
     if (!source || !source.dataset_id) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    var datasetId = source.dataset_id as string
 
     var body = await req.json()
     var { thread_id, max_comments } = body
@@ -107,21 +108,21 @@ export async function POST(req: Request, { params }: Params) {
     if (rows.length > 0) {
       var syncTimestamp = new Date().toISOString()
       var { data: existingBatches } = await service
-        .from('dataset_rows').select('batch_index').eq('dataset_id', source.dataset_id)
+        .from('dataset_rows').select('batch_index').eq('dataset_id', datasetId)
         .order('batch_index', { ascending: false }).limit(1)
       var nextBatchIndex = existingBatches?.length ? existingBatches[0].batch_index + 1 : 0
       var { data: dsData } = await service
-        .from('datasets').select('row_count').eq('id', source.dataset_id).single()
+        .from('datasets').select('row_count').eq('id', datasetId).single()
       var currentTotal = dsData?.row_count || 0
 
       for (var i = 0; i < rows.length; i += CHUNK_SIZE) {
         var chunk = rows.slice(i, i + CHUNK_SIZE)
         await service.from('dataset_rows').insert({
-          dataset_id: source.dataset_id, rows: chunk, row_count: chunk.length,
+          dataset_id: datasetId, rows: chunk, row_count: chunk.length,
           batch_index: nextBatchIndex, source_ref: 'reddit:' + syncTimestamp,
         })
         var flatRows = chunk.map(function(r, j) {
-          return { dataset_id: source.dataset_id, row_index: nextBatchIndex * 200 + j, data: r }
+          return { dataset_id: datasetId, row_index: nextBatchIndex * 200 + j, data: r }
         })
         try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
         currentTotal += chunk.length
@@ -130,7 +131,7 @@ export async function POST(req: Request, { params }: Params) {
 
       await service.from('datasets').update({
         row_count: currentTotal, last_synced_at: syncTimestamp, updated_at: syncTimestamp,
-      }).eq('id', source.dataset_id)
+      }).eq('id', datasetId)
     }
 
     // Update thread record

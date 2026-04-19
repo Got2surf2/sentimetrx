@@ -126,9 +126,27 @@ export default function RedditWizard({ onBack }: Props) {
     setSelected(next)
   }
 
+  const LARGE_THRESHOLD = 100
   const selectedThreads = sortedThreads.filter(function(t) { return selected.has(t.thread_id) })
   const unselectedThreads = sortedThreads.filter(function(t) { return !selected.has(t.thread_id) })
   const estimatedComments = selectedThreads.reduce(function(sum, t) { return sum + t.comment_count }, 0)
+
+  // Split into large (≥100 comments) and small (<100)
+  const largeThreads = sortedThreads.filter(function(t) { return t.comment_count >= LARGE_THRESHOLD })
+  const smallThreads = sortedThreads.filter(function(t) { return t.comment_count < LARGE_THRESHOLD })
+  const largeSelected = largeThreads.filter(function(t) { return selected.has(t.thread_id) })
+  const smallSelected = smallThreads.filter(function(t) { return selected.has(t.thread_id) })
+
+  function selectGroup(threads: RedditThread[]) {
+    var next = new Set(selected)
+    threads.forEach(function(t) { next.add(t.thread_id) })
+    setSelected(next)
+  }
+  function deselectGroup(threads: RedditThread[]) {
+    var next = new Set(selected)
+    threads.forEach(function(t) { next.delete(t.thread_id) })
+    setSelected(next)
+  }
 
   // Group threads by subreddit
   const subGroups = threads.reduce(function(acc, t) {
@@ -424,37 +442,61 @@ export default function RedditWizard({ onBack }: Props) {
               </div>
             )}
 
-            {/* Thread lists */}
+            {/* Thread lists — split by size */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Selected pane */}
-              <div style={{ border: '1px solid #d1fae5', borderRadius: 12, overflow: 'hidden' }}>
-                <div style={{ background: '#ecfdf5', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>Selected ({selectedThreads.length})</span>
-                  <span style={{ fontSize: 11, color: '#6b7280' }}>{estimatedComments.toLocaleString()} comments</span>
-                </div>
-                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-                  {selectedThreads.length === 0 ? (
-                    <div style={{ padding: '24px 14px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No threads selected</div>
-                  ) : (
+
+              {/* Large threads (≥100 comments) */}
+              {largeThreads.length > 0 && (
+                <div style={{ border: '1px solid #dbeafe', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ background: '#eff6ff', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>Large Threads</span>
+                      <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 6 }}>{LARGE_THRESHOLD}+ comments · {largeSelected.length} of {largeThreads.length} selected</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={function() { selectGroup(largeThreads) }}
+                        style={{ fontSize: 10, fontWeight: 600, color: largeSelected.length === largeThreads.length ? '#9ca3af' : '#059669', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        Select All
+                      </button>
+                      <button onClick={function() { deselectGroup(largeThreads) }}
+                        style={{ fontSize: 10, fontWeight: 600, color: largeSelected.length === 0 ? '#9ca3af' : '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        Deselect All
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ maxHeight: 260, overflowY: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <tbody>
-                        {selectedThreads.map(function(t) { return renderThreadRow(t, true) })}
+                        {largeThreads.map(function(t) { return renderThreadRow(t, selected.has(t.thread_id)) })}
                       </tbody>
                     </table>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Unselected pane */}
-              {unselectedThreads.length > 0 && (
+              {/* Small threads (<100 comments) */}
+              {smallThreads.length > 0 && (
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                  <div style={{ background: '#f9fafb', padding: '8px 14px' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>Available ({unselectedThreads.length})</span>
+                  <div style={{ background: '#f9fafb', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>Smaller Threads</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 6 }}>under {LARGE_THRESHOLD} comments · {smallSelected.length} of {smallThreads.length} selected</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={function() { selectGroup(smallThreads) }}
+                        style={{ fontSize: 10, fontWeight: 600, color: smallSelected.length === smallThreads.length ? '#9ca3af' : '#059669', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        Select All
+                      </button>
+                      <button onClick={function() { deselectGroup(smallThreads) }}
+                        style={{ fontSize: 10, fontWeight: 600, color: smallSelected.length === 0 ? '#9ca3af' : '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        Deselect All
+                      </button>
+                    </div>
                   </div>
                   <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <tbody>
-                        {unselectedThreads.map(function(t) { return renderThreadRow(t, false) })}
+                        {smallThreads.map(function(t) { return renderThreadRow(t, selected.has(t.thread_id)) })}
                       </tbody>
                     </table>
                   </div>
