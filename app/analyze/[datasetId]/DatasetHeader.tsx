@@ -2,8 +2,9 @@
 
 // app/analyze/[datasetId]/DatasetHeader.tsx
 // Ana-style header: back + brand → module tabs + Filters + Save Session → dataset pill → row count → AI toggle
+// Responsive: overflows into a "More" dropdown on narrow screens
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
@@ -42,6 +43,22 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [aiEnabled,   setAiEnabled]   = useState(false)
   var [showExport,  setShowExport]  = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
+  var [showMore,    setShowMore]    = useState(false)
+
+  // Responsive overflow detection
+  var headerRef = useRef<HTMLDivElement>(null)
+  var [overflowing, setOverflowing] = useState(false)
+
+  useEffect(function() {
+    function checkOverflow() {
+      var el = headerRef.current
+      if (!el) return
+      setOverflowing(el.scrollWidth > el.clientWidth + 2)
+    }
+    checkOverflow()
+    window.addEventListener('resize', checkOverflow)
+    return function() { window.removeEventListener('resize', checkOverflow) }
+  }, [])
 
   useEffect(function() {
     try {
@@ -67,7 +84,6 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   async function handleReviewSync() {
     setReviewSyncing(true)
     try {
-      // Find the review source for this dataset
       var srcRes = await fetch('/api/review-sources')
       var srcData = await srcRes.json()
       var source = (srcData.sources || []).find(function(s: any) { return s.dataset_id === dataset.id })
@@ -77,6 +93,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
       if (data.synced > 0) router.refresh()
     } catch {} finally { setReviewSyncing(false) }
   }
+
+  // Items that go into "More" dropdown when overflowing
+  var moreItems = [
+    { label: '\uD83C\uDFAC StoryTime', action: function() { setShowExport(true); setShowMore(false) } },
+    { label: '\uD83D\uDCCA Share Analytics', action: function() { setShowShareAnalytics(true); setShowMore(false) } },
+    { label: (sessionSaving ? '\u23F3 Saving...' : sessionSaved ? '\u2714 Saved' : '\uD83D\uDCBE Save Session'), action: function() { if (onSaveSession) onSaveSession(); setShowMore(false) }, disabled: sessionSaving },
+  ]
 
   return (
     <div>
@@ -94,7 +117,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           onClose={function() { setShowShareAnalytics(false) }}
         />
       )}
-      <div style={{ background: HERMES, padding: '0 0 0 20px', height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
+      <div ref={headerRef} style={{ background: HERMES, padding: '0 0 0 20px', height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0, overflow: 'hidden', position: 'relative' }}>
 
         {/* Back + Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 16, borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
@@ -103,77 +126,127 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
         </div>
 
-        {/* Module tabs + Filters + Save Session */}
-        <div style={{ display: 'flex', alignItems: 'stretch', flex: 1, paddingLeft: 4 }}>
+        {/* Module tabs */}
+        <div style={{ display: 'flex', alignItems: 'stretch', paddingLeft: 4, flexShrink: 0 }}>
           {TABS.map(function(tab) {
             var isActive = activeTab === tab.key
             var href = '/analyze/' + dataset.id + '/' + tab.key
             return (
               <Link key={tab.key} href={href}
                 style={{
-                  padding: '0 20px', height: '100%', display: 'flex', alignItems: 'center',
+                  padding: '0 16px', height: '100%', display: 'flex', alignItems: 'center',
                   fontSize: 13, fontWeight: isActive ? 700 : 500, textDecoration: 'none',
                   color: isActive ? 'white' : 'rgba(255,255,255,.65)',
                   background: isActive ? 'rgba(255,255,255,.18)' : 'transparent',
                   borderBottom: isActive ? '3px solid white' : '3px solid transparent',
-                  transition: 'all .12s',
+                  transition: 'all .12s', whiteSpace: 'nowrap',
                 }}>
                 <span style={{ marginRight: 5 }}>{tab.icon}</span>{tab.label}
               </Link>
             )
           })}
 
-          {/* Filters button */}
+          {/* Filters button — always visible */}
           <button onClick={onFilterClick}
             style={{
-              padding: '0 18px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
+              padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
               fontSize: 13, fontWeight: filterCount > 0 ? 700 : 500,
               color: filterCount > 0 ? 'white' : 'rgba(255,255,255,.65)',
               background: filterCount > 0 ? 'rgba(255,255,255,.18)' : 'transparent',
               border: 'none', borderBottom: filterCount > 0 ? '3px solid white' : '3px solid transparent',
-              cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
+              cursor: 'pointer', flexShrink: 0, transition: 'all .15s', whiteSpace: 'nowrap',
             }}>
             {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
             Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
           </button>
+        </div>
 
-          {/* Export button */}
-          <button onClick={function() { setShowExport(true) }}
-            style={{
-              padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.6)',
-              background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
-              cursor: 'pointer', flexShrink: 0,
-            }}>
-            {'\uD83C\uDFAC'} StoryTime
-          </button>
-
-          {/* Share Analytics button */}
-          <button onClick={function() { setShowShareAnalytics(true) }}
-            style={{
-              padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 12, fontWeight: 600, color: filterCount > 0 ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.6)',
-              background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
-              cursor: 'pointer', flexShrink: 0,
-            }}>
-            {'\uD83D\uDCCA'} Share Analytics
-          </button>
-
-          {/* Save Session button */}
-          {onSaveSession && (
-            <button onClick={onSaveSession} disabled={sessionSaving}
+        {/* Action buttons — hidden when overflowing, replaced by More */}
+        {!overflowing && (
+          <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 1, minWidth: 0 }}>
+            {/* Export button */}
+            <button onClick={function() { setShowExport(true) }}
               style={{
                 padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 12, fontWeight: 600,
-                color: sessionSaved ? '#4ade80' : 'rgba(255,255,255,.6)',
-                background: 'transparent',
-                border: 'none', borderBottom: '3px solid transparent',
-                cursor: sessionSaving ? 'wait' : 'pointer', flexShrink: 0,
+                fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.6)',
+                background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+                cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
               }}>
-              {sessionSaving ? '\u23F3' : sessionSaved ? '\u2714' : '\uD83D\uDCBE'} {sessionSaving ? 'Saving...' : sessionSaved ? 'Saved' : 'Save Session'}
+              {'\uD83C\uDFAC'} StoryTime
             </button>
-          )}
-        </div>
+
+            {/* Share Analytics button */}
+            <button onClick={function() { setShowShareAnalytics(true) }}
+              style={{
+                padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 12, fontWeight: 600, color: filterCount > 0 ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.6)',
+                background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+                cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+              }}>
+              {'\uD83D\uDCCA'} Share Analytics
+            </button>
+
+            {/* Save Session button */}
+            {onSaveSession && (
+              <button onClick={onSaveSession} disabled={sessionSaving}
+                style={{
+                  padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+                  fontSize: 12, fontWeight: 600,
+                  color: sessionSaved ? '#4ade80' : 'rgba(255,255,255,.6)',
+                  background: 'transparent',
+                  border: 'none', borderBottom: '3px solid transparent',
+                  cursor: sessionSaving ? 'wait' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+                }}>
+                {sessionSaving ? '\u23F3' : sessionSaved ? '\u2714' : '\uD83D\uDCBE'} {sessionSaving ? 'Saving...' : sessionSaved ? 'Saved' : 'Save Session'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* More dropdown — visible when overflowing */}
+        {overflowing && (
+          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, position: 'relative' }}>
+            <button onClick={function() { setShowMore(!showMore) }}
+              style={{
+                padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 12, fontWeight: 700, color: 'white',
+                background: showMore ? 'rgba(255,255,255,.18)' : 'transparent',
+                border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>
+              {'\u2026'} More
+            </button>
+            {showMore && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={function() { setShowMore(false) }} />
+                <div style={{
+                  position: 'absolute', top: 48, right: 0, zIndex: 100,
+                  background: 'white', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.2)',
+                  border: '1px solid #e5e7eb', minWidth: 180, overflow: 'hidden',
+                }}>
+                  {moreItems.map(function(item, i) {
+                    return (
+                      <button key={i} onClick={item.action} disabled={item.disabled}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '10px 16px', fontSize: 13, fontWeight: 600,
+                          color: '#374151', background: 'transparent', border: 'none',
+                          cursor: item.disabled ? 'wait' : 'pointer',
+                          borderBottom: i < moreItems.length - 1 ? '1px solid #f3f4f6' : 'none',
+                        }}
+                        onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.background = '#f9fafb' }}
+                        onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
+                        {item.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
 
         {/* Source pill */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderLeft: '1px solid rgba(255,255,255,.15)', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>

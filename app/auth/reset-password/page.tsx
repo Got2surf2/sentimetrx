@@ -25,7 +25,7 @@ export default function ResetPasswordPage() {
       setLoading(false)
     } else {
       setDone(true)
-      setTimeout(() => router.push('/dashboard'), 2000)
+      setTimeout(() => router.push('/analyze'), 2000)
     }
   }
 
@@ -43,7 +43,7 @@ export default function ResetPasswordPage() {
           <div className="text-center p-6 rounded-xl bg-green-500/10 border border-green-500/20">
             <div className="text-2xl mb-2">✓</div>
             <p className="text-green-400 font-medium">Password set!</p>
-            <p className="text-slate-400 text-sm mt-1">Taking you to the dashboard...</p>
+            <p className="text-slate-400 text-sm mt-1">Taking you to Analytics...</p>
           </div>
         ) : (
           <form onSubmit={handleReset} className="flex flex-col gap-3">

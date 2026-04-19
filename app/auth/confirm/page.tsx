@@ -31,7 +31,7 @@ export default function AuthConfirmPage() {
       } else if (type === 'recovery') {
         router.replace('/auth/reset-password')
       } else {
-        router.replace('/dashboard')
+        router.replace('/analyze')
       }
     })
   }, [])

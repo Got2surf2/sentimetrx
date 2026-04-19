@@ -30,7 +30,7 @@ function LoginFormInner() {
       setError(error.message)
       setLoading(false)
     } else {
-      router.push('/dashboard')
+      router.push('/analyze')
       router.refresh()
     }
   }
