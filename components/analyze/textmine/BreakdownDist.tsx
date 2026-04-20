@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from 'react'
 import { Theme, THEME_PALETTE, commentMatchesTheme } from '@/lib/themeUtils'
+import { SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { sigTest } from '@/lib/statsUtils'
 
 import { T } from '@/lib/analyzeTheme'
@@ -27,12 +28,23 @@ export default function BreakdownDist({
   const field = activeField || themeModel.fieldName
 
   const selVals = useMemo(function() {
-    // Sort by frequency (most common first) instead of alphabetical
-    var counts: Record<string, number> = {}
     var vals = Array.from(selectedValues)
+    if (!breakdownField) return vals
+    // Signal tier: use canonical order
+    if (breakdownField === 'signal_tier') {
+      // Detect Reddit vs Substack by tier names present in values
+      var isRedditTiers = vals.some(function(v) { return v === 'Mainstream' || v === 'Controversial' || v === 'Fringe' || v === 'Noise' })
+      var tierList = isRedditTiers ? SIGNAL_TIER_ORDER_REDDIT : SIGNAL_TIER_ORDER_SUBSTACK
+      var tierIdx: Record<string, number> = {}
+      tierList.forEach(function(t, i) { tierIdx[t] = i })
+      return vals.sort(function(a, b) { return (tierIdx[a] ?? 99) - (tierIdx[b] ?? 99) })
+    }
+    // Everything else: sort by frequency (most common first)
+    var bf = breakdownField
+    var counts: Record<string, number> = {}
     vals.forEach(function(v) { counts[v] = 0 })
     parsedData.forEach(function(r) {
-      var v = String(r[breakdownField] ?? '')
+      var v = String(r[bf] ?? '')
       if (counts[v] !== undefined) counts[v]++
     })
     return vals.sort(function(a, b) { return (counts[b] || 0) - (counts[a] || 0) })
@@ -45,10 +57,11 @@ export default function BreakdownDist({
   // Per-group, per-theme counts
   const valueCounts = useMemo(function() {
     if (!breakdownField) return {}
+    var bf = breakdownField
     const vc: Record<string, Record<string, number>> = {}
     selVals.forEach(function(v) {
       vc[v] = {}
-      const rows = parsedData.filter(function(r) { return String(r[breakdownField] ?? '') === v })
+      const rows = parsedData.filter(function(r) { return String(r[bf] ?? '') === v })
       sortedThemes.forEach(function(t) {
         vc[v][t.id] = rows.filter(function(r) {
           return commentMatchesTheme(String(r[field] || ''), t)
@@ -61,10 +74,11 @@ export default function BreakdownDist({
   // Group totals (responses with text)
   const groupTotals = useMemo(function() {
     if (!breakdownField) return {}
+    var bf = breakdownField
     const gt: Record<string, number> = {}
     selVals.forEach(function(v) {
       gt[v] = parsedData.filter(function(r) {
-        return String(r[breakdownField] ?? '') === v && String(r[field] || '').trim().length > 0
+        return String(r[bf] ?? '') === v && String(r[field] || '').trim().length > 0
       }).length
     })
     return gt
@@ -73,10 +87,11 @@ export default function BreakdownDist({
   // Per-group, per-theme avg rating (when ratingField is set)
   const ratingAvgs = useMemo(function() {
     if (!ratingField || !breakdownField) return {}
+    var bf = breakdownField
     const avgs: Record<string, Record<string, { sum: number; cnt: number; avg: number }>> = {}
     selVals.forEach(function(v) {
       avgs[v] = {}
-      const rows = parsedData.filter(function(r) { return String(r[breakdownField] ?? '') === v })
+      const rows = parsedData.filter(function(r) { return String(r[bf] ?? '') === v })
       sortedThemes.forEach(function(t) {
         let sum = 0, cnt = 0
         rows.forEach(function(r) {
@@ -158,25 +173,36 @@ export default function BreakdownDist({
                   </span>
                   <span style={{ fontSize: 11, color: T.textFaint }}>n={groupTotal}</span>
                 </div>
-                {/* Stacked bar */}
-                <div style={{ height: 24, background: T.bg, borderRadius: 6, overflow: 'hidden', display: 'flex', marginBottom: 6 }}>
-                  {sortedThemes.map(function(t) {
-                    const idx = themeModel.themes.indexOf(t)
-                    const pal = themeColors[idx] || THEME_PALETTE[0]
-                    const cnt = valueCounts[v] ? valueCounts[v][t.id] || 0 : 0
-                    const pct = groupTotal > 0 ? (cnt / groupTotal) * 100 : 0
-                    if (pct <= 0) return null
-                    return (
-                      <div
-                        key={t.id}
-                        title={t.name + ': ' + cnt + ' (' + Math.round(pct) + '%)'}
-                        style={{ width: pct + '%', background: pal.border, transition: 'width .5s' }}
-                      />
-                    )
-                  })}
-                </div>
-                {/* Per-theme rows */}
-                {sortedThemes.map(function(t) {
+                {/* Stacked bar — themes sorted by count within this group */}
+                {(function() {
+                  var vc = valueCounts[v] || {}
+                  var groupSorted = sortedThemes.slice().sort(function(a, b) {
+                    // Unclassified always last
+                    var aUn = a.name === 'Unclassified' ? 1 : 0
+                    var bUn = b.name === 'Unclassified' ? 1 : 0
+                    if (aUn !== bUn) return aUn - bUn
+                    return (vc[b.id] || 0) - (vc[a.id] || 0)
+                  })
+                  return (
+                  <>
+                  <div style={{ height: 24, background: T.bg, borderRadius: 6, overflow: 'hidden', display: 'flex', marginBottom: 6 }}>
+                    {groupSorted.map(function(t) {
+                      const idx = themeModel.themes.indexOf(t)
+                      const pal = themeColors[idx] || THEME_PALETTE[0]
+                      const cnt = vc[t.id] || 0
+                      const pct = groupTotal > 0 ? (cnt / groupTotal) * 100 : 0
+                      if (pct <= 0) return null
+                      return (
+                        <div
+                          key={t.id}
+                          title={t.name + ': ' + cnt + ' (' + Math.round(pct) + '%)'}
+                          style={{ width: pct + '%', background: pal.border, transition: 'width .5s' }}
+                        />
+                      )
+                    })}
+                  </div>
+                  {/* Per-theme rows */}
+                  {groupSorted.map(function(t) {
                   const idx = themeModel.themes.indexOf(t)
                   const pal = themeColors[idx] || THEME_PALETTE[0]
                   const cnt = valueCounts[v] ? valueCounts[v][t.id] || 0 : 0
@@ -210,6 +236,9 @@ export default function BreakdownDist({
                     </div>
                   )
                 })}
+                </>
+                  )
+                })()}
               </div>
             )
           })}
