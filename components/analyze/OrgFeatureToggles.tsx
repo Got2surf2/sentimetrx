@@ -3,10 +3,22 @@
 import { useState } from 'react'
 import type { Industry } from '@/lib/industryDefaults'
 import { INDUSTRY_LABELS } from '@/lib/industryDefaults'
+import { MODULE_LABELS, type ModuleFeatures } from '@/lib/types'
+
+const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
+  surveys:       'Sarina conversational surveys — create, deploy, and analyze',
+  analyze:       'Ana text analytics — upload datasets, mine themes, generate reports',
+  googleReviews: 'Google Reviews downloader — import reviews from any business',
+  reddit:        'Reddit downloader — pull threads and comments for analysis',
+  substack:      'Substack analyzer — download reader comments from publications',
+  townhall:      'Town Hall — AI-moderated live community discussions',
+  campaigns:     'Email campaigns — distribute surveys to respondent lists',
+  bots:          'Branded chatbots — create AI bots trained on custom content',
+}
 
 interface Props {
   orgId:           string
-  initialFeatures: { analyze?: boolean; campaigns?: boolean; primaryIndustries?: Industry[] }
+  initialFeatures: ModuleFeatures & { primaryIndustries?: Industry[] }
 }
 
 export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
@@ -44,8 +56,17 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
     }
   }
 
-  async function toggle(key: 'analyze' | 'campaigns') {
+  async function toggle(key: keyof ModuleFeatures) {
     const next = { ...features, [key]: !features[key], primaryIndustries }
+    // Validate: at least one feature must remain enabled
+    const moduleKeys = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]
+    const enabledCount = moduleKeys.filter(function(k) { return !!next[k] }).length
+    if (enabledCount === 0) {
+      setStatus('error')
+      setErrorMsg('At least one feature must be enabled')
+      setTimeout(() => setStatus('idle'), 3000)
+      return
+    }
     setFeatures(next)
     await saveFeatures(next)
   }
@@ -63,48 +84,34 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
     INDUSTRY_LABELS[a].localeCompare(INDUSTRY_LABELS[b])
   )
 
+  const moduleKeys = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]
+
   return (
     <div className="flex flex-col gap-6">
-      {/* Analyze Module Toggle */}
-      <div className="flex items-center justify-between py-2 border-b border-gray-200 pb-4">
-        <div>
-          <p className="text-sm font-medium text-gray-800">Analyze Module</p>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Enables the Ana analytics module for all users in this org
-          </p>
-          {status === 'error' && (
-            <p className="text-xs text-red-500 mt-1">{'Error: ' + errorMsg}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {saving && <span className="text-xs text-gray-400">Saving...</span>}
-          {status === 'saved' && <span className="text-xs text-green-600">Saved</span>}
-          <ToggleSwitch
-            enabled={!!features.analyze}
-            onToggle={() => toggle('analyze')}
-            disabled={saving}
-          />
-        </div>
-      </div>
+      {status === 'error' && (
+        <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-2">{'Error: ' + errorMsg}</p>
+      )}
 
-      {/* Campaign Manager Toggle */}
-      <div className="flex items-center justify-between py-2 border-b border-gray-200 pb-4">
-        <div>
-          <p className="text-sm font-medium text-gray-800">Campaign Manager</p>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Enables email campaign management for distributing surveys to respondent lists
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {saving && <span className="text-xs text-gray-400">Saving...</span>}
-          {status === 'saved' && <span className="text-xs text-green-600">Saved</span>}
-          <ToggleSwitch
-            enabled={!!features.campaigns}
-            onToggle={() => toggle('campaigns')}
-            disabled={saving}
-          />
-        </div>
-      </div>
+      {/* Module Feature Toggles */}
+      {moduleKeys.map(function(key) {
+        return (
+          <div key={key} className="flex items-center justify-between py-2 border-b border-gray-200 pb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-800">{MODULE_LABELS[key]}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{MODULE_DESCRIPTIONS[key]}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {saving && <span className="text-xs text-gray-400">Saving...</span>}
+              {status === 'saved' && <span className="text-xs text-green-600">Saved</span>}
+              <ToggleSwitch
+                enabled={!!features[key]}
+                onToggle={() => toggle(key)}
+                disabled={saving}
+              />
+            </div>
+          </div>
+        )
+      })}
 
       {/* Primary Industries Multi-select */}
       <div>

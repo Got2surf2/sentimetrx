@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
+import { MODULE_LABELS, type ModuleFeatures } from '@/lib/types'
 
 interface Org {
   id: string
@@ -19,6 +20,7 @@ interface Member {
   full_name?: string
   role: string
   created_at: string
+  features?: ModuleFeatures | null
 }
 
 interface Invite {
@@ -40,12 +42,13 @@ interface Props {
   isAdmin: boolean
   userEmail?: string
   fullName?:  string
+  orgFeatures: ModuleFeatures
 }
 
 const HERMES = '#E8632A'
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
 
-export default function TeamClient({ org, members: initialMembers, invites: initialInvites, currentUserId, isOwner, isAdmin, userEmail='', fullName='' }: Props) {
+export default function TeamClient({ org, members: initialMembers, invites: initialInvites, currentUserId, isOwner, isAdmin, userEmail='', fullName='', orgFeatures }: Props) {
   const [members, setMembers]   = useState(initialMembers)
   const [invites, setInvites]   = useState(initialInvites)
   const [logoUrl, setLogoUrl]   = useState(org.logo_url || '')
@@ -54,7 +57,37 @@ export default function TeamClient({ org, members: initialMembers, invites: init
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole]   = useState('owner')
   const [newLink, setNewLink]   = useState('')
+  const [expandedMember, setExpandedMember] = useState<string | null>(null)
+  const [savingFeature, setSavingFeature] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const moduleKeys = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]
+
+  async function toggleUserFeature(memberId: string, key: keyof ModuleFeatures) {
+    const member = members.find(m => m.id === memberId)
+    if (!member) return
+    const current = member.features || {}
+    const updated = { ...current, [key]: !current[key] }
+    setSavingFeature(true)
+    try {
+      const res = await fetch('/api/settings/team/features', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: memberId, features: updated }),
+      })
+      if (res.ok) {
+        setMembers(prev => prev.map(m => m.id === memberId ? { ...m, features: updated } : m))
+        flash('Permissions updated')
+      } else {
+        const data = await res.json().catch(() => ({}))
+        flash('Error: ' + (data.error || 'Failed to save'))
+      }
+    } catch {
+      flash('Error: Network failure')
+    } finally {
+      setSavingFeature(false)
+    }
+  }
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4000) }
 
@@ -179,28 +212,65 @@ export default function TeamClient({ org, members: initialMembers, invites: init
           <h2 className="text-lg font-semibold mb-4">Team Members</h2>
           <div className="space-y-2">
             {members.map(m => (
-              <div key={m.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-3 border border-gray-200">
-                <div>
-                  <p className="text-sm font-medium">{m.full_name || m.email}</p>
-                  {m.full_name && <p className="text-xs text-gray-500">{m.email}</p>}
+              <div key={m.id} className="bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium">{m.full_name || m.email}</p>
+                    {m.full_name && <p className="text-xs text-gray-500">{m.email}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isOwner && m.id !== currentUserId ? (
+                      <>
+                        <button onClick={() => setExpandedMember(expandedMember === m.id ? null : m.id)}
+                          className="text-xs px-2 py-1 rounded border transition-colors font-semibold"
+                          style={expandedMember === m.id
+                            ? { background: HERMES, color: 'white', borderColor: HERMES }
+                            : { background: 'white', color: '#6B7280', borderColor: '#D1D5DB' }
+                          }>
+                          Permissions
+                        </button>
+                        <select value={m.role} onChange={e => changeRole(m.id, e.target.value)}
+                          className="text-xs bg-white border border-gray-300 rounded px-2 py-1 text-gray-600 focus:border-orange-400 outline-none">
+                          <option value="owner">Owner</option>
+                          <option value="member">Member</option>
+                        </select>
+                        <button onClick={() => removeMember(m.id)}
+                          className="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors font-semibold">
+                          Remove
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-500 capitalize">{m.role}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {isOwner && m.id !== currentUserId ? (
-                    <>
-                      <select value={m.role} onChange={e => changeRole(m.id, e.target.value)}
-                        className="text-xs bg-white border border-gray-300 rounded px-2 py-1 text-gray-600 focus:border-orange-400 outline-none">
-                        <option value="owner">Owner</option>
-                        <option value="member">Member</option>
-                      </select>
-                      <button onClick={() => removeMember(m.id)}
-                        className="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors font-semibold">
-                        Remove
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-xs text-gray-500 capitalize">{m.role}</span>
-                  )}
-                </div>
+                {expandedMember === m.id && (
+                  <div className="border-t border-gray-100 px-4 py-3">
+                    <p className="text-xs text-gray-500 mb-2">Module access for this user</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {moduleKeys.map(key => {
+                        const orgEnabled = !!orgFeatures[key]
+                        const userEnabled = !!(m.features || {})[key]
+                        return (
+                          <div key={key} className="flex items-center justify-between py-1.5 px-2 rounded"
+                            style={{ opacity: orgEnabled ? 1 : 0.5 }}>
+                            <span className="text-sm text-gray-700">{MODULE_LABELS[key]}</span>
+                            {orgEnabled ? (
+                              <ToggleSwitch
+                                enabled={userEnabled}
+                                onToggle={() => toggleUserFeature(m.id, key)}
+                                disabled={savingFeature}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">Not available</span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {savingFeature && <p className="text-xs text-gray-400 mt-2">Saving...</p>}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -260,5 +330,38 @@ export default function TeamClient({ org, members: initialMembers, invites: init
         )}
       </div>
     </div>
+  )
+}
+
+function ToggleSwitch({ enabled, onToggle, disabled }: { enabled: boolean; onToggle: () => void; disabled: boolean }) {
+  return (
+    <button
+      onClick={onToggle}
+      disabled={disabled}
+      style={{
+        display:     'inline-flex',
+        alignItems:  'center',
+        width:       44,
+        height:      24,
+        borderRadius: 9999,
+        padding:     2,
+        background:  enabled ? '#E8632A' : '#D1D5DB',
+        transition:  'background 0.2s',
+        border:      'none',
+        cursor:      disabled ? 'not-allowed' : 'pointer',
+        opacity:     disabled ? 0.6 : 1,
+        flexShrink:  0,
+      }}>
+      <span style={{
+        display:      'inline-block',
+        width:        20,
+        height:       20,
+        borderRadius: 9999,
+        background:   'white',
+        boxShadow:    '0 1px 3px rgba(0,0,0,0.2)',
+        transform:    enabled ? 'translateX(20px)' : 'translateX(0)',
+        transition:   'transform 0.2s',
+      }} />
+    </button>
   )
 }

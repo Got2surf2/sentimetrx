@@ -12,7 +12,7 @@ export default async function TeamPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, role, full_name, organizations(id, name, slug, plan, logo_url, is_admin_org)')
+    .select('org_id, role, full_name, organizations(id, name, slug, plan, logo_url, is_admin_org, features)')
     .eq('id', user.id)
     .single()
 
@@ -22,7 +22,7 @@ export default async function TeamPage() {
 
   const { data: members } = await supabase
     .from('users')
-    .select('id, email, full_name, role, created_at')
+    .select('id, email, full_name, role, created_at, features')
     .eq('org_id', userData.org_id)
     .order('created_at', { ascending: true })
 
@@ -46,6 +46,7 @@ export default async function TeamPage() {
       isAdmin={isAdmin}
       userEmail={user.email || ""}
       fullName={userData?.full_name || ""}
+      orgFeatures={org?.features || {}}
     />
   )
 }

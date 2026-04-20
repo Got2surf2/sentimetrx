@@ -6,9 +6,33 @@ import type { StudyType } from './surveyBlueprints'
 import type { Industry } from './industryDefaults'
 
 export type ClientPlan = 'trial' | 'active' | 'suspended'
-export interface OrgFeatures {
-  analyze?: boolean
-  campaigns?: boolean
+// ── Module feature flags ─────────────────────────────────────────────────────
+// All false by default. Datanautix admin enables at org level; org admin at user level.
+export interface ModuleFeatures {
+  surveys?:       boolean   // Sarina conversational surveys
+  analyze?:       boolean   // Ana text analytics (uploads)
+  googleReviews?: boolean   // Google Reviews downloader
+  reddit?:        boolean   // Reddit downloader
+  substack?:      boolean   // Substack downloader
+  townhall?:      boolean   // Town Hall live discussions
+  campaigns?:     boolean   // Email campaigns
+  bots?:          boolean   // Branded chatbots
+}
+
+export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
+  surveys:       'Surveys',
+  analyze:       'Analytics',
+  googleReviews: 'Google Reviews',
+  reddit:        'Reddit',
+  substack:      'Substack',
+  townhall:      'Town Halls',
+  campaigns:     'Campaigns',
+  bots:          'Bots',
+}
+
+export const MODULE_KEYS = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]
+
+export interface OrgFeatures extends ModuleFeatures {
   primaryIndustries?: Industry[]
   defaultEmailProvider?: EmailProviderType
   aiProvider?: {
@@ -17,6 +41,9 @@ export interface OrgFeatures {
     azureApiVersion?: string
   }
 }
+
+// User-level features — subset of org features. Stored in users.features JSONB.
+export type UserFeatures = ModuleFeatures
 // -- Likert / rating scale ------------------------------------
 
 export interface RatingOption {
