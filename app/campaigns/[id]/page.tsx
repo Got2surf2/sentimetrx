@@ -53,6 +53,7 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
       logoUrl={orgData?.logo_url || ''}
       analyzeEnabled={!!orgData?.features?.analyze}
       campaignsEnabled={!!orgData?.features?.campaigns}
+      features={orgData?.features || {}}
       user={{
         email: user.email!,
         fullName: userData?.full_name ?? '',

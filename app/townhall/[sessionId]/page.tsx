@@ -17,6 +17,7 @@ export default async function SessionDetailPage({ params }: { params: { sessionI
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
+  if (orgData?.features?.townhall === false) redirect('/dashboard')
   const isAdmin = !!orgData?.is_admin_org
   const features = orgData?.features || {}
 
@@ -26,6 +27,7 @@ export default async function SessionDetailPage({ params }: { params: { sessionI
       logoUrl={orgData?.logo_url}
       analyzeEnabled={!!features.analyze}
       campaignsEnabled={!!features.campaigns}
+      features={features}
       user={{
         email: user.email || '',
         fullName: userData?.full_name || undefined,

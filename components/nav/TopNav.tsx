@@ -10,9 +10,10 @@ interface Props {
   userEmail?:      string
   fullName?:       string
   crumbs?:         any
-  analyzeEnabled?: boolean   // NEW -- true if org has features.analyze
-  campaignsEnabled?: boolean // true if org has features.campaigns
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'test-spinner'
+  analyzeEnabled?: boolean   // legacy — use features.analyze instead
+  campaignsEnabled?: boolean // legacy — use features.campaigns instead
+  features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean }
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'test-spinner'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
@@ -72,7 +73,15 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
   )
 }
 
-export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled = true, campaignsEnabled = false, currentPage, datasetName }: Props) {
+export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled, campaignsEnabled, features, currentPage, datasetName }: Props) {
+  // Merge legacy props with features object — features takes precedence
+  const f = {
+    surveys:  features?.surveys !== undefined ? features.surveys : true,
+    analyze:  features?.analyze !== undefined ? features.analyze : (analyzeEnabled ?? true),
+    townhall: features?.townhall !== undefined ? features.townhall : true,
+    campaigns: features?.campaigns !== undefined ? features.campaigns : (campaignsEnabled ?? false),
+    bots:     features?.bots ?? false,
+  }
 
   const surveyPages = new Set(['dashboard', 'new', 'edit', 'deploy', 'responses'])
 
@@ -138,10 +147,11 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
 
       {/* Right: nav links */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
-        {analyzeEnabled && navLink('analyze', '/analyze', 'Analytics')}
-        {navLink('dashboard', '/dashboard', 'Surveys')}
-        {(campaignsEnabled || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
-        {navLink('townhall', '/townhall', 'Town Halls')}
+        {f.analyze && navLink('analyze', '/analyze', 'Analytics')}
+        {f.surveys && navLink('dashboard', '/dashboard', 'Surveys')}
+        {(f.campaigns || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
+        {f.townhall && navLink('townhall', '/townhall', 'Town Halls')}
+        {f.bots && navLink('bots', '/bots', 'Bots')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />
         <form action="/api/auth/signout" method="POST">

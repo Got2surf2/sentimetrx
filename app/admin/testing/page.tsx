@@ -28,6 +28,7 @@ export default async function TestingPage() {
       userEmail={user.email!}
       analyzeEnabled={!!orgData?.features?.analyze}
       campaignsEnabled={!!orgData?.features?.campaigns}
+      features={orgData?.features || {}}
     />
   )
 }

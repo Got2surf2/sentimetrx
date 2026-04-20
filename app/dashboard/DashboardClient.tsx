@@ -21,6 +21,7 @@ interface Props {
   logoUrl?: string; orgId?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
+  features?: Record<string, boolean>
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   studies: Study[]; statsMap: Record<string, StudyStats>
 }
@@ -468,7 +469,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
 }
 
 // -- Main dashboard -------------------------------------------------------------
-export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap, analyzeEnabled, campaignsEnabled }: Props) {
+export default function DashboardClient({ user, studies: initialStudies, logoUrl = '', orgId = '', statsMap, analyzeEnabled, campaignsEnabled, features }: Props) {
   const [studies,      setStudies]      = useState(initialStudies)
   const [ownerFilter,  setOwnerFilter]  = useState<OwnerFilter>('mine')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
@@ -527,6 +528,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
           currentPage="dashboard"
           analyzeEnabled={analyzeEnabled}
           campaignsEnabled={campaignsEnabled}
+          features={features as any}
         />
       </div>
       <SubHeader crumbs={[{ label: 'Dashboard' }]} isAdmin={user.isAdmin} orgId={orgId} showFilters />

@@ -17,6 +17,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     .single()
 
   const orgData    = resolveOrg(userData?.organizations) as any
+  // If surveys disabled, redirect to first available module
+  if (orgData?.features?.surveys === false) {
+    const f = orgData.features
+    if (f.analyze) redirect('/analyze')
+    else if (f.townhall) redirect('/townhall')
+    else if (f.campaigns) redirect('/campaigns')
+    else if (f.bots) redirect('/bots')
+    // If nothing else enabled, stay on dashboard (admin can still access settings)
+  }
   const isAdmin    = !!orgData?.is_admin_org
   const clientName = orgData?.name ?? ''
 
@@ -124,6 +133,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       orgId={orgData?.id || ''}
       analyzeEnabled={!!orgData?.features?.analyze}
       campaignsEnabled={!!orgData?.features?.campaigns || isAdmin}
+      features={orgData?.features || {}}
       user={{
         email:      user.email!,
         fullName:   userData?.full_name ?? '',

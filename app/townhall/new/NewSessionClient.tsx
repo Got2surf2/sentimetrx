@@ -14,6 +14,7 @@ interface Props {
   logoUrl?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
+  features?: Record<string, boolean>
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
 }
 
@@ -472,7 +473,7 @@ function TagsInput({ value, onChange, placeholder }: { value: string[]; onChange
 
 // -- Main component -----------------------------------------------------------
 
-export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEnabled, user }: Props) {
+export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEnabled, features, user }: Props) {
   const router = useRouter()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -644,6 +645,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
         fullName={user.fullName}
         analyzeEnabled={analyzeEnabled}
         campaignsEnabled={campaignsEnabled}
+        features={features}
         currentPage="townhall"
       />
 

@@ -9,14 +9,14 @@ import type { EmailProviderType } from '@/lib/types'
 const HERMES = '#E8632A'
 
 interface Props {
-  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean
+  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
   study: { id: string; name: string; status: string; guid: string; slug?: string }
   hiddenFields: string[]
   studyUrl: string
 }
 
-export default function NewCampaignClient({ user, study, hiddenFields, studyUrl, logoUrl = '', analyzeEnabled, campaignsEnabled }: Props) {
+export default function NewCampaignClient({ user, study, hiddenFields, studyUrl, logoUrl = '', analyzeEnabled, campaignsEnabled, features }: Props) {
   const router = useRouter()
   const [name, setName] = useState(
     /campaign$/i.test(study.name.trim()) ? study.name.trim() : study.name.trim() + ' Campaign'
@@ -93,7 +93,7 @@ export default function NewCampaignClient({ user, study, hiddenFields, studyUrl,
       <div className="fixed top-0 left-0 right-0 z-50">
         <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin}
           userEmail={user.email} fullName={user.fullName} currentPage="campaigns"
-          analyzeEnabled={analyzeEnabled} campaignsEnabled={campaignsEnabled} />
+          analyzeEnabled={analyzeEnabled} campaignsEnabled={campaignsEnabled} features={features} />
       </div>
       <SubHeader crumbs={[
         { label: 'Studies', href: '/dashboard' },

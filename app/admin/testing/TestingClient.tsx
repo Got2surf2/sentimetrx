@@ -12,7 +12,7 @@ interface StudyQuestion { id: string; label: string; prompt: string }
 
 interface Props {
   logoUrl?: string; orgName?: string; fullName?: string; userEmail: string
-  analyzeEnabled?: boolean; campaignsEnabled?: boolean
+  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
 }
 
 // ── Test data ───────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ const HERMES = '#E8632A'
 
 // ── Component ───────────────────────────────────────────────────────────
 
-export default function TestingClient({ logoUrl = '', orgName = '', fullName = '', userEmail, analyzeEnabled, campaignsEnabled }: Props) {
+export default function TestingClient({ logoUrl = '', orgName = '', fullName = '', userEmail, analyzeEnabled, campaignsEnabled, features }: Props) {
   const [tab, setTab] = useState<'ai' | 'load' | 'leakage'>('load')
 
   // Shared
@@ -488,6 +488,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
           currentPage="test-spinner"
           analyzeEnabled={analyzeEnabled}
           campaignsEnabled={campaignsEnabled}
+          features={features}
         />
       </div>
       <SubHeader crumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Testing Tools' }]} />

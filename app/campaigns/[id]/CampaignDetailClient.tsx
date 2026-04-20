@@ -16,7 +16,7 @@ interface CampaignData {
   created_at: string
 }
 interface Props {
-  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean
+  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean; userId: string }
   campaign: CampaignData
   emails: CampaignEmail[]
@@ -1645,7 +1645,7 @@ function CampaignScheduleCard({ campaignId, campaignStatus }: { campaignId: stri
   )
 }
 
-export default function CampaignDetailClient({ user, campaign: initialCampaign, emails, respondents: initialRespondents, totalRespondents, logoUrl = '', analyzeEnabled, campaignsEnabled }: Props) {
+export default function CampaignDetailClient({ user, campaign: initialCampaign, emails, respondents: initialRespondents, totalRespondents, logoUrl = '', analyzeEnabled, campaignsEnabled, features }: Props) {
   const [campaign, setCampaign] = useState(initialCampaign)
   const [tab, setTab] = useState<Tab>('setup')
   const [respondents, setRespondents] = useState(initialRespondents)
@@ -1717,7 +1717,7 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
       <div className="fixed top-0 left-0 right-0 z-50">
         <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin}
           userEmail={user.email} fullName={user.fullName} currentPage="campaigns"
-          analyzeEnabled={analyzeEnabled} campaignsEnabled={campaignsEnabled} />
+          analyzeEnabled={analyzeEnabled} campaignsEnabled={campaignsEnabled} features={features} />
       </div>
       <SubHeader crumbs={[
         { label: 'Campaigns', href: '/campaigns' },

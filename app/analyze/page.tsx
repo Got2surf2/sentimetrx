@@ -80,6 +80,8 @@ export default async function AnalyzePage() {
         userEmail={user.email         || ''}
         fullName={userData?.full_name  || ''}
         analyzeEnabled={true}
+        campaignsEnabled={!!orgData?.features?.campaigns}
+        features={orgData?.features || {}}
         currentPage="analyze"
       />
       <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">

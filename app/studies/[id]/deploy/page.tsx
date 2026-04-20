@@ -13,12 +13,13 @@ export default async function DeployPage({ params }: Props) {
 
   const [{ data: study }, { data: userData }] = await Promise.all([
     supabase.from('studies').select('*').eq('id', params.id).single(),
-    supabase.from('users').select('full_name, organizations(is_admin_org, logo_url, name)').eq('id', user.id).single(),
+    supabase.from('users').select('full_name, organizations(is_admin_org, logo_url, name, features)').eq('id', user.id).single(),
   ])
 
   if (!study) notFound()
 
   const orgData = resolveOrg(userData?.organizations) as any
+  if (orgData?.features?.surveys === false) redirect('/dashboard')
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
   const surveyUrl = `${baseUrl}/s/${study.slug || study.guid || study.id}`

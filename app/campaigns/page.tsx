@@ -69,6 +69,7 @@ export default async function CampaignsPage() {
       orgId={orgData?.id || ''}
       analyzeEnabled={!!orgData?.features?.analyze}
       campaignsEnabled={!!orgData?.features?.campaigns}
+      features={orgData?.features || {}}
       user={{
         email: user.email!,
         fullName: userData?.full_name ?? '',

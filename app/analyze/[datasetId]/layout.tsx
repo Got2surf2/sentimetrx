@@ -58,6 +58,8 @@ export default async function DatasetLayout({ children, params }: Props) {
         userEmail={user.email         || ''}
         fullName={userData?.full_name  || ''}
         analyzeEnabled={true}
+        campaignsEnabled={!!orgData?.features?.campaigns}
+        features={orgData?.features || {}}
         currentPage="analyze"
         datasetName={dataset.name}
       />

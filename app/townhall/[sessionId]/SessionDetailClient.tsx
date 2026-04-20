@@ -17,6 +17,7 @@ interface Props {
   logoUrl?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
+  features?: Record<string, boolean>
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
 }
 
@@ -102,7 +103,7 @@ function CompletionDonut({ current, target, size = 40 }: { current: number; targ
 
 function generateId() { return 'topic_' + Math.random().toString(36).slice(2, 8) }
 
-export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled, campaignsEnabled, user }: Props) {
+export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled, campaignsEnabled, features, user }: Props) {
   const [session, setSession] = useState<TownHallSession | null>(null)
   const [themes, setThemes] = useState<TownHallTheme[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
@@ -343,8 +344,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/th/' + (session?.slug || sessionId) : ''
   const copyLink = () => { navigator.clipboard.writeText(participantUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) }
 
-  if (loading) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, user }}><div className="text-center py-20 text-gray-400 text-sm">Loading...</div></Shell>
-  if (!session) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, user }}><div className="text-center py-20 text-gray-400 text-sm">Session not found</div></Shell>
+  if (loading) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}><div className="text-center py-20 text-gray-400 text-sm">Loading...</div></Shell>
+  if (!session) return <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}><div className="text-center py-20 text-gray-400 text-sm">Session not found</div></Shell>
 
   const cfg = session.config as any
   const isSetup = session.status === 'setup'
@@ -366,7 +367,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const defaultResponseTarget = cfg?.engine?.default_response_target || 30
 
   return (
-    <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, user }}>
+    <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}>
       <div className="max-w-6xl mx-auto px-5 py-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
@@ -2023,14 +2024,14 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
   )
 }
 
-function Shell({ logoUrl, analyzeEnabled, campaignsEnabled, user, children }: {
-  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean
+function Shell({ logoUrl, analyzeEnabled, campaignsEnabled, features, user, children }: {
+  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
   children: React.ReactNode
 }) {
   return (
     <>
-      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} fullName={user.fullName} analyzeEnabled={analyzeEnabled} campaignsEnabled={campaignsEnabled} currentPage="townhall" />
+      <TopNav logoUrl={logoUrl} orgName={user.clientName} isAdmin={user.isAdmin} userEmail={user.email} fullName={user.fullName} analyzeEnabled={analyzeEnabled} campaignsEnabled={campaignsEnabled} features={features} currentPage="townhall" />
       <main className="pt-14">{children}</main>
     </>
   )

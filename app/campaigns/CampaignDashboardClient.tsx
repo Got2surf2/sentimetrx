@@ -14,7 +14,7 @@ interface CampaignRow {
 }
 interface Props {
   logoUrl?: string; orgId?: string
-  analyzeEnabled?: boolean; campaignsEnabled?: boolean
+  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   campaigns: CampaignRow[]
   statsMap: Record<string, CampaignStats>
@@ -294,7 +294,7 @@ function CampaignCard({ campaign, stats, respondents = [], onDelete }: {
   )
 }
 
-export default function CampaignDashboardClient({ user, campaigns: initial, logoUrl = '', orgId = '', statsMap, respondentsMap = {}, analyzeEnabled, campaignsEnabled }: Props) {
+export default function CampaignDashboardClient({ user, campaigns: initial, logoUrl = '', orgId = '', statsMap, respondentsMap = {}, analyzeEnabled, campaignsEnabled, features }: Props) {
   const [campaigns, setCampaigns] = useState(initial)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
@@ -324,6 +324,7 @@ export default function CampaignDashboardClient({ user, campaigns: initial, logo
           currentPage="campaigns"
           analyzeEnabled={analyzeEnabled}
           campaignsEnabled={campaignsEnabled}
+          features={features}
         />
       </div>
       <SubHeader crumbs={[{ label: 'Campaigns' }]} isAdmin={user.isAdmin} orgId={orgId} showFilters />

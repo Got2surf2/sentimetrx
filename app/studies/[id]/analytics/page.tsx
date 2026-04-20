@@ -19,6 +19,7 @@ export default async function AnalyticsPage({ params }: Props) {
   if (!study) notFound()
 
   const orgData = resolveOrg(userData?.organizations) as any
+  if (orgData?.features?.surveys === false) redirect('/dashboard')
 
   return (
     <AnalyticsDashboard

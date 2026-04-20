@@ -24,6 +24,7 @@ interface Props {
   logoUrl?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
+  features?: Record<string, boolean>
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean }
 }
 
@@ -46,7 +47,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
-export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsEnabled, user }: Props) {
+export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsEnabled, features, user }: Props) {
   const router = useRouter()
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
@@ -178,6 +179,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
         fullName={user.fullName}
         analyzeEnabled={analyzeEnabled}
         campaignsEnabled={campaignsEnabled}
+        features={features}
         currentPage="townhall"
       />
 
