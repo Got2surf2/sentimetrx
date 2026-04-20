@@ -679,19 +679,22 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
             {sortedThemes.map(function(ts) {
               var ti = compStats!.themeStats.indexOf(ts)
               var pal = themeColors[ti] || THEME_PALETTE[0]
-              var perGroupSorted = ts.perGroup.slice().sort(function(a, b) { return b.mentionRate - a.mentionRate })
-              var maxShare = perGroupSorted.reduce(function(m, g) { return Math.max(m, g.mentionRate) }, 1)
+              var perGroupSorted = ts.perGroup.slice().sort(function(a, b) { return b.count - a.count })
+              var maxShare = ts.totalMatches > 0 ? perGroupSorted.reduce(function(m, g) { return Math.max(m, Math.round(g.count / ts.totalMatches * 100)) }, 1) : 1
               var themeObj = themes.themes.find(function(t) { return t.id === ts.themeId })
               return (
                 <div key={ts.themeId} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '16px 18px', marginBottom: 12, borderLeft: '4px solid ' + pal.border }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: T.text, flex: 1 }}>{ts.themeName}</span>
-                    <span style={{ fontSize: 11, color: T.textMute }}>{ts.totalMatches.toLocaleString()} total matches</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: T.text, flex: 1 }}>{ts.themeName}
+                      <span style={{ fontSize: 12, fontWeight: 400, color: T.textMute, marginLeft: 6 }}>({compStats!.totalRows > 0 ? Math.round(ts.totalMatches / compStats!.totalRows * 100) : 0}% of dataset {'\u00B7'} {ts.totalMatches.toLocaleString()} responses)</span>
+                    </span>
                     {themeObj && <button onClick={function() { onDrillTheme(themeObj!) }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>View comments {'\u2192'}</button>}
                   </div>
                   {perGroupSorted.map(function(g) {
                     var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
-                    return <CompareBar key={g.group} label={g.group} pct={g.mentionRate} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} />
+                    // By Theme: percentage relative to theme total, not group total
+                    var themePct = ts.totalMatches > 0 ? Math.round(g.count / ts.totalMatches * 100) : 0
+                    return <CompareBar key={g.group} label={g.group} pct={themePct} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} />
                   })}
                 </div>
               )
