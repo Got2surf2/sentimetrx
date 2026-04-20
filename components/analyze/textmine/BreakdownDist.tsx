@@ -27,8 +27,16 @@ export default function BreakdownDist({
   const field = activeField || themeModel.fieldName
 
   const selVals = useMemo(function() {
-    return Array.from(selectedValues).sort()
-  }, [selectedValues])
+    // Sort by frequency (most common first) instead of alphabetical
+    var counts: Record<string, number> = {}
+    var vals = Array.from(selectedValues)
+    vals.forEach(function(v) { counts[v] = 0 })
+    parsedData.forEach(function(r) {
+      var v = String(r[breakdownField] ?? '')
+      if (counts[v] !== undefined) counts[v]++
+    })
+    return vals.sort(function(a, b) { return (counts[b] || 0) - (counts[a] || 0) })
+  }, [selectedValues, parsedData, breakdownField])
 
   const sortedThemes = useMemo(function() {
     return [...themeModel.themes].sort(function(a, b) { return b.count - a.count })
