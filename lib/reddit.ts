@@ -4,7 +4,7 @@
 
 const USER_AGENT = 'sentimetrx:reddit-downloader:v1.0 (by /u/sentimetrx)'
 const BASE = 'https://old.reddit.com'
-const RATE_DELAY = 1200 // ms between requests to respect rate limits
+const RATE_DELAY = 2000 // ms between requests — unauthenticated needs more breathing room
 
 let lastRequest = 0
 
@@ -18,15 +18,11 @@ async function throttle(): Promise<void> {
 async function redditGet(path: string): Promise<any> {
   await throttle()
   const url = `${BASE}${path}`
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT },
-  })
-  if (res.status === 429) {
-    // Rate limited — wait and retry once
-    await new Promise(function(r) { setTimeout(r, 3000) })
-    const retry = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
-    if (!retry.ok) throw new Error(`Reddit API ${retry.status}: ${path}`)
-    return retry.json()
+  const delays = [5000, 10000, 15000] // progressive backoff
+  let res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+  for (let i = 0; i < delays.length && res.status === 429; i++) {
+    await new Promise(function(r) { setTimeout(r, delays[i]) })
+    res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
   }
   if (!res.ok) throw new Error(`Reddit API ${res.status}: ${path}`)
   return res.json()
