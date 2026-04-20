@@ -621,7 +621,15 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
       {compStats && breakdownFields.length > 0 && (function() {
         if (viewMode === 'group') {
           var groupNames = compStats!.groupStats.map(function(g) { return g.group })
-          var orderedNames = smartAxes ? smartOrder(groupNames).reverse() : groupNames.slice().sort(function(a, b) { return a.localeCompare(b) })
+          var isSignalTierGroup = breakdownFields.length === 1 && breakdownFields[0] === 'signal_tier'
+          var orderedNames: string[]
+          if (isSignalTierGroup) {
+            var isReddit = groupNames.some(function(n) { return n === 'Mainstream' || n === 'Controversial' || n === 'Fringe' || n === 'Noise' })
+            var tierList = isReddit ? SIGNAL_TIER_ORDER_REDDIT : SIGNAL_TIER_ORDER_SUBSTACK
+            orderedNames = tierList.filter(function(t) { return groupNames.indexOf(t) >= 0 })
+          } else {
+            orderedNames = smartAxes ? smartOrder(groupNames).reverse() : groupNames.slice().sort(function(a, b) { return a.localeCompare(b) })
+          }
           var groupMap: Record<string, typeof compStats.groupStats[0]> = {}
           compStats!.groupStats.forEach(function(g) { groupMap[g.group] = g })
           var sortedGroups = orderedNames.map(function(n) { return groupMap[n] }).filter(Boolean)

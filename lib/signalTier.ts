@@ -3,6 +3,12 @@
 // Injects a 'signal_tier' categorical field on each row based on
 // per-thread/post percentile ranking of score/likes.
 
+// Canonical display order for signal tiers (highest engagement first)
+export var SIGNAL_TIER_ORDER_SUBSTACK = ['Resonant', 'Discussed', 'Low Engagement', 'Ignored']
+export var SIGNAL_TIER_ORDER_REDDIT = ['Mainstream', 'Controversial', 'Fringe', 'Noise']
+// Combined set for detection
+export var SIGNAL_TIER_ORDER = [...SIGNAL_TIER_ORDER_SUBSTACK, ...SIGNAL_TIER_ORDER_REDDIT]
+
 export interface SignalCutoffs {
   mainstream: number  // default 70
   noise: number       // default 30
