@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -116,9 +117,9 @@ export async function POST(req: Request) {
   let signalNote = ''
 
   if (dataset.source === 'reddit' && filteredRows.length > 0) {
-    // Per-thread percentile classification (same logic as SignalsView)
-    const MAINSTREAM_CUTOFF = 70
-    const NOISE_CUTOFF = 30
+    // Per-thread percentile classification (same cutoffs as signalTier.ts)
+    const MAINSTREAM_CUTOFF = DEFAULT_SIGNAL_CUTOFFS.mainstream
+    const NOISE_CUTOFF = DEFAULT_SIGNAL_CUTOFFS.noise
     const threads: Record<string, { score: number; row: Record<string, unknown> }[]> = {}
     filteredRows.forEach(function(r) {
       const tid = String(r.thread_id || 'unknown')

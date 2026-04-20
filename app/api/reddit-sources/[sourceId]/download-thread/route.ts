@@ -6,6 +6,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { fetchThreadComments, commentToRow, type RedditComment } from '@/lib/reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -110,7 +111,7 @@ export async function POST(req: Request, { params }: Params) {
           batch_index: nextBatchIndex, source_ref: 'reddit:' + syncTimestamp,
         })
         var flatRows = chunk.map(function(r, j) {
-          return { dataset_id: datasetId, row_index: nextBatchIndex * 200 + j, data: r }
+          return { dataset_id: datasetId, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
         })
         try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
         currentTotal += chunk.length

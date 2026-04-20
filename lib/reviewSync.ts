@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { submitReviewTask, checkReviewTask, type ReviewTaskRef, type DfsReview } from './dataforseo'
 import { buildGoogleReviewsSchema, enrichSchemaWithStats } from './datasetUtils'
 import { computeAnalytics, computeAnalyticsSQL } from './analyticsCompute'
+import { ROWS_PER_BATCH } from './constants'
 
 export interface SyncResult {
   synced: number
@@ -269,7 +270,7 @@ async function insertReviewRows(service: SupabaseClient, datasetId: string, rows
       batch_index: nextBatchIndex, source_ref: 'google_reviews:' + syncTimestamp,
     })
     const flatRows = chunk.map(function(r, j) {
-      return { dataset_id: datasetId, row_index: nextBatchIndex * 200 + j, data: r }
+      return { dataset_id: datasetId, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
     })
     try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
     currentTotal += chunk.length

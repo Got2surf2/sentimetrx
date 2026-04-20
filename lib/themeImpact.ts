@@ -2,21 +2,8 @@
 // Shared theme impact / key driver analysis.
 // Client-safe — works in both browser (ChartsModule) and server (PPTX export).
 
-import { expandLemma } from './lemmas'
+import { buildKwRegex } from './themeUtils'
 import { olsRegression } from './statsUtils'
-
-function buildKwRegex(kw: string): RegExp {
-  const forms = expandLemma(kw)
-  const seen: Record<string, boolean> = {}
-  const alts: string[] = []
-  for (let i = 0; i < forms.length; i++) {
-    const alt = forms[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
-    if (!seen[alt]) { seen[alt] = true; alts.push(alt) }
-  }
-  const escOrig = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
-  if (!seen[escOrig]) alts.push(escOrig)
-  return new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'i')
-}
 
 export interface ThemeImpactInput {
   themes: { id: string; name: string; keywords: string[] }[]

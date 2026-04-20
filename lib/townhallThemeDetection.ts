@@ -3,15 +3,8 @@
 // Analyzes accumulated English responses to discover emerging themes.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
+import { buildKwRegex, lexiconScore, classifySentiment, evenSample } from '@/lib/themeUtils'
 import { callAI } from '@/lib/ai'
-
-// Even-sample N items from an array
-function evenSample<T>(arr: T[], n: number): T[] {
-  if (arr.length <= n) return arr
-  const step = arr.length / n
-  return Array.from({ length: n }, (_, i) => arr[Math.floor(i * step)])
-}
 
 // Check keyword overlap ratio between two keyword sets
 function keywordOverlap(existing: string[], candidate: string[]): number {

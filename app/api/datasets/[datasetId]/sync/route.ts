@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic  = 'force-dynamic'
@@ -102,7 +103,7 @@ export async function POST(req: Request, { params }: Params) {
 
     // Also insert into flat table
     const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
-      return { dataset_id: dataset.id, row_index: nextIndex * 200 + i, data: r }
+      return { dataset_id: dataset.id, row_index: nextIndex * ROWS_PER_BATCH + i, data: r }
     })
     if (flatRows.length > 0) {
     try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}

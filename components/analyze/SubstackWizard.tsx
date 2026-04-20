@@ -6,23 +6,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import type { SubstackPost } from '@/lib/substack'
 
 const HERMES = '#E8632A'
-
-interface SubstackPost {
-  id: number
-  title: string
-  subtitle: string
-  slug: string
-  post_date: string
-  author_name: string
-  reaction_count: number
-  comment_count: number
-  restacks: number
-  wordcount: number
-  audience: string
-  canonical_url: string
-}
 
 interface Publication {
   name: string

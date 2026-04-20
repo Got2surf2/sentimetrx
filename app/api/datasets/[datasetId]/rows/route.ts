@@ -14,6 +14,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30   // allow 30s for large datasets in bulk mode
@@ -255,7 +256,7 @@ export async function POST(req: Request, { params }: Params) {
 
   // Also insert into flat table for fast queries
   const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
-    return { dataset_id: params.datasetId, row_index: nextIndex * 200 + i, data: r }
+    return { dataset_id: params.datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r }
   })
   if (flatRows.length > 0) {
     try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
@@ -303,11 +304,11 @@ export async function DELETE(req: Request, { params }: Params) {
 
   // Delete from flat table (each batch used row_index = batchIndex * 200 + i)
   for (var bi = 0; bi < batchIndexes.length; bi++) {
-    var startIdx = batchIndexes[bi] * 200
+    var startIdx = batchIndexes[bi] * ROWS_PER_BATCH
     await service.from('dataset_rows_flat').delete()
       .eq('dataset_id', params.datasetId)
       .gte('row_index', startIdx)
-      .lt('row_index', startIdx + 200)
+      .lt('row_index', startIdx + ROWS_PER_BATCH)
   }
 
   // Recalculate row count

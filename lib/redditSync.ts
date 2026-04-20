@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchThreadComments, commentToRow, type RedditComment } from './reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from './datasetUtils'
 import { computeAnalytics, computeAnalyticsSQL } from './analyticsCompute'
+import { ROWS_PER_BATCH } from './constants'
 
 export interface RedditSyncResult {
   total_comments: number
@@ -174,7 +175,7 @@ async function insertRedditRows(service: SupabaseClient, datasetId: string, rows
       batch_index: nextBatchIndex, source_ref: 'reddit:' + syncTimestamp,
     })
     const flatRows = chunk.map(function(r, j) {
-      return { dataset_id: datasetId, row_index: nextBatchIndex * 200 + j, data: r }
+      return { dataset_id: datasetId, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
     })
     try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
     currentTotal += chunk.length

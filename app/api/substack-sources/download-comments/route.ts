@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { fetchPostComments, commentToRow as substackCommentToRow } from '@/lib/substack'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
         batch_index: nextBatchIndex, source_ref: 'substack:' + syncTimestamp,
       })
       var flatRows = chunk.map(function(r, j) {
-        return { dataset_id: dataset_id, row_index: nextBatchIndex * 200 + j, data: r }
+        return { dataset_id: dataset_id, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
       })
       try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
       currentTotal += chunk.length

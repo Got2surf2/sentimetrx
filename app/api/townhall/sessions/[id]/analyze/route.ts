@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { buildTownHallSchema, emptyThemeModel } from '@/lib/datasetUtils'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -148,7 +149,7 @@ export async function POST(_req: Request, { params }: Params) {
 
   // Insert flat rows
   const flatRows = rows.map(function(r, i) {
-    return { dataset_id: datasetId, row_index: nextIndex * 200 + i, data: r }
+    return { dataset_id: datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r }
   })
   if (flatRows.length > 0) {
     try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}

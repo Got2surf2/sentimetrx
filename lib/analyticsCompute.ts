@@ -19,7 +19,7 @@ import type {
 } from './analyzeTypes'
 
 // How many dataset_rows records to fetch per DB round-trip.
-// Each record holds up to 200 data rows, so 500 records = up to 100K rows per pass.
+// Each record holds up to ROWS_PER_BATCH (200) data rows, so 500 records = up to 100K rows per pass.
 // For 500K rows this means ~5 DB round-trips instead of 50.
 const BATCH_PAGE_SIZE = 500
 

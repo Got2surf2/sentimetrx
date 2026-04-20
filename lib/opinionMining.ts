@@ -31,6 +31,9 @@ const NEUTRAL_OPINIONS = new Set([
   'moderate','mixed','fair','adequate','acceptable','sufficient','ordinary','average',
 ])
 
+// Conjunctions that block cross-phrase opinion pairing
+var CONJUNCTIONS = new Set(['and', 'or', 'nor', 'also', 'plus', 'with'])
+
 // Extra stop words to exclude when looking for nouns near an adjective
 const EXTRA_STOPS = new Set([
   'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from',
@@ -106,7 +109,6 @@ export function extractOpinions(
 
         for (const clause of targetClauses) {
           const words = clause.toLowerCase().replace(/[^a-z\s'-]/g, '').split(/\s+/)
-          var CONJUNCTIONS = new Set(['and', 'or', 'nor', 'also', 'plus', 'with'])
           for (let i = 0; i < words.length; i++) {
             if (words[i] !== target) continue
             const start = Math.max(0, i - windowSize)
