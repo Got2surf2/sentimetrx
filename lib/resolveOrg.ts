@@ -2,8 +2,17 @@ import type { ModuleFeatures, MODULE_KEYS } from './types'
 
 export function resolveOrg(raw: unknown): { is_admin_org?: boolean; logo_url?: string; name?: string; features?: any } | null {
   if (!raw) return null
-  const org = Array.isArray(raw) ? raw[0] : raw
-  return org ?? null
+  const org = (Array.isArray(raw) ? raw[0] : raw) as any
+  if (!org) return null
+  // Admin org gets all features enabled automatically
+  if (org.is_admin_org) {
+    org.features = {
+      ...org.features,
+      surveys: true, analyze: true, googleReviews: true, reddit: true,
+      substack: true, townhall: true, campaigns: true, bots: true,
+    }
+  }
+  return org
 }
 
 /** Check if a specific module is enabled for an org (or org+user). */
