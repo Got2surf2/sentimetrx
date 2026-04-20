@@ -691,8 +691,9 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     {themeObj && <button onClick={function() { onDrillTheme(themeObj!) }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>View comments {'\u2192'}</button>}
                   </div>
                   {perGroupSorted.map(function(g) {
-                    var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
-                    // By Theme: percentage relative to theme total, not group total
+                    // By Theme: is this group over/under-represented within this theme
+                    // compared to its share of the overall dataset?
+                    var sig = sigTest(g.count, ts.totalMatches, g.groupTotal, compStats!.totalRows)
                     var themePct = ts.totalMatches > 0 ? Math.round(g.count / ts.totalMatches * 100) : 0
                     return <CompareBar key={g.group} label={g.group} pct={themePct} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} />
                   })}
