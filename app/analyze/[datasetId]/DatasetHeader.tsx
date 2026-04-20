@@ -33,11 +33,12 @@ interface Props {
 var HERMES = '#E8632A'
 
 var TABS = [
-  { key: 'textmine', label: 'TextMine', icon: '\uD83D\uDCDD' },
-  { key: 'charts', label: 'Charts', icon: '\uD83D\uDCCA' },
-  { key: 'stats', label: 'Statistics', icon: '\u03A3' },
-  { key: 'settings', label: 'Schema', icon: '\u2699' },
+  { key: 'textmine', label: 'TextMine', icon: '\uD83D\uDCDD', collapse: 1 },
+  { key: 'charts', label: 'Charts', icon: '\uD83D\uDCCA', collapse: 2 },
+  { key: 'stats', label: 'Statistics', icon: '\u03A3', collapse: 3 },
+  { key: 'settings', label: 'Schema', icon: '\u2699', collapse: 4 },
 ]
+// Filters collapse: 5, Ask Ana collapse: 6 (rightmost collapses first)
 
 export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
   var router = useRouter()
@@ -114,9 +115,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
       )}
       <style>{'\
         .ana-tab { padding: 0 14px; transition: all .12s; }\
-        @media (max-width: 1100px) { .ana-tab { padding: 0 10px; font-size: 12px !important; } }\
-        @media (max-width: 900px) { .ana-tab { padding: 0 7px; font-size: 11px !important; } }\
-        @media (max-width: 750px) { .ana-tab-icon { display: none; } }\
+        .ana-tab .ana-lbl { transition: all .15s; }\
+        @media (max-width: 1200px) { .ana-c6 .ana-lbl { display: none; } .ana-c6 { padding: 0 10px; } }\
+        @media (max-width: 1100px) { .ana-c5 .ana-lbl { display: none; } .ana-c5 { padding: 0 10px; } }\
+        @media (max-width: 1000px) { .ana-c4 .ana-lbl { display: none; } .ana-c4 { padding: 0 10px; } }\
+        @media (max-width: 920px)  { .ana-c3 .ana-lbl { display: none; } .ana-c3 { padding: 0 10px; } }\
+        @media (max-width: 850px)  { .ana-c2 .ana-lbl { display: none; } .ana-c2 { padding: 0 10px; } }\
+        @media (max-width: 780px)  { .ana-c1 .ana-lbl { display: none; } .ana-c1 { padding: 0 10px; } }\
       '}</style>
       <div style={{ background: HERMES, height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
 
@@ -130,12 +135,12 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
           </div>
 
-          {/* Module tabs — shrink padding responsively */}
+          {/* Module tabs — progressively collapse labels right-to-left */}
           {TABS.map(function(tab) {
             var isActive = activeTab === tab.key
             var href = '/analyze/' + dataset.id + '/' + tab.key
             return (
-              <Link key={tab.key} href={href} className="ana-tab"
+              <Link key={tab.key} href={href} className={'ana-tab ana-c' + tab.collapse} title={tab.label}
                 style={{
                   height: '100%', display: 'flex', alignItems: 'center',
                   fontSize: 13, fontWeight: isActive ? 700 : 500, textDecoration: 'none',
@@ -144,15 +149,15 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                   borderBottom: isActive ? '3px solid white' : '3px solid transparent',
                   whiteSpace: 'nowrap', flexShrink: 0,
                 }}>
-                <span className="ana-tab-icon" style={{ marginRight: 5 }}>{tab.icon}</span>{tab.label}
+                <span>{tab.icon}</span><span className="ana-lbl" style={{ marginLeft: 5 }}>{tab.label}</span>
               </Link>
             )
           })}
 
           {/* Filters button */}
-          <button onClick={onFilterClick} className="ana-tab"
+          <button onClick={onFilterClick} className="ana-tab ana-c5" title={'Filters' + (filterCount > 0 ? ' (' + filterCount + ')' : '')}
             style={{
-              height: '100%', display: 'flex', alignItems: 'center', gap: 6,
+              height: '100%', display: 'flex', alignItems: 'center', gap: 5,
               fontSize: 13, fontWeight: filterCount > 0 ? 700 : 500,
               color: filterCount > 0 ? 'white' : 'rgba(255,255,255,.65)',
               background: filterCount > 0 ? 'rgba(255,255,255,.18)' : 'transparent',
@@ -160,21 +165,21 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
             }}>
             {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
-            Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
+            <span>{'\u25BD'}</span><span className="ana-lbl">Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}</span>
           </button>
 
           {/* Ask Ana */}
           {(dataset.source === 'reddit' || dataset.source === 'townhall' || dataset.source === 'substack') && aiEnabled && onAskAna && (
-            <button onClick={onAskAna} className="ana-tab"
+            <button onClick={onAskAna} className="ana-tab ana-c6" title="Ask Ana"
               style={{
-                height: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                height: '100%', display: 'flex', alignItems: 'center', gap: 5,
                 fontSize: 13, fontWeight: askAnaOpen ? 700 : 500,
                 color: askAnaOpen ? 'white' : 'rgba(255,255,255,.65)',
                 background: askAnaOpen ? 'rgba(255,255,255,.18)' : 'transparent',
                 border: 'none', borderBottom: askAnaOpen ? '3px solid white' : '3px solid transparent',
                 cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
               }}>
-              {'\uD83D\uDCAC'} Ask Ana
+              <span>{'\uD83D\uDCAC'}</span><span className="ana-lbl">Ask Ana</span>
             </button>
           )}
         </div>
