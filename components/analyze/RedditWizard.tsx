@@ -350,9 +350,18 @@ export default function RedditWizard({ onBack }: Props) {
                 {searching ? 'Loading...' : 'Load Posts'}
               </button>
             </div>
+            {/* Centered loading overlay — matches download style */}
             {searching && (
-              <div className="flex items-center gap-3 py-2">
-                <LottieLoader size={56} message={'Loading r/' + keyword.trim().replace(/^r\//, '') + '...'} />
+              <div style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 2000,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div style={{
+                  background: 'white', borderRadius: 20, padding: '40px 36px', textAlign: 'center',
+                  boxShadow: '0 24px 64px rgba(0,0,0,.28)', maxWidth: 440, width: '90%',
+                }}>
+                  <LottieLoader size={96} message={'Loading r/' + keyword.trim().replace(/^r\//, '') + '...'} />
+                </div>
               </div>
             )}
           </div>
