@@ -2,11 +2,11 @@
 
 // app/analyze/[datasetId]/DatasetHeader.tsx
 // Ana-style header with two zones:
-//   LEFT (flexible):  back + brand → module tabs → Filters → Ask Ana → action buttons (or More dropdown)
-//   RIGHT (fixed):    source pill → row count/sync → AI toggle
-// The left zone shrinks and action buttons collapse into "More" when space is tight.
+//   LEFT (flexible):  back + brand → module tabs → Filters → Ask Ana (tabs shrink padding responsively)
+//   RIGHT (fixed):    More dropdown → source pill → row count/sync → AI toggle
+// Action items (StoryTime, Share Analytics, Save) always live in the More dropdown.
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
@@ -49,32 +49,6 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
   var [showMore,    setShowMore]    = useState(false)
 
-  // Overflow: measure the left zone's inner content vs available width
-  var leftZoneRef = useRef<HTMLDivElement>(null)
-  var leftInnerRef = useRef<HTMLDivElement>(null)
-  var [overflowing, setOverflowing] = useState(false)
-
-  var checkOverflow = useCallback(function() {
-    var zone = leftZoneRef.current
-    var inner = leftInnerRef.current
-    if (!zone || !inner) return
-    setOverflowing(inner.scrollWidth > zone.clientWidth + 2)
-  }, [])
-
-  useEffect(function() {
-    checkOverflow()
-    window.addEventListener('resize', checkOverflow)
-    var observer: ResizeObserver | null = null
-    if (leftZoneRef.current) {
-      observer = new ResizeObserver(checkOverflow)
-      observer.observe(leftZoneRef.current)
-    }
-    return function() { window.removeEventListener('resize', checkOverflow); if (observer) observer.disconnect() }
-  }, [checkOverflow])
-
-  // Re-check when askAnaOpen changes
-  useEffect(function() { setTimeout(checkOverflow, 300) }, [askAnaOpen, checkOverflow])
-
   useEffect(function() {
     try {
       var k = localStorage.getItem('sentimetrx_tm_apikey')
@@ -109,7 +83,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     } catch {} finally { setReviewSyncing(false) }
   }
 
-  // Items that go into "More" dropdown when overflowing
+  // Items in the "More" dropdown
   var moreItems = [
     { label: '\uD83C\uDFAC StoryTime', action: function() { setShowExport(true); setShowMore(false) } },
     { label: '\uD83D\uDCCA Share Analytics', action: function() { setShowShareAnalytics(true); setShowMore(false) } },
@@ -138,150 +112,115 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           onClose={function() { setShowShareAnalytics(false) }}
         />
       )}
+      <style>{'\
+        .ana-tab { padding: 0 14px; transition: all .12s; }\
+        @media (max-width: 1100px) { .ana-tab { padding: 0 10px; font-size: 12px !important; } }\
+        @media (max-width: 900px) { .ana-tab { padding: 0 7px; font-size: 11px !important; } }\
+        @media (max-width: 750px) { .ana-tab-icon { display: none; } }\
+      '}</style>
       <div style={{ background: HERMES, height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
 
-        {/* ═══ LEFT ZONE: flexible, clips when narrow ═══ */}
-        <div ref={leftZoneRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', alignItems: 'stretch' }}>
-          <div ref={leftInnerRef} style={{ display: 'flex', alignItems: 'stretch', whiteSpace: 'nowrap' }}>
+        {/* ═══ LEFT ZONE: flexible, tabs shrink via CSS ═══ */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}>
 
-            {/* Back + Brand */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 0 20px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
-              <Link href="/analyze" style={{ fontSize: 14, color: 'rgba(255,255,255,.7)', textDecoration: 'none', fontWeight: 600 }}>{'\u2190'}</Link>
-              <div style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: 'white' }}>A</div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
-            </div>
-
-            {/* Module tabs */}
-            {TABS.map(function(tab) {
-              var isActive = activeTab === tab.key
-              var href = '/analyze/' + dataset.id + '/' + tab.key
-              return (
-                <Link key={tab.key} href={href}
-                  style={{
-                    padding: '0 16px', height: '100%', display: 'flex', alignItems: 'center',
-                    fontSize: 13, fontWeight: isActive ? 700 : 500, textDecoration: 'none',
-                    color: isActive ? 'white' : 'rgba(255,255,255,.65)',
-                    background: isActive ? 'rgba(255,255,255,.18)' : 'transparent',
-                    borderBottom: isActive ? '3px solid white' : '3px solid transparent',
-                    transition: 'all .12s',
-                  }}>
-                  <span style={{ marginRight: 5 }}>{tab.icon}</span>{tab.label}
-                </Link>
-              )
-            })}
-
-            {/* Filters button */}
-            <button onClick={onFilterClick}
-              style={{
-                padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                fontSize: 13, fontWeight: filterCount > 0 ? 700 : 500,
-                color: filterCount > 0 ? 'white' : 'rgba(255,255,255,.65)',
-                background: filterCount > 0 ? 'rgba(255,255,255,.18)' : 'transparent',
-                border: 'none', borderBottom: filterCount > 0 ? '3px solid white' : '3px solid transparent',
-                cursor: 'pointer', transition: 'all .15s',
-              }}>
-              {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
-              Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
-            </button>
-
-            {/* Ask Ana */}
-            {(dataset.source === 'reddit' || dataset.source === 'townhall' || dataset.source === 'substack') && aiEnabled && onAskAna && (
-              <button onClick={onAskAna}
-                style={{
-                  padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                  fontSize: 13, fontWeight: askAnaOpen ? 700 : 500,
-                  color: askAnaOpen ? 'white' : 'rgba(255,255,255,.65)',
-                  background: askAnaOpen ? 'rgba(255,255,255,.18)' : 'transparent',
-                  border: 'none', borderBottom: askAnaOpen ? '3px solid white' : '3px solid transparent',
-                  cursor: 'pointer', transition: 'all .15s',
-                }}>
-                {'\uD83D\uDCAC'} Ask Ana
-              </button>
-            )}
-
-            {/* Action buttons — hidden when overflowing */}
-            {!overflowing && (
-              <>
-                <button onClick={function() { setShowExport(true) }}
-                  style={{
-                    padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.6)',
-                    background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
-                    cursor: 'pointer',
-                  }}>
-                  {'\uD83C\uDFAC'} StoryTime
-                </button>
-                <button onClick={function() { setShowShareAnalytics(true) }}
-                  style={{
-                    padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 600, color: filterCount > 0 ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.6)',
-                    background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
-                    cursor: 'pointer',
-                  }}>
-                  {'\uD83D\uDCCA'} Share Analytics
-                </button>
-                {onSaveSession && (
-                  <button onClick={onSaveSession} disabled={sessionSaving}
-                    style={{
-                      padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-                      fontSize: 12, fontWeight: 600,
-                      color: sessionSaved ? '#4ade80' : 'rgba(255,255,255,.6)',
-                      background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
-                      cursor: sessionSaving ? 'wait' : 'pointer',
-                    }}>
-                    {sessionSaving ? '\u23F3' : sessionSaved ? '\u2714' : '\uD83D\uDCBE'} {sessionSaving ? 'Saving...' : sessionSaved ? 'Saved' : 'Save Session'}
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* More dropdown — visible when overflowing */}
-            {overflowing && (
-              <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                <button onClick={function() { setShowMore(!showMore) }}
-                  style={{
-                    padding: '0 14px', height: '100%', display: 'flex', alignItems: 'center', gap: 4,
-                    fontSize: 12, fontWeight: 700, color: 'white',
-                    background: showMore ? 'rgba(255,255,255,.18)' : 'transparent',
-                    border: 'none', cursor: 'pointer',
-                  }}>
-                  {'\u2026'} More
-                </button>
-                {showMore && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={function() { setShowMore(false) }} />
-                    <div style={{
-                      position: 'absolute', top: 48, right: 0, zIndex: 100,
-                      background: 'white', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.2)',
-                      border: '1px solid #e5e7eb', minWidth: 180, overflow: 'hidden',
-                    }}>
-                      {moreItems.map(function(item, i) {
-                        return (
-                          <button key={i} onClick={item.action} disabled={item.disabled}
-                            style={{
-                              display: 'block', width: '100%', textAlign: 'left',
-                              padding: '10px 16px', fontSize: 13, fontWeight: 600,
-                              color: '#374151', background: 'transparent', border: 'none',
-                              cursor: item.disabled ? 'wait' : 'pointer',
-                              borderBottom: i < moreItems.length - 1 ? '1px solid #f3f4f6' : 'none',
-                            }}
-                            onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.background = '#f9fafb' }}
-                            onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
-                            {item.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
+          {/* Back + Brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 0 20px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
+            <Link href="/analyze" style={{ fontSize: 14, color: 'rgba(255,255,255,.7)', textDecoration: 'none', fontWeight: 600 }}>{'\u2190'}</Link>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: 'white' }}>A</div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'white', letterSpacing: '-.3px' }}>Ana</span>
           </div>
+
+          {/* Module tabs — shrink padding responsively */}
+          {TABS.map(function(tab) {
+            var isActive = activeTab === tab.key
+            var href = '/analyze/' + dataset.id + '/' + tab.key
+            return (
+              <Link key={tab.key} href={href} className="ana-tab"
+                style={{
+                  height: '100%', display: 'flex', alignItems: 'center',
+                  fontSize: 13, fontWeight: isActive ? 700 : 500, textDecoration: 'none',
+                  color: isActive ? 'white' : 'rgba(255,255,255,.65)',
+                  background: isActive ? 'rgba(255,255,255,.18)' : 'transparent',
+                  borderBottom: isActive ? '3px solid white' : '3px solid transparent',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}>
+                <span className="ana-tab-icon" style={{ marginRight: 5 }}>{tab.icon}</span>{tab.label}
+              </Link>
+            )
+          })}
+
+          {/* Filters button */}
+          <button onClick={onFilterClick} className="ana-tab"
+            style={{
+              height: '100%', display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 13, fontWeight: filterCount > 0 ? 700 : 500,
+              color: filterCount > 0 ? 'white' : 'rgba(255,255,255,.65)',
+              background: filterCount > 0 ? 'rgba(255,255,255,.18)' : 'transparent',
+              border: 'none', borderBottom: filterCount > 0 ? '3px solid white' : '3px solid transparent',
+              cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+            {filterCount > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />}
+            Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}
+          </button>
+
+          {/* Ask Ana */}
+          {(dataset.source === 'reddit' || dataset.source === 'townhall' || dataset.source === 'substack') && aiEnabled && onAskAna && (
+            <button onClick={onAskAna} className="ana-tab"
+              style={{
+                height: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 13, fontWeight: askAnaOpen ? 700 : 500,
+                color: askAnaOpen ? 'white' : 'rgba(255,255,255,.65)',
+                background: askAnaOpen ? 'rgba(255,255,255,.18)' : 'transparent',
+                border: 'none', borderBottom: askAnaOpen ? '3px solid white' : '3px solid transparent',
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+              }}>
+              {'\uD83D\uDCAC'} Ask Ana
+            </button>
+          )}
         </div>
 
         {/* ═══ RIGHT ZONE: fixed, always visible ═══ */}
         <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,.15)' }}>
+
+          {/* More dropdown — always visible, always clickable */}
+          <div style={{ display: 'flex', alignItems: 'center', position: 'relative', borderRight: '1px solid rgba(255,255,255,.15)' }}>
+            <button onClick={function() { setShowMore(!showMore) }}
+              style={{
+                padding: '0 12px', height: '100%', display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 12, fontWeight: 700, color: 'white',
+                background: showMore ? 'rgba(255,255,255,.18)' : 'transparent',
+                border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>
+              {'\u2026'} More
+            </button>
+            {showMore && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={function() { setShowMore(false) }} />
+                <div style={{
+                  position: 'absolute', top: 48, right: 0, zIndex: 100,
+                  background: 'white', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.2)',
+                  border: '1px solid #e5e7eb', minWidth: 180, overflow: 'hidden',
+                }}>
+                  {moreItems.map(function(item, i) {
+                    return (
+                      <button key={i} onClick={item.action} disabled={item.disabled}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '10px 16px', fontSize: 13, fontWeight: 600,
+                          color: '#374151', background: 'transparent', border: 'none',
+                          cursor: item.disabled ? 'wait' : 'pointer',
+                          borderBottom: i < moreItems.length - 1 ? '1px solid #f3f4f6' : 'none',
+                        }}
+                        onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.background = '#f9fafb' }}
+                        onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
+                        {item.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Source pill */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
