@@ -37,12 +37,15 @@ export async function POST(_req: Request, { params }: Params) {
   if (session.org_id !== userData.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Check for existing dataset linked to this TH session
-  const { data: existing } = await service
+  // TH datasets use description to store the session link (study_id FK references studies table)
+  const { data: existingArr } = await service
     .from('datasets')
     .select('id, row_count, last_synced_at')
     .eq('source', 'townhall')
-    .eq('study_id', sessionId)  // reuse study_id FK for the session link
-    .single()
+    .eq('org_id', userData.org_id)
+    .like('description', 'th:' + sessionId + '%')
+    .limit(1)
+  const existing = existingArr && existingArr.length > 0 ? existingArr[0] : null
 
   let datasetId: string
   let created = false
@@ -55,8 +58,9 @@ export async function POST(_req: Request, { params }: Params) {
       .from('datasets')
       .insert({
         name: session.name + ' \u2014 Analytics',
+        description: 'th:' + sessionId,  // link to TH session (not study_id FK)
         source: 'townhall',
-        study_id: sessionId,  // reuse study_id FK for TH session link
+        study_id: null,
         org_id: userData.org_id,
         created_by: user.id,
         visibility: 'private',
