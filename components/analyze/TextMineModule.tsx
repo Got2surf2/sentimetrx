@@ -508,15 +508,19 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   var sigLeaveTimer = useRef<any>(null)
   var [sigPopRect, setSigPopRect] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
 
-  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string; avgRating?: number | null; overallRatAvg?: number; ratingSig?: { dir: 'higher' | 'lower' | 'ns'; p: number } | null }) {
+  var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string; avgRating?: number | null; overallRatAvg?: number; ratingSig?: { dir: 'higher' | 'lower' | 'ns'; p: number } | null; byTheme?: boolean }) {
     var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
     var sigId = (props.groupName || '') + '::' + (props.themeName || '') + '::' + props.label
     var grpLabel = props.groupName || props.label
     var thLabel = props.themeName || props.label
     var plainEnglish = props.sig ? (
-      props.sig.dir === 'over'
-        ? '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly higher than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably more likely to discuss "' + thLabel + '".'
-        : '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly lower than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably less likely to discuss "' + thLabel + '".'
+      props.byTheme
+        ? (props.sig.dir === 'over'
+          ? '"' + grpLabel + '" makes up ' + Math.round(props.sig.p1 * 100) + '% of "' + thLabel + '" responses, significantly higher than its ' + Math.round(props.sig.p2 * 100) + '% share of the rest of the dataset (z-score: ' + props.sig.z.toFixed(1) + '). This theme is over-represented in "' + grpLabel + '".'
+          : '"' + grpLabel + '" makes up ' + Math.round(props.sig.p1 * 100) + '% of "' + thLabel + '" responses, significantly lower than its ' + Math.round(props.sig.p2 * 100) + '% share of the rest of the dataset (z-score: ' + props.sig.z.toFixed(1) + '). This theme is under-represented in "' + grpLabel + '".')
+        : (props.sig.dir === 'over'
+          ? '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly higher than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably more likely to discuss "' + thLabel + '".'
+          : '"' + grpLabel + '" mentions "' + thLabel + '" at ' + Math.round(props.sig.p1 * 100) + '%, which is significantly lower than the ' + Math.round(props.sig.p2 * 100) + '% baseline for other groups (z-score: ' + props.sig.z.toFixed(1) + '). This means this segment is notably less likely to discuss "' + thLabel + '".')
     ) : ''
     var ratingPlainEnglish = props.ratingSig && props.avgRating != null ? (
       props.ratingSig.dir === 'higher'
@@ -695,7 +699,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     // compared to its share of the overall dataset?
                     var sig = sigTest(g.count, ts.totalMatches, g.groupTotal, compStats!.totalRows)
                     var themePct = ts.totalMatches > 0 ? Math.round(g.count / ts.totalMatches * 100) : 0
-                    return <CompareBar key={g.group} label={g.group} pct={themePct} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} />
+                    return <CompareBar key={g.group} label={g.group} pct={themePct} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} byTheme={true} />
                   })}
                 </div>
               )
