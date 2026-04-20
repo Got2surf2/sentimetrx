@@ -5,7 +5,7 @@
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { injectSignalTier } from '@/lib/signalTier'
+import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import {
   Theme, ThemeModel, THEME_PALETTE,
@@ -636,7 +636,16 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                       <span style={{ color: T.accent }}>{g.group}</span>
                       <span style={{ fontSize: 12, fontWeight: 400, color: T.textMute, marginLeft: 6 }}>({g.groupPct}% of dataset {'\u00B7'} {g.groupTotal.toLocaleString()} responses)</span>
                     </div>
-                    {themes.themes.map(function(t, ti) {
+                    {themes.themes.slice().sort(function(a, b) {
+                      // Unclassified always last
+                      if (a.name === 'Unclassified' && b.name !== 'Unclassified') return 1
+                      if (b.name === 'Unclassified' && a.name !== 'Unclassified') return -1
+                      // Sort by within-group frequency descending
+                      var aTC = g.themeCounts.find(function(tc) { return tc.themeId === a.id })
+                      var bTC = g.themeCounts.find(function(tc) { return tc.themeId === b.id })
+                      return (bTC ? bTC.count : 0) - (aTC ? aTC.count : 0)
+                    }).map(function(t) {
+                      var ti = themes.themes.indexOf(t)
                       var tc = g.themeCounts.find(function(tc) { return tc.themeId === t.id })
                       var count = tc ? tc.count : 0
                       var ts = compStats!.themeStats.find(function(ts) { return ts.themeId === t.id })
@@ -663,7 +672,18 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
             {sortedThemes.map(function(ts) {
               var ti = compStats!.themeStats.indexOf(ts)
               var pal = themeColors[ti] || THEME_PALETTE[0]
-              var perGroupSorted = ts.perGroup.slice().sort(function(a, b) { return b.count - a.count })
+              // Signal tier breakdown: use canonical order; otherwise sort by count
+              var isSignalTier = breakdownFields.length === 1 && breakdownFields[0] === 'signal_tier'
+              var perGroupSorted = ts.perGroup.slice().sort(function(a, b) {
+                if (isSignalTier) {
+                  var isReddit = ts.perGroup.some(function(g) { return g.group === 'Mainstream' || g.group === 'Controversial' || g.group === 'Fringe' || g.group === 'Noise' })
+                  var tierList = isReddit ? SIGNAL_TIER_ORDER_REDDIT : SIGNAL_TIER_ORDER_SUBSTACK
+                  var ai = tierList.indexOf(a.group); if (ai < 0) ai = 99
+                  var bi = tierList.indexOf(b.group); if (bi < 0) bi = 99
+                  return ai - bi
+                }
+                return b.count - a.count
+              })
               var maxShare = ts.totalMatches > 0 ? perGroupSorted.reduce(function(m, g) { return Math.max(m, Math.round(g.count / ts.totalMatches * 100)) }, 1) : 1
               var themeObj = themes.themes.find(function(t) { return t.id === ts.themeId })
               return (
