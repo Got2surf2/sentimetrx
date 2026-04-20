@@ -44,6 +44,8 @@ export function classifySentiment(pos: number, neg: number, minResponses = 5): '
   return 'mixed'
 }
 
+export type SearchInterestTier = 'high' | 'moderate' | 'low' | null
+
 export interface Theme {
   id: string
   name: string
@@ -59,6 +61,7 @@ export interface Theme {
   ratingDelta?: number     // avgRating - overallAvg
   ratingCount?: number     // rows that matched AND had a valid rating
   keywordRatings?: Record<string, { avg: number; count: number; delta: number }>
+  searchInterest?: SearchInterestTier  // Google search volume tier (Reddit/Substack only)
 }
 
 export interface ThemeModel {

@@ -308,6 +308,39 @@ function parseReviewItem(item: any): DfsReview | null {
 }
 
 // ---------------------------------------------------------------------------
+// Keyword search volume (Google Ads data)
+// ---------------------------------------------------------------------------
+
+import type { SearchInterestTier } from './themeUtils'
+
+export interface SearchVolumeResult {
+  keyword: string
+  searchVolume: number
+}
+
+export function classifySearchInterest(volume: number): SearchInterestTier {
+  if (volume >= 10_000) return 'high'
+  if (volume >= 1_000) return 'moderate'
+  if (volume >= 100) return 'low'
+  return null
+}
+
+/** Fetch monthly search volumes for up to 1000 keywords (US, English). */
+export async function getSearchVolumes(keywords: string[]): Promise<SearchVolumeResult[]> {
+  if (!keywords.length) return []
+  const data = await post('/keywords_data/google_ads/search_volume/live', [{
+    keywords: keywords.slice(0, 1000),
+    location_code: 2840,
+    language_code: 'en',
+  }])
+  const items = data?.tasks?.[0]?.result || []
+  return items.map((item: any) => ({
+    keyword: String(item.keyword || ''),
+    searchVolume: item.search_volume ?? 0,
+  }))
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

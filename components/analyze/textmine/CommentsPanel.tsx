@@ -611,6 +611,13 @@ export default function CommentsPanel({
           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: sentBg(theme.sentiment), color: sentColor(theme.sentiment), border: '1px solid ' + sentColor(theme.sentiment) + '30', fontWeight: 600 }}>
             {theme.sentiment}
           </span>
+          {theme.searchInterest && (
+            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+              background: theme.searchInterest === 'high' ? '#dbeafe' : theme.searchInterest === 'moderate' ? '#fef3c7' : '#f3f4f6',
+              color: theme.searchInterest === 'high' ? '#1d4ed8' : theme.searchInterest === 'moderate' ? '#92400e' : '#6b7280',
+              border: '1px solid ' + (theme.searchInterest === 'high' ? '#93c5fd' : theme.searchInterest === 'moderate' ? '#fcd34d' : '#d1d5db'),
+            }}>{'\uD83D\uDD0D'} {theme.searchInterest === 'high' ? 'Widely Searched' : theme.searchInterest === 'moderate' ? 'Moderately Searched' : 'Niche Topic'}</span>
+          )}
           {/* Color-by field picker */}
           {colorableFields.length > 0 && (
             <select

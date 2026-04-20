@@ -1028,6 +1028,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
         const fields = Array.isArray(field) ? field : (field ? [field] : [])
         if (fields.length > 0) fetchServerThemeCounts(savedThemeModel, fields)
+        // Enrich with search interest if not yet done (catches saved models from before this feature)
+        enrichSearchInterest(savedThemeModel)
       }
       setRowsLoaded(true)
     } catch (e: unknown) {
@@ -1149,6 +1151,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setIsDirty(true)
       // Fetch accurate server-side counts on full dataset
       fetchServerThemeCounts(tm, effectiveFields)
+      // Enrich with Google search interest (Reddit/Substack only)
+      enrichSearchInterest(tm)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
     }
@@ -1174,6 +1178,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setSamplingInfo({ sampled: total, total })
     // Fetch accurate server-side counts on full dataset
     fetchServerThemeCounts(tm, effectiveFields)
+    // Enrich with Google search interest (Reddit/Substack only)
+    enrichSearchInterest(tm)
     setLastRunPct(null)
     setShowThemeEditor(false)
     setSubTab('themes')
@@ -1230,6 +1236,29 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   function handleThemeEditorApply(themeArr: Theme[], libName: string, source: string) {
     applyIndustryThemes(themeArr, libName, source)
     setIsDirty(true)
+  }
+
+  // Enrich themes with Google search interest tiers (Reddit/Substack only, one-time)
+  async function enrichSearchInterest(tm: ThemeModel) {
+    if (datasetSource !== 'reddit' && datasetSource !== 'substack') return
+    if (!tm.themes.length) return
+    // Skip if already enriched
+    if (tm.themes.every(function(t) { return t.searchInterest !== undefined })) return
+    try {
+      var res = await fetch('/api/datasets/' + datasetId + '/search-interest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ themeNames: tm.themes.map(function(t) { return t.name }) }),
+      })
+      if (!res.ok) return
+      var data = await res.json()
+      var interests = data.interests || {}
+      var updated = { ...tm, themes: tm.themes.map(function(t) {
+        return { ...t, searchInterest: interests[t.name] ?? null }
+      })}
+      setThemes(updated)
+      setIsDirty(true)
+    } catch { /* silent — badges are informational */ }
   }
 
   var hasThemes = themes && themes.themes && themes.themes.length > 0
@@ -1613,14 +1642,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 18px rgba(0,0,0,.10)' }}
                                 onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '' }}
                                 style={{ background: T.bgCard, border: '2px solid ' + cardBorder, borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .15s, transform .12s' }}>
-                                {/* Top row: dot + sentiment badge */}
+                                {/* Top row: dot + badges */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: cardBorder, flexShrink: 0 }} />
-                                  {useRatingColor ? (
-                                    <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: ratingColor(normRating(t.avgRating!)) + '18', color: ratingColor(normRating(t.avgRating!)), fontWeight: 700 }}>{'\u2605'} {t.avgRating!.toFixed(1)}</span>
-                                  ) : (
-                                    <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
-                                  )}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                    {t.searchInterest && (
+                                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+                                        background: t.searchInterest === 'high' ? '#dbeafe' : t.searchInterest === 'moderate' ? '#fef3c7' : '#f3f4f6',
+                                        color: t.searchInterest === 'high' ? '#1d4ed8' : t.searchInterest === 'moderate' ? '#92400e' : '#6b7280',
+                                        border: '1px solid ' + (t.searchInterest === 'high' ? '#93c5fd' : t.searchInterest === 'moderate' ? '#fcd34d' : '#d1d5db'),
+                                      }}>{'\uD83D\uDD0D'} {t.searchInterest === 'high' ? 'Widely Searched' : t.searchInterest === 'moderate' ? 'Moderately Searched' : 'Niche Topic'}</span>
+                                    )}
+                                    {useRatingColor ? (
+                                      <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: ratingColor(normRating(t.avgRating!)) + '18', color: ratingColor(normRating(t.avgRating!)), fontWeight: 700 }}>{'\u2605'} {t.avgRating!.toFixed(1)}</span>
+                                    ) : (
+                                      <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
+                                    )}
+                                  </div>
                                 </div>
                                 {/* Theme name */}
                                 <div style={{ fontSize: 15, fontWeight: 800, color: T.text, marginBottom: 4 }}>{t.name}</div>
