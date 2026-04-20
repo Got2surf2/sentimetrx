@@ -42,8 +42,10 @@ export default function SubstackWizard({ onBack }: Props) {
   var [hasMore, setHasMore] = useState(false)
   var [loadingMore, setLoadingMore] = useState(false)
 
-  // Step 2: Select posts
+  // Step 2: Select posts + sort + filter
   var [selected, setSelected] = useState<Set<number>>(new Set())
+  var [sortBy, setSortBy] = useState<'date' | 'comments' | 'likes'>('date')
+  var [postFilter, setPostFilter] = useState('')
 
   // Step 3: Download
   var [datasetName, setDatasetName] = useState('')
@@ -143,8 +145,45 @@ export default function SubstackWizard({ onBack }: Props) {
     })
   }
 
-  function selectAll() { setSelected(new Set(posts.filter(function(p) { return p.comment_count > 0 && p.audience === 'everyone' }).map(function(p) { return p.id }))) }
-  function deselectAll() { setSelected(new Set()) }
+  // Sort posts
+  var sortedPosts = posts.slice().sort(function(a, b) {
+    if (sortBy === 'date') return new Date(b.post_date).getTime() - new Date(a.post_date).getTime()
+    if (sortBy === 'comments') return b.comment_count - a.comment_count
+    return b.reaction_count - a.reaction_count
+  })
+
+  // Filter posts by title
+  var filterLower = postFilter.toLowerCase().trim()
+  var visiblePosts = filterLower ? sortedPosts.filter(function(p) {
+    return p.title.toLowerCase().includes(filterLower) || (p.subtitle || '').toLowerCase().includes(filterLower)
+  }) : sortedPosts
+
+  // Split into large (10+ comments) and smaller
+  var LARGE_THRESHOLD = 10
+  var largePosts = visiblePosts.filter(function(p) { return p.comment_count >= LARGE_THRESHOLD })
+  var smallPosts = visiblePosts.filter(function(p) { return p.comment_count < LARGE_THRESHOLD })
+
+  function selectAll() {
+    var next = new Set(selected)
+    visiblePosts.forEach(function(p) { if (p.comment_count > 0 && p.audience === 'everyone') next.add(p.id) })
+    setSelected(next)
+  }
+  function deselectAll() {
+    if (!filterLower) { setSelected(new Set()); return }
+    var next = new Set(selected)
+    visiblePosts.forEach(function(p) { next.delete(p.id) })
+    setSelected(next)
+  }
+  function selectGroup(group: SubstackPost[]) {
+    var next = new Set(selected)
+    group.forEach(function(p) { if (p.comment_count > 0 && p.audience === 'everyone') next.add(p.id) })
+    setSelected(next)
+  }
+  function deselectGroup(group: SubstackPost[]) {
+    var next = new Set(selected)
+    group.forEach(function(p) { next.delete(p.id) })
+    setSelected(next)
+  }
 
   // Step 3: Create dataset + download comments
   async function handleCreate() {
@@ -254,66 +293,157 @@ export default function SubstackWizard({ onBack }: Props) {
       )}
 
       {/* ═══ Step 2: Select Posts ═══ */}
-      {step === 2 && (
+      {step === 2 && (function() {
+        var ROSE = '#e11d48'
+        var largeSelected = largePosts.filter(function(p) { return selected.has(p.id) })
+        var smallSelected = smallPosts.filter(function(p) { return selected.has(p.id) })
+
+        function renderPostRow(post: SubstackPost) {
+          var isSelected = selected.has(post.id)
+          var isFree = post.audience === 'everyone'
+          var hasComments = post.comment_count > 0
+          var canSelect = isFree && hasComments
+          return (
+            <button key={post.id} onClick={function() { if (canSelect) togglePost(post.id) }}
+              disabled={!canSelect}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left',
+                padding: '8px 14px', background: isSelected ? '#fff1f2' : !canSelect ? '#f9fafb' : 'white',
+                border: 'none', borderTop: '1px solid ' + (isSelected ? '#fecdd3' : '#f3f4f6'),
+                opacity: canSelect ? 1 : 0.5, cursor: canSelect ? 'pointer' : 'default', transition: 'all .1s',
+              }}
+              onMouseEnter={function(e) { if (canSelect) (e.currentTarget as HTMLElement).style.background = isSelected ? '#ffe4e6' : '#f0fdf4' }}
+              onMouseLeave={function(e) { if (canSelect) (e.currentTarget as HTMLElement).style.background = isSelected ? '#fff1f2' : 'white' }}>
+              <div style={{ width: 16, height: 16, borderRadius: 3, border: '2px solid ' + (isSelected ? ROSE : '#d1d5db'), background: isSelected ? ROSE : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                {isSelected && <span style={{ color: 'white', fontSize: 10, fontWeight: 900 }}>{'\u2713'}</span>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>{post.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3, fontSize: 11, color: '#9ca3af' }}>
+                  <span>{formatDate(post.post_date)}</span>
+                  <span style={{ fontWeight: 600, color: hasComments ? '#111827' : '#9ca3af' }}>{post.comment_count} comments</span>
+                  <span>{'\u2764'} {post.reaction_count}</span>
+                  {post.restacks > 0 && <span>{'\u21BB'} {post.restacks}</span>}
+                  {!isFree && <span style={{ fontSize: 10, fontWeight: 700, color: '#d97706', background: '#fffbeb', padding: '1px 6px', borderRadius: 8 }}>Paid</span>}
+                </div>
+              </div>
+            </button>
+          )
+        }
+
+        return (
         <div className="flex flex-col gap-4">
           {publication && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <h2 className="text-lg font-bold text-gray-800">{publication.name}</h2>
-              {publication.author_name && <p className="text-sm text-gray-500">by {publication.author_name}</p>}
-              <p className="text-xs text-gray-400 mt-1">{posts.length} posts loaded</p>
+            <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18, color: ROSE }}>{'\u2713'}</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: ROSE }}>{publication.name}</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>{publication.author_name ? 'by ' + publication.author_name + ' · ' : ''}{posts.length} posts loaded · ~{estimatedComments.toLocaleString()} comments estimated</div>
+              </div>
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-700">{selected.size} post{selected.size !== 1 ? 's' : ''} selected · ~{estimatedComments.toLocaleString()} comments</span>
-            <div className="flex gap-2">
-              <button onClick={selectAll} className="text-xs font-semibold text-orange-600 hover:underline">Select all with comments</button>
-              <button onClick={deselectAll} className="text-xs font-semibold text-gray-400 hover:underline">Deselect all</button>
+          <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Header with select/deselect */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>Posts</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>{selected.size} of {posts.length} selected · {estimatedComments.toLocaleString()} comments</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={selectAll} style={{ fontSize: 11, fontWeight: 600, color: '#059669', background: 'none', border: 'none', cursor: 'pointer' }}>Select All</button>
+                <span style={{ color: '#d1d5db', fontSize: 10 }}>|</span>
+                <button onClick={deselectAll} style={{ fontSize: 11, fontWeight: 600, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>Deselect All</button>
+              </div>
             </div>
-          </div>
 
-          {/* Post list */}
-          <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
-            {posts.map(function(post) {
-              var isSelected = selected.has(post.id)
-              var isFree = post.audience === 'everyone'
-              var hasComments = post.comment_count > 0
-              var canSelect = isFree && hasComments
-              return (
-                <button key={post.id} onClick={function() { if (canSelect) togglePost(post.id) }}
-                  disabled={!canSelect}
-                  className="bg-white border rounded-xl p-3 text-left transition-all"
-                  style={{
-                    borderColor: isSelected ? '#e11d48' : '#e5e7eb',
-                    background: isSelected ? '#fff1f2' : !canSelect ? '#f9fafb' : 'white',
-                    opacity: canSelect ? 1 : 0.5,
-                    cursor: canSelect ? 'pointer' : 'default',
-                  }}>
-                  <div className="flex items-start gap-3">
-                    <div style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid ' + (isSelected ? '#e11d48' : '#d1d5db'), background: isSelected ? '#e11d48' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
-                      {isSelected && <span style={{ color: 'white', fontSize: 11, fontWeight: 900 }}>{'\u2713'}</span>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-gray-800 truncate">{post.title}</div>
-                      {post.subtitle && <div className="text-xs text-gray-400 truncate">{post.subtitle}</div>}
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-                        <span>{formatDate(post.post_date)}</span>
-                        <span style={{ fontWeight: 600, color: hasComments ? '#111827' : '#9ca3af' }}>{post.comment_count} comments</span>
-                        <span>{'\u2764'} {post.reaction_count}</span>
-                        {post.restacks > 0 && <span>{'\u21BB'} {post.restacks}</span>}
-                        {!isFree && <span style={{ fontSize: 10, fontWeight: 700, color: '#d97706', background: '#fffbeb', padding: '1px 6px', borderRadius: 8 }}>Paid</span>}
-                      </div>
-                    </div>
+            {/* Sort controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>Sort by:</span>
+              {([
+                { key: 'date' as const, label: 'Newest' },
+                { key: 'comments' as const, label: 'Most Comments' },
+                { key: 'likes' as const, label: 'Most Likes' },
+              ]).map(function(opt) {
+                return (
+                  <button key={opt.key} onClick={function() { setSortBy(opt.key) }}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
+                      border: '1px solid ' + (sortBy === opt.key ? '#fecdd3' : '#e5e7eb'),
+                      background: sortBy === opt.key ? '#fff1f2' : '#f9fafb',
+                      color: sortBy === opt.key ? ROSE : '#6b7280',
+                    }}>
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Filter box */}
+            <input
+              value={postFilter}
+              onChange={function(e) { setPostFilter(e.target.value) }}
+              placeholder="Filter posts by title..."
+              style={{
+                width: '100%', padding: '8px 14px', borderRadius: 10,
+                border: '1px solid ' + (postFilter ? '#fecdd3' : '#e5e7eb'),
+                fontSize: 12, outline: 'none', background: postFilter ? '#fff8f5' : '#f9fafb',
+                transition: 'all 0.15s',
+              }}
+            />
+            {postFilter && (
+              <div style={{ fontSize: 11, color: '#6b7280' }}>
+                Showing {visiblePosts.length} of {posts.length} posts matching "{postFilter}"
+              </div>
+            )}
+
+            {/* Large posts (10+ comments) */}
+            {largePosts.length > 0 && (
+              <div style={{ border: '1px solid #fecdd3', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ background: '#fff1f2', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: ROSE }}>Popular Posts</span>
+                    <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 6 }}>{LARGE_THRESHOLD}+ comments · {largeSelected.length} of {largePosts.length} selected</span>
                   </div>
-                </button>
-              )
-            })}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={function() { selectGroup(largePosts) }}
+                      style={{ fontSize: 10, fontWeight: 600, color: '#059669', background: 'none', border: 'none', cursor: 'pointer' }}>Select All</button>
+                    <button onClick={function() { deselectGroup(largePosts) }}
+                      style={{ fontSize: 10, fontWeight: 600, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>Deselect All</button>
+                  </div>
+                </div>
+                <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                  {largePosts.map(renderPostRow)}
+                </div>
+              </div>
+            )}
+
+            {/* Small posts (<10 comments) */}
+            {smallPosts.length > 0 && (
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ background: '#f9fafb', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>Smaller Posts</span>
+                    <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 6 }}>under {LARGE_THRESHOLD} comments · {smallSelected.length} of {smallPosts.length} selected</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={function() { selectGroup(smallPosts) }}
+                      style={{ fontSize: 10, fontWeight: 600, color: '#059669', background: 'none', border: 'none', cursor: 'pointer' }}>Select All</button>
+                    <button onClick={function() { deselectGroup(smallPosts) }}
+                      style={{ fontSize: 10, fontWeight: 600, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>Deselect All</button>
+                  </div>
+                </div>
+                <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {smallPosts.map(renderPostRow)}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Load more */}
           {hasMore && (
             <button onClick={handleLoadMore} disabled={loadingMore}
-              className="text-sm font-semibold text-orange-600 hover:underline disabled:opacity-50">
+              style={{ fontSize: 13, fontWeight: 600, color: ROSE, background: 'none', border: 'none', cursor: 'pointer' }}>
               {loadingMore ? 'Loading more...' : 'Load more posts'}
             </button>
           )}
@@ -329,7 +459,8 @@ export default function SubstackWizard({ onBack }: Props) {
             </button>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* ═══ Step 3: Download ═══ */}
       {step === 3 && (
