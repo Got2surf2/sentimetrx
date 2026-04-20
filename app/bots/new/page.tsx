@@ -3,7 +3,7 @@
 // app/bots/new/page.tsx
 // Bot creator/editor — create or edit a branded chatbot
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 
@@ -76,6 +76,10 @@ function Field({ label, value, onChange, placeholder, type = 'text', small }: {
 }
 
 export default function BotCreatorPage() {
+  return <Suspense fallback={<div className="flex items-center justify-center py-32"><LottieLoader size={80} /></div>}><BotCreatorInner /></Suspense>
+}
+
+function BotCreatorInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get('edit')
