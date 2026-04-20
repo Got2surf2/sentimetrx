@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import AnalyticsDashboard from '@/components/analytics/AnalyticsDashboard'
 
 interface Props { params: { id: string } }
@@ -17,8 +18,7 @@ export default async function AnalyticsPage({ params }: Props) {
 
   if (!study) notFound()
 
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
 
   return (
     <AnalyticsDashboard

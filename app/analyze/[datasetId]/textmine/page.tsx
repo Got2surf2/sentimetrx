@@ -5,6 +5,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import TextMineModule from '@/components/analyze/TextMineModule'
 
 export const dynamic = 'force-dynamic'
@@ -23,10 +24,7 @@ export default async function TextMinePage({ params, searchParams }: Props) {
     .eq('id', user.id)
     .single()
 
-  const rawOrg = userData?.organizations
-  const orgData = Array.isArray(rawOrg)
-    ? rawOrg[0]
-    : rawOrg as unknown as { features?: { analyze?: boolean } }
+  const orgData = resolveOrg(userData?.organizations) as any
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   const service = createServiceRoleClient()

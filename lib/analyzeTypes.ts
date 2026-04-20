@@ -25,6 +25,7 @@ export interface SchemaFieldConfig {
   remapping?:     Record<string, number>
   valueAliases?:  Record<string, string>
   hidden?:        boolean
+  status?:        string          // 'ignored' etc — used to hide fields in UI
   scoreField?:    boolean
   nonNullCount?:  number
   avgLen?:        string

@@ -28,29 +28,8 @@ import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
-const T = {
-  bg: '#f4f5f7', bgCard: '#ffffff', bgSidebar: '#ffffff',
-  border: '#e5e7eb', borderMid: '#d1d5db',
-  text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
-  accent: '#e8622a', accentDark: '#c4501f', accentBg: '#fff4ef', accentMid: '#fbd5c2',
-  green: '#16a34a', greenBg: '#f0fdf4', greenMid: '#bbf7d0',
-  red: '#dc2626', redBg: '#fef2f2',
-  amber: '#d97706', amberBg: '#fffbeb', amberMid: '#fde68a',
-  blue: '#2563eb', blueBg: '#eff6ff',
-  purple: '#7c3aed', purpleBg: '#f5f3ff',
-}
-
-interface SchemaField {
-  field: string
-  type: 'open-ended' | 'categorical' | 'numeric' | 'date' | 'id' | 'ignore'
-  label?: string
-  status?: string
-  values?: string[]
-  sqt?: string | null
-  scoreField?: boolean
-  min?: number
-  max?: number
-}
+import { T } from '@/lib/analyzeTheme'
+import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
 
 interface SchemaConfig {
   fields: SchemaField[]

@@ -2,37 +2,14 @@
 // Client-side opinion mining: extract aspect → opinion pairs from text data
 // Used when a user clicks a word in the word cloud to see associated opinions
 
-// Common opinion words categorized by sentiment
-const POSITIVE_OPINIONS = new Set([
-  'good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best',
-  'delicious','tasty','fresh','friendly','nice','lovely','beautiful','clean','quick','fast',
-  'warm','hot','crispy','tender','flavorful','juicy','smooth','rich','creamy','light',
-  'attentive','helpful','polite','efficient','professional','outstanding','superb','incredible',
-  'impressive','comfortable','cozy','spacious','pleasant','enjoyable','reasonable','generous',
-  'authentic','consistent','reliable','prompt','welcoming','accommodating','caring','cheerful',
-  'exceptional','phenomenal','spectacular','remarkable','brilliant','divine','heavenly','savory',
-  'satisfying','refreshing','perfect','favorite','love','loved','enjoy','enjoyed','recommend',
-])
+import {
+  POSITIVE_WORDS as POSITIVE_OPINIONS,
+  NEGATIVE_WORDS as NEGATIVE_OPINIONS,
+  NEUTRAL_WORDS as NEUTRAL_OPINIONS,
+} from './sentimentLexicon'
 
-const NEGATIVE_OPINIONS = new Set([
-  'bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale',
-  'rude','dirty','expensive','overpriced','small','tiny','loud','noisy','crowded','long',
-  'soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless',
-  'mediocre','disappointing','disgusting','unpleasant','uncomfortable','unfriendly','inattentive',
-  'lazy','careless','unprofessional','disorganized','chaotic','filthy','gross','lukewarm',
-  'watery','tough','chewy','rubbery','mushy','hard','old','late','wrong','missing',
-  'broken','ignored','forgotten','waited','waiting','complained','annoyed','frustrated',
-  'underwhelming','overrated','average','meh','okay','ok',
-])
-
-const NEUTRAL_OPINIONS = new Set([
-  'big','large','small','new','different','usual','normal','standard','regular','typical',
-  'busy','popular','full','empty','dark','bright','simple','basic','fine','decent',
-  'moderate','mixed','fair','adequate','acceptable','sufficient','ordinary','average',
-])
-
-// Conjunctions that block cross-phrase opinion pairing
-var CONJUNCTIONS = new Set(['and', 'or', 'nor', 'also', 'plus', 'with'])
+// Conjunction words — skip when scanning for opinion targets
+const CONJUNCTIONS = new Set(['and', 'or', 'nor', 'also', 'plus', 'with'])
 
 // Extra stop words to exclude when looking for nouns near an adjective
 const EXTRA_STOPS = new Set([

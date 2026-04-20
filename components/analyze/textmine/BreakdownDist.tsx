@@ -7,12 +7,7 @@ import { useState, useMemo } from 'react'
 import { Theme, THEME_PALETTE, commentMatchesTheme } from '@/lib/themeUtils'
 import { sigTest } from '@/lib/statsUtils'
 
-const T = {
-  bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
-  text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
-  accent: '#e8622a', accentBg: '#fff4ef',
-  amber: '#d97706', amberBg: '#fffbeb',
-}
+import { T } from '@/lib/analyzeTheme'
 
 interface Props {
   themes: { themes: Theme[]; fieldName: string }

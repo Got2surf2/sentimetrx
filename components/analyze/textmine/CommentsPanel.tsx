@@ -12,25 +12,8 @@ import {
   evenSample, sentColor, sentBg,
 } from '@/lib/themeUtils'
 
-const T = {
-  bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
-  text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
-  accent: '#e8622a', accentBg: '#fff4ef', accentMid: '#fbd5c2',
-  green: '#16a34a', greenBg: '#f0fdf4', greenMid: '#bbf7d0',
-  red: '#dc2626', redBg: '#fef2f2',
-  amber: '#d97706', amberBg: '#fffbeb', amberMid: '#fde68a',
-  blue: '#2563eb', blueBg: '#eff6ff',
-}
-
-interface SchemaField {
-  field: string
-  type: string
-  sqt?: string | null
-  scoreField?: boolean
-  label?: string
-  min?: number
-  max?: number
-}
+import { T } from '@/lib/analyzeTheme'
+import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
 
 interface Props {
   theme: Theme

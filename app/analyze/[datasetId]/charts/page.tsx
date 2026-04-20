@@ -3,6 +3,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import ChartsModule from '@/components/analyze/ChartsModule'
 
 export const dynamic = 'force-dynamic'
@@ -20,8 +21,7 @@ export default async function ChartsPage({ params }: Props) {
     .eq('id', user.id)
     .single()
 
-  var rawOrg = userData?.organizations
-  var orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  var orgData = resolveOrg(userData?.organizations) as any
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   var service = createServiceRoleClient()

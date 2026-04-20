@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import EditStudyClient from './EditStudyClient'
 
 interface Props { params: { id: string } }
@@ -17,8 +18,7 @@ export default async function EditStudyPage({ params }: Props) {
 
   if (!study) notFound()
 
-  const rawOrg = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
   const isAdmin = !!orgData?.is_admin_org
 
   // Fetch all orgs for admin transfer dropdown

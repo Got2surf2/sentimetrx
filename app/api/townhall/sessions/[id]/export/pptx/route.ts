@@ -11,42 +11,24 @@ export const maxDuration = 60
 
 interface Params { params: { id: string } }
 
-// ── Datanautix brand palette ──────────────────────────────────────────────────
+import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill, logo, trunc } from '@/lib/pptx/shared'
+
+// Extended palette with townhall-specific colors
 const DN = {
-  teal: '0F7173', tealDark: '0A4F51', tealLight: '1DA39A', tealPale: 'E0F2F1',
-  navy: '0D2B45', navyMid: '0F3A54', navyLight: '1A5070',
-  gold: 'E8B84B', goldLight: 'F5D98A', goldPale: 'FFF8E1',
-  orange: 'E85A1A', orangeLight: 'F07040',
-  ink: '0D2B45', slate: '8FA3AE', slateDark: '4A6572', slateLight: 'E8EDEF', slateCard: 'F4F7F8',
-  divider: 'D4DDE2', white: 'FFFFFF',
-  green: '059669', greenLight: 'D1FAE5',
-  amber: 'D97706', amberLight: 'FEF3C7',
-  red: 'DC2626', redLight: 'FEE2E2',
+  ...DN_SHARED,
+  tealDark: '0A4F51', tealPale: 'E0F2F1',
+  navyMid: '0F3A54', navyLight: '1A5070',
+  goldLight: 'F5D98A', goldPale: 'FFF8E1',
+  ink: '0D2B45', slateDark: '4A6572',
 }
 
 const THEME_COLORS = ['0F7173', 'E8B84B', '7C3AED', '059669', 'E85A1A', '1A5070', '0891B2', 'DB2777', '65A30D', '9333EA']
-
-const W = 13.33, H = 7.5, HH = 0.9, CY = 1.05, PAD = 0.42, FY = H - 0.28
-
-function bgFill(slide: any, pptx: any, color = DN.slateCard) {
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color }, line: { width: 0 } })
-}
 
 function hdr(slide: any, pptx: any, title: string) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.06, fill: { color: DN.gold }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: W, h: HH - 0.06, fill: { color: DN.navy }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
   slide.addText(title, { x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18, fontSize: 20, bold: true, color: DN.white, valign: 'middle', autoFit: true })
-}
-
-function logo(slide: any) {
-  slide.addText(
-    [
-      { text: 'data', options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'nautix', options: { color: DN.tealLight, bold: true, italic: true } },
-    ],
-    { x: W - 2.3, y: 0.1, w: 2.1, h: HH - 0.18, fontSize: 15, valign: 'middle', align: 'right' }
-  )
 }
 
 function footer(slide: any, pptx: any, sessionName: string) {
@@ -68,8 +50,6 @@ function sentColor(s: string) {
   if (s === 'mixed') return DN.amber
   return DN.slate
 }
-
-function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '\u2026' : s }
 
 export async function POST(req: NextRequest, { params }: Params) {
   const supabase = createClient()

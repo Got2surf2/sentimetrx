@@ -7,11 +7,7 @@ import { useState, useMemo } from 'react'
 import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
 import { extractOpinions } from '@/lib/opinionMining'
 
-const T = {
-  bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
-  text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
-  accent: '#e8622a', accentBg: '#fff4ef', accentMid: '#fbd5c2',
-}
+import { T } from '@/lib/analyzeTheme'
 
 const STOP_WORDS = new Set([
   'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from',

@@ -35,7 +35,7 @@ var DEFAULT_VISIBLE = 5
 var URL_RE = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
 // Reddit tiers
-var REDDIT_TIER_KEYS: Array<'mainstream' | 'controversial' | 'noise' | 'fringe'> = ['mainstream', 'controversial', 'noise', 'fringe']
+var REDDIT_TIER_KEYS: Array<'mainstream' | 'controversial' | 'noise' | 'fringe'> = ['mainstream', 'controversial', 'fringe', 'noise']
 var REDDIT_TIER_STYLES = {
   mainstream:    { label: 'Mainstream',    color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: '\u2B06' },
   controversial: { label: 'Controversial', color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: '\u26A0' },
@@ -44,7 +44,7 @@ var REDDIT_TIER_STYLES = {
 }
 
 // Substack tiers
-var SUBSTACK_TIER_KEYS: Array<'mainstream' | 'controversial' | 'noise' | 'fringe'> = ['mainstream', 'controversial', 'noise', 'fringe']
+var SUBSTACK_TIER_KEYS: Array<'mainstream' | 'controversial' | 'noise' | 'fringe'> = ['mainstream', 'controversial', 'fringe', 'noise']
 var SUBSTACK_TIER_STYLES = {
   mainstream:    { label: 'Resonant',      color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: '\u2764' },
   controversial: { label: 'Discussed',     color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: '\uD83D\uDCAC' },

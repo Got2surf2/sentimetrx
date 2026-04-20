@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { serializeFilters, filterCount } from '@/lib/filterUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
+import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
 
 const HERMES = '#e8622a'
 
@@ -53,7 +54,6 @@ type Step   = 'mode' | 'quick' | 'builder' | 'generating' | 'done'
 type Format = 'pptx' | 'html'
 type ShareState = 'idle' | 'uploading' | 'done' | 'error'
 
-interface SchemaField { field: string; type: string; label?: string; status?: string; section?: string; remapping?: Record<string, number> }
 interface Props { datasetId: string; datasetName: string; onClose: () => void }
 
 export default function ExportModal({ datasetId, datasetName, onClose }: Props) {

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import DeployClient from './DeployClient'
 
 interface Props { params: { id: string } }
@@ -17,8 +18,7 @@ export default async function DeployPage({ params }: Props) {
 
   if (!study) notFound()
 
-  const rawOrg = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
   const surveyUrl = `${baseUrl}/s/${study.slug || study.guid || study.id}`

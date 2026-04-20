@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import TestingClient from './TestingClient'
 
 export const dynamic = 'force-dynamic'
@@ -15,8 +16,7 @@ export default async function TestingPage() {
     .eq('id', user.id)
     .single()
 
-  const rawOrg = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
   const isAdmin = !!orgData?.is_admin_org
   if (!isAdmin) redirect('/dashboard')
 

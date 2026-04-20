@@ -3,38 +3,7 @@
 // No server-only imports. Safe to use in browser components.
 
 import { expandLemma } from './lemmas'
-
-// ── Lexicon-based sentiment scoring (no AI required) ─────────────────────────
-// Scored words: positive = +1, negative = -1. Aggregated across matched comments.
-const POS_WORDS = new Set([
-  'good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best',
-  'delicious','tasty','fresh','friendly','nice','lovely','beautiful','clean','quick','fast',
-  'warm','crispy','tender','flavorful','juicy','smooth','rich','creamy','light',
-  'attentive','helpful','polite','efficient','professional','outstanding','superb','incredible',
-  'impressive','comfortable','cozy','spacious','pleasant','enjoyable','reasonable','generous',
-  'authentic','consistent','reliable','prompt','welcoming','accommodating','caring','cheerful',
-  'exceptional','phenomenal','spectacular','remarkable','brilliant','divine','heavenly','savory',
-  'satisfying','refreshing','favorite','love','loved','enjoy','enjoyed','recommend','happy',
-  'pleased','thrilled','grateful','impressed','delighted','satisfied','glad','proud',
-])
-const NEG_WORDS = new Set([
-  'bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale',
-  'rude','dirty','expensive','overpriced','small','tiny','loud','noisy','crowded','long',
-  'soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless',
-  'mediocre','disappointing','disgusting','unpleasant','uncomfortable','unfriendly','inattentive',
-  'lazy','careless','unprofessional','disorganized','chaotic','filthy','gross','lukewarm',
-  'watery','tough','chewy','rubbery','mushy','hard','old','late','wrong','missing',
-  'broken','ignored','forgotten','waited','waiting','complained','annoyed','frustrated',
-  'underwhelming','overrated','upset','angry','disappointed','unhappy','dissatisfied','regret',
-])
-
-// Negation words — if one of these precedes a sentiment word, flip its polarity
-const NEGATORS = new Set([
-  'not','no','never','dont','don\'t','doesnt','doesn\'t','didnt','didn\'t',
-  'isnt','isn\'t','arent','aren\'t','wasnt','wasn\'t','werent','weren\'t',
-  'wont','won\'t','wouldnt','wouldn\'t','cant','can\'t','cannot','hardly',
-  'barely','neither','nor','nothing','nowhere','nobody','lack','without',
-])
+import { POSITIVE_WORDS as POS_WORDS, NEGATIVE_WORDS as NEG_WORDS, NEGATORS } from './sentimentLexicon'
 
 /**
  * Score a block of text for sentiment using the lexicon.

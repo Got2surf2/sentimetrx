@@ -9,6 +9,7 @@ import { readSession, writeSession } from '@/lib/useSessionState'
 import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
+import type { SchemaFieldConfig as SchemaField, SchemaConfig } from '@/lib/analyzeTypes'
 
 // Dynamic Plotly import
 var PlotlyRef: any = null
@@ -17,15 +18,7 @@ function getPlotly(): Promise<any> {
   return import('plotly.js-dist-min').then(function(m) { PlotlyRef = m.default || m; return PlotlyRef })
 }
 
-var T = {
-  bg: '#f4f5f7', bgCard: '#ffffff', border: '#e5e7eb', borderMid: '#d1d5db',
-  text: '#111827', textMid: '#374151', textMute: '#6b7280', textFaint: '#9ca3af',
-  accent: '#e8622a', accentBg: '#fff4ef', accentMid: '#fbd5c2',
-  green: '#16a34a', greenBg: '#f0fdf4',
-  red: '#dc2626', redBg: '#fef2f2', amber: '#d97706',
-  blue: '#2563eb', blueBg: '#eff6ff',
-  purple: '#7c3aed',
-}
+import { T } from '@/lib/analyzeTheme'
 
 var CHART_COLORS = ['#e8622a','#2563eb','#16a34a','#7c3aed','#ea580c','#a21caf','#0d9488','#ca8a04','#db2777','#0891b2','#dc2626','#0284c7','#059669','#d97706','#6366f1','#e11d48','#14b8a6','#9333ea','#65a30d','#f97316']
 
@@ -39,8 +32,7 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
   mono:    { name: 'Mono',    colors: ['#111827','#374151','#4b5563','#6b7280','#9ca3af','#d1d5db','#e5e7eb','#f3f4f6','#1f2937','#030712'] },
 }
 
-interface SchemaField { field: string; type: string; label?: string; section?: string; values?: string[]; min?: number; max?: number; remapping?: Record<string, number>; valueAliases?: Record<string, string>; scoreField?: boolean; sqt?: string }
-interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
+// SchemaField, SchemaConfig imported from @/lib/analyzeTypes
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
 interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any; datasetSource?: string }

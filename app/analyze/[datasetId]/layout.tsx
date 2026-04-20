@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import DatasetShell from './DatasetShell'
 
@@ -25,8 +26,7 @@ export default async function DatasetLayout({ children, params }: Props) {
     .eq('id', user.id)
     .single()
 
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
 
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
@@ -47,7 +47,7 @@ export default async function DatasetLayout({ children, params }: Props) {
   if (!dataset) notFound()
 
   const studyName = (dataset as any).studies?.name ?? null
-  const schemaFields = stateRow?.schema_config?.fields || []
+  const schemaFields = (stateRow?.schema_config?.fields || []) as import('@/lib/analyzeTypes').SchemaFieldConfig[]
 
   return (
     <div className="min-h-screen bg-gray-50" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>

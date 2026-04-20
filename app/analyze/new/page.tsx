@@ -3,6 +3,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { resolveOrg } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import UploadClient from './UploadClient'
 
@@ -19,8 +20,7 @@ export default async function NewDatasetPage() {
     .eq('id', user.id)
     .single()
 
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = resolveOrg(userData?.organizations) as any
 
   if (!orgData?.features?.analyze) redirect('/dashboard')
 

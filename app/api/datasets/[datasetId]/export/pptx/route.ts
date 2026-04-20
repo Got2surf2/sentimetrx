@@ -14,8 +14,7 @@ import type { HighlightedComment } from '@/lib/export/scoreComments'
 import { expandLemma } from '@/lib/lemmas'
 import { buildKwRegex } from '@/lib/themeUtils'
 import { computeThemeImpact } from '@/lib/themeImpact'
-
-// buildKwRegex imported from @/lib/themeUtils (lemma-aware keyword regex builder)
+import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill as bg, logo, trunc } from '@/lib/pptx/shared'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -25,65 +24,29 @@ const STORYTIME_VERSION = '1.2.0'  // bump on each release
 
 interface Params { params: { datasetId: string } }
 
-// ── Datanautix brand palette ──────────────────────────────────────────────────
+// Extended palette with datasets-specific colors
 const DN = {
-  // Teal family (brand primary)
-  teal:        '0F7173',
+  ...DN_SHARED,
   tealDark:    '0A4F51',
-  tealLight:   '1DA39A',
   tealPale:    'E0F2F1',
   tealPale2:   'B2DFDB',
-  // Navy family (professional dark)
-  navy:        '0D2B45',
   navyMid:     '0F3A54',
   navyLight:   '1A5070',
-  // Gold accent (replaces orange in slide design; orange kept for logo only)
-  gold:        'E8B84B',
   goldLight:   'F5D98A',
   goldPale:    'FFF8E1',
-  // Orange (logo / brand identity only)
-  orange:      'E85A1A',
-  orangeLight: 'F07040',
   orangePale:  'FEF0E8',
-  // Neutral
   ink:         '0D2B45',
   inkSoft:     '1A3A50',
-  slate:       '8FA3AE',
   slateDark:   '4A6572',
-  slateLight:  'E8EDEF',
-  slateCard:   'F4F7F8',
-  divider:     'D4DDE2',
-  white:       'FFFFFF',
-  // Semantic
-  green:       '059669',
-  greenLight:  'D1FAE5',
-  amber:       'D97706',
-  amberLight:  'FEF3C7',
-  red:         'DC2626',
-  redLight:    'FEE2E2',
 }
 
-// ── Layout (LAYOUT_WIDE = 13.33" × 7.5") ─────────────────────────────────────
-const W   = 13.33
-const H   = 7.5
-const HH  = 0.9    // header height
-const CY  = 1.05   // content start y
 const CH  = H - CY - 0.32
-const FY  = H - 0.28
-const PAD = 0.42
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
-
-function bg(slide: any, pptx: any, color = DN.slateCard) {
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color }, line: { width: 0 } })
-}
+// ── Route-specific helpers ────────────────────────────────────────────────────
 
 function hdr(slide: any, pptx: any, title: string, _color = DN.navy, subtitle?: string) {
-  // Thin gold bar at very top
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.06, fill: { color: DN.gold }, line: { width: 0 } })
-  // Navy header band
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: W, h: HH - 0.06, fill: { color: DN.navy }, line: { width: 0 } })
-  // Left teal accent strip inside header
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
   slide.addText(title, {
     x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: subtitle ? 0.5 : HH - 0.18,
@@ -95,17 +58,6 @@ function hdr(slide: any, pptx: any, title: string, _color = DN.navy, subtitle?: 
       fontSize: 10, color: DN.tealLight, valign: 'middle', italic: true,
     })
   }
-}
-
-function logo(slide: any) {
-  // "datanautix" as one rich-text word — orange + teal, right side of header
-  slide.addText(
-    [
-      { text: 'data',   options: { color: DN.orangeLight, bold: true, italic: true } },
-      { text: 'nautix', options: { color: DN.tealLight,   bold: true, italic: true } },
-    ],
-    { x: W - 2.3, y: 0.1, w: 2.1, h: HH - 0.18, fontSize: 15, valign: 'middle', align: 'right' }
-  )
 }
 
 function footer(slide: any, pptx: any, datasetName: string) {
@@ -129,8 +81,6 @@ function solidRect(slide: any, pptx: any, x: number, y: number, w: number, h: nu
 function lbl(slide: any, text: string, x: number, y: number, w: number, color = DN.slate) {
   slide.addText(text, { x, y, w, h: 0.22, fontSize: 7.5, bold: true, color, charSpacing: 1.2, textTransform: 'uppercase' })
 }
-
-function trunc(s: string, n: number) { return !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s }
 
 // Trim to a sentence boundary. Always enforced — even if text is shorter than max.
 function trimNatural(s: string, max: number): string {
