@@ -67,31 +67,63 @@ export default function SubstackWizard({ onBack }: Props) {
   var [dlProgress, setDlProgress] = useState({ postsDown: 0, postsTotal: 0, comments: 0 })
 
   // Step 1: Fetch publication + posts
+  // Try fetching posts from a URL, return null on failure
+  async function tryFetchPosts(url: string): Promise<any | null> {
+    try {
+      var res = await fetch('/api/substack-sources/fetch-posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url }),
+      })
+      if (!res.ok) return null
+      var data = await res.json()
+      return data.posts?.length ? data : null
+    } catch { return null }
+  }
+
   async function handleFetch() {
     if (!urlInput.trim()) return
     setLoading(true)
     setError('')
     setPosts([])
     setPublication(null)
-    try {
-      var res = await fetch('/api/substack-sources/fetch-posts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: urlInput.trim() }),
-      })
-      var data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch')
-      if (!data.posts?.length) throw new Error('No posts found at this publication')
 
+    var input = urlInput.trim()
+
+    // Try the input as-is first
+    var data = await tryFetchPosts(input)
+
+    // If that failed, try variations
+    if (!data) {
+      var variations: string[] = []
+      var cleaned = input.replace(/^https?:\/\//, '').replace(/\.substack\.com.*/, '').replace(/^www\./, '').replace(/\.com.*/, '')
+      // Try without "the" prefix
+      if (cleaned.startsWith('the')) variations.push(cleaned.slice(3))
+      // Try with "the" prefix
+      if (!cleaned.startsWith('the')) variations.push('the' + cleaned)
+      // Try as custom domain
+      if (!input.includes('.')) {
+        variations.push('www.' + cleaned + '.com')
+        variations.push(cleaned + '.com')
+      }
+
+      for (var v of variations) {
+        data = await tryFetchPosts(v)
+        if (data) break
+      }
+    }
+
+    if (data) {
       setPublication(data.publication || null)
       setPosts(data.posts)
       setBaseUrl(data.base_url)
       setHasMore(data.has_more)
-      setDatasetName((data.publication?.name || urlInput.trim()) + ' — Comments')
+      setDatasetName((data.publication?.name || input) + ' — Comments')
       setStep(2)
-    } catch (e: any) {
-      setError(e.message || 'Failed to fetch')
+    } else {
+      setError('Publication not found. Tips:\n• Use the full URL from your browser (e.g., www.thebulwark.com)\n• Or the exact Substack subdomain (e.g., mattyglesias)\n• Paid-only publications with no free posts won\'t return results')
     }
+
     setLoading(false)
   }
 
@@ -230,7 +262,7 @@ export default function SubstackWizard({ onBack }: Props) {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600" style={{ whiteSpace: 'pre-line' }}>{error}</div>
           )}
         </div>
       )}
