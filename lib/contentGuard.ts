@@ -203,3 +203,57 @@ export function getStrikes(participantId: string): number { return strikeMap.get
 export function isContentSafe(text: string, maxLength = 600): boolean {
   return checkMessage('_anon', text, { maxLength }).safe
 }
+
+// ── Audit mode (for surveys) ────────────────────────────────────────────────
+// Scans text and returns content flags without blocking.
+// Used to tag survey responses for analyst-side filtering.
+
+export type ContentFlag = 'profanity' | 'slur' | 'threat' | 'sexual' | 'insult' | 'spam'
+
+export interface AuditResult {
+  flags: ContentFlag[]
+  maxSeverity: Severity | null
+  bleeped: string
+}
+
+/** Scan text for content flags without blocking or tracking strikes. */
+export function auditContent(text: string): AuditResult {
+  if (!text || text.trim().length < 2) return { flags: [], maxSeverity: null, bleeped: text || '' }
+
+  var flagSet: Record<string, boolean> = {}
+  var maxSeverity: Severity | null = null
+  var severityRank: Record<string, number> = { mild: 1, rude: 2, severe: 3 }
+
+  for (var i = 0; i < PATTERNS.length; i++) {
+    var def = PATTERNS[i]
+    if (def.pattern.test(text)) {
+      flagSet[def.category] = true
+      if (!maxSeverity || severityRank[def.severity] > severityRank[maxSeverity]) {
+        maxSeverity = def.severity
+      }
+    }
+  }
+
+  var bleeped = bleepText(text)
+  return { flags: Object.keys(flagSet) as ContentFlag[], maxSeverity, bleeped }
+}
+
+/** Audit all user messages in a conversation log. Returns combined flags. */
+export function auditConversationLog(
+  log: { who: string; text: string }[]
+): AuditResult {
+  var flagSet: Record<string, boolean> = {}
+  var maxSev: Severity | null = null
+  var severityRank: Record<string, number> = { mild: 1, rude: 2, severe: 3 }
+
+  for (var i = 0; i < log.length; i++) {
+    if (log[i].who !== 'user') continue
+    var result = auditContent(log[i].text)
+    result.flags.forEach(function(f) { flagSet[f] = true })
+    if (result.maxSeverity && (!maxSev || severityRank[result.maxSeverity] > severityRank[maxSev])) {
+      maxSev = result.maxSeverity
+    }
+  }
+
+  return { flags: Object.keys(flagSet) as ContentFlag[], maxSeverity: maxSev, bleeped: '' }
+}

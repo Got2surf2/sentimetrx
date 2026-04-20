@@ -325,6 +325,23 @@ export default function StepBasics({ draft, update, updateConfig, onNext, onTran
         <p className="text-xs text-gray-400 mt-3">Debug mode: add <code className="bg-gray-100 px-1 rounded">?debug=GUID</code> to the survey URL. The study GUID (shown on the survey card) is the password.</p>
       </Section>
 
+      <Section title="Content safety" description="Flag responses containing profanity, slurs, threats, or offensive language. Responses are never blocked — flags appear as a filter in Ana so analysts can include or exclude flagged content.">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateConfig({ contentSafety: !draft.config.contentSafety })}
+            className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 border-2 border-transparent ${draft.config.contentSafety ? 'bg-orange-500' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${draft.config.contentSafety ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+          <span className="text-sm text-gray-600">
+            {draft.config.contentSafety
+              ? <><strong className="text-gray-800">Content Safety ON</strong> — responses flagged for profanity, slurs, threats</>
+              : <><strong className="text-gray-800">Content Safety OFF</strong> — all responses saved without flagging</>}
+          </span>
+        </div>
+      </Section>
+
       <Section title="Branding" description="Control the 'by' label shown in the survey header.">
         <div className="flex items-center gap-3">
           <button

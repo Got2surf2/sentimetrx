@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { createHash } from 'crypto'
 import { checkRateLimit } from '@/lib/rateLimit'
 import type { SubmitResponseBody, Sentiment } from '@/lib/types'
+import { auditContent, auditConversationLog, type ContentFlag } from '@/lib/contentGuard'
 
 // POST /api/respond
 // Public endpoint -- no auth required.
@@ -122,6 +123,44 @@ export async function POST(req: NextRequest) {
   }
   if (fp_hash) rowData.fp_hash = fp_hash
   if (session_id) rowData.session_id = session_id
+
+  // ── Content safety flagging (when enabled on the study) ────────────────────
+  const studyConfig = study.config as Record<string, any> | null
+  if (studyConfig?.contentSafety) {
+    const flagSet: Record<string, boolean> = {}
+
+    // Scan conversation log
+    if (payload.conversationLog && Array.isArray(payload.conversationLog)) {
+      const logResult = auditConversationLog(payload.conversationLog)
+      logResult.flags.forEach(function(f) { flagSet[f] = true })
+    }
+
+    // Scan open-ended responses
+    const oe = payload.openEnded as Record<string, string> | undefined
+    if (oe) {
+      Object.values(oe).forEach(function(text) {
+        if (text) auditContent(text).flags.forEach(function(f) { flagSet[f] = true })
+      })
+    }
+
+    // Scan custom answers (free-text ones)
+    const ca = payload.customAnswers as Record<string, string | string[]> | undefined
+    if (ca) {
+      Object.values(ca).forEach(function(val) {
+        var texts = Array.isArray(val) ? val : [val]
+        texts.forEach(function(t) {
+          if (typeof t === 'string' && t.length > 3) {
+            auditContent(t).flags.forEach(function(f) { flagSet[f] = true })
+          }
+        })
+      })
+    }
+
+    const allFlags = Object.keys(flagSet)
+    if (allFlags.length > 0) {
+      rowData.content_flags = allFlags
+    }
+  }
 
   // ── Upsert by session_id (partial saves) or insert (legacy) ───────────────
   if (session_id) {

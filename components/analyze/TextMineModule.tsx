@@ -841,6 +841,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   })
   const [ratingField, setRatingField] = useState<string | null>(_tmSaved?.ratingField || (ratingFields.length > 0 ? ratingFields[0].field : null))
   const [colorMode, setColorMode] = useState<'sentiment' | 'rating'>(_tmSaved?.colorMode || 'sentiment')
+  const [hideFlagged, setHideFlagged] = useState(_tmSaved?.hideFlagged || false)
 
   useEffect(function() {
     writeSession(_tmKey, {
@@ -849,9 +850,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       breakdownField: breakdownField, compareFields: compareFields,
       selectedValues: Array.from(selectedValues),
       compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
-      ratingField: ratingField, colorMode: colorMode,
+      ratingField: ratingField, colorMode: colorMode, hideFlagged: hideFlagged,
     })
-  }, [activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, _tmKey])
+  }, [activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
 
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
@@ -1049,7 +1050,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   // Apply global filters to rows
-  var _filteredBase = applyFilters(rows, effectiveFilters)
+  var _filteredBase0 = applyFilters(rows, effectiveFilters)
+  var _filteredBase = hideFlagged
+    ? _filteredBase0.filter(function(r) { return !r.content_flags || (Array.isArray(r.content_flags) && r.content_flags.length === 0) })
+    : _filteredBase0
   var activeFilterCount = filterCount(effectiveFilters)
 
   // Inject signal_tier for Reddit/Substack datasets (dynamic, respects filter + threshold changes)
@@ -1349,6 +1353,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   title={colorMode === 'sentiment' ? 'Switch to rating gradient colors' : 'Switch to sentiment colors'}
                   style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, borderRadius: 20, cursor: 'pointer', border: '1px solid ' + (colorMode === 'rating' ? '#d97706' + '50' : T.border), background: colorMode === 'rating' ? '#fffbeb' : T.bg, color: colorMode === 'rating' ? '#d97706' : T.textMid }}
                 >{colorMode === 'rating' ? '\u2605 Rating' : '\u25CF Sentiment'}</button>
+              )}
+              {_filteredBase0.some(function(r) { return r.content_flags && Array.isArray(r.content_flags) && r.content_flags.length > 0 }) && (
+                <button
+                  onClick={function() { setHideFlagged(!hideFlagged) }}
+                  title={hideFlagged ? 'Show all responses (including flagged content)' : 'Hide responses flagged for profanity, slurs, or offensive language'}
+                  style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, borderRadius: 20, cursor: 'pointer', border: '1px solid ' + (hideFlagged ? T.red + '50' : T.border), background: hideFlagged ? T.redBg : T.bg, color: hideFlagged ? T.red : T.textMid }}
+                >{hideFlagged ? '\u26A0 Flagged hidden' : '\u26A0 Content flags'}</button>
               )}
               {hasThemes && isDirty && (
                 <button onClick={function() { saveThemeModel() }} disabled={saving}

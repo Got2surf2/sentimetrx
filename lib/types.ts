@@ -274,6 +274,9 @@ export interface StudyConfig {
 
   // Testing mode — exposes AI thinking/reasoning inline with bot messages
   testing?:           boolean          // default false
+  // Content safety — flag responses containing profanity, slurs, threats etc.
+  // Flagged responses still saved (never blocked) — analyst can filter in/out in Ana.
+  contentSafety?:     boolean          // default false
   // Debug mode: activated via ?debug=GUID in URL (study GUID is the password)
 
   // Multi-language support
@@ -882,8 +885,8 @@ export interface TownHallConfig {
   // Legacy compat: opening_question, display.welcome_message, display.thank_you_message,
   // session_end.closing_message are all collapsed into opening_message + closing_message
   opening_question?: string  // deprecated — use opening_message
-  expected_attendees?: number   // estimated attendee count — used to compute % targets
   languages?: string[]
+  expected_attendees?: number   // estimated attendee count — used to compute % targets
   engine: {
     theme_detection_mode:             'off' | 'manual' | 'auto'
     theme_detection_interval_minutes: number   // deprecated — kept for backwards compat

@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
+import { checkMessage } from '@/lib/contentGuard'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -41,6 +42,12 @@ export async function POST(req: Request) {
 
   if (!datasetId || !question) {
     return NextResponse.json({ error: 'datasetId and question are required' }, { status: 400 })
+  }
+
+  // Content safety check on user question
+  const safety = checkMessage('ana_' + user.id, question)
+  if (!safety.safe) {
+    return NextResponse.json({ error: safety.warning || 'Please rephrase your question.' }, { status: 400 })
   }
 
   // Verify dataset ownership

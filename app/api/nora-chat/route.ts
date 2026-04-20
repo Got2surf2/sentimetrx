@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
+import { checkMessage } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
 
@@ -301,6 +302,15 @@ export async function POST(req: NextRequest) {
   }
 
   const recentMessages = messages.slice(-20)
+
+  // Content safety check on latest user message
+  const lastUserMsg = [...recentMessages].reverse().find((m: any) => m.role === 'user')
+  if (lastUserMsg) {
+    const check = checkMessage('nora_' + req.ip, lastUserMsg.content)
+    if (!check.safe) {
+      return NextResponse.json({ reply: check.warning || "Let's keep things respectful. How can I help you with Tabla?" }, { headers: cors })
+    }
+  }
 
   try {
     const result = await callAI({
