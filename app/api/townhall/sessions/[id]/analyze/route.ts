@@ -6,8 +6,9 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { buildTownHallSchema, emptyThemeModel } from '@/lib/datasetUtils'
+import { buildTownHallSchema } from '@/lib/datasetUtils'
 import { ROWS_PER_BATCH } from '@/lib/constants'
+import { THEME_PALETTE } from '@/lib/themeUtils'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -77,13 +78,45 @@ export async function POST(_req: Request, { params }: Params) {
     datasetId = newDs.id
     created = true
 
-    // Create dataset_state with TH schema
+    // Create dataset_state with TH schema (theme model added below)
     const schema = buildTownHallSchema()
     await service.from('dataset_state').insert({
       dataset_id: datasetId,
       schema_config: schema,
-      theme_model: emptyThemeModel(),
+      theme_model: { themes: [], aiGenerated: false, version: 1 },
     })
+  }
+
+  // ── Sync TH themes → Ana theme model ─────────────────────────────────────
+  // Carry over TH themes so Ana shows the same themes the facilitator saw.
+  // Runs on every sync (creation + refresh) so new organic themes appear too.
+  const { data: thThemes } = await service
+    .from('townhall_themes')
+    .select('id, label, description, keywords, sentiment, state')
+    .eq('session_id', sessionId)
+    .in('state', ['active', 'detected', 'completed'])
+    .order('created_at', { ascending: true })
+
+  if (thThemes && thThemes.length > 0) {
+    const anaThemes = thThemes.map(function(t: any, i: number) {
+      var palette = THEME_PALETTE[i % THEME_PALETTE.length]
+      return {
+        id: 't' + (i + 1),
+        label: t.label,
+        keywords: t.keywords || [],
+        color: palette.border,
+        description: t.description || '',
+      }
+    })
+    await service.from('dataset_state').update({
+      theme_model: {
+        themes: anaThemes,
+        fieldName: 'user_message',
+        aiGenerated: true,
+        version: 1,
+        themeSource: 'townhall',
+      },
+    }).eq('dataset_id', datasetId)
   }
 
   // Fetch turns — only non-skipped turns with actual user messages
