@@ -461,10 +461,41 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
                 Share
               </button>
             </>)}
+
+            {/* Row 4: Analyze in Ana (full-width, solid orange) */}
+            <AnalyzeInAnaButton studyId={study.id} />
           </div>
         </div>
       </div>
     </>
+  )
+}
+
+// Inline component: Analyze in Ana button for study cards
+function AnalyzeInAnaButton({ studyId }: { studyId: string }) {
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('')
+
+  async function handleClick() {
+    setLoading(true)
+    setStatus('Syncing...')
+    try {
+      const res = await fetch('/api/studies/' + studyId + '/analyze', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setStatus(data.error || 'Failed'); setLoading(false); return }
+      window.location.href = '/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : '')
+    } catch {
+      setStatus('Error')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button onClick={handleClick} disabled={loading}
+      className="col-span-3 text-xs py-1.5 rounded-lg font-semibold transition-all text-center"
+      style={{ background: '#E8632A', color: 'white', border: 'none', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+      {loading ? status : '\uD83D\uDCCA Analyze in Ana'}
+    </button>
   )
 }
 
