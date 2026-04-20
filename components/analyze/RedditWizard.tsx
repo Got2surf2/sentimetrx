@@ -42,9 +42,10 @@ export default function RedditWizard({ onBack }: Props) {
   const [threads, setThreads] = useState<RedditThread[]>([])
   const [postSort, setPostSort] = useState('hot')
 
-  // Step 2: Selection + sorting
+  // Step 2: Selection + sorting + filter
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sortBy, setSortBy] = useState<SortMode>('date')
+  const [threadFilter, setThreadFilter] = useState('')
 
   // Step 3: Confirm + Download + sample size + progress
   const [datasetName, setDatasetName] = useState('')
@@ -101,14 +102,25 @@ export default function RedditWizard({ onBack }: Props) {
     return b.comment_count - a.comment_count
   })
 
+  // Filter threads by search text (matches title, subreddit, author)
+  var filterLower = threadFilter.toLowerCase().trim()
+  var visibleThreads = filterLower ? sortedThreads.filter(function(t) {
+    return t.title.toLowerCase().includes(filterLower) ||
+      t.subreddit.toLowerCase().includes(filterLower) ||
+      t.author.toLowerCase().includes(filterLower)
+  }) : sortedThreads
+
   function selectAll() {
-    const all = new Set<string>()
-    threads.forEach(function(t) { all.add(t.thread_id) })
+    const all = new Set<string>(selected)
+    visibleThreads.forEach(function(t) { all.add(t.thread_id) })
     setSelected(all)
   }
 
   function deselectAll() {
-    setSelected(new Set())
+    if (!filterLower) { setSelected(new Set()); return }
+    var next = new Set(selected)
+    visibleThreads.forEach(function(t) { next.delete(t.thread_id) })
+    setSelected(next)
   }
 
   function toggleThread(threadId: string) {
@@ -123,9 +135,9 @@ export default function RedditWizard({ onBack }: Props) {
   const unselectedThreads = sortedThreads.filter(function(t) { return !selected.has(t.thread_id) })
   const estimatedComments = selectedThreads.reduce(function(sum, t) { return sum + t.comment_count }, 0)
 
-  // Split into large (≥100 comments) and small (<100)
-  const largeThreads = sortedThreads.filter(function(t) { return t.comment_count >= LARGE_THRESHOLD })
-  const smallThreads = sortedThreads.filter(function(t) { return t.comment_count < LARGE_THRESHOLD })
+  // Split visible threads into large (≥100 comments) and small (<100)
+  const largeThreads = visibleThreads.filter(function(t) { return t.comment_count >= LARGE_THRESHOLD })
+  const smallThreads = visibleThreads.filter(function(t) { return t.comment_count < LARGE_THRESHOLD })
   const largeSelected = largeThreads.filter(function(t) { return selected.has(t.thread_id) })
   const smallSelected = smallThreads.filter(function(t) { return selected.has(t.thread_id) })
 
@@ -402,6 +414,24 @@ export default function RedditWizard({ onBack }: Props) {
                 )
               })}
             </div>
+
+            {/* Search within posts */}
+            <input
+              value={threadFilter}
+              onChange={function(e) { setThreadFilter(e.target.value) }}
+              placeholder="Filter posts by title..."
+              style={{
+                width: '100%', padding: '8px 14px', borderRadius: 10,
+                border: '1px solid ' + (threadFilter ? '#fbd5c2' : '#e5e7eb'),
+                fontSize: 12, outline: 'none', background: threadFilter ? '#fff8f5' : '#f9fafb',
+                transition: 'all 0.15s',
+              }}
+            />
+            {threadFilter && (
+              <div style={{ fontSize: 11, color: '#6b7280' }}>
+                Showing {visibleThreads.length} of {threads.length} posts matching "{threadFilter}"
+              </div>
+            )}
 
             {/* Subreddit filter pills */}
             {sortedSubs.length > 1 && (
