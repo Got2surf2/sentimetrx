@@ -17,6 +17,7 @@ interface SignalComment {
   percentile: number
   tier: 'mainstream' | 'controversial' | 'noise' | 'fringe'
   permalink: string
+  isAuthorReply: boolean
 }
 
 interface Props {
@@ -24,6 +25,7 @@ interface Props {
   mainstreamCutoff: number   // default 70
   noiseCutoff: number        // default 30
   onCutoffChange: (mainstream: number, noise: number) => void
+  datasetSource?: string     // 'reddit' | 'substack'
 }
 
 var HERMES = '#E8632A'
@@ -32,30 +34,44 @@ var DEFAULT_VISIBLE = 5
 // Detect if text is primarily a URL (no meaningful content)
 var URL_RE = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
-var TIER_KEYS: Array<'mainstream' | 'controversial' | 'fringe' | 'noise'> = ['mainstream', 'controversial', 'noise', 'fringe']
-
-var TIER_STYLES = {
+// Reddit tiers
+var REDDIT_TIER_KEYS: Array<'mainstream' | 'controversial' | 'noise' | 'fringe'> = ['mainstream', 'controversial', 'noise', 'fringe']
+var REDDIT_TIER_STYLES = {
   mainstream:    { label: 'Mainstream',    color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: '\u2B06' },
   controversial: { label: 'Controversial', color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: '\u26A0' },
   fringe:        { label: 'Fringe',        color: '#dc2626', bg: '#fef2f2', border: '#fca5a5', icon: '\u2B07' },
   noise:         { label: 'Noise',         color: '#9ca3af', bg: '#f9fafb', border: '#e5e7eb', icon: '\u2022' },
 }
 
-export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCutoffChange }: Props) {
+// Substack tiers
+var SUBSTACK_TIER_KEYS: Array<'mainstream' | 'controversial' | 'noise' | 'fringe'> = ['mainstream', 'controversial', 'noise', 'fringe']
+var SUBSTACK_TIER_STYLES = {
+  mainstream:    { label: 'Resonant',      color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: '\u2764' },
+  controversial: { label: 'Discussed',     color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: '\uD83D\uDCAC' },
+  fringe:        { label: 'Low Engagement', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5', icon: '\u2B07' },
+  noise:         { label: 'Ignored',       color: '#9ca3af', bg: '#f9fafb', border: '#e5e7eb', icon: '\u2022' },
+}
+
+export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCutoffChange, datasetSource }: Props) {
+  var isSubstack = datasetSource === 'substack'
+  var TIER_KEYS = isSubstack ? SUBSTACK_TIER_KEYS : REDDIT_TIER_KEYS
+  var TIER_STYLES = isSubstack ? SUBSTACK_TIER_STYLES : REDDIT_TIER_STYLES
   var [activeTier, setActiveTier] = useState<'mainstream' | 'controversial' | 'fringe' | 'noise' | null>(null)
   var [copied, setCopied] = useState(false)
 
   var classified = useMemo(function() {
     if (!rows.length) return [] as SignalComment[]
 
-    // Group by thread, filtering out URL-only comments
+    // Group by post/thread, filtering out URL-only comments
+    var groupKey = isSubstack ? 'post_title' : 'thread_id'
+    var scoreKey = isSubstack ? 'likes' : 'score'
     var threads: Record<string, { score: number; row: Record<string, unknown> }[]> = {}
     rows.forEach(function(r) {
       var text = String(r.body || r.user_message || '').trim()
       if (!text || URL_RE.test(text)) return
-      var tid = String(r.thread_id || 'unknown')
+      var tid = String(r[groupKey] || 'unknown')
       if (!threads[tid]) threads[tid] = []
-      threads[tid].push({ score: Number(r.score) || 0, row: r })
+      threads[tid].push({ score: Number(r[scoreKey]) || 0, row: r })
     })
 
     var allClassified: SignalComment[] = []
@@ -68,32 +84,50 @@ export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCut
         var percentile = count > 1 ? Math.round((1 - rank / (count - 1)) * 100) : 50
 
         var tier: 'mainstream' | 'controversial' | 'noise' | 'fringe'
-        if (percentile >= mainstreamCutoff) {
-          tier = 'mainstream'
-        } else if (percentile >= noiseCutoff) {
-          tier = 'controversial'
-        } else if (entry.score < 0) {
-          tier = 'fringe'
+        if (isSubstack) {
+          // Substack: likes-based — Resonant (high likes), Discussed (moderate + replies), Ignored (no engagement)
+          var replies = Number(entry.row.children_count) || 0
+          if (percentile >= mainstreamCutoff) {
+            tier = 'mainstream'  // Resonant
+          } else if (percentile >= noiseCutoff || replies >= 3) {
+            tier = 'controversial'  // Discussed
+          } else if (entry.score === 0 && replies === 0) {
+            tier = 'noise'  // Ignored
+          } else {
+            tier = 'fringe'  // Low engagement
+          }
         } else {
-          tier = 'noise'
+          // Reddit: score-based percentile
+          if (percentile >= mainstreamCutoff) {
+            tier = 'mainstream'
+          } else if (percentile >= noiseCutoff) {
+            tier = 'controversial'
+          } else if (entry.score < 0) {
+            tier = 'fringe'
+          } else {
+            tier = 'noise'
+          }
         }
+
+        var isAuthorReply = !!entry.row.is_author_reply
 
         allClassified.push({
           text: String(entry.row.body || entry.row.user_message || ''),
           score: entry.score,
           author: String(entry.row.author || entry.row.participant_id || ''),
-          thread: String(entry.row.thread_title || ''),
+          thread: String(entry.row.post_title || entry.row.thread_title || ''),
           subreddit: String(entry.row.subreddit || ''),
-          date: String(entry.row.post_date || ''),
+          date: String(entry.row.comment_date || entry.row.post_date || ''),
           percentile: percentile,
           tier: tier,
           permalink: String(entry.row.permalink || ''),
+          isAuthorReply: isAuthorReply,
         })
       })
     })
 
     return allClassified
-  }, [rows, mainstreamCutoff, noiseCutoff])
+  }, [rows, mainstreamCutoff, noiseCutoff, isSubstack])
 
   var counts = { mainstream: 0, controversial: 0, fringe: 0, noise: 0 }
   classified.forEach(function(c) { counts[c.tier]++ })
@@ -229,10 +263,13 @@ export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCut
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, color: '#9ca3af', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 700, color: c.score >= 0 ? '#059669' : '#dc2626' }}>
-                      {c.score >= 0 ? '+' : ''}{c.score}
+                      {isSubstack ? '\u2764 ' + c.score : (c.score >= 0 ? '+' : '') + c.score}
                     </span>
                     <span>{c.percentile}th pctl</span>
-                    <span>u/{c.author}</span>
+                    {c.isAuthorReply && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#e11d48', background: '#fff1f2', padding: '1px 6px', borderRadius: 8, border: '1px solid #fecdd3' }}>Author Reply</span>
+                    )}
+                    <span>{isSubstack ? '' : 'u/'}{c.author}</span>
                     {c.subreddit && <span>r/{c.subreddit}</span>}
                     {c.date && <span>{c.date}</span>}
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{c.thread}</span>

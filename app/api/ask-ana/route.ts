@@ -161,6 +161,7 @@ export async function POST(req: Request) {
 
   // Build system prompt
   const sourceLabel = dataset.source === 'reddit' ? 'Reddit comments and posts'
+    : dataset.source === 'substack' ? 'Substack reader comments'
     : dataset.source === 'townhall' ? 'Town Hall discussion responses'
     : dataset.source === 'study' ? 'survey responses'
     : dataset.source === 'google_reviews' ? 'Google Reviews'
@@ -301,6 +302,21 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
       if (r.score != null) parts.push('Score: ' + r.score)
       if (r.post_date) parts.push('Date: ' + r.post_date)
       if (r.depth != null) parts.push(Number(r.depth) === -1 ? 'Type: Post' : 'Type: Comment (depth ' + r.depth + ')')
+      parts.push('Text: ' + truncate(String(r.body || ''), TEXT_TRUNCATE))
+      return '[' + (i + 1) + '] ' + parts.join(' | ')
+    }).join('\n')
+  }
+
+  // For Substack: focus on comment engagement
+  if (source === 'substack') {
+    return rows.map(function(r, i) {
+      const parts: string[] = []
+      if (r.author) parts.push('Author: ' + r.author)
+      if (r.post_title) parts.push('Post: ' + truncate(String(r.post_title), 80))
+      if (r.likes != null) parts.push('Likes: ' + r.likes)
+      if (r.is_author_reply) parts.push('Author Reply: yes')
+      if (r.children_count) parts.push('Replies: ' + r.children_count)
+      if (r.comment_date) parts.push('Date: ' + String(r.comment_date).slice(0, 10))
       parts.push('Text: ' + truncate(String(r.body || ''), TEXT_TRUNCATE))
       return '[' + (i + 1) + '] ' + parts.join(' | ')
     }).join('\n')

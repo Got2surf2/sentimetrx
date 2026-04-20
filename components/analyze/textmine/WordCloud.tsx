@@ -166,7 +166,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     parsedData.forEach(function(row) {
       var text = getRowText(row, fields).toLowerCase()
       if (!text) return
-      var score = Number(row.score) || 0
+      var score = Number(row.likes ?? row.score) || 0
       var words = text.split(/\W+/)
       var seen = new Set<string>()
       words.forEach(function(w) {

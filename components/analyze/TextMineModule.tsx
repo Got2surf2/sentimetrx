@@ -68,7 +68,7 @@ interface Props {
   schema:            SchemaConfig
   analytics:         DatasetAnalytics | null
   savedThemeModel:   ThemeModel | null
-  datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall'
+  datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack'
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
 }
@@ -1464,7 +1464,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           </p>
                         </div>
                         <div style={{ display: 'flex', background: T.bg, borderRadius: 20, padding: 2, border: '1px solid ' + T.border, flexShrink: 0 }}>
-                          {[['distribution', '\u2261 Distribution'], ['cards', '\u229E Cards'], ...(datasetSource === 'reddit' ? [['signals', '\u26A1 Signals']] : [])].map(function(pair) {
+                          {[['distribution', '\u2261 Distribution'], ['cards', '\u229E Cards'], ...((datasetSource === 'reddit' || datasetSource === 'substack') ? [['signals', '\u26A1 Signals']] : [])].map(function(pair) {
                             var v = pair[0]; var lbl = pair[1]
                             return (
                               <button key={v} onClick={function() { setThemesView(v as 'distribution' | 'cards' | 'signals') }}
@@ -1719,13 +1719,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         )
                       })()}
 
-                      {/* ── Signals view (Reddit only) ─── */}
-                      {themesView === 'signals' && datasetSource === 'reddit' && (
+                      {/* ── Signals view (Reddit + Substack) ─── */}
+                      {themesView === 'signals' && (datasetSource === 'reddit' || datasetSource === 'substack') && (
                         <SignalsView
                           rows={filteredRows}
                           mainstreamCutoff={signalCutoffs.mainstream}
                           noiseCutoff={signalCutoffs.noise}
                           onCutoffChange={function(m, n) { setSignalCutoffs({ mainstream: m, noise: n }) }}
+                          datasetSource={datasetSource}
                         />
                       )}
 
@@ -1750,7 +1751,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     themeColors={themeColors}
                     parsedData={filteredRows}
                     activeField={activeField || themes!.fieldName}
-                    isReddit={datasetSource === 'reddit'}
+                    isReddit={datasetSource === 'reddit' || datasetSource === 'substack'}
                     onWordClick={function(word) {
                       // Single click: show opinion popover (toggle)
                       if (word) setOpinionWord(opinionWord === word ? null : word)

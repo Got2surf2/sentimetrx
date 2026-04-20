@@ -9,12 +9,13 @@ import { autoDetectSchema } from '@/lib/datasetUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
 import RedditWizard from '@/components/analyze/RedditWizard'
+import SubstackWizard from '@/components/analyze/SubstackWizard'
 
 const HERMES     = '#E8632A'
 const CHUNK_SIZE = 50                   // rows per POST
 const MAX_BYTES  = 3 * 1024 * 1024     // 3 MB safety ceiling per POST
 
-type SourceMode = 'select' | 'upload' | 'google_reviews' | 'reddit'
+type SourceMode = 'select' | 'upload' | 'google_reviews' | 'reddit' | 'substack'
 type Step = 1 | 2 | 3
 
 interface ParsedFile {
@@ -365,6 +366,12 @@ export default function UploadClient() {
               <h3 className="font-bold text-gray-800 mb-1 group-hover:text-orange-700">Download Reddit Posts</h3>
               <p className="text-xs text-gray-400">Search Reddit, select threads, download all comments</p>
             </button>
+            <button onClick={function() { setSourceMode('substack') }}
+              className="bg-white border-2 border-gray-200 rounded-2xl p-6 text-left hover:border-rose-400 hover:bg-rose-50 transition-all group">
+              <div className="text-3xl mb-3">✍️</div>
+              <h3 className="font-bold text-gray-800 mb-1 group-hover:text-rose-700">Download Substack Comments</h3>
+              <p className="text-xs text-gray-400">Enter a Substack publication, select posts, pull reader comments</p>
+            </button>
           </div>
         </div>
       )}
@@ -377,6 +384,11 @@ export default function UploadClient() {
       {/* Reddit wizard */}
       {sourceMode === 'reddit' && (
         <RedditWizard onBack={function() { setSourceMode('select') }} />
+      )}
+
+      {/* Substack wizard */}
+      {sourceMode === 'substack' && (
+        <SubstackWizard onBack={function() { setSourceMode('select') }} />
       )}
 
       {/* Upload flow */}

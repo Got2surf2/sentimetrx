@@ -66,6 +66,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const isReviews  = dataset.source === 'google_reviews'
   const isReddit   = dataset.source === 'reddit'
   const isTownHall = dataset.source === 'townhall'
+  const isSubstack = dataset.source === 'substack'
   const isArchived = dataset.status === 'archived'
   const fieldCount = dataset.state?.schema_config?.fields?.filter(function(f: { type: string }) {
     return f.type !== 'ignore'
@@ -104,7 +105,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     <div style={{
       background:    'white',
       border:        '1px solid #e8e8ec',
-      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isReviews ? '#2563eb' : HERMES),
+      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES),
       borderRadius:  12,
       padding:       '16px',
       boxShadow:     '0 1px 4px rgba(0,0,0,.05)',
@@ -116,7 +117,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       position:      'relative' as const,
       minHeight:     220,
     }}
-    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
+    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isSubstack ? '0 4px 16px rgba(225,29,72,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
     onMouseLeave={function(e) { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.05)' }}>
 
       {/* 1. Name + menu */}
@@ -213,6 +214,8 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           <Badge label={'\uD83D\uDCAC Reddit'} color="#059669" bg="#ecfdf5" border="#a7f3d0" />
         ) : isTownHall ? (
           <Badge label={'\uD83C\uDFE4 Town Hall'} color="#7c3aed" bg="#f5f3ff" border="#ddd6fe" />
+        ) : isSubstack ? (
+          <Badge label={'\u270D Substack'} color="#e11d48" bg="#fff1f2" border="#fecdd3" />
         ) : (
           <Badge label="Upload" color="#6b7280" bg="#f9fafb" border="#e5e7eb" />
         )}
@@ -408,7 +411,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         style={{
           width: '100%', padding: '9px 0', borderRadius: 9, fontSize: 13, fontWeight: 700,
           color: isArchived ? '#9ca3af' : 'white',
-          background: isArchived ? '#f3f4f6' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isReviews ? '#2563eb' : HERMES,
+          background: isArchived ? '#f3f4f6' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES,
           border: 'none', cursor: isArchived ? 'not-allowed' : 'pointer',
           transition: 'opacity .15s', fontFamily: 'inherit',
         }}

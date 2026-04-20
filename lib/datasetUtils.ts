@@ -328,6 +328,25 @@ export function buildTownHallSchema(): SchemaConfig {
   return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }
 }
 
+export function buildSubstackSchema(): SchemaConfig {
+  const fields: SchemaFieldConfig[] = [
+    { field: 'comment_id',      type: 'id' },
+    { field: 'author',          type: 'categorical', label: 'Author' },
+    { field: 'author_handle',   type: 'categorical', label: 'Handle' },
+    { field: 'body',            type: 'open-ended',  sqt: 'open-text', label: 'Comment' },
+    { field: 'likes',           type: 'numeric',     label: 'Likes' },
+    { field: 'is_author_reply', type: 'categorical', label: 'Author Reply' },
+    { field: 'post_title',      type: 'categorical', label: 'Post' },
+    { field: 'post_date',       type: 'date',        label: 'Post Date' },
+    { field: 'comment_date',    type: 'date',        label: 'Comment Date' },
+    { field: 'depth',           type: 'numeric',     label: 'Reply Depth' },
+    { field: 'children_count',  type: 'numeric',     label: 'Replies' },
+    { field: 'restacks',        type: 'numeric',     label: 'Restacks' },
+    { field: 'parent_id',       type: 'id' },
+  ]
+  return { fields, primaryTextField: 'body', autoDetected: false, version: 1 }
+}
+
 export function emptyThemeModel() {
   return { themes: [] as unknown[], aiGenerated: false, version: 1 }
 }
