@@ -20,7 +20,7 @@ async function redditGet(path: string): Promise<any> {
   const url = `${BASE}${path}`
   const delays = [5000, 10000, 15000] // progressive backoff
   let res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
-  for (let i = 0; i < delays.length && res.status === 429; i++) {
+  for (let i = 0; i < delays.length && (res.status === 429 || res.status === 403); i++) {
     await new Promise(function(r) { setTimeout(r, delays[i]) })
     res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
   }

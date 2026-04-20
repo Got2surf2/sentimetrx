@@ -47,9 +47,11 @@ export async function POST(req: Request) {
     })
   } catch (err: any) {
     console.error('[reddit-sources/search] error:', err)
-    // If 404/403, subreddit probably doesn't exist
-    if (err?.message?.includes('403') || err?.message?.includes('404')) {
+    if (err?.message?.includes('404')) {
       return NextResponse.json({ error: 'Subreddit "r/' + subName + '" not found or is private. Check the spelling and try again.' }, { status: 404 })
+    }
+    if (err?.message?.includes('403')) {
+      return NextResponse.json({ error: 'Reddit is temporarily blocking requests. Please wait a minute and try again.' }, { status: 429 })
     }
     return NextResponse.json({ error: err?.message || 'Failed to load subreddit' }, { status: 500 })
   }
