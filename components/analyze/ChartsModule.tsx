@@ -8,6 +8,7 @@ import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { injectSignalTier } from '@/lib/signalTier'
 
 // Dynamic Plotly import
 var PlotlyRef: any = null
@@ -42,7 +43,7 @@ interface SchemaField { field: string; type: string; label?: string; section?: s
 interface SchemaConfig { fields: SchemaField[]; autoDetected: boolean; version: number }
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
-interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any }
+interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any; datasetSource?: string }
 
 // ─── Chart slot definitions ───────────────────────────────────────────────
 
@@ -504,6 +505,7 @@ var _enrichCtx: {
   enrichKey?: number           // incremented when source/filter changes → triggers re-enrichment
   themeSourceOverride?: string // overrides themeModel.fieldName
   activeThemeNames?: Set<string> | null  // null = all active
+  datasetSource?: string       // 'reddit' | 'substack' etc for signal_tier injection
 } = {}
 
 // Raw-row cache keyed by datasetId — survives re-renders so re-enrichment doesn't re-fetch
@@ -525,7 +527,8 @@ function useRows(datasetId: string, enrichKey: number = 0) {
       _rawRowsCacheId = null
     }
     if (_rawRowsCache[datasetId]) {
-      setRows(enrichRows(_rawRowsCache[datasetId]))
+      var enriched = enrichRows(_rawRowsCache[datasetId])
+      setRows(_enrichCtx.datasetSource ? injectSignalTier(enriched, _enrichCtx.datasetSource) : enriched)
       setLoaded(true)
       return
     }
@@ -536,7 +539,8 @@ function useRows(datasetId: string, enrichKey: number = 0) {
       .then(function(data) {
         _rawRowsCache[datasetId] = data.rows || []
         _rawRowsCacheId = datasetId
-        setRows(enrichRows(_rawRowsCache[datasetId]))
+        var enriched = enrichRows(_rawRowsCache[datasetId])
+        setRows(_enrichCtx.datasetSource ? injectSignalTier(enriched, _enrichCtx.datasetSource) : enriched)
         setLoaded(true); setLoading(false)
       }).catch(function() { setLoading(false) })
   }, [datasetId, enrichKey])
@@ -1646,7 +1650,7 @@ interface SavedChart { id: string; name: string; chartType: string; config: Reco
 // MAIN MODULE
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function ChartsModule({ datasetId, schema, analytics, themeModel }: Props) {
+export default function ChartsModule({ datasetId, schema, analytics, themeModel, datasetSource }: Props) {
   var rawOpenFields = schema.fields.filter(function(f) { return f.type === 'open-ended' })
   var _themeKey = 'chartTheme_' + datasetId
   var _savedTheme = readSession<any>(_themeKey)
@@ -1659,7 +1663,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel 
   }, [themeSourceField, activeThemeNames, _themeKey])
 
   // Set enrichment context for useRows — must be before any inner component renders
-  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames }
+  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource }
 
   var [activeChart, setActiveChart] = useState(function() { return readSession<string>('activeChart_' + datasetId) || 'bar' })
   useEffect(function() { writeSession('activeChart_' + datasetId, activeChart) }, [activeChart, datasetId])

@@ -6,6 +6,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { injectSignalTier } from '@/lib/signalTier'
 
 // Dynamic Plotly import — avoids SSR crash
 var PlotlyRef: any = null
@@ -63,6 +64,7 @@ interface Props {
   datasetId: string
   schema: SchemaConfig
   themeModel?: any
+  datasetSource?: string
 }
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
@@ -1612,7 +1614,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
   )
 }
 
-export default function StatsModule({ datasetId, schema, themeModel }: Props) {
+export default function StatsModule({ datasetId, schema, themeModel, datasetSource }: Props) {
   // Restore UI state from sessionStorage
   var _statKey = 'stats_' + datasetId
   var _statSaved = readSession<any>(_statKey)
@@ -1665,7 +1667,7 @@ export default function StatsModule({ datasetId, schema, themeModel }: Props) {
               }
             })
           }
-          setRows(loadedRows)
+          setRows(datasetSource ? injectSignalTier(loadedRows, datasetSource) : loadedRows)
           setSamplingMeta({
             sampled:    !!data.sampled,
             sampleSize: data.sampleSize ?? (data.rows || []).length,

@@ -5,6 +5,7 @@
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { injectSignalTier } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import {
   Theme, ThemeModel, THEME_PALETTE,
@@ -1065,50 +1066,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var activeFilterCount = filterCount(effectiveFilters)
 
   // Inject signal_tier for Reddit/Substack datasets (dynamic, respects filter + threshold changes)
-  var filteredRows = useMemo(function() {
-    if (datasetSource !== 'reddit' && datasetSource !== 'substack') return _filteredBase
-    var isSubstack = datasetSource === 'substack'
-    var groupKey = isSubstack ? 'post_title' : 'thread_id'
-    var scoreKey = isSubstack ? 'likes' : 'score'
-
-    // Group by thread/post
-    var groups: Record<string, number[]> = {}
-    _filteredBase.forEach(function(r, idx) {
-      var gid = String(r[groupKey] || 'unknown')
-      if (!groups[gid]) groups[gid] = []
-      groups[gid].push(idx)
-    })
-
-    // Compute percentile within each group and assign tier
-    var tiers = new Array(_filteredBase.length)
-    Object.values(groups).forEach(function(indices) {
-      var sorted = [...indices].sort(function(a, b) {
-        return (Number(_filteredBase[b][scoreKey]) || 0) - (Number(_filteredBase[a][scoreKey]) || 0)
-      })
-      var count = sorted.length
-      sorted.forEach(function(idx, rank) {
-        var percentile = count > 1 ? Math.round((1 - rank / (count - 1)) * 100) : 50
-        var score = Number(_filteredBase[idx][scoreKey]) || 0
-        var tier: string
-        if (isSubstack) {
-          var replies = Number(_filteredBase[idx].children_count) || 0
-          if (percentile >= signalCutoffs.mainstream) tier = 'Resonant'
-          else if (percentile >= signalCutoffs.noise || replies >= 3) tier = 'Discussed'
-          else if (score === 0 && replies === 0) tier = 'Ignored'
-          else tier = 'Low Engagement'
-        } else {
-          if (percentile >= signalCutoffs.mainstream) tier = 'Mainstream'
-          else if (percentile >= signalCutoffs.noise) tier = 'Controversial'
-          else if (score < 0) tier = 'Fringe'
-          else tier = 'Noise'
-        }
-        tiers[idx] = tier
-      })
-    })
-
-    return _filteredBase.map(function(r, i) {
-      return { ...r, signal_tier: tiers[i] || 'Noise' }
-    })
+  var filteredRows: Record<string, unknown>[] = useMemo(function(): Record<string, unknown>[] {
+    return injectSignalTier(_filteredBase, datasetSource || '', signalCutoffs)
   }, [_filteredBase, datasetSource, signalCutoffs.mainstream, signalCutoffs.noise])
 
   // Recount theme hits against filtered data — deferred to let UI paint loading state

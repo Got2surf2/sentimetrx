@@ -37,5 +37,11 @@ export default async function StatsPage({ params }: Props) {
   var schema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
   var themeModel = stateRow.theme_model || null
 
-  return <StatsModule datasetId={params.datasetId} schema={schema} themeModel={themeModel} />
+  // Inject signal_tier for Reddit/Substack datasets
+  var { data: dataset } = await service.from('datasets').select('source').eq('id', params.datasetId).single()
+  if (dataset?.source === 'reddit' || dataset?.source === 'substack') {
+    schema = { ...schema, fields: [...(schema.fields || []), { field: 'signal_tier', type: 'categorical', label: 'Signal Tier' }] }
+  }
+
+  return <StatsModule datasetId={params.datasetId} schema={schema} themeModel={themeModel} datasetSource={dataset?.source} />
 }
