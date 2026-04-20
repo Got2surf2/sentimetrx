@@ -4,7 +4,7 @@
 // Fetches rows from the paginated rows API, mines themes via server proxy,
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import {
   Theme, ThemeModel, THEME_PALETTE,
@@ -893,11 +893,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [isDirty])
 
   var openFields = schema.fields.filter(function(f) { return f.type === 'open-ended' && f.status !== 'ignored' })
-  var catFields = schema.fields.filter(function(f) { return f.type === 'categorical' && f.status !== 'ignored' }).map(function(f) { return f.field })
+  // Inject signal_tier as a virtual categorical field for Reddit/Substack
+  var augmentedFields = (datasetSource === 'reddit' || datasetSource === 'substack')
+    ? [...schema.fields, { field: 'signal_tier', type: 'categorical' as const, label: 'Signal Tier' }]
+    : schema.fields
+  var catFields = augmentedFields.filter(function(f) { return f.type === 'categorical' && f.status !== 'ignored' }).map(function(f) { return f.field })
 
   // Issue 7: Always use alias (label) if available
   function fieldLabel(fieldName: string): string {
-    var f = schema.fields.find(function(s) { return s.field === fieldName })
+    var f = augmentedFields.find(function(s) { return s.field === fieldName })
     return (f && f.label && f.label !== f.field) ? f.label : fieldName
   }
 
@@ -1057,8 +1061,55 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   // Apply global filters to rows
-  var filteredRows = applyFilters(rows, effectiveFilters)
+  var _filteredBase = applyFilters(rows, effectiveFilters)
   var activeFilterCount = filterCount(effectiveFilters)
+
+  // Inject signal_tier for Reddit/Substack datasets (dynamic, respects filter + threshold changes)
+  var filteredRows = useMemo(function() {
+    if (datasetSource !== 'reddit' && datasetSource !== 'substack') return _filteredBase
+    var isSubstack = datasetSource === 'substack'
+    var groupKey = isSubstack ? 'post_title' : 'thread_id'
+    var scoreKey = isSubstack ? 'likes' : 'score'
+
+    // Group by thread/post
+    var groups: Record<string, number[]> = {}
+    _filteredBase.forEach(function(r, idx) {
+      var gid = String(r[groupKey] || 'unknown')
+      if (!groups[gid]) groups[gid] = []
+      groups[gid].push(idx)
+    })
+
+    // Compute percentile within each group and assign tier
+    var tiers = new Array(_filteredBase.length)
+    Object.values(groups).forEach(function(indices) {
+      var sorted = [...indices].sort(function(a, b) {
+        return (Number(_filteredBase[b][scoreKey]) || 0) - (Number(_filteredBase[a][scoreKey]) || 0)
+      })
+      var count = sorted.length
+      sorted.forEach(function(idx, rank) {
+        var percentile = count > 1 ? Math.round((1 - rank / (count - 1)) * 100) : 50
+        var score = Number(_filteredBase[idx][scoreKey]) || 0
+        var tier: string
+        if (isSubstack) {
+          var replies = Number(_filteredBase[idx].children_count) || 0
+          if (percentile >= signalCutoffs.mainstream) tier = 'Resonant'
+          else if (percentile >= signalCutoffs.noise || replies >= 3) tier = 'Discussed'
+          else if (score === 0 && replies === 0) tier = 'Ignored'
+          else tier = 'Low Engagement'
+        } else {
+          if (percentile >= signalCutoffs.mainstream) tier = 'Mainstream'
+          else if (percentile >= signalCutoffs.noise) tier = 'Controversial'
+          else if (score < 0) tier = 'Fringe'
+          else tier = 'Noise'
+        }
+        tiers[idx] = tier
+      })
+    })
+
+    return _filteredBase.map(function(r, i) {
+      return { ...r, signal_tier: tiers[i] || 'Noise' }
+    })
+  }, [_filteredBase, datasetSource, signalCutoffs.mainstream, signalCutoffs.noise])
 
   // Recount theme hits against filtered data — deferred to let UI paint loading state
   var _recountFields = effectiveFields.length > 0 ? effectiveFields
@@ -1786,7 +1837,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* ═══ COMPARE TAB ═══ */}
             {subTab === 'compare' && (
-              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={schema.fields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} viewMode={compareViewMode} setViewMode={setCompareViewMode} smartAxes={compareSmartAxes} setSmartAxes={setCompareSmartAxes} ratingField={ratingField} />
+              <CompareTab themes={displayThemes || themes} parsedData={filteredRows} schema={augmentedFields} activeField={activeField} themeColors={themeColors} breakdownFields={compareFields} setBreakdownFields={setCompareFields} onDrillTheme={handleDrillTheme} viewMode={compareViewMode} setViewMode={setCompareViewMode} smartAxes={compareSmartAxes} setSmartAxes={setCompareSmartAxes} ratingField={ratingField} />
             )}
 
             {/* ═══ COMMENTS TAB ═══ */}
