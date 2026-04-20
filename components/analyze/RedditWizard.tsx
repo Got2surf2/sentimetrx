@@ -248,7 +248,7 @@ export default function RedditWizard({ onBack }: Props) {
       setDlProgress({ threadsDown: selectedThreads.length, threadsTotal: selectedThreads.length, comments: totalComments })
 
       setTimeout(function() {
-        router.push('/analyze/' + datasetId + '/settings')
+        router.push('/analyze/' + datasetId + '/settings?new=1')
       }, 1500)
     } catch (err: any) {
       setCreateError(err?.message || 'Failed')

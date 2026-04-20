@@ -200,8 +200,8 @@ export default function SubstackWizard({ onBack }: Props) {
       setStatusMsg('Finalizing...')
       await fetch('/api/datasets/' + datasetId + '/compute', { method: 'POST' }).catch(function() {})
 
-      // Navigate to TextMine
-      window.location.href = '/analyze/' + datasetId + '/textmine?new=1'
+      // Navigate to Schema page first — auto-redirects to TextMine after save
+      window.location.href = '/analyze/' + datasetId + '/settings?new=1'
     } catch (e: any) {
       setCreateError(e.message || 'Download failed')
       setCreating(false)

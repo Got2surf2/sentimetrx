@@ -575,6 +575,12 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
       })
       onChange(schema)
       setSaved(true)
+      // Auto-redirect to TextMine after first save on new datasets (Reddit/Substack)
+      var params = new URLSearchParams(window.location.search)
+      if (params.get('new') === '1') {
+        setTimeout(function() { window.location.href = '/analyze/' + datasetId + '/textmine' }, 800)
+        return
+      }
       setTimeout(function() { setSaved(false) }, 2200)
     } finally {
       setSaving(false)
