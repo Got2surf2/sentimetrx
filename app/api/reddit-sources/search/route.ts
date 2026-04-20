@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
 export async function POST(req: Request) {
+  var subName = ''
   try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
     }
 
     // Clean subreddit name (strip r/ prefix if present)
-    const subName = subreddit.trim().replace(/^r\//, '').replace(/^\/r\//, '')
+    subName = subreddit.trim().replace(/^r\//, '').replace(/^\/r\//, '')
 
     // Fetch posts from subreddit (hot/new/top)
     const posts = await fetchSubredditPosts(subName, sort || 'hot', 100)
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
     console.error('[reddit-sources/search] error:', err)
     // If 404/403, subreddit probably doesn't exist
     if (err?.message?.includes('403') || err?.message?.includes('404')) {
-      return NextResponse.json({ error: 'Subreddit "r/' + (req as any)._subreddit + '" not found or is private. Check the spelling and try again.' }, { status: 404 })
+      return NextResponse.json({ error: 'Subreddit "r/' + subName + '" not found or is private. Check the spelling and try again.' }, { status: 404 })
     }
     return NextResponse.json({ error: err?.message || 'Failed to load subreddit' }, { status: 500 })
   }
