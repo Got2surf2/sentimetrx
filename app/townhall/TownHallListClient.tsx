@@ -426,7 +426,7 @@ function AnalyzeInAnaButton({ sessionId }: { sessionId: string }) {
   return (
     <button onClick={handleClick} disabled={loading}
       className="col-span-3 text-xs py-1.5 rounded-lg font-semibold transition-all text-center"
-      style={{ background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+      style={{ background: '#E8632A', color: 'white', border: 'none', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>
       {loading ? status : '\uD83D\uDCCA Analyze in Ana'}
     </button>
   )
