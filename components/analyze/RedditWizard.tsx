@@ -24,13 +24,6 @@ interface RedditThread {
   created_utc: number
 }
 
-interface SubredditResult {
-  name: string
-  title: string
-  description: string
-  subscribers: number
-}
-
 type WizardStep = 1 | 2 | 3
 type SortMode = 'date' | 'score' | 'comments'
 
@@ -42,13 +35,12 @@ export default function RedditWizard({ onBack }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<WizardStep>(1)
 
-  // Step 1: Search
+  // Step 1: Subreddit entry
   const [keyword, setKeyword] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState('')
   const [threads, setThreads] = useState<RedditThread[]>([])
-  const [subreddits, setSubreddits] = useState<SubredditResult[]>([])
-  const [filterSub, setFilterSub] = useState('')
+  const [postSort, setPostSort] = useState('hot')
 
   // Step 2: Selection + sorting
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -64,24 +56,24 @@ export default function RedditWizard({ onBack }: Props) {
 
   // -- Step 1: Search --------------------------------------------------------
 
-  async function handleSearch(subreddit?: string) {
+  async function handleSearch() {
     if (!keyword.trim()) return
     setSearching(true)
     setSearchError('')
     setThreads([])
     try {
+      var subName = keyword.trim().replace(/^r\//, '').replace(/^\/r\//, '')
       const res = await fetch('/api/reddit-sources/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: keyword.trim(), subreddit: subreddit || filterSub || undefined }),
+        body: JSON.stringify({ subreddit: subName, sort: postSort }),
       })
       const data = await res.json()
-      if (!res.ok) { setSearchError(data.error || 'Search failed'); return }
-      if (!data.posts?.length && !data.subreddits?.length) {
-        setSearchError('No results found for "' + keyword.trim() + '"')
+      if (!res.ok) { setSearchError(data.error || 'Subreddit not found. Check the name and try again.'); return }
+      if (!data.posts?.length) {
+        setSearchError('No posts found in r/' + subName)
         return
       }
-      setSubreddits(data.subreddits || [])
       // Sort by date (newest first) by default
       var posts = (data.posts || []) as RedditThread[]
       posts.sort(function(a, b) { return b.created_utc - a.created_utc })
@@ -91,10 +83,10 @@ export default function RedditWizard({ onBack }: Props) {
       posts.forEach(function(t: RedditThread) { all.add(t.thread_id) })
       setSelected(all)
       setSortBy('date')
-      setDatasetName('Reddit: ' + keyword.trim())
+      setDatasetName('Reddit: r/' + subName)
       if (posts.length) setStep(2)
     } catch (err: any) {
-      setSearchError(err?.message || 'Search failed')
+      setSearchError(err?.message || 'Failed to load subreddit')
     } finally {
       setSearching(false)
     }
@@ -312,53 +304,43 @@ export default function RedditWizard({ onBack }: Props) {
         })}
       </div>
 
-      {/* Step 1: Search */}
+      {/* Step 1: Enter subreddit */}
       {step === 1 && (
         <div className="flex flex-col gap-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
             <div>
-              <h3 className="font-bold text-gray-800 mb-1">Search Reddit</h3>
-              <p className="text-xs text-gray-400">Enter keywords to find relevant posts and discussions</p>
+              <h3 className="font-bold text-gray-800 mb-1">Enter a Subreddit</h3>
+              <p className="text-xs text-gray-400">Type the subreddit name to load its posts (e.g. politics, FloridaMan, healthcare)</p>
             </div>
             <div className="flex gap-3">
-              <input
-                value={keyword}
-                onChange={function(e) { setKeyword(e.target.value) }}
-                onKeyDown={function(e) { if (e.key === 'Enter') handleSearch() }}
-                placeholder='e.g. "public transit complaints" or "housing crisis Austin"'
-                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors"
-              />
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1, border: '1px solid #d1d5db', borderRadius: 12, overflow: 'hidden', transition: 'border-color 0.15s' }}>
+                <span style={{ padding: '0 0 0 14px', fontSize: 14, color: '#9ca3af', fontWeight: 600, userSelect: 'none' }}>r/</span>
+                <input
+                  value={keyword}
+                  onChange={function(e) { setKeyword(e.target.value.replace(/\s/g, '')) }}
+                  onKeyDown={function(e) { if (e.key === 'Enter') handleSearch() }}
+                  placeholder='politics, FloridaMan, healthcare...'
+                  className="flex-1 px-2 py-2.5 text-sm outline-none"
+                  style={{ border: 'none' }}
+                />
+              </div>
+              <select value={postSort} onChange={function(e) { setPostSort(e.target.value) }}
+                style={{ padding: '0 12px', borderRadius: 12, border: '1px solid #d1d5db', fontSize: 12, fontWeight: 600, color: '#374151', cursor: 'pointer', background: '#f9fafb' }}>
+                <option value="hot">Hot</option>
+                <option value="new">New</option>
+                <option value="top">Top</option>
+              </select>
               <button
                 onClick={function() { handleSearch() }}
                 disabled={searching || !keyword.trim()}
                 className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 hover:opacity-90 transition-all"
                 style={{ background: HERMES }}>
-                {searching ? 'Searching...' : 'Search'}
+                {searching ? 'Loading...' : 'Load Posts'}
               </button>
             </div>
             {searching && (
               <div className="flex items-center gap-3 py-2">
-                <LottieLoader size={56} message="Searching Reddit..." />
-              </div>
-            )}
-
-            {/* Subreddit suggestions */}
-            {subreddits.length > 0 && threads.length === 0 && (
-              <div className="flex flex-col gap-2 mt-2">
-                <p className="text-xs font-semibold text-gray-500">Related subreddits — click to search within:</p>
-                <div className="flex flex-wrap gap-2">
-                  {subreddits.slice(0, 10).map(function(sub) {
-                    return (
-                      <button key={sub.name}
-                        onClick={function() { setFilterSub(sub.name); handleSearch(sub.name) }}
-                        className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 hover:border-orange-400 hover:bg-orange-50 transition-all"
-                        style={{ color: '#374151' }}>
-                        r/{sub.name}
-                        <span className="ml-1.5 text-gray-400">{sub.subscribers >= 1000 ? (sub.subscribers / 1000).toFixed(0) + 'k' : sub.subscribers}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+                <LottieLoader size={56} message={'Loading r/' + keyword.trim().replace(/^r\//, '') + '...'} />
               </div>
             )}
           </div>

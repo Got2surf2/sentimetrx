@@ -1,10 +1,11 @@
 // app/api/reddit-sources/search/route.ts
-// POST /api/reddit-sources/search — search Reddit for subreddits + posts
-// Returns preview results without persisting anything
+// POST /api/reddit-sources/search — fetch posts from a subreddit
+// Reddit blocked unauthenticated search endpoints (403), so we use direct
+// subreddit listing (/r/{name}/{sort}.json) which still works.
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { searchSubreddits, searchPosts } from '@/lib/reddit'
+import { fetchSubredditPosts } from '@/lib/reddit'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -28,24 +29,27 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { keyword, subreddit } = body
-    if (!keyword?.trim()) {
-      return NextResponse.json({ error: 'keyword is required' }, { status: 400 })
+    const { subreddit, sort } = body
+    if (!subreddit?.trim()) {
+      return NextResponse.json({ error: 'subreddit name is required' }, { status: 400 })
     }
 
-    // Search for subreddits and posts in parallel
-    const [subreddits, posts] = await Promise.all([
-      searchSubreddits(keyword.trim()),
-      searchPosts(keyword.trim(), subreddit || undefined),
-    ])
+    // Clean subreddit name (strip r/ prefix if present)
+    const subName = subreddit.trim().replace(/^r\//, '').replace(/^\/r\//, '')
+
+    // Fetch posts from subreddit (hot/new/top)
+    const posts = await fetchSubredditPosts(subName, sort || 'hot', 100)
 
     return NextResponse.json({
-      keyword: keyword.trim(),
-      subreddits,
+      subreddit: subName,
       posts,
     })
   } catch (err: any) {
     console.error('[reddit-sources/search] error:', err)
-    return NextResponse.json({ error: err?.message || 'Search failed' }, { status: 500 })
+    // If 404/403, subreddit probably doesn't exist
+    if (err?.message?.includes('403') || err?.message?.includes('404')) {
+      return NextResponse.json({ error: 'Subreddit "r/' + (req as any)._subreddit + '" not found or is private. Check the spelling and try again.' }, { status: 404 })
+    }
+    return NextResponse.json({ error: err?.message || 'Failed to load subreddit' }, { status: 500 })
   }
 }
