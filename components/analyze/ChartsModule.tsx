@@ -9,6 +9,7 @@ import { readSession, writeSession } from '@/lib/useSessionState'
 import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
+import { useRows } from '@/components/analyze/RowsContext'
 import type { SchemaFieldConfig as SchemaField, SchemaConfig } from '@/lib/analyzeTypes'
 
 // Dynamic Plotly import
@@ -500,43 +501,24 @@ var _enrichCtx: {
   datasetSource?: string       // 'reddit' | 'substack' etc for signal_tier injection
 } = {}
 
-// Raw-row cache keyed by datasetId — survives re-renders so re-enrichment doesn't re-fetch
-var _rawRowsCache: Record<string, Record<string, unknown>[]> = {}
-var _rawRowsCacheId: string | null = null  // track which dataset is cached
-
-var CHART_SAMPLE_MAX = 10000  // cap rows fetched for charts — keeps 500K datasets usable
-
-function useRows(datasetId: string, enrichKey: number = 0) {
+// useChartRows: reads from shared RowsContext, applies chart-specific enrichment
+// (theme classification + field remapping). No independent fetch.
+function useChartRows(datasetId: string, enrichKey: number = 0) {
+  var shared = useRows()
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [loaded, setLoaded] = useState(false)
-  var [loading, setLoading] = useState(false)
   useEffect(function() {
-    // Skip fetching when enrichKey is -1 (component uses aggregation API instead)
-    if (enrichKey < 0) return
-    // Evict cache if dataset changed
-    if (_rawRowsCacheId && _rawRowsCacheId !== datasetId) {
-      delete _rawRowsCache[_rawRowsCacheId]
-      _rawRowsCacheId = null
-    }
-    if (_rawRowsCache[datasetId]) {
-      var enriched = enrichRows(_rawRowsCache[datasetId])
-      setRows(_enrichCtx.datasetSource ? injectSignalTier(enriched, _enrichCtx.datasetSource) : enriched)
-      setLoaded(true)
-      return
-    }
-    if (loading) return
-    setLoading(true)
-    fetch('/api/datasets/' + datasetId + '/rows?all=true&sampleMax=' + CHART_SAMPLE_MAX)
-      .then(function(r) { return r.json() })
-      .then(function(data) {
-        _rawRowsCache[datasetId] = data.rows || []
-        _rawRowsCacheId = datasetId
-        var enriched = enrichRows(_rawRowsCache[datasetId])
-        setRows(_enrichCtx.datasetSource ? injectSignalTier(enriched, _enrichCtx.datasetSource) : enriched)
-        setLoaded(true); setLoading(false)
-      }).catch(function() { setLoading(false) })
-  }, [datasetId, enrichKey])
-  return { rows: rows, loaded: loaded, loading: loading }
+    if (enrichKey < 0) return // skip when using aggregation API
+    if (!shared.rowsLoaded) return
+    // Trigger fetch if not loaded yet
+    shared.fetchRows()
+    var enriched = enrichRows(shared.rows)
+    setRows(_enrichCtx.datasetSource ? injectSignalTier(enriched, _enrichCtx.datasetSource) : enriched)
+    setLoaded(true)
+  }, [shared.rowsLoaded, enrichKey])
+  // Trigger shared fetch on first render
+  useEffect(function() { shared.fetchRows() }, [])
+  return { rows: rows, loaded: loaded, loading: shared.rowsLoading }
 }
 
 // Aggregation hook — fetches pre-computed results from SQL, no raw rows needed
@@ -612,7 +594,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   // Fallback to useRows for __themes__ or __mapped__ virtual fields that aren't in the flat table
   var needsRows = catField.startsWith('__') || colorByField.startsWith('__')
-  var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
@@ -841,7 +823,7 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }:
 }
 
 function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
   var groups: Record<string, number[]> = {}
@@ -888,7 +870,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
   var needsRows = splitByField.startsWith('__') || measureField.startsWith('__')
   var aggSpec = !needsRows && splitByField && measureField ? { op: 'group_stats', groupField: splitByField, valueField: measureField } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
-  var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
   var [showAllKPI, setShowAllKPI] = useState(false)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
@@ -965,7 +947,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
 
 function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors }: { datasetId: string; scoreField: string; schema: SchemaField[]; groupByField: string; colors?: string[] }) {
   var pal = colors || CHART_COLORS
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
   var [minN, setMinN] = useState(3)
   var [sortBy, setSortBy] = useState<'delta' | 'count'>('delta')
   var [mode, setMode] = useState<'delta' | 'regression'>('delta')
@@ -1381,7 +1363,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
 }
 
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
@@ -1397,7 +1379,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   var needsRows = rowField.startsWith('__') || colField.startsWith('__')
   var aggSpec = !needsRows && rowField && colField ? { op: 'crosstab', rowField: rowField, colField: colField, limit: 30 } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
-  var { rows, loaded: rowsLoaded } = useRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
@@ -1437,7 +1419,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
 
   var aggSpec = dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
-  var { rows, loaded: rowsLoaded } = useRows(datasetId, aggLoaded ? -1 : (_enrichCtx.enrichKey || 0))
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, aggLoaded ? -1 : (_enrichCtx.enrichKey || 0))
   var loaded = aggLoaded && aggData?.series ? true : rowsLoaded
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
@@ -1591,7 +1573,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
 }
 
 function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string }) {
-  var { rows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
@@ -1601,7 +1583,7 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
 }
 
 function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; schema: SchemaField[]; datasetId: string }) {
-  var { rows: allRows, loaded } = useRows(datasetId, _enrichCtx.enrichKey || 0)
+  var { rows: allRows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
   var [page, setPage] = useState(0)
   var PAGE = 50
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>

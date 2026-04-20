@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react'
 import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
+import { RowsProvider } from '@/components/analyze/RowsContext'
 import { filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
@@ -247,7 +248,9 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
 export default function DatasetShell(props: Props) {
   return (
     <FilterProvider>
-      <ShellInner {...props} />
+      <RowsProvider datasetId={props.datasetId} schemaFields={props.schemaFields} datasetSource={props.dataset.source}>
+        <ShellInner {...props} />
+      </RowsProvider>
     </FilterProvider>
   )
 }

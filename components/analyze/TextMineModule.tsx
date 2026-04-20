@@ -19,6 +19,7 @@ import { sigTest, welchTTest } from '@/lib/statsUtils'
 import { smartOrder } from '@/lib/scaleUtils'
 import { resolveAlias } from '@/lib/aliasUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
+import { useRows } from '@/components/analyze/RowsContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
 import SignalsView from '@/components/analyze/textmine/SignalsView'
@@ -801,10 +802,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, anaLibrary, initialOpenEditor }: Props) {
   const totalRows = analytics?.totalRows ?? 0
-  const [rows, setRows] = useState<Record<string, unknown>[]>([])
-  const [rowsLoading, setRowsLoading] = useState(false)
-  const [rowsLoaded, setRowsLoaded] = useState(false)
-  const [rowsError, setRowsError] = useState<string | null>(null)
+  const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows } = useRows()
 
   const [computing, setComputing] = useState(false)
   const [displayThemes, setDisplayThemes] = useState<ThemeModel | null>(null)
@@ -989,59 +987,25 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     } catch { /* fallback to client-side counts silently */ }
   }, [datasetId, totalRows])
 
-  // Fetch rows with sampling cap to avoid browser OOM on large datasets.
-  // 50K threshold is safe for modern browsers. Below this, no sampling occurs.
-  // Accurate theme counts come from the server-side theme-counts endpoint.
-  const SAMPLE_CAP = 50000
-  const fetchAllRows = useCallback(async function() {
-    if (rowsLoaded || rowsLoading) return
-    setRowsLoading(true)
-    setRowsError(null)
-    try {
-      const r = await fetch('/api/datasets/' + datasetId + '/rows?all=true&sampleMax=' + SAMPLE_CAP)
-      if (!r.ok) throw new Error('Failed to load rows')
-      const data = await r.json()
-      const allRows: Record<string, unknown>[] = data.rows || []
-      // Apply value aliases to categorical fields so comparisons/breakdowns show aliased labels
-      const schemaFields = schema.fields || []
-      const aliasMap: Record<string, Record<string, string>> = {}
-      schemaFields.forEach(function(f: any) {
-        if (f.valueAliases && Object.keys(f.valueAliases).length > 0) aliasMap[f.field] = f.valueAliases
-      })
-      if (Object.keys(aliasMap).length > 0) {
-        allRows.forEach(function(row) {
-          for (var field in aliasMap) {
-            var val = row[field]
-            if (val != null && aliasMap[field][String(val)]) {
-              row[field] = aliasMap[field][String(val)]
-            }
-          }
-        })
-      }
-      setRows(allRows)
-      if (data.sampled) {
-        setSamplingInfo({ sampled: allRows.length, total: data.totalRows || totalRows })
-      }
-      // Saved themes will be recounted automatically by the useEffect when rows are set
-      // Fetch accurate server-side counts on the full dataset
-      if (savedThemeModel && savedThemeModel.themes && allRows.length > 0) {
-        const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
-        const fields = Array.isArray(field) ? field : (field ? [field] : [])
-        if (fields.length > 0) fetchServerThemeCounts(savedThemeModel, fields)
-        // Enrich with search interest if not yet done (catches saved models from before this feature)
-        enrichSearchInterest(savedThemeModel)
-      }
-      setRowsLoaded(true)
-    } catch (e: unknown) {
-      setRowsError(e instanceof Error ? e.message : 'Failed to load rows')
-    }
-    setRowsLoading(false)
-  }, [datasetId, rowsLoaded, rowsLoading, savedThemeModel])
-
-  // Load rows when user first interacts (lazy)
+  // Trigger shared row fetch on mount
   useEffect(function() {
-    fetchAllRows()
+    triggerRowFetch()
   }, [])
+
+  // When rows load from shared context, update sampling info + server theme counts
+  useEffect(function() {
+    if (!rowsLoaded || !rows.length) return
+    if (rowsSampled) {
+      setSamplingInfo({ sampled: sampledCount, total: rowsTotalRows || totalRows })
+    }
+    // Fetch accurate server-side counts on the full dataset
+    if (savedThemeModel && savedThemeModel.themes) {
+      const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
+      const fields = Array.isArray(field) ? field : (field ? [field] : [])
+      if (fields.length > 0) fetchServerThemeCounts(savedThemeModel, fields)
+      enrichSearchInterest(savedThemeModel)
+    }
+  }, [rowsLoaded])
 
   // Theme colors
   const themeColors: Record<number, typeof THEME_PALETTE[0]> = {}
@@ -1419,7 +1383,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   <div style={{ margin: '40px auto', maxWidth: 440, padding: '16px 20px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#dc2626', textAlign: 'center' }}>
                     <div style={{ fontWeight: 700, marginBottom: 4 }}>Failed to load dataset rows</div>
                     <div style={{ color: '#991b1b', marginBottom: 12 }}>{rowsError}</div>
-                    <button onClick={function() { setRowsLoaded(false); setRowsError(null); fetchAllRows() }}
+                    <button onClick={function() { triggerRowFetch() }}
                       style={{ padding: '7px 18px', fontSize: 12, fontWeight: 700, background: '#dc2626', color: 'white', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
                       Retry
                     </button>

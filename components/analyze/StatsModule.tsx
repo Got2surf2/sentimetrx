@@ -43,6 +43,7 @@ import {
 } from '@/lib/statsUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
+import { useRows } from '@/components/analyze/RowsContext'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { smartOrder } from '@/lib/scaleUtils'
 
@@ -1616,13 +1617,9 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var [confidenceLevel, setConfidenceLevel] = useState(_statSaved?.confidenceLevel || 99.5)
   var [pendingCap, setPendingCap] = useState(_statSaved?.sampleCap || 385)
   var [pendingConfidence, setPendingConfidence] = useState(_statSaved?.confidenceLevel || 99.5)
-  var [rows, setRows] = useState<Record<string, unknown>[]>([])
-  var [rowsLoaded, setRowsLoaded] = useState(false)
-  var [rowsLoading, setRowsLoading] = useState(false)
-  var [samplingMeta, setSamplingMeta] = useState<{ sampled: boolean; sampleSize: number; totalRows: number } | null>(null)
+  var shared = useRows()
   var { effectiveFilters: filters } = useFilters()
 
-  // Positive number = systematic sample cap. 0 = "all" but still capped at 5000 to prevent browser freeze.
   var STATS_HARD_CAP = 5000
   var [sampleCap, setSampleCap] = useState(_statSaved?.sampleCap || 2000)
 
@@ -1630,47 +1627,25 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
     writeSession(_statKey, { activePanel: activePanel, confidenceLevel: confidenceLevel, sampleCap: sampleCap })
   }, [activePanel, confidenceLevel, sampleCap, _statKey])
 
-  // Load rows whenever sampleCap changes and no data is loaded yet.
-  useEffect(function() {
-    if (rowsLoaded || rowsLoading) return
-    setRowsLoading(true)
-    var cancelled = false
+  // Trigger shared row fetch on mount
+  useEffect(function() { shared.fetchRows() }, [])
+
+  // Subsample from shared rows based on sampleCap
+  var rows = useMemo(function() {
+    if (!shared.rowsLoaded) return []
     var effectiveCap = sampleCap === 0 ? STATS_HARD_CAP : sampleCap
-    var url = '/api/datasets/' + datasetId + '/rows?all=true&sampleMax=' + effectiveCap
-    fetch(url)
-      .then(function(r) { return r.json() })
-      .then(function(data) {
-        if (!cancelled) {
-          // Apply value aliases to categorical fields so stats show aliased labels
-          var loadedRows = data.rows || []
-          var schemaFields = schema.fields || []
-          var aliasMap: Record<string, Record<string, string>> = {}
-          schemaFields.forEach(function(f: any) {
-            if (f.valueAliases && Object.keys(f.valueAliases).length > 0) aliasMap[f.field] = f.valueAliases
-          })
-          if (Object.keys(aliasMap).length > 0) {
-            loadedRows.forEach(function(row: any) {
-              for (var field in aliasMap) {
-                var val = row[field]
-                if (val != null && aliasMap[field][String(val)]) {
-                  row[field] = aliasMap[field][String(val)]
-                }
-              }
-            })
-          }
-          setRows(datasetSource ? injectSignalTier(loadedRows, datasetSource) : loadedRows)
-          setSamplingMeta({
-            sampled:    !!data.sampled,
-            sampleSize: data.sampleSize ?? (data.rows || []).length,
-            totalRows:  data.totalRows  ?? (data.rows || []).length,
-          })
-          setRowsLoaded(true)
-        }
-      })
-      .catch(function() {})
-      .finally(function() { if (!cancelled) setRowsLoading(false) })
-    return function() { cancelled = true }
-  }, [datasetId, sampleCap])
+    if (shared.rows.length <= effectiveCap) return shared.rows
+    // Fisher-Yates subsample
+    var copy = shared.rows.slice()
+    for (var i = copy.length - 1; i > 0 && i >= copy.length - effectiveCap; i--) {
+      var j = Math.floor(Math.random() * (i + 1))
+      var tmp = copy[i]; copy[i] = copy[j]; copy[j] = tmp
+    }
+    return copy.slice(copy.length - effectiveCap)
+  }, [shared.rows, shared.rowsLoaded, sampleCap])
+  var rowsLoaded = shared.rowsLoaded
+  var rowsLoading = shared.rowsLoading
+  var samplingMeta = shared.rowsLoaded ? { sampled: shared.sampled || rows.length < shared.rows.length, sampleSize: rows.length, totalRows: shared.totalRows } : null
 
   // MC state
   var [mcResults, setMcResults] = useState<Record<string, MCResult>>({})
@@ -1801,8 +1776,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var applySettings = function() {
     setConfidenceLevel(pendingConfidence)
     if (pendingCap !== sampleCap) {
-      setRows([]); setSamplingMeta(null); setRowsLoaded(false); setRowsLoading(false)
-      setSampleCap(pendingCap)
+      setSampleCap(pendingCap) // useMemo recomputes subsample automatically
     }
   }
 
