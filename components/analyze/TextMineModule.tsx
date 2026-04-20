@@ -664,6 +664,11 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         }
 
         // By Theme view
+        // Signal tier colors: map tier label → bar color
+        var SIGNAL_TIER_COLORS: Record<string, string> = {
+          Mainstream: '#059669', Controversial: '#d97706', Fringe: '#dc2626', Noise: '#9ca3af',
+          Resonant: '#059669', Discussed: '#d97706', 'Low Engagement': '#dc2626', Ignored: '#9ca3af',
+        }
         var sortedThemes = compStats!.themeStats.slice().sort(function(a, b) {
           return smartAxes ? b.totalMatches - a.totalMatches : a.themeName.localeCompare(b.themeName)
         })
@@ -699,7 +704,8 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     // compared to its share of the overall dataset?
                     var sig = sigTest(g.count, ts.totalMatches, g.groupTotal, compStats!.totalRows)
                     var themePct = ts.totalMatches > 0 ? Math.round(g.count / ts.totalMatches * 100) : 0
-                    return <CompareBar key={g.group} label={g.group} pct={themePct} count={g.count} maxPct={maxShare} color={pal.border} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} byTheme={true} />
+                    var barColor = isSignalTier && SIGNAL_TIER_COLORS[g.group] ? SIGNAL_TIER_COLORS[g.group] : pal.border
+                    return <CompareBar key={g.group} label={g.group} pct={themePct} count={g.count} maxPct={maxShare} color={barColor} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} byTheme={true} />
                   })}
                 </div>
               )
