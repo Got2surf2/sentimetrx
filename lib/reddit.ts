@@ -25,6 +25,10 @@ async function redditGet(path: string): Promise<any> {
     res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
   }
   if (!res.ok) throw new Error(`Reddit API ${res.status}: ${path}`)
+  const ct = res.headers.get('content-type') || ''
+  if (!ct.includes('application/json')) {
+    throw new Error(`Reddit returned non-JSON response (${ct || 'no content-type'}). Reddit may be temporarily blocking requests.`)
+  }
   return res.json()
 }
 
