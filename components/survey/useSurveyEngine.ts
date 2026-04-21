@@ -20,6 +20,7 @@ interface Props {
   scrollBottom: () => void
   isLightBg?: boolean
   reducedMotion?: boolean
+  onVerboseRequest?: () => void
 }
 
 interface State {
@@ -44,7 +45,7 @@ interface State {
   skipNextAck:     boolean
 }
 
-export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false }: Props) {
+export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
   // iMessage-style colors — always light background with gray bot bubbles / blue user bubbles
@@ -971,6 +972,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
     const submit = async () => {
       const v = ta.value.trim()
+      if (/^#verbose$/i.test(v)) { ta.value = ''; if (onVerboseRequest) onVerboseRequest(); return }
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (v) {
         addMsg('user', v)

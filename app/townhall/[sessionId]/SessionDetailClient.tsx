@@ -690,7 +690,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (editConfig.testing ? 'translate-x-5' : 'translate-x-0')} />
                     </button>
                   </div>
-                  <p className="text-[10px] text-amber-700 mt-1">Debug: type <code className="bg-white/60 px-1 rounded">#debug SESSION_ID</code> in chat or add <code className="bg-white/60 px-1 rounded">?debug=SESSION_ID</code> to participant URL.</p>
+                  <p className="text-[10px] text-amber-700 mt-1">Participants can type <code className="bg-white/60 px-1 rounded">#verbose</code> in chat to enable — requires Sentimetrx login to confirm.</p>
                 </div>
 
                 <div className="border-t border-gray-100 pt-3">

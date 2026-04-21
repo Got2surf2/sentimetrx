@@ -52,11 +52,7 @@ export async function GET(
     if (org) orgName = org.name
   }
 
-  // Validate debug: password is the study GUID itself
-  const debugPwd = _req.nextUrl.searchParams.get('debug')
   const cfg = study.config as any
-  const debugAuthenticated = !!(debugPwd && (debugPwd === study.guid || debugPwd === 'mvuli609'))
-
   const safeConfig = { ...cfg }
 
   return NextResponse.json({
@@ -66,6 +62,5 @@ export async function GET(
     bot_emoji: study.bot_emoji,
     config:    safeConfig,
     org_name:  orgName,
-    ...(debugAuthenticated ? { debug_mode: true } : {}),
   }, { headers: noCache })
 }

@@ -56,7 +56,7 @@ function typingDelay(text: string) {
 
 export default function TownHallChat({ sessionId }: Props) {
   const searchParams = useSearchParams()
-  const urlDebugPwd = searchParams.get('debug') || ''
+  const [showVerboseAuth, setShowVerboseAuth] = useState(false)
 
   // Session info — fetched via GET /api/townhall/join/:id
   const [sessionName, setSessionName] = useState('')
@@ -171,7 +171,7 @@ export default function TownHallChat({ sessionId }: Props) {
       const r = await fetch('/api/townhall/join/' + sessionId, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: lang, debug_password: urlDebugPwd || undefined }),
+        body: JSON.stringify({ language: lang }),
       })
       const d = await r.json()
       if (d.error) {
@@ -187,7 +187,6 @@ export default function TownHallChat({ sessionId }: Props) {
       if (d.demoFields) setDemoFields(d.demoFields.filter((f: DemoField) => f.enabled))
       const qPos = d.questionPosition || 'after'
       setQuestionPosition(qPos)
-      if (d.debug_mode) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ACTIVE]', 'color: #E8632A; font-weight: bold; font-size: 14px', 'Session ID matched — verbose AI reasoning enabled') }
       setJoined(true)
 
       // Pre-session questions: show psycho/demo before the conversation
@@ -238,9 +237,9 @@ export default function TownHallChat({ sessionId }: Props) {
     const msg = text || input.trim()
     if (!msg && !skip) return
     if (loading || finished) return
-    const isDebugCmd = /^#debug\s/i.test(msg) || /^#sanjay\s/i.test(msg)
+    if (/^#verbose$/i.test(msg)) { setInput(''); setShowVerboseAuth(true); return }
     if (skip) { setMessages(p => [...p, { who: 'user', text: skipLabel || display.skip_label || "I'd rather not answer that", italic: true }]) }
-    else if (!isDebugCmd) { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
+    else { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
     setInput('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
     setLoading(true)
@@ -250,10 +249,6 @@ export default function TownHallChat({ sessionId }: Props) {
         body: JSON.stringify({ session_id: resolvedId, participant_id: pid, message: skip ? '' : msg, turn_number: turn, theme_id: themeId, skipped: !!skip, language: selectedLang || 'en', debug: debugMode || undefined }),
       })
       const d = await r.json()
-      // Handle debug mode toggle
-      // Handle debug mode toggle — don't add duplicate bot message
-      if (d.debug_mode === true) { setDebugMode(true); setTesting(true); console.log('%c[DEBUG MODE ON]', 'color: #E8632A; font-weight: bold'); setLoading(false); return }
-      if (d.debug_mode === false) { setDebugMode(false); setTesting(false); console.log('%c[DEBUG MODE OFF]', 'color: #6b7280; font-weight: bold'); setLoading(false); return }
       setTurn(d.turn_number); setThemeId(d.theme_id)
       // Handle language switch — update language and button labels
       if (d.language_switched) {
@@ -495,10 +490,10 @@ export default function TownHallChat({ sessionId }: Props) {
         )
       })()}
 
-      {/* Debug mode banner */}
+      {/* Verbose mode banner */}
       {testing && (
         <div style={{ background: '#FEF3C7', borderBottom: '1px solid #FDE68A', padding: '4px 16px', fontSize: 11, color: '#92400E', fontWeight: 600, flexShrink: 0, textAlign: 'center' }}>
-          Running in verbose mode — AI reasoning visible
+          Running in verbose mode — Ana reasoning visible
         </div>
       )}
 
@@ -717,6 +712,61 @@ export default function TownHallChat({ sessionId }: Props) {
         <div style={{ padding: '16px 12px', background: '#F6F6F6', borderTop: '1px solid #E0E0E0', textAlign: 'center', flexShrink: 0 }}><p style={{ color: '#8E8E93', fontSize: 13 }}>Conversation ended</p></div>
       )}
       <style>{`@keyframes th-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }`}</style>
+
+      {/* Verbose auth modal */}
+      {showVerboseAuth && (
+        <VerboseAuthModal
+          onSuccess={() => { setDebugMode(true); setTesting(true); setShowVerboseAuth(false) }}
+          onCancel={() => setShowVerboseAuth(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function VerboseAuthModal({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [checking, setChecking] = useState(false)
+
+  async function verify() {
+    setError('')
+    setChecking(true)
+    try {
+      const res = await fetch('/api/verify-auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+      if (data.valid) { onSuccess() }
+      else { setError('Invalid credentials') }
+    } catch { setError('Verification failed') }
+    setChecking(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
+      onClick={onCancel}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: 320, maxWidth: '90vw' }}
+        onClick={function(e) { e.stopPropagation() }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Enable Verbose Mode</div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>Sign in with your Sentimetrx account to enable AI reasoning.</div>
+        <input type="email" placeholder="Email" value={email} onChange={function(e) { setEmail(e.target.value) }}
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }} />
+        <input type="password" placeholder="Password" value={password} onChange={function(e) { setPassword(e.target.value) }}
+          onKeyDown={function(e) { if (e.key === 'Enter') verify() }}
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }} />
+        {error && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={verify} disabled={checking || !email || !password}
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#E8632A', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: checking ? 0.6 : 1 }}>
+            {checking ? 'Verifying...' : 'Verify'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

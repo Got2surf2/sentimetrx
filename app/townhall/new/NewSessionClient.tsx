@@ -962,7 +962,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                       <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + ((config as any).testing ? 'translate-x-5' : 'translate-x-0')} />
                     </button>
                   </div>
-                  <p className="text-[10px] text-amber-700 mt-1">Debug mode: type <code className="bg-white/60 px-1 rounded">#debug SESSION_ID</code> in chat or add <code className="bg-white/60 px-1 rounded">?debug=SESSION_ID</code> to the participant URL. The session ID (shown on the session card) is the password.</p>
+                  <p className="text-[10px] text-amber-700 mt-1">Participants can also type <code className="bg-white/60 px-1 rounded">#verbose</code> in chat to enable — requires Sentimetrx login to confirm.</p>
                 </div>
               </div>
 

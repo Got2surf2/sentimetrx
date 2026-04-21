@@ -92,36 +92,6 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Debug mode toggle via #debug <session-id> or #sanjay <passphrase> — not a turn, re-send previous bot message
-  if (message && !skipped) {
-    const debugMatch = message.trim().match(/^#debug\s+(.+)$/i)
-    const debugOff = /^#debug\s+off$/i.test(message.trim())
-    const backdoorMatch = message.trim().match(/^#sanjay\s+(.+)$/i)
-    const isBackdoor = backdoorMatch && backdoorMatch[1].trim() === 'mvuli609'
-    const isBackdoorOff = /^#sanjay\s+off$/i.test(message.trim())
-    if (debugOff || isBackdoorOff || (debugMatch && debugMatch[1].trim() === session.id) || isBackdoor) {
-      const turningOff = debugOff || isBackdoorOff
-      // Fetch previous bot message to re-send
-      const { data: lastBotTurn } = await supabase
-        .from('townhall_turns')
-        .select('bot_message')
-        .eq('session_id', session.id)
-        .eq('participant_id', participant_id)
-        .not('bot_message', 'is', null)
-        .order('turn_number', { ascending: false })
-        .limit(1)
-        .single()
-
-      const prevMsg = lastBotTurn?.bot_message || config?.opening_message || 'What\'s on your mind?'
-
-      return NextResponse.json({
-        bot_message: prevMsg,
-        theme_id, source: 'system', is_final: false, turn_number,
-        debug_mode: !turningOff,
-      })
-    }
-    // Wrong password — don't reveal that debug exists, just treat as normal message
-  }
 
   // Content guard: check for harmful content with strike-based escalation
   const safetyConfig = { enabled: true, profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true, ...(config?.content_safety || {}) }

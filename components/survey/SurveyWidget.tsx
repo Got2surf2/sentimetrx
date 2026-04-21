@@ -59,12 +59,11 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
   const [liveBotEmoji, setLiveBotEmoji] = useState(study.bot_emoji)
   const [liveConfig,   setLiveConfig]   = useState(study.config)
 
-  // Debug mode via URL param ?debug=PASSWORD — validated server-side on study fetch
-  const urlDebugPwd = searchParams.get('debug') || ''
-  const [debugViaUrl, setDebugViaUrl] = useState(false)
+  const [verboseMode, setVerboseMode] = useState(false)
+  const [showVerboseAuth, setShowVerboseAuth] = useState(false)
 
   // Merge live values into study object for the engine and header
-  const mergedConfig = debugViaUrl ? { ...liveConfig, testing: true } : liveConfig
+  const mergedConfig = verboseMode ? { ...liveConfig, testing: true } : liveConfig
   const liveStudy = { ...study, bot_name: liveBotName, bot_emoji: liveBotEmoji, config: mergedConfig }
 
   const scrollBottom = useCallback(() => {
@@ -107,13 +106,12 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
   // Detect reduced motion preference from device accessibility settings
   const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
 
-  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, orgName, chatRef, inputRef, scrollBottom, isLightBg, reducedMotion: prefersReducedMotion })
+  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, orgName, chatRef, inputRef, scrollBottom, isLightBg, reducedMotion: prefersReducedMotion, onVerboseRequest: () => setShowVerboseAuth(true) })
 
   // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
   // are always the latest from the DB, not potentially stale server-rendered props
   useEffect(() => {
-    const url = `/api/study/${study.guid}` + (urlDebugPwd ? `?debug=${encodeURIComponent(urlDebugPwd)}` : '')
-    fetch(url, { cache: 'no-store' })
+    fetch(`/api/study/${study.guid}`, { cache: 'no-store' })
       .then(async res => {
         if (!res.ok) {
           setStatus(res.status === 404 ? 'closed' : 'error')
@@ -124,11 +122,10 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
         if (data.bot_name)  setLiveBotName(data.bot_name)
         if (data.bot_emoji) setLiveBotEmoji(data.bot_emoji)
         if (data.config)    setLiveConfig(data.config)
-        if (data.debug_mode) { setDebugViaUrl(true); console.log('%c[DEBUG MODE ACTIVE]', 'color: #E8632A; font-weight: bold; font-size: 14px', 'Study GUID matched — verbose AI reasoning enabled') }
         setStatus('active')
       })
       .catch(() => setStatus('error'))
-  }, [study.guid, urlDebugPwd])
+  }, [study.guid])
 
   useEffect(() => {
     if (status === 'active' && !startedRef.current) {
@@ -274,10 +271,10 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
         })()}
       </div>
 
-      {/* Debug mode banner */}
-      {debugViaUrl && (
+      {/* Verbose mode banner */}
+      {verboseMode && (
         <div style={{ background: '#FEF3C7', borderBottom: '1px solid #FDE68A', padding: '4px 16px', fontSize: '0.6875rem', color: '#92400E', fontWeight: 600, flexShrink: 0, textAlign: 'center' }}>
-          Running in verbose mode — AI reasoning visible
+          Running in verbose mode — Ana reasoning visible
         </div>
       )}
 
@@ -302,6 +299,61 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
           overflowX: 'hidden',
         }}
       />
+
+      {/* Verbose auth modal */}
+      {showVerboseAuth && (
+        <VerboseAuthModal
+          onSuccess={() => { setVerboseMode(true); setShowVerboseAuth(false) }}
+          onCancel={() => setShowVerboseAuth(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function VerboseAuthModal({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [checking, setChecking] = useState(false)
+
+  async function verify() {
+    setError('')
+    setChecking(true)
+    try {
+      const res = await fetch('/api/verify-auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+      if (data.valid) { onSuccess() }
+      else { setError('Invalid credentials') }
+    } catch { setError('Verification failed') }
+    setChecking(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
+      onClick={onCancel}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: 320, maxWidth: '90vw' }}
+        onClick={function(e) { e.stopPropagation() }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Enable Verbose Mode</div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>Sign in with your Sentimetrx account to enable AI reasoning.</div>
+        <input type="email" placeholder="Email" value={email} onChange={function(e) { setEmail(e.target.value) }}
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }} />
+        <input type="password" placeholder="Password" value={password} onChange={function(e) { setPassword(e.target.value) }}
+          onKeyDown={function(e) { if (e.key === 'Enter') verify() }}
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }} />
+        {error && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={verify} disabled={checking || !email || !password}
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#E8632A', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: checking ? 0.6 : 1 }}>
+            {checking ? 'Verifying...' : 'Verify'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
