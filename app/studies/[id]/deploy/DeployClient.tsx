@@ -223,35 +223,39 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
               View-only links to share response metrics with clients — no login required.
             </p>
 
-            {/* Existing links */}
-            {shareLinksLoaded && shareLinks.length > 0 && (
-              <div className="mb-4">
-                <label className="text-xs font-medium text-gray-500 block mb-1.5">Active links ({shareLinks.length})</label>
+            {/* Active links — always show section */}
+            <div className="mb-4">
+              <label className="text-xs font-medium text-gray-500 block mb-1.5">Active links {shareLinks.length > 0 ? '(' + shareLinks.length + ')' : ''}</label>
+              {shareLinksLoaded && shareLinks.length === 0 && (
+                <p className="text-xs text-gray-400 italic py-2">No active links. Create one below.</p>
+              )}
+              {shareLinksLoaded && shareLinks.length > 0 && (
                 <div className="relative">
-                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 160 }}>
-                    {shareLinks.map(link => {
+                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 200 }}>
+                    {shareLinks.slice().sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime()).map(link => {
                       const diffH = Math.round((new Date(link.expires_at).getTime() - Date.now()) / 3600000)
-                      const timeLeft = diffH < 24 ? diffH + 'h left' : Math.round(diffH / 24) + 'd left'
+                      const timeLeft = diffH < 1 ? 'expires soon' : diffH < 24 ? diffH + 'h left' : Math.round(diffH / 24) + 'd left'
+                      const expiryDate = new Date(link.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                       return (
-                        <div key={link.token} className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2">
+                        <div key={link.token} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-[10px] text-gray-400 font-mono truncate">{link.url}</p>
-                            <p className="text-[9px] text-gray-500">
-                              Created {new Date(link.created_at).toLocaleDateString()} · {timeLeft}
-                              {link.last_accessed_at && <> · Viewed {new Date(link.last_accessed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</>}
-                              {!link.last_accessed_at && <> · Never viewed</>}
+                            <p className="text-[10px] text-gray-500 font-mono truncate">{link.url}</p>
+                            <p className="text-[10px] text-gray-400">
+                              Expires {expiryDate} <span className="text-gray-300">·</span> {timeLeft}
+                              {link.last_accessed_at && <> <span className="text-gray-300">·</span> Viewed {new Date(link.last_accessed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</>}
+                              {!link.last_accessed_at && <> <span className="text-gray-300">·</span> Never viewed</>}
                             </p>
                           </div>
                           <button onClick={() => { navigator.clipboard.writeText(link.url); setShareCopied(link.url); setTimeout(() => setShareCopied(null), 2000) }}
                             className={'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ' +
-                              (shareCopied === link.url ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 hover:bg-slate-600 text-white')}>
+                              (shareCopied === link.url ? 'bg-green-500/20 text-green-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}>
                             {shareCopied === link.url ? 'Copied!' : 'Copy'}
                           </button>
                           <button onClick={async () => {
                             const res = await fetch('/api/share?token=' + encodeURIComponent(link.token), { method: 'DELETE' })
                             if (res.ok) setShareLinks(prev => prev.filter(l => l.token !== link.token))
                           }}
-                            className="px-2 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                            className="px-2 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
                             title="Delete link">
                             &times;
                           </button>
@@ -259,17 +263,17 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                       )
                     })}
                   </div>
-                  {shareLinks.length > 3 && (
+                  {shareLinks.length > 4 && (
                     <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent pointer-events-none rounded-b-lg" />
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Create new */}
             <div className="flex items-center gap-3">
               <select value={shareExpiry} onChange={e => setShareExpiry(e.target.value as any)}
-                className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-gray-300 outline-none">
+                className="px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700 outline-none">
                 <option value="24h">Expires in 24 hours</option>
                 <option value="7d">Expires in 7 days</option>
                 <option value="30d">Expires in 30 days</option>
@@ -284,7 +288,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                 } finally { setShareLoading(false) }
               }} className="px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#E8632A' }}>
-                {shareLoading ? 'Creating...' : 'Create new link'}
+                {shareLoading ? 'Creating...' : '+ Create New Link'}
               </button>
             </div>
           </div>
