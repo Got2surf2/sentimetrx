@@ -221,8 +221,10 @@ export default function RedditWizard({ onBack }: Props) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ thread_id: thread.thread_id, max_comments: maxCommentsPerThread }),
           })
-          var dlData = await dlRes.json()
-          if (dlRes.ok) {
+          var dlText = await dlRes.text()
+          var dlData: any
+          try { dlData = JSON.parse(dlText) } catch { dlData = { error: 'Reddit temporarily unavailable (non-JSON response)' } }
+          if (dlRes.ok && !dlData.error) {
             totalComments += dlData.comments || 0
           } else {
             errors.push(thread.title.slice(0, 40) + ': ' + (dlData.error || 'failed'))
