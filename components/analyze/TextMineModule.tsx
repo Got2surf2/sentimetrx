@@ -1752,9 +1752,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       )}
                                     </div>
                                   )}
-                                  <div style={{ height: 5, background: T.border, borderRadius: 3, overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: pct + '%', background: cardBorder, borderRadius: 3, transition: 'width .6s ease' }} />
-                                  </div>
+                                  {t.topBoxPct != null ? (
+                                    <>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: '#dc2626' }}>Bottom Box {t.bottomBoxPct}%</span>
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: '#059669' }}>Top Box {t.topBoxPct}%</span>
+                                    </div>
+                                    <div style={{ height: 6, borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
+                                      {(t.bottomBoxPct || 0) > 0 && <div style={{ height: '100%', width: t.bottomBoxPct + '%', background: '#dc2626', transition: 'width .6s ease' }} />}
+                                      {(t.midBoxPct || 0) > 0 && <div style={{ height: '100%', width: t.midBoxPct + '%', background: '#d1d5db', transition: 'width .6s ease' }} />}
+                                      {(t.topBoxPct || 0) > 0 && <div style={{ height: '100%', width: t.topBoxPct + '%', background: '#059669', transition: 'width .6s ease' }} />}
+                                    </div>
+                                    </>
+                                  ) : (
+                                    <div style={{ height: 5, background: T.border, borderRadius: 3, overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: pct + '%', background: cardBorder, borderRadius: 3, transition: 'width .6s ease' }} />
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )

@@ -60,6 +60,9 @@ export interface Theme {
   avgRating?: number       // avg of rating field for matching rows
   ratingDelta?: number     // avgRating - overallAvg
   ratingCount?: number     // rows that matched AND had a valid rating
+  topBoxPct?: number       // % of rated rows in top box (above midpoint)
+  midBoxPct?: number       // % of rated rows in mid box (at midpoint)
+  bottomBoxPct?: number    // % of rated rows in bottom box (below midpoint)
   keywordRatings?: Record<string, { avg: number; count: number; delta: number }>
   searchInterest?: SearchInterestTier  // Google search volume tier (Reddit/Substack only)
 }
@@ -158,6 +161,7 @@ export function recountThemes(
     }
     var count = 0, totalPos = 0, totalNeg = 0
     var ratingSum = 0, ratingCnt = 0
+    var ratingValues: number[] = []
     // Per-keyword rating accumulators
     var kwRatingSums: Record<string, number> = {}
     var kwRatingCnts: Record<string, number> = {}
@@ -175,7 +179,7 @@ export function recountThemes(
         if (ratingField) {
           const rv = parseFloat(String(r[ratingField] ?? ''))
           if (!isNaN(rv)) {
-            ratingSum += rv; ratingCnt++
+            ratingSum += rv; ratingCnt++; ratingValues.push(rv)
             // Track which keywords matched this row
             for (var ki = 0; ki < regexes.length; ki++) {
               if (regexes[ki].test(lower)) { kwRatingSums[t.keywords[ki]] += rv; kwRatingCnts[t.keywords[ki]]++ }
@@ -203,6 +207,20 @@ export function recountThemes(
         }
       }
       if (Object.keys(kwRatings).length > 0) ratingInfo.keywordRatings = kwRatings
+      // Top/Bottom box: detect scale from values, split at midpoint
+      if (ratingValues.length > 0) {
+        var rMin = Math.min(...ratingValues), rMax = Math.max(...ratingValues)
+        var mid = (rMin + rMax) / 2
+        var topCnt = 0, botCnt = 0, midCnt = 0
+        for (var ri = 0; ri < ratingValues.length; ri++) {
+          if (ratingValues[ri] > mid) topCnt++
+          else if (ratingValues[ri] < mid) botCnt++
+          else midCnt++
+        }
+        ratingInfo.topBoxPct = Math.round(topCnt / ratingValues.length * 100)
+        ratingInfo.bottomBoxPct = Math.round(botCnt / ratingValues.length * 100)
+        ratingInfo.midBoxPct = 100 - ratingInfo.topBoxPct - ratingInfo.bottomBoxPct
+      }
     }
     return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh, sentiment, ...ratingInfo }
   })
