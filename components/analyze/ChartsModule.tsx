@@ -642,12 +642,22 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
       }
     }
   } else {
-    cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+    // Signal tier: always use canonical order even without smart axes
+    if (catField === 'signal_tier') {
+      cats = smartOrder(cats)
+    } else {
+      cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+    }
   }
   cats = cats.slice(0, 30)
   var catLabels = cats.map(function(c) { return resolveAlias(catField, c, schema) })
-  // Order color (stack/group) values by frequency descending — for themes this gives natural order
-  var colorArr = Array.from(colorVals).sort(function(a, b) { return (colorTotals[b] || 0) - (colorTotals[a] || 0) })
+  // Order color (stack/group) values — signal tiers use canonical order, others by frequency
+  var colorArr = Array.from(colorVals)
+  if (colorByField === 'signal_tier') {
+    colorArr = smartOrder(colorArr)
+  } else {
+    colorArr.sort(function(a, b) { return (colorTotals[b] || 0) - (colorTotals[a] || 0) })
+  }
 
   var isH = orient === 'h'
   var isBarPercent = barMode === 'percent'

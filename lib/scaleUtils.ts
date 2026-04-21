@@ -1,6 +1,8 @@
 // lib/scaleUtils.ts
 // Ordinal scale detection, intelligent mapping suggestions, and smart axis ordering.
 
+import { SIGNAL_TIER_ORDER, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from './signalTier'
+
 // ── Known ordinal scales (canonical form, lowest to highest) ──────────────
 // Each scale entry: [canonicalLabel, ...aliases]
 // Detection matches against ALL aliases, not just the canonical form.
@@ -182,7 +184,18 @@ export function smartOrder(values: string[], remapping?: Record<string, number>)
     return orderByRemapping(values, remapping)
   }
 
-  // Priority 2: detect known ordinal scale
+  // Priority 2: signal tier canonical order (detect Reddit vs Substack by tier names)
+  // Reversed so highest tier renders at the top of horizontal bar charts (Plotly draws bottom-up)
+  var redditSet = new Set(SIGNAL_TIER_ORDER_REDDIT)
+  var substackSet = new Set(SIGNAL_TIER_ORDER_SUBSTACK)
+  if (values.length >= 2 && values.every(function(v) { return redditSet.has(v) })) {
+    return SIGNAL_TIER_ORDER_REDDIT.filter(function(t) { return values.includes(t) }).reverse()
+  }
+  if (values.length >= 2 && values.every(function(v) { return substackSet.has(v) })) {
+    return SIGNAL_TIER_ORDER_SUBSTACK.filter(function(t) { return values.includes(t) }).reverse()
+  }
+
+  // Priority 3: detect known ordinal scale
   var detected = detectScale(values)
   if (detected) return detected
 
