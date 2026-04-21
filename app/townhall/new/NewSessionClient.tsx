@@ -355,7 +355,7 @@ function TopicCard({ topic, index, onChange, onRemove, industry, orgName, eventD
             value={anglesText}
             onChange={v => {
               setAnglesText(v)
-              onChange({ ...topic, follow_up_angles: v.split('\n').map(s => s.trim()).filter(Boolean) })
+              onChange({ ...topic, follow_up_angles: v.split('\n').filter(s => s.trim().length > 0) })
             }}
             placeholder={"What specific changes would help most?\nHow does this affect your daily routine?"}
             rows={3}

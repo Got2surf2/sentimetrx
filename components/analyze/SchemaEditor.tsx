@@ -307,8 +307,9 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
   const isIgnored = f.type === 'ignore' || f.type === 'id'
 
   function commitAlias() {
-    var trimmed = aliasVal.trim()
-    onAliasChange(f.field, trimmed === f.field ? '' : trimmed)
+    var val = aliasVal.trim()
+    onAliasChange(f.field, val === f.field ? '' : val)
+    setAliasVal(val)
     setEditingAlias(false)
   }
 
@@ -535,7 +536,7 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
         if (f.field !== field) return f
         var existing = f.valueAliases || {}
         var next = Object.assign({}, existing)
-        if (alias.trim()) next[value] = alias.trim()
+        if (alias.length > 0) next[value] = alias
         else delete next[value]
         return { ...f, valueAliases: Object.keys(next).length > 0 ? next : undefined }
       }) })
