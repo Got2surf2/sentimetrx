@@ -250,7 +250,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
             {dataset.row_count > 0 && (' ' + dataset.row_count.toLocaleString() + ' rows loaded.')}
           </p>
         </div>
-        <SchemaEditor schema={schema} onChange={handleSaveSchema} />
+        <SchemaEditor schema={schema} onChange={handleSaveSchema} onSave={function() { router.refresh() }} />
       </div>
 
       {/* Append data — not for google_reviews datasets */}

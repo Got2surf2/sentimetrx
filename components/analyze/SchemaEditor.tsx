@@ -15,6 +15,7 @@ function suggestMappingForField(values: string[]): Record<string, number> | null
 interface Props {
   schema:    SchemaConfig
   onChange?: (s: SchemaConfig) => void
+  onSave?:  () => void
   readOnly?: boolean
 }
 
@@ -501,7 +502,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
 }
 
 // Main SchemaEditor
-export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
+export default function SchemaEditor({ schema, onChange, onSave, readOnly }: Props) {
   const [sortAZ,     setSortAZ]     = useState(false)
   const [typeFilter, setTypeFilter] = useState('all')
   const [saving,     setSaving]     = useState(false)
@@ -575,6 +576,7 @@ export default function SchemaEditor({ schema, onChange, readOnly }: Props) {
         body: JSON.stringify({ schema_config: schema }),
       })
       onChange(schema)
+      if (onSave) onSave()
       setSaved(true)
       // Auto-redirect to TextMine after first save on new datasets (Reddit/Substack)
       var params = new URLSearchParams(window.location.search)
