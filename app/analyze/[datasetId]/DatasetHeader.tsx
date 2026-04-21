@@ -200,7 +200,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
               cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
             }}>
-            <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Share</span>
+            <span>{'\uD83D\uDD17'}</span><span className="ana-lbl">Share</span>
           </button>
 
           {/* Save Session */}
