@@ -385,7 +385,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </style></head><body>
 <div class="wrap">
 <div class="hdr"><div class="avatar">${botEmoji}</div><div><div class="hdr-text">${botName}</div><div class="hdr-sub">${response.completed_at ? new Date(response.completed_at).toLocaleString() : ''}</div></div><div class="brand"><span style="color:#E8632A">DATANAUTIX</span><br><span class="brand-sub">powered by</span></div></div>
-<div class="chat">${msgs.map(m => '<div class="row ' + m.who + '">' + (m.who === 'bot' ? '<div class="sm-av">' + botEmoji + '</div>' : '') + '<div class="bubble">' + m.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</div></div>').join('\n')}</div>
+<div class="chat">${msgs.map(m => '<div class="row ' + m.who + '">' + (m.who === 'bot' ? '<div class="sm-av">' + botEmoji + '</div>' : '') + '<div class="bubble">' + m.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" style="color:' + (m.who === 'user' ? '#fff' : '#E8632A') + ';text-decoration:underline">$1</a>') + '</div></div>').join('\n')}</div>
 <div class="footer"><a href="https://datanautix.com" target="_blank">datanautix.com</a></div>
 </div></body></html>`
 }
