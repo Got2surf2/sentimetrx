@@ -244,6 +244,7 @@ export async function GET(req: NextRequest) {
     benchmarkSummary: benchmarkFieldSummary,
     numeric: numericResults,
     themes: themeResults,
+    dateRange: (meta as any).dateRange || null,
     expires_at: link.expires_at,
   })
 }

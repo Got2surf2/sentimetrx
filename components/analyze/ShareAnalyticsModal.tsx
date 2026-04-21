@@ -4,11 +4,18 @@
 // Modal for creating shared analytics links.
 // Shares the current filtered view — filters determine what's visible, nothing more.
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { serializeFilters, filterSummary } from '@/lib/filterUtils'
 
 var HERMES = '#E8632A'
+
+interface DateFieldOption {
+  field: string
+  label: string
+  dateMin: string
+  dateMax: string
+}
 
 interface Props {
   datasetId: string
@@ -25,6 +32,30 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
   var [createError, setCreateError] = useState('')
   var [shareUrl, setShareUrl] = useState('')
   var [copied, setCopied] = useState(false)
+
+  // Date field options for date range display
+  var [dateFields, setDateFields] = useState<DateFieldOption[]>([])
+  var [selectedDateField, setSelectedDateField] = useState('')
+
+  useEffect(function() {
+    fetch('/api/datasets/' + datasetId + '/filter-options')
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        var fields = data.fields || {}
+        var opts: DateFieldOption[] = []
+        Object.entries(fields).forEach(function(entry) {
+          var key = entry[0], opt = entry[1] as any
+          if (opt.type === 'date' && opt.dateMin && opt.dateMax) {
+            opts.push({ field: key, label: opt.label || key, dateMin: opt.dateMin, dateMax: opt.dateMax })
+          }
+        })
+        setDateFields(opts)
+        if (opts.length === 1) setSelectedDateField(opts[0].field)
+      })
+      .catch(function() {})
+  }, [datasetId])
+
+  var selectedDate = dateFields.find(function(f) { return f.field === selectedDateField })
 
   var hasFilters = Object.keys(activeFilters).length > 0
 
@@ -48,6 +79,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
             dataset_id: datasetId,
             filters: serialized,
             label: label || datasetName + (hasFilters ? ' — Filtered View' : ''),
+            dateRange: selectedDate ? { field: selectedDate.field, label: selectedDate.label, min: selectedDate.dateMin, max: selectedDate.dateMax } : undefined,
           },
         }),
       })
@@ -113,6 +145,35 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
               <div style={{ marginBottom: 16, padding: 12, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
                 <div style={{ fontSize: 12, color: '#6b7280' }}>No filters active — the shared view will show all data.</div>
                 <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>Apply filters first if you want to share a specific subset.</div>
+              </div>
+            )}
+
+            {/* Date range field picker */}
+            {dateFields.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Date Range (shown on shared page)</label>
+                {dateFields.length === 1 ? (
+                  <div style={{ padding: '8px 12px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, color: '#374151' }}>
+                    {dateFields[0].label}: <strong>{dateFields[0].dateMin}</strong> — <strong>{dateFields[0].dateMax}</strong>
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={selectedDateField}
+                      onChange={function(e) { setSelectedDateField(e.target.value) }}
+                      style={{ width: '100%', padding: '8px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', marginBottom: 6, boxSizing: 'border-box' as const }}>
+                      <option value="">Select date field...</option>
+                      {dateFields.map(function(f) {
+                        return <option key={f.field} value={f.field}>{f.label} ({f.dateMin} — {f.dateMax})</option>
+                      })}
+                    </select>
+                    {selectedDate && (
+                      <div style={{ fontSize: 11, color: '#6b7280' }}>
+                        Data covers <strong>{selectedDate.dateMin}</strong> — <strong>{selectedDate.dateMax}</strong>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

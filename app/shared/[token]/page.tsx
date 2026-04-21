@@ -727,9 +727,16 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
 
         {/* Header */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-4">
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: filterFields.length > 0 ? 10 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: (filterFields.length > 0 || data.dateRange) ? 10 : 0 }}>
             <h1 className="text-lg font-bold text-gray-800">{data.label}</h1>
-            <span className="text-xs text-gray-400">Expires {new Date(expiresAt).toLocaleDateString()}</span>
+            <div style={{ textAlign: 'right' }}>
+              {data.dateRange && (
+                <div className="text-xs text-gray-500" style={{ fontWeight: 600, marginBottom: 2 }}>
+                  Data: {data.dateRange.min} — {data.dateRange.max}
+                </div>
+              )}
+              <span className="text-xs text-gray-400">Expires {new Date(expiresAt).toLocaleDateString()}</span>
+            </div>
           </div>
 
           {/* Filter pills + benchmark pills on one row */}
