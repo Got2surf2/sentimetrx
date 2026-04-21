@@ -647,7 +647,7 @@ function ConversationModal({ response, studyId, studyConfig, botName, botEmoji, 
                 {msg.ai && (
                   <span className="absolute -bottom-3.5 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                     style={{ background: theme.primaryColor + '30', color: theme.primaryColor }}>
-                    AI
+                    Ana
                   </span>
                 )}
               </div>

@@ -175,11 +175,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
     // AI badge
     if (msg.ai) {
       slide.addShape(pptx.ShapeType.roundRect, {
-        x: bubbleX + 0.02, y: y + bubbleH - 0.02, w: 0.22, h: 0.13,
+        x: bubbleX + 0.02, y: y + bubbleH - 0.02, w: 0.28, h: 0.13,
         fill: { color: DN.teal }, line: { width: 0 }, rectRadius: 0.04,
       })
-      slide.addText('AI', {
-        x: bubbleX + 0.02, y: y + bubbleH - 0.02, w: 0.22, h: 0.13,
+      slide.addText('Ana', {
+        x: bubbleX + 0.02, y: y + bubbleH - 0.02, w: 0.28, h: 0.13,
         fontSize: 5, bold: true, color: DN.white, align: 'center', valign: 'middle',
       })
       y += 0.1
