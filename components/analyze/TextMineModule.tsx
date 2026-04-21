@@ -1243,19 +1243,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // Skip if already enriched (at least one theme has a non-null tier)
     if (tm.themes.some(function(t) { return t.searchInterest === 'high' || t.searchInterest === 'moderate' || t.searchInterest === 'low' })) return
     try {
+      var themeKeywords: Record<string, string[]> = {}
+      tm.themes.forEach(function(t) { if (t.keywords && t.keywords.length) themeKeywords[t.name] = t.keywords })
+      if (!Object.keys(themeKeywords).length) return
       var res = await fetch('/api/datasets/' + datasetId + '/search-interest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ themeNames: tm.themes.map(function(t) { return t.name }) }),
+        body: JSON.stringify({ themeKeywords: themeKeywords }),
       })
       if (!res.ok) {
-        console.warn('[search-interest] API returned', res.status)
+        var errBody = await res.json().catch(function() { return {} })
+        console.warn('[search-interest] API returned', res.status, errBody.detail || errBody.error || '')
         return
       }
       var data = await res.json()
       var interests = data.interests || {}
-      var hasAny = Object.values(interests).some(function(v) { return v === 'high' || v === 'moderate' || v === 'low' })
-      if (!hasAny) { console.info('[search-interest] No themes had significant search volume'); return }
       var updated = { ...tm, themes: tm.themes.map(function(t) {
         return { ...t, searchInterest: interests[t.name] ?? null }
       })}
