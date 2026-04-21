@@ -1258,8 +1258,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       }
       var data = await res.json()
       var interests = data.interests || {}
+      var trends = data.trends || {}
       var updated = { ...tm, themes: tm.themes.map(function(t) {
-        return { ...t, searchInterest: interests[t.name] ?? null }
+        return { ...t, searchInterest: interests[t.name] ?? null, searchTrend: trends[t.name] ?? null }
       })}
       setThemes(updated)
       setIsDirty(true)
@@ -1656,7 +1657,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                         background: t.searchInterest === 'high' ? '#dbeafe' : t.searchInterest === 'moderate' ? '#fef3c7' : '#f3f4f6',
                                         color: t.searchInterest === 'high' ? '#1d4ed8' : t.searchInterest === 'moderate' ? '#92400e' : '#6b7280',
                                         border: '1px solid ' + (t.searchInterest === 'high' ? '#93c5fd' : t.searchInterest === 'moderate' ? '#fcd34d' : '#d1d5db'),
-                                      }}>{'\uD83D\uDD0D'} {t.searchInterest === 'high' ? 'Widely Searched' : t.searchInterest === 'moderate' ? 'Moderately Searched' : 'Niche Topic'}</span>
+                                      }}>{'\uD83D\uDD0D'} {t.searchInterest === 'high' ? 'Widely Searched' : t.searchInterest === 'moderate' ? 'Moderately Searched' : 'Niche Topic'}{t.searchTrend === 'up' ? ' \u2191' : t.searchTrend === 'down' ? ' \u2193' : ''}</span>
                                     )}
                                     {useRatingColor ? (
                                       <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: ratingColor(normRating(t.avgRating!)) + '18', color: ratingColor(normRating(t.avgRating!)), fontWeight: 700 }}>{'\u2605'} {t.avgRating!.toFixed(1)}</span>

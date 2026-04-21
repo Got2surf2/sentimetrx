@@ -45,6 +45,7 @@ export function classifySentiment(pos: number, neg: number, minResponses = 5): '
 }
 
 export type SearchInterestTier = 'high' | 'moderate' | 'low' | null
+export type SearchTrend = 'up' | 'down' | 'steady' | null
 
 export interface Theme {
   id: string
@@ -65,6 +66,7 @@ export interface Theme {
   bottomBoxPct?: number    // % of rated rows in bottom box (below midpoint)
   keywordRatings?: Record<string, { avg: number; count: number; delta: number }>
   searchInterest?: SearchInterestTier  // Google search volume tier (Reddit/Substack only)
+  searchTrend?: SearchTrend            // Google search trend direction (Reddit/Substack only)
 }
 
 export interface ThemeModel {

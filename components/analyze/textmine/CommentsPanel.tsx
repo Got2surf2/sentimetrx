@@ -616,7 +616,7 @@ export default function CommentsPanel({
               background: theme.searchInterest === 'high' ? '#dbeafe' : theme.searchInterest === 'moderate' ? '#fef3c7' : '#f3f4f6',
               color: theme.searchInterest === 'high' ? '#1d4ed8' : theme.searchInterest === 'moderate' ? '#92400e' : '#6b7280',
               border: '1px solid ' + (theme.searchInterest === 'high' ? '#93c5fd' : theme.searchInterest === 'moderate' ? '#fcd34d' : '#d1d5db'),
-            }}>{'\uD83D\uDD0D'} {theme.searchInterest === 'high' ? 'Widely Searched' : theme.searchInterest === 'moderate' ? 'Moderately Searched' : 'Niche Topic'}</span>
+            }}>{'\uD83D\uDD0D'} {theme.searchInterest === 'high' ? 'Widely Searched' : theme.searchInterest === 'moderate' ? 'Moderately Searched' : 'Niche Topic'}{theme.searchTrend === 'up' ? ' \u2191' : theme.searchTrend === 'down' ? ' \u2193' : ''}</span>
           )}
           {/* Color-by field picker */}
           {colorableFields.length > 0 && (

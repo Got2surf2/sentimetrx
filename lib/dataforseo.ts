@@ -311,11 +311,12 @@ function parseReviewItem(item: any): DfsReview | null {
 // Keyword search volume (Google Ads data)
 // ---------------------------------------------------------------------------
 
-import type { SearchInterestTier } from './themeUtils'
+import type { SearchInterestTier, SearchTrend } from './themeUtils'
 
 export interface SearchVolumeResult {
   keyword: string
   searchVolume: number
+  trend: SearchTrend
 }
 
 export function classifySearchInterest(volume: number): SearchInterestTier {
@@ -323,6 +324,19 @@ export function classifySearchInterest(volume: number): SearchInterestTier {
   if (volume >= 100_000) return 'moderate'
   if (volume >= 5_000) return 'low'
   return null
+}
+
+/** Compare recent 3 months vs prior 3 months to determine trend direction. */
+function classifyTrend(monthly: { year: number; month: number; search_volume: number }[] | undefined): SearchTrend {
+  if (!monthly || monthly.length < 6) return null
+  // monthly is newest-first from DataForSEO
+  const recent = monthly.slice(0, 3).reduce((s, m) => s + (m.search_volume || 0), 0)
+  const prior = monthly.slice(3, 6).reduce((s, m) => s + (m.search_volume || 0), 0)
+  if (prior === 0) return recent > 0 ? 'up' : null
+  const change = (recent - prior) / prior
+  if (change >= 0.2) return 'up'
+  if (change <= -0.2) return 'down'
+  return 'steady'
 }
 
 /** Fetch monthly search volumes for up to 1000 keywords (US, English). */
@@ -337,6 +351,7 @@ export async function getSearchVolumes(keywords: string[]): Promise<SearchVolume
   return items.map((item: any) => ({
     keyword: String(item.keyword || ''),
     searchVolume: item.search_volume ?? 0,
+    trend: classifyTrend(item.monthly_searches),
   }))
 }
 
