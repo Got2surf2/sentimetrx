@@ -22,6 +22,7 @@ interface Props {
   userName?: string
   orgName?: string
   filterCount?: number
+  filteredRowCount?: number | null
   onFilterClick?: () => void
   onSaveSession?: () => void
   sessionSaving?: boolean
@@ -40,7 +41,7 @@ var TABS = [
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9
 
-export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
   var router = useRouter()
   var pathname = usePathname()
 
@@ -232,7 +233,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
 
           {/* Row count + Sync */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}>{dataset.row_count.toLocaleString()} rows</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}>{filteredRowCount != null ? filteredRowCount.toLocaleString() + ' of ' + dataset.row_count.toLocaleString() : dataset.row_count.toLocaleString()} rows</span>
             {dataset.source === 'study' && (
               <button onClick={handleSync}
                 style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: 'pointer', whiteSpace: 'nowrap' }}>

@@ -2,10 +2,10 @@
 // app/analyze/[datasetId]/DatasetShell.tsx
 // Client wrapper: FilterProvider + DatasetHeader + global FiltersModal + Session save/restore
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
-import { RowsProvider } from '@/components/analyze/RowsContext'
-import { filterCount } from '@/lib/filterUtils'
+import { RowsProvider, useRows } from '@/components/analyze/RowsContext'
+import { filterCount, applyFilters } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
 import AskAnaPanel from '@/components/analyze/AskAnaPanel'
@@ -127,6 +127,14 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
 
   const fCount = filterCount(filters) + filterCount(lockedFilters)
 
+  // Compute filtered row count from RowsContext
+  var { rows: ctxRows, rowsLoaded: ctxLoaded } = useRows()
+  var filteredRowCount = useMemo(function() {
+    if (!ctxLoaded || !ctxRows.length || fCount === 0) return null
+    var allFilters = Object.assign({}, filters, lockedFilters)
+    return applyFilters(ctxRows, allFilters).length
+  }, [ctxRows, ctxLoaded, filters, lockedFilters, fCount])
+
   // Save session handler
   const handleSaveSession = function() {
     setSessionSaving(true)
@@ -159,7 +167,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
   return (
     <>
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
+      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} filteredRowCount={filteredRowCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {
