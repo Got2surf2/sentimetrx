@@ -38,7 +38,7 @@ var TABS = [
   { key: 'stats', label: 'Statistics', icon: '\u03A3', collapse: 3 },
   { key: 'settings', label: 'Schema', icon: '\u2699', collapse: 4 },
 ]
-// Filters collapse: 5, Ask Ana collapse: 6 (rightmost collapses first)
+// Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9
 
 export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
   var router = useRouter()
@@ -48,7 +48,6 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [aiEnabled,   setAiEnabled]   = useState(false)
   var [showExport,  setShowExport]  = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
-  var [showMore,    setShowMore]    = useState(false)
 
   useEffect(function() {
     try {
@@ -84,13 +83,6 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     } catch {} finally { setReviewSyncing(false) }
   }
 
-  // Items in the "More" dropdown
-  var moreItems = [
-    { label: '\uD83C\uDFAC StoryTime', action: function() { setShowExport(true); setShowMore(false) } },
-    { label: '\uD83D\uDCCA Share Analytics', action: function() { setShowShareAnalytics(true); setShowMore(false) } },
-    { label: (sessionSaving ? '\u23F3 Saving...' : sessionSaved ? '\u2714 Saved' : '\uD83D\uDCBE Save Session'), action: function() { if (onSaveSession) onSaveSession(); setShowMore(false) }, disabled: sessionSaving },
-  ]
-
   // Source pill colors
   var srcBg = dataset.source === 'study' ? 'rgba(56,189,248,.25)' : dataset.source === 'google_reviews' ? 'rgba(96,165,250,.25)' : dataset.source === 'reddit' ? 'rgba(16,185,129,.25)' : dataset.source === 'townhall' ? 'rgba(139,92,246,.25)' : dataset.source === 'substack' ? 'rgba(225,29,72,.25)' : 'rgba(255,255,255,.12)'
   var srcColor = dataset.source === 'study' ? '#bae6fd' : dataset.source === 'google_reviews' ? '#bfdbfe' : dataset.source === 'reddit' ? '#a7f3d0' : dataset.source === 'townhall' ? '#ddd6fe' : dataset.source === 'substack' ? '#fecdd3' : 'rgba(255,255,255,.6)'
@@ -116,6 +108,9 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
       <style>{'\
         .ana-tab { padding: 0 14px; transition: all .12s; }\
         .ana-tab .ana-lbl { transition: all .15s; }\
+        @media (max-width: 1440px) { .ana-c9 .ana-lbl { display: none; } .ana-c9 { padding: 0 10px; } }\
+        @media (max-width: 1380px) { .ana-c8 .ana-lbl { display: none; } .ana-c8 { padding: 0 10px; } }\
+        @media (max-width: 1300px) { .ana-c7 .ana-lbl { display: none; } .ana-c7 { padding: 0 10px; } }\
         @media (max-width: 1200px) { .ana-c6 .ana-lbl { display: none; } .ana-c6 { padding: 0 10px; } }\
         @media (max-width: 1100px) { .ana-c5 .ana-lbl { display: none; } .ana-c5 { padding: 0 10px; } }\
         @media (max-width: 1000px) { .ana-c4 .ana-lbl { display: none; } .ana-c4 { padding: 0 10px; } }\
@@ -182,50 +177,48 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               <span>{'\uD83D\uDCAC'}</span><span className="ana-lbl">Ask Ana</span>
             </button>
           )}
+
+          {/* Separator before actions */}
+          <div style={{ width: 1, background: 'rgba(255,255,255,.15)', margin: '10px 0', flexShrink: 0 }} />
+
+          {/* StoryTime */}
+          <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="StoryTime"
+            style={{
+              height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,.65)',
+              background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+              cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+            <span>{'\uD83C\uDFAC'}</span><span className="ana-lbl">StoryTime</span>
+          </button>
+
+          {/* Share Analytics */}
+          <button onClick={function() { setShowShareAnalytics(true) }} className="ana-tab ana-c8" title="Share Analytics"
+            style={{
+              height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,.65)',
+              background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+              cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+            <span>{'\uD83D\uDCCA'}</span><span className="ana-lbl">Share</span>
+          </button>
+
+          {/* Save Session */}
+          <button onClick={function() { if (onSaveSession) onSaveSession() }} disabled={sessionSaving} className="ana-tab ana-c9" title={sessionSaving ? 'Saving...' : sessionSaved ? 'Saved' : 'Save Session'}
+            style={{
+              height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 13, fontWeight: sessionSaved ? 700 : 500,
+              color: sessionSaved ? 'white' : 'rgba(255,255,255,.65)',
+              background: sessionSaved ? 'rgba(255,255,255,.18)' : 'transparent',
+              border: 'none', borderBottom: '3px solid transparent',
+              cursor: sessionSaving ? 'wait' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+            <span>{sessionSaving ? '\u23F3' : sessionSaved ? '\u2714' : '\uD83D\uDCBE'}</span><span className="ana-lbl">{sessionSaving ? 'Saving...' : sessionSaved ? 'Saved' : 'Save'}</span>
+          </button>
         </div>
 
         {/* ═══ RIGHT ZONE: fixed, always visible ═══ */}
         <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,.15)' }}>
-
-          {/* More dropdown — always visible, always clickable */}
-          <div style={{ display: 'flex', alignItems: 'center', position: 'relative', borderRight: '1px solid rgba(255,255,255,.15)' }}>
-            <button onClick={function() { setShowMore(!showMore) }}
-              style={{
-                padding: '0 12px', height: '100%', display: 'flex', alignItems: 'center', gap: 4,
-                fontSize: 12, fontWeight: 700, color: 'white',
-                background: showMore ? 'rgba(255,255,255,.18)' : 'transparent',
-                border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-              }}>
-              {'\u2026'} More
-            </button>
-            {showMore && (
-              <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={function() { setShowMore(false) }} />
-                <div style={{
-                  position: 'absolute', top: 48, right: 0, zIndex: 100,
-                  background: 'white', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.2)',
-                  border: '1px solid #e5e7eb', minWidth: 180, overflow: 'hidden',
-                }}>
-                  {moreItems.map(function(item, i) {
-                    return (
-                      <button key={i} onClick={item.action} disabled={item.disabled}
-                        style={{
-                          display: 'block', width: '100%', textAlign: 'left',
-                          padding: '10px 16px', fontSize: 13, fontWeight: 600,
-                          color: '#374151', background: 'transparent', border: 'none',
-                          cursor: item.disabled ? 'wait' : 'pointer',
-                          borderBottom: i < moreItems.length - 1 ? '1px solid #f3f4f6' : 'none',
-                        }}
-                        onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.background = '#f9fafb' }}
-                        onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}>
-                        {item.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
 
           {/* Source pill */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
