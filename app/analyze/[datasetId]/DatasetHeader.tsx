@@ -108,6 +108,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
       <style>{'\
         .ana-tab { padding: 0 14px; transition: all .12s; }\
         .ana-tab .ana-lbl { transition: all .15s; }\
+        .ana-sep { transition: all .12s; }\
         @media (max-width: 1440px) { .ana-c9 .ana-lbl { display: none; } .ana-c9 { padding: 0 10px; } }\
         @media (max-width: 1380px) { .ana-c8 .ana-lbl { display: none; } .ana-c8 { padding: 0 10px; } }\
         @media (max-width: 1300px) { .ana-c7 .ana-lbl { display: none; } .ana-c7 { padding: 0 10px; } }\
@@ -115,8 +116,10 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         @media (max-width: 1100px) { .ana-c5 .ana-lbl { display: none; } .ana-c5 { padding: 0 10px; } }\
         @media (max-width: 1000px) { .ana-c4 .ana-lbl { display: none; } .ana-c4 { padding: 0 10px; } }\
         @media (max-width: 920px)  { .ana-c3 .ana-lbl { display: none; } .ana-c3 { padding: 0 10px; } }\
-        @media (max-width: 850px)  { .ana-c2 .ana-lbl { display: none; } .ana-c2 { padding: 0 10px; } }\
-        @media (max-width: 780px)  { .ana-c1 .ana-lbl { display: none; } .ana-c1 { padding: 0 10px; } }\
+        @media (max-width: 850px)  { .ana-c9 { display: none; } .ana-c8 { display: none; } .ana-c7 { display: none; } .ana-sep { display: none; } }\
+        @media (max-width: 780px)  { .ana-c2 .ana-lbl { display: none; } .ana-c2 { padding: 0 10px; } }\
+        @media (max-width: 700px)  { .ana-c1 .ana-lbl { display: none; } .ana-c1 { padding: 0 10px; } }\
+        @media (max-width: 640px)  { .ana-c6 { display: none; } .ana-c5 .ana-lbl { display: none; } .ana-c5 { padding: 0 10px; } }\
       '}</style>
       <div style={{ background: HERMES, height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
 
@@ -179,7 +182,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           )}
 
           {/* Separator before actions */}
-          <div style={{ width: 1, background: 'rgba(255,255,255,.15)', margin: '10px 0', flexShrink: 0 }} />
+          <div className="ana-sep" style={{ width: 1, background: 'rgba(255,255,255,.15)', margin: '10px 0', flexShrink: 0 }} />
 
           {/* StoryTime */}
           <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="StoryTime"
