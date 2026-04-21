@@ -717,9 +717,8 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
   const themes = data.themes || []
   const filterSummary = data.filterSummary || {}
   const filterFields = Object.entries(filterSummary)
-  const benchmarkSummary = data.benchmarkSummary || {}
-  const benchmarkFields = Object.entries(benchmarkSummary) as [string, { values: string[]; total: number }][]
-  const totalN = data.total?.n || (data.filtered.n + data.benchmark.n)
+  const ps = data.primarySummary as { field: string; values: string[]; comparisonValues: string[] } | null
+  const inViewN = data.inView?.n || (data.filtered.n + data.benchmark.n)
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -739,50 +738,35 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
             </div>
           </div>
 
-          {/* Filter pills + benchmark pills on one row */}
-          {(filterFields.length > 0 || benchmarkFields.length > 0) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap' }}>
-              {/* Filtered selection */}
-              {filterFields.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  {filterFields.map(([label, value]) => (
-                    <span key={label} className="text-[11px] px-3 py-1 rounded-full font-medium"
-                      style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                      {label}: {String(value)}
-                    </span>
-                  ))}
-                </div>
-              )}
+          {/* Filter pills */}
+          {filterFields.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: ps ? 8 : 0 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', flexShrink: 0 }}>Filtered to</span>
+              {filterFields.map(([label, value]) => (
+                <span key={label} className="text-[11px] px-3 py-1 rounded-full font-medium"
+                  style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb' }}>
+                  {label}: {String(value)}
+                </span>
+              ))}
+            </div>
+          )}
 
-              {/* Divider */}
-              {filterFields.length > 0 && benchmarkFields.length > 0 && (
-                <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 12px', flexShrink: 0 }} />
-              )}
-
-              {/* Benchmark pills */}
-              {benchmarkFields.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', flexShrink: 0 }}>vs</span>
-                  {benchmarkFields.map(function([label, info]) {
-                    if (info.values.length === 0) {
-                      return <span key={label} style={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>No benchmark</span>
-                    }
-                    if (info.values.length <= 8) {
-                      return info.values.map(function(v) {
-                        return (
-                          <span key={v} style={{ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1' }}>
-                            {v}
-                          </span>
-                        )
-                      })
-                    }
-                    return (
-                      <span key={label} style={{ fontSize: 10, color: '#0284c7', fontWeight: 600 }}>
-                        {info.values.length} others
-                      </span>
-                    )
-                  })}
-                </div>
+          {/* Primary vs Comparison */}
+          {ps && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: HERMES, textTransform: 'uppercase', flexShrink: 0 }}>{ps.field}</span>
+              {ps.values.map(function(v) {
+                return <span key={v} style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 12, background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>{v}</span>
+              })}
+              {ps.comparisonValues.length > 0 && (
+                <>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#0284c7', flexShrink: 0 }}>vs</span>
+                  {ps.comparisonValues.length <= 5 ? ps.comparisonValues.map(function(v) {
+                    return <span key={v} style={{ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1' }}>{v}</span>
+                  }) : (
+                    <span style={{ fontSize: 10, color: '#0284c7', fontWeight: 600 }}>{ps.comparisonValues.length} others</span>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -794,15 +778,15 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <div className="text-2xl font-bold" style={{ color: HERMES }}>{data.filtered.n.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">{data.label}</div>
+            <div className="text-xs text-gray-500">Primary</div>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <div className="text-2xl font-bold text-gray-600">{data.benchmark.n.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">Benchmark</div>
+            <div className="text-xs text-gray-500">Comparison</div>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-gray-400">{totalN.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">Total in Dataset</div>
+            <div className="text-2xl font-bold text-gray-400">{inViewN.toLocaleString()}</div>
+            <div className="text-xs text-gray-500">Total in View</div>
           </div>
         </div>
 

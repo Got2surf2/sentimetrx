@@ -105,8 +105,15 @@ export async function GET(req: NextRequest) {
   // Record access
   service.from('shared_links').update({ last_accessed_at: new Date().toISOString() }).eq('token', token).then(() => {})
 
-  const meta = link.metadata as { dataset_id: string; filters: SerializedFilters; label: string; metrics?: string[] }
-  if (!meta?.dataset_id || !meta?.filters) return NextResponse.json({ error: 'Invalid analytics metadata' }, { status: 400 })
+  const meta = link.metadata as {
+    dataset_id: string
+    filters: SerializedFilters
+    label: string
+    primary?: { field: string; label: string; values: string[] }
+    inViewValues?: string[]
+    dateRange?: { field: string; label: string; min: string; max: string }
+  }
+  if (!meta?.dataset_id) return NextResponse.json({ error: 'Invalid analytics metadata' }, { status: 400 })
 
   // Fetch dataset info
   const { data: dataset } = await service
@@ -145,12 +152,28 @@ export async function GET(req: NextRequest) {
     page++
   }
 
-  // Split into filtered and benchmark
-  const filteredRows: Record<string, any>[] = []
-  const benchmarkRows: Record<string, any>[] = []
+  // Step 1: Apply active filters to get "in view" rows
+  var filters = meta.filters || {}
+  var inViewRows: Record<string, any>[] = []
   for (const row of allRows) {
-    if (rowMatchesFilter(row, meta.filters)) filteredRows.push(row)
-    else benchmarkRows.push(row)
+    if (Object.keys(filters).length === 0 || rowMatchesFilter(row, filters)) inViewRows.push(row)
+  }
+
+  // Step 2: From in-view rows, split by primary field into primary vs comparison
+  var filteredRows: Record<string, any>[] = []
+  var benchmarkRows: Record<string, any>[] = []
+  if (meta.primary && meta.primary.field && meta.primary.values.length > 0) {
+    var pField = meta.primary.field
+    var pValues = new Set(meta.primary.values)
+    var inViewSet = meta.inViewValues ? new Set(meta.inViewValues) : null
+    for (const row of inViewRows) {
+      var val = String(row[pField] ?? '')
+      if (pValues.has(val)) filteredRows.push(row)
+      else if (!inViewSet || inViewSet.has(val)) benchmarkRows.push(row)
+    }
+  } else {
+    // No primary selection — all in-view rows are "filtered"
+    filteredRows = inViewRows
   }
 
   // Compute numeric stats for each numeric field
@@ -215,24 +238,18 @@ export async function GET(req: NextRequest) {
   // Sort themes by filtered rate descending
   themeResults.sort((a, b) => b.filtered.rate - a.filtered.rate)
 
-  // Compute categorical distributions for the filter fields themselves
-  const filterFieldSummary: Record<string, string> = {}
-  const benchmarkFieldSummary: Record<string, { values: string[]; total: number }> = {}
-  for (const [field, f] of Object.entries(meta.filters)) {
-    if (f.type === 'cat') {
-      filterFieldSummary[fieldLabels[field] || field] = f.values.join(', ')
-      // Compute distinct values from actual data for this field
-      const allDistinct = new Set<string>()
-      for (const row of allRows) {
-        const val = row[field]
-        if (val != null && String(val).trim() !== '') allDistinct.add(String(val))
-      }
-      const benchmarkValues = Array.from(allDistinct).filter(v => !f.values.includes(v)).sort()
-      benchmarkFieldSummary[fieldLabels[field] || field] = { values: benchmarkValues, total: allDistinct.size }
-    } else if (f.type === 'range') {
-      filterFieldSummary[fieldLabels[field] || field] = f.values[0] + ' - ' + f.values[1]
-    }
+  // Build summaries for the shared page
+  var filterFieldSummary: Record<string, string> = {}
+  for (const [field, f] of Object.entries(filters)) {
+    if (f.type === 'cat') filterFieldSummary[fieldLabels[field] || field] = f.values.join(', ')
+    else if (f.type === 'range') filterFieldSummary[fieldLabels[field] || field] = f.values[0] + ' - ' + f.values[1]
   }
+
+  var primarySummary = meta.primary ? {
+    field: meta.primary.label || meta.primary.field,
+    values: meta.primary.values,
+    comparisonValues: (meta.inViewValues || []).filter(function(v) { return !meta.primary!.values.includes(v) }),
+  } : null
 
   return NextResponse.json({
     label: meta.label || 'Filtered View',
@@ -240,11 +257,12 @@ export async function GET(req: NextRequest) {
     filtered: { n: totalFiltered },
     benchmark: { n: totalBenchmark },
     total: { n: totalAll },
+    inView: { n: inViewRows.length },
     filterSummary: filterFieldSummary,
-    benchmarkSummary: benchmarkFieldSummary,
+    primarySummary: primarySummary,
     numeric: numericResults,
     themes: themeResults,
-    dateRange: (meta as any).dateRange || null,
+    dateRange: meta.dateRange || null,
     expires_at: link.expires_at,
   })
 }
