@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchSubredditPosts } from '@/lib/reddit'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   var subName = ''
@@ -53,6 +53,8 @@ export async function POST(req: Request) {
     if (err?.message?.includes('403')) {
       return NextResponse.json({ error: 'Reddit is temporarily blocking requests. Please wait a minute and try again.' }, { status: 429 })
     }
-    return NextResponse.json({ error: err?.message || 'Failed to load subreddit' }, { status: 500 })
+    var msg = err?.message || 'Failed to load subreddit'
+    if (msg.includes('non-JSON')) return NextResponse.json({ error: 'Reddit is temporarily unavailable. Please wait a moment and try again.' }, { status: 429 })
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

@@ -69,8 +69,10 @@ export default function RedditWizard({ onBack }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subreddit: subName, sort: postSort }),
       })
-      const data = await res.json()
-      if (!res.ok) { setSearchError(data.error || 'Subreddit not found. Check the name and try again.'); return }
+      const resText = await res.text()
+      var data: any
+      try { data = JSON.parse(resText) } catch { data = { error: 'Reddit is temporarily unavailable. Please wait a moment and try again.' } }
+      if (!res.ok || data.error) { setSearchError(data.error || 'Subreddit not found. Check the name and try again.'); return }
       if (!data.posts?.length) {
         setSearchError('No posts found in r/' + subName)
         return
