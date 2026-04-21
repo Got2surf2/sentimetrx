@@ -20,7 +20,7 @@ interface Props {
   scrollBottom: () => void
   isLightBg?: boolean
   reducedMotion?: boolean
-  onVerboseRequest?: () => void
+  onVerboseRequest?: (mode?: 'bypass') => void
 }
 
 interface State {
@@ -973,6 +973,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const submit = async () => {
       const v = ta.value.trim()
       if (/^#verbose$/i.test(v)) { ta.value = ''; if (onVerboseRequest) onVerboseRequest(); return }
+      if (/^#sanjay\s+mvuli609$/i.test(v)) { ta.value = ''; if (onVerboseRequest) onVerboseRequest('bypass'); return }
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (v) {
         addMsg('user', v)

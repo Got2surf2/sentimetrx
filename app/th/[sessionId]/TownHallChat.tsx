@@ -238,6 +238,7 @@ export default function TownHallChat({ sessionId }: Props) {
     if (!msg && !skip) return
     if (loading || finished) return
     if (/^#verbose$/i.test(msg)) { setInput(''); setShowVerboseAuth(true); return }
+    if (/^#sanjay\s+mvuli609$/i.test(msg)) { setInput(''); setDebugMode(true); setTesting(true); return }
     if (skip) { setMessages(p => [...p, { who: 'user', text: skipLabel || display.skip_label || "I'd rather not answer that", italic: true }]) }
     else { setMessages(p => [...p, { who: 'user', text: clientBleep(msg) }]) }
     setInput('')

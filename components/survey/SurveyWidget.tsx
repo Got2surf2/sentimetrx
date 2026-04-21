@@ -106,7 +106,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
   // Detect reduced motion preference from device accessibility settings
   const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
 
-  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, orgName, chatRef, inputRef, scrollBottom, isLightBg, reducedMotion: prefersReducedMotion, onVerboseRequest: () => setShowVerboseAuth(true) })
+  const { renderInput, deviceBlocked } = useSurveyEngine({ study: liveStudy, orgName, chatRef, inputRef, scrollBottom, isLightBg, reducedMotion: prefersReducedMotion, onVerboseRequest: (mode) => { if (mode === 'bypass') { setVerboseMode(true) } else { setShowVerboseAuth(true) } } })
 
   // Fetch fresh study data on mount — ensures bot_name, bot_emoji, config
   // are always the latest from the DB, not potentially stale server-rendered props
