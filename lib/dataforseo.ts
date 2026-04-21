@@ -319,9 +319,9 @@ export interface SearchVolumeResult {
 }
 
 export function classifySearchInterest(volume: number): SearchInterestTier {
-  if (volume >= 10_000) return 'high'
-  if (volume >= 1_000) return 'moderate'
-  if (volume >= 100) return 'low'
+  if (volume >= 1_000_000) return 'high'
+  if (volume >= 100_000) return 'moderate'
+  if (volume >= 5_000) return 'low'
   return null
 }
 
