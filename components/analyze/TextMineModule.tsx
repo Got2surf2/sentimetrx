@@ -1653,7 +1653,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: cardBorder, flexShrink: 0 }} />
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                                     {t.searchInterest && (
-                                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+                                      <span title={t.searchInterest === 'high' ? 'Keywords in this theme have 1M+ monthly Google searches' + (t.searchTrend === 'up' ? ' and are trending up' : t.searchTrend === 'down' ? ' and are trending down' : '') : t.searchInterest === 'moderate' ? 'Keywords in this theme have 100K\u20131M monthly Google searches' + (t.searchTrend === 'up' ? ' and are trending up' : t.searchTrend === 'down' ? ' and are trending down' : '') : 'Keywords in this theme have 5K\u2013100K monthly Google searches' + (t.searchTrend === 'up' ? ' and are trending up' : t.searchTrend === 'down' ? ' and are trending down' : '')} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700, cursor: 'help',
                                         background: t.searchInterest === 'high' ? '#dbeafe' : t.searchInterest === 'moderate' ? '#fef3c7' : '#f3f4f6',
                                         color: t.searchInterest === 'high' ? '#1d4ed8' : t.searchInterest === 'moderate' ? '#92400e' : '#6b7280',
                                         border: '1px solid ' + (t.searchInterest === 'high' ? '#93c5fd' : t.searchInterest === 'moderate' ? '#fcd34d' : '#d1d5db'),

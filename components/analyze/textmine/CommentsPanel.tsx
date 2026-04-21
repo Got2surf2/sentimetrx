@@ -612,7 +612,7 @@ export default function CommentsPanel({
             {theme.sentiment}
           </span>
           {theme.searchInterest && (
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+            <span title={theme.searchInterest === 'high' ? 'Keywords in this theme have 1M+ monthly Google searches' + (theme.searchTrend === 'up' ? ' and are trending up' : theme.searchTrend === 'down' ? ' and are trending down' : '') : theme.searchInterest === 'moderate' ? 'Keywords in this theme have 100K\u20131M monthly Google searches' + (theme.searchTrend === 'up' ? ' and are trending up' : theme.searchTrend === 'down' ? ' and are trending down' : '') : 'Keywords in this theme have 5K\u2013100K monthly Google searches' + (theme.searchTrend === 'up' ? ' and are trending up' : theme.searchTrend === 'down' ? ' and are trending down' : '')} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700, cursor: 'help',
               background: theme.searchInterest === 'high' ? '#dbeafe' : theme.searchInterest === 'moderate' ? '#fef3c7' : '#f3f4f6',
               color: theme.searchInterest === 'high' ? '#1d4ed8' : theme.searchInterest === 'moderate' ? '#92400e' : '#6b7280',
               border: '1px solid ' + (theme.searchInterest === 'high' ? '#93c5fd' : theme.searchInterest === 'moderate' ? '#fcd34d' : '#d1d5db'),
