@@ -1240,23 +1240,28 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   async function enrichSearchInterest(tm: ThemeModel) {
     if (datasetSource !== 'reddit' && datasetSource !== 'substack') return
     if (!tm.themes.length) return
-    // Skip if already enriched
-    if (tm.themes.every(function(t) { return t.searchInterest !== undefined })) return
+    // Skip if already enriched (at least one theme has a non-null tier)
+    if (tm.themes.some(function(t) { return t.searchInterest === 'high' || t.searchInterest === 'moderate' || t.searchInterest === 'low' })) return
     try {
       var res = await fetch('/api/datasets/' + datasetId + '/search-interest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ themeNames: tm.themes.map(function(t) { return t.name }) }),
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        console.warn('[search-interest] API returned', res.status)
+        return
+      }
       var data = await res.json()
       var interests = data.interests || {}
+      var hasAny = Object.values(interests).some(function(v) { return v === 'high' || v === 'moderate' || v === 'low' })
+      if (!hasAny) { console.info('[search-interest] No themes had significant search volume'); return }
       var updated = { ...tm, themes: tm.themes.map(function(t) {
         return { ...t, searchInterest: interests[t.name] ?? null }
       })}
       setThemes(updated)
       setIsDirty(true)
-    } catch { /* silent — badges are informational */ }
+    } catch (err) { console.warn('[search-interest] enrichment failed:', err) }
   }
 
   var hasThemes = themes && themes.themes && themes.themes.length > 0
