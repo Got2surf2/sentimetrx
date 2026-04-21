@@ -351,7 +351,7 @@ export function generateStudyDesignPptx(input: StudyDesignInput) {
   // ── Clarifiers & AI Features ────────────────────────────────────────────────
   const clarifierItems: Item[] = []
   if (c.useAIClarify) {
-    clarifierItems.push({ label: 'AI CLARIFIERS', value: 'Enabled — Claude generates contextual follow-up questions based on study context, sentiment, and prior answers', note: c.maxClarifierCount ? `Maximum ${c.maxClarifierCount} clarifiers per session` : 'Unlimited clarifiers per session' })
+    clarifierItems.push({ label: 'AI CLARIFIERS', value: 'Enabled — AI generates contextual follow-up questions based on study context, sentiment, and prior answers', note: c.maxClarifierCount ? `Maximum ${c.maxClarifierCount} clarifiers per session` : 'Unlimited clarifiers per session' })
   }
   const keywords = Object.entries(c.clarifiers || {}).filter(([k]) => k !== 'default')
   for (const [kw, response] of keywords) {

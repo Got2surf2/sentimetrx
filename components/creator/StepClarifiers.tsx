@@ -61,7 +61,7 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
           <div>
             <div className="text-sm font-semibold text-gray-800">Enable AI clarifiers (all open-ended fields)</div>
             <div className="text-xs text-gray-500 mt-0.5">
-              Uses Claude to generate intelligent, contextual clarifying questions based on study context, sentiment, and prior answers
+              Uses AI to generate intelligent, contextual clarifying questions based on study context, sentiment, and prior answers
             </div>
           </div>
           <button
@@ -203,7 +203,7 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
           <div>
             <div className="text-sm font-semibold text-gray-800">Enable AI deflection</div>
             <div className="text-xs text-gray-500 mt-0.5">
-              Uses Claude to detect questions and off-topic responses, then generates a warm contextual redirect
+              Uses AI to detect questions and off-topic responses, then generates a warm contextual redirect
             </div>
           </div>
           <button

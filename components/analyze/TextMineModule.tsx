@@ -84,7 +84,7 @@ function ApiKeyModal({ onSave, onClose }: { onSave: (key: string) => void; onClo
             {'\uD83D\uDD11'}
           </div>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: T.text, margin: 0 }}>Claude API Key</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: T.text, margin: 0 }}>AI API Key</h2>
             <p style={{ fontSize: 12, color: T.textMute, margin: 0 }}>Stored only in this browser. Never sent anywhere except Anthropic.</p>
           </div>
         </div>
@@ -1416,7 +1416,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 {loading && (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingBottom: 80 }}>
                     <LottieLoader size={96} message="Analyzing your responses…" />
-                    <div style={{ fontSize: 12, color: T.textMute, marginTop: 8 }}>Claude is reading and grouping themes...</div>
+                    <div style={{ fontSize: 12, color: T.textMute, marginTop: 8 }}>Ana is reading and grouping themes...</div>
                   </div>
                 )}
 
