@@ -10,6 +10,12 @@ import { serializeFilters, filterSummary } from '@/lib/filterUtils'
 
 var HERMES = '#E8632A'
 
+function fmtDate(s: string): string {
+  var d = new Date(s)
+  if (isNaN(d.getTime())) return s.split('T')[0] || s
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 interface DateFieldOption {
   field: string
   label: string
@@ -79,7 +85,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
             dataset_id: datasetId,
             filters: serialized,
             label: label || datasetName + (hasFilters ? ' — Filtered View' : ''),
-            dateRange: selectedDate ? { field: selectedDate.field, label: selectedDate.label, min: selectedDate.dateMin, max: selectedDate.dateMax } : undefined,
+            dateRange: selectedDate ? { field: selectedDate.field, label: selectedDate.label, min: fmtDate(selectedDate.dateMin), max: fmtDate(selectedDate.dateMax) } : undefined,
           },
         }),
       })
@@ -154,7 +160,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Date Range (shown on shared page)</label>
                 {dateFields.length === 1 ? (
                   <div style={{ padding: '8px 12px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, color: '#374151' }}>
-                    {dateFields[0].label}: <strong>{dateFields[0].dateMin}</strong> — <strong>{dateFields[0].dateMax}</strong>
+                    {dateFields[0].label}: <strong>{fmtDate(dateFields[0].dateMin)}</strong> — <strong>{fmtDate(dateFields[0].dateMax)}</strong>
                   </div>
                 ) : (
                   <>
@@ -164,12 +170,12 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
                       style={{ width: '100%', padding: '8px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', marginBottom: 6, boxSizing: 'border-box' as const }}>
                       <option value="">Select date field...</option>
                       {dateFields.map(function(f) {
-                        return <option key={f.field} value={f.field}>{f.label} ({f.dateMin} — {f.dateMax})</option>
+                        return <option key={f.field} value={f.field}>{f.label} ({fmtDate(f.dateMin)} — {fmtDate(f.dateMax)})</option>
                       })}
                     </select>
                     {selectedDate && (
                       <div style={{ fontSize: 11, color: '#6b7280' }}>
-                        Data covers <strong>{selectedDate.dateMin}</strong> — <strong>{selectedDate.dateMax}</strong>
+                        Data covers <strong>{fmtDate(selectedDate.dateMin)}</strong> — <strong>{fmtDate(selectedDate.dateMax)}</strong>
                       </div>
                     )}
                   </>
