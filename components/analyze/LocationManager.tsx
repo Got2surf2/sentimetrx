@@ -56,6 +56,7 @@ interface Props {
 export default function LocationManager({ sourceId }: Props) {
   const [source, setSource] = useState<Source | null>(null)
   const [locations, setLocations] = useState<Location[]>([])
+  const [datasetRowCount, setDatasetRowCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
@@ -75,6 +76,7 @@ export default function LocationManager({ sourceId }: Props) {
       .then(function(data) {
         setSource(data.source)
         setLocations(data.locations || [])
+        if (data.datasetRowCount != null) setDatasetRowCount(data.datasetRowCount)
         // Only auto-start on initial mount, never on refresh after stop
         if (autoStart) {
           const unsynced = (data.locations || []).filter(function(l: Location) { return l.selected && !l.last_synced_at && !l.error_message })
@@ -252,7 +254,10 @@ export default function LocationManager({ sourceId }: Props) {
         <div>
           <h2 className="font-bold text-gray-800">Google Reviews — {source.brand_name}</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {syncedCount}/{selectedCount} locations synced · {totalPulled.toLocaleString()} of {totalEstimated.toLocaleString()} reviews pulled
+            {syncedCount}/{selectedCount} locations synced · {datasetRowCount.toLocaleString()} reviews in dataset
+            {totalPulled > datasetRowCount && (
+              <span className="text-gray-400"> ({totalPulled.toLocaleString()} pulled, {(totalPulled - datasetRowCount).toLocaleString()} outside date range)</span>
+            )}
             {source.last_synced_at && (
               <span> · Last synced {new Date(source.last_synced_at).toLocaleDateString()}</span>
             )}

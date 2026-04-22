@@ -50,7 +50,15 @@ export async function GET(_req: Request, { params }: Params) {
       .order('state', { ascending: true })
       .order('city', { ascending: true })
 
-    return NextResponse.json({ source, locations: locations || [] })
+    // Get filtered dataset row count (after date range filtering)
+    let datasetRowCount = 0
+    if (source.dataset_id) {
+      const { data: ds } = await service
+        .from('datasets').select('row_count').eq('id', source.dataset_id).single()
+      datasetRowCount = ds?.row_count || 0
+    }
+
+    return NextResponse.json({ source, locations: locations || [], datasetRowCount })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 })
   }
