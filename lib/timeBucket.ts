@@ -34,30 +34,40 @@ export function autoBucket(minDate: Date | string, maxDate: Date | string): Time
 }
 
 /**
+ * Pad a number to 2 digits.
+ */
+function pad2(n: number): string { return n < 10 ? '0' + n : '' + n }
+
+/**
  * Bucket a JS Date into a string key for the given granularity.
+ * Uses local time so labels match the viewer's timezone.
  */
 export function bucketKey(date: Date | string, bucket: TimeBucket): string {
   const d = typeof date === 'string' ? new Date(date) : date
+  const yyyy = d.getFullYear()
+  const mm = pad2(d.getMonth() + 1)
+  const dd = pad2(d.getDate())
+  const hh = pad2(d.getHours())
   switch (bucket) {
     case 'hour':
-      return d.toISOString().slice(0, 13) + ':00' // YYYY-MM-DDTHH:00
+      return `${yyyy}-${mm}-${dd}T${hh}:00`
     case 'day':
-      return d.toISOString().slice(0, 10) // YYYY-MM-DD
+      return `${yyyy}-${mm}-${dd}`
     case 'week': {
-      // Snap to Monday
-      const day = d.getUTCDay()
-      const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1)
-      const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff))
-      return monday.toISOString().slice(0, 10)
+      // Snap to Monday (local time)
+      const day = d.getDay()
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+      const monday = new Date(yyyy, d.getMonth(), diff)
+      return `${monday.getFullYear()}-${pad2(monday.getMonth() + 1)}-${pad2(monday.getDate())}`
     }
     case 'month':
-      return d.toISOString().slice(0, 7) // YYYY-MM
+      return `${yyyy}-${mm}`
     case 'quarter': {
-      const q = Math.floor(d.getUTCMonth() / 3) + 1
-      return d.getUTCFullYear() + '-Q' + q
+      const q = Math.floor(d.getMonth() / 3) + 1
+      return yyyy + '-Q' + q
     }
     case 'year':
-      return String(d.getUTCFullYear())
+      return String(yyyy)
   }
 }
 
@@ -67,23 +77,24 @@ export function bucketKey(date: Date | string, bucket: TimeBucket): string {
 export function formatBucketLabel(key: string, bucket: TimeBucket): string {
   switch (bucket) {
     case 'hour': {
+      // key: YYYY-MM-DDTHH:00 (local time) — parse without Z to keep local
       const d = new Date(key)
       return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric' })
     }
     case 'day': {
-      const d = new Date(key + 'T00:00:00Z')
+      // key: YYYY-MM-DD — parse as local midnight (no Z suffix)
+      const d = new Date(key + 'T00:00:00')
       return d.toLocaleString(undefined, { month: 'short', day: 'numeric' })
     }
     case 'week': {
-      const d = new Date(key + 'T00:00:00Z')
+      const d = new Date(key + 'T00:00:00')
       return 'W/O ' + d.toLocaleString(undefined, { month: 'short', day: 'numeric' })
     }
     case 'month': {
-      const d = new Date(key + '-01T00:00:00Z')
+      const d = new Date(key + '-01T00:00:00')
       return d.toLocaleString(undefined, { month: 'short', year: '2-digit' })
     }
     case 'quarter': {
-      // key format: YYYY-Q1
       const parts = key.split('-Q')
       return 'Q' + parts[1] + ' ' + parts[0]
     }
