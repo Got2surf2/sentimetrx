@@ -49,7 +49,7 @@ interface Props {
   schema:            SchemaConfig
   analytics:         DatasetAnalytics | null
   savedThemeModel:   ThemeModel | null
-  datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack'
+  datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
 }
@@ -1101,6 +1101,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return { texts: sampled, total }
   }
 
+  // Prepare corpus for a specific subset of rows
+  function prepareCorpusFromRows(rows: Record<string, unknown>[]) {
+    if (!effectiveFields.length || !rows.length) return { texts: [] as string[], total: 0 }
+    var texts = rows
+      .map(function(r) { return effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim() })
+      .filter(function(t) { return t.length > 0 })
+    var total = texts.length
+    var defaultN = sampleSize95(total)
+    var defaultPct = total > 0 ? Math.round(defaultN / total * 100) : 100
+    var activePct = samplePct === 0 ? defaultPct : samplePct
+    var n = Math.max(1, Math.round(total * (activePct / 100)))
+    var sampled = evenSample(texts, n)
+    return { texts: sampled, total: total }
+  }
+
   async function mineThemes() {
     // Read real-time toggle state from localStorage (header may have changed it)
     var liveAi = false; try { liveAi = localStorage.getItem('sentimetrx_ai_enabled') === '1' } catch {}
@@ -1112,45 +1127,115 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setLoading(true)
     setError(null)
     try {
-      var { texts, total } = prepareCorpus()
-      if (!texts.length) throw new Error('No text found in selected fields.')
       var schemaCtx = schema.fields.map(function(f) {
         return f.field + ':' + f.type + (f.type === 'categorical' && f.values ? ' (' + f.values.slice(0, 6).join(',') + ')' : '')
       }).join('; ')
-      var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: apiKey, texts: texts, fieldName: effectiveFields[0], schemaCtx: schemaCtx }),
-      })
-      var data = await res.json()
-      if (!res.ok) {
-        var errMsg = data.error || 'Mining failed'
-        if (errMsg.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
-        if (errMsg.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
-        throw new Error(errMsg)
+
+      // ── Collection: mine per-member, then merge ──────────────────────
+      if (datasetSource === 'collection') {
+        // Group rows by _collection_label
+        var memberGroups: Record<string, Record<string, unknown>[]> = {}
+        filteredRows.forEach(function(r) {
+          var label = String(r._collection_label || 'Unknown')
+          if (!memberGroups[label]) memberGroups[label] = []
+          memberGroups[label].push(r)
+        })
+        var labels = Object.keys(memberGroups)
+        if (labels.length < 2) throw new Error('Collection needs rows from at least 2 members to mine themes.')
+
+        // Mine themes for each member in parallel
+        var memberResults = await Promise.all(labels.map(function(label) {
+          var corpus = prepareCorpusFromRows(memberGroups[label])
+          if (!corpus.texts.length) return Promise.resolve({ label: label, themes: [], total: 0, sampled: 0 })
+          return fetch('/api/datasets/' + datasetId + '/mine-themes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey: liveKey, texts: corpus.texts, fieldName: effectiveFields[0], schemaCtx: schemaCtx }),
+          }).then(function(r) { return r.json().then(function(d) { return { label: label, themes: d.themes || [], total: corpus.total, sampled: corpus.texts.length, ok: r.ok, error: d.error } }) })
+        }))
+
+        // Check for errors
+        var failedMember = memberResults.find(function(m) { return (m as any).error && !(m as any).themes?.length })
+        if (failedMember) {
+          var fErr = (failedMember as any).error || 'Mining failed'
+          if (typeof fErr === 'string' && fErr.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
+          if (typeof fErr === 'string' && fErr.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
+          throw new Error('Mining failed for ' + failedMember.label + ': ' + fErr)
+        }
+
+        var validMembers = memberResults.filter(function(m) { return m.themes && m.themes.length > 0 })
+        if (validMembers.length < 2) throw new Error('Could not mine themes from enough members.')
+
+        // Merge via AI
+        var mergeRes = await fetch('/api/datasets/' + datasetId + '/merge-themes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apiKey: liveKey,
+            memberThemes: validMembers.map(function(m) { return { label: m.label, themes: m.themes } }),
+          }),
+        })
+        var mergeData = await mergeRes.json()
+        if (!mergeRes.ok) throw new Error(mergeData.error || 'Theme merge failed')
+        if (!mergeData.themes) throw new Error('No merged themes returned')
+
+        var totalSampled = memberResults.reduce(function(s, m) { return s + (m.sampled || 0) }, 0)
+        var totalTexts = memberResults.reduce(function(s, m) { return s + (m.total || 0) }, 0)
+
+        var tm: ThemeModel = {
+          themes: mergeData.themes,
+          summary: mergeData.summary || '',
+          fieldName: effectiveFields[0],
+          fieldNames: effectiveFields,
+          themeSource: 'ai',
+          themeLibName: null,
+          samplingInfo: { sampled: totalSampled, total: totalTexts },
+        }
+        setThemes(tm)
+        setThemeSource('ai')
+        setThemeLibName(null)
+        setSamplingInfo({ sampled: totalSampled, total: totalTexts })
+        setLastRunPct(samplePct)
+        setSubTab('themes')
+        setIsDirty(true)
+        fetchServerThemeCounts(tm, effectiveFields)
+        enrichSearchInterest(tm)
+      } else {
+        // ── Standard: mine from combined corpus ──────────────────────
+        var { texts, total } = prepareCorpus()
+        if (!texts.length) throw new Error('No text found in selected fields.')
+        var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: liveKey, texts: texts, fieldName: effectiveFields[0], schemaCtx: schemaCtx }),
+        })
+        var data = await res.json()
+        if (!res.ok) {
+          var errMsg = data.error || 'Mining failed'
+          if (errMsg.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
+          if (errMsg.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
+          throw new Error(errMsg)
+        }
+        if (!data.themes) throw new Error('No themes returned')
+        var tm2: ThemeModel = {
+          themes: data.themes,
+          summary: data.summary || '',
+          fieldName: effectiveFields[0],
+          fieldNames: effectiveFields,
+          themeSource: 'ai',
+          themeLibName: null,
+          samplingInfo: { sampled: texts.length, total: total },
+        }
+        setThemes(tm2)
+        setThemeSource('ai')
+        setThemeLibName(null)
+        setSamplingInfo({ sampled: texts.length, total: total })
+        setLastRunPct(samplePct)
+        setSubTab('themes')
+        setIsDirty(true)
+        fetchServerThemeCounts(tm2, effectiveFields)
+        enrichSearchInterest(tm2)
       }
-      if (!data.themes) throw new Error('No themes returned')
-      // Don't recount here — the useEffect will pick up the theme change and recount with loading indicator
-      var tm: ThemeModel = {
-        themes: data.themes,
-        summary: data.summary || '',
-        fieldName: effectiveFields[0],
-        fieldNames: effectiveFields,
-        themeSource: 'ai',
-        themeLibName: null,
-        samplingInfo: { sampled: texts.length, total: total },
-      }
-      setThemes(tm)
-      setThemeSource('ai')
-      setThemeLibName(null)
-      setSamplingInfo({ sampled: texts.length, total: total })
-      setLastRunPct(samplePct)
-      setSubTab('themes')
-      setIsDirty(true)
-      // Fetch accurate server-side counts on full dataset
-      fetchServerThemeCounts(tm, effectiveFields)
-      // Enrich with Google search interest (Reddit/Substack only)
-      enrichSearchInterest(tm)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
     }
