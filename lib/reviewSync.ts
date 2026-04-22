@@ -151,8 +151,9 @@ export async function syncReviewSource(
       try {
         result.processing_location = loc.name
         const isInitial = !loc.last_review_id
-        // Use the location's review_count to set depth, capped at DataForSEO's 4490 max
-        const depth = isInitial ? Math.min(Math.max(loc.review_count || 1000, 1000), 4490) : 200
+        const depth = isInitial
+          ? estimateDepth(loc.review_count, loc.created_at, dateStart, dateEnd)
+          : 200
         const ref = await submitReviewTask(loc.place_id, depth, 'newest')
         // Store task ref so next call can check it
         await service.from('review_source_locations').update({
@@ -215,6 +216,31 @@ function parseTaskRef(s: string): ReviewTaskRef {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Estimate how many reviews to request based on date range.
+ * Reviews are sorted newest-first, so we only need enough depth to cover
+ * the date range. Uses a 1.5x buffer + 200 minimum for safety.
+ */
+function estimateDepth(reviewCount: number, locationCreatedAt: string | null, startDate: string | null, endDate: string | null): number {
+  const total = reviewCount || 1000
+  if (!startDate) return Math.min(Math.max(total, 1000), 4490)
+
+  // Estimate the location's review history span (default 5 years if unknown)
+  const now = new Date()
+  const endDt = endDate ? new Date(endDate) : now
+  const startDt = new Date(startDate)
+  const rangeDays = Math.max((endDt.getTime() - startDt.getTime()) / 86400000, 1)
+
+  // Assume reviews span ~5 years if we don't know the location's age
+  const historyDays = 5 * 365
+  const fraction = Math.min(rangeDays / historyDays, 1)
+
+  // Estimate reviews in range, add 1.5x buffer, clamp to [200, 4490]
+  const estimated = Math.ceil(total * fraction * 1.5)
+  return Math.min(Math.max(estimated, 200), 4490)
+}
+
 function filterByDateRange(reviews: DfsReview[], startDate: string | null, endDate: string | null): DfsReview[] {
   if (!startDate && !endDate) return reviews
   return reviews.filter(function(rev) {
