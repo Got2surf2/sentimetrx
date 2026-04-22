@@ -25,8 +25,9 @@ export interface SyncResult {
   processing_location: string | null  // name of the location currently being checked/submitted
 }
 
-const BATCH_SIZE = 10
+const BATCH_SIZE = 5
 const CHUNK_SIZE = 50
+const TIME_BUDGET_MS = 45000 // bail before Vercel's 60s timeout
 // Prefix for pending task refs stored in error_message column
 const TASK_PREFIX = 'pending_task:'
 
@@ -54,6 +55,7 @@ export async function syncReviewSource(
   if (srcErr || !source) throw new Error('Review source not found: ' + (srcErr?.message || sourceId))
   if (!source.dataset_id) throw new Error('Review source has no linked dataset')
 
+  const startTime = Date.now()
   const allNewRows: Record<string, unknown>[] = []
 
   // Load date range from dataset description (if set)
@@ -79,6 +81,7 @@ export async function syncReviewSource(
   if (pendingLocs && pendingLocs.length > 0) {
     result.pending_locations = pendingLocs.map(function(l) { return l.name })
     for (const loc of pendingLocs) {
+      if (Date.now() - startTime > TIME_BUDGET_MS) break
       try {
         result.processing_location = loc.name
         const ref = parseTaskRef(loc.error_message!)
@@ -144,6 +147,7 @@ export async function syncReviewSource(
 
   if (unsyncedLocs && unsyncedLocs.length > 0) {
     for (const loc of unsyncedLocs) {
+      if (Date.now() - startTime > TIME_BUDGET_MS) break
       try {
         result.processing_location = loc.name
         const isInitial = !loc.last_review_id
