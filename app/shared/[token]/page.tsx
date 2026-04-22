@@ -76,10 +76,11 @@ function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
   const buckets: Record<string, { complete: number; incomplete: number }> = {}
 
   for (const r of responses) {
-    if (!r.completed_at) continue
-    const key = bucketKey(r.completed_at, activeBucket)
+    const ts = r.completed_at || r.created_at
+    if (!ts) continue
+    const key = bucketKey(ts, activeBucket)
     if (!buckets[key]) buckets[key] = { complete: 0, incomplete: 0 }
-    if (r.status === 'incomplete') buckets[key].incomplete++
+    if (r.status === 'partial' || r.status === 'incomplete') buckets[key].incomplete++
     else buckets[key].complete++
   }
 
@@ -189,7 +190,7 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
   lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
 }) {
   const total = responses.length
-  const complete = responses.filter((r: any) => r.status !== 'incomplete').length
+  const complete = responses.filter((r: any) => r.status !== 'incomplete' && r.status !== 'partial').length
 
   // Determine primary rating from the data
   const expScores = responses.map((r: any) => r.experience_score).filter((v: any) => v != null)
