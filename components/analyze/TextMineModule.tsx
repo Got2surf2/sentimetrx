@@ -1101,21 +1101,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return { texts: sampled, total }
   }
 
-  // Prepare corpus for a specific subset of rows
-  function prepareCorpusFromRows(rows: Record<string, unknown>[]) {
-    if (!effectiveFields.length || !rows.length) return { texts: [] as string[], total: 0 }
-    var texts = rows
-      .map(function(r) { return effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim() })
-      .filter(function(t) { return t.length > 0 })
-    var total = texts.length
-    var defaultN = sampleSize95(total)
-    var defaultPct = total > 0 ? Math.round(defaultN / total * 100) : 100
-    var activePct = samplePct === 0 ? defaultPct : samplePct
-    var n = Math.max(1, Math.round(total * (activePct / 100)))
-    var sampled = evenSample(texts, n)
-    return { texts: sampled, total: total }
-  }
-
   async function mineThemes() {
     // Read real-time toggle state from localStorage (header may have changed it)
     var liveAi = false; try { liveAi = localStorage.getItem('sentimetrx_ai_enabled') === '1' } catch {}
@@ -1131,56 +1116,42 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         return f.field + ':' + f.type + (f.type === 'categorical' && f.values ? ' (' + f.values.slice(0, 6).join(',') + ')' : '')
       }).join('; ')
 
-      // ── Collection: mine per-member, then merge ──────────────────────
+      // ── Collection: reuse existing member themes, then merge ─────────
       if (datasetSource === 'collection') {
-        // Group rows by _collection_label
-        var memberGroups: Record<string, Record<string, unknown>[]> = {}
-        filteredRows.forEach(function(r) {
-          var label = String(r._collection_label || 'Unknown')
-          if (!memberGroups[label]) memberGroups[label] = []
-          memberGroups[label].push(r)
-        })
-        var labels = Object.keys(memberGroups)
-        if (labels.length < 2) throw new Error('Collection needs rows from at least 2 members to mine themes.')
+        // Fetch member datasets and their existing theme models
+        var colRes = await fetch('/api/collections/' + datasetId)
+        var colData = await colRes.json()
+        if (!colRes.ok || !colData.members) throw new Error('Could not load collection members')
 
-        // Mine themes for each member in parallel
-        var memberResults = await Promise.all(labels.map(function(label) {
-          var corpus = prepareCorpusFromRows(memberGroups[label])
-          if (!corpus.texts.length) return Promise.resolve({ label: label, themes: [], total: 0, sampled: 0 })
-          return fetch('/api/datasets/' + datasetId + '/mine-themes', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ apiKey: liveKey, texts: corpus.texts, fieldName: effectiveFields[0], schemaCtx: schemaCtx }),
-          }).then(function(r) { return r.json().then(function(d) { return { label: label, themes: d.themes || [], total: corpus.total, sampled: corpus.texts.length, ok: r.ok, error: d.error } }) })
-        }))
+        var membersWithThemes = (colData.members as { label: string; has_themes: boolean; theme_model: any }[])
+          .filter(function(m) { return m.has_themes })
 
-        // Check for errors
-        var failedMember = memberResults.find(function(m) { return (m as any).error && !(m as any).themes?.length })
-        if (failedMember) {
-          var fErr = (failedMember as any).error || 'Mining failed'
-          if (typeof fErr === 'string' && fErr.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
-          if (typeof fErr === 'string' && fErr.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
-          throw new Error('Mining failed for ' + failedMember.label + ': ' + fErr)
+        if (membersWithThemes.length < 2) {
+          throw new Error(
+            'At least 2 member datasets need AI-mined themes before merging. ' +
+            'Open each dataset individually and mine themes first.'
+          )
         }
 
-        var validMembers = memberResults.filter(function(m) { return m.themes && m.themes.length > 0 })
-        if (validMembers.length < 2) throw new Error('Could not mine themes from enough members.')
+        // Use existing themes from each member — no per-member mining needed
+        var memberThemesForMerge = membersWithThemes.map(function(m) {
+          return { label: m.label, themes: m.theme_model.themes || [] }
+        })
 
-        // Merge via AI
+        // Merge via AI — single API call
         var mergeRes = await fetch('/api/datasets/' + datasetId + '/merge-themes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey: liveKey,
-            memberThemes: validMembers.map(function(m) { return { label: m.label, themes: m.themes } }),
-          }),
+          body: JSON.stringify({ apiKey: liveKey, memberThemes: memberThemesForMerge }),
         })
         var mergeData = await mergeRes.json()
-        if (!mergeRes.ok) throw new Error(mergeData.error || 'Theme merge failed')
+        if (!mergeRes.ok) {
+          var mErr = mergeData.error || 'Theme merge failed'
+          if (mErr.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
+          if (mErr.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
+          throw new Error(mErr)
+        }
         if (!mergeData.themes) throw new Error('No merged themes returned')
-
-        var totalSampled = memberResults.reduce(function(s, m) { return s + (m.sampled || 0) }, 0)
-        var totalTexts = memberResults.reduce(function(s, m) { return s + (m.total || 0) }, 0)
 
         var tm: ThemeModel = {
           themes: mergeData.themes,
@@ -1189,12 +1160,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           fieldNames: effectiveFields,
           themeSource: 'ai',
           themeLibName: null,
-          samplingInfo: { sampled: totalSampled, total: totalTexts },
+          samplingInfo: { sampled: filteredRows.length, total: filteredRows.length },
         }
         setThemes(tm)
         setThemeSource('ai')
         setThemeLibName(null)
-        setSamplingInfo({ sampled: totalSampled, total: totalTexts })
+        setSamplingInfo({ sampled: filteredRows.length, total: filteredRows.length })
         setLastRunPct(samplePct)
         setSubTab('themes')
         setIsDirty(true)
