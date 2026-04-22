@@ -10,6 +10,8 @@ import { TimeBucket, BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBuc
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 import { useRows } from '@/components/analyze/RowsContext'
+import { useFilters } from '@/components/analyze/FilterContext'
+import { applyFilters } from '@/lib/filterUtils'
 import type { SchemaFieldConfig as SchemaField, SchemaConfig } from '@/lib/analyzeTypes'
 
 // Dynamic Plotly import
@@ -505,17 +507,22 @@ var _enrichCtx: {
 // (theme classification + field remapping). No independent fetch.
 function useChartRows(datasetId: string, enrichKey: number = 0) {
   var shared = useRows()
+  var { effectiveFilters } = useFilters()
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [loaded, setLoaded] = useState(false)
+  var filterKey = JSON.stringify(effectiveFilters)
   useEffect(function() {
     if (enrichKey < 0) return // skip when using aggregation API
     if (!shared.rowsLoaded) return
     // Trigger fetch if not loaded yet
     shared.fetchRows()
     var enriched = enrichRows(shared.rows)
-    setRows(_enrichCtx.datasetSource ? injectSignalTier(enriched, _enrichCtx.datasetSource) : enriched)
+    if (_enrichCtx.datasetSource) enriched = injectSignalTier(enriched, _enrichCtx.datasetSource)
+    // Apply global filters
+    var filtered = applyFilters(enriched, effectiveFilters)
+    setRows(filtered)
     setLoaded(true)
-  }, [shared.rowsLoaded, enrichKey])
+  }, [shared.rowsLoaded, enrichKey, filterKey])
   // Trigger shared fetch on first render
   useEffect(function() { shared.fetchRows() }, [])
   return { rows: rows, loaded: loaded, loading: shared.rowsLoading }
