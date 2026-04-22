@@ -119,9 +119,15 @@ export async function syncReviewSource(
       } catch (err: any) {
         result.locations_errored++
         result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
-        await service.from('review_source_locations').update({
-          error_message: err.message?.slice(0, 500),
-        }).eq('id', loc.id)
+        // Preserve the pending task ref on transient errors (timeouts, network failures)
+        // so the location can be retried on the next sync call instead of getting stuck
+        const isTransient = /timeout|FUNCTION_INVOCATION_TIMEOUT|network|ECONNRESET|fetch failed/i.test(err.message || '')
+        if (!isTransient) {
+          await service.from('review_source_locations').update({
+            error_message: err.message?.slice(0, 500),
+          }).eq('id', loc.id)
+        }
+        // If transient, leave the pending_task: ref in place for retry
       }
     }
   }

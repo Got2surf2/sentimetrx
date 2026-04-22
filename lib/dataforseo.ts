@@ -202,7 +202,8 @@ export async function checkReviewTask(ref: ReviewTaskRef): Promise<TaskCheckResu
     }
     return { status: 'ready', reviews }
   }
-  if (task.status_code === 40402 || task.status_code === 40602) {
+  // 40402/40602 = task in queue/processing, 140607 = "Task Handed" (assigned to worker, still processing)
+  if (task.status_code === 40402 || task.status_code === 40602 || task.status_code === 140607) {
     return { status: 'pending' }
   }
   if (task.status_code >= 40000) {
