@@ -42,15 +42,16 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
   const allTexts = (turns || []).map(t => (t.user_message_en || t.user_message || '').trim()).filter(t => t.length >= 20)
   if (allTexts.length < 10) return { inserted: 0, skipped: 0, error: 'Not enough responses yet (need 10+)' }
 
-  // 3. Fetch existing themes with keywords for deduplication
+  // 3. Fetch existing themes with keywords + mention counts for deduplication & gap analysis
   const { data: existingThemes } = await supabase
     .from('townhall_themes')
-    .select('id, label, keywords, state')
+    .select('id, label, keywords, state, mention_count')
     .eq('session_id', sessionId)
 
   const existingKeywords = (existingThemes || []).map(t => ({
     label: t.label,
     keywords: t.keywords || [],
+    mention_count: t.mention_count || 0,
   }))
   const existingLabels = existingKeywords.map(t => t.label.toLowerCase())
 
@@ -60,7 +61,7 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
 
   // 5. Build prompt — include existing themes so AI avoids re-detecting
   const existingList = existingKeywords.length > 0
-    ? '\n\nEXISTING THEMES (do NOT re-detect these):\n' + existingKeywords.map(t => '- ' + t.label + ' (keywords: ' + t.keywords.slice(0, 5).join(', ') + ')').join('\n')
+    ? '\n\nEXISTING THEMES (do NOT re-detect these):\n' + existingKeywords.map(t => '- ' + t.label + ' (' + t.mention_count + ' mentions, keywords: ' + t.keywords.slice(0, 5).join(', ') + ')').join('\n')
     : ''
 
   const config = session.config as any
@@ -71,7 +72,7 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
     '\n\n' + allTexts.length + ' total responses (' + sampled.length + ' sampled below).' +
     existingList +
     '\n\nRESPONSES:\n' + corpus +
-    '\n\nIdentify 2-5 NEW emerging themes NOT covered by existing themes. For each theme provide 8-15 keywords including core terms, synonyms, and informal variants.\n\n' +
+    '\n\nIdentify 2-5 NEW emerging themes NOT covered by existing themes. Prioritize topics that participants are raising but that are NOT yet captured as themes — look for under-represented perspectives and less-discussed issues that deserve attention. For each theme provide 8-15 keywords including core terms, synonyms, and informal variants.\n\n' +
     'Return ONLY valid JSON:\n' +
     '{"themes":[{"name":"Theme Name","description":"One sentence.","keywords":["word1","word2"],"question":"A probing question to ask participants about this theme.","follow_up_angles":["angle1","angle2"],"example_quote":"Best representative quote from the responses."}]}'
 
