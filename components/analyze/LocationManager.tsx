@@ -236,11 +236,14 @@ export default function LocationManager({ sourceId }: Props) {
   if (loading) return <div className="bg-white border border-gray-200 rounded-2xl p-6 text-sm text-gray-400">Loading locations...</div>
   if (!source) return null
 
+  const selected = locations.filter(function(l) { return l.selected })
   const totalPulled = locations.reduce(function(sum, l) { return sum + l.total_pulled }, 0)
-  const totalEstimated = locations.filter(function(l) { return l.selected }).reduce(function(sum, l) { return sum + l.review_count }, 0)
-  const selectedCount = locations.filter(function(l) { return l.selected }).length
-  const syncedCount = locations.filter(function(l) { return l.selected && l.last_synced_at }).length
-  const errorCount = locations.filter(function(l) { return l.error_message && !l.error_message.startsWith('pending_task:') }).length
+  const totalEstimated = selected.reduce(function(sum, l) { return sum + l.review_count }, 0)
+  const selectedCount = selected.length
+  const syncedCount = selected.filter(function(l) { return l.last_synced_at }).length
+  const pendingCount = selected.filter(function(l) { return l.error_message?.startsWith('pending_task:') }).length
+  const errorCount = selected.filter(function(l) { return l.error_message && !l.error_message.startsWith('pending_task:') }).length
+  const queuedCount = selectedCount - syncedCount - pendingCount - errorCount
   const unsyncedCount = selectedCount - syncedCount
 
   return (
@@ -296,6 +299,24 @@ export default function LocationManager({ sourceId }: Props) {
           <span className="text-xs text-gray-400">Next: {new Date(source.next_sync_at).toLocaleDateString()}</span>
         )}
       </div>
+
+      {/* Location status bar */}
+      {selectedCount > 0 && (
+        <div>
+          <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: '#f3f4f6' }}>
+            {syncedCount > 0 && <div style={{ width: (syncedCount / selectedCount * 100) + '%', background: '#22c55e', transition: 'width .5s ease' }} />}
+            {pendingCount > 0 && <div style={{ width: (pendingCount / selectedCount * 100) + '%', background: '#eab308', transition: 'width .5s ease' }} />}
+            {queuedCount > 0 && <div style={{ width: (queuedCount / selectedCount * 100) + '%', background: '#f97316', transition: 'width .5s ease' }} />}
+            {errorCount > 0 && <div style={{ width: (errorCount / selectedCount * 100) + '%', background: '#ef4444', transition: 'width .5s ease' }} />}
+          </div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 11, color: '#6b7280' }}>
+            {syncedCount > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#22c55e', display: 'inline-block' }} />{syncedCount} completed</span>}
+            {pendingCount > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#eab308', display: 'inline-block' }} />{pendingCount} in progress</span>}
+            {queuedCount > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#f97316', display: 'inline-block' }} />{queuedCount} queued</span>}
+            {errorCount > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#ef4444', display: 'inline-block' }} />{errorCount} failed</span>}
+          </div>
+        </div>
+      )}
 
       {/* Download progress */}
       {autoSyncing && syncProgress && (

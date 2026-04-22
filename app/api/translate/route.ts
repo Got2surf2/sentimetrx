@@ -7,6 +7,7 @@ import type { StudyTranslation } from '@/lib/types'
 import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -191,20 +192,26 @@ ${JSON.stringify(payload, null, 2)}
 
 Return ONLY valid JSON, no markdown, no explanation.`
 
-  try {
+  async function attemptTranslation(): Promise<any> {
     const result = await callAI({
       tier: 'fast',
-      maxTokens: 8000,
-      timeoutMs: 30000,
+      maxTokens: 16000,
+      timeoutMs: 45000,
       messages: [{ role: 'user', content: prompt }],
     })
-
     let text = result.text?.trim() || ''
-
-    // Strip markdown code fences if present
     text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()
+    return JSON.parse(text)
+  }
 
-    const parsed = JSON.parse(text)
+  try {
+    let parsed: any
+    try {
+      parsed = await attemptTranslation()
+    } catch (firstErr) {
+      console.warn('[translate] first attempt failed, retrying:', (firstErr as Error).message)
+      parsed = await attemptTranslation()
+    }
 
     // Build the StudyTranslation
     const translation: StudyTranslation = {

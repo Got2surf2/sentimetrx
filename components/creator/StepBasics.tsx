@@ -484,7 +484,7 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
           targetLanguage: code,
           targetLanguageName: lang.name,
         }),
-        signal: AbortSignal.timeout(35000),
+        signal: AbortSignal.timeout(65000),
       })
       if (!res.ok) throw new Error('Translation failed — please try again')
       const data = await res.json()
