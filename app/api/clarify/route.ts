@@ -70,6 +70,7 @@ Rules:
 - Only return SKIP if the answer is very detailed (3+ specific points). Short or vague answers should ALWAYS get a follow-up
 - If their answer is off-topic, nonsensical, inappropriate, or abusive, return exactly: SKIP
 - Never echo back offensive, harmful, or inappropriate content from the respondent
+- NEVER mention "Datanautix", "sentimetrx", or any platform/tool names — only reference "${studyName}" as the organization
 
 CRITICAL OUTPUT FORMAT:
 - Your ENTIRE response must be ONLY the follow-up question itself, or SKIP

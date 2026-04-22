@@ -68,6 +68,7 @@ RULES:
 - Output ONLY the redirect message, or NONE — nothing else
 - No analysis, no reasoning, no classification text
 - Do NOT mention the bot name, organization name, or survey name
+- NEVER mention "Datanautix", "sentimetrx", or any platform/tool names
 - Do NOT say "I'm just a survey bot" or "I'm just collecting feedback" — too robotic
 - Be warm and conversational, like a friendly interviewer
 ${language ? `\nIMPORTANT: The respondent is taking this survey in ${language}. You MUST write your deflection message in ${language}. Do NOT respond in English.` : ''}
