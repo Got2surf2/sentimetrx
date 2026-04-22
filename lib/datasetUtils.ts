@@ -347,6 +347,25 @@ export function buildSubstackSchema(): SchemaConfig {
   return { fields, primaryTextField: 'body', autoDetected: false, version: 1 }
 }
 
+export function buildRegulationsSchema(): SchemaConfig {
+  const fields: SchemaFieldConfig[] = [
+    { field: 'comment_id',      type: 'id' },
+    { field: 'comment_text',    type: 'open-ended',  sqt: 'open-text', label: 'Comment' },
+    { field: 'commenter_name',  type: 'categorical', label: 'Commenter' },
+    { field: 'organization',    type: 'categorical', label: 'Organization' },
+    { field: 'city',            type: 'categorical', label: 'City' },
+    { field: 'state',           type: 'categorical', label: 'State' },
+    { field: 'country',         type: 'categorical', label: 'Country' },
+    { field: 'posted_date',     type: 'date',        label: 'Date' },
+    { field: 'agency',          type: 'categorical', label: 'Agency' },
+    { field: 'docket_id',       type: 'categorical', label: 'Docket' },
+    { field: 'document_id',     type: 'id' },
+    { field: 'title',           type: 'categorical', label: 'Title' },
+    { field: 'tracking_number', type: 'id' },
+  ]
+  return { fields, primaryTextField: 'comment_text', autoDetected: false, version: 1 }
+}
+
 export function emptyThemeModel() {
   return { themes: [] as unknown[], aiGenerated: false, version: 1 }
 }

@@ -1,0 +1,209 @@
+// lib/regulations.ts
+// Regulations.gov API v4 client
+// Docs: https://open.gsa.gov/api/regulationsgov/
+
+const BASE = 'https://api.regulations.gov/v4'
+const RATE_DELAY = 3600 // ~1000 requests/hour = 1 per 3.6s, round up for safety
+
+let lastRequest = 0
+
+async function throttle(): Promise<void> {
+  const now = Date.now()
+  const wait = RATE_DELAY - (now - lastRequest)
+  if (wait > 0) await new Promise(function(r) { setTimeout(r, wait) })
+  lastRequest = Date.now()
+}
+
+function getApiKey(): string {
+  const key = process.env.REGULATIONS_GOV_API_KEY
+  if (!key) throw new Error('REGULATIONS_GOV_API_KEY not configured')
+  return key
+}
+
+async function regGet(path: string, params?: Record<string, string>): Promise<any> {
+  await throttle()
+  const url = new URL(BASE + path)
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v) url.searchParams.set(k, v)
+    }
+  }
+  const res = await fetch(url.toString(), {
+    headers: { 'X-Api-Key': getApiKey() },
+  })
+  if (res.status === 429) {
+    // Rate limited — wait 60s and retry once
+    await new Promise(function(r) { setTimeout(r, 60000) })
+    const retry = await fetch(url.toString(), {
+      headers: { 'X-Api-Key': getApiKey() },
+    })
+    if (!retry.ok) throw new Error(`Regulations.gov API ${retry.status}: ${path}`)
+    return retry.json()
+  }
+  if (!res.ok) throw new Error(`Regulations.gov API ${res.status}: ${path}`)
+  return res.json()
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+export interface RegDocket {
+  id: string
+  type: string
+  attributes: {
+    agencyId: string
+    docketType: string
+    highlightedContent: string
+    lastModifiedDate: string
+    objectId: string
+    title: string
+  }
+}
+
+export interface RegDocument {
+  id: string
+  type: string
+  attributes: {
+    agencyId: string
+    commentEndDate: string | null
+    commentStartDate: string | null
+    docketId: string
+    documentType: string
+    highlightedContent: string
+    lastModifiedDate: string
+    objectId: string
+    postedDate: string
+    title: string
+    withdrawn: boolean
+    commentCount?: number
+  }
+}
+
+export interface RegCommentListItem {
+  id: string
+  attributes: {
+    agencyId: string
+    commentOnDocumentId: string
+    docketId: string
+    documentType: string
+    highlightedContent: string
+    lastModifiedDate: string
+    objectId: string
+    postedDate: string
+    title: string
+    withdrawn: boolean
+  }
+}
+
+export interface RegCommentDetail {
+  id: string
+  attributes: {
+    agencyId: string
+    comment: string  // full text
+    commentOnDocumentId: string
+    docketId: string
+    documentType: string
+    firstName: string | null
+    lastName: string | null
+    organization: string | null
+    city: string | null
+    country: string | null
+    stateProvinceRegion: string | null
+    zip: string | null
+    postedDate: string
+    title: string
+    trackingNbr: string
+    withdrawn: boolean
+  }
+}
+
+// ── Search dockets ─────────────────────────────────────────────────────────
+
+export async function searchDockets(query: string, page: number = 1): Promise<{ data: RegDocket[]; totalElements: number }> {
+  const result = await regGet('/dockets', {
+    'filter[searchTerm]': query,
+    'page[size]': '25',
+    'page[number]': String(page),
+    'sort': '-lastModifiedDate',
+  })
+  return {
+    data: result.data || [],
+    totalElements: result.meta?.totalElements || 0,
+  }
+}
+
+// ── Search documents (rules, notices, proposed rules) ──────────────────────
+
+export async function searchDocuments(query: string, docketId?: string, page: number = 1): Promise<{ data: RegDocument[]; totalElements: number }> {
+  const params: Record<string, string> = {
+    'page[size]': '25',
+    'page[number]': String(page),
+    'sort': '-postedDate',
+  }
+  if (docketId) params['filter[docketId]'] = docketId
+  if (query) params['filter[searchTerm]'] = query
+  const result = await regGet('/documents', params)
+  return {
+    data: result.data || [],
+    totalElements: result.meta?.totalElements || 0,
+  }
+}
+
+// ── List comments (IDs only — full text requires detail call) ──────────────
+
+export async function listComments(docketId: string, page: number = 1, pageSize: number = 250): Promise<{ data: RegCommentListItem[]; totalElements: number; lastPage: number }> {
+  const result = await regGet('/comments', {
+    'filter[docketId]': docketId,
+    'page[size]': String(Math.min(pageSize, 250)),
+    'page[number]': String(page),
+    'sort': '-postedDate',
+  })
+  return {
+    data: result.data || [],
+    totalElements: result.meta?.totalElements || 0,
+    lastPage: result.meta?.lastPage || 1,
+  }
+}
+
+// ── Get single comment detail (includes full text) ─────────────────────────
+
+export async function getCommentDetail(commentId: string): Promise<RegCommentDetail> {
+  const result = await regGet('/comments/' + encodeURIComponent(commentId))
+  return result.data
+}
+
+// ── Batch fetch comment details ────────────────────────────────────────────
+
+export async function fetchCommentsBatch(commentIds: string[]): Promise<RegCommentDetail[]> {
+  const results: RegCommentDetail[] = []
+  for (const id of commentIds) {
+    try {
+      const detail = await getCommentDetail(id)
+      results.push(detail)
+    } catch (err) {
+      console.warn('[regulations] failed to fetch comment', id, err)
+    }
+  }
+  return results
+}
+
+// ── Convert comment to dataset row ─────────────────────────────────────────
+
+export function commentToRow(c: RegCommentDetail): Record<string, unknown> {
+  const a = c.attributes
+  const name = [a.firstName, a.lastName].filter(Boolean).join(' ') || 'Anonymous'
+  return {
+    comment_id: c.id,
+    comment_text: a.comment || '',
+    commenter_name: name,
+    organization: a.organization || '',
+    city: a.city || '',
+    state: a.stateProvinceRegion || '',
+    country: a.country || '',
+    posted_date: a.postedDate ? a.postedDate.split('T')[0] : '',
+    agency: a.agencyId || '',
+    docket_id: a.docketId || '',
+    document_id: a.commentOnDocumentId || '',
+    title: a.title || '',
+    tracking_number: a.trackingNbr || '',
+  }
+}

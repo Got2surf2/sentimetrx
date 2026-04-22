@@ -10,12 +10,13 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
 import RedditWizard from '@/components/analyze/RedditWizard'
 import SubstackWizard from '@/components/analyze/SubstackWizard'
+import RegulationsWizard from '@/components/analyze/RegulationsWizard'
 
 const HERMES     = '#E8632A'
 const CHUNK_SIZE = 50                   // rows per POST
 const MAX_BYTES  = 3 * 1024 * 1024     // 3 MB safety ceiling per POST
 
-type SourceMode = 'select' | 'upload' | 'google_reviews' | 'reddit' | 'substack'
+type SourceMode = 'select' | 'upload' | 'google_reviews' | 'reddit' | 'substack' | 'regulations'
 type Step = 1 | 2 | 3
 
 interface ParsedFile {
@@ -372,6 +373,12 @@ export default function UploadClient() {
               <h3 className="font-bold text-gray-800 mb-1 group-hover:text-rose-700">Download Substack Comments</h3>
               <p className="text-xs text-gray-400">Enter a Substack publication, select posts, pull reader comments</p>
             </button>
+            <button onClick={function() { setSourceMode('regulations') }}
+              className="bg-white border-2 border-gray-200 rounded-2xl p-6 text-left hover:border-blue-400 hover:bg-blue-50 transition-all group">
+              <div className="text-3xl mb-3">🏛️</div>
+              <h3 className="font-bold text-gray-800 mb-1 group-hover:text-blue-700">Download Regulations.gov Comments</h3>
+              <p className="text-xs text-gray-400">Search federal dockets, download public comments on proposed rules</p>
+            </button>
           </div>
         </div>
       )}
@@ -389,6 +396,11 @@ export default function UploadClient() {
       {/* Substack wizard */}
       {sourceMode === 'substack' && (
         <SubstackWizard onBack={function() { setSourceMode('select') }} />
+      )}
+
+      {/* Regulations.gov wizard */}
+      {sourceMode === 'regulations' && (
+        <RegulationsWizard onBack={function() { setSourceMode('select') }} />
       )}
 
       {/* Upload flow */}
