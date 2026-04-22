@@ -897,6 +897,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [error, setError] = useState<string | null>(null)
   const [samplePct, setSamplePct] = useState(0)
   const [lastRunPct, setLastRunPct] = useState<number | null>(null)
+  const [showMineChoice, setShowMineChoice] = useState(false)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -1101,7 +1102,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return { texts: sampled, total }
   }
 
-  async function mineThemes() {
+  async function mineThemes(forceMode?: 'merge' | 'fresh') {
+    if (datasetSource === 'collection' && !forceMode) {
+      setShowMineChoice(true)
+      return
+    }
     // Read real-time toggle state from localStorage (header may have changed it)
     var liveAi = false; try { liveAi = localStorage.getItem('sentimetrx_ai_enabled') === '1' } catch {}
     if (!liveAi) { setAiEnabled(false); setError('AI is turned off. Enable AI in the header to mine themes.'); return }
@@ -1117,7 +1122,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       }).join('; ')
 
       // ── Collection: reuse existing member themes, then merge ─────────
-      if (datasetSource === 'collection') {
+      if (datasetSource === 'collection' && forceMode === 'merge') {
         // Fetch member datasets and their existing theme models
         var colRes = await fetch('/api/collections/' + datasetId)
         var colData = await colRes.json()
@@ -1419,7 +1424,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 </button>
               )}
               {openFields.length > 0 && (
-                <button onClick={mineThemes} disabled={!canMine || loading || !aiEnabled}
+                <button onClick={function() { mineThemes() }} disabled={!canMine || loading || !aiEnabled}
                   title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
                   style={{ padding: '4px 14px', fontSize: 11, fontWeight: 700, background: canMine && !loading && aiEnabled ? T.accent : T.borderMid, color: canMine && !loading && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 20, cursor: canMine && !loading && aiEnabled ? 'pointer' : 'not-allowed' }}>
                   {loading ? 'Mining...' : '\u29E1 Mine'}
@@ -1528,7 +1533,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     )}
                     {rows.length > 0 && (
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button onClick={mineThemes} disabled={!canMine || !aiEnabled}
+                        <button onClick={function() { mineThemes() }} disabled={!canMine || !aiEnabled}
                           title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
                           style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
                           {'\u29E1'} Mine with AI
@@ -1577,6 +1582,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           <input type="checkbox" checked={showAllThemes} onChange={function() { setShowAllThemes(function(v: boolean) { return !v }) }} style={{ accentColor: T.accent }} />
                           Show all
                         </label>
+                        {canMine && aiEnabled && (
+                          <button onClick={function() { mineThemes() }}
+                            style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 20, background: T.bg, border: '1px solid ' + T.border, color: T.textMid, cursor: 'pointer', flexShrink: 0 }}>
+                            {'\u29E1'} Re-mine
+                          </button>
+                        )}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
@@ -2014,6 +2025,45 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           <div style={{ background: T.bgCard, borderRadius: 16, padding: '40px 32px', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,.28)' }}
             onClick={function(e) { e.stopPropagation() }}>
             <LottieLoader size={80} message="Loading industry theme libraries..." />
+          </div>
+        </div>
+      )}
+      {/* Collection mine choice modal */}
+      {showMineChoice && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={function() { setShowMineChoice(false) }}>
+          <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 420, boxShadow: '0 24px 64px rgba(0,0,0,.28)', overflow: 'hidden' }}
+            onClick={function(e) { e.stopPropagation() }}>
+            <div style={{ padding: '20px 24px 12px' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>Mine Themes for Collection</h3>
+              <p style={{ fontSize: 13, color: '#6b7280', marginTop: 6, lineHeight: 1.5 }}>
+                Choose how to generate themes for this collection.
+              </p>
+            </div>
+            <div style={{ padding: '8px 24px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={function() { setShowMineChoice(false); mineThemes('merge') }}
+                style={{ padding: '14px 16px', borderRadius: 10, border: '1.5px solid #bae6fd', background: '#f0f9ff', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0284c7' }}>Merge from members</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                  Use existing AI-mined themes from each member dataset and merge them.
+                  Identifies shared and unique themes. Fast, no re-mining needed.
+                </div>
+              </button>
+              <button
+                onClick={function() { setShowMineChoice(false); mineThemes('fresh') }}
+                style={{ padding: '14px 16px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'white', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#374151' }}>Mine fresh</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                  Sample from all combined responses and discover themes from scratch.
+                  Finds cross-dataset patterns but may miss themes unique to one member.
+                </div>
+              </button>
+              <button onClick={function() { setShowMineChoice(false) }}
+                style={{ padding: '8px', fontSize: 13, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
