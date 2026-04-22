@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
+import { computeSourceHash } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
@@ -488,7 +489,8 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
       })
       if (!res.ok) throw new Error('Translation failed — please try again')
       const data = await res.json()
-      const translations = { ...(cfgToUse.translations || {}), [code]: data.translation }
+      const translation = { ...data.translation, _sourceHash: computeSourceHash(cfgToUse) }
+      const translations = { ...(cfgToUse.translations || {}), [code]: translation }
       updateConfig({ translations })
     } catch (err: any) {
       if (err.name === 'TimeoutError') {
@@ -504,10 +506,15 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
   function isTranslationStale(code: string): boolean {
     const trans = draft.config.translations?.[code]
     if (!trans) return true
-    const psychoKeys = (draft.config.psychographicBank || []).map(p => p.key)
-    const questionIds = (draft.config.questions || []).filter(q => q.enabled !== false && q.type !== 'hidden').map(q => q.id)
-    if (psychoKeys.length > 0 && psychoKeys.some(k => !trans.psychographics?.[k])) return true
-    if (questionIds.length > 0 && questionIds.some(id => !trans.questions?.[id])) return true
+    // Hash-based check: if source content changed, translation is stale
+    if ((trans as any)._sourceHash && (trans as any)._sourceHash !== computeSourceHash(draft.config)) return true
+    // Legacy check for translations without a hash
+    if (!(trans as any)._sourceHash) {
+      const psychoKeys = (draft.config.psychographicBank || []).map(p => p.key)
+      const questionIds = (draft.config.questions || []).filter(q => q.enabled !== false && q.type !== 'hidden').map(q => q.id)
+      if (psychoKeys.length > 0 && psychoKeys.some(k => !trans.psychographics?.[k])) return true
+      if (questionIds.length > 0 && questionIds.some(id => !trans.questions?.[id])) return true
+    }
     return false
   }
 
@@ -568,12 +575,7 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
               const lang = SUPPORTED_LANGUAGES.find(l => l.code === code)
               const trans = draft.config.translations?.[code]
               const hasTranslation = !!trans
-              // Check if translation is stale (missing psychographics or questions that exist in config)
-              const psychoKeys = (draft.config.psychographicBank || []).map(p => p.key)
-              const questionIds = (draft.config.questions || []).filter(q => q.enabled !== false && q.type !== 'hidden').map(q => q.id)
-              const missingPsycho = hasTranslation && psychoKeys.length > 0 && psychoKeys.some(k => !trans?.psychographics?.[k])
-              const missingQuestions = hasTranslation && questionIds.length > 0 && questionIds.some(id => !trans?.questions?.[id])
-              const isStale = missingPsycho || missingQuestions
+              const isStale = hasTranslation && isTranslationStale(code)
               return (
                 <div key={code} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
                   <span className="text-sm font-medium text-gray-700">{lang?.nativeName || code}</span>

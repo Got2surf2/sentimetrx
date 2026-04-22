@@ -18,6 +18,7 @@ import StepContactInfo from '@/components/creator/StepContactInfo'
 import StepClosing from '@/components/creator/StepClosing'
 import StepReview from '@/components/creator/StepReview'
 import type { StudyDraft } from '@/lib/studyDraft'
+import { getStaleLanguages, autoTranslateStale } from '@/lib/studyDraft'
 
 const EMPTY_DRAFT: StudyDraft = {
   name:      '',
@@ -100,10 +101,21 @@ export default function NewStudyPage() {
     setSaving(true)
     setError(null)
     try {
+      // Auto-translate stale languages before publishing
+      let configToSave = draft.config
+      if (status === 'active' && getStaleLanguages(draft.config).length > 0) {
+        setTranslating(true)
+        const translations = await autoTranslateStale(draft.config)
+        if (translations) {
+          configToSave = { ...draft.config, translations }
+          setDraft(prev => ({ ...prev, config: configToSave }))
+        }
+        setTranslating(false)
+      }
       const res = await fetch('/api/studies', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...draft, status }),
+        body: JSON.stringify({ ...draft, config: configToSave, status }),
       })
       if (!res.ok) {
         const j = await res.json()

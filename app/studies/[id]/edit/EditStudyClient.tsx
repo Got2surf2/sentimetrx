@@ -14,6 +14,7 @@ import StepClosing from '@/components/creator/StepClosing'
 import StepReview from '@/components/creator/StepReview'
 import MigrationBanner from '@/components/creator/MigrationBanner'
 import type { StudyDraft } from '@/lib/studyDraft'
+import { getStaleLanguages, autoTranslateStale } from '@/lib/studyDraft'
 import TopNav from '@/components/nav/TopNav'
 import CreatorNav from '@/components/creator/CreatorNav'
 import SubHeader from '@/components/nav/SubHeader'
@@ -56,10 +57,21 @@ export default function EditStudyClient({ study, logoUrl='', orgName='', isAdmin
     setSaving(true)
     setError(null)
     try {
+      // Auto-translate stale languages before publishing
+      let configToSave = draft.config
+      if (status === 'active' && getStaleLanguages(draft.config).length > 0) {
+        setTranslating(true)
+        const translations = await autoTranslateStale(draft.config)
+        if (translations) {
+          configToSave = { ...draft.config, translations }
+          setDraft(prev => ({ ...prev, config: configToSave }))
+        }
+        setTranslating(false)
+      }
       const res = await fetch(`/api/studies/${study.id}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...draft, status }),
+        body: JSON.stringify({ ...draft, config: configToSave, status }),
       })
       if (!res.ok) {
         const j = await res.json()
