@@ -75,16 +75,25 @@ function ResponsesOverTimeChart({ responses }: { responses: any[] }) {
   // Bucket responses
   const buckets: Record<string, { complete: number; incomplete: number }> = {}
 
+  // First pass: bucket responses that have a timestamp
+  const unbucketed: any[] = []
   for (const r of responses) {
-    const ts = r.completed_at || r.created_at
-    if (!ts) continue
-    const key = bucketKey(ts, activeBucket)
+    if (!r.completed_at) { unbucketed.push(r); continue }
+    const key = bucketKey(r.completed_at, activeBucket)
     if (!buckets[key]) buckets[key] = { complete: 0, incomplete: 0 }
     if (r.status === 'partial' || r.status === 'incomplete') buckets[key].incomplete++
     else buckets[key].complete++
   }
 
+  // Second pass: partial responses without completed_at go into the latest bucket
   const sortedKeys = Object.keys(buckets).sort()
+  if (unbucketed.length > 0 && sortedKeys.length > 0) {
+    const latestKey = sortedKeys[sortedKeys.length - 1]
+    for (const r of unbucketed) {
+      buckets[latestKey].incomplete++
+    }
+  }
+
   if (sortedKeys.length === 0) return null
 
   const maxVal = Math.max(...sortedKeys.map(k => buckets[k].complete + buckets[k].incomplete))
