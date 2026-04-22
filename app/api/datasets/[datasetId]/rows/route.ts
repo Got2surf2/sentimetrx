@@ -43,9 +43,14 @@ export async function GET(req: Request, { params }: Params) {
   const auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  const { data: dataset } = await supabase.from('datasets').select('org_id, source').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (dataset.org_id !== auth.orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // ── COLLECTION: union rows from all member datasets ─────────────────────
+  if ((dataset as any).source === 'collection') {
+    return handleCollectionRows(req, params.datasetId, auth.orgId)
+  }
 
   const url      = new URL(req.url)
   const allMode    = url.searchParams.get('all') === 'true'
@@ -212,6 +217,99 @@ export async function GET(req: Request, { params }: Params) {
     totalRows,
     totalPages,
     field:      field || undefined,
+  })
+}
+
+// ── Collection rows: union member datasets with _collection_label ──────────
+async function handleCollectionRows(req: Request, datasetId: string, orgId: string) {
+  const service = createServiceRoleClient()
+
+  // Look up collection → members
+  const { data: collection } = await service
+    .from('collections')
+    .select('id')
+    .eq('dataset_id', datasetId)
+    .single()
+
+  if (!collection) return NextResponse.json({ error: 'Collection metadata not found' }, { status: 404 })
+
+  const { data: members } = await service
+    .from('collection_members')
+    .select('dataset_id, label')
+    .eq('collection_id', collection.id)
+    .order('sort_order', { ascending: true })
+
+  if (!members || members.length === 0) {
+    return NextResponse.json({ rows: [], page: 1, pageSize: 0, totalRows: 0, totalPages: 1 })
+  }
+
+  const url = new URL(req.url)
+  const sampleMaxP = url.searchParams.get('sampleMax')
+  const sampleMax  = sampleMaxP ? Math.max(1, parseInt(sampleMaxP)) : null
+
+  // Fetch rows from each member dataset
+  const allRows: Record<string, unknown>[] = []
+  const FLAT_PAGE = 1000
+
+  for (var mi = 0; mi < members.length; mi++) {
+    var memberId = members[mi].dataset_id
+    var label    = members[mi].label
+    var offset   = 0
+    var fetchMore = true
+
+    // Try flat table first
+    var flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', memberId)
+    var hasFlat = (flatCheck.count || 0) > 0
+
+    if (hasFlat) {
+      while (fetchMore) {
+        var { data: flatRows } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', memberId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
+        if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
+        for (var fi = 0; fi < flatRows.length; fi++) {
+          allRows.push({ ...flatRows[fi].data, _collection_label: label })
+        }
+        if (flatRows.length < FLAT_PAGE) fetchMore = false
+        offset += FLAT_PAGE
+      }
+    } else {
+      // Fallback: batched table
+      var batchPage = 0
+      var BULK_FETCH = 200
+      fetchMore = true
+      while (fetchMore) {
+        var bFrom = batchPage * BULK_FETCH
+        var bTo   = bFrom + BULK_FETCH - 1
+        var { data: batches } = await service.from('dataset_rows').select('rows').eq('dataset_id', memberId).order('batch_index', { ascending: true }).range(bFrom, bTo)
+        if (!batches || batches.length === 0) { fetchMore = false; break }
+        for (var bi = 0; bi < batches.length; bi++) {
+          var batchRows = batches[bi].rows || []
+          for (var ri = 0; ri < batchRows.length; ri++) {
+            allRows.push({ ...batchRows[ri], _collection_label: label })
+          }
+        }
+        if (batches.length < BULK_FETCH) fetchMore = false
+        batchPage++
+      }
+    }
+  }
+
+  var totalRows = allRows.length
+
+  // Sample if needed
+  var doSample = sampleMax !== null && totalRows > sampleMax
+  if (doSample) {
+    for (var si = allRows.length - 1; si > 0; si--) {
+      var sj = Math.floor(Math.random() * (si + 1))
+      var tmp = allRows[si]; allRows[si] = allRows[sj]; allRows[sj] = tmp
+    }
+    allRows.length = sampleMax!
+  }
+
+  return NextResponse.json({
+    rows: allRows, page: 1, pageSize: allRows.length, totalRows: totalRows, totalPages: 1,
+    sampled: doSample,
+    sampleSize: doSample ? allRows.length : totalRows,
+    sampleRate: doSample ? parseFloat((allRows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
   })
 }
 

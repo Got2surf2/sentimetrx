@@ -350,6 +350,38 @@ export async function computeAnalytics(
   }
 }
 
+// -- In-memory analytics from pre-loaded rows (used by collections) ----------
+
+export function computeAnalyticsFromRows(
+  rows:   Record<string, unknown>[],
+  schema: SchemaConfig
+): DatasetAnalytics {
+  const accumulators: Record<string, Accum> = {}
+  for (var i = 0; i < schema.fields.length; i++) {
+    accumulators[schema.fields[i].field] = makeAccum(schema.fields[i])
+  }
+
+  for (var ri = 0; ri < rows.length; ri++) {
+    var row = rows[ri]
+    for (var fi = 0; fi < schema.fields.length; fi++) {
+      var accum = accumulators[schema.fields[fi].field]
+      if (!accum) continue
+      accumRow(accum, row[schema.fields[fi].field])
+    }
+  }
+
+  var fieldSummaries: Record<string, FieldSummary> = {}
+  for (var ffi = 0; ffi < schema.fields.length; ffi++) {
+    fieldSummaries[schema.fields[ffi].field] = finalize(accumulators[schema.fields[ffi].field], rows.length)
+  }
+
+  return {
+    totalRows:      rows.length,
+    computedAt:     new Date().toISOString(),
+    fieldSummaries,
+  }
+}
+
 // -- SQL-based analytics (flat table) — handles 2M+ rows without JS memory --
 
 export async function computeAnalyticsSQL(

@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import DatasetCard from '@/components/analyze/DatasetCard'
 import DatasetFilterBar from '@/components/analyze/DatasetFilterBar'
+import NewCollectionModal from '@/components/analyze/NewCollectionModal'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
@@ -17,7 +18,7 @@ interface Props {
 }
 
 interface Filters {
-  source:     'all' | 'study' | 'upload' | 'google_reviews' | 'reddit' | 'townhall' | 'substack'
+  source:     'all' | 'study' | 'upload' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'
   visibility: 'all' | 'private' | 'public'
   status:     'all' | 'active' | 'archived'
 }
@@ -28,6 +29,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const router = useRouter()
   const [datasets, setDatasets] = useState<DatasetWithState[]>(initialDatasets)
   const [filters,  setFilters]  = useState<Filters>({ source: 'all', visibility: 'all', status: 'all' })
+  const [showCollectionModal, setShowCollectionModal] = useState(false)
 
   const filtered = datasets.filter(function(d) {
     if (filters.source !== 'all' && d.source !== filters.source) return false
@@ -84,6 +86,11 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const activeCount   = datasets.filter(function(d) { return d.status === 'active' }).length
   const archivedCount = datasets.filter(function(d) { return d.status === 'archived' }).length
 
+  // Only non-collection, active datasets are eligible for collections
+  const eligibleForCollection = datasets.filter(function(d) {
+    return d.source !== 'collection' && d.status === 'active'
+  })
+
   return (
     <div className="flex flex-col gap-6">
 
@@ -97,11 +104,20 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
               : activeCount + ' active' + (archivedCount > 0 ? ' · ' + archivedCount + ' archived' : '')}
           </p>
         </div>
-        <button onClick={function() { router.push('/analyze/new') }}
-          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
-          style={{ background: HERMES }}>
-          + New Dataset
-        </button>
+        <div className="flex items-center gap-3">
+          {eligibleForCollection.length >= 2 && (
+            <button onClick={function() { setShowCollectionModal(true) }}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
+              style={{ background: '#f0f9ff', color: '#0284c7', border: '1.5px solid #bae6fd' }}>
+              + New Collection
+            </button>
+          )}
+          <button onClick={function() { router.push('/analyze/new') }}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
+            style={{ background: HERMES }}>
+            + New Dataset
+          </button>
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -148,6 +164,15 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
             )
           })}
         </div>
+      )}
+
+      {/* New Collection modal */}
+      {showCollectionModal && (
+        <NewCollectionModal
+          datasets={eligibleForCollection}
+          onClose={function() { setShowCollectionModal(false) }}
+          onCreated={function() { router.refresh() }}
+        />
       )}
     </div>
   )

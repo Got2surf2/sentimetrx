@@ -9,7 +9,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { computeAnalytics, computeAnalyticsSQL, computeAnalyticsFromRows } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +26,7 @@ export async function POST(_req: Request, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  const { data: dataset } = await supabase.from('datasets').select('org_id, source').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (dataset.org_id !== userData?.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -76,6 +76,38 @@ export async function POST(_req: Request, { params }: Params) {
     }
   } catch (_e) {
     // Non-fatal: if sample fetch fails, proceed with existing schema
+  }
+
+  // ── Collection: fetch rows from member datasets and compute in-memory ────
+  if ((dataset as any).source === 'collection') {
+    const { data: col } = await service.from('collections').select('id').eq('dataset_id', params.datasetId).single()
+    if (!col) return NextResponse.json({ error: 'Collection metadata not found' }, { status: 404 })
+    const { data: colMembers } = await service.from('collection_members').select('dataset_id, label').eq('collection_id', col.id).order('sort_order')
+    if (!colMembers?.length) return NextResponse.json({ error: 'Collection has no members' }, { status: 400 })
+
+    const allRows: Record<string, unknown>[] = []
+    const FLAT_PAGE = 1000
+    for (var cm = 0; cm < colMembers.length; cm++) {
+      var mid = colMembers[cm].dataset_id, mlabel = colMembers[cm].label
+      var off = 0, more = true
+      while (more) {
+        var { data: fRows } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', mid).order('row_index', { ascending: true }).range(off, off + FLAT_PAGE - 1)
+        if (!fRows || fRows.length === 0) { more = false; break }
+        for (var fri = 0; fri < fRows.length; fri++) allRows.push({ ...fRows[fri].data, _collection_label: mlabel })
+        if (fRows.length < FLAT_PAGE) more = false
+        off += FLAT_PAGE
+      }
+    }
+
+    try {
+      var colAnalytics = computeAnalyticsFromRows(allRows, schema)
+      await service.from('dataset_state').update({ analytics: colAnalytics, updated_at: new Date().toISOString(), updated_by: user.id }).eq('dataset_id', params.datasetId)
+      await service.from('datasets').update({ row_count: allRows.length, updated_at: new Date().toISOString() }).eq('id', params.datasetId)
+      return NextResponse.json({ ok: true, totalRows: colAnalytics.totalRows, computedAt: colAnalytics.computedAt, fields: Object.keys(colAnalytics.fieldSummaries).length })
+    } catch (err) {
+      console.error('[compute/collection] error:', err)
+      return NextResponse.json({ error: String(err) }, { status: 500 })
+    }
   }
 
   // Check if flat table is populated — use SQL-based compute (handles 2M+ rows)

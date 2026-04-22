@@ -13,7 +13,7 @@ import DatasetHeader from './DatasetHeader'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
-  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack'; visibility: 'private' | 'public'
+  id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'; visibility: 'private' | 'public'
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
 }
 import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
