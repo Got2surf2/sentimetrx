@@ -146,7 +146,7 @@ export async function GET(req: NextRequest) {
     // Fetch response stats
     const { data: responses } = await service
       .from('responses')
-      .select('sentiment, experience_score, nps_score, status, completed_at, duration_sec')
+      .select('sentiment, experience_score, nps_score, status, completed_at, created_at, duration_sec')
       .eq('study_id', link.target_id)
 
     // Extract config details for intelligent labeling
