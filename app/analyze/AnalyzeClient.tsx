@@ -171,7 +171,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
         <NewCollectionModal
           datasets={eligibleForCollection}
           onClose={function() { setShowCollectionModal(false) }}
-          onCreated={function() { router.refresh() }}
+          onCreated={function(ds) { setDatasets(function(prev) { return [ds, ...prev] }) }}
         />
       )}
     </div>

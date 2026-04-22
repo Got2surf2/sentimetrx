@@ -9,7 +9,7 @@ import type { DatasetWithState } from '@/lib/analyzeTypes'
 interface Props {
   datasets:  DatasetWithState[]
   onClose:   () => void
-  onCreated: () => void
+  onCreated: (ds: DatasetWithState) => void
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -59,7 +59,31 @@ export default function NewCollectionModal({ datasets, onClose, onCreated }: Pro
       // Trigger compute for the new collection dataset
       fetch('/api/datasets/' + data.id + '/compute', { method: 'POST' }).catch(function() {})
 
-      onCreated()
+      // Build a DatasetWithState for immediate local display
+      var totalRows = members.reduce(function(sum, m) {
+        var ds = datasets.find(function(d) { return d.id === m.dataset_id })
+        return sum + (ds?.row_count || 0)
+      }, 0)
+
+      onCreated({
+        id: data.id,
+        name: name.trim(),
+        description: 'Collection of ' + members.length + ' datasets',
+        source: 'collection',
+        study_id: null,
+        org_id: datasets[0]?.org_id || '',
+        client_id: null,
+        created_by: '',
+        ana_library: null,
+        visibility: 'private',
+        status: 'active',
+        row_count: totalRows,
+        last_synced_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        creator_name: undefined,
+        org_name: datasets[0]?.org_name,
+      })
       onClose()
     } catch {
       setError('Network error')
