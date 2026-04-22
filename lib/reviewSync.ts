@@ -25,8 +25,8 @@ export interface SyncResult {
   processing_location: string | null  // name of the location currently being checked/submitted
 }
 
-const BATCH_SIZE = 5
-const CHUNK_SIZE = 50
+const BATCH_SIZE = 3
+const CHUNK_SIZE = 500
 const TIME_BUDGET_MS = 45000 // bail before Vercel's 60s timeout
 // Prefix for pending task refs stored in error_message column
 const TASK_PREFIX = 'pending_task:'
