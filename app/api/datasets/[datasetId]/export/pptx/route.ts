@@ -2091,37 +2091,60 @@ export async function POST(req: Request, { params }: Params) {
 
   // Fetch rows for comment sampling and theme matching.
   // Fetch rows from flat table (fast) with fallback to batched table.
+  // For collections: union rows from member datasets.
   // Cap at 10K for no-filter, 30K for filtered.
   const allRows: Record<string, any>[] = []
   let rowsSampled = false
   const MAX_ROWS = hasFilters ? 30_000 : 10_000
 
-  // Try flat table first
-  const { count: flatCount } = await service
-    .from('dataset_rows_flat')
-    .select('id', { count: 'exact', head: true })
-    .eq('dataset_id', params.datasetId)
+  // Collections: fetch from member datasets
+  const isCollection = dataset?.source === 'collection'
+  let flatDatasetIds: string[] = [params.datasetId]
+  let collectionLabels: Record<string, string> = {}
+  if (isCollection) {
+    const { data: col } = await service.from('collections').select('id').eq('dataset_id', params.datasetId).single()
+    if (col) {
+      const { data: members } = await service.from('collection_members').select('dataset_id, label').eq('collection_id', col.id).order('sort_order', { ascending: true })
+      if (members && members.length > 0) {
+        flatDatasetIds = members.map(m => m.dataset_id)
+        members.forEach(m => { collectionLabels[m.dataset_id] = m.label })
+      }
+    }
+  }
 
-  if ((flatCount || 0) > 0) {
+  // Try flat table first
+  let flatCount = 0
+  for (const dsId of flatDatasetIds) {
+    const { count } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dsId)
+    flatCount += count || 0
+  }
+
+  if (flatCount > 0) {
     // Flat table — paginate in chunks of 1000 (Supabase default limit)
     const FLAT_PAGE = 1000
-    let flatOffset = 0
-    while (allRows.length < MAX_ROWS) {
-      const { data: flatRows, error: flatErr } = await service
-        .from('dataset_rows_flat')
-        .select('data')
-        .eq('dataset_id', params.datasetId)
-        .order('row_index', { ascending: true })
-        .range(flatOffset, flatOffset + FLAT_PAGE - 1)
-      if (flatErr || !flatRows || flatRows.length === 0) break
-      for (const fr of flatRows) {
-        allRows.push((fr as any).data || fr)
-        if (allRows.length >= MAX_ROWS) break
+    for (const dsId of flatDatasetIds) {
+      let flatOffset = 0
+      const label = collectionLabels[dsId] || undefined
+      while (allRows.length < MAX_ROWS) {
+        const { data: flatRows, error: flatErr } = await service
+          .from('dataset_rows_flat')
+          .select('data')
+          .eq('dataset_id', dsId)
+          .order('row_index', { ascending: true })
+          .range(flatOffset, flatOffset + FLAT_PAGE - 1)
+        if (flatErr || !flatRows || flatRows.length === 0) break
+        for (const fr of flatRows) {
+          const row = (fr as any).data || fr
+          if (label) row._collection_label = label
+          allRows.push(row)
+          if (allRows.length >= MAX_ROWS) break
+        }
+        if (flatRows.length < FLAT_PAGE) break
+        flatOffset += FLAT_PAGE
       }
-      if (flatRows.length < FLAT_PAGE) break
-      flatOffset += FLAT_PAGE
+      if (allRows.length >= MAX_ROWS) break
     }
-    if (allRows.length >= MAX_ROWS && (flatCount || 0) > allRows.length) rowsSampled = true
+    if (allRows.length >= MAX_ROWS && flatCount > allRows.length) rowsSampled = true
   } else {
     // Fallback: batched table
     const PAGE = 200
