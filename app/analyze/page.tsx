@@ -58,6 +58,26 @@ export default async function AnalyzePage() {
     ;(creators || []).forEach(function(c: any) { creatorMap[c.id] = c.full_name || c.email || 'Unknown' })
   }
 
+  // Compute live row counts for collections
+  const collectionDs = (rawDatasets || []).filter((d: any) => d.source === 'collection')
+  const collectionRowCounts: Record<string, number> = {}
+  if (collectionDs.length > 0) {
+    const { data: cols } = await supabase.from('collections').select('id, dataset_id').in('dataset_id', collectionDs.map((d: any) => d.id))
+    if (cols && cols.length > 0) {
+      const { data: members } = await supabase.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
+      if (members && members.length > 0) {
+        const memberDsIds = [...new Set(members.map(m => m.dataset_id))]
+        const { data: memberDs } = await supabase.from('datasets').select('id, row_count').in('id', memberDsIds)
+        const memberCounts: Record<string, number> = {}
+        ;(memberDs || []).forEach(d => { memberCounts[d.id] = d.row_count || 0 })
+        for (const col of cols) {
+          const colMembers = members.filter(m => m.collection_id === col.id)
+          collectionRowCounts[col.dataset_id] = colMembers.reduce((s, m) => s + (memberCounts[m.dataset_id] || 0), 0)
+        }
+      }
+    }
+  }
+
   const datasets = (rawDatasets || []).map(function(d: any) {
     const studyName = d.studies?.name ?? null
     const creatorName = creatorMap[d.created_by] || null
@@ -68,7 +88,8 @@ export default async function AnalyzePage() {
     const themeSource = tm?.themeSource || tm?.source || null
     const themeLibName = tm?.themeLibName || tm?.libName || d.ana_library || null
     const { studies: _s, dataset_state: _ds, ...rest } = d
-    return { ...rest, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName }
+    const rowCount = d.source === 'collection' && collectionRowCounts[d.id] != null ? collectionRowCounts[d.id] : d.row_count
+    return { ...rest, row_count: rowCount, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName }
   })
 
   return (
