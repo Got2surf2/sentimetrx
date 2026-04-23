@@ -2538,6 +2538,7 @@ export async function POST(req: Request, { params }: Params) {
       })
     }
     const nonOECustom = customFields.filter(f => f.type !== 'open-ended')
+      .sort((a, b) => ((b.summary?.nonNull || 0) - (a.summary?.nonNull || 0)))
     if (nonOECustom.length > 0) {
       buildSectionDivider(pptx, 'Survey Questions', 'Custom questions asked to respondents', nonOECustom.length)
       nonOECustom.forEach(function(f) {
