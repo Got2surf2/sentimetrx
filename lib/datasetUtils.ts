@@ -202,7 +202,8 @@ export function flattenDemographics(payload: SurveyPayload | null | undefined): 
 
 interface ResponseRow {
   id:               string
-  completed_at:     string
+  created_at?:      string | null
+  completed_at:     string | null
   nps_score:        number | null
   experience_score: number | null
   sentiment:        string | null
@@ -226,7 +227,7 @@ export function formatResponsesAsRows(
     return {
       response_id:      r.id,
       status:           r.status === 'complete' ? 'Complete' : 'Partial',
-      submitted_at:     r.completed_at || (r as any).created_at,
+      submitted_at:     r.completed_at || r.created_at || null,
       ...(npsOn ? { nps_score: r.nps_score ?? null } : {}),
       ...(expOn ? { experience_score: r.experience_score ?? null } : {}),
       sentiment:        r.sentiment        ?? null,
@@ -235,9 +236,9 @@ export function formatResponsesAsRows(
       ...(expOn ? { experience_followup: r.payload?.openEnded?.q2 ?? null } : {}),
       ...(study.config?.q3Enabled !== false ? { q3_response: r.payload?.openEnded?.q3 ?? null } : {}),
       ...(study.config?.q4Enabled !== false ? { q4_response: r.payload?.openEnded?.q4 ?? null } : {}),
-      ...flattenCustomQuestions(r.payload, study.config),
-      ...flattenPsychographics(r.payload),
-      ...flattenDemographics(r.payload),
+      ...(r.payload ? flattenCustomQuestions(r.payload, study.config) : {}),
+      ...(r.payload ? flattenPsychographics(r.payload) : {}),
+      ...(r.payload ? flattenDemographics(r.payload) : {}),
     }
   })
 }
