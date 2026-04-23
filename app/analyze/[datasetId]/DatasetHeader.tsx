@@ -94,9 +94,9 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         var data = await res.json()
         if (data.synced > 0 || data.created) router.refresh()
       } else if (dataset.source === 'study') {
-        var res2 = await fetch('/api/datasets/' + dataset.id + '/sync', { method: 'POST' })
+        var res2 = await fetch('/api/datasets/' + dataset.id + '/sync?full=true', { method: 'POST' })
         var data2 = await res2.json()
-        if (data2.synced > 0) router.refresh()
+        router.refresh()
       }
     } catch {} finally { setSyncing(false) }
   }
