@@ -14,7 +14,7 @@ import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 
 interface DatasetMeta {
   id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'; visibility: 'private' | 'public'
-  status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_name: string | null
+  status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_id?: string | null; description?: string | null; study_name: string | null
 }
 
 interface Props {
@@ -62,6 +62,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var activeTab = TABS.find(function(t) { return pathname.endsWith('/' + t.key) })?.key || 'textmine'
 
   var [reviewSyncing, setReviewSyncing] = useState(false)
+  var [syncing, setSyncing] = useState(false)
 
   async function handleSync() {
     try {
@@ -82,6 +83,22 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
       var data = await res.json()
       if (data.synced > 0) router.refresh()
     } catch {} finally { setReviewSyncing(false) }
+  }
+
+  async function handleResync() {
+    setSyncing(true)
+    try {
+      if (dataset.source === 'townhall' && dataset.description?.startsWith('th:')) {
+        var sessionId = dataset.description.slice(3)
+        var res = await fetch('/api/townhall/sessions/' + sessionId + '/analyze', { method: 'POST' })
+        var data = await res.json()
+        if (data.synced > 0 || data.created) router.refresh()
+      } else if (dataset.source === 'study') {
+        var res2 = await fetch('/api/datasets/' + dataset.id + '/sync', { method: 'POST' })
+        var data2 = await res2.json()
+        if (data2.synced > 0) router.refresh()
+      }
+    } catch {} finally { setSyncing(false) }
   }
 
   // Source pill colors
@@ -231,20 +248,31 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             </span>
           </div>
 
-          {/* Row count + Sync */}
+          {/* Row count + Sync + Last synced */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}>{filteredRowCount != null ? filteredRowCount.toLocaleString() + ' of ' + dataset.row_count.toLocaleString() : dataset.row_count.toLocaleString()} rows</span>
-            {dataset.source === 'study' && (
-              <button onClick={handleSync}
-                style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                Sync
+            {(dataset.source === 'study' || dataset.source === 'townhall') && (
+              <button onClick={handleResync} disabled={syncing}
+                title={dataset.last_synced_at ? 'Last synced: ' + new Date(dataset.last_synced_at).toLocaleString() : 'Sync new data from source'}
+                style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: syncing ? 'wait' : 'pointer', opacity: syncing ? 0.6 : 1, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {syncing ? 'Syncing...' : '\u21BB Sync'}
               </button>
             )}
             {dataset.source === 'google_reviews' && (
               <button onClick={handleReviewSync} disabled={reviewSyncing}
+                title={dataset.last_synced_at ? 'Last synced: ' + new Date(dataset.last_synced_at).toLocaleString() : 'Sync new reviews'}
                 style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.25)', cursor: reviewSyncing ? 'wait' : 'pointer', opacity: reviewSyncing ? 0.6 : 1, whiteSpace: 'nowrap' }}>
-                {reviewSyncing ? 'Syncing...' : 'Sync Reviews'}
+                {reviewSyncing ? 'Syncing...' : '\u21BB Sync Reviews'}
               </button>
+            )}
+            {dataset.last_synced_at && (dataset.source === 'study' || dataset.source === 'townhall' || dataset.source === 'google_reviews') && (
+              <span style={{ fontSize: 9, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
+                {(() => {
+                  var d = new Date(dataset.last_synced_at!)
+                  var mins = Math.round((Date.now() - d.getTime()) / 60000)
+                  return mins < 1 ? 'just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : Math.floor(mins / 1440) + 'd ago'
+                })()}
+              </span>
             )}
           </div>
 

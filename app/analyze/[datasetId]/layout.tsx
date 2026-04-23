@@ -33,7 +33,7 @@ export default async function DatasetLayout({ children, params }: Props) {
   const [{ data: dataset }, { data: stateRow }] = await Promise.all([
     supabase
       .from('datasets')
-      .select('id, name, source, study_id, visibility, status, row_count, last_synced_at, updated_at, studies(name)')
+      .select('id, name, source, study_id, description, visibility, status, row_count, last_synced_at, updated_at, studies(name)')
       .eq('id', params.datasetId)
       .eq('org_id', userData?.org_id)
       .single(),
@@ -73,6 +73,8 @@ export default async function DatasetLayout({ children, params }: Props) {
             status:         dataset.status as 'active' | 'archived',
             row_count:      dataset.row_count,
             last_synced_at: dataset.last_synced_at,
+            study_id:       dataset.study_id,
+            description:    dataset.description,
             study_name:     studyName,
           }}
           userName={userData?.full_name || user.email || ''}
