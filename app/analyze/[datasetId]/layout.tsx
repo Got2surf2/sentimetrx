@@ -46,6 +46,19 @@ export default async function DatasetLayout({ children, params }: Props) {
 
   if (!dataset) notFound()
 
+  // For collections, compute live row count from members
+  let rowCount = dataset.row_count
+  if (dataset.source === 'collection') {
+    const { data: col } = await supabase.from('collections').select('id').eq('dataset_id', dataset.id).single()
+    if (col) {
+      const { data: members } = await supabase.from('collection_members').select('dataset_id').eq('collection_id', col.id)
+      if (members && members.length > 0) {
+        const { data: memberDs } = await supabase.from('datasets').select('row_count').in('id', members.map(m => m.dataset_id))
+        if (memberDs) rowCount = memberDs.reduce((s, d) => s + (d.row_count || 0), 0)
+      }
+    }
+  }
+
   const studyName = (dataset as any).studies?.name ?? null
   const schemaFields = (stateRow?.schema_config?.fields || []) as import('@/lib/analyzeTypes').SchemaFieldConfig[]
 
@@ -71,7 +84,7 @@ export default async function DatasetLayout({ children, params }: Props) {
             source:         dataset.source as 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection',
             visibility:     dataset.visibility as 'private' | 'public',
             status:         dataset.status as 'active' | 'archived',
-            row_count:      dataset.row_count,
+            row_count:      rowCount,
             last_synced_at: dataset.last_synced_at,
             study_id:       dataset.study_id,
             description:    dataset.description,
