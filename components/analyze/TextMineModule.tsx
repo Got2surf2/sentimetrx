@@ -1551,7 +1551,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
                 {/* ─── Themes content (with Distribution/Cards toggle) ─── */}
                 {rowsLoaded && hasThemes && displayThemes && !loading && (function() {
-                  var sortedThemes = [...displayThemes.themes].sort(function(a, b) { return b.count - a.count })
+                  var sortedThemes = [...displayThemes.themes].sort(function(a, b) { return (b.count || 0) - (a.count || 0) })
                   var totalResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
                   var visibleThemes = showAllThemes ? sortedThemes : sortedThemes.filter(function(t) { return totalResp > 0 && (t.count / totalResp * 100) >= 3 })
                   if (!visibleThemes.length) visibleThemes = sortedThemes.slice(0, 5)
@@ -1831,7 +1831,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 {/* Count + % + CI + mini bar */}
                                 <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
                                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
-                                    <span style={{ fontSize: 13, color: T.textMid }}><strong style={{ fontSize: 18, color: cardBorder }}>{t.count.toLocaleString()}</strong> responses</span>
+                                    <span style={{ fontSize: 13, color: T.textMid }}><strong style={{ fontSize: 18, color: cardBorder }}>{(t.count || 0).toLocaleString()}</strong> responses</span>
                                     <span style={{ fontSize: 22, fontWeight: 800, color: cardBorder }}>{pct}%</span>
                                   </div>
                                   <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>95% CI: {t.ciLow ?? 0}{'\u2013'}{t.ciHigh ?? 0}%</div>
