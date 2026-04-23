@@ -153,6 +153,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     },
     sentiment: sentimentCounts,
     themes: enrichedThemes.filter(t => t.state !== 'dismissed' && t.state !== 'detected'),
+    _debug_theme_count: { total: (themes || []).length, enriched: enrichedThemes.length, active: enrichedThemes.filter(t => t.state === 'active').length, states: enrichedThemes.map(t => t.state + ':' + t.source + ':' + t.label.slice(0, 20)) },
     timeline,
   })
 }
