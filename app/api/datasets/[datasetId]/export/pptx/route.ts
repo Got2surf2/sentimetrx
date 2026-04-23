@@ -2020,7 +2020,7 @@ export async function POST(req: Request, { params }: Params) {
   const service = createServiceRoleClient()
 
   const { data: dataset } = await service
-    .from('datasets').select('id, name, row_count, ana_library, study_id, studies(id, name, config)').eq('id', params.datasetId).single()
+    .from('datasets').select('id, name, source, row_count, ana_library, study_id, studies(id, name, config)').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const { data: stateRow } = await service
