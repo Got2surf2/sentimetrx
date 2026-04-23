@@ -50,13 +50,9 @@ export async function POST(req: Request, { params }: Params) {
 
     let responsesQuery = service
       .from('responses')
-      .select('id, created_at, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
+      .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
       .eq('study_id', dataset.study_id)
-      .order('created_at', { ascending: true })
-
-    if (dataset.last_synced_at) {
-      responsesQuery = responsesQuery.gt('created_at', dataset.last_synced_at)
-    }
+      .order('id', { ascending: true })
 
     const { data: responses, error: respErr } = await responsesQuery
     if (respErr) return NextResponse.json({ error: 'Failed to query responses', detail: respErr.message }, { status: 500 })
