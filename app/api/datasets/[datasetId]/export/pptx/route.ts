@@ -1566,6 +1566,253 @@ async function buildThemeSlides(
   }
 }
 
+// ── Compact grid slide: 2×2 or 2×3 mini bar charts per page ─────────────────
+// Used for custom, psychographic, and demographic categorical fields to reduce deck bloat.
+function buildCompactGridSlides(pptx: any, datasetName: string, fields: SelectedField[]) {
+  const perPage = fields.length <= 4 ? 4 : 6  // 2×2 or 2×3
+  const cols = 2
+  const rows = perPage / cols
+
+  for (let page = 0; page < fields.length; page += perPage) {
+    const batch = fields.slice(page, page + perPage)
+    const slide = pptx.addSlide('NUMBERED')
+    bg(slide, pptx)
+
+    // Minimal header — no per-field header, just a thin gold+navy strip
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.06, fill: { color: DN.gold }, line: { width: 0 } })
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: W, h: HH - 0.06, fill: { color: DN.navy }, line: { width: 0 } })
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
+    const sectionLabel = batch[0]?.section === 'psychographic' ? 'Psychographic Profile'
+      : batch[0]?.section === 'demographic' ? 'Demographic Breakdown'
+      : 'Survey Questions'
+    const pageLabel = fields.length > perPage
+      ? sectionLabel + '  (' + (page + 1) + '–' + Math.min(page + perPage, fields.length) + ' of ' + fields.length + ')'
+      : sectionLabel
+    slide.addText(pageLabel, {
+      x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18,
+      fontSize: 18, bold: true, color: DN.white, valign: 'middle',
+    })
+    logo(slide)
+
+    // Grid geometry
+    const gapX = 0.38
+    const gapY = 0.28
+    const cellW = (W - PAD * 2 - gapX * (cols - 1)) / cols
+    const availH = FY - CY - 0.12
+    const cellH = (availH - gapY * (rows - 1)) / rows
+
+    batch.forEach(function(f, idx) {
+      const col = idx % cols
+      const row = Math.floor(idx / cols)
+      const cx = PAD + col * (cellW + gapX)
+      const cy = CY + row * (cellH + gapY)
+
+      // Cell background card
+      rect(slide, pptx, cx, cy, cellW, cellH, DN.white, 0.07, DN.divider)
+
+      // Field label
+      slide.addText(trunc(f.label, 50), {
+        x: cx + 0.14, y: cy + 0.06, w: cellW - 0.28, h: 0.30,
+        fontSize: 11, bold: true, color: DN.navy, valign: 'middle', wrap: true, autoFit: true,
+      })
+
+      // Thin teal accent under label
+      solidRect(slide, pptx, cx + 0.14, cy + 0.38, cellW * 0.3, 0.025, DN.teal)
+
+      const s = f.summary
+      const rawCountsOrig = (s?.counts || {}) as Record<string, number>
+      const rawCounts = f.valueAliases && Object.keys(f.valueAliases).length > 0
+        ? aliasedCounts(f.field, rawCountsOrig, [{ field: f.field, valueAliases: f.valueAliases }])
+        : rawCountsOrig
+      const allKeys = Object.keys(rawCounts)
+      const total = allKeys.reduce((sum, k) => sum + (rawCounts[k] || 0), 0)
+      const isOrd = (f.remapping && Object.keys(f.remapping).length > 0) || isOrdinalScale(allKeys)
+
+      let orderedKeys: string[]
+      if (isOrd) {
+        orderedKeys = smartOrder(allKeys, f.remapping).slice().reverse()
+      } else {
+        orderedKeys = allKeys.slice().sort((a, b) => (rawCounts[b] || 0) - (rawCounts[a] || 0))
+      }
+      orderedKeys = orderedKeys.filter(k => (rawCounts[k] || 0) > 0).slice(0, 6)
+
+      // Mini bar chart
+      const barAreaY = cy + 0.46
+      const barAreaH = cellH - 0.56
+      const n = orderedKeys.length
+      const barRowH = Math.min(0.34, barAreaH / Math.max(n, 1))
+      const barGap = Math.min(0.04, (barAreaH - barRowH * n) / Math.max(n - 1, 1))
+      const labelW = cellW * 0.38
+      const barMaxW = cellW * 0.34
+      const barX = cx + 0.14 + labelW + 0.06
+      const pctX = barX + barMaxW + 0.06
+      const maxVal = Math.max(...orderedKeys.map(k => rawCounts[k] || 0), 1)
+
+      orderedKeys.forEach(function(key, i) {
+        const count = rawCounts[key] || 0
+        const pctVal = pct(count, total)
+        const bw = barMaxW * count / maxVal
+        const ry = barAreaY + i * (barRowH + barGap)
+        const col_ = barColor(i, n, isOrd)
+
+        // Label
+        slide.addText(trunc(key, 22), {
+          x: cx + 0.14, y: ry, w: labelW, h: barRowH,
+          fontSize: 8.5, color: i === 0 ? DN.navy : DN.navyLight, bold: i === 0,
+          valign: 'middle', wrap: false, autoFit: true,
+        })
+
+        // Bar track + fill
+        const trackH = barRowH * 0.50
+        const trackY = ry + (barRowH - trackH) / 2
+        solidRect(slide, pptx, barX, trackY, barMaxW, trackH, 'EAECEF')
+        if (bw > 0.03) solidRect(slide, pptx, barX, trackY, bw, trackH, col_)
+
+        // Percentage
+        slide.addText(pctVal + '%', {
+          x: pctX, y: ry, w: cellW - (pctX - cx) - 0.14, h: barRowH,
+          fontSize: i === 0 ? 10 : 9, bold: true, color: col_, valign: 'middle',
+        })
+      })
+
+      // Total n in bottom-right corner
+      slide.addText('n=' + total.toLocaleString(), {
+        x: cx + cellW - 1.0, y: cy + cellH - 0.28, w: 0.86, h: 0.22,
+        fontSize: 7.5, color: DN.slate, align: 'right', valign: 'middle',
+      })
+    })
+
+    footer(slide, pptx, datasetName)
+  }
+}
+
+// ── Completion funnel slide — survey drop-off visualization ─────────────────
+function buildFunnelSlide(
+  pptx: any, datasetName: string,
+  stages: { label: string; count: number }[]
+) {
+  if (stages.length < 2) return
+  const slide = pptx.addSlide('NUMBERED')
+  bg(slide, pptx)
+  hdr(slide, pptx, 'Survey Completion Funnel', DN.teal,
+    'Drop-off at each stage  ·  ' + stages[0].count.toLocaleString() + ' started')
+  logo(slide)
+
+  const n = stages.length
+  const maxCount = stages[0].count || 1
+
+  // Layout
+  const leftCol = 2.6   // label column
+  const barMaxW = W - PAD * 2 - leftCol - 0.15 - 1.8  // bar area
+  const barX = PAD + leftCol + 0.15
+  const metaX = barX + barMaxW + 0.12  // pct + dropoff column
+
+  const availH = FY - CY - 0.22
+  const rowH = Math.min(0.58, availH / n)
+  const rowGap = Math.min(0.10, (availH - rowH * n) / Math.max(n - 1, 1))
+
+  // Column headers
+  slide.addText('Stage', { x: PAD, y: CY, w: leftCol, h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('Respondents', { x: barX, y: CY, w: barMaxW, h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('Retention', { x: metaX, y: CY, w: 0.7, h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
+  slide.addText('Drop-off', { x: metaX + 0.75, y: CY, w: 0.7, h: 0.26, fontSize: 9, bold: true, color: DN.slateDark, valign: 'middle' })
+  solidRect(slide, pptx, PAD, CY + 0.28, W - PAD * 2, 0.012, DN.divider)
+
+  const rowStart = CY + 0.38
+
+  stages.forEach(function(stage, i) {
+    const ry = rowStart + i * (rowH + rowGap)
+    const retention = pct(stage.count, maxCount)
+    const prevCount = i > 0 ? stages[i - 1].count : stage.count
+    const dropoff = i > 0 && prevCount > 0 ? Math.round((1 - stage.count / prevCount) * 100) : 0
+    const barW = barMaxW * stage.count / maxCount
+
+    // Funnel color based on retention rate
+    const col = retention >= 70 ? DN.teal
+      : retention >= 40 ? DN.amber
+      : DN.red
+
+    // Alternating row tint
+    if (i % 2 === 0) solidRect(slide, pptx, PAD, ry, W - PAD * 2, rowH, 'F8F9FA')
+
+    // Stage number circle
+    slide.addShape(pptx.ShapeType.ellipse, {
+      x: PAD + 0.04, y: ry + (rowH - 0.30) / 2, w: 0.30, h: 0.30,
+      fill: { color: i === 0 ? DN.teal : i === n - 1 ? (retention >= 50 ? DN.green : DN.amber) : DN.slateLight },
+      line: { width: 0 },
+    })
+    slide.addText(String(i + 1), {
+      x: PAD + 0.04, y: ry + (rowH - 0.30) / 2, w: 0.30, h: 0.30,
+      fontSize: 9, bold: true, color: i === 0 || i === n - 1 ? DN.white : DN.navy,
+      align: 'center', valign: 'middle',
+    })
+
+    // Label
+    slide.addText(stage.label, {
+      x: PAD + 0.42, y: ry, w: leftCol - 0.42, h: rowH,
+      fontSize: 11, bold: i === 0 || i === n - 1, color: DN.navy, valign: 'middle', autoFit: true,
+    })
+
+    // Count inside bar (if wide enough) or after
+    const trackH = rowH * 0.52
+    const trackY = ry + (rowH - trackH) / 2
+
+    // Bar track
+    solidRect(slide, pptx, barX, trackY, barMaxW, trackH, 'EAECEF')
+    // Bar fill — funnel shape (tapered)
+    if (barW > 0.04) solidRect(slide, pptx, barX, trackY, barW, trackH, col)
+
+    // Count label
+    const countText = stage.count.toLocaleString()
+    if (barW > 0.8) {
+      slide.addText(countText, {
+        x: barX + 0.08, y: ry, w: barW - 0.16, h: rowH,
+        fontSize: 10, bold: true, color: DN.white, valign: 'middle',
+      })
+    } else {
+      slide.addText(countText, {
+        x: barX + barW + 0.06, y: ry, w: 1.0, h: rowH,
+        fontSize: 10, bold: true, color: col, valign: 'middle',
+      })
+    }
+
+    // Retention %
+    slide.addText(retention + '%', {
+      x: metaX, y: ry, w: 0.6, h: rowH,
+      fontSize: 11, bold: true, color: col, valign: 'middle',
+    })
+
+    // Drop-off %
+    if (i > 0 && dropoff > 0) {
+      slide.addText('−' + dropoff + '%', {
+        x: metaX + 0.75, y: ry, w: 0.6, h: rowH,
+        fontSize: 10, color: dropoff >= 30 ? DN.red : dropoff >= 15 ? DN.amber : DN.slate, valign: 'middle',
+      })
+    }
+  })
+
+  // Summary insight bar
+  const completionRate = pct(stages[stages.length - 1].count, maxCount)
+  const biggestDrop = stages.reduce((worst, s, i) => {
+    if (i === 0) return worst
+    const drop = stages[i - 1].count > 0 ? Math.round((1 - s.count / stages[i - 1].count) * 100) : 0
+    return drop > worst.drop ? { label: s.label, drop } : worst
+  }, { label: '', drop: 0 })
+
+  const insightParts: string[] = []
+  insightParts.push(completionRate + '% of respondents completed the entire survey.')
+  if (biggestDrop.drop > 0) {
+    insightParts.push('Largest drop-off: ' + biggestDrop.drop + '% at "' + biggestDrop.label + '".')
+  }
+  const insightY = rowStart + n * (rowH + rowGap) + 0.06
+  const insightAvail = FY - insightY - 0.12
+  if (insightAvail >= 0.36) {
+    insightBox(slide, pptx, PAD, insightY, W - PAD * 2, Math.min(0.52, insightAvail), insightParts.join(' '), DN.teal, DN.tealPale)
+  }
+
+  footer(slide, pptx, datasetName)
+}
+
 function buildSectionDivider(pptx: any, title: string, subtitle: string, fieldCount: number) {
   const slide = pptx.addSlide('NUMBERED')
 
@@ -2415,6 +2662,57 @@ export async function POST(req: Request, { params }: Params) {
     // 3: About this report
     buildAboutSlide(pptx, datasetName, displayRows, analytics.computedAt, selectedFields, audience, filterDescription || undefined, dataSource, samplingNote)
 
+    // 4: Completion funnel (study datasets only)
+    if (dataset.study_id) {
+      try {
+        const studyCfg = (dataset as any).studies?.config
+        const { data: responses } = await service
+          .from('responses')
+          .select('status, payload')
+          .eq('study_id', dataset.study_id)
+          .order('created_at', { ascending: true })
+          .limit(1000)
+        if (responses && responses.length > 0) {
+          const customQCount = studyCfg?.customQCount || studyCfg?.questions?.length || 0
+          const psychoCount = studyCfg?.psychoCount || studyCfg?.psychographicBank?.length || 0
+          const funnelStages: { label: string; count: number }[] = []
+          const total = responses.length
+          funnelStages.push({ label: 'Started', count: total })
+          const hasRating = responses.filter((r: any) => r.payload?.experienceRating || r.payload?.nps_score != null).length
+          funnelStages.push({ label: studyCfg?.experienceRatingLabel || 'Rating', count: hasRating })
+          const hasConvo = responses.filter((r: any) => {
+            const oe = r.payload?.openEnded || {}
+            return Object.values(oe).some((v: any) => v && String(v).length > 0)
+          }).length
+          funnelStages.push({ label: 'Conversation', count: hasConvo })
+          if (customQCount > 0) {
+            const hasCustom = responses.filter((r: any) => {
+              const ca = r.payload?.customAnswers || {}
+              return Object.keys(ca).length > 0
+            }).length
+            funnelStages.push({ label: 'Custom Questions', count: hasCustom })
+          }
+          if (psychoCount > 0) {
+            const hasPsycho = responses.filter((r: any) => {
+              const ps = r.payload?.psychographics || {}
+              return Object.keys(ps).length > 0
+            }).length
+            funnelStages.push({ label: 'Psychographics', count: hasPsycho })
+          }
+          const hasDemo = responses.filter((r: any) => {
+            const dm = r.payload?.demographics || {}
+            return Object.keys(dm).length > 0
+          }).length
+          if (hasDemo > 0) funnelStages.push({ label: 'Demographics', count: hasDemo })
+          const completed = responses.filter((r: any) => r.status === 'complete').length
+          funnelStages.push({ label: 'Completed', count: completed })
+          if (funnelStages.length >= 3) {
+            buildFunnelSlide(pptx, datasetName, funnelStages)
+          }
+        }
+      } catch { /* funnel is optional — skip on error */ }
+    }
+
     // ── Group fields by section ───────────────────────────────────────────
     const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
     const coreFields        = selectedFields.filter(f => !f.section || f.section === 'core')
@@ -2540,27 +2838,55 @@ export async function POST(req: Request, { params }: Params) {
     const nonOECustom = customFields.filter(f => f.type !== 'open-ended')
       .sort((a, b) => ((b.summary?.nonNull || 0) - (a.summary?.nonNull || 0)))
     if (nonOECustom.length > 0) {
+      const customCat = nonOECustom.filter(f => f.type === 'categorical')
+      const customNum = nonOECustom.filter(f => f.type === 'numeric')
       buildSectionDivider(pptx, 'Survey Questions', 'Custom questions asked to respondents', nonOECustom.length)
-      nonOECustom.forEach(function(f) {
+      // Compact grid for categorical (≥3 fields), full-page for 1-2
+      if (customCat.length >= 3) {
+        buildCompactGridSlides(pptx, datasetName, customCat)
+      } else {
+        customCat.forEach(function(f) {
+          const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+          buildPieSlide(pptx, datasetName, f, ai)
+        })
+      }
+      customNum.forEach(function(f) {
         const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        if (f.type === 'categorical') buildPieSlide(pptx, datasetName, f, ai)
-        else if (f.type === 'numeric') buildNumericSlide(pptx, datasetName, f, ai)
+        buildNumericSlide(pptx, datasetName, f, ai)
       })
     }
     if (nonOEPsycho.length > 0 && audience !== 'executive') {
+      const psychoCat = nonOEPsycho.filter(f => f.type === 'categorical')
+      const psychoNum = nonOEPsycho.filter(f => f.type === 'numeric')
       buildSectionDivider(pptx, 'Psychographic Profile', 'Attitudes, values, motivations and lifestyle indicators', nonOEPsycho.length)
-      nonOEPsycho.forEach(function(f) {
+      if (psychoCat.length >= 3) {
+        buildCompactGridSlides(pptx, datasetName, psychoCat)
+      } else {
+        psychoCat.forEach(function(f) {
+          const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+          buildPieSlide(pptx, datasetName, f, ai)
+        })
+      }
+      psychoNum.forEach(function(f) {
         const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        if (f.type === 'categorical') buildPieSlide(pptx, datasetName, f, ai)
-        else if (f.type === 'numeric') buildNumericSlide(pptx, datasetName, f, ai)
+        buildNumericSlide(pptx, datasetName, f, ai)
       })
     }
     if (nonOEDemo.length > 0 && audience !== 'executive') {
+      const demoCat = nonOEDemo.filter(f => f.type === 'categorical')
+      const demoNum = nonOEDemo.filter(f => f.type === 'numeric')
       buildSectionDivider(pptx, 'Demographic Breakdown', 'Audience composition and segment characteristics', nonOEDemo.length)
-      nonOEDemo.forEach(function(f) {
+      if (demoCat.length >= 3) {
+        buildCompactGridSlides(pptx, datasetName, demoCat)
+      } else {
+        demoCat.forEach(function(f) {
+          const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+          buildPieSlide(pptx, datasetName, f, ai)
+        })
+      }
+      demoNum.forEach(function(f) {
         const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
-        if (f.type === 'categorical') buildPieSlide(pptx, datasetName, f, ai)
-        else if (f.type === 'numeric') buildNumericSlide(pptx, datasetName, f, ai)
+        buildNumericSlide(pptx, datasetName, f, ai)
       })
     }
 
