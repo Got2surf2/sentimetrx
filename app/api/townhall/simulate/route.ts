@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const isLangSwitch = persona.flags?.includes('language-switch') && turn_number >= 3
   const targetLang = isLangSwitch ? (persona.switch_language || 'es') : (language || 'en')
 
-  const prompt = `You are role-playing as a participant in a community town hall discussion. Stay in character.
+  const prompt = `You are role-playing as a participant in a community discussion. Stay in character.
 
 CHARACTER PROFILE:
 - Name/Role: ${persona.name}

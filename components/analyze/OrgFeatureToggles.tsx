@@ -11,9 +11,9 @@ const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews downloader — import reviews from any business',
   reddit:        'Reddit downloader — pull threads and comments for analysis',
   substack:      'Substack analyzer — download reader comments from publications',
-  townhall:      'Town Hall — AI-moderated live community discussions',
+  townhall:      'SignalIQ — intelligent signal extraction from continuous conversation streams',
   campaigns:     'Email campaigns — distribute surveys to respondent lists',
-  bots:          'Branded chatbots — create AI bots trained on custom content',
+  bots:          'Agents — create branded AI agents trained on custom content',
 }
 
 interface Props {

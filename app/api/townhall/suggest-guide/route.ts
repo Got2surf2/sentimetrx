@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
   const count = Math.max(2, Math.min(8, topic_count || 4))
 
-  const prompt = `You are a qualitative research expert designing a discussion guide for a town hall.
+  const prompt = `You are a qualitative research expert designing a discussion guide for a SignalIQ session.
 ${industry ? `\nIndustry: ${industry.replace(/_/g, ' ')}` : ''}
 ${org_name ? `\nOrganization: ${org_name}` : ''}
 

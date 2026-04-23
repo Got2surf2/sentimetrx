@@ -160,7 +160,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
 
-  const sessionName = session.name || 'Town Hall Session'
+  const sessionName = session.name || 'SignalIQ Session'
   const fullDate = new Date(session.started_at || session.created_at).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
   // ── Slide 1: Title ──
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   bgFill(s1, pptx, DN.navy)
   s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.08, fill: { color: DN.gold }, line: { width: 0 } })
   s1.addText(sessionName, { x: PAD, y: 2.0, w: W - PAD * 2, h: 1.2, fontSize: 36, bold: true, color: DN.white, valign: 'middle' })
-  s1.addText('Town Hall Session Summary', { x: PAD, y: 3.2, w: W - PAD * 2, h: 0.6, fontSize: 18, color: DN.tealLight })
+  s1.addText('SignalIQ Session Summary', { x: PAD, y: 3.2, w: W - PAD * 2, h: 0.6, fontSize: 18, color: DN.tealLight })
   s1.addText(fullDate, { x: PAD, y: 3.9, w: W - PAD * 2, h: 0.5, fontSize: 14, color: DN.slate })
   s1.addText(
     [

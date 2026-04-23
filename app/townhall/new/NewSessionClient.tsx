@@ -36,7 +36,7 @@ const DEFAULT_TOPIC: () => TownHallGuideTopic = () => ({
 })
 
 const DEFAULT_CONFIG: TownHallConfig = {
-  bot_name: 'Town Hall',
+  bot_name: 'SignalIQ',
   bot_emoji: '\uD83D\uDCAC',
   context: {
     org_name: '',
@@ -656,7 +656,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <button onClick={() => router.push('/townhall')} className="text-sm text-gray-400 hover:text-gray-600">&larr;</button>
-                <h1 className="text-lg font-bold text-gray-900">New Town Hall</h1>
+                <h1 className="text-lg font-bold text-gray-900">New SignalIQ Session</h1>
               </div>
             </div>
             <THCreatorNav
@@ -681,7 +681,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
             <div className="space-y-5">
               <div>
                 <Label>Session name</Label>
-                <Input value={name} onChange={setName} placeholder="e.g. Neighborhood Planning Town Hall — April 2026" />
+                <Input value={name} onChange={setName} placeholder="e.g. Neighborhood Planning Session — April 2026" />
               </div>
 
               <div>

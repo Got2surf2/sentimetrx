@@ -51,7 +51,7 @@ All lowercase. Return ONLY a JSON array of strings:
     ? '\n\nALREADY LISTED (do not repeat): ' + existing.join(', ')
     : ''
 
-  const prompt = `You are a qualitative research expert setting up a town hall discussion. Identify topics that an AI moderator should NEVER bring up or ask about — topics that could make participants uncomfortable, create liability, or derail the discussion.
+  const prompt = `You are a qualitative research expert setting up a SignalIQ discussion. Identify topics that an AI moderator should NEVER bring up or ask about — topics that could make participants uncomfortable, create liability, or derail the discussion.
 ${industry ? `\nIndustry: ${industry.replace(/_/g, ' ')}` : ''}
 ${org_name ? `\nOrganization: ${org_name}` : ''}
 ${description ? `\nEvent description: "${description.trim()}"` : ''}${existingList}

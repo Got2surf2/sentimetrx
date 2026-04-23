@@ -14,7 +14,7 @@ interface Props {
 
 const SOURCE_LABELS: Record<string, string> = {
   study: 'Sarina', upload: 'Upload', google_reviews: 'Google Reviews',
-  reddit: 'Reddit', townhall: 'Town Hall', substack: 'Substack',
+  reddit: 'Reddit', townhall: 'SignalIQ', substack: 'Substack',
 }
 
 export default function NewCollectionModal({ datasets, onClose, onCreated }: Props) {

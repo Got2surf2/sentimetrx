@@ -188,7 +188,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Town Hall</h1>
+              <h1 className="text-2xl font-bold text-gray-900">SignalIQ</h1>
               <p className="text-sm text-gray-500 mt-1">AI-moderated focus groups at scale</p>
             </div>
             <Link
@@ -220,7 +220,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
           ) : sessions.length === 0 ? (
             <div className="text-center py-20">
               <div className="text-4xl mb-3">{'\uD83C\uDFE4'}</div>
-              <p className="text-gray-500 text-sm mb-4">No sessions yet. Create your first Town Hall to get started.</p>
+              <p className="text-gray-500 text-sm mb-4">No sessions yet. Create your first SignalIQ session to get started.</p>
               <Link
                 href="/townhall/new"
                 className="inline-block px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"

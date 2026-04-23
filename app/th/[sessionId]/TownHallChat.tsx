@@ -60,7 +60,7 @@ export default function TownHallChat({ sessionId }: Props) {
 
   // Session info — fetched via GET /api/townhall/join/:id
   const [sessionName, setSessionName] = useState('')
-  const [botName, setBotName] = useState('Town Hall')
+  const [botName, setBotName] = useState('SignalIQ')
   const [botEmoji, setBotEmoji] = useState('\uD83D\uDCAC')
   const [headerColor, setHeaderColor] = useState('#00b4d8')
   const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'paused' | 'ended' | 'notfound'>('loading')
@@ -129,7 +129,7 @@ export default function TownHallChat({ sessionId }: Props) {
       const d = await r.json()
       if (!d.found) { setStatus('notfound'); return }
       setSessionName(d.name || '')
-      setBotName(d.bot_name || 'Town Hall')
+      setBotName(d.bot_name || 'SignalIQ')
       setBotEmoji(d.bot_emoji || '\uD83D\uDCAC')
       if (d.header_color) setHeaderColor(d.header_color)
       setLanguages(d.languages || [])
@@ -404,7 +404,7 @@ export default function TownHallChat({ sessionId }: Props) {
         <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#C7C7CC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, marginBottom: 12 }}>{botEmoji}</div>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#374151', marginBottom: 4 }}>{sessionName}</h2>
         <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: 16 }}>
-          {status === 'setup' ? 'Stand by — the town hall hasn\'t started yet.' : 'Session is paused. Please wait...'}
+          {status === 'setup' ? 'Stand by — the session hasn\'t started yet.' : 'Session is paused. Please wait...'}
         </p>
         <p style={{ color: '#d1d5db', fontSize: 12 }}>This page will update automatically when the session begins.</p>
         <div style={{ marginTop: 16 }}><Dots /></div>

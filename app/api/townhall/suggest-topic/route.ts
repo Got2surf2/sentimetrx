@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     event_description ? `Event: ${event_description}` : '',
   ].filter(Boolean).join('\n')
 
-  const prompt = `You are a qualitative research expert setting up a town hall discussion topic.
+  const prompt = `You are a qualitative research expert setting up a SignalIQ discussion topic.
 
 Topic label: "${label.trim()}"
 ${context ? '\n' + context : ''}

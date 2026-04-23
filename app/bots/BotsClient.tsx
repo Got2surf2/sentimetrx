@@ -73,8 +73,8 @@ export default function BotsClient({ orgId }: { orgId: string }) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>Bots</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Create and manage branded AI chatbots trained on your content</p>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>Agents</h1>
+          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Create and manage branded AI agents trained on your content</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {/* Grid toggle */}

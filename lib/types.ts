@@ -25,9 +25,9 @@ export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews',
   reddit:        'Reddit',
   substack:      'Substack',
-  townhall:      'Town Halls',
+  townhall:      'SignalIQ',
   campaigns:     'Campaigns',
-  bots:          'Bots',
+  bots:          'Agents',
 }
 
 export const MODULE_KEYS = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]
