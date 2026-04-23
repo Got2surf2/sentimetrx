@@ -8,6 +8,8 @@ import { buildKwRegex, lexiconScore } from '@/lib/themeUtils'
 import { bleepText } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
 
 function classifySentiment(pos: number, neg: number): string {
   if (pos === 0 && neg === 0) return 'neutral'
@@ -30,12 +32,13 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
 
   const config = session.config as any
 
-  // Fetch themes
+  // Fetch themes — use RPC-style query to bypass any caching
   const { data: themes } = await db
     .from('townhall_themes')
     .select('id, label, description, state, source, response_target, response_count, mention_count, keywords, sentiment, example_quote, sort_order')
     .eq('session_id', params.sessionId)
     .order('sort_order', { ascending: true })
+    .limit(100)
 
   // Fetch turn stats (aggregate only)
   const { data: turns } = await db
