@@ -454,31 +454,40 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // When starting a session, seed the discussion guide topics into townhall_themes
+  // When starting a session, seed the discussion guide topics into townhall_themes (once)
   if (updates.status === 'active') {
-    const { data: session } = await db
-      .from('townhall_sessions')
-      .select('discussion_guide, config')
-      .eq('id', params.id)
-      .single()
+    // Check if guide themes already exist (prevents duplicates on repeated activation)
+    const { count: existingCount } = await db
+      .from('townhall_themes')
+      .select('id', { count: 'exact', head: true })
+      .eq('session_id', params.id)
+      .eq('source', 'guide')
 
-    if (session?.discussion_guide && Array.isArray(session.discussion_guide)) {
-      const enabledTopics = session.discussion_guide.filter((t: any) => t.enabled !== false)
-      const guideThemes = enabledTopics.map((topic: any, idx: number) => ({
-        session_id: params.id,
-        label: topic.label,
-        description: topic.description || null,
-        question: topic.opening_question,
-        follow_up_angles: topic.follow_up_angles || [],
-        keywords: topic.keywords || [],
-        state: 'active',
-        source: 'guide',
-        response_target: topic.response_target || session.config?.engine?.default_response_target || 30,
-        sort_order: idx,
-      }))
+    if (!existingCount) {
+      const { data: session } = await db
+        .from('townhall_sessions')
+        .select('discussion_guide, config')
+        .eq('id', params.id)
+        .single()
+
+      if (session?.discussion_guide && Array.isArray(session.discussion_guide)) {
+        const enabledTopics = session.discussion_guide.filter((t: any) => t.enabled !== false)
+        const guideThemes = enabledTopics.map((topic: any, idx: number) => ({
+          session_id: params.id,
+          label: topic.label,
+          description: topic.description || null,
+          question: topic.opening_question,
+          follow_up_angles: topic.follow_up_angles || [],
+          keywords: topic.keywords || [],
+          state: 'active',
+          source: 'guide',
+          response_target: topic.response_target || session.config?.engine?.default_response_target || 30,
+          sort_order: idx,
+        }))
 
       if (guideThemes.length > 0) {
         await db.from('townhall_themes').insert(guideThemes)
+      }
       }
     }
   }
