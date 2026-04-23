@@ -119,7 +119,7 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
         const pre = new Set<string>()
         f.forEach(function(fld) { if (fld.type === 'open-ended' && fieldHasData(fld)) pre.add(fld.field) })
         f.forEach(function(fld) {
-          if ((fld.section === 'psychographic' || fld.section === 'demographic') && fieldHasData(fld)) pre.add(fld.field)
+          if ((fld.section === 'psychographic' || fld.section === 'demographic' || fld.section === 'custom') && fieldHasData(fld)) pre.add(fld.field)
         })
         f.forEach(function(fld) {
           if ((fld.type === 'categorical' || fld.type === 'numeric') && !fld.section && fieldHasData(fld) && pre.size < 10) pre.add(fld.field)
@@ -625,6 +625,7 @@ interface FieldPickerProps {
 
 const SECTION_META: Record<string, { label: string; color: string; desc: string }> = {
   core:           { label: 'Core Questions',        color: '#0F7173', desc: 'Primary research questions' },
+  custom:         { label: 'Survey Questions',      color: '#E8632A', desc: 'Custom questions asked to respondents' },
   psychographic:  { label: 'Psychographic Profile', color: '#0D2B45', desc: 'Attitudes, values & lifestyle' },
   demographic:    { label: 'Demographics',           color: '#4A6572', desc: 'Audience composition' },
 }
@@ -638,15 +639,15 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
   }
 
   // Group by section first, then by type within each section
-  const bySection: Record<string, any[]> = { core: [], psychographic: [], demographic: [] }
+  const bySection: Record<string, any[]> = { core: [], custom: [], psychographic: [], demographic: [] }
   fields.forEach(function(f: any) {
-    const sec = (f.section === 'psychographic' || f.section === 'demographic') ? f.section : 'core'
+    const sec = (f.section === 'psychographic' || f.section === 'demographic' || f.section === 'custom') ? f.section : 'core'
     // Hide zero-data categorical/demo/psycho fields
     if ((sec === 'psychographic' || sec === 'demographic' || f.type === 'categorical') && !hasData(f)) return
     bySection[sec].push(f)
   })
 
-  const sectionOrder = ['core', 'psychographic', 'demographic'].filter(s => bySection[s].length > 0)
+  const sectionOrder = ['core', 'custom', 'psychographic', 'demographic'].filter(s => bySection[s].length > 0)
 
   return (
     <div style={{ marginBottom: 12 }}>
@@ -704,7 +705,7 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
                           </span>
                           {f.section && f.section !== 'core' && (
                             <span style={{ fontSize: 9, color: meta.color, background: meta.color + '18', padding: '1px 5px', borderRadius: 8, fontWeight: 600 }}>
-                              {f.section === 'psychographic' ? 'psycho' : 'demo'}
+                              {f.section === 'psychographic' ? 'psycho' : f.section === 'custom' ? 'survey' : 'demo'}
                             </span>
                           )}
                         </label>
