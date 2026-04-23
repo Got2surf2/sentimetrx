@@ -143,24 +143,42 @@ export async function POST(req: Request) {
   const existingThemes: any[] = (stateRow?.theme_model as any)?.themes || []
   const schemaFields: any[] = (stateRow?.schema_config as any)?.fields || []
 
-  // Fetch all rows
+  // Fetch all rows — collections union from member datasets
   const allRows: Record<string, unknown>[] = []
   const FLAT_PAGE = 1000
-  let offset = 0
-  let fetchMore = true
 
-  while (fetchMore) {
-    const { data: flatRows, error } = await service
-      .from('dataset_rows_flat')
-      .select('data')
-      .eq('dataset_id', datasetId)
-      .order('row_index', { ascending: true })
-      .range(offset, offset + FLAT_PAGE - 1)
+  // Determine which dataset_ids to fetch from
+  let flatDatasetIds: string[] = [datasetId]
+  if (dataset.source === 'collection') {
+    const { data: col } = await service.from('collections').select('id').eq('dataset_id', datasetId).single()
+    if (col) {
+      const { data: members } = await service.from('collection_members').select('dataset_id').eq('collection_id', col.id).order('sort_order', { ascending: true })
+      if (members && members.length > 0) {
+        flatDatasetIds = members.map(m => m.dataset_id)
+      }
+    }
+  }
 
-    if (error || !flatRows || flatRows.length === 0) { fetchMore = false; break }
-    for (let i = 0; i < flatRows.length; i++) allRows.push(flatRows[i].data)
-    if (flatRows.length < FLAT_PAGE) fetchMore = false
-    offset += FLAT_PAGE
+  for (const dsId of flatDatasetIds) {
+    let offset = 0
+    let fetchMore = true
+    while (fetchMore && allRows.length < ROW_CAP) {
+      const { data: flatRows, error } = await service
+        .from('dataset_rows_flat')
+        .select('data')
+        .eq('dataset_id', dsId)
+        .order('row_index', { ascending: true })
+        .range(offset, offset + FLAT_PAGE - 1)
+
+      if (error || !flatRows || flatRows.length === 0) { fetchMore = false; break }
+      for (let i = 0; i < flatRows.length; i++) {
+        allRows.push(flatRows[i].data)
+        if (allRows.length >= ROW_CAP) { fetchMore = false; break }
+      }
+      if (flatRows.length < FLAT_PAGE) fetchMore = false
+      offset += FLAT_PAGE
+    }
+    if (allRows.length >= ROW_CAP) break
   }
 
   if (allRows.length === 0) {
