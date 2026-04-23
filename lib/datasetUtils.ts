@@ -231,8 +231,8 @@ export function formatResponsesAsRows(
       duration_sec:     r.duration_sec     ?? null,
       ...(npsOn ? { nps_followup: r.payload?.openEnded?.q1 ?? null } : {}),
       ...(expOn ? { experience_followup: r.payload?.openEnded?.q2 ?? null } : {}),
-      q3_response:      r.payload?.openEnded?.q3 ?? null,
-      q4_response:      r.payload?.openEnded?.q4 ?? null,
+      ...(study.config?.q3Enabled !== false ? { q3_response: r.payload?.openEnded?.q3 ?? null } : {}),
+      ...(study.config?.q4Enabled !== false ? { q4_response: r.payload?.openEnded?.q4 ?? null } : {}),
       ...flattenCustomQuestions(r.payload, study.config),
       ...flattenPsychographics(r.payload),
       ...flattenDemographics(r.payload),
@@ -251,10 +251,10 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
     ...(expOn ? [{ field: 'experience_score', type: 'numeric' as AnaFieldType, sqt: 'rating' as AnaFieldSqt, label: ratingLabel }] : []),
     { field: 'sentiment',        type: 'categorical', sqt: 'single-select' },
     { field: 'duration_sec',         type: 'numeric',    sqt: 'numeric-input' },
-    ...(npsOn ? [{ field: 'nps_followup', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: 'NPS Follow-up' }] : []),
+    ...(npsOn ? [{ field: 'nps_followup', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: (config.npsLabel || 'NPS') + ' Follow-up' }] : []),
     ...(expOn ? [{ field: 'experience_followup', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: ratingLabel + ' Follow-up' }] : []),
-    { field: 'q3_response',          type: 'open-ended', sqt: 'open-text' },
-    { field: 'q4_response',          type: 'open-ended', sqt: 'open-text' },
+    ...(config.q3Enabled !== false ? [{ field: 'q3_response', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: config.q3ExportLabel || undefined, prompt: config.q3 || undefined }] : []),
+    ...(config.q4Enabled !== false ? [{ field: 'q4_response', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: config.q4ExportLabel || undefined, prompt: config.q4 || undefined }] : []),
   ]
   if (config.questions) {
     for (const q of config.questions) {
