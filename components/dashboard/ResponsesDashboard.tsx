@@ -317,6 +317,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
             {showFunnel && funnel.length > 0 && (
               <div>
                 <div ref={funnelRef} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Completion Funnel — {studyName}</h3>
                   {funnel.map((stage, i) => {
                     const maxCount = funnel[0].count || 1
                     const pct = Math.round(stage.count / maxCount * 100)
