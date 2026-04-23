@@ -5,8 +5,8 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
-import { ROWS_PER_BATCH } from '@/lib/constants'
 import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic  = 'force-dynamic'
 export const maxDuration = 30
@@ -50,13 +50,12 @@ export async function POST(req: Request, { params }: Params) {
 
     let responsesQuery = service
       .from('responses')
-      .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload')
+      .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
       .eq('study_id', dataset.study_id)
-      .not('completed_at', 'is', null)   // exclude partial/incomplete responses
-      .order('completed_at', { ascending: true })
+      .order('created_at', { ascending: true })
 
     if (dataset.last_synced_at) {
-      responsesQuery = responsesQuery.gt('completed_at', dataset.last_synced_at)
+      responsesQuery = responsesQuery.gt('created_at', dataset.last_synced_at)
     }
 
     const { data: responses, error: respErr } = await responsesQuery

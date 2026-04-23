@@ -208,6 +208,7 @@ interface ResponseRow {
   sentiment:        string | null
   duration_sec:     number | null
   payload:          SurveyPayload
+  status?:          string | null
 }
 
 interface StudyForFormat {
@@ -224,7 +225,8 @@ export function formatResponsesAsRows(
     const expOn = study.config?.experienceEnabled !== false
     return {
       response_id:      r.id,
-      submitted_at:     r.completed_at,
+      status:           r.status === 'complete' ? 'Complete' : 'Partial',
+      submitted_at:     r.completed_at || (r as any).created_at,
       ...(npsOn ? { nps_score: r.nps_score ?? null } : {}),
       ...(expOn ? { experience_score: r.experience_score ?? null } : {}),
       sentiment:        r.sentiment        ?? null,
@@ -246,6 +248,7 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
   const ratingLabel = config.experienceRatingLabel || 'Rating'
   const fields: SchemaFieldConfig[] = [
     { field: 'response_id',      type: 'id' },
+    { field: 'status',           type: 'categorical', label: 'Response Status' },
     { field: 'submitted_at',     type: 'date' },
     ...(npsOn ? [{ field: 'nps_score', type: 'numeric' as AnaFieldType, sqt: 'nps' as AnaFieldSqt }] : []),
     ...(expOn ? [{ field: 'experience_score', type: 'numeric' as AnaFieldType, sqt: 'rating' as AnaFieldSqt, label: ratingLabel }] : []),
