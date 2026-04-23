@@ -184,7 +184,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           </button>
 
           {/* Ask Ana */}
-          {(dataset.source === 'reddit' || dataset.source === 'townhall' || dataset.source === 'substack') && aiEnabled && onAskAna && (
+          {aiEnabled && onAskAna && (
             <button onClick={onAskAna} className="ana-tab ana-c6" title="Ask Ana"
               style={{
                 height: '100%', display: 'flex', alignItems: 'center', gap: 5,

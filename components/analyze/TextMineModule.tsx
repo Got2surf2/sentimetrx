@@ -1633,12 +1633,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           <input type="checkbox" checked={showAllThemes} onChange={function() { setShowAllThemes(function(v: boolean) { return !v }) }} style={{ accentColor: T.accent }} />
                           Show all
                         </label>
-                        {canMine && aiEnabled && (
-                          <button onClick={function() { mineThemes() }}
-                            style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 20, background: T.accent, border: 'none', color: 'white', cursor: 'pointer', flexShrink: 0 }}>
-                            {'\u29E1'} Mine with AI
-                          </button>
-                        )}
+                        <button onClick={function() { setShowThemeEditor(true) }}
+                          style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 20, background: T.bg, border: '1px solid ' + T.borderMid, color: T.textMid, cursor: 'pointer', flexShrink: 0 }}>
+                          {'\u2261'} Themes
+                        </button>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px' }}>
@@ -2069,6 +2067,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         <ThemeEditor
           onApply={handleThemeEditorApply}
           onClose={function() { setShowThemeEditor(false) }}
+          onMineWithAI={canMine && aiEnabled ? function() { setShowThemeEditor(false); mineThemes() } : undefined}
           initialData={themes ? { themes: themes.themes, libName: themeLibName, source: themeSource } : null}
           industryThemes={industryThemes}
           datasetId={datasetId}

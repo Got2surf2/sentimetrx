@@ -26,6 +26,7 @@ interface InitialData {
 interface Props {
   onApply: (themes: Theme[], libName: string, source: string) => void
   onClose: () => void
+  onMineWithAI?: () => void
   initialData?: InitialData | null
   industryThemes: Record<string, Theme[]>
   datasetId?: string
@@ -40,7 +41,7 @@ var inputStyle: React.CSSProperties = {
 
 type Step = 'pick' | 'edit' | 'json'
 
-export default function ThemeEditor({ onApply, onClose, initialData, industryThemes, datasetId, apiKey }: Props) {
+export default function ThemeEditor({ onApply, onClose, onMineWithAI, initialData, industryThemes, datasetId, apiKey }: Props) {
   var industries = Object.keys(industryThemes).sort()
   var [step, setStep] = useState<Step>(initialData ? 'edit' : 'pick')
   var [checkedInds, setCheckedInds] = useState<Set<string>>(new Set())
@@ -246,10 +247,18 @@ export default function ThemeEditor({ onApply, onClose, initialData, industryThe
                   : 'Add, remove, or edit themes and keywords.'}
               </p>
             </div>
-            <button onClick={onClose}
-              style={{ background: 'transparent', border: 'none', fontSize: 20, color: T.textMute, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>
-              {'\u00D7'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {onMineWithAI && (
+                <button onClick={onMineWithAI}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 16px', borderRadius: 20, background: T.accent, border: 'none', color: 'white', cursor: 'pointer' }}>
+                  {'\u29E1'} Mine with AI
+                </button>
+              )}
+              <button onClick={onClose}
+                style={{ background: 'transparent', border: 'none', fontSize: 20, color: T.textMute, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>
+                {'\u00D7'}
+              </button>
+            </div>
           </div>
           {step === 'edit' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
