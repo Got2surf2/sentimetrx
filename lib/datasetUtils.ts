@@ -321,6 +321,7 @@ export function buildTownHallSchema(): SchemaConfig {
     { field: 'bot_message',      type: 'open-ended',  sqt: 'open-text', label: 'Bot Question' },
     { field: 'user_message',     type: 'open-ended',  sqt: 'open-text', label: 'Response' },
     { field: 'topic',            type: 'categorical', label: 'Topic' },
+    { field: 'topic_type',       type: 'categorical', label: 'Topic Type' },
     { field: 'source',           type: 'categorical', label: 'Turn Source' },
     { field: 'language',         type: 'categorical', label: 'Language' },
     { field: 'responded_at',     type: 'date',        label: 'Date' },

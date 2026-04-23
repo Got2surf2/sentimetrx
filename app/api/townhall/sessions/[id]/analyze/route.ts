@@ -143,13 +143,13 @@ export async function POST(_req: Request, { params }: Params) {
 
   // Resolve theme labels
   const themeIds = Array.from(new Set(turns.filter(t => t.theme_id).map(t => t.theme_id)))
-  const themeMap: Record<string, string> = {}
+  const themeMap: Record<string, { label: string; source: string }> = {}
   if (themeIds.length > 0) {
     const { data: themes } = await service
       .from('townhall_themes')
-      .select('id, label')
+      .select('id, label, source')
       .in('id', themeIds)
-    ;(themes || []).forEach(t => { themeMap[t.id] = t.label })
+    ;(themes || []).forEach(t => { themeMap[t.id] = { label: t.label, source: t.source } })
   }
 
   // Format turns as dataset rows
@@ -160,7 +160,8 @@ export async function POST(_req: Request, { params }: Params) {
       turn_number:    t.turn_number,
       bot_message:    t.bot_message,
       user_message:   t.user_message_en || t.user_message,
-      topic:          t.theme_id ? (themeMap[t.theme_id] || 'Unknown') : 'General',
+      topic:          t.theme_id ? (themeMap[t.theme_id]?.label || 'Unknown') : 'General',
+      topic_type:     t.theme_id ? (themeMap[t.theme_id]?.source === 'guide' ? 'Seed' : 'Organic') : 'General',
       source:         t.source || 'guide',
       language:       t.language || 'en',
       responded_at:   t.created_at,
