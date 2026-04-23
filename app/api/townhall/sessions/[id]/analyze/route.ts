@@ -92,7 +92,7 @@ export async function POST(_req: Request, { params }: Params) {
   // Runs on every sync (creation + refresh) so new organic themes appear too.
   const { data: thThemes } = await service
     .from('townhall_themes')
-    .select('id, label, description, keywords, sentiment, state')
+    .select('id, label, description, keywords, sentiment, state, source')
     .eq('session_id', sessionId)
     .in('state', ['active', 'detected', 'completed'])
     .order('created_at', { ascending: true })
@@ -100,6 +100,9 @@ export async function POST(_req: Request, { params }: Params) {
   if (thThemes && thThemes.length > 0) {
     const anaThemes = thThemes.map(function(t: any, i: number) {
       var palette = THEME_PALETTE[i % THEME_PALETTE.length]
+      var origin = t.source === 'guide' ? 'seed'
+        : (t.state === 'active' || t.state === 'completed') ? 'organic-promoted'
+        : 'organic'
       return {
         id: 't' + (i + 1),
         name: t.label,
@@ -107,6 +110,7 @@ export async function POST(_req: Request, { params }: Params) {
         keywords: t.keywords || [],
         color: palette.border,
         description: t.description || '',
+        origin,
       }
     })
     await service.from('dataset_state').update({

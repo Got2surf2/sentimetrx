@@ -1103,10 +1103,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   async function mineThemes(forceMode?: 'merge' | 'fresh') {
+    // For collections, show choice dialog unless a mode was explicitly chosen
     if (datasetSource === 'collection' && !forceMode) {
       setShowMineChoice(true)
       return
     }
+
     // Read real-time toggle state from localStorage (header may have changed it)
     var liveAi = false; try { liveAi = localStorage.getItem('sentimetrx_ai_enabled') === '1' } catch {}
     if (!liveAi) { setAiEnabled(false); setError('AI is turned off. Enable AI in the header to mine themes.'); return }
@@ -1121,7 +1123,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         return f.field + ':' + f.type + (f.type === 'categorical' && f.values ? ' (' + f.values.slice(0, 6).join(',') + ')' : '')
       }).join('; ')
 
-      // ── Collection: reuse existing member themes, then merge ─────────
+      // ── Collection merge: reuse existing member themes ──────────────
       if (datasetSource === 'collection' && forceMode === 'merge') {
         // Fetch member datasets and their existing theme models
         var colRes = await fetch('/api/collections/' + datasetId)
@@ -1744,8 +1746,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     )}
                                   </div>
                                 </div>
-                                {/* Theme name */}
-                                <div style={{ fontSize: 15, fontWeight: 800, color: T.text, marginBottom: 4 }}>{t.name}</div>
+                                {/* Theme name + origin badge */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                  <span style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{t.name}</span>
+                                  {(t as any).origin === 'seed' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd' }}>Seed</span>}
+                                  {(t as any).origin === 'organic-promoted' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>Organic</span>}
+                                  {(t as any).origin === 'organic' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74' }}>Organic</span>}
+                                </div>
                                 {/* Description */}
                                 <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5, marginBottom: 10, minHeight: 32 }}>{t.description}</div>
                                 {/* Keywords (max 4) — click to see opinions, show avg rating when available */}
