@@ -116,13 +116,16 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
 
   useEffect(() => { fetchResponses() }, [fetchResponses])
 
-  // Fetch funnel data (all responses, lightweight)
-  useEffect(() => {
+  // Fetch funnel data lazily (only when user expands)
+  const [funnelLoading, setFunnelLoading] = useState(false)
+  const fetchFunnel = useCallback(() => {
+    if (funnel.length > 0) return // already loaded
+    setFunnelLoading(true)
     fetch(`/api/studies/${studyId}/responses?limit=1000&fields=status,payload`)
       .then(r => r.json())
       .then(json => {
         const all = json.data || []
-        if (all.length === 0) return
+        if (all.length === 0) { setFunnelLoading(false); return }
         const customQCount = studyConfig?.customQCount || 0
         const psychoCount = studyConfig?.psychoCount || 0
         const stages: { label: string; count: number }[] = []
@@ -163,7 +166,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
         setFunnel(stages)
       })
       .catch(() => {})
-  }, [studyId])
+      .finally(() => setFunnelLoading(false))
+  }, [studyId, funnel.length])
 
   // Reset to page 1 when filters change
   const handleFilterChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
@@ -287,14 +291,15 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
         </div>
 
         {/* Completion funnel */}
-        {funnel.length > 0 && (
+        {total > 0 && (
           <div className="mb-6">
-            <button onClick={() => setShowFunnel(!showFunnel)}
+            <button onClick={() => { const next = !showFunnel; setShowFunnel(next); if (next) fetchFunnel() }}
               className="flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors mb-2">
               <span style={{ transform: showFunnel ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .15s', display: 'inline-block' }}>▶</span>
               Completion Funnel
+              {funnelLoading && <span className="text-xs text-gray-400">loading...</span>}
             </button>
-            {showFunnel && (
+            {showFunnel && funnel.length > 0 && (
               <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                 {funnel.map((stage, i) => {
                   const maxCount = funnel[0].count || 1
