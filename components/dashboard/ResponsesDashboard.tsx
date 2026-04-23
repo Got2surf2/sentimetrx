@@ -52,6 +52,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
   const [statusFilter, setStatusFilter] = useState('')  // '' = all, 'complete', 'incomplete'
 
   const [offset,    setOffset]    = useState(0)
+  const [funnel,    setFunnel]    = useState<{ label: string; count: number }[]>([])
+  const [showFunnel, setShowFunnel] = useState(false)
   const defaultFrom = () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) }
   const defaultTo   = () => new Date().toISOString().slice(0, 10)
   const [dateFrom,  setDateFrom]  = useState('')
@@ -113,6 +115,55 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
   }, [studyId, sentiment, minNps, maxNps, statusFilter, dateFrom, dateTo, offset])
 
   useEffect(() => { fetchResponses() }, [fetchResponses])
+
+  // Fetch funnel data (all responses, lightweight)
+  useEffect(() => {
+    fetch(`/api/studies/${studyId}/responses?limit=1000&fields=status,payload`)
+      .then(r => r.json())
+      .then(json => {
+        const all = json.data || []
+        if (all.length === 0) return
+        const customQCount = studyConfig?.customQCount || 0
+        const psychoCount = studyConfig?.psychoCount || 0
+        const stages: { label: string; count: number }[] = []
+        const started = all.length
+        stages.push({ label: 'Started', count: started })
+        const hasRating = all.filter((r: Response) => r.payload?.experienceRating || r.nps_score != null).length
+        stages.push({ label: studyConfig?.experienceRatingLabel || 'Rating', count: hasRating })
+        const hasConvo = all.filter((r: Response) => {
+          const oe = r.payload?.openEnded || {}
+          return Object.values(oe).some((v: any) => v && String(v).length > 0)
+        }).length
+        stages.push({ label: 'Conversation', count: hasConvo })
+        if (customQCount > 0) {
+          for (let i = 1; i <= customQCount; i++) {
+            const hasN = all.filter((r: Response) => {
+              const ca = r.payload?.customAnswers || {}
+              return Object.keys(ca).length >= i
+            }).length
+            stages.push({ label: `Question ${i} of ${customQCount}`, count: hasN })
+          }
+        }
+        if (psychoCount > 0) {
+          for (let i = 1; i <= psychoCount; i++) {
+            const hasN = all.filter((r: Response) => {
+              const ps = r.payload?.psychographics || {}
+              return Object.keys(ps).length >= i
+            }).length
+            stages.push({ label: `Psycho ${i} of ${psychoCount}`, count: hasN })
+          }
+        }
+        const hasDemo = all.filter((r: Response) => {
+          const dm = r.payload?.demographics || {}
+          return Object.keys(dm).length > 0
+        }).length
+        if (hasDemo > 0) stages.push({ label: 'Demographics', count: hasDemo })
+        const completed = all.filter((r: Response) => r.status === 'complete').length
+        stages.push({ label: 'Completed', count: completed })
+        setFunnel(stages)
+      })
+      .catch(() => {})
+  }, [studyId])
 
   // Reset to page 1 when filters change
   const handleFilterChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
@@ -234,6 +285,48 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
             )}
           </div>
         </div>
+
+        {/* Completion funnel */}
+        {funnel.length > 0 && (
+          <div className="mb-6">
+            <button onClick={() => setShowFunnel(!showFunnel)}
+              className="flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors mb-2">
+              <span style={{ transform: showFunnel ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .15s', display: 'inline-block' }}>▶</span>
+              Completion Funnel
+            </button>
+            {showFunnel && (
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                {funnel.map((stage, i) => {
+                  const maxCount = funnel[0].count || 1
+                  const pct = Math.round(stage.count / maxCount * 100)
+                  const prevCount = i > 0 ? funnel[i - 1].count : stage.count
+                  const dropoff = prevCount > 0 ? Math.round((1 - stage.count / prevCount) * 100) : 0
+                  return (
+                    <div key={stage.label} className="flex items-center gap-3 mb-1.5">
+                      <span className="text-xs text-gray-500 w-36 text-right truncate" title={stage.label}>{stage.label}</span>
+                      <div className="flex-1 h-6 bg-gray-100 rounded-lg overflow-hidden relative">
+                        <div className="h-full rounded-lg transition-all" style={{
+                          width: pct + '%',
+                          background: pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444',
+                          minWidth: stage.count > 0 ? 4 : 0,
+                        }} />
+                      </div>
+                      <span className="text-xs font-bold text-gray-700 w-10 text-right">{stage.count}</span>
+                      <span className="text-xs text-gray-400 w-10 text-right">{pct}%</span>
+                      {i > 0 && dropoff > 0 && (
+                        <span className="text-[10px] text-red-400 w-12 text-right">-{dropoff}%</span>
+                      )}
+                      {i > 0 && dropoff === 0 && (
+                        <span className="text-[10px] text-gray-300 w-12 text-right">—</span>
+                      )}
+                      {i === 0 && <span className="w-12" />}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Stats row */}
         {responses.length > 0 && (
