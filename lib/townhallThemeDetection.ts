@@ -148,7 +148,7 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
     if (!insertErr) {
       inserted++
       // Add to existing list so subsequent themes in this batch don't duplicate
-      existingKeywords.push({ label: name, keywords })
+      existingKeywords.push({ label: name, keywords, mention_count: mentionCount })
       existingLabels.push(name.toLowerCase())
     } else {
       skipped++
