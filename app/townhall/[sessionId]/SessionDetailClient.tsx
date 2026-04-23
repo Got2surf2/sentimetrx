@@ -1166,6 +1166,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                     <div className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse" />
                     <h3 className="text-sm font-bold text-orange-600">Organic Topics</h3>
                     <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-bold">{sorted.length} new</span>
+                    <span className="text-[9px] text-orange-400 ml-1">Hidden from public view until approved</span>
                   </div>
                   {/* Sortable pill nav — click to open detail popup, sentiment-colored dot */}
                   <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-orange-200">
@@ -1956,8 +1957,8 @@ function ThemeCard({ theme: t, isActive, variant, onAction, loading, defaultResp
         {/* Action buttons */}
         {(isSuggested || isParked) && !showApprove && (
           <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
-            <button onClick={() => setShowApprove(true)} disabled={loading}
-              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50" style={{ background: '#22c55e' }}>Approve</button>
+            <button onClick={() => setShowApprove(true)} disabled={loading} title="Approve this topic and show it on the public live view"
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white hover:opacity-90 disabled:opacity-50" style={{ background: '#22c55e' }}>Approve & Publish</button>
             {isSuggested && (
               <button onClick={() => onAction('park')} disabled={loading}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-200 disabled:opacity-50">Park</button>

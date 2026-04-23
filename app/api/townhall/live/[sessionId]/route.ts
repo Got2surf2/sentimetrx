@@ -152,7 +152,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
       skipped: allTurns.filter(t => t.skipped).length,
     },
     sentiment: sentimentCounts,
-    themes: enrichedThemes.filter(t => t.state !== 'dismissed'),
+    themes: enrichedThemes.filter(t => t.state !== 'dismissed' && t.state !== 'detected'),
     timeline,
   })
 }

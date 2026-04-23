@@ -53,7 +53,7 @@ export default function LivePresenter() {
   const [data, setData] = useState<LiveData | null>(null)
   const [error, setError] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  const [showOrganic, setShowOrganic] = useState(true)
+  // Organic themes are hidden from public view until moderator approves them
 
   const fetchData = useCallback(async () => {
     try {
@@ -93,7 +93,7 @@ export default function LivePresenter() {
   const isLive = s.status === 'active' || s.status === 'paused'
   const activeThemes = themes.filter(t => t.state === 'active')
   const completedThemes = themes.filter(t => t.state === 'completed')
-  const organicThemes = themes.filter(t => t.state === 'detected').sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0))
+  // Detected (organic) themes are only visible after moderator approves them (state → active)
   const totalSent = Object.values(sentiment).reduce((a, b) => a + b, 0) || 1
 
   // Elapsed time
@@ -131,13 +131,6 @@ export default function LivePresenter() {
 
         {/* Controls + update indicator */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {organicThemes.length > 0 && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: '#6b7280' }}>
-              <input type="checkbox" checked={showOrganic} onChange={() => setShowOrganic(!showOrganic)}
-                style={{ accentColor: '#f97316', width: 14, height: 14 }} />
-              Emerging Topics
-            </label>
-          )}
           <div style={{ fontSize: 10, color: '#4b5563' }}>
             {lastUpdate && ('Updated ' + lastUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }))}
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginLeft: 6, animation: 'pulse 2s infinite' }} />
@@ -210,36 +203,6 @@ export default function LivePresenter() {
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16, marginBottom: 24 }}>
                     {activeThemes.map(t => <LiveThemeCard key={t.id} theme={t} />)}
-                  </div>
-                </div>
-              )}
-
-              {/* Organic topics — large pills with sentiment + mention count */}
-              {showOrganic && organicThemes.length > 0 && (
-                <div style={{ marginBottom: 24 }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: '#f97316', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-                    Emerging Topics ({organicThemes.length})
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                    {organicThemes.map(t => {
-                      const sent = t.sentiment || 'neutral'
-                      const sentC = SENT_COLOR[sent] || SENT_COLOR.neutral
-                      return (
-                        <div key={t.id} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 10,
-                          background: '#1f2937', border: '1px solid #374151',
-                          borderRadius: 28, padding: '10px 20px',
-                          borderLeft: '4px solid ' + sentC,
-                        }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: sentC, flexShrink: 0 }} />
-                          <span style={{ fontSize: 15, fontWeight: 700, color: '#f9fafb' }}>{t.label}</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', background: '#374151', padding: '2px 8px', borderRadius: 12 }}>
-                            {t.mention_count || 0}
-                          </span>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: sentC, textTransform: 'capitalize' }}>{sent}</span>
-                        </div>
-                      )
-                    })}
                   </div>
                 </div>
               )}
