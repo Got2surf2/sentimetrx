@@ -1,7 +1,7 @@
 // lib/datasetUtils.ts
 // Data pipeline helpers for the Analyze module
 
-import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, DatasetRowBatch, ProcessedRow } from './analyzeTypes'
+import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt, DatasetRowBatch, ProcessedRow } from './analyzeTypes'
 import type { SurveyPayload, StudyConfig } from './types'
 
 export function sanitizeColumnName(raw: string): string {
@@ -220,15 +220,17 @@ export function formatResponsesAsRows(
   study: StudyForFormat
 ): Record<string, unknown>[] {
   return responses.map(function(r) {
+    const npsOn = !!study.config?.npsEnabled
+    const expOn = study.config?.experienceEnabled !== false
     return {
       response_id:      r.id,
       submitted_at:     r.completed_at,
-      nps_score:        r.nps_score        ?? null,
-      experience_score: r.experience_score ?? null,
+      ...(npsOn ? { nps_score: r.nps_score ?? null } : {}),
+      ...(expOn ? { experience_score: r.experience_score ?? null } : {}),
       sentiment:        r.sentiment        ?? null,
       duration_sec:     r.duration_sec     ?? null,
-      nps_followup:     r.payload?.openEnded?.q1 ?? null,
-      experience_followup: r.payload?.openEnded?.q2 ?? null,
+      ...(npsOn ? { nps_followup: r.payload?.openEnded?.q1 ?? null } : {}),
+      ...(expOn ? { experience_followup: r.payload?.openEnded?.q2 ?? null } : {}),
       q3_response:      r.payload?.openEnded?.q3 ?? null,
       q4_response:      r.payload?.openEnded?.q4 ?? null,
       ...flattenCustomQuestions(r.payload, study.config),
@@ -239,15 +241,18 @@ export function formatResponsesAsRows(
 }
 
 export function buildStudySchema(config: StudyConfig): SchemaConfig {
+  const npsOn = !!config.npsEnabled
+  const expOn = config.experienceEnabled !== false
+  const ratingLabel = config.experienceRatingLabel || 'Rating'
   const fields: SchemaFieldConfig[] = [
     { field: 'response_id',      type: 'id' },
     { field: 'submitted_at',     type: 'date' },
-    { field: 'nps_score',        type: 'numeric',    sqt: 'nps' },
-    { field: 'experience_score', type: 'numeric',    sqt: 'rating' },
+    ...(npsOn ? [{ field: 'nps_score', type: 'numeric' as AnaFieldType, sqt: 'nps' as AnaFieldSqt }] : []),
+    ...(expOn ? [{ field: 'experience_score', type: 'numeric' as AnaFieldType, sqt: 'rating' as AnaFieldSqt, label: ratingLabel }] : []),
     { field: 'sentiment',        type: 'categorical', sqt: 'single-select' },
     { field: 'duration_sec',         type: 'numeric',    sqt: 'numeric-input' },
-    { field: 'nps_followup',         type: 'open-ended', sqt: 'open-text', label: 'NPS Follow-up' },
-    { field: 'experience_followup',  type: 'open-ended', sqt: 'open-text', label: 'Experience Follow-up' },
+    ...(npsOn ? [{ field: 'nps_followup', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: 'NPS Follow-up' }] : []),
+    ...(expOn ? [{ field: 'experience_followup', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: ratingLabel + ' Follow-up' }] : []),
     { field: 'q3_response',          type: 'open-ended', sqt: 'open-text' },
     { field: 'q4_response',          type: 'open-ended', sqt: 'open-text' },
   ]
