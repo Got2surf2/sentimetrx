@@ -119,7 +119,8 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
         const pre = new Set<string>()
         f.forEach(function(fld) { if (fld.type === 'open-ended' && fieldHasData(fld)) pre.add(fld.field) })
         f.forEach(function(fld) {
-          if ((fld.section === 'psychographic' || fld.section === 'demographic' || fld.section === 'custom') && fieldHasData(fld)) pre.add(fld.field)
+          if ((fld.section === 'psychographic' || fld.section === 'demographic') && fieldHasData(fld)) pre.add(fld.field)
+          if (fld.section === 'custom') pre.add(fld.field)
         })
         f.forEach(function(fld) {
           if ((fld.type === 'categorical' || fld.type === 'numeric') && !fld.section && fieldHasData(fld) && pre.size < 10) pre.add(fld.field)
