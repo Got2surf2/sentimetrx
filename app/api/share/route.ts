@@ -175,7 +175,7 @@ export async function GET(req: NextRequest) {
         .single()
       const tm = stateRow?.theme_model as any
       if (tm?.themes?.length > 0) {
-        const totalCount = (responses || []).filter((r: any) => r.status !== 'incomplete').length
+        const totalCount = (responses || []).length
         themesSummary = tm.themes.map((t: any) => ({
           name: t.name,
           description: t.description || '',
