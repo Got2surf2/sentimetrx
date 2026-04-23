@@ -16,6 +16,7 @@ interface Response {
   completed_at:     string | null
   duration_sec:     number | null
   status:           string | null
+  [key: string]:    any
 }
 
 interface Props {
@@ -124,16 +125,33 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
 
 
 
-  const promoters  = responses.filter(r => r.sentiment === 'promoter').length
-  const passives   = responses.filter(r => r.sentiment === 'passive').length
-  const detractors = responses.filter(r => r.sentiment === 'detractor').length
-  const avgNps     = responses.length > 0
-    ? (responses.reduce((s, r) => s + (r.nps_score || 0), 0) / responses.length).toFixed(1) : '—'
+  // Rating config — determine which score field and labels to use
+  const isNps = !!studyConfig?.npsEnabled
+  const ratingLabel = isNps ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'Rating')
+  const scoreField = isNps ? 'nps_score' : 'experience_score'
+  const topLabel = isNps ? 'Promoters' : 'Top Box'
+  const botLabel = isNps ? 'Detractors' : 'Bottom Box'
+  const ratingScale = studyConfig?.ratingScale || []
+  const maxScore = ratingScale.length > 0 ? Math.max(...ratingScale.map((s: any) => s.score)) : (isNps ? 10 : 5)
+
+  // Compute stats using the appropriate score field
+  const scoredResponses = responses.filter(r => r[scoreField] != null)
+  const avgScore = scoredResponses.length > 0
+    ? (scoredResponses.reduce((s, r) => s + (r[scoreField] || 0), 0) / scoredResponses.length).toFixed(1) : '—'
+
+  // Top box = top 20% of scale, bottom box = bottom 20%
+  const topThreshold = isNps ? 9 : Math.ceil(maxScore * 0.8)
+  const botThreshold = isNps ? 6 : Math.floor(maxScore * 0.2) || 1
+  const topCount = scoredResponses.filter(r => (r[scoreField] || 0) >= topThreshold).length
+  const botCount = scoredResponses.filter(r => (r[scoreField] || 0) <= botThreshold).length
 
   const sentimentBadge = (s: string | null) => ({
     promoter:  'bg-green-100 text-green-700 border border-green-200',
+    positive:  'bg-green-100 text-green-700 border border-green-200',
     passive:   'bg-amber-100 text-amber-700 border border-amber-200',
+    neutral:   'bg-amber-100 text-amber-700 border border-amber-200',
     detractor: 'bg-red-100 text-red-600 border border-red-200',
+    negative:  'bg-red-100 text-red-600 border border-red-200',
   }[s || ''] || 'bg-gray-100 text-gray-500 border border-gray-200')
 
   const selCls = 'px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm outline-none focus:border-orange-400 transition-colors cursor-pointer'
@@ -182,23 +200,29 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
               <label className="text-xs text-gray-500 font-medium">Sentiment</label>
               <select value={sentiment} onChange={handleFilterChange(setSentiment)} className={selCls}>
                 <option value="">All</option>
-                <option value="promoter">Promoters</option>
-                <option value="passive">Passives</option>
-                <option value="detractor">Detractors</option>
+                {isNps ? (<>
+                  <option value="promoter">Promoters</option>
+                  <option value="passive">Passives</option>
+                  <option value="detractor">Detractors</option>
+                </>) : (<>
+                  <option value="positive">Positive</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="negative">Negative</option>
+                </>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 font-medium">NPS min</label>
+              <label className="text-xs text-gray-500 font-medium">{ratingLabel} min</label>
               <select value={minNps} onChange={handleFilterChange(setMinNps)} className={selCls}>
                 <option value="">Any</option>
-                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                {Array.from({ length: maxScore }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 font-medium">NPS max</label>
+              <label className="text-xs text-gray-500 font-medium">{ratingLabel} max</label>
               <select value={maxNps} onChange={handleFilterChange(setMaxNps)} className={selCls}>
                 <option value="">Any</option>
-                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                {Array.from({ length: maxScore }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
 
@@ -215,9 +239,9 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
         {responses.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <StatCard label="Showing"    value={responses.length} sub={`of ${total}`} />
-            <StatCard label="Avg NPS"    value={avgNps} />
-            <StatCard label="Promoters"  value={`${Math.round(promoters / responses.length * 100)}%`} color="text-green-600" />
-            <StatCard label="Detractors" value={`${Math.round(detractors / responses.length * 100)}%`} color="text-red-500" />
+            <StatCard label={`Avg ${ratingLabel}`} value={avgScore} />
+            <StatCard label={topLabel}  value={scoredResponses.length > 0 ? `${Math.round(topCount / scoredResponses.length * 100)}%` : '—'} color="text-green-600" />
+            <StatCard label={botLabel}  value={scoredResponses.length > 0 ? `${Math.round(botCount / scoredResponses.length * 100)}%` : '—'} color="text-red-500" />
           </div>
         )}
 
@@ -263,8 +287,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                       <th className="px-2 py-3 w-8" />
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sentiment</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Exp.</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">NPS</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{ratingLabel}</th>
+                      {isNps && <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">NPS</th>}
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">First response</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Duration</th>
@@ -300,8 +324,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
                             {r.sentiment || '—'}
                           </span>
                         </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-600">{r.experience_score ?? '—'}</td>
-                        <td className="px-5 py-3.5 text-sm text-gray-600">{r.nps_score ?? '—'}</td>
+                        <td className="px-5 py-3.5 text-sm text-gray-600">{r[scoreField] ?? '—'}</td>
+                        {isNps && <td className="px-5 py-3.5 text-sm text-gray-600">{r.nps_score ?? '—'}</td>}
                         <td className="px-5 py-3.5 text-sm text-gray-500 max-w-xs truncate">
                           {r.payload?.openEnded?.q1 || '—'}
                         </td>
