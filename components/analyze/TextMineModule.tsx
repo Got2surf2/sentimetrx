@@ -952,6 +952,27 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
   }, [openFields.length])
 
+  // Auto-switch away from empty fields once rows load
+  useEffect(function() {
+    if (!rowsLoaded || !rows.length || !activeFields.length || openFields.length === 0) return
+    // Check if current fields have any text content
+    var hasContent = activeFields.some(function(f) {
+      return rows.some(function(r) { return String(r[f] || '').trim().length > 0 })
+    })
+    if (hasContent) return
+    // Current fields are empty — find first open field with content
+    for (var i = 0; i < openFields.length; i++) {
+      var f = openFields[i].field
+      if (activeFields.includes(f)) continue
+      var fieldHasContent = rows.some(function(r) { return String(r[f] || '').trim().length > 0 })
+      if (fieldHasContent) {
+        setActiveFields([f])
+        setActiveField(f)
+        return
+      }
+    }
+  }, [rowsLoaded, rows.length, activeFields.join(',')])
+
   // Load API key and AI enabled state from localStorage
   useEffect(function() {
     try {
