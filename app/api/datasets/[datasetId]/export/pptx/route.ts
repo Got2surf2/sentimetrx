@@ -494,13 +494,13 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
   const listY = y0 + cardH + 0.48
   const colW2 = (W - PAD * 2 - 0.4) / 2
   const typeColor: Record<string, string> = { 'open-ended': DN.teal, 'categorical': DN.navyLight, 'numeric': DN.green, 'date': DN.slateDark }
-  const sectionColor: Record<string, string> = { 'demographic': '4A6572', 'psychographic': DN.navy }
+  const sectionColor: Record<string, string> = { 'demographic': '4A6572', 'psychographic': DN.navy, 'custom': DN.orange }
   const badgeW = 1.1  // wider badge to avoid wrapping
 
   function fieldRow(f: SelectedField, x: number, y: number) {
-    const sec = f.section === 'demographic' ? 'demographic' : f.section === 'psychographic' ? 'psychographic' : null
+    const sec = f.section === 'demographic' ? 'demographic' : f.section === 'psychographic' ? 'psychographic' : f.section === 'custom' ? 'custom' : null
     const tc  = sec ? sectionColor[sec] : (typeColor[f.type] || DN.slateDark)
-    const badgeLabel = sec ? sec : f.type
+    const badgeLabel = sec === 'custom' ? 'survey' : sec ? sec : f.type
     solidRect(slide, pptx, x, y + 0.07, 0.07, 0.20, tc)
     // Label — leave room for the badge
     slide.addText(f.label || f.field, { x: x + 0.16, y, w: colW2 - badgeW - 0.26, h: 0.34, fontSize: 12, color: DN.navyLight, bold: false, valign: 'middle', autoFit: true })
@@ -2395,6 +2395,7 @@ export async function POST(req: Request, { params }: Params) {
     // ── Group fields by section ───────────────────────────────────────────
     const openEndedSelected = selectedFields.filter(f => f.type === 'open-ended')
     const coreFields        = selectedFields.filter(f => !f.section || f.section === 'core')
+    const customFields      = selectedFields.filter(f => f.section === 'custom')
     const psychoFields      = selectedFields.filter(f => f.section === 'psychographic')
     let   demoFields        = selectedFields.filter(f => f.section === 'demographic')
     const personalDemoOrder = ['gender', 'age', 'race', 'household_income', 'household income', 'income']
@@ -2511,6 +2512,15 @@ export async function POST(req: Request, { params }: Params) {
         const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
         if (f.type === 'categorical' && audience !== 'executive') buildPieSlide(pptx, datasetName, f, ai)
         else if (f.type === 'numeric' && audience !== 'executive') buildNumericSlide(pptx, datasetName, f, ai)
+      })
+    }
+    const nonOECustom = customFields.filter(f => f.type !== 'open-ended')
+    if (nonOECustom.length > 0) {
+      buildSectionDivider(pptx, 'Survey Questions', 'Custom questions asked to respondents', nonOECustom.length)
+      nonOECustom.forEach(function(f) {
+        const ai = narratives.fieldInsights?.[f.field] || { keyFinding: f.label, narrative: '', implication: '', watchout: '' }
+        if (f.type === 'categorical') buildPieSlide(pptx, datasetName, f, ai)
+        else if (f.type === 'numeric') buildNumericSlide(pptx, datasetName, f, ai)
       })
     }
     if (nonOEPsycho.length > 0 && audience !== 'executive') {
