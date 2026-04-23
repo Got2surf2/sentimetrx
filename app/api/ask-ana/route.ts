@@ -1,8 +1,10 @@
 // app/api/ask-ana/route.ts
-// POST /api/ask-ana — streaming AI Q&A against dataset rows
+// POST /api/ask-ana — streaming AI Q&A + analysis framework mutations
 // Uses Anthropic prompt caching so the dataset context is sent once and reused
 // for follow-up questions within a 5-minute window.
 // Samples large datasets (max 200 rows) and truncates long text (300 chars).
+// When Ana detects the user wants to modify themes she returns tool_use blocks
+// which the client renders as confirmation cards before writing to dataset_state.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -19,8 +21,73 @@ const URL_ONLY_RE   = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
 interface Message {
   role: 'user' | 'assistant'
-  content: string
+  content: string | MessageContent[]
 }
+
+interface MessageContent {
+  type: string
+  [key: string]: any
+}
+
+// ── Tool definitions for theme mutations ───────────────────────────────────
+const ANA_TOOLS = [
+  {
+    name: 'create_theme',
+    description: 'Create a new theme to add to the analysis framework. Use when the user asks to create, add, or extract a new theme/topic/category from the data. Always include 8-15 keywords with core terms, synonyms, and informal variants.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name:        { type: 'string', description: 'Theme name (short, descriptive)' },
+        description: { type: 'string', description: 'One-sentence description of what this theme captures' },
+        keywords:    { type: 'array', items: { type: 'string' }, description: 'Array of 8-15 keywords: core terms, synonyms, informal variants, and short phrases' },
+        sentiment:   { type: 'string', enum: ['positive', 'negative', 'mixed', 'neutral'], description: 'Overall sentiment of this theme' },
+      },
+      required: ['name', 'description', 'keywords', 'sentiment'],
+    },
+  },
+  {
+    name: 'update_theme',
+    description: 'Update an existing theme — rename it, change description, add/remove keywords, or change sentiment. Reference the theme by its current name.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        theme_name:       { type: 'string', description: 'Current name of the theme to update' },
+        new_name:         { type: 'string', description: 'New name (omit to keep current)' },
+        new_description:  { type: 'string', description: 'New description (omit to keep current)' },
+        add_keywords:     { type: 'array', items: { type: 'string' }, description: 'Keywords to add' },
+        remove_keywords:  { type: 'array', items: { type: 'string' }, description: 'Keywords to remove' },
+        new_sentiment:    { type: 'string', enum: ['positive', 'negative', 'mixed', 'neutral'], description: 'New sentiment (omit to keep current)' },
+      },
+      required: ['theme_name'],
+    },
+  },
+  {
+    name: 'merge_themes',
+    description: 'Merge two or more themes into one. Combines their keywords and keeps the best description. Use when themes overlap significantly.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        theme_names:    { type: 'array', items: { type: 'string' }, description: 'Names of themes to merge (2+)' },
+        merged_name:    { type: 'string', description: 'Name for the merged theme' },
+        merged_description: { type: 'string', description: 'Description for the merged theme' },
+        merged_sentiment:   { type: 'string', enum: ['positive', 'negative', 'mixed', 'neutral'] },
+      },
+      required: ['theme_names', 'merged_name', 'merged_description', 'merged_sentiment'],
+    },
+  },
+  {
+    name: 'delete_theme',
+    description: 'Remove a theme from the analysis framework.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        theme_name: { type: 'string', description: 'Name of the theme to delete' },
+        reason:     { type: 'string', description: 'Brief reason for deletion' },
+      },
+      required: ['theme_name'],
+    },
+  },
+]
 
 export async function POST(req: Request) {
   // Auth
@@ -66,8 +133,17 @@ export async function POST(req: Request) {
     }, { status: 400 })
   }
 
-  // Fetch all rows
+  // Fetch dataset state (themes + schema) for framework context
   const service = createServiceRoleClient()
+  const { data: stateRow } = await service
+    .from('dataset_state')
+    .select('theme_model, schema_config')
+    .eq('dataset_id', datasetId)
+    .single()
+  const existingThemes: any[] = (stateRow?.theme_model as any)?.themes || []
+  const schemaFields: any[] = (stateRow?.schema_config as any)?.fields || []
+
+  // Fetch all rows
   const allRows: Record<string, unknown>[] = []
   const FLAT_PAGE = 1000
   let offset = 0
@@ -187,11 +263,32 @@ export async function POST(req: Request) {
     ? '\n\nThis is Reddit data. Comments with high scores represent mainstream views (community consensus). Comments in the middle range are controversial (mixed reception). Noise and fringe comments (low/negative scores) have been excluded. If the user asks about fringe or rejected views, let them know those are filtered out and they can check the Signals view for that analysis.'
     : ''
 
-  const systemPrompt = `You are Ana, a helpful data analyst. You have been given a dataset of ${filteredRows.length} ${sourceLabel} from "${dataset.name}".
+  // Build theme context for the prompt
+  const themeContext = existingThemes.length > 0
+    ? '\n\nCurrent analysis framework has ' + existingThemes.length + ' themes:\n' +
+      existingThemes.map(function(t: any) {
+        return '- ' + (t.name || t.label) + ' (' + (t.sentiment || 'neutral') + '): ' +
+          (t.keywords || []).slice(0, 6).join(', ') +
+          (t.count ? ' [' + t.count + ' matches]' : '')
+      }).join('\n')
+    : '\n\nNo themes have been created yet for this dataset.'
 
-Answer the user's question based ONLY on this data. Be specific and cite actual quotes when relevant (use quotation marks). If the data doesn't contain enough information to answer, say so.
+  const schemaContext = schemaFields.length > 0
+    ? '\n\nDataset fields: ' + schemaFields
+        .filter(function(f: any) { return f.status !== 'ignored' })
+        .map(function(f: any) { return f.label + ' (' + f.type + (f.section ? ', ' + f.section : '') + ')' })
+        .join('; ')
+    : ''
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${filterNote}${signalNote}${sampleNote}${redditContext}
+  const systemPrompt = `You are Ana, a senior data analyst assistant. You have been given a dataset of ${filteredRows.length} ${sourceLabel} from "${dataset.name}".
+
+You serve two roles:
+1. **Answer questions** — Analyze the data to answer questions. Be specific, cite actual quotes when relevant. If the data doesn't contain enough to answer, say so.
+2. **Modify the analysis framework** — When the user asks you to create, update, merge, or delete themes, use your tools. When you spot an opportunity to improve the framework (e.g., you notice many distinct entities that could be grouped, or themes that overlap), suggest it — but always wait for approval before acting.
+
+When using tools, ALWAYS explain what you're about to do in your text response before calling the tool. For example: "I'll create a theme for menu items based on the 23 distinct food references I found in the data."
+
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${filterNote}${signalNote}${sampleNote}${redditContext}
 
 Here is the dataset:
 ${dataContext}`
@@ -223,6 +320,7 @@ ${dataContext}`
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       stream: true,
+      tools: ANA_TOOLS,
       system: [
         {
           type: 'text',
@@ -248,6 +346,10 @@ ${dataContext}`
     async start(controller) {
       const reader = anthropicRes.body!.getReader()
       let buffer = ''
+      // Track tool_use blocks being built up across deltas
+      let currentToolId = ''
+      let currentToolName = ''
+      let toolInputJson = ''
 
       try {
         while (true) {
@@ -267,7 +369,34 @@ ${dataContext}`
               const event = JSON.parse(payload)
               if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
                 controller.enqueue(encoder.encode('data: ' + JSON.stringify({ text: event.delta.text }) + '\n\n'))
-              } else if (event.type === 'message_stop') {
+              }
+              // Tool use: start of a new tool block
+              else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
+                currentToolId = event.content_block.id || ''
+                currentToolName = event.content_block.name || ''
+                toolInputJson = ''
+              }
+              // Tool use: accumulate input JSON
+              else if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
+                toolInputJson += event.delta.partial_json || ''
+              }
+              // Tool use: block complete — emit action event
+              else if (event.type === 'content_block_stop' && currentToolName) {
+                try {
+                  const toolInput = JSON.parse(toolInputJson)
+                  controller.enqueue(encoder.encode('data: ' + JSON.stringify({
+                    action: {
+                      tool: currentToolName,
+                      toolId: currentToolId,
+                      input: toolInput,
+                    }
+                  }) + '\n\n'))
+                } catch {}
+                currentToolName = ''
+                currentToolId = ''
+                toolInputJson = ''
+              }
+              else if (event.type === 'message_stop') {
                 controller.enqueue(encoder.encode('data: [DONE]\n\n'))
               }
             } catch {}

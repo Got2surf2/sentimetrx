@@ -226,6 +226,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
           datasetName={dataset.name}
           filters={filters}
           onClose={function() { setAskAnaOpen(false) }}
+          onThemesChanged={function() { window.dispatchEvent(new Event('ana-themes-changed')) }}
         />
       )}
 

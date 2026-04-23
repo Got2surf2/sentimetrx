@@ -886,6 +886,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     })
   }, [activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
 
+  // Listen for Ana theme mutations and refetch theme model
+  useEffect(function() {
+    function handleAnaThemes() {
+      fetch('/api/datasets/' + datasetId + '/state')
+        .then(function(r) { return r.json() })
+        .then(function(state) {
+          if (state?.theme_model) {
+            setThemes(state.theme_model)
+            setIsDirty(false)
+          }
+        })
+        .catch(function() {})
+    }
+    window.addEventListener('ana-themes-changed', handleAnaThemes)
+    return function() { window.removeEventListener('ana-themes-changed', handleAnaThemes) }
+  }, [datasetId])
+
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
