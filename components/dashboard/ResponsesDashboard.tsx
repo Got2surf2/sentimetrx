@@ -2,7 +2,7 @@
 
 import TopNav from '@/components/nav/TopNav'
 import StudyPageHeader from '@/components/nav/StudyPageHeader'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
 
@@ -118,6 +118,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
 
   // Fetch funnel data lazily (only when user expands)
   const [funnelLoading, setFunnelLoading] = useState(false)
+  const [funnelCopied, setFunnelCopied] = useState(false)
+  const funnelRef = useRef<HTMLDivElement>(null)
   const fetchFunnel = useCallback(() => {
     if (funnel.length > 0) return // already loaded
     setFunnelLoading(true)
@@ -168,6 +170,19 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
       .catch(() => {})
       .finally(() => setFunnelLoading(false))
   }, [studyId, funnel.length])
+
+  const copyFunnelPng = useCallback(async () => {
+    if (!funnelRef.current) return
+    try {
+      const { toPng } = await import('html-to-image')
+      const dataUrl = await toPng(funnelRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
+      const res = await fetch(dataUrl)
+      const blob = await res.blob()
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      setFunnelCopied(true)
+      setTimeout(() => setFunnelCopied(false), 2000)
+    } catch { /* clipboard may not be available */ }
+  }, [])
 
   // Reset to page 1 when filters change
   const handleFilterChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
@@ -300,34 +315,40 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
               {funnelLoading && <span className="text-xs text-gray-400">loading...</span>}
             </button>
             {showFunnel && funnel.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                {funnel.map((stage, i) => {
-                  const maxCount = funnel[0].count || 1
-                  const pct = Math.round(stage.count / maxCount * 100)
-                  const prevCount = i > 0 ? funnel[i - 1].count : stage.count
-                  const dropoff = prevCount > 0 ? Math.round((1 - stage.count / prevCount) * 100) : 0
-                  return (
-                    <div key={stage.label} className="flex items-center gap-3 mb-1.5">
-                      <span className="text-xs text-gray-500 w-36 text-right truncate" title={stage.label}>{stage.label}</span>
-                      <div className="flex-1 h-6 bg-gray-100 rounded-lg overflow-hidden relative">
-                        <div className="h-full rounded-lg transition-all" style={{
-                          width: pct + '%',
-                          background: pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444',
-                          minWidth: stage.count > 0 ? 4 : 0,
-                        }} />
+              <div>
+                <div ref={funnelRef} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                  {funnel.map((stage, i) => {
+                    const maxCount = funnel[0].count || 1
+                    const pct = Math.round(stage.count / maxCount * 100)
+                    const prevCount = i > 0 ? funnel[i - 1].count : stage.count
+                    const dropoff = prevCount > 0 ? Math.round((1 - stage.count / prevCount) * 100) : 0
+                    return (
+                      <div key={stage.label} className="flex items-center gap-3 mb-1.5">
+                        <span className="text-xs text-gray-500 w-36 text-right truncate" title={stage.label}>{stage.label}</span>
+                        <div className="flex-1 h-6 bg-gray-100 rounded-lg overflow-hidden relative">
+                          <div className="h-full rounded-lg transition-all" style={{
+                            width: pct + '%',
+                            background: pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444',
+                            minWidth: stage.count > 0 ? 4 : 0,
+                          }} />
+                        </div>
+                        <span className="text-xs font-bold text-gray-700 w-10 text-right">{stage.count}</span>
+                        <span className="text-xs text-gray-400 w-10 text-right">{pct}%</span>
+                        {i > 0 && dropoff > 0 && (
+                          <span className="text-[10px] text-red-400 w-12 text-right">-{dropoff}%</span>
+                        )}
+                        {i > 0 && dropoff === 0 && (
+                          <span className="text-[10px] text-gray-300 w-12 text-right">—</span>
+                        )}
+                        {i === 0 && <span className="w-12" />}
                       </div>
-                      <span className="text-xs font-bold text-gray-700 w-10 text-right">{stage.count}</span>
-                      <span className="text-xs text-gray-400 w-10 text-right">{pct}%</span>
-                      {i > 0 && dropoff > 0 && (
-                        <span className="text-[10px] text-red-400 w-12 text-right">-{dropoff}%</span>
-                      )}
-                      {i > 0 && dropoff === 0 && (
-                        <span className="text-[10px] text-gray-300 w-12 text-right">—</span>
-                      )}
-                      {i === 0 && <span className="w-12" />}
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
+                <button onClick={copyFunnelPng}
+                  className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
+                  {funnelCopied ? 'Copied!' : 'Copy as PNG'}
+                </button>
               </div>
             )}
           </div>
