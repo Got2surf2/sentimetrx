@@ -642,8 +642,8 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
   const bySection: Record<string, any[]> = { core: [], custom: [], psychographic: [], demographic: [] }
   fields.forEach(function(f: any) {
     const sec = (f.section === 'psychographic' || f.section === 'demographic' || f.section === 'custom') ? f.section : 'core'
-    // Hide zero-data categorical/demo/psycho fields
-    if ((sec === 'psychographic' || sec === 'demographic' || f.type === 'categorical') && !hasData(f)) return
+    // Hide zero-data categorical/demo/psycho fields (but always show custom survey questions — they're sparsely filled by design)
+    if (sec !== 'custom' && (sec === 'psychographic' || sec === 'demographic' || f.type === 'categorical') && !hasData(f)) return
     bySection[sec].push(f)
   })
 
