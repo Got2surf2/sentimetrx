@@ -50,7 +50,7 @@ export async function POST(req: Request, { params }: Params) {
 
     let responsesQuery = service
       .from('responses')
-      .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
+      .select('id, created_at, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
       .eq('study_id', dataset.study_id)
       .order('created_at', { ascending: true })
 
