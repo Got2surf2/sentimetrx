@@ -697,7 +697,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                 }
                 return b.count - a.count
               })
-              var maxShare = ts.totalMatches > 0 ? perGroupSorted.reduce(function(m, g) { return Math.max(m, Math.round(g.count / ts.totalMatches * 100)) }, 1) : 1
+              var maxShare = perGroupSorted.reduce(function(m, g) { return Math.max(m, g.groupTotal > 0 ? Math.round(g.count / g.groupTotal * 100) : 0) }, 1) || 1
               var themeObj = themes.themes.find(function(t) { return t.id === ts.themeId })
               return (
                 <div key={ts.themeId} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '16px 18px', marginBottom: 12, borderLeft: '4px solid ' + pal.border }}>
@@ -708,10 +708,10 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
                     {themeObj && <button onClick={function() { onDrillTheme(themeObj!) }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: pal.bg, color: pal.text, border: '1px solid ' + pal.border + '50', cursor: 'pointer', flexShrink: 0 }}>View comments {'\u2192'}</button>}
                   </div>
                   {perGroupSorted.map(function(g) {
-                    // By Theme: is this group over/under-represented within this theme
-                    // compared to its share of the overall dataset?
-                    var sig = sigTest(g.count, ts.totalMatches, g.groupTotal, compStats!.totalRows)
-                    var themePct = ts.totalMatches > 0 ? Math.round(g.count / ts.totalMatches * 100) : 0
+                    // By Theme: penetration rate within this group (what % of this group mentions this theme)
+                    // Sig test: is this group's penetration rate different from all other groups combined?
+                    var sig = sigTest(g.count, g.groupTotal, ts.totalMatches, compStats!.totalRows)
+                    var themePct = g.groupTotal > 0 ? Math.round(g.count / g.groupTotal * 100) : 0
                     var barColor = isSignalTier && SIGNAL_TIER_COLORS[g.group] ? SIGNAL_TIER_COLORS[g.group] : pal.border
                     return <CompareBar key={g.group} label={g.group} pct={themePct} count={g.count} maxPct={maxShare} color={barColor} labelColor={pal.text} sig={sig} onClick={themeObj ? function() { onDrillTheme(themeObj!, g.group) } : undefined} groupName={g.group} themeName={ts.themeName} avgRating={g.avgRating} overallRatAvg={compStats!.overallRatAvg} ratingSig={g.ratingSig} byTheme={true} />
                   })}
