@@ -156,8 +156,6 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     },
     sentiment: sentimentCounts,
     themes: enrichedThemes.filter(t => t.state !== 'dismissed' && t.state !== 'detected'),
-    _v: 3,
-    _raw_states: (themes || []).map(t => t.label.slice(0, 25) + '=' + t.state),
     timeline,
   })
 }
