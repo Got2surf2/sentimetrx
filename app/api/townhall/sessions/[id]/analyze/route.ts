@@ -102,6 +102,7 @@ export async function POST(_req: Request, { params }: Params) {
       var palette = THEME_PALETTE[i % THEME_PALETTE.length]
       return {
         id: 't' + (i + 1),
+        name: t.label,
         label: t.label,
         keywords: t.keywords || [],
         color: palette.border,
