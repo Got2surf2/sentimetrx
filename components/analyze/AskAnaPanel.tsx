@@ -66,6 +66,7 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
     var msg = messages.find(function(m) { return m.id === msgId })
     if (!msg || !msg.actions || !msg.actions[actionIdx]) return
     var action = msg.actions[actionIdx]
+    console.log('[Ana] applyAction called:', action.tool, action.status, 'slides:', action.input?.slides?.length)
 
     try {
       // Fetch current theme model
@@ -136,7 +137,10 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ deck: action.input, datasetName }),
         })
-        if (!deckRes.ok) throw new Error('Render failed')
+        if (!deckRes.ok) {
+          var errBody = await deckRes.text().catch(function() { return 'unknown error' })
+          throw new Error('Render failed: ' + deckRes.status + ' ' + errBody)
+        }
         var blob = await deckRes.blob()
         var url = URL.createObjectURL(blob)
         var a = document.createElement('a')
@@ -177,12 +181,13 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
       })
 
       if (onThemesChanged) onThemesChanged()
-    } catch (err) {
+    } catch (err: any) {
       // Show error inline
+      var errMsg = err?.message || String(err)
       setMessages(function(prev) {
         return prev.map(function(m) {
           if (m.id !== msgId) return m
-          return { ...m, content: m.content + '\n\n*Error applying change. Please try again.*' }
+          return { ...m, content: m.content + '\n\n*Error: ' + errMsg + '*' }
         })
       })
     }
@@ -517,7 +522,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
     update_theme: '\u270E',
     merge_themes: '\u2194',
     delete_theme: '\u2212',
-    generate_report: '\uD83D\uDCCA',
+    generate_report: '\u25A3',
   }
 
   var borderColor = action.status === 'approved' ? '#22c55e'
