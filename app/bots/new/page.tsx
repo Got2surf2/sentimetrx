@@ -9,6 +9,24 @@ import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES = '#E8632A'
 
+const LANGUAGES: { code: string; label: string }[] = [
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'fr', label: 'French' },
+  { code: 'de', label: 'German' },
+  { code: 'pt', label: 'Portuguese' },
+  { code: 'it', label: 'Italian' },
+  { code: 'zh', label: 'Chinese' },
+  { code: 'ja', label: 'Japanese' },
+  { code: 'ko', label: 'Korean' },
+  { code: 'ar', label: 'Arabic' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'vi', label: 'Vietnamese' },
+  { code: 'tl', label: 'Filipino/Tagalog' },
+  { code: 'ru', label: 'Russian' },
+  { code: 'pl', label: 'Polish' },
+]
+
 interface BotConfig {
   name: string
   subtitle: string
@@ -25,6 +43,7 @@ interface BotConfig {
   fontFamily: string
   initialMessage: string
   suggestions: string[]
+  language: string
 }
 
 const DEFAULT_CONFIG: BotConfig = {
@@ -43,6 +62,7 @@ const DEFAULT_CONFIG: BotConfig = {
   fontFamily: '',
   initialMessage: "Hi! How can I help you today?",
   suggestions: [],
+  language: 'en',
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -197,8 +217,8 @@ function BotCreatorInner() {
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{editId ? 'Edit Bot' : 'Create Bot'}</h1>
-            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Configure your branded AI chatbot</p>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{editId ? 'Edit Agent' : 'Create Agent'}</h1>
+            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Configure your branded AI agent</p>
           </div>
           <button onClick={function() { router.push('/bots') }}
             style={{ padding: '6px 16px', borderRadius: 16, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
@@ -216,6 +236,21 @@ function BotCreatorInner() {
             <Field label="Subtitle" value={config.subtitle} onChange={function(v) { updateConfig('subtitle', v) }} placeholder="e.g., Know Your Rights Assistant" />
             <Field label="Avatar letter or emoji" value={config.avatarLetter} onChange={function(v) { updateConfig('avatarLetter', v) }} placeholder="e.g., A or 🤖" />
             <Field label="Initial message" value={config.initialMessage} onChange={function(v) { updateConfig('initialMessage', v) }} placeholder="Hi! How can I help you?" />
+            <label style={{ display: 'block', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Language</span>
+              <select
+                value={config.language || 'en'}
+                onChange={function(e) { updateConfig('language', e.target.value) }}
+                style={{
+                  display: 'block', width: '100%', marginTop: 4,
+                  padding: '8px 12px', borderRadius: 8,
+                  border: '1px solid #d1d5db', fontSize: 13, outline: 'none',
+                  background: 'white',
+                }}>
+                {LANGUAGES.map(function(l) { return <option key={l.code} value={l.code}>{l.label}</option> })}
+              </select>
+              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>The agent will always respond in this language.</p>
+            </label>
           </Section>
 
           <Section title="Branding">
