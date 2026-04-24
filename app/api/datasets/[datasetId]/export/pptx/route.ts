@@ -2465,8 +2465,8 @@ export async function POST(req: Request, { params }: Params) {
     recomputeSummaries()
   }
 
-  // Also recompute when sampled (so slide counts match the sample, not full population)
-  if (rowsSampled && !hasFilters) {
+  // Also recompute when sampled or collection (collections have no analytics of their own)
+  if ((rowsSampled || isCollection) && !hasFilters) {
     recomputeSummaries()
   }
 
