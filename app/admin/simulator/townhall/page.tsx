@@ -452,7 +452,7 @@ export default function TownHallSimulatorPage() {
               ))}
             </div>
             {(() => {
-              const groups = [...new Set(Object.values(PACKS).map(p => p.group).filter(Boolean))] as string[]
+              const groups = Array.from(new Set(Object.values(PACKS).map(p => p.group).filter(Boolean))) as string[]
               return groups.map(group => (
                 <div key={group} className="mt-3">
                   <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{group}</div>
