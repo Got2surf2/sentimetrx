@@ -66,7 +66,7 @@ export default async function AnalyzePage() {
     if (cols && cols.length > 0) {
       const { data: members } = await supabase.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
       if (members && members.length > 0) {
-        const memberDsIds = [...new Set(members.map(m => m.dataset_id))]
+        const memberDsIds = Array.from(new Set(members.map(m => m.dataset_id)))
         const { data: memberDs } = await supabase.from('datasets').select('id, row_count').in('id', memberDsIds)
         const memberCounts: Record<string, number> = {}
         ;(memberDs || []).forEach(d => { memberCounts[d.id] = d.row_count || 0 })
