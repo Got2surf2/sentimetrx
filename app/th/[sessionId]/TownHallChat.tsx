@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
+import SanjayModal from '@/components/ui/SanjayModal'
 import type { DemoField, PsychoQuestion } from '@/lib/types'
 
 type Phase = 'pre-psycho' | 'pre-demo' | 'pre-submitting' | 'chat' | 'transition' | 'psycho' | 'demo' | 'submitting' | 'done'
@@ -716,58 +717,11 @@ export default function TownHallChat({ sessionId }: Props) {
 
       {/* Verbose auth modal */}
       {showVerboseAuth && (
-        <VerboseAuthModal
+        <SanjayModal
           onSuccess={() => { setDebugMode(true); setTesting(true); setShowVerboseAuth(false) }}
           onCancel={() => setShowVerboseAuth(false)}
         />
       )}
-    </div>
-  )
-}
-
-function VerboseAuthModal({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [checking, setChecking] = useState(false)
-
-  async function verify() {
-    setError('')
-    setChecking(true)
-    try {
-      const res = await fetch('/api/verify-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const data = await res.json()
-      if (data.valid) { onSuccess() }
-      else { setError('Invalid credentials') }
-    } catch { setError('Verification failed') }
-    setChecking(false)
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-      onClick={onCancel}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: 320, maxWidth: '90vw' }}
-        onClick={function(e) { e.stopPropagation() }}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Enable Verbose Mode</div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>Sign in with your Sentimetrx account to enable AI reasoning.</div>
-        <input type="email" placeholder="Email" value={email} onChange={function(e) { setEmail(e.target.value) }}
-          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }} />
-        <input type="password" placeholder="Password" value={password} onChange={function(e) { setPassword(e.target.value) }}
-          onKeyDown={function(e) { if (e.key === 'Enter') verify() }}
-          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }} />
-        {error && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{error}</div>}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={verify} disabled={checking || !email || !password}
-            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#E8632A', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: checking ? 0.6 : 1 }}>
-            {checking ? 'Verifying...' : 'Verify'}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

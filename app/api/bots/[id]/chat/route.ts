@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors }) }
 
-  const { messages } = body
+  const { messages, session_id } = body
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages required' }, { status: 400, headers: cors })
   }
@@ -93,8 +93,19 @@ export async function POST(req: NextRequest, { params }: Params) {
       system: systemParts.join('\n'),
     })
 
-    // Increment conversation count (fire-and-forget)
-    service.from('bots').update({ conversation_count: (bot as any).conversation_count + 1 }).eq('id', bot.id).then(function() {})
+    // Increment conversation count + update last_session_at (fire-and-forget)
+    service.from('bots').update({ conversation_count: (bot as any).conversation_count + 1, last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
+
+    // Store conversation turns (fire-and-forget)
+    if (session_id) {
+      const userContent = lastUserMsg?.content || ''
+      const turnNumber = Math.max(0, recentMessages.filter((m: any) => m.role === 'user').length - 1) * 2
+      const turns = [
+        { bot_id: bot.id, session_id, turn_number: turnNumber, role: 'user', content: userContent, language: botLang },
+        { bot_id: bot.id, session_id, turn_number: turnNumber + 1, role: 'assistant', content: result.text, language: botLang },
+      ]
+      service.from('bot_conversation_turns').insert(turns).then(function() {})
+    }
 
     return NextResponse.json({ reply: result.text }, { headers: cors })
   } catch (err: any) {

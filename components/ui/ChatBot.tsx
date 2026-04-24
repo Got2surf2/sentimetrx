@@ -4,11 +4,17 @@
 // Shared chatbot UI component used by /bot, /clara, /nora pages.
 // All branding, colors, and content are passed via config props.
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import SanjayModal, { checkVerboseCommand } from './SanjayModal'
+
+function genSessionId() {
+  return 'bs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
+}
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  _debug?: string[]
 }
 
 export interface ChatBotConfig {
@@ -35,6 +41,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
+  const [showVerboseAuth, setShowVerboseAuth] = useState(false)
+  const sessionId = useMemo(() => genSessionId(), [])
 
   const resetChat = () => {
     setMessages([INITIAL_MESSAGE])
@@ -55,6 +64,12 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return
+
+    // Check for verbose/sanjay commands
+    const cmd = checkVerboseCommand(text.trim())
+    if (cmd === 'bypass') { setInput(''); setDebugMode(true); return }
+    if (cmd === 'auth') { setInput(''); setShowVerboseAuth(true); return }
+
     const userMsg: Message = { role: 'user', content: text.trim() }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
@@ -67,10 +82,12 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          session_id: sessionId,
+          debug: debugMode || undefined,
         }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, something went wrong.' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, something went wrong.', _debug: data._debug }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: "I'm having trouble connecting. Please try again." }])
     } finally {
@@ -136,6 +153,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         </div>
       </header>
 
+      {/* Verbose mode banner */}
+      {debugMode && (
+        <div style={{ background: '#FEF3C7', borderBottom: '1px solid #FDE68A', padding: '4px 16px', fontSize: '0.6875rem', color: '#92400E', fontWeight: 600, flexShrink: 0, textAlign: 'center' }}>
+          Running in verbose mode — AI reasoning visible
+        </div>
+      )}
+
       {/* Chat area */}
       <div ref={chatRef} style={{
         flex: 1, overflowY: 'auto', padding: '20px 16px',
@@ -145,33 +169,41 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}>
         {messages.map((msg, i) => (
-          <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined} style={{
-            display: 'flex',
-            justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-            gap: 8,
-          }}>
-            {msg.role === 'assistant' && (
-              <div style={{
-                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                background: config.avatarGradient,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.875rem', color: config.avatarTextColor || 'white', fontWeight: 700,
-              }}>{config.avatarLetter}</div>
-            )}
+          <div key={i} ref={i === messages.length - 1 ? lastMsgRef : undefined}>
             <div style={{
-              maxWidth: '80%',
-              padding: '12px 16px',
-              borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-              background: msg.role === 'user' ? config.userBubbleBg : 'white',
-              color: msg.role === 'user' ? 'white' : '#1a1a1a',
-              fontSize: '0.9rem',
-              lineHeight: 1.6,
-              border: msg.role === 'assistant' ? '1px solid #e5e7eb' : 'none',
-              boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-              whiteSpace: 'pre-wrap',
-            }}
-              dangerouslySetInnerHTML={{ __html: formatHtml(msg.content) }}
-            />
+              display: 'flex',
+              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              gap: 8,
+            }}>
+              {msg.role === 'assistant' && (
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  background: config.avatarGradient,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.875rem', color: config.avatarTextColor || 'white', fontWeight: 700,
+                }}>{config.avatarLetter}</div>
+              )}
+              <div style={{
+                maxWidth: '80%',
+                padding: '12px 16px',
+                borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                background: msg.role === 'user' ? config.userBubbleBg : 'white',
+                color: msg.role === 'user' ? 'white' : '#1a1a1a',
+                fontSize: '0.9rem',
+                lineHeight: 1.6,
+                border: msg.role === 'assistant' ? '1px solid #e5e7eb' : 'none',
+                boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                whiteSpace: 'pre-wrap',
+              }}
+                dangerouslySetInnerHTML={{ __html: formatHtml(msg.content) }}
+              />
+            </div>
+            {debugMode && msg._debug && msg._debug.length > 0 && (
+              <div style={{ margin: '4px 0 6px 40px', padding: '8px 12px', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 12, fontSize: '0.6875rem', color: '#92400e', lineHeight: 1.5, maxWidth: '85%' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, color: '#78350f' }}>AI Thinking</div>
+                {msg._debug.map((line, j) => <div key={j} style={{ marginBottom: 2 }}>{line}</div>)}
+              </div>
+            )}
           </div>
         ))}
 
@@ -288,6 +320,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           animation: chatbotDotPulse 1.4s infinite ease-in-out both;
         }
       `}</style>
+
+      {showVerboseAuth && (
+        <SanjayModal
+          onSuccess={() => { setDebugMode(true); setShowVerboseAuth(false) }}
+          onCancel={() => setShowVerboseAuth(false)}
+        />
+      )}
     </div>
   )
 }

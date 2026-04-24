@@ -221,7 +221,7 @@ export default function BotsClient({ orgId }: { orgId: string }) {
                 )}
 
                 {/* Action pills */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #f3f4f6' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #f3f4f6' }}>
                   <button
                     onClick={function() { window.open('/b/' + bot.slug, '_blank') }}
                     style={{
@@ -231,6 +231,16 @@ export default function BotsClient({ orgId }: { orgId: string }) {
                       cursor: 'pointer', transition: 'all 0.1s',
                     }}>
                     Preview
+                  </button>
+                  <button
+                    onClick={function() { router.push('/bots/' + bot.id + '/conversations') }}
+                    style={{
+                      fontSize: 11, padding: '6px 0', borderRadius: 8, fontWeight: 600,
+                      background: '#f0f9ff', color: '#0369a1',
+                      border: '1px solid #bae6fd',
+                      cursor: 'pointer', transition: 'all 0.1s',
+                    }}>
+                    Chats
                   </button>
                   <button
                     onClick={function() { router.push('/bots/new?edit=' + bot.id) }}
