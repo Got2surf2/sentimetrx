@@ -56,7 +56,7 @@ export default function BotsClient({ orgId }: { orgId: string }) {
   }
 
   async function deleteBot(bot: Bot) {
-    if (!confirm('Delete "' + bot.name + '"? This cannot be undone.')) return
+    if (!confirm('Delete agent "' + bot.name + '"? This cannot be undone.')) return
     await fetch('/api/bots/' + bot.id, { method: 'DELETE' })
     setBots(function(prev) { return prev.filter(function(b) { return b.id !== bot.id }) })
   }
@@ -95,7 +95,7 @@ export default function BotsClient({ orgId }: { orgId: string }) {
               )
             })}
           </div>
-          <span style={{ fontSize: 13, color: '#9ca3af' }}>{bots.length} bot{bots.length !== 1 ? 's' : ''}</span>
+          <span style={{ fontSize: 13, color: '#9ca3af' }}>{bots.length} agent{bots.length !== 1 ? 's' : ''}</span>
           <button
             onClick={function() { router.push('/bots/new') }}
             style={{
@@ -103,7 +103,7 @@ export default function BotsClient({ orgId }: { orgId: string }) {
               background: HERMES, color: 'white', fontSize: 13, fontWeight: 600,
               cursor: 'pointer',
             }}
-          >+ New Bot</button>
+          >+ New Agent</button>
         </div>
       </div>
 
@@ -115,8 +115,8 @@ export default function BotsClient({ orgId }: { orgId: string }) {
           background: 'white', borderRadius: 16, border: '2px dashed #e5e7eb',
         }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>{'\uD83E\uDD16'}</div>
-          <p style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>No bots yet</p>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>Create your first branded chatbot to get started.</p>
+          <p style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>No agents yet</p>
+          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>Create your first branded AI agent to get started.</p>
           <button
             onClick={function() { router.push('/bots/new') }}
             style={{
@@ -124,7 +124,7 @@ export default function BotsClient({ orgId }: { orgId: string }) {
               background: HERMES, color: 'white', fontSize: 13, fontWeight: 600,
               cursor: 'pointer',
             }}
-          >Create Bot</button>
+          >Create Agent</button>
         </div>
       )}
 

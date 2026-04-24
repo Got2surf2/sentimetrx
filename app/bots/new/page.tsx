@@ -133,7 +133,7 @@ function BotCreatorInner() {
       setConfig({ ...DEFAULT_CONFIG, ...bot.config })
       if (bot.review_interval_hours) setReviewInterval(String(bot.review_interval_hours))
     }).catch(function() {
-      setError('Failed to load bot')
+      setError('Failed to load agent')
     }).finally(function() { setLoading(false) })
   }, [editId])
 
@@ -261,7 +261,7 @@ function BotCreatorInner() {
 
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', padding: 24 }}>
           <Section title="Identity">
-            <Field label="Bot name" value={name} onChange={function(v) { setName(v); if (!editId) setSlug(autoSlug(v)) }} placeholder="e.g., ACLU Rights Bot" />
+            <Field label="Agent name" value={name} onChange={function(v) { setName(v); if (!editId) setSlug(autoSlug(v)) }} placeholder="e.g., ACLU Rights Agent" />
             <Field label="URL slug" value={slug} onChange={setSlug} placeholder="e.g., aclu-rights" />
             <p style={{ fontSize: 11, color: '#9ca3af', marginTop: -8, marginBottom: 12 }}>Public URL: /b/{slug || 'your-slug'}</p>
             <Field label="Subtitle" value={config.subtitle} onChange={function(v) { updateConfig('subtitle', v) }} placeholder="e.g., Know Your Rights Assistant" />
@@ -308,11 +308,11 @@ function BotCreatorInner() {
           </Section>
 
           <Section title="System prompt">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Instructions for how the bot should behave. This defines the bot's personality and boundaries.</p>
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Instructions for how the agent should behave. This defines the agent's personality and boundaries.</p>
             <textarea
               value={systemPrompt}
               onChange={function(e) { setSystemPrompt(e.target.value) }}
-              placeholder={"You are [Bot Name], an assistant for [Company]. You help users with...\n\nYou should:\n- Be friendly and concise\n- Only discuss topics related to [Company]\n- Never make up information"}
+              placeholder={"You are [Agent Name], an assistant for [Company]. You help users with...\n\nYou should:\n- Be friendly and concise\n- Only discuss topics related to [Company]\n- Never make up information"}
               rows={8}
               style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical', fontFamily: 'monospace' }}
             />
@@ -376,7 +376,7 @@ function BotCreatorInner() {
           </Section>
 
           <Section title="Training content">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Add URLs to fetch content from, or paste knowledge directly. This becomes the bot's reference material.</p>
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Add URLs to fetch content from, or paste knowledge directly. This becomes the agent's reference material.</p>
             <label style={{ display: 'block', marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Training URLs (one per line)</span>
               <textarea
@@ -403,7 +403,7 @@ function BotCreatorInner() {
               <textarea
                 value={knowledgeBase}
                 onChange={function(e) { setKnowledgeBase(e.target.value) }}
-                placeholder="Paste or type the content your bot should know about..."
+                placeholder="Paste or type the content your agent should know about..."
                 rows={12}
                 style={{ display: 'block', width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5 }}
               />
@@ -423,7 +423,7 @@ function BotCreatorInner() {
               background: saving ? '#9ca3af' : HERMES, color: 'white', fontSize: 13, fontWeight: 600,
               cursor: saving ? 'not-allowed' : 'pointer',
             }}>
-            {saving ? 'Saving...' : editId ? 'Save Changes' : 'Create Bot'}
+            {saving ? 'Saving...' : editId ? 'Save Changes' : 'Create Agent'}
           </button>
         </div>
       </div>
