@@ -62,6 +62,13 @@ const PATTERNS: PatternDef[] = [
 
   // Severe: URLs (spam/phishing)
   { pattern: /https?:\/\//i, severity: 'severe', category: 'spam' },
+
+  // Rude: verbose/debug/prompt probing — redirect without revealing anything
+  { pattern: /\b(show\s+(me\s+)?(your|the)\s+(think|reason|debug|verbose|system\s*prompt|instructions|internal))/i, severity: 'rude', category: 'prompt_probe' as Category },
+  { pattern: /\b(enable|enter|turn\s+on|activate|switch\s+to)\s+(debug|verbose|dev(eloper)?|admin|test(ing)?)\s*(mode)?/i, severity: 'rude', category: 'prompt_probe' as Category },
+  { pattern: /\b(reveal|expose|dump|print|display|output)\s+(your\s+)?(system|hidden|internal|original|full)\s*(prompt|instructions|config|reasoning)/i, severity: 'rude', category: 'prompt_probe' as Category },
+  { pattern: /\bwhat\s+(are|is)\s+your\s+(system\s*prompt|instructions|rules|guidelines|directives)\b/i, severity: 'rude', category: 'prompt_probe' as Category },
+  { pattern: /\b(ignore|disregard|forget|override)\s+(your|all|previous|prior|above)\s+(instructions|rules|prompt|guidelines)/i, severity: 'rude', category: 'prompt_probe' as Category },
 ]
 
 // ── Content safety toggles ───────────────────────────────────────────────────
