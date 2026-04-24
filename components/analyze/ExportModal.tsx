@@ -54,9 +54,9 @@ type Step   = 'mode' | 'quick' | 'builder' | 'generating' | 'done'
 type Format = 'pptx' | 'html'
 type ShareState = 'idle' | 'uploading' | 'done' | 'error'
 
-interface Props { datasetId: string; datasetName: string; onClose: () => void }
+interface Props { datasetId: string; datasetName: string; datasetSource?: string; onClose: () => void }
 
-export default function ExportModal({ datasetId, datasetName, onClose }: Props) {
+export default function ExportModal({ datasetId, datasetName, datasetSource, onClose }: Props) {
   const { effectiveFilters: filters } = useFilters()
   const activeFilterCount = filterCount(filters)
   const [step,         setStep]         = useState<Step>('mode')
@@ -228,6 +228,25 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
     } finally {
       clearInterval(msgInterval)
     }
+  }
+
+  async function generateSignalTiers() {
+    setError('')
+    setBlobUrl('')
+    setStep('generating')
+    setProgressMsg('Classifying signal tiers…')
+    const name = datasetName.replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_Signal_Tiers.pptx'
+    setFileName(name)
+    const msgs = ['Classifying signal tiers…', 'Picking representative quotes…', 'Cross-tabbing themes × tiers…', 'Generating AI insights…', 'Finalizing deck…']
+    let msgIdx = 0
+    const msgInterval = setInterval(function() { msgIdx = Math.min(msgIdx + 1, msgs.length - 1); setProgressMsg(msgs[msgIdx]) }, 4000)
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/export/signals-pptx', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Export failed') }
+      const blob = await res.blob()
+      setBlobUrl(URL.createObjectURL(blob))
+      setStep('done')
+    } catch (e: any) { setError(e.message || 'Signal tiers export failed'); setStep('mode') } finally { clearInterval(msgInterval) }
   }
 
   const byType: Record<string, SchemaField[]> = {}
@@ -488,6 +507,27 @@ export default function ExportModal({ datasetId, datasetName, onClose }: Props) 
                 </div>
               </div>
             </button>
+
+            {/* Signal Tiers card — Reddit/Substack only */}
+            {(datasetSource === 'reddit' || datasetSource === 'substack') && (
+              <button onClick={generateSignalTiers}
+                style={{ width: '100%', textAlign: 'left', padding: '18px 20px', borderRadius: 10, border: '1.5px solid ' + S.border, background: S.bg, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .12s' }}
+                onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.borderColor = '#059669'; (e.currentTarget as HTMLElement).style.background = '#f0fdf4' }}
+                onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.borderColor = S.border; (e.currentTarget as HTMLElement).style.background = S.bg }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                  <div style={{ fontSize: 28, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>📡</div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: S.text, marginBottom: 5 }}>Signal Tiers</div>
+                    <div style={{ fontSize: 12, color: S.textMute, lineHeight: 1.6 }}>
+                      {datasetSource === 'reddit'
+                        ? 'Classify comments by community voting patterns — Mainstream, Controversial, Fringe, and Noise. Includes tier distribution, top quotes per tier, and theme cross-analysis.'
+                        : 'Classify comments by reader engagement — Resonant, Discussed, Low Engagement, and Ignored. Includes tier distribution, top quotes per tier, and theme cross-analysis.'}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#059669', fontWeight: 600 }}>One-click signal analysis deck →</div>
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         )}
 

@@ -113,6 +113,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         <ExportModal
           datasetId={dataset.id}
           datasetName={dataset.name}
+          datasetSource={dataset.source}
           onClose={function() { setShowExport(false) }}
         />
       )}
