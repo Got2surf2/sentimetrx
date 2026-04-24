@@ -129,6 +129,33 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
       } else if (action.tool === 'delete_theme') {
         var delName = (action.input.theme_name || '').toLowerCase()
         themes = themes.filter(function(t: any) { return (t.name || t.label || '').toLowerCase() !== delName })
+      } else if (action.tool === 'generate_report') {
+        // Render deck and trigger download — no theme model changes
+        var deckRes = await fetch('/api/ana/render-deck', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deck: action.input, datasetName }),
+        })
+        if (!deckRes.ok) throw new Error('Render failed')
+        var blob = await deckRes.blob()
+        var url = URL.createObjectURL(blob)
+        var a = document.createElement('a')
+        a.href = url
+        a.download = (datasetName || 'report').replace(/[^a-z0-9]/gi, '_').slice(0, 40) + '_ana.pptx'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+
+        // Mark as approved and return early — no theme save needed
+        setMessages(function(prev) {
+          return prev.map(function(m) {
+            if (m.id !== msgId || !m.actions) return m
+            var updated = m.actions.map(function(a, i) { return i === actionIdx ? { ...a, status: 'approved' as const } : a })
+            return { ...m, actions: updated }
+          })
+        })
+        return
       }
 
       // Save updated theme model
@@ -482,6 +509,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
     update_theme: 'Update Theme',
     merge_themes: 'Merge Themes',
     delete_theme: 'Delete Theme',
+    generate_report: 'Generate Deck',
   }
 
   var toolIcon: Record<string, string> = {
@@ -489,6 +517,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
     update_theme: '\u270E',
     merge_themes: '\u2194',
     delete_theme: '\u2212',
+    generate_report: '\uD83D\uDCCA',
   }
 
   var borderColor = action.status === 'approved' ? '#22c55e'
@@ -578,6 +607,23 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
         </div>
       )}
 
+      {action.tool === 'generate_report' && (
+        <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{inp.title}{inp.subtitle ? ' — ' + inp.subtitle : ''}</div>
+          {(inp.slides || []).map(function(s: any, si: number) {
+            var typeIcon: Record<string, string> = { bar_chart: '\u2593', kpi_grid: '\u25A3', table: '\u2261', bullets: '\u2022', quotes: '\u201C', two_column: '\u2016' }
+            return (
+              <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <span style={{ fontSize: 10, color: HERMES, fontWeight: 700, width: 14 }}>{typeIcon[s.type] || '?'}</span>
+                <span style={{ fontSize: 11 }}>{s.title}</span>
+                <span style={{ fontSize: 9, color: '#9ca3af' }}>({s.type})</span>
+              </div>
+            )
+          })}
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>{(inp.slides || []).length} slides</div>
+        </div>
+      )}
+
       {/* Buttons */}
       {action.status === 'pending' && (
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -589,7 +635,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
               borderRadius: 8, cursor: applying ? 'default' : 'pointer',
               opacity: applying ? 0.6 : 1,
             }}>
-            {applying ? 'Applying...' : 'Approve'}
+            {applying ? (action.tool === 'generate_report' ? 'Building deck...' : 'Applying...') : (action.tool === 'generate_report' ? 'Build & Download' : 'Approve')}
           </button>
           <button onClick={function() { onReject(msgId, actionIdx) }}
             style={{

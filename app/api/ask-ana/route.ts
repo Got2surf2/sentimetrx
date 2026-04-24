@@ -87,6 +87,40 @@ const ANA_TOOLS = [
       required: ['theme_name'],
     },
   },
+  {
+    name: 'generate_report',
+    description: 'Generate a PowerPoint deck from the data. Use when the user asks for a deck, report, presentation, or slides. Build slide specs based on the data you analyzed. Available slide types: bar_chart (horizontal bars), kpi_grid (metric cards), table (rows and columns), bullets (key points), quotes (verbatim responses), two_column (side-by-side content).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title:    { type: 'string', description: 'Deck title' },
+        subtitle: { type: 'string', description: 'Deck subtitle' },
+        slides: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type:     { type: 'string', enum: ['bar_chart', 'kpi_grid', 'table', 'bullets', 'quotes', 'two_column'] },
+              title:    { type: 'string' },
+              subtitle: { type: 'string' },
+              data:     { type: 'array', description: 'For bar_chart: [{label, value}]' },
+              kpis:     { type: 'array', description: 'For kpi_grid: [{value, label, sub?}]' },
+              columns:  { type: 'array', description: 'For table: column headers' },
+              rows:     { type: 'array', description: 'For table: [[cell, cell, ...], ...]' },
+              bullets:  { type: 'array', description: 'For bullets: ["point 1", ...]' },
+              quotes:   { type: 'array', description: 'For quotes: [{text, attribution?}]' },
+              left:     { type: 'object', description: 'For two_column: {heading?, bullets?, text?}' },
+              right:    { type: 'object', description: 'For two_column: {heading?, bullets?, text?}' },
+              insight:  { type: 'string', description: 'Optional insight text shown at bottom of slide' },
+            },
+            required: ['type', 'title'],
+          },
+          description: 'Array of slide specs. Populate the data fields from your analysis of the dataset — use actual numbers and quotes from the data.',
+        },
+      },
+      required: ['title', 'slides'],
+    },
+  },
 ]
 
 export async function POST(req: Request) {
@@ -207,10 +241,14 @@ export async function POST(req: Request) {
   }
 
   // Filter out URL-only rows (no meaningful text content)
-  filteredRows = filteredRows.filter(function(r) {
-    var text = String(r.body || r.user_message || r.review_text || '').trim()
-    return text && !URL_ONLY_RE.test(text)
-  })
+  // Only apply to sources that have a known text field — study/collection/upload rows
+  // have varied field names so skip this filter for them.
+  if (dataset.source === 'reddit' || dataset.source === 'substack' || dataset.source === 'google_reviews') {
+    filteredRows = filteredRows.filter(function(r) {
+      var text = String(r.body || r.user_message || r.review_text || '').trim()
+      return text && !URL_ONLY_RE.test(text)
+    })
+  }
 
   // Reddit: vote-weighted sampling — only mainstream + controversial comments
   const totalFiltered = filteredRows.length
@@ -266,6 +304,7 @@ export async function POST(req: Request) {
     : dataset.source === 'substack' ? 'Substack reader comments'
     : dataset.source === 'townhall' ? 'SignalIQ conversation responses'
     : dataset.source === 'study' ? 'survey responses'
+    : dataset.source === 'collection' ? 'survey responses'
     : dataset.source === 'google_reviews' ? 'Google Reviews'
     : 'data entries'
 
