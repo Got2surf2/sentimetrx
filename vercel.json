@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/townhall-theme-detection",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/bot-conversation-review",
+      "schedule": "0 */4 * * *"
     }
   ]
 }

@@ -40,6 +40,7 @@ export default function ConversationsPage() {
   const [reportLoading, setReportLoading] = useState(false)
   const [reportStats, setReportStats] = useState<{ session_count: number; total_turns: number; since: string } | null>(null)
   const [botName, setBotName] = useState('')
+  const [reviews, setReviews] = useState<{ id: string; reviewed_at: string; session_count: number; turn_count: number; report: string; theme_drift: boolean }[]>([])
 
   useEffect(() => {
     // Fetch bot name
@@ -53,6 +54,12 @@ export default function ConversationsPage() {
       .then(d => setSessions(d.sessions || []))
       .catch(() => {})
       .finally(() => setLoading(false))
+
+    // Fetch scheduled reviews
+    fetch('/api/bots/' + botId + '/conversations/reviews')
+      .then(r => r.json())
+      .then(d => setReviews(d.reviews || []))
+      .catch(() => {})
   }, [botId])
 
   async function loadSession(sid: string) {
@@ -120,6 +127,25 @@ export default function ConversationsPage() {
             )}
           </div>
           <div style={{ whiteSpace: 'pre-wrap' }}>{report}</div>
+        </div>
+      )}
+
+      {/* Scheduled review history */}
+      {reviews.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Scheduled Reviews</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {reviews.map(r => (
+              <details key={r.id} style={{ background: r.theme_drift ? '#fef2f2' : 'white', border: '1px solid ' + (r.theme_drift ? '#fecaca' : '#e5e7eb'), borderRadius: 12, overflow: 'hidden' }}>
+                <summary style={{ padding: '10px 16px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontWeight: 600, color: '#111827' }}>{fmtDate(r.reviewed_at)}</span>
+                  <span style={{ color: '#9ca3af' }}>{r.session_count} sessions, {r.turn_count} turns</span>
+                  {r.theme_drift && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }}>Drift Detected</span>}
+                </summary>
+                <div style={{ padding: '0 16px 12px', fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{r.report}</div>
+              </details>
+            ))}
+          </div>
         </div>
       )}
 

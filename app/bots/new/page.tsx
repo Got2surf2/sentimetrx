@@ -110,6 +110,7 @@ function BotCreatorInner() {
   const [knowledgeBase, setKnowledgeBase] = useState('')
   const [trainingUrls, setTrainingUrls] = useState('')
   const [fetchingUrls, setFetchingUrls] = useState(false)
+  const [reviewInterval, setReviewInterval] = useState<string>('')
   const [config, setConfig] = useState<BotConfig>(DEFAULT_CONFIG)
   const [suggestions, setSuggestions] = useState('')
   const [saving, setSaving] = useState(false)
@@ -130,6 +131,7 @@ function BotCreatorInner() {
       setTrainingUrls((bot.training_urls || []).join('\n'))
       setSuggestions((bot.config?.suggestions || []).join('\n'))
       setConfig({ ...DEFAULT_CONFIG, ...bot.config })
+      if (bot.review_interval_hours) setReviewInterval(String(bot.review_interval_hours))
     }).catch(function() {
       setError('Failed to load bot')
     }).finally(function() { setLoading(false) })
@@ -209,14 +211,17 @@ function BotCreatorInner() {
       initialMessage: config.initialMessage,
     }
 
-    var payload = {
+    var riHours = parseInt(reviewInterval) || null
+    var payload: any = {
       name: name.trim(),
       slug: slug.trim(),
       config: fullConfig,
       system_prompt: systemPrompt,
       knowledge_base: knowledgeBase,
       training_urls: trainingUrls.split('\n').map(function(u) { return u.trim() }).filter(Boolean),
+      review_interval_hours: riHours,
     }
+    if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
 
     try {
       var url = editId ? '/api/bots/' + editId : '/api/bots'
@@ -311,6 +316,23 @@ function BotCreatorInner() {
               rows={8}
               style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical', fontFamily: 'monospace' }}
             />
+          </Section>
+
+          <Section title="Conversation Review">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Schedule automatic AI review of conversations to detect theme drift, common questions, and knowledge gaps.</p>
+            <label style={{ display: 'block', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Review interval</span>
+              <select
+                value={reviewInterval}
+                onChange={function(e) { setReviewInterval(e.target.value) }}
+                style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', background: 'white' }}>
+                <option value="">Disabled</option>
+                <option value="24">Every 24 hours</option>
+                <option value="48">Every 2 days</option>
+                <option value="168">Weekly</option>
+              </select>
+              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>When enabled, AI will periodically analyze recent conversations and flag theme drift or knowledge gaps. View results on the Chats page.</p>
+            </label>
           </Section>
 
           <Section title="Research">

@@ -33,3 +33,31 @@ CREATE POLICY bot_turns_service_insert ON bot_conversation_turns FOR INSERT
 
 -- Add last_session_at to bots for quick "last active" display
 ALTER TABLE bots ADD COLUMN IF NOT EXISTS last_session_at TIMESTAMPTZ;
+
+-- Periodic review scheduling
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS review_interval_hours INT;
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS last_reviewed_at TIMESTAMPTZ;
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS next_review_at TIMESTAMPTZ;
+
+-- Review results storage
+CREATE TABLE IF NOT EXISTS bot_conversation_reviews (
+  id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  bot_id          UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  reviewed_at     TIMESTAMPTZ DEFAULT now(),
+  since           TIMESTAMPTZ NOT NULL,                    -- conversations analyzed since this timestamp
+  session_count   INT NOT NULL DEFAULT 0,
+  turn_count      INT NOT NULL DEFAULT 0,
+  report          TEXT NOT NULL DEFAULT '',                 -- AI-generated report
+  theme_drift     BOOLEAN DEFAULT false,                   -- true if drift detected
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_reviews_bot ON bot_conversation_reviews(bot_id, reviewed_at DESC);
+
+ALTER TABLE bot_conversation_reviews ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY bot_reviews_org_read ON bot_conversation_reviews FOR SELECT
+  USING (bot_id IN (SELECT id FROM bots WHERE org_id IN (SELECT org_id FROM users WHERE id = auth.uid())));
+
+CREATE POLICY bot_reviews_service_insert ON bot_conversation_reviews FOR INSERT
+  WITH CHECK (true);

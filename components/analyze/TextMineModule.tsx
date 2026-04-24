@@ -840,6 +840,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   const [computing, setComputing] = useState(false)
   const [displayThemes, setDisplayThemes] = useState<ThemeModel | null>(null)
+  const overallBoxRef = useRef<{ topBoxPct: number; bottomBoxPct: number } | null>(null)
   const [themes, setThemes] = useState<ThemeModel | null>(savedThemeModel || null)
   const [themeSource, setThemeSource] = useState<string | null>((savedThemeModel as any)?.themeSource || (savedThemeModel as any)?.source || null)
   const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
@@ -1113,6 +1114,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // Use setTimeout to let the "computing" spinner paint before heavy work
     var timer = setTimeout(function() {
       var recounted = recountThemes(themes.themes, filteredRows, _recountFields, ratingField).filter(function(t) { return t.name && t.name.trim() })
+      // Compute overall top/bottom box from all rows (not per-theme)
+      if (ratingField) {
+        var allRv: number[] = []
+        filteredRows.forEach(function(r) { var v = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(v)) allRv.push(v) })
+        if (allRv.length > 0) {
+          var rMin = Math.min.apply(null, allRv), rMax = Math.max.apply(null, allRv), mid = (rMin + rMax) / 2
+          var tC = 0, bC = 0
+          allRv.forEach(function(v) { if (v > mid) tC++; else if (v < mid) bC++ })
+          overallBoxRef.current = { topBoxPct: Math.round(tC / allRv.length * 100), bottomBoxPct: Math.round(bC / allRv.length * 100) }
+        } else { overallBoxRef.current = null }
+      } else { overallBoxRef.current = null }
       setDisplayThemes({ ...themes, themes: recounted })
       setComputing(false)
     }, 20)
@@ -1880,8 +1892,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   {t.topBoxPct != null ? (
                                     <>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                                      <span style={{ fontSize: 9, fontWeight: 700, color: '#dc2626' }}>Bottom Box {t.bottomBoxPct}%</span>
-                                      <span style={{ fontSize: 9, fontWeight: 700, color: '#059669' }}>Top Box {t.topBoxPct}%</span>
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: '#dc2626' }}>Bottom Box {t.bottomBoxPct}%{overallBoxRef.current ? <span style={{ fontWeight: 400, color: '#9ca3af' }}> ({overallBoxRef.current.bottomBoxPct}%)</span> : null}</span>
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: '#059669' }}>Top Box {t.topBoxPct}%{overallBoxRef.current ? <span style={{ fontWeight: 400, color: '#9ca3af' }}> ({overallBoxRef.current.topBoxPct}%)</span> : null}</span>
                                     </div>
                                     <div style={{ height: 6, borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
                                       {(t.bottomBoxPct || 0) > 0 && <div style={{ height: '100%', width: t.bottomBoxPct + '%', background: '#dc2626', transition: 'width .6s ease' }} />}
