@@ -357,6 +357,41 @@ export async function getSearchVolumes(keywords: string[]): Promise<SearchVolume
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Google Organic SERP — search the web for a person/org/topic
+// ---------------------------------------------------------------------------
+
+export interface SerpResult {
+  url: string
+  title: string
+  description: string
+}
+
+/** Search Google for a query and return top organic results (URLs + snippets). */
+export async function searchGoogle(query: string, depth: number = 10): Promise<SerpResult[]> {
+  const data = await post('/serp/google/organic/live/advanced', [{
+    keyword: query,
+    location_code: 2840, // US
+    language_code: 'en',
+    device: 'desktop',
+    depth,
+  }])
+
+  const items = data?.tasks?.[0]?.result?.[0]?.items || []
+  const results: SerpResult[] = []
+  for (const item of items) {
+    if (item.type === 'organic' && item.url) {
+      results.push({
+        url: item.url,
+        title: item.title || '',
+        description: item.description || '',
+      })
+    }
+  }
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

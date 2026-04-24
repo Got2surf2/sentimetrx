@@ -115,6 +115,9 @@ function BotCreatorInner() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(!!editId)
+  const [researchQuery, setResearchQuery] = useState('')
+  const [researching, setResearching] = useState(false)
+  const [researchSources, setResearchSources] = useState<string[]>([])
 
   // Load existing bot if editing
   useEffect(function() {
@@ -138,6 +141,29 @@ function BotCreatorInner() {
 
   function updateConfig(key: keyof BotConfig, value: string) {
     setConfig(function(prev) { return { ...prev, [key]: value } })
+  }
+
+  async function runResearch() {
+    if (!researchQuery.trim()) return
+    setResearching(true)
+    setError('')
+    setResearchSources([])
+    try {
+      var res = await fetch('/api/bots/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: researchQuery.trim() }),
+      })
+      var data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Research failed')
+      setKnowledgeBase(function(prev) {
+        return (prev ? prev + '\n\n' : '') + '--- RESEARCH: ' + researchQuery.trim() + ' ---\n' + data.knowledge
+      })
+      setResearchSources(data.sources || [])
+    } catch (err: any) {
+      setError(err.message || 'Research failed')
+    }
+    setResearching(false)
   }
 
   async function fetchTrainingContent() {
@@ -285,6 +311,46 @@ function BotCreatorInner() {
               rows={8}
               style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical', fontFamily: 'monospace' }}
             />
+          </Section>
+
+          <Section title="Research">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Enter a person, organization, or topic to automatically search the web, read top results, and build a summarized knowledge base.</p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
+              <label style={{ flex: 1 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Search query</span>
+                <input
+                  type="text"
+                  value={researchQuery}
+                  onChange={function(e) { setResearchQuery(e.target.value) }}
+                  onKeyDown={function(e) { if (e.key === 'Enter' && !researching) runResearch() }}
+                  placeholder="e.g., Alex Vindman, ACLU, Tesla Cybertruck"
+                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none' }}
+                />
+              </label>
+              <button
+                onClick={runResearch}
+                disabled={researching || !researchQuery.trim()}
+                style={{
+                  padding: '8px 20px', borderRadius: 16, border: 'none',
+                  background: researching ? '#9ca3af' : HERMES, color: 'white',
+                  fontSize: 12, fontWeight: 600, cursor: researching ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap', height: 36,
+                }}>
+                {researching ? 'Researching...' : 'Research'}
+              </button>
+            </div>
+            {researching && (
+              <div style={{ fontSize: 11, color: '#6b7280', padding: '8px 0' }}>
+                Searching the web, fetching pages, and summarizing — this may take 15-30 seconds...
+              </div>
+            )}
+            {researchSources.length > 0 && (
+              <div style={{ fontSize: 11, color: '#059669', marginBottom: 8 }}>
+                Researched {researchSources.length} source{researchSources.length !== 1 ? 's' : ''}: {researchSources.map(function(u) {
+                  try { return new URL(u).hostname } catch { return u }
+                }).join(', ')}
+              </div>
+            )}
           </Section>
 
           <Section title="Training content">
