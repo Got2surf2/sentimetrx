@@ -11,6 +11,7 @@ interface Props {
   studyName:  string
   botEmoji:   string
   botName:    string
+  studyConfig?: any
   logoUrl?:   string
   orgName?:   string
   isAdmin?:   boolean
@@ -43,7 +44,7 @@ const defaultFrom = () => {
 }
 const defaultTo = () => new Date().toISOString().slice(0, 10)
 
-export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botName, logoUrl='', orgName='', isAdmin=false, analyzeEnabled=false, userEmail='', fullName='' }: Props) {
+export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botName, studyConfig={}, logoUrl='', orgName='', isAdmin=false, analyzeEnabled=false, userEmail='', fullName='' }: Props) {
   const [from, setFrom] = useState(defaultFrom())
   const [to,   setTo]   = useState(defaultTo())
 
@@ -107,8 +108,8 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
             {/* Summary stats */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
               <StatCard label="Responses"    value={summary.total} />
-              <StatCard label="Avg NPS"      value={summary.total > 0 ? summary.avgNps : '—'} />
-              <StatCard label="Avg Exp."     value={summary.total > 0 ? summary.avgExp : '—'} />
+              <StatCard label={'Avg ' + (studyConfig?.npsLabel || 'NPS')}   value={summary.total > 0 ? summary.avgNps : '—'} />
+              <StatCard label={'Avg ' + (studyConfig?.experienceRatingLabel || 'Exp.')} value={summary.total > 0 ? summary.avgExp : '—'} />
               <StatCard label="Positive"    value={summary.total > 0 ? Math.round(summary.promoters  / summary.total * 100) + '%' : '—'} color="text-green-400" />
               <StatCard label="Neutral"     value={summary.total > 0 ? Math.round(summary.passives   / summary.total * 100) + '%' : '—'} color="text-yellow-400" />
               <StatCard label="Negative"   value={summary.total > 0 ? Math.round(summary.detractors / summary.total * 100) + '%' : '—'} color="text-red-400" />
@@ -124,8 +125,8 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
 
                 {/* NPS Trend — takes 2 columns */}
                 <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5">
-                  <h2 className="font-semibold text-white mb-1 text-sm">NPS Trend</h2>
-                  <p className="text-gray-400 text-xs mb-4">Average NPS score per day</p>
+                  <h2 className="font-semibold text-gray-800 mb-1 text-sm">{studyConfig?.npsLabel || 'NPS'} Trend</h2>
+                  <p className="text-gray-400 text-xs mb-4">Average {studyConfig?.npsLabel || 'NPS'} score per day</p>
                   {npsTrend.length < 2 ? (
                     <div className="h-40 flex items-center justify-center text-gray-400 text-xs">Not enough data points for a trend</div>
                   ) : (
@@ -307,7 +308,7 @@ function SentimentDonut({ summary }: { summary: Summary }) {
   )
 }
 
-function StatCard({ label, value, color = 'text-white' }: { label: string; value: string | number; color?: string }) {
+function StatCard({ label, value, color = 'text-gray-800' }: { label: string; value: string | number; color?: string }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className={'text-xl font-bold ' + color}>{value}</div>

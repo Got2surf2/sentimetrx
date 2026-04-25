@@ -1375,10 +1375,17 @@ function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fie
         rect(slide, pptx, cx + cardW - sw - 0.08, cy + 0.12, sw, 0.22, themeSentBg(sent), 0.5, themeSentFg(sent))
         slide.addText(sent.charAt(0).toUpperCase() + sent.slice(1), { x: cx + cardW - sw - 0.08, y: cy + 0.12, w: sw, h: 0.22, fontSize: 7.5, bold: true, color: themeSentFg(sent), align: 'center', valign: 'middle' })
       }
-      const nameH = cardH <= 2.0 ? 0.30 : 0.40
-      slide.addText(t.name || '', { x: cx + 0.14, y: cy + 0.14, w: cardW - (sent ? 1.0 : 0.28), h: nameH, fontSize: cardH <= 2.0 ? 10 : 12, bold: true, color: DN.navy, valign: 'top', wrap: true, autoFit: true })
+      const nameW = cardW - (sent ? 1.0 : 0.28)
+      const nameFontSize = cardH <= 2.0 ? 10 : 12
+      // Estimate title lines: ~7 chars per inch at 12pt, ~8 at 10pt
+      const charsPerLine = Math.floor(nameW * (nameFontSize <= 10 ? 8 : 7))
+      const titleLines = Math.ceil((t.name || '').length / Math.max(charsPerLine, 1))
+      const lineH = nameFontSize <= 10 ? 0.16 : 0.19
+      const nameH = Math.max(cardH <= 2.0 ? 0.30 : 0.40, titleLines * lineH)
+      slide.addText(t.name || '', { x: cx + 0.14, y: cy + 0.14, w: nameW, h: nameH, fontSize: nameFontSize, bold: true, color: DN.navy, valign: 'top', wrap: true, autoFit: true })
       const descY = cy + 0.14 + nameH + 0.04
-      const descH = cardH <= 2.0 ? 0.40 : 0.58
+      const descMaxH = cardH <= 2.0 ? 0.40 : 0.58
+      const descH = Math.min(descMaxH, Math.max(0.20, cy + cardH - 1.0 - descY))
       if (t.description) slide.addText(t.description, { x: cx + 0.14, y: descY, w: cardW - 0.28, h: descH, fontSize: 8, color: DN.slateDark, italic: true, valign: 'top', wrap: true, lineSpacingMultiple: 1.3, autoFit: true })
       const keywords: string[] = (t.keywords || []).slice(0, 3)
       const kwY = descY + descH + 0.04; let kwX = cx + 0.14

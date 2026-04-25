@@ -12,7 +12,7 @@ export default async function AnalyticsPage({ params }: Props) {
   if (!user) redirect('/login')
 
   const [{ data: study }, { data: userData }] = await Promise.all([
-    supabase.from('studies').select('id, name, bot_name, bot_emoji, status, visibility, created_by').eq('id', params.id).single(),
+    supabase.from('studies').select('id, name, bot_name, bot_emoji, status, visibility, created_by, config').eq('id', params.id).single(),
     supabase.from('users').select('full_name, organizations(is_admin_org, logo_url, name, features)').eq('id', user.id).single(),
   ])
 
@@ -27,6 +27,7 @@ export default async function AnalyticsPage({ params }: Props) {
       studyName={study.name}
       botEmoji={study.bot_emoji}
       botName={study.bot_name}
+      studyConfig={(study as any).config || {}}
       logoUrl={orgData?.logo_url   || ''}
       orgName={orgData?.name       || ''}
       isAdmin={!!orgData?.is_admin_org}
