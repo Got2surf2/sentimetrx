@@ -83,14 +83,13 @@ export async function POST(_req: Request, { params }: Params) {
     })
   }
 
-  // Fetch responses — only completed, newer than last sync
+  // Fetch all responses (complete + partial), newer than last sync
   const lastSynced = (!created && existing?.[0]?.last_synced_at) || null
   let respQuery = service
     .from('responses')
-    .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload')
+    .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
     .eq('study_id', studyId)
-    .not('completed_at', 'is', null)
-    .order('completed_at', { ascending: true })
+    .order('id', { ascending: true })
 
   if (lastSynced) {
     respQuery = respQuery.gt('completed_at', lastSynced)
@@ -104,7 +103,7 @@ export async function POST(_req: Request, { params }: Params) {
   }
 
   // Format responses as dataset rows
-  const rows = formatResponsesAsRows(responses, study.config)
+  const rows = formatResponsesAsRows(responses as Parameters<typeof formatResponsesAsRows>[0], study as Parameters<typeof formatResponsesAsRows>[1])
 
   // Get next batch index
   const { data: existingBatches } = await service
