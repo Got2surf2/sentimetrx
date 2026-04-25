@@ -33,6 +33,15 @@ export async function POST(req: Request, { params }: Params) {
 
     if (studyErr || !study) return NextResponse.json({ error: 'Linked study not found', detail: studyErr?.message }, { status: 404 })
 
+    // ?full=true: wipe all rows and re-import from scratch (for schema changes, field additions, etc.)
+    const url = new URL(req.url)
+    const fullSync = url.searchParams.get('full') === 'true'
+
+    if (fullSync) {
+      await service.from('dataset_rows_flat').delete().eq('dataset_id', params.datasetId)
+      await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
+    }
+
     // Collect existing response_ids from flat table to skip duplicates
     const existingIds = new Set<string>()
     let offset = 0

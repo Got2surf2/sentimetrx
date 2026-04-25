@@ -11,6 +11,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import LottieLoader from '@/components/ui/LottieLoader'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
@@ -58,6 +59,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const [renameVal,     setRenameVal]     = useState(dataset.name)
   const [confirmDel,    setConfirmDel]    = useState(false)
   const [syncing,       setSyncing]       = useState(false)
+  const [syncToast,     setSyncToast]     = useState('')
   const [showTransfer,  setShowTransfer]  = useState(false)
   const [transferOrgId, setTransferOrgId] = useState('')
   const [transferring,  setTransferring]  = useState(false)
@@ -82,13 +84,21 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   }
 
   async function handleSync(full = false) {
-    setSyncing(true); setMenuOpen(false)
+    setSyncing(true); setMenuOpen(false); setSyncToast('')
     try {
       const url  = '/api/datasets/' + dataset.id + '/sync' + (full ? '?full=true' : '')
       const res  = await fetch(url, { method: 'POST' })
       const data = await res.json()
-      if (!full && data.synced === 0) alert('Already up to date — no new responses.')
-      else router.refresh()
+      if (data.synced === 0) {
+        setSyncToast('Already up to date')
+        setTimeout(function() { setSyncToast('') }, 3000)
+      } else {
+        setSyncToast(data.synced + ' new response' + (data.synced !== 1 ? 's' : '') + ' synced')
+        setTimeout(function() { setSyncToast(''); router.refresh() }, 1500)
+      }
+    } catch {
+      setSyncToast('Sync failed')
+      setTimeout(function() { setSyncToast('') }, 3000)
     } finally { setSyncing(false) }
   }
 
@@ -117,6 +127,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       transition:    'box-shadow .15s, opacity .15s',
       position:      'relative' as const,
       minHeight:     220,
+      overflow:      'hidden' as const,
     }}
     onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isCollection ? '0 4px 16px rgba(14,165,233,.12)' : isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isSubstack ? '0 4px 16px rgba(225,29,72,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
     onMouseLeave={function(e) { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.05)' }}>
@@ -172,10 +183,16 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 )
               })}
               {isStudy && (
-                <button onClick={function() { handleSync() }}
-                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {syncing ? 'Syncing...' : 'Sync responses'}
-                </button>
+                <>
+                  <button onClick={function() { handleSync(false) }}
+                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Sync new responses
+                  </button>
+                  <button onClick={function() { if (window.confirm('Re-import all responses from scratch? Use this if you added new survey fields.')) handleSync(true) }}
+                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#6b7280', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Re-import all
+                  </button>
+                </>
               )}
               {isAdmin && allOrgs.length > 0 && (
                 <button onClick={function() { setShowTransfer(true); setMenuOpen(false) }}
@@ -419,6 +436,28 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
 
       {/* Click-away for menu */}
       {menuOpen && <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={function() { setMenuOpen(false); setConfirmDel(false) }} />}
+
+      {/* Syncing overlay */}
+      {syncing && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 20, borderRadius: 12 }}>
+          <LottieLoader size={64} message="" />
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 8 }}>Syncing responses...</div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {syncToast && !syncing && (
+        <div style={{
+          position: 'absolute', bottom: 60, left: '50%', transform: 'translateX(-50%)',
+          background: syncToast.includes('failed') ? '#fee2e2' : syncToast.includes('up to date') ? '#f3f4f6' : '#d1fae5',
+          color: syncToast.includes('failed') ? '#dc2626' : syncToast.includes('up to date') ? '#374151' : '#059669',
+          border: '1px solid ' + (syncToast.includes('failed') ? '#fecaca' : syncToast.includes('up to date') ? '#e5e7eb' : '#a7f3d0'),
+          padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+          boxShadow: '0 2px 8px rgba(0,0,0,.1)', zIndex: 20,
+        }}>
+          {syncToast}
+        </div>
+      )}
     </div>
   )
 }
