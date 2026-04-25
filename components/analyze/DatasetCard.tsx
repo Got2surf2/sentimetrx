@@ -172,16 +172,10 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 )
               })}
               {isStudy && (
-                <>
-                  <button onClick={function() { handleSync(false) }}
-                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    {syncing ? 'Syncing...' : 'Sync new responses'}
-                  </button>
-                  <button onClick={function() { if (window.confirm('Re-import all responses from scratch? This will replace all existing rows.')) handleSync(true) }}
-                    style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    {syncing ? 'Syncing...' : 'Re-import all responses'}
-                  </button>
-                </>
+                <button onClick={function() { handleSync() }}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {syncing ? 'Syncing...' : 'Sync responses'}
+                </button>
               )}
               {isAdmin && allOrgs.length > 0 && (
                 <button onClick={function() { setShowTransfer(true); setMenuOpen(false) }}
