@@ -82,10 +82,11 @@ function lbl(slide: any, text: string, x: number, y: number, w: number, color = 
   slide.addText(text, { x, y, w, h: 0.22, fontSize: 7.5, bold: true, color, charSpacing: 1.2, textTransform: 'uppercase' })
 }
 
-// Trim to a sentence boundary. Always enforced — even if text is shorter than max.
+// Trim to a sentence boundary — only when text exceeds max length.
 function trimNatural(s: string, max: number): string {
   if (!s) return s
-  const candidate = s.length > max ? s.slice(0, max) : s
+  if (s.length <= max) return s
+  const candidate = s.slice(0, max)
   // Find the last sentence-ending punctuation
   const lastEnd = Math.max(
     candidate.lastIndexOf('.'),
