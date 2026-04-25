@@ -1,14 +1,11 @@
 // app/api/datasets/[datasetId]/sync/route.ts
-// POST -- sync new study responses into an existing study-linked dataset,
-//         then trigger analytics recompute.
-// Always does a full resync: delete existing rows, re-import all responses.
-// This prevents duplicates and ensures counts match.
+// POST -- incremental sync: only insert responses not already in the dataset.
+// Deduplicates by response_id stored inside each flat row's data field.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
-import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
-import { ROWS_PER_BATCH } from '@/lib/constants'
+import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic  = 'force-dynamic'
 export const maxDuration = 30
@@ -36,11 +33,26 @@ export async function POST(req: Request, { params }: Params) {
 
     if (studyErr || !study) return NextResponse.json({ error: 'Linked study not found', detail: studyErr?.message }, { status: 404 })
 
-    // Always do a clean resync: delete existing rows first to prevent duplicates
-    await service.from('dataset_rows_flat').delete().eq('dataset_id', params.datasetId)
-    await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
+    // Collect existing response_ids from flat table to skip duplicates
+    const existingIds = new Set<string>()
+    let offset = 0
+    const PAGE = 1000
+    while (true) {
+      const { data: batch } = await service
+        .from('dataset_rows_flat')
+        .select('data')
+        .eq('dataset_id', params.datasetId)
+        .range(offset, offset + PAGE - 1)
+      if (!batch || batch.length === 0) break
+      for (const row of batch) {
+        const rid = (row.data as any)?.response_id
+        if (rid) existingIds.add(String(rid))
+      }
+      if (batch.length < PAGE) break
+      offset += PAGE
+    }
 
-    // Fetch ALL responses for this study
+    // Fetch all responses from the study
     const { data: responses, error: respErr } = await service
       .from('responses')
       .select('id, completed_at, nps_score, experience_score, sentiment, duration_sec, payload, status')
@@ -49,36 +61,46 @@ export async function POST(req: Request, { params }: Params) {
 
     if (respErr) return NextResponse.json({ error: 'Failed to query responses', detail: respErr.message }, { status: 500 })
 
-    const allResponses = responses || []
+    // Filter to only new responses
+    const newResponses = (responses || []).filter(r => !existingIds.has(String(r.id)))
 
-    if (allResponses.length === 0) {
-      await service.from('datasets').update({ row_count: 0, last_synced_at: new Date().toISOString() }).eq('id', params.datasetId)
-      return NextResponse.json({ synced: 0, total: 0, dataset_id: dataset.id })
+    if (newResponses.length === 0) {
+      return NextResponse.json({ synced: 0, total: existingIds.size, dataset_id: dataset.id })
     }
 
-    const rows = formatResponsesAsRows(allResponses as Parameters<typeof formatResponsesAsRows>[0], study as Parameters<typeof formatResponsesAsRows>[1])
+    const newRows = formatResponsesAsRows(newResponses as Parameters<typeof formatResponsesAsRows>[0], study as Parameters<typeof formatResponsesAsRows>[1])
     const syncTimestamp = new Date().toISOString()
 
-    // Insert into batched table
-    const { error: batchErr } = await service
-      .from('dataset_rows')
-      .insert({ dataset_id: dataset.id, rows, row_count: rows.length, batch_index: 0, source_ref: 'sync:' + syncTimestamp })
+    // Determine next row_index (after existing rows)
+    const startIndex = existingIds.size
 
-    if (batchErr) return NextResponse.json({ error: 'Failed to insert rows', detail: batchErr.message }, { status: 500 })
-
-    // Insert into flat table (paginated to avoid payload limits)
+    // Insert new rows into flat table
     const CHUNK = 500
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK).map(function(r: Record<string, unknown>, j: number) {
-        return { dataset_id: dataset.id, row_index: i + j, data: r }
+    for (let i = 0; i < newRows.length; i += CHUNK) {
+      const chunk = newRows.slice(i, i + CHUNK).map(function(r: Record<string, unknown>, j: number) {
+        return { dataset_id: dataset.id, row_index: startIndex + i + j, data: r }
       })
       await service.from('dataset_rows_flat').insert(chunk)
     }
 
+    // Insert into batched table
+    const { data: lastBatch } = await service
+      .from('dataset_rows')
+      .select('batch_index')
+      .eq('dataset_id', dataset.id)
+      .order('batch_index', { ascending: false })
+      .limit(1)
+
+    const nextBatch = lastBatch && lastBatch.length > 0 ? lastBatch[0].batch_index + 1 : 0
+    await service
+      .from('dataset_rows')
+      .insert({ dataset_id: dataset.id, rows: newRows, row_count: newRows.length, batch_index: nextBatch, source_ref: 'sync:' + syncTimestamp })
+
     // Update dataset metadata
+    const newTotal = existingIds.size + newRows.length
     await service
       .from('datasets')
-      .update({ row_count: rows.length, last_synced_at: syncTimestamp, updated_at: syncTimestamp })
+      .update({ row_count: newTotal, last_synced_at: syncTimestamp, updated_at: syncTimestamp })
       .eq('id', dataset.id)
 
     // Re-compute analytics
@@ -100,7 +122,7 @@ export async function POST(req: Request, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ synced: rows.length, total: rows.length, dataset_id: dataset.id })
+    return NextResponse.json({ synced: newRows.length, total: newTotal, dataset_id: dataset.id })
   } catch (err: any) {
     console.error('[sync] unhandled error:', err)
     return NextResponse.json({ error: 'Internal sync error', detail: err?.message || String(err) }, { status: 500 })
