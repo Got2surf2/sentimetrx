@@ -100,16 +100,49 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       const res  = await fetch(url, { method: 'POST' })
       const data = await res.json()
       if (data.synced === 0) {
+        setSyncing(false)
         setSyncToast('Already up to date')
         setTimeout(function() { setSyncToast('') }, 3000)
       } else {
         setSyncToast(data.synced + ' new response' + (data.synced !== 1 ? 's' : '') + ' synced')
-        setTimeout(function() { setSyncToast(''); router.refresh() }, 1500)
+        // Keep overlay visible briefly, then refresh page to update all counts (including collections)
+        setTimeout(function() { setSyncing(false); setSyncToast(''); router.refresh() }, 1200)
       }
     } catch {
+      setSyncing(false)
       setSyncToast('Sync failed')
       setTimeout(function() { setSyncToast('') }, 3000)
-    } finally { setSyncing(false) }
+    }
+  }
+
+  async function handleSourceSync() {
+    setSyncing(true); setMenuOpen(false); setSyncToast('')
+    try {
+      if (isReviews) {
+        var srcRes = await fetch('/api/review-sources')
+        var srcData = await srcRes.json()
+        var source = (srcData.sources || []).find(function(s: any) { return s.dataset_id === dataset.id })
+        if (!source) { setSyncToast('No review source found'); setSyncing(false); setTimeout(function() { setSyncToast('') }, 3000); return }
+        var res = await fetch('/api/review-sources/' + source.id + '/sync', { method: 'POST' })
+        var data = await res.json()
+        if ((data.synced || 0) === 0 && !data.pending_locations?.length) {
+          setSyncing(false); setSyncToast('Already up to date'); setTimeout(function() { setSyncToast('') }, 3000)
+        } else {
+          setSyncToast((data.synced || 0) + ' review' + ((data.synced || 0) !== 1 ? 's' : '') + ' synced')
+          setTimeout(function() { setSyncing(false); setSyncToast(''); router.refresh() }, 1200)
+        }
+      } else if (isTownHall && dataset.description?.startsWith('th:')) {
+        var sessionId = dataset.description.slice(3)
+        var res2 = await fetch('/api/townhall/sessions/' + sessionId + '/analyze', { method: 'POST' })
+        var data2 = await res2.json()
+        if ((data2.synced || 0) === 0 && !data2.created) {
+          setSyncing(false); setSyncToast('Already up to date'); setTimeout(function() { setSyncToast('') }, 3000)
+        } else {
+          setSyncToast((data2.synced || 0) + ' response' + ((data2.synced || 0) !== 1 ? 's' : '') + ' synced')
+          setTimeout(function() { setSyncing(false); setSyncToast(''); router.refresh() }, 1200)
+        }
+      }
+    } catch { setSyncing(false); setSyncToast('Sync failed'); setTimeout(function() { setSyncToast('') }, 3000) }
   }
 
   function handleRenameSubmit() {
@@ -224,6 +257,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 <button onClick={function() { setShowTransfer(true); setMenuOpen(false) }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Move to org
+                </button>
+              )}
+              {(isReviews || isTownHall) && (
+                <button onClick={function() { handleSourceSync() }}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Sync {isReviews ? 'reviews' : 'responses'}
                 </button>
               )}
               {collectionInfo && (
