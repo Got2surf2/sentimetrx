@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   fieldMap['_collection_label'] = {
     field: '_collection_label',
     type: 'categorical',
-    label: 'Collection Label',
+    label: 'Source Dataset',
     section: 'core',
   }
 

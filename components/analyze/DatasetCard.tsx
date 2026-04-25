@@ -9,7 +9,7 @@
 //   4. Owner row
 //   5. Analyze button (always at bottom via mt-auto)
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
@@ -61,8 +61,18 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const [syncing,       setSyncing]       = useState(false)
   const [syncToast,     setSyncToast]     = useState('')
   const [showTransfer,  setShowTransfer]  = useState(false)
+  const [collectionInfo, setCollectionInfo] = useState<{ collectionDatasetId: string; collectionName: string } | null>(null)
   const [transferOrgId, setTransferOrgId] = useState('')
   const [transferring,  setTransferring]  = useState(false)
+
+  // Check if this dataset belongs to a collection (for warning on delete)
+  useEffect(function() {
+    if (dataset.source === 'collection') return
+    fetch('/api/datasets/' + dataset.id + '/collection-check')
+      .then(function(r) { return r.json() })
+      .then(function(d) { if (d.collection_dataset_id) setCollectionInfo({ collectionDatasetId: d.collection_dataset_id, collectionName: d.collection_name }) })
+      .catch(function() {})
+  }, [dataset.id, dataset.source])
 
   const isStudy      = dataset.source === 'study'
   const isReviews    = dataset.source === 'google_reviews'
@@ -108,8 +118,24 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   }
 
   function handleDelete() {
-    if (confirmDel) { onDelete(dataset.id); setMenuOpen(false) }
+    if (confirmDel) {
+      if (collectionInfo) {
+        var choice = window.confirm('This dataset belongs to collection "' + collectionInfo.collectionName + '".\n\nClick OK to delete it (removes from collection too).\nClick Cancel to keep it.')
+        if (!choice) { setConfirmDel(false); setMenuOpen(false); return }
+      }
+      onDelete(dataset.id); setMenuOpen(false)
+    }
     else setConfirmDel(true)
+  }
+
+  async function handleRemoveFromCollection() {
+    if (!collectionInfo) return
+    setMenuOpen(false)
+    var ok = window.confirm('Remove "' + dataset.name + '" from collection "' + collectionInfo.collectionName + '"? The dataset itself will not be deleted.')
+    if (!ok) return
+    await fetch('/api/collections/' + collectionInfo.collectionDatasetId + '?member=' + dataset.id, { method: 'DELETE' })
+    setCollectionInfo(null)
+    router.refresh()
   }
 
   return (
@@ -198,6 +224,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 <button onClick={function() { setShowTransfer(true); setMenuOpen(false) }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Move to org
+                </button>
+              )}
+              {collectionInfo && (
+                <button onClick={handleRemoveFromCollection}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#d97706', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Remove from collection
                 </button>
               )}
               <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />

@@ -61,3 +61,52 @@ export async function GET(_req: Request, { params }: Props) {
 
   return NextResponse.json({ members: enriched })
 }
+
+// DELETE /api/collections/[id]?member=<datasetId> — remove a member from collection
+// If removing the last member, auto-deletes the collection
+export async function DELETE(req: Request, { params }: Props) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  const orgId = userData?.org_id
+  if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+
+  const url = new URL(req.url)
+  const memberDatasetId = url.searchParams.get('member')
+  if (!memberDatasetId) return NextResponse.json({ error: 'member query param required' }, { status: 400 })
+
+  const service = createServiceRoleClient()
+
+  const { data: collection } = await service
+    .from('collections')
+    .select('id, dataset_id')
+    .eq('dataset_id', params.id)
+    .eq('org_id', orgId)
+    .single()
+
+  if (!collection) return NextResponse.json({ error: 'Collection not found' }, { status: 404 })
+
+  // Remove the member
+  await service.from('collection_members').delete()
+    .eq('collection_id', collection.id)
+    .eq('dataset_id', memberDatasetId)
+
+  // Check remaining members
+  const { count } = await service
+    .from('collection_members')
+    .select('id', { count: 'exact', head: true })
+    .eq('collection_id', collection.id)
+
+  if ((count || 0) === 0) {
+    // Last member removed — delete the collection dataset
+    try { await service.from('dataset_rows_flat').delete().eq('dataset_id', collection.dataset_id) } catch {}
+    await service.from('dataset_rows').delete().eq('dataset_id', collection.dataset_id)
+    await service.from('dataset_state').delete().eq('dataset_id', collection.dataset_id)
+    await service.from('datasets').delete().eq('id', collection.dataset_id)
+    return NextResponse.json({ ok: true, deleted_collection: true })
+  }
+
+  return NextResponse.json({ ok: true, remaining_members: count })
+}

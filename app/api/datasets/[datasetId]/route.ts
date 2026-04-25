@@ -149,12 +149,40 @@ export async function DELETE(_req: Request, { params }: Params) {
   await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
   await service.from('dataset_state').delete().eq('dataset_id', params.datasetId)
 
+  // Before deleting: find collections this dataset belongs to (as a member)
+  const { data: memberships } = await service
+    .from('collection_members')
+    .select('collection_id, collections(dataset_id)')
+    .eq('dataset_id', params.datasetId)
+
   const { error: delErr } = await service
     .from('datasets')
     .delete()
     .eq('id', params.datasetId)
 
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+
+  // Auto-delete empty collections: if removing this member left a collection with 0 members, delete it
+  if (memberships && memberships.length > 0) {
+    for (const m of memberships) {
+      const colId = m.collection_id
+      const { count } = await service
+        .from('collection_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('collection_id', colId)
+      if ((count || 0) === 0) {
+        // Collection is empty — delete the collection dataset (cascades to collection record)
+        const colDatasetId = (m.collections as any)?.dataset_id
+        if (colDatasetId) {
+          try { await service.from('dataset_rows_flat').delete().eq('dataset_id', colDatasetId) } catch {}
+          await service.from('dataset_rows').delete().eq('dataset_id', colDatasetId)
+          await service.from('dataset_state').delete().eq('dataset_id', colDatasetId)
+          await service.from('datasets').delete().eq('id', colDatasetId)
+        }
+      }
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }
 
