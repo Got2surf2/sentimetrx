@@ -32,6 +32,7 @@ export default function BotClient({ bot }: { bot: Bot }) {
     fontFamily: c.fontFamily,
     suggestions: c.suggestions || [],
     initialMessage: c.initialMessage || 'Hi! How can I help you today?',
+    askName: (c as any).askName !== 'false',
   }
 
   return <ChatBot config={config} />

@@ -270,6 +270,18 @@ function BotCreatorInner() {
             <Field label="Subtitle" value={config.subtitle} onChange={function(v) { updateConfig('subtitle', v) }} placeholder="e.g., Know Your Rights Assistant" />
             <Field label="Avatar letter or emoji" value={config.avatarLetter} onChange={function(v) { updateConfig('avatarLetter', v) }} placeholder="e.g., A or 🤖" />
             <Field label="Initial message" value={config.initialMessage} onChange={function(v) { updateConfig('initialMessage', v) }} placeholder="Hi! How can I help you?" />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={(config as any).askName !== false}
+                onChange={function(e) { updateConfig('askName' as any, e.target.checked ? 'true' : 'false') }}
+                style={{ width: 16, height: 16, accentColor: HERMES }}
+              />
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Ask user's name</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Prompts "What should I call you?" before chat starts. Names are checked for inappropriate content.</p>
+              </div>
+            </label>
             <label style={{ display: 'block', marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Language</span>
               <select

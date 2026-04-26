@@ -34,6 +34,7 @@ export interface ChatBotConfig {
   fontFamily?: string
   suggestions: string[]
   initialMessage: string
+  askName?: boolean
 }
 
 // Simple name validation — block profanity/slurs without importing the full content guard (client-side)
@@ -50,21 +51,23 @@ function isCleanName(name: string): boolean {
 }
 
 export default function ChatBot({ config }: { config: ChatBotConfig }) {
+  const askName = config.askName !== false // default ON
   const INITIAL_MESSAGE: Message = { role: 'assistant', content: config.initialMessage }
   const NAME_ASK: Message = { role: 'assistant', content: 'Before we get started — what should I call you?' }
-  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE, NAME_ASK])
+  const initMessages = askName ? [INITIAL_MESSAGE, NAME_ASK] : [INITIAL_MESSAGE]
+  const [messages, setMessages] = useState<Message[]>(initMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
   const [showVerboseAuth, setShowVerboseAuth] = useState(false)
-  const [userName, setUserName] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string | null>(askName ? null : '_skip')
   const sessionId = useMemo(() => genSessionId(), [])
 
   const resetChat = () => {
-    setMessages([INITIAL_MESSAGE, NAME_ASK])
+    setMessages(initMessages)
     setInput('')
     setLoading(false)
-    setUserName(null)
+    setUserName(askName ? null : '_skip')
   }
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -86,8 +89,8 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     if (cmd === 'bypass') { setInput(''); setDebugMode(true); return }
     if (cmd === 'auth') { setInput(''); setShowVerboseAuth(true); return }
 
-    // Name capture step — before first real chat message
-    if (!userName) {
+    // Name capture step — before first real chat message (only if askName is on)
+    if (userName === null) {
       const name = text.trim()
       setMessages(prev => [...prev, { role: 'user', content: name }])
       setInput('')
@@ -121,7 +124,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           messages: apiMessages,
           session_id: sessionId,
           debug: debugMode || undefined,
-          user_name: userName || undefined,
+          user_name: userName && userName !== '_skip' ? userName : undefined,
         }),
       })
       const data = await res.json()
