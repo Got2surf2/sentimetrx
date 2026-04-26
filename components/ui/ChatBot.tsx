@@ -144,19 +144,30 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     }
   }
 
-  const formatHtml = (content: string) =>
-    content
+  const formatHtml = (content: string) => {
+    // Step 1: Convert markdown links [text](url) first — replace with placeholder tokens
+    const mdLinks: string[] = []
+    let out = content.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, text, url) => {
+      mdLinks.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">' + text + '</a>')
+      return '\x00ML' + (mdLinks.length - 1) + '\x00'
+    })
+    // Step 2: Format the rest
+    out = out
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br/>')
       .replace(/- /g, '&bull; ')
-      // Markdown links: [text](url)
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">$1</a>')
-      // Full URLs with protocol
-      .replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">$1</a>')
+      // Full URLs with protocol (won't match placeholders)
+      .replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">$1</a>')
       // Email addresses
       .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color:inherit;text-decoration:underline">$1</a>')
-      // Bare domains (no protocol) — expanded TLD list
-      .replace(/(?<![/@\w".])((?:[a-zA-Z0-9-]+\.)+(?:com|org|net|ai|io|gov|edu|us|co|info|biz|mil|state\.[a-z]{2})(?:\/[^\s<)]*)?)/g, '<a href="https://$1" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">$1</a>')
+      // Bare domains — expanded TLD list
+      .replace(/(?<![/@\w".])((?:[a-zA-Z0-9-]+\.)+(?:com|org|net|ai|io|gov|edu|us|co|info|biz|mil)(?:\/[^\s<)]*)?)/g, '<a href="https://$1" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">$1</a>')
+    // Step 3: Restore markdown link placeholders
+    for (let i = 0; i < mdLinks.length; i++) {
+      out = out.replace('\x00ML' + i + '\x00', mdLinks[i])
+    }
+    return out
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily }}>
