@@ -36,19 +36,35 @@ export interface ChatBotConfig {
   initialMessage: string
 }
 
+// Simple name validation — block profanity/slurs without importing the full content guard (client-side)
+const BAD_NAME_PATTERNS = [
+  /\b(f+u+c+k|c+u+n+t|shit|bitch|asshole|bastard|dick|cock|pussy|damn|hell|crap)\w*/i,
+  /\b(n+i+g+\w*|f+a+g+\w*|r+e+t+a+r+d\w*|sp[i1]c[ks]?|ch[i1]nk|k[i1]ke)\b/i,
+  /\b(kill|murder|rape|bomb)\b/i,
+]
+
+function isCleanName(name: string): boolean {
+  const trimmed = name.trim()
+  if (trimmed.length < 1 || trimmed.length > 40) return false
+  return !BAD_NAME_PATTERNS.some(p => p.test(trimmed))
+}
+
 export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const INITIAL_MESSAGE: Message = { role: 'assistant', content: config.initialMessage }
-  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
+  const NAME_ASK: Message = { role: 'assistant', content: 'Before we get started — what should I call you?' }
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE, NAME_ASK])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
   const [showVerboseAuth, setShowVerboseAuth] = useState(false)
+  const [userName, setUserName] = useState<string | null>(null)
   const sessionId = useMemo(() => genSessionId(), [])
 
   const resetChat = () => {
-    setMessages([INITIAL_MESSAGE])
+    setMessages([INITIAL_MESSAGE, NAME_ASK])
     setInput('')
     setLoading(false)
+    setUserName(null)
   }
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -70,6 +86,22 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     if (cmd === 'bypass') { setInput(''); setDebugMode(true); return }
     if (cmd === 'auth') { setInput(''); setShowVerboseAuth(true); return }
 
+    // Name capture step — before first real chat message
+    if (!userName) {
+      const name = text.trim()
+      setMessages(prev => [...prev, { role: 'user', content: name }])
+      setInput('')
+      if (!isCleanName(name)) {
+        setMessages(prev => [...prev, { role: 'assistant', content: "Let's try a different name — what would you like me to call you?" }])
+      } else {
+        const cleanName = name.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+        setUserName(cleanName)
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Great to meet you, ' + cleanName + '! How can I help you today?' }])
+      }
+      setTimeout(() => inputRef.current?.focus(), 100)
+      return
+    }
+
     const userMsg: Message = { role: 'user', content: text.trim() }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
@@ -77,13 +109,19 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setLoading(true)
 
     try {
+      // Filter out the name-ask exchange from API messages to keep context clean
+      const apiMessages = newMessages
+        .filter(m => m.content !== NAME_ASK.content)
+        .map(m => ({ role: m.role, content: m.content }))
+
       const res = await fetch(config.apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          messages: apiMessages,
           session_id: sessionId,
           debug: debugMode || undefined,
+          user_name: userName || undefined,
         }),
       })
       const data = await res.json()
