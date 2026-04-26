@@ -112,6 +112,7 @@ export async function GET(req: NextRequest) {
     primary?: { field: string; label: string; values: string[] }
     inViewValues?: string[]
     dateRange?: { field: string; label: string; min: string; max: string }
+    includeThemes?: boolean
   }
   if (!meta?.dataset_id) return NextResponse.json({ error: 'Invalid analytics metadata' }, { status: 400 })
 
@@ -212,7 +213,7 @@ export async function GET(req: NextRequest) {
   const totalAll = allRows.length
 
   const themeResults: {
-    name: string; description: string; sentiment: string
+    name: string; description: string; sentiment: string; keywords: string[]
     filtered: { count: number; rate: number }
     benchmark: { count: number; rate: number }
     outlier: { z: number; p: number; significant: boolean; direction: string; p1: number; p2: number } | null
@@ -229,6 +230,7 @@ export async function GET(req: NextRequest) {
       name: theme.name,
       description: theme.description || '',
       sentiment: theme.sentiment || 'neutral',
+      keywords: (theme.keywords || []).slice(0, 5),
       filtered: { count: fCount, rate: totalFiltered > 0 ? fCount / totalFiltered : 0 },
       benchmark: { count: bCount, rate: totalBenchmark > 0 ? bCount / totalBenchmark : 0 },
       outlier,
@@ -262,6 +264,7 @@ export async function GET(req: NextRequest) {
     primarySummary: primarySummary,
     numeric: numericResults,
     themes: themeResults,
+    includeThemes: !!meta.includeThemes,
     dateRange: meta.dateRange || null,
     expires_at: link.expires_at,
   })

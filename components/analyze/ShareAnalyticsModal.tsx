@@ -53,6 +53,9 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
   // Date range
   var [selectedDateField, setSelectedDateField] = useState('')
 
+  // Theme cards toggle
+  var [includeThemes, setIncludeThemes] = useState(false)
+
   var hasFilters = Object.keys(activeFilters).length > 0
   var aliases: Record<string, string> = {}
   allFields.forEach(function(f) { aliases[f.field] = f.label })
@@ -130,6 +133,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
             inViewValues: inViewValues,
             label: label || datasetName + ' — ' + (aliases[selectedField] || selectedField) + ': ' + (primaryValues.size === 1 ? Array.from(primaryValues)[0] : primaryValues.size + ' selected'),
             dateRange: selectedDate ? { field: selectedDate.field, label: selectedDate.label, min: fmtDate(selectedDate.dateMin!), max: fmtDate(selectedDate.dateMax!) } : undefined,
+            includeThemes: includeThemes,
           },
         }),
       })
@@ -317,6 +321,16 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
                 })}
               </div>
             </div>
+
+            {/* Include theme cards */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, cursor: 'pointer' }}>
+              <input type="checkbox" checked={includeThemes} onChange={function(e) { setIncludeThemes(e.target.checked) }}
+                style={{ width: 16, height: 16, accentColor: HERMES }} />
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Include theme cards</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Show AI-detected themes with sentiment, keywords, and percentages on the shared page</p>
+              </div>
+            </label>
 
             {createError && (
               <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, color: '#dc2626' }}>

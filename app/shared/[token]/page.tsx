@@ -849,8 +849,8 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
           </div>
         )}
 
-        {/* Theme comparison */}
-        {themes.length > 0 && (
+        {/* Theme comparison — shown when includeThemes is on, or when there's a primary comparison */}
+        {themes.length > 0 && (data.includeThemes || data.primarySummary) && (
           <div className="mb-4">
             <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Theme Analysis</h3>
             <div className="space-y-3">
@@ -874,27 +874,49 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                         </div>
                         <OutlierBadge outlier={t.outlier} />
                       </div>
-                      {t.description && <p className="text-xs text-gray-500 mb-3">{t.description}</p>}
+                      {t.description && <p className="text-xs text-gray-500 mb-2">{t.description}</p>}
+
+                      {/* Keywords */}
+                      {t.keywords && t.keywords.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {t.keywords.map((kw: string) => (
+                            <span key={kw} className="text-[10px] px-2 py-0.5 rounded-full border" style={{ borderColor: color + '40', color, background: color + '10' }}>{kw}</span>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Side-by-side bars */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">{data.label}</span>
-                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: (fPct / maxPct * 100) + '%', background: color }} />
+                      {data.primarySummary && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-3">
+                            <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">{data.label}</span>
+                            <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: (fPct / maxPct * 100) + '%', background: color }} />
+                            </div>
+                            <span className="text-xs font-bold w-16 text-right" style={{ color }}>{fPct}%</span>
+                            <span className="text-[10px] text-gray-400 w-12 text-right">({t.filtered.count})</span>
                           </div>
-                          <span className="text-xs font-bold w-16 text-right" style={{ color }}>{fPct}%</span>
-                          <span className="text-[10px] text-gray-400 w-12 text-right">({t.filtered.count})</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Benchmark</span>
-                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: (bPct / maxPct * 100) + '%', background: '#9ca3af' }} />
+                          <div className="flex items-center gap-3">
+                            <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Benchmark</span>
+                            <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: (bPct / maxPct * 100) + '%', background: '#9ca3af' }} />
+                            </div>
+                            <span className="text-xs font-bold text-gray-500 w-16 text-right">{bPct}%</span>
+                            <span className="text-[10px] text-gray-400 w-12 text-right">({t.benchmark.count})</span>
                           </div>
-                          <span className="text-xs font-bold text-gray-500 w-16 text-right">{bPct}%</span>
-                          <span className="text-[10px] text-gray-400 w-12 text-right">({t.benchmark.count})</span>
                         </div>
-                      </div>
+                      )}
+
+                      {/* Simple percentage bar when no comparison */}
+                      {!data.primarySummary && (
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: fPct + '%', background: color }} />
+                          </div>
+                          <span className="text-xs font-bold" style={{ color }}>{fPct}%</span>
+                          <span className="text-[10px] text-gray-400">({t.filtered.count})</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
