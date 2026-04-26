@@ -18,6 +18,7 @@ interface Bot {
   system_prompt: string
   knowledge_base: string
   conversation_count: number
+  last_session_at: string | null
   created_at: string
   updated_at: string
 }
@@ -35,13 +36,15 @@ export default function BotsClient({ orgId }: { orgId: string }) {
   const [error, setError] = useState('')
   const [gridCols, setGridCols] = useState(3)
 
-  useEffect(function() {
+  function fetchBots() {
     fetch('/api/bots').then(function(r) { return r.json() }).then(function(d) {
       setBots(d.bots || [])
     }).catch(function() {
       setError('Failed to load bots')
     }).finally(function() { setLoading(false) })
-  }, [])
+  }
+
+  useEffect(function() { fetchBots() }, [])
 
   async function toggleStatus(bot: Bot) {
     var next: Bot['status'] = bot.status === 'active' ? 'paused' : 'active'
@@ -95,6 +98,10 @@ export default function BotsClient({ orgId }: { orgId: string }) {
               )
             })}
           </div>
+          <button onClick={function() { fetchBots() }}
+            style={{ fontSize: 11, padding: '4px 12px', borderRadius: 16, border: '1px solid #d1d5db', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600 }}>
+            ↻ Refresh
+          </button>
           <span style={{ fontSize: 13, color: '#9ca3af' }}>{bots.length} agent{bots.length !== 1 ? 's' : ''}</span>
           <button
             onClick={function() { router.push('/bots/new') }}
@@ -193,8 +200,19 @@ export default function BotsClient({ orgId }: { orgId: string }) {
                   </div>
                 </div>
 
-                {/* Created date */}
-                <div style={{ fontSize: 10, color: '#d1d5db' }}>Created {created}</div>
+                {/* Dates */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10, color: '#d1d5db' }}>
+                  <span>Created {created}</span>
+                  {bot.last_session_at && (
+                    <span style={{ color: '#9ca3af' }}>Last chat {(function() {
+                      var ms = Date.now() - new Date(bot.last_session_at).getTime()
+                      if (ms < 60000) return 'just now'
+                      if (ms < 3600000) return Math.floor(ms / 60000) + 'm ago'
+                      if (ms < 86400000) return Math.floor(ms / 3600000) + 'h ago'
+                      return Math.floor(ms / 86400000) + 'd ago'
+                    })()}</span>
+                  )}
+                </div>
 
                 {/* Copy link */}
                 {bot.status === 'active' && (

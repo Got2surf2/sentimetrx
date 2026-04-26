@@ -100,8 +100,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       system: systemParts.join('\n'),
     })
 
-    // Increment conversation count + update last_session_at (fire-and-forget)
-    service.from('bots').update({ conversation_count: (bot as any).conversation_count + 1, last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
+    // Update last_session_at (fire-and-forget). Conversation count is computed live from turns.
+    service.from('bots').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
 
     // Store conversation turns (fire-and-forget)
     if (session_id) {
