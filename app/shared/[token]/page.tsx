@@ -785,31 +785,49 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
         <RefreshBar lastRefreshed={lastRefreshed} refreshing={refreshing} onRefresh={onRefresh} />
 
         {/* Response counts */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold" style={{ color: HERMES }}>{data.filtered.n.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">Primary</div>
+        {ps ? (
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-2xl font-bold" style={{ color: HERMES }}>{data.filtered.n.toLocaleString()}</div>
+              <div className="text-xs text-gray-500">Primary</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-2xl font-bold text-gray-600">{data.benchmark.n.toLocaleString()}</div>
+              <div className="text-xs text-gray-500">Comparison</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-2xl font-bold text-gray-400">{inViewN.toLocaleString()}</div>
+              <div className="text-xs text-gray-500">Total in View</div>
+            </div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-gray-600">{data.benchmark.n.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">Comparison</div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center mb-4">
+            <div className="text-3xl font-bold" style={{ color: HERMES }}>{data.filtered.n.toLocaleString()}</div>
+            <div className="text-xs text-gray-500">Responses{filterFields.length > 0 ? ' (filtered)' : ''}</div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-gray-400">{inViewN.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">Total in View</div>
-          </div>
-        </div>
+        )}
 
-        {/* Numeric metrics comparison */}
+        {/* Numeric metrics */}
         {numericEntries.length > 0 && (
           <div className="mb-4">
-            <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Metrics Comparison</h3>
-            <div className="space-y-3">
+            <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">{ps ? 'Metrics Comparison' : 'Key Metrics'}</h3>
+            <div className={ps ? 'space-y-3' : 'grid grid-cols-2 gap-3'}>
               {numericEntries.map(([field, m]) => {
                 const fMean = m.filtered.n > 0 ? m.filtered.mean.toFixed(2) : 'N/A'
                 const bMean = m.benchmark.n > 0 ? m.benchmark.mean.toFixed(2) : 'N/A'
                 const delta = m.filtered.n > 0 && m.benchmark.n > 0 ? (m.filtered.mean - m.benchmark.mean) : null
                 const maxVal = Math.max(m.filtered.mean || 0, m.benchmark.mean || 0)
+
+                if (!ps) {
+                  // Simple view — no comparison
+                  return (
+                    <div key={field} className="bg-white rounded-xl border border-gray-200 p-4">
+                      <div className="text-xs text-gray-500 mb-1">{m.label}</div>
+                      <div className="text-2xl font-bold" style={{ color: HERMES }}>{fMean}</div>
+                      <div className="text-[10px] text-gray-400">n={m.filtered.n}</div>
+                    </div>
+                  )
+                }
 
                 return (
                   <div key={field} className="bg-white rounded-xl border border-gray-200 p-4">

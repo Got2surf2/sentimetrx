@@ -138,19 +138,42 @@ export async function GET(req: NextRequest) {
   fields.forEach(f => { fieldLabels[f.field] = f.label || f.field })
 
   // Fetch all rows (paginated with 1000-row pages)
+  // For collections: union rows from member datasets with _collection_label
   const allRows: Record<string, any>[] = []
-  let page = 0
   const PAGE_SIZE = 1000
-  while (true) {
-    const { data: rows } = await service
-      .from('dataset_rows_flat')
-      .select('data')
-      .eq('dataset_id', meta.dataset_id)
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-    if (!rows || rows.length === 0) break
-    for (const r of rows) allRows.push(r.data as Record<string, any>)
-    if (rows.length < PAGE_SIZE) break
-    page++
+
+  let flatDatasetIds: string[] = [meta.dataset_id]
+  let collectionLabels: Record<string, string> = {}
+
+  if (dataset.source === 'collection') {
+    const { data: col } = await service.from('collections').select('id').eq('dataset_id', meta.dataset_id).single()
+    if (col) {
+      const { data: members } = await service.from('collection_members').select('dataset_id, label').eq('collection_id', col.id).order('sort_order', { ascending: true })
+      if (members && members.length > 0) {
+        flatDatasetIds = members.map(m => m.dataset_id)
+        members.forEach(m => { collectionLabels[m.dataset_id] = m.label })
+      }
+    }
+  }
+
+  for (const dsId of flatDatasetIds) {
+    let page = 0
+    const label = collectionLabels[dsId] || undefined
+    while (true) {
+      const { data: rows } = await service
+        .from('dataset_rows_flat')
+        .select('data')
+        .eq('dataset_id', dsId)
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+      if (!rows || rows.length === 0) break
+      for (const r of rows) {
+        const row = r.data as Record<string, any>
+        if (label) row._collection_label = label
+        allRows.push(row)
+      }
+      if (rows.length < PAGE_SIZE) break
+      page++
+    }
   }
 
   // Step 1: Apply active filters to get "in view" rows
