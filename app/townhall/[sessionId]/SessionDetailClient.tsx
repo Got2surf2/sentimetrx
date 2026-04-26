@@ -1006,7 +1006,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               <div className="flex items-center gap-2 px-5 py-3 border-t border-gray-100 flex-shrink-0">
                 <button onClick={async () => {
                   setConvShareState('sharing')
-                  const botName = cfg?.bot_name || 'SignalIQ'
+                  const botName = cfg?.bot_name || 'PulseIQ'
                   const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
                   const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || 'linear-gradient(135deg, #00b4d8, #0077a8)'
                   const html = buildTHConversationHtml(botName, botEmoji, gradient, convModal!.pid, convModal!.turns)
@@ -1022,7 +1022,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                   {convShareState === 'sharing' ? 'Creating...' : convShareState === 'copied' ? 'Link copied!' : 'Share'}
                 </button>
                 <button onClick={() => {
-                  const botName = cfg?.bot_name || 'SignalIQ'
+                  const botName = cfg?.bot_name || 'PulseIQ'
                   const botEmoji = cfg?.bot_emoji || '\uD83D\uDCAC'
                   const gradient = cfg?.theme?.headerGradient || cfg?.theme?.primaryColor || 'linear-gradient(135deg, #00b4d8, #0077a8)'
                   const html = buildTHConversationHtml(botName, botEmoji, gradient, convModal!.pid, convModal!.turns)

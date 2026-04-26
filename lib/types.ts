@@ -25,7 +25,7 @@ export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews',
   reddit:        'Reddit',
   substack:      'Substack',
-  townhall:      'SignalIQ',
+  townhall:      'PulseIQ',
   campaigns:     'Campaigns',
   bots:          'Agents',
 }

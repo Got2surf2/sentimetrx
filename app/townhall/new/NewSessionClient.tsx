@@ -36,7 +36,7 @@ const DEFAULT_TOPIC: () => TownHallGuideTopic = () => ({
 })
 
 const DEFAULT_CONFIG: TownHallConfig = {
-  bot_name: 'SignalIQ',
+  bot_name: 'PulseIQ',
   bot_emoji: '\uD83D\uDCAC',
   context: {
     org_name: '',
@@ -656,7 +656,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <button onClick={() => router.push('/townhall')} className="text-sm text-gray-400 hover:text-gray-600">&larr;</button>
-                <h1 className="text-lg font-bold text-gray-900">New SignalIQ Session</h1>
+                <h1 className="text-lg font-bold text-gray-900">New PulseIQ Session</h1>
               </div>
             </div>
             <THCreatorNav

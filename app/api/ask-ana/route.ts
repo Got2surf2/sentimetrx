@@ -302,7 +302,7 @@ export async function POST(req: Request) {
   // Build system prompt
   const sourceLabel = dataset.source === 'reddit' ? 'Reddit comments and posts'
     : dataset.source === 'substack' ? 'Substack reader comments'
-    : dataset.source === 'townhall' ? 'SignalIQ conversation responses'
+    : dataset.source === 'townhall' ? 'PulseIQ conversation responses'
     : dataset.source === 'study' ? 'survey responses'
     : dataset.source === 'collection' ? 'survey responses'
     : dataset.source === 'google_reviews' ? 'Google Reviews'

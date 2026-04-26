@@ -307,7 +307,7 @@ export default function SimulatorPage() {
             <p className="text-sm text-gray-500">Generate realistic test responses without needing humans</p>
           </div>
           <a href="/admin/simulator/townhall" className="text-xs text-teal-600 hover:text-teal-800 font-medium">
-            SignalIQ Simulator →
+            PulseIQ Simulator →
           </a>
         </div>
 

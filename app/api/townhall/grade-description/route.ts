@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const { description, industry } = body
   if (!description?.trim()) return NextResponse.json({ score: 0, suggestion: 'Add a description to help the AI moderate effectively.' })
 
-  const prompt = `You are evaluating a SignalIQ session description for completeness. The AI moderator uses this description to understand context, set tone, and guide the conversation.
+  const prompt = `You are evaluating a PulseIQ session description for completeness. The AI moderator uses this description to understand context, set tone, and guide the conversation.
 ${industry ? `\nIndustry: ${industry.replace(/_/g, ' ')}` : ''}
 
 Description: "${description.trim()}"

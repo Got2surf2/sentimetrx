@@ -411,7 +411,7 @@ export default function TownHallSimulatorPage() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-800">SignalIQ Simulator</h1>
+            <h1 className="text-xl font-bold text-gray-800">PulseIQ Simulator</h1>
             <p className="text-sm text-gray-500">AI-driven personas — responses generated from profiles + session topics</p>
           </div>
           <Link href="/admin/simulator" className="text-xs text-teal-600 hover:text-teal-800 font-medium">
@@ -424,7 +424,7 @@ export default function TownHallSimulatorPage() {
             <label className="block text-xs font-semibold text-gray-500 mb-1">Session</label>
             <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
               className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-orange-400 focus:outline-none bg-white">
-              <option value="">Select a SignalIQ session...</option>
+              <option value="">Select a PulseIQ session...</option>
               {sessions.map(s => (
                 <option key={s.id} value={s.id}>{s.name} ({s.status}) — {s.participants} participants, {s.turns} turns</option>
               ))}

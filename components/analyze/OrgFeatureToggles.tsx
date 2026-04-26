@@ -11,7 +11,7 @@ const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
   googleReviews: 'Google Reviews downloader — import reviews from any business',
   reddit:        'Reddit downloader — pull threads and comments for analysis',
   substack:      'Substack analyzer — download reader comments from publications',
-  townhall:      'SignalIQ — intelligent signal extraction from continuous conversation streams',
+  townhall:      'PulseIQ — intelligent signal extraction from continuous conversation streams',
   campaigns:     'Email campaigns — distribute surveys to respondent lists',
   bots:          'Agents — create branded AI agents trained on custom content',
 }

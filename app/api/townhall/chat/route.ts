@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const deflectResult = await callClaude(
-          `You are a facilitator in a SignalIQ discussion. Decide if the participant's message needs redirection.
+          `You are a facilitator in a PulseIQ discussion. Decide if the participant's message needs redirection.
 
 Topic being discussed: "${topicContext}"
 Participant said: "${analyzeText}"
@@ -874,7 +874,7 @@ function baseSystemPrompt(config: any, language?: string): string {
     ? `\n\nIMPORTANT: The participant is using ${language}. You MUST respond ONLY in ${language}. Do NOT respond in English.`
     : `\n\nIMPORTANT: Respond ONLY in English. Even if prior conversation included other languages, the participant has switched to English.`
 
-  return `You are an AI moderator facilitating a SignalIQ discussion on behalf of ${orgName}.
+  return `You are an AI moderator facilitating a PulseIQ discussion on behalf of ${orgName}.
 The audience is ${audience.participants} — refer to them and their peers as "${audience.participants}" (not "participants" or "users").
 ${eventDesc ? `\nEVENT: ${eventDesc}` : ''}${industry ? `\nINDUSTRY: ${industry.replace(/_/g, ' ')}` : ''}
 

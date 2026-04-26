@@ -150,7 +150,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
         {f.analyze && navLink('analyze', '/analyze', 'Analytics')}
         {f.surveys && navLink('dashboard', '/dashboard', 'Surveys')}
         {(f.campaigns || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
-        {f.townhall && navLink('townhall', '/townhall', 'SignalIQ')}
+        {f.townhall && navLink('townhall', '/townhall', 'PulseIQ')}
         {f.bots && navLink('bots', '/bots', 'Agents')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />

@@ -48,7 +48,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     found: true,
     name: session.name,
     status: session.status,
-    bot_name: config?.bot_name || 'SignalIQ',
+    bot_name: config?.bot_name || 'PulseIQ',
     bot_emoji: config?.bot_emoji || '\uD83D\uDCAC',
     languages: config?.languages || [],
     display: config?.display || {},

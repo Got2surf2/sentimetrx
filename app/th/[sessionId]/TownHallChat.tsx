@@ -61,7 +61,7 @@ export default function TownHallChat({ sessionId }: Props) {
 
   // Session info — fetched via GET /api/townhall/join/:id
   const [sessionName, setSessionName] = useState('')
-  const [botName, setBotName] = useState('SignalIQ')
+  const [botName, setBotName] = useState('PulseIQ')
   const [botEmoji, setBotEmoji] = useState('\uD83D\uDCAC')
   const [headerColor, setHeaderColor] = useState('#00b4d8')
   const [status, setStatus] = useState<'loading' | 'setup' | 'active' | 'paused' | 'ended' | 'notfound'>('loading')
@@ -130,7 +130,7 @@ export default function TownHallChat({ sessionId }: Props) {
       const d = await r.json()
       if (!d.found) { setStatus('notfound'); return }
       setSessionName(d.name || '')
-      setBotName(d.bot_name || 'SignalIQ')
+      setBotName(d.bot_name || 'PulseIQ')
       setBotEmoji(d.bot_emoji || '\uD83D\uDCAC')
       if (d.header_color) setHeaderColor(d.header_color)
       setLanguages(d.languages || [])

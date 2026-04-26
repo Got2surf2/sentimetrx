@@ -296,7 +296,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         ) : isReddit ? (
           <Badge label={'\uD83D\uDCAC Reddit'} color="#059669" bg="#ecfdf5" border="#a7f3d0" />
         ) : isTownHall ? (
-          <Badge label={'\uD83C\uDFE4 SignalIQ'} color="#7c3aed" bg="#f5f3ff" border="#ddd6fe" />
+          <Badge label={'\uD83C\uDFE4 PulseIQ'} color="#7c3aed" bg="#f5f3ff" border="#ddd6fe" />
         ) : isSubstack ? (
           <Badge label={'\u270D Substack'} color="#e11d48" bg="#fff1f2" border="#fecdd3" />
         ) : isCollection ? (
