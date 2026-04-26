@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
   const { data: bot, error } = await service
     .from('bots')
-    .select('id, name, slug, status, config, system_prompt, knowledge_base')
+    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base')
     .eq('id', params.id)
     .single()
 
@@ -63,8 +63,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Build system prompt from bot config + knowledge base
+  // Build system prompt from personality + config + knowledge base
   const systemParts = []
+  if ((bot as any).personality) {
+    systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
+  }
   if (bot.system_prompt) systemParts.push(bot.system_prompt)
   if (bot.knowledge_base) {
     systemParts.push('\n\n--- KNOWLEDGE BASE ---\nUse the following information to answer questions. If the answer isn\'t in the knowledge base, say so honestly — don\'t make things up.\n\n' + bot.knowledge_base)

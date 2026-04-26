@@ -40,6 +40,7 @@ export default function ConversationsPage() {
   const [reportLoading, setReportLoading] = useState(false)
   const [reportStats, setReportStats] = useState<{ session_count: number; total_turns: number; since: string } | null>(null)
   const [botName, setBotName] = useState('')
+  const [pptxLoading, setPptxLoading] = useState(false)
   const [reviews, setReviews] = useState<{ id: string; reviewed_at: string; session_count: number; turn_count: number; report: string; theme_drift: boolean }[]>([])
 
   useEffect(() => {
@@ -73,6 +74,18 @@ export default function ConversationsPage() {
     setTurnsLoading(false)
   }
 
+  async function generatePptx() {
+    setPptxLoading(true)
+    try {
+      const r = await fetch('/api/bots/' + botId + '/conversations/insights-deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to generate deck'); return }
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = (botName || 'Agent') + '_Insights.pptx'; a.click(); URL.revokeObjectURL(url)
+    } catch { alert('Failed to generate deck') }
+    finally { setPptxLoading(false) }
+  }
+
   async function generateReport() {
     setReportLoading(true)
     setReport('')
@@ -103,16 +116,38 @@ export default function ConversationsPage() {
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{botName || 'Agent'} — Conversations</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{sessions.length} conversation{sessions.length !== 1 ? 's' : ''} recorded</p>
         </div>
-        <button
-          onClick={generateReport}
-          disabled={reportLoading || sessions.length === 0}
-          style={{
-            padding: '8px 20px', borderRadius: 20, border: 'none',
-            background: sessions.length === 0 ? '#e5e7eb' : HERMES, color: 'white', fontSize: 13, fontWeight: 600,
-            cursor: sessions.length === 0 ? 'default' : 'pointer', opacity: reportLoading ? 0.6 : 1,
-          }}>
-          {reportLoading ? 'Analyzing...' : 'Generate Report'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => { window.location.href = '/api/bots/' + botId + '/conversations/export' }}
+            disabled={sessions.length === 0}
+            style={{
+              padding: '8px 20px', borderRadius: 20, border: '1px solid #d1d5db',
+              background: sessions.length === 0 ? '#e5e7eb' : 'white', color: '#374151', fontSize: 13, fontWeight: 600,
+              cursor: sessions.length === 0 ? 'default' : 'pointer',
+            }}>
+            Export CSV
+          </button>
+          <button
+            onClick={generatePptx}
+            disabled={pptxLoading || sessions.length === 0}
+            style={{
+              padding: '8px 20px', borderRadius: 20, border: '1px solid #d1d5db',
+              background: sessions.length === 0 ? '#e5e7eb' : 'white', color: '#374151', fontSize: 13, fontWeight: 600,
+              cursor: sessions.length === 0 ? 'default' : 'pointer', opacity: pptxLoading ? 0.6 : 1,
+            }}>
+            {pptxLoading ? 'Building deck...' : 'Insights Deck'}
+          </button>
+          <button
+            onClick={generateReport}
+            disabled={reportLoading || sessions.length === 0}
+            style={{
+              padding: '8px 20px', borderRadius: 20, border: 'none',
+              background: sessions.length === 0 ? '#e5e7eb' : HERMES, color: 'white', fontSize: 13, fontWeight: 600,
+              cursor: sessions.length === 0 ? 'default' : 'pointer', opacity: reportLoading ? 0.6 : 1,
+            }}>
+            {reportLoading ? 'Analyzing...' : 'Generate Report'}
+          </button>
+        </div>
       </div>
 
       {/* Report panel */}

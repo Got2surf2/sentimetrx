@@ -107,6 +107,7 @@ function BotCreatorInner() {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [personality, setPersonality] = useState('')
   const [knowledgeBase, setKnowledgeBase] = useState('')
   const [trainingUrls, setTrainingUrls] = useState('')
   const [fetchingUrls, setFetchingUrls] = useState(false)
@@ -127,6 +128,7 @@ function BotCreatorInner() {
       setName(bot.name || '')
       setSlug(bot.slug || '')
       setSystemPrompt(bot.system_prompt || '')
+      setPersonality(bot.personality || '')
       setKnowledgeBase(bot.knowledge_base || '')
       setTrainingUrls((bot.training_urls || []).join('\n'))
       setSuggestions((bot.config?.suggestions || []).join('\n'))
@@ -217,6 +219,7 @@ function BotCreatorInner() {
       slug: slug.trim(),
       config: fullConfig,
       system_prompt: systemPrompt,
+      personality: personality,
       knowledge_base: knowledgeBase,
       training_urls: trainingUrls.split('\n').map(function(u) { return u.trim() }).filter(Boolean),
       review_interval_hours: riHours,
@@ -307,8 +310,19 @@ function BotCreatorInner() {
             />
           </Section>
 
+          <Section title="Personality">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Describe who this agent emulates and how it should communicate. This shapes tone, vocabulary, and style automatically.</p>
+            <textarea
+              value={personality}
+              onChange={function(e) { setPersonality(e.target.value) }}
+              placeholder={"e.g., Emulates Alex Vindman — retired Army lieutenant colonel, direct and measured communication style. Uses military precision in language. Patriotic but nonpartisan. Speaks with authority on national security and civil-military relations. Approachable but serious."}
+              rows={4}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
+            />
+          </Section>
+
           <Section title="System prompt">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Instructions for how the agent should behave. This defines the agent's personality and boundaries.</p>
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Advanced: direct instructions for the AI. The personality spec above is automatically included. Use this for additional rules or boundaries.</p>
             <textarea
               value={systemPrompt}
               onChange={function(e) { setSystemPrompt(e.target.value) }}

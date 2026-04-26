@@ -31,6 +31,9 @@ CREATE POLICY bots_org_read ON bots FOR SELECT
 CREATE POLICY bots_org_write ON bots FOR ALL
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
 
+-- Personality spec — describes who the agent emulates and communication style
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS personality TEXT NOT NULL DEFAULT '';
+
 -- Also add features column to users table for user-level feature flags
 ALTER TABLE users ADD COLUMN IF NOT EXISTS features JSONB DEFAULT '{}'::JSONB;
 
