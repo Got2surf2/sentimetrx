@@ -106,7 +106,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       } else {
         setSyncToast(data.synced + ' new response' + (data.synced !== 1 ? 's' : '') + ' synced')
         // Keep overlay visible briefly, then refresh page to update all counts (including collections)
-        setTimeout(function() { setSyncing(false); setSyncToast(''); router.refresh() }, 1200)
+        setTimeout(function() { setSyncing(false); setSyncToast(''); window.location.reload() }, 1200)
       }
     } catch {
       setSyncing(false)
@@ -129,7 +129,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           setSyncing(false); setSyncToast('Already up to date'); setTimeout(function() { setSyncToast('') }, 3000)
         } else {
           setSyncToast((data.synced || 0) + ' review' + ((data.synced || 0) !== 1 ? 's' : '') + ' synced')
-          setTimeout(function() { setSyncing(false); setSyncToast(''); router.refresh() }, 1200)
+          setTimeout(function() { setSyncing(false); setSyncToast(''); window.location.reload() }, 1200)
         }
       } else if (isTownHall && dataset.description?.startsWith('th:')) {
         var sessionId = dataset.description.slice(3)
@@ -139,7 +139,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           setSyncing(false); setSyncToast('Already up to date'); setTimeout(function() { setSyncToast('') }, 3000)
         } else {
           setSyncToast((data2.synced || 0) + ' response' + ((data2.synced || 0) !== 1 ? 's' : '') + ' synced')
-          setTimeout(function() { setSyncing(false); setSyncToast(''); router.refresh() }, 1200)
+          setTimeout(function() { setSyncing(false); setSyncToast(''); window.location.reload() }, 1200)
         }
       }
     } catch { setSyncing(false); setSyncToast('Sync failed'); setTimeout(function() { setSyncToast('') }, 3000) }
@@ -168,7 +168,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     if (!ok) return
     await fetch('/api/collections/' + collectionInfo.collectionDatasetId + '?member=' + dataset.id, { method: 'DELETE' })
     setCollectionInfo(null)
-    router.refresh()
+    window.location.reload()
   }
 
   return (
