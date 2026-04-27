@@ -851,20 +851,42 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
         {numericEntries.length > 0 && (
           <div className="mb-4">
             <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">{ps ? 'Metrics Comparison' : 'Key Metrics'}</h3>
-            <div className={ps ? 'space-y-3' : 'grid grid-cols-2 gap-3'}>
+            <div className="space-y-3">
               {numericEntries.map(([field, m]) => {
                 const fMean = m.filtered.n > 0 ? m.filtered.mean.toFixed(2) : 'N/A'
                 const bMean = m.benchmark.n > 0 ? m.benchmark.mean.toFixed(2) : 'N/A'
                 const delta = m.filtered.n > 0 && m.benchmark.n > 0 ? (m.filtered.mean - m.benchmark.mean) : null
                 const maxVal = Math.max(m.filtered.mean || 0, m.benchmark.mean || 0)
+                const counts = m.counts || {}
+                const countEntries = Object.entries(counts).sort(function(a: any, b: any) { return Number(a[0]) - Number(b[0]) })
+                const maxCount = countEntries.reduce(function(mx: number, e: any) { return Math.max(mx, e[1]) }, 0)
 
                 if (!ps) {
-                  // Simple view — no comparison
                   return (
                     <div key={field} className="bg-white rounded-xl border border-gray-200 p-4">
-                      <div className="text-xs text-gray-500 mb-1">{m.label}</div>
-                      <div className="text-2xl font-bold" style={{ color: HERMES }}>{fMean}</div>
-                      <div className="text-[10px] text-gray-400">n={m.filtered.n}</div>
+                      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+                        <div style={{ flexShrink: 0, minWidth: 100 }}>
+                          <div className="text-xs text-gray-500 mb-1">{m.label}</div>
+                          <div className="text-2xl font-bold" style={{ color: HERMES }}>{fMean}</div>
+                          <div className="text-[10px] text-gray-400">n={m.filtered.n}</div>
+                        </div>
+                        {countEntries.length > 0 && countEntries.length <= 20 && (
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {countEntries.map(function(e: any) {
+                              var pct = maxCount > 0 ? Math.round(e[1] / maxCount * 100) : 0
+                              return (
+                                <div key={e[0]} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ fontSize: 11, color: '#6b7280', width: 24, textAlign: 'right', flexShrink: 0 }}>{e[0]}</span>
+                                  <div style={{ flex: 1, height: 14, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                                    <div style={{ width: pct + '%', height: '100%', background: HERMES, borderRadius: 3, opacity: 0.8 }} />
+                                  </div>
+                                  <span style={{ fontSize: 10, color: '#9ca3af', width: 28, textAlign: 'right', flexShrink: 0 }}>{e[1]}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )
                 }

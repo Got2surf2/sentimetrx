@@ -206,6 +206,7 @@ export async function GET(req: NextRequest) {
     benchmark: { n: number; mean: number; stddev: number; median: number }
     outlier: { z: number; p: number; significant: boolean; direction: string } | null
     label: string
+    counts?: Record<string, number>
   }> = {}
 
   for (const f of numericFields) {
@@ -214,7 +215,10 @@ export async function GET(req: NextRequest) {
     const fStats = computeStats(fVals)
     const bStats = computeStats(bVals)
     const outlier = zScore(fStats.mean, fStats.n, bStats.mean, bStats.stddev, bStats.n)
-    numericResults[f.field] = { filtered: fStats, benchmark: bStats, outlier, label: fieldLabels[f.field] || f.field }
+    // Value frequency counts for distribution bar chart
+    const fCounts: Record<string, number> = {}
+    fVals.forEach(v => { var k = String(v); fCounts[k] = (fCounts[k] || 0) + 1 })
+    numericResults[f.field] = { filtered: fStats, benchmark: bStats, outlier, label: fieldLabels[f.field] || f.field, counts: fCounts }
   }
 
   // Compute theme frequencies and outlier flags
