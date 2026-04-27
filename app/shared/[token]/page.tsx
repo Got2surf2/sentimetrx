@@ -860,6 +860,9 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                 const counts = m.counts || {}
                 const aliases = m.valueAliases || {}
                 const remap = m.remapping || {}
+                // Invert remapping (text→number) to get number→text lookup
+                const invertedRemap: Record<string, string> = {}
+                Object.entries(remap).forEach(([text, num]) => { invertedRemap[String(num)] = text })
                 // Sort high→low (most positive first) using remapping scores
                 const countEntries = Object.entries(counts).sort(function(a: any, b: any) {
                   var ra = remap[a[0]] ?? Number(a[0]), rb = remap[b[0]] ?? Number(b[0])
@@ -878,7 +881,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                   return gradient[Math.min(idx, gradient.length - 1)]
                 }
                 function valLabel(raw: string): string {
-                  return aliases[raw] || (remap[raw] != null ? raw : raw)
+                  return aliases[raw] || invertedRemap[raw] || raw
                 }
 
                 if (!ps) {
