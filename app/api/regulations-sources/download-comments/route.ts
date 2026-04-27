@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { dataset_id, docket_id, page, finalize } = body
+  const { dataset_id, docket_id, page, finalize, use_search } = body
 
   if (!dataset_id || !docket_id) return NextResponse.json({ error: 'dataset_id and docket_id required' }, { status: 400 })
 
@@ -53,11 +53,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Step 1: List comment IDs for this page (small batches to stay within timeout)
-  const listResult = await listComments(docket_id, page || 1, 25)
+  const listResult = await listComments(docket_id, page || 1, 25, use_search || false)
   const commentIds = listResult.data.map(function(c) { return c.id })
 
   if (commentIds.length === 0) {
-    return NextResponse.json({ inserted: 0, totalElements: listResult.totalElements, lastPage: listResult.lastPage })
+    return NextResponse.json({ inserted: 0, totalElements: listResult.totalElements, lastPage: listResult.lastPage, usedSearch: listResult.usedSearch || false })
   }
 
   // Step 2: Fetch full text for each comment
@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
     if (ds?.description) {
       const meta = typeof ds.description === 'string' ? JSON.parse(ds.description) : ds.description
       meta.next_page = (page || 1) + 1
+      if (listResult.usedSearch) meta.use_search = true
       await service.from('datasets').update({ description: JSON.stringify(meta) }).eq('id', dataset_id)
     }
   } catch {}
@@ -109,5 +110,6 @@ export async function POST(req: NextRequest) {
     inserted: rows.length,
     totalElements: listResult.totalElements,
     lastPage: listResult.lastPage,
+    usedSearch: listResult.usedSearch || false,
   })
 }

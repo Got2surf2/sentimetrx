@@ -184,17 +184,32 @@ export async function searchDocuments(query: string, docketId?: string, page: nu
 
 // ── List comments (IDs only — full text requires detail call) ──────────────
 
-export async function listComments(docketId: string, page: number = 1, pageSize: number = 250): Promise<{ data: RegCommentListItem[]; totalElements: number; lastPage: number }> {
-  const result = await regGet('/comments', {
-    'filter[docketId]': docketId,
+export async function listComments(docketId: string, page: number = 1, pageSize: number = 250, useSearch?: boolean): Promise<{ data: RegCommentListItem[]; totalElements: number; lastPage: number; usedSearch?: boolean }> {
+  // Some dockets don't return results with filter[docketId] but do with searchTerm
+  var params: Record<string, string> = {
     'page[size]': String(Math.min(pageSize, 250)),
     'page[number]': String(page),
     'sort': '-postedDate',
-  })
+  }
+  if (useSearch) {
+    params['filter[searchTerm]'] = docketId
+  } else {
+    params['filter[docketId]'] = docketId
+  }
+  const result = await regGet('/comments', params)
+  var total = result.meta?.totalElements || 0
+
+  // If filter[docketId] returned 0 and we haven't tried search yet, try searchTerm fallback
+  if (!useSearch && total === 0 && page === 1) {
+    var searchResult = await listComments(docketId, page, pageSize, true)
+    if (searchResult.totalElements > 0) return { ...searchResult, usedSearch: true }
+  }
+
   return {
     data: result.data || [],
-    totalElements: result.meta?.totalElements || 0,
+    totalElements: total,
     lastPage: result.meta?.lastPage || 1,
+    ...(useSearch ? { usedSearch: true } : {}),
   }
 }
 

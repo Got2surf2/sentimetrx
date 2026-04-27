@@ -23,6 +23,7 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
   var [page, setPage] = useState(meta.next_page || 1)
   var [error, setError] = useState('')
   var [totalPages, setTotalPages] = useState(Math.max(Math.ceil((meta.comment_count || 100) / 25), 1))
+  var [useSearch, setUseSearch] = useState(meta.use_search || false)
   var running = useRef(false)
 
   useEffect(function() {
@@ -39,7 +40,7 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
           var res = await fetch('/api/regulations-sources/download-comments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dataset_id: datasetId, docket_id: meta.docket_id, page: p }),
+            body: JSON.stringify({ dataset_id: datasetId, docket_id: meta.docket_id, page: p, use_search: useSearch }),
           })
           var text = await res.text()
           var data: any
@@ -48,6 +49,7 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
 
           total += data.inserted || 0
           setComments(total)
+          if (data.usedSearch) { useSearch = true; setUseSearch(true) }
 
           if (data.lastPage) maxPage = Math.min(data.lastPage, 200)
           setTotalPages(maxPage)
