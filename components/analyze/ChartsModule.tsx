@@ -347,6 +347,9 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
         ? (isOrd ? smartOrder(rawKeys, catRemap) : rawEntries.slice().sort(function(a, b) { return (b[1] as number) - (a[1] as number) }).map(function(e) { return e[0] }))
         : rawKeys.slice().sort()
     var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
+    var isH = opts?.orient === 'h'
+    // Reverse for horizontal so first item (largest/alphabetically first) renders at top
+    if (isH) entries.reverse()
     var cats = entries.map(function(e) { return e[0] })
     var vals = entries.map(function(e) { return e[1] })
     var totalCount = vals.reduce(function(a, b) { return a + b }, 0)
@@ -354,7 +357,6 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var displayVals = isPercent ? vals.map(function(v) { return totalCount > 0 ? Math.round(v / totalCount * 1000) / 10 : 0 }) : vals
     var catLabel = flByName(catField, schema)
     var yTitle = isPercent ? '% of ' + catLabel : 'Count'
-    var isH = opts?.orient === 'h'
 
     // Stacked/grouped with colorBy
     if (colorByField && fs[colorByField] && fs[colorByField].counts) {
@@ -702,6 +704,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   }
   cats = cats.slice(0, 30)
   var isH = orient === 'h'
+  if (isH) cats.reverse()
   var catLabels = wrapLabels(cats.map(function(c) { return resolveAlias(catField, c, schema) }), isH ? 28 : 18)
   // Order color (stack/group) values — signal tiers use canonical order, others by frequency
   var colorArr = Array.from(colorVals)
@@ -784,8 +787,10 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
     : groups.slice().sort(function(a, b) { return a.group.localeCompare(b.group) })
 
   var isH = orient === 'h'
-  var cats = wrapLabels(sortedGroups.slice(0, 30).map(function(g) { return resolveAlias(catField, g.group, schema) }), isH ? 28 : 18)
-  var vals = sortedGroups.slice(0, 30).map(function(g) { return Math.round(g.mean * 100) / 100 })
+  var displayGroups = sortedGroups.slice(0, 30)
+  if (isH) displayGroups = displayGroups.slice().reverse()
+  var cats = wrapLabels(displayGroups.map(function(g) { return resolveAlias(catField, g.group, schema) }), isH ? 28 : 18)
+  var vals = displayGroups.map(function(g) { return Math.round(g.mean * 100) / 100 })
   var catLabel = flByName(catField, schema)
   var valLabel = 'Avg ' + flByName(valueField, schema)
   var primaryColor = (colors || CHART_COLORS)[0] || '#e8622a'
