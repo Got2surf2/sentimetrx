@@ -341,10 +341,11 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     // Smart Axes OFF: alphabetical.
     var rawKeys = rawEntries.map(function(e) { return e[0] })
     var isOrd = !!(catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(rawKeys)
+    var freqThenAlpha = function(a: [string, number], b: [string, number]) { return b[1] !== a[1] ? b[1] - a[1] : a[0].localeCompare(b[0]) }
     var orderedKeys = catField === '__themes__'
-      ? rawEntries.slice().sort(function(a, b) { return (b[1] as number) - (a[1] as number) }).map(function(e) { return e[0] })
+      ? rawEntries.slice().sort(freqThenAlpha).map(function(e) { return e[0] })
       : useSmartOrder
-        ? (isOrd ? smartOrder(rawKeys, catRemap) : rawEntries.slice().sort(function(a, b) { return (b[1] as number) - (a[1] as number) }).map(function(e) { return e[0] }))
+        ? (isOrd ? smartOrder(rawKeys, catRemap) : rawEntries.slice().sort(freqThenAlpha).map(function(e) { return e[0] }))
         : rawKeys.slice().sort()
     var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
     var isH = opts?.orient === 'h'
@@ -691,7 +692,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
       if (smartCats.join(',') !== cats.slice().sort().join(',')) {
         cats = smartCats.filter(function(v) { return grid[v] })
       } else {
-        cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+        cats.sort(function(a, b) { var ta = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); return tb !== ta ? tb - ta : a.localeCompare(b) })
       }
     }
   } else {
@@ -783,7 +784,7 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   var sortedGroups = smartAxes
     ? (isOrdAgg
         ? smartOrder(groups.map(function(g) { return g.group }), catRemap).map(function(k) { return groups.find(function(g) { return g.group === k }) }).filter(Boolean) as typeof groups
-        : groups.slice().sort(function(a, b) { return b.mean - a.mean }))
+        : groups.slice().sort(function(a, b) { return b.mean !== a.mean ? b.mean - a.mean : a.group.localeCompare(b.group) }))
     : groups.slice().sort(function(a, b) { return a.group.localeCompare(b.group) })
 
   var isH = orient === 'h'
