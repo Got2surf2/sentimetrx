@@ -147,9 +147,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
               const ca = r.payload?.customAnswers || {}
               return Object.keys(ca).length >= i
             }).length
-            const qLabel = customQuestions[i - 1]?.exportLabel || customQuestions[i - 1]?.prompt || `Question ${i}`
-            const shortLabel = qLabel.length > 35 ? qLabel.slice(0, 32) + '...' : qLabel
-            stages.push({ label: shortLabel, count: hasN })
+            stages.push({ label: `Custom Question ${i} of ${customQCount}`, count: hasN })
           }
         }
         if (psychoCount > 0) {
