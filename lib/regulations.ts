@@ -241,6 +241,7 @@ export async function fetchCommentsBatch(commentIds: string[]): Promise<RegComme
 function cleanText(s: string): string {
   if (!s) return s
   return s
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')
     .replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(Number(n)) })
     .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)) })
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
@@ -250,16 +251,26 @@ function cleanText(s: string): string {
     .replace(/&mdash;/g, '-').replace(/&ndash;/g, '-').replace(/&hellip;/g, '...')
     .replace(/[\u2018\u2019\u201A]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"')
     .replace(/\u2026/g, '...').replace(/[\u2013\u2014]/g, '-')
+    .replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/** Check if comment is just boilerplate cover note for an attachment */
+function isAttachmentOnly(text: string): boolean {
+  if (!text || text.length > 500) return false
+  var lower = text.toLowerCase()
+  return /\b(see attached|see the attached|attached comments|attached letter|attached document|please find attached|submit the attached|submitting the attached|enclosed comments|enclosed letter)\b/.test(lower)
 }
 
 // ── Convert comment to dataset row ─────────────────────────────────────────
 
-export function commentToRow(c: RegCommentDetail): Record<string, unknown> {
+export function commentToRow(c: RegCommentDetail): Record<string, unknown> | null {
   const a = c.attributes
+  const text = cleanText(a.comment || '')
+  if (!text || isAttachmentOnly(text)) return null
   const name = [a.firstName, a.lastName].filter(Boolean).join(' ') || 'Anonymous'
   return {
     comment_id: c.id,
-    comment_text: cleanText(a.comment || ''),
+    comment_text: text,
     commenter_name: cleanText(name),
     organization: cleanText(a.organization || ''),
     city: a.city || '',

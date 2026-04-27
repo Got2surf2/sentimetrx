@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   const details = await fetchCommentsBatch(commentIds)
 
   // Step 3: Convert to rows and insert
-  const rows = details.map(commentToRow).filter(function(r) { return r.comment_text })
+  const rows = details.map(commentToRow).filter(Boolean) as Record<string, unknown>[]
 
   if (rows.length > 0) {
     const syncTimestamp = new Date().toISOString()
