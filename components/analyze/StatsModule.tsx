@@ -117,9 +117,10 @@ function StatsEmpty({ icon, msg, sub }: { icon: string; msg: string; sub?: strin
 function DSSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { v: string; l: string; s?: string }[] }) {
   var [dragOver, setDragOver] = useState(false)
   var coreOpts   = options.filter(function(o) { return !o.s || o.s === 'core' })
+  var customOpts = options.filter(function(o) { return o.s === 'custom' })
   var psychoOpts = options.filter(function(o) { return o.s === 'psychographic' })
   var demoOpts   = options.filter(function(o) { return o.s === 'demographic' })
-  var hasGroups  = psychoOpts.length > 0 || demoOpts.length > 0
+  var hasGroups  = customOpts.length > 0 || psychoOpts.length > 0 || demoOpts.length > 0
   return (
     <div style={{ flex: 1, minWidth: 150 }}
       onDragOver={function(e) { e.preventDefault(); setDragOver(true) }}
@@ -136,6 +137,7 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
       <select value={value} onChange={function(e) { onChange(e.target.value) }}
         style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1.5px solid ' + (dragOver ? T.accent : T.border), borderRadius: 7, background: dragOver ? T.accentBg : T.bgCard, color: T.text, outline: 'none', cursor: 'pointer', transition: 'border-color .1s, background .1s' }}>
         {coreOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}
+        {hasGroups && customOpts.length > 0 && <optgroup label="Survey Questions">{customOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
         {hasGroups && psychoOpts.length > 0 && <optgroup label="Psychographic">{psychoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
         {hasGroups && demoOpts.length > 0 && <optgroup label="Demographic">{demoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
       </select>
@@ -1587,6 +1589,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
 }) {
   var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
+  var customFields = fields.filter(function(f) { return f.section === 'custom' })
   var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
 
   var numFields = coreFields.filter(function(f) { return f.type === 'numeric' })
@@ -1600,6 +1603,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
       <CollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} T={T} fl={flFn} diag={diag} />
       <CollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} T={T} fl={flFn} />
       <CollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} T={T} fl={flFn} />
+      <CollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} T={T} fl={flFn} diag={diag} />
       <CollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} T={T} fl={flFn} diag={diag} />
       <CollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} T={T} fl={flFn} diag={diag} />
     </>

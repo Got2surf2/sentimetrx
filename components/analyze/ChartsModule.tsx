@@ -149,6 +149,7 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
 function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; currentConfig: Record<string, string> }) {
   var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
+  var customFields = fields.filter(function(f) { return f.section === 'custom' })
   var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
 
   var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
@@ -163,6 +164,7 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
       <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} currentConfig={currentConfig} />
     </>
@@ -211,9 +213,10 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
 }) {
   var [dragOver, setDragOver] = useState(false)
   var coreOpts  = options.filter(function(o) { return !o.section || o.section === 'core' })
+  var customOpts = options.filter(function(o) { return o.section === 'custom' })
   var psychoOpts = options.filter(function(o) { return o.section === 'psychographic' })
   var demoOpts  = options.filter(function(o) { return o.section === 'demographic' })
-  var hasGroups = psychoOpts.length > 0 || demoOpts.length > 0
+  var hasGroups = customOpts.length > 0 || psychoOpts.length > 0 || demoOpts.length > 0
 
   return (
     <div style={{ minWidth: 140 }}
@@ -249,6 +252,7 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
           {!required && <option value="">None — or drag</option>}
           {required && !value && <option value="">Select or drag…</option>}
           {coreOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}
+          {hasGroups && customOpts.length > 0 && <optgroup label="Survey Questions">{customOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
           {hasGroups && psychoOpts.length > 0 && <optgroup label="Psychographic">{psychoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
           {hasGroups && demoOpts.length > 0 && <optgroup label="Demographic">{demoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
         </select>

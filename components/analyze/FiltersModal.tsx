@@ -56,6 +56,21 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
     return schema.filter(function(f) { return f.type === 'categorical' || f.type === 'numeric' || f.type === 'date' })
   }, [schema])
 
+  var filterSections = useMemo(function() {
+    var core = filterable.filter(function(f) { return !f.section || f.section === 'core' })
+    var custom = filterable.filter(function(f) { return f.section === 'custom' })
+    var psycho = filterable.filter(function(f) { return f.section === 'psychographic' })
+    var demo = filterable.filter(function(f) { return f.section === 'demographic' })
+    var out: { key: string; label: string; fields: typeof filterable }[] = []
+    if (core.length) out.push({ key: 'core', label: 'Core', fields: core })
+    if (custom.length) out.push({ key: 'custom', label: 'Survey Questions', fields: custom })
+    if (psycho.length) out.push({ key: 'psychographic', label: 'Psychographic', fields: psycho })
+    if (demo.length) out.push({ key: 'demographic', label: 'Demographic', fields: demo })
+    return out
+  }, [filterable])
+  var hasSections = filterSections.length > 1
+  var [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+
   var numericRanges = useMemo(function() {
     var ranges: Record<string, [number, number]> = {}
     filterable.filter(function(f) { return f.type === 'numeric' }).forEach(function(f) {
@@ -161,9 +176,21 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
             </div>
           )}
 
-          {/* Filter cards grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
-            {filterable.map(function(f) {
+          {filterSections.map(function(sec) {
+            var collapsed = !!collapsedSections[sec.key]
+            return (
+              <div key={sec.key} style={{ marginBottom: hasSections ? 18 : 0 }}>
+                {hasSections && (
+                  <button onClick={function() { setCollapsedSections(function(prev) { var n = { ...prev }; n[sec.key] = !collapsed; return n }) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 8px', width: '100%' }}>
+                    <span style={{ fontSize: 10, color: T.textFaint, transition: 'transform .15s', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', display: 'inline-block' }}>{'\u25BC'}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: T.textMid, letterSpacing: '.06em', textTransform: 'uppercase' }}>{sec.label}</span>
+                    <span style={{ fontSize: 10, color: T.textFaint }}>({sec.fields.length})</span>
+                  </button>
+                )}
+                {!collapsed && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+                    {sec.fields.map(function(f) {
               var pf = pending[f.field]
               var isActive = !!filters[f.field]
               var lbl = fieldLabel(f.field)
@@ -376,6 +403,10 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
               return null
             })}
           </div>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         {/* Footer */}
