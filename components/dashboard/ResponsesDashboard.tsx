@@ -155,7 +155,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
               const ps = r.payload?.psychographics || {}
               return Object.keys(ps).length >= i
             }).length
-            stages.push({ label: `Psycho ${i} of ${psychoCount}`, count: hasN })
+            stages.push({ label: `Psychographics ${i} of ${psychoCount}`, count: hasN })
           }
         }
         const hasDemo = all.filter((r: Response) => {

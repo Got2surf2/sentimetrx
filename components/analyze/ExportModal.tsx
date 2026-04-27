@@ -746,7 +746,7 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
                           </span>
                           {f.section && f.section !== 'core' && (
                             <span style={{ fontSize: 9, color: meta.color, background: meta.color + '18', padding: '1px 5px', borderRadius: 8, fontWeight: 600 }}>
-                              {f.section === 'psychographic' ? 'psycho' : f.section === 'custom' ? 'survey' : 'demo'}
+                              {f.section === 'psychographic' ? 'psychographic' : f.section === 'custom' ? 'survey' : 'demo'}
                             </span>
                           )}
                         </label>
