@@ -292,6 +292,16 @@ export async function GET(req: NextRequest) {
     return f?.label || tf
   })
 
+  // Completion funnel: count Complete vs Partial/Started
+  const completedCount = filteredRows.filter(r => String(r.status || '').toLowerCase() === 'complete').length
+  const completion = { started: totalFiltered, completed: completedCount }
+
+  // Exclude duration_sec from numeric KPIs (replaced by completion funnel)
+  const filteredNumeric: typeof numericResults = {}
+  for (const [k, v] of Object.entries(numericResults)) {
+    if (k !== 'duration_sec') filteredNumeric[k] = v
+  }
+
   return NextResponse.json({
     label: meta.label || 'Filtered View',
     datasetName: dataset.name,
@@ -303,7 +313,8 @@ export async function GET(req: NextRequest) {
     themeFieldLabels: themeFieldLabels,
     filterSummary: filterFieldSummary,
     primarySummary: primarySummary,
-    numeric: numericResults,
+    numeric: filteredNumeric,
+    completion: completion,
     themes: themeResults,
     includeThemes: !!meta.includeThemes,
     dateRange: meta.dateRange || null,

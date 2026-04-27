@@ -815,6 +815,37 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
           </div>
         )}
 
+        {/* Completion funnel */}
+        {data.completion && data.completion.started > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Completion</h3>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              {[
+                { label: 'Started', count: data.completion.started, pct: 100 },
+                { label: 'Completed', count: data.completion.completed, pct: Math.round(data.completion.completed / data.completion.started * 100) },
+              ].map(function(stage, i) {
+                var color = stage.pct >= 80 ? '#059669' : stage.pct >= 50 ? '#d97706' : '#dc2626'
+                return (
+                  <div key={stage.label} style={{ marginBottom: i === 0 ? 10 : 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{stage.label}</span>
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>{stage.count.toLocaleString()} ({stage.pct}%)</span>
+                    </div>
+                    <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: stage.pct + '%', height: '100%', background: color, borderRadius: 4, transition: 'width 0.5s ease' }} />
+                    </div>
+                    {i === 0 && data.completion.started > data.completion.completed && (
+                      <div style={{ fontSize: 10, color: '#dc2626', marginTop: 3, textAlign: 'right' }}>
+                        {(100 - Math.round(data.completion.completed / data.completion.started * 100))}% drop-off
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Numeric metrics */}
         {numericEntries.length > 0 && (
           <div className="mb-4">
