@@ -282,12 +282,12 @@ export async function GET(req: NextRequest) {
     comparisonValues: (meta.inViewValues || []).filter(function(v) { return !meta.primary!.values.includes(v) }),
   } : null
 
-  // Count responses with comments (non-empty text in open-ended fields)
-  const openEndedFields = fields.filter(f => f.type === 'open-ended')
+  // Count responses with comments in the theme analysis fields (not all open-ended)
+  const commentFields = textFields.length > 0 ? textFields : fields.filter(f => f.type === 'open-ended').map(f => f.field)
   let commentCount = 0
   for (const row of filteredRows) {
-    for (const oe of openEndedFields) {
-      const val = row[oe.field]
+    for (const cf of commentFields) {
+      const val = row[cf]
       if (val && typeof val === 'string' && val.trim().length > 0) { commentCount++; break }
     }
   }
