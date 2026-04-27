@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
     .eq('dataset_id', meta.dataset_id)
     .single()
 
-  const schema = stateRow?.schema_config as { fields: { field: string; type: string; label?: string; section?: string }[] } | null
+  const schema = stateRow?.schema_config as { fields: { field: string; type: string; label?: string; section?: string; valueAliases?: Record<string, string>; remapping?: Record<string, number> }[] } | null
   const fields = schema?.fields || []
   const numericFields = fields.filter(f => f.type === 'numeric')
   const fieldLabels: Record<string, string> = {}
@@ -207,6 +207,8 @@ export async function GET(req: NextRequest) {
     outlier: { z: number; p: number; significant: boolean; direction: string } | null
     label: string
     counts?: Record<string, number>
+    valueAliases?: Record<string, string> | null
+    remapping?: Record<string, number> | null
   }> = {}
 
   for (const f of numericFields) {
@@ -218,7 +220,7 @@ export async function GET(req: NextRequest) {
     // Value frequency counts for distribution bar chart
     const fCounts: Record<string, number> = {}
     fVals.forEach(v => { var k = String(v); fCounts[k] = (fCounts[k] || 0) + 1 })
-    numericResults[f.field] = { filtered: fStats, benchmark: bStats, outlier, label: fieldLabels[f.field] || f.field, counts: fCounts }
+    numericResults[f.field] = { filtered: fStats, benchmark: bStats, outlier, label: fieldLabels[f.field] || f.field, counts: fCounts, valueAliases: f.valueAliases || null, remapping: f.remapping || null }
   }
 
   // Compute theme frequencies and outlier flags

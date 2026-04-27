@@ -858,10 +858,31 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                 const delta = m.filtered.n > 0 && m.benchmark.n > 0 ? (m.filtered.mean - m.benchmark.mean) : null
                 const maxVal = Math.max(m.filtered.mean || 0, m.benchmark.mean || 0)
                 const counts = m.counts || {}
-                const countEntries = Object.entries(counts).sort(function(a: any, b: any) { return Number(a[0]) - Number(b[0]) })
+                const aliases = m.valueAliases || {}
+                const remap = m.remapping || {}
+                // Sort high→low (most positive first) using remapping scores
+                const countEntries = Object.entries(counts).sort(function(a: any, b: any) {
+                  var ra = remap[a[0]] ?? Number(a[0]), rb = remap[b[0]] ?? Number(b[0])
+                  return rb - ra  // highest score (most positive) first
+                })
+                const totalN = countEntries.reduce(function(s: number, e: any) { return s + e[1] }, 0)
                 const maxCount = countEntries.reduce(function(mx: number, e: any) { return Math.max(mx, e[1]) }, 0)
+                const nVals = countEntries.length
+                // Green→yellow→red gradient: index 0 = most positive (green), last = most negative (red)
+                var gradient = ['#059669','#34d399','#a3e635','#fbbf24','#f97316','#ef4444','#dc2626','#b91c1c','#991b1b','#7f1d1d']
+                function gradColor(i: number, total: number): string {
+                  if (total <= 1) return gradient[0]
+                  var frac = i / (total - 1)
+                  var idx = Math.round(frac * (gradient.length - 1))
+                  return gradient[Math.min(idx, gradient.length - 1)]
+                }
+                function valLabel(raw: string): string {
+                  return aliases[raw] || (remap[raw] != null ? raw : raw)
+                }
 
                 if (!ps) {
+                  // ≤6 values: individual bars. >6: stacked horizontal bar.
+                  var useStacked = nVals > 6
                   return (
                     <div key={field} className="bg-white rounded-xl border border-gray-200 p-4">
                       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
@@ -870,20 +891,36 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                           <div className="text-2xl font-bold" style={{ color: HERMES }}>{fMean}</div>
                           <div className="text-[10px] text-gray-400">n={m.filtered.n}</div>
                         </div>
-                        {countEntries.length > 0 && countEntries.length <= 20 && (
+                        {nVals > 0 && !useStacked && (
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {countEntries.map(function(e: any) {
+                            {countEntries.map(function(e: any, i: number) {
                               var pct = maxCount > 0 ? Math.round(e[1] / maxCount * 100) : 0
+                              var color = gradColor(i, nVals)
                               return (
                                 <div key={e[0]} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ fontSize: 11, color: '#6b7280', width: 24, textAlign: 'right', flexShrink: 0 }}>{e[0]}</span>
+                                  <span style={{ fontSize: 11, color: '#374151', minWidth: 60, textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>{valLabel(e[0])}</span>
                                   <div style={{ flex: 1, height: 14, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                                    <div style={{ width: pct + '%', height: '100%', background: HERMES, borderRadius: 3, opacity: 0.8 }} />
+                                    <div style={{ width: pct + '%', height: '100%', background: color, borderRadius: 3 }} />
                                   </div>
                                   <span style={{ fontSize: 10, color: '#9ca3af', width: 28, textAlign: 'right', flexShrink: 0 }}>{e[1]}</span>
                                 </div>
                               )
                             })}
+                          </div>
+                        )}
+                        {nVals > 0 && useStacked && (
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', height: 28, borderRadius: 6, overflow: 'hidden' }}>
+                              {countEntries.map(function(e: any, i: number) {
+                                var pct = totalN > 0 ? (e[1] / totalN * 100) : 0
+                                if (pct < 0.5) return null
+                                return <div key={e[0]} title={valLabel(e[0]) + ': ' + e[1] + ' (' + Math.round(pct) + '%)'} style={{ width: pct + '%', height: '100%', background: gradColor(i, nVals) }} />
+                              })}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                              <span style={{ fontSize: 10, color: '#059669' }}>{valLabel(countEntries[0]?.[0] || '')}</span>
+                              <span style={{ fontSize: 10, color: '#dc2626' }}>{valLabel(countEntries[nVals - 1]?.[0] || '')}</span>
+                            </div>
                           </div>
                         )}
                       </div>
