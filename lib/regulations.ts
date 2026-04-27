@@ -28,19 +28,36 @@ async function regGet(path: string, params?: Record<string, string>): Promise<an
       if (v) url.searchParams.set(k, v)
     }
   }
-  const res = await fetch(url.toString(), {
-    headers: { 'X-Api-Key': getApiKey() },
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  let res: Response
+  try {
+    res = await fetch(url.toString(), {
+      headers: { 'X-Api-Key': getApiKey() },
+      signal: controller.signal,
+    })
+  } catch (err: any) {
+    clearTimeout(timeout)
+    if (err.name === 'AbortError') throw new Error('Regulations.gov API timed out (15s)')
+    throw new Error('Regulations.gov API network error: ' + (err.message || 'fetch failed'))
+  }
+  clearTimeout(timeout)
   if (res.status === 429) {
     // Rate limited — wait 60s and retry once
     await new Promise(function(r) { setTimeout(r, 60000) })
     const retry = await fetch(url.toString(), {
       headers: { 'X-Api-Key': getApiKey() },
     })
-    if (!retry.ok) throw new Error(`Regulations.gov API ${retry.status}: ${path}`)
+    if (!retry.ok) {
+      const body = await retry.text().catch(() => '')
+      throw new Error(`Regulations.gov API ${retry.status}: ${body || path}`)
+    }
     return retry.json()
   }
-  if (!res.ok) throw new Error(`Regulations.gov API ${res.status}: ${path}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Regulations.gov API ${res.status}: ${body || path}`)
+  }
   return res.json()
 }
 
