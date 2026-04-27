@@ -896,17 +896,20 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                           <div className="text-[10px] text-gray-400">n={m.filtered.n}</div>
                         </div>
                         {nVals > 0 && !useStacked && (
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
                             {countEntries.map(function(e: any, i: number) {
-                              var pct = maxCount > 0 ? Math.round(e[1] / maxCount * 100) : 0
+                              var barPct = maxCount > 0 ? Math.round(e[1] / maxCount * 100) : 0
+                              var pctOfTotal = totalN > 0 ? Math.round(e[1] / totalN * 100) : 0
                               var color = gradColor(i, nVals)
                               return (
-                                <div key={e[0]} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ fontSize: 11, color: '#374151', minWidth: 60, textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>{valLabel(e[0])}</span>
-                                  <div style={{ flex: 1, height: 14, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                                    <div style={{ width: pct + '%', height: '100%', background: color, borderRadius: 3 }} />
+                                <div key={e[0]}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                                    <span style={{ fontSize: 11, color: '#374151' }}>{valLabel(e[0])}</span>
+                                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{e[1]} ({pctOfTotal}%)</span>
                                   </div>
-                                  <span style={{ fontSize: 10, color: '#9ca3af', width: 28, textAlign: 'right', flexShrink: 0 }}>{e[1]}</span>
+                                  <div style={{ height: 14, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                                    <div style={{ width: barPct + '%', height: '100%', background: color, borderRadius: 3 }} />
+                                  </div>
                                 </div>
                               )
                             })}
