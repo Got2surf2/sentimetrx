@@ -186,8 +186,9 @@ export async function searchDocuments(query: string, docketId?: string, page: nu
 
 export async function listComments(docketId: string, page: number = 1, pageSize: number = 250, useSearch?: boolean): Promise<{ data: RegCommentListItem[]; totalElements: number; lastPage: number; usedSearch?: boolean }> {
   // Some dockets don't return results with filter[docketId] but do with searchTerm
+  // Regulations.gov API bug: page[size]=1 returns 0 results, so use minimum of 5
   var params: Record<string, string> = {
-    'page[size]': String(Math.min(pageSize, 250)),
+    'page[size]': String(Math.min(Math.max(pageSize, 5), 250)),
     'page[number]': String(page),
     'sort': '-postedDate',
   }
