@@ -67,9 +67,12 @@ export default async function AnalyzePage() {
       const { data: members } = await supabase.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
       if (members && members.length > 0) {
         const memberDsIds = Array.from(new Set(members.map(m => m.dataset_id)))
-        const { data: memberDs } = await supabase.from('datasets').select('id, row_count').in('id', memberDsIds)
+        // Count actual flat table rows per member for accuracy (matches shared link counts)
         const memberCounts: Record<string, number> = {}
-        ;(memberDs || []).forEach(d => { memberCounts[d.id] = d.row_count || 0 })
+        for (const dsId of memberDsIds) {
+          const { count } = await supabase.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dsId)
+          memberCounts[dsId] = count || 0
+        }
         for (const col of cols) {
           const colMembers = members.filter(m => m.collection_id === col.id)
           collectionRowCounts[col.dataset_id] = colMembers.reduce((s, m) => s + (memberCounts[m.dataset_id] || 0), 0)

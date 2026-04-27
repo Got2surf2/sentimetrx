@@ -53,8 +53,12 @@ export default async function DatasetLayout({ children, params }: Props) {
     if (col) {
       const { data: members } = await supabase.from('collection_members').select('dataset_id').eq('collection_id', col.id)
       if (members && members.length > 0) {
-        const { data: memberDs } = await supabase.from('datasets').select('row_count').in('id', members.map(m => m.dataset_id))
-        if (memberDs) rowCount = memberDs.reduce((s, d) => s + (d.row_count || 0), 0)
+        let total = 0
+        for (const m of members) {
+          const { count } = await supabase.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', m.dataset_id)
+          total += count || 0
+        }
+        rowCount = total
       }
     }
   }
