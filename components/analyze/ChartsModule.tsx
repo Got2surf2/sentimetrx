@@ -601,10 +601,12 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
 }
 
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
-  var aggSpec = catField && colorByField ? { op: 'crosstab', rowField: catField, colField: colorByField, limit: 30 } : null
+  // Collections have no dataset_rows_flat, so SQL aggregation returns empty — always use rows
+  var isCollection = _enrichCtx.datasetSource === 'collection'
+  var aggSpec = !isCollection && catField && colorByField ? { op: 'crosstab', rowField: catField, colField: colorByField, limit: 30 } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
-  // Fallback to useRows for __themes__ or __mapped__ virtual fields that aren't in the flat table
-  var needsRows = catField.startsWith('__') || colorByField.startsWith('__')
+  // Fallback to useRows for virtual fields or collections that aren't in the flat table
+  var needsRows = isCollection || catField.startsWith('__') || colorByField.startsWith('__')
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
@@ -702,13 +704,32 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
 function BarAggInner({ analytics, schema, datasetId, catField, valueField, smartAxes, colors, orient }: {
   analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; valueField: string; smartAxes?: boolean; colors?: string[]; orient?: string
 }) {
-  var spec = { op: 'group_stats', groupField: catField, valueField: valueField }
+  var isCollection = _enrichCtx.datasetSource === 'collection'
+  var spec = !isCollection ? { op: 'group_stats', groupField: catField, valueField: valueField } : null
   var agg = useAggregation(datasetId, spec)
-  if (!agg.loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Computing averages...</div>
-  if (!agg.data || !agg.data.groups) return <EmptyChart msg="No data for aggregation." />
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, isCollection ? (_enrichCtx.enrichKey || 0) : -1)
+  var loaded = isCollection ? rowsLoaded : agg.loaded
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Computing averages...</div>
 
-  // API returns { groups: { "cat_value": { n, mean, ... } } } as an object
-  var groupsObj = agg.data.groups as Record<string, { n: number; mean: number; median: number; min: number; max: number }>
+  // Build groups from aggregation API or from rows (collections)
+  var groupsObj: Record<string, { n: number; mean: number; median: number; min: number; max: number }>
+  if (!isCollection && agg.data && agg.data.groups) {
+    groupsObj = agg.data.groups
+  } else {
+    var buckets: Record<string, number[]> = {}
+    rows.forEach(function(r) {
+      var cat = String(r[catField] || '').trim(); if (!cat) return
+      var v = parseFloat(String(r[valueField] || '')); if (isNaN(v)) return
+      if (!buckets[cat]) buckets[cat] = []
+      buckets[cat].push(v)
+    })
+    groupsObj = {}
+    Object.entries(buckets).forEach(function(e) {
+      var vals = e[1].slice().sort(function(a, b) { return a - b })
+      var sum = vals.reduce(function(a, b) { return a + b }, 0)
+      groupsObj[e[0]] = { n: vals.length, mean: sum / vals.length, median: vals[Math.floor(vals.length / 2)], min: vals[0], max: vals[vals.length - 1] }
+    })
+  }
   var groupKeys = Object.keys(groupsObj)
   if (groupKeys.length === 0) return <EmptyChart msg="No groups found." />
 
@@ -888,7 +909,8 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField, smartAxes, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string; smartAxes?: boolean; colors?: string[] }) {
   var bulletPal = colors || CHART_COLORS
-  var needsRows = splitByField.startsWith('__') || measureField.startsWith('__')
+  var isCollection = _enrichCtx.datasetSource === 'collection'
+  var needsRows = isCollection || splitByField.startsWith('__') || measureField.startsWith('__')
   var aggSpec = !needsRows && splitByField && measureField ? { op: 'group_stats', groupField: splitByField, valueField: measureField } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
@@ -1397,7 +1419,8 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
-  var needsRows = rowField.startsWith('__') || colField.startsWith('__')
+  var isCollection = _enrichCtx.datasetSource === 'collection'
+  var needsRows = isCollection || rowField.startsWith('__') || colField.startsWith('__')
   var aggSpec = !needsRows && rowField && colField ? { op: 'crosstab', rowField: rowField, colField: colField, limit: 30 } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
@@ -1438,10 +1461,12 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var effectiveBucket: TimeBucket = bucketOverride === 'auto' ? smartBucket : bucketOverride
   var sqlBucket: string = effectiveBucket === 'hour' ? 'day' : effectiveBucket
 
-  var aggSpec = dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
+  var isCollection = _enrichCtx.datasetSource === 'collection'
+  var aggSpec = !isCollection && dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
-  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, aggLoaded ? -1 : (_enrichCtx.enrichKey || 0))
-  var loaded = aggLoaded && aggData?.series ? true : rowsLoaded
+  var useRowsFallback = isCollection || !aggLoaded || !(aggData?.series)
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, useRowsFallback ? (_enrichCtx.enrichKey || 0) : -1)
+  var loaded = isCollection ? rowsLoaded : (aggLoaded && aggData?.series ? true : rowsLoaded)
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
