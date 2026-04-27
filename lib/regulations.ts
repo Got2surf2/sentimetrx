@@ -236,6 +236,19 @@ export async function fetchCommentsBatch(commentIds: string[]): Promise<RegComme
   return results
 }
 
+// ── Clean HTML entities and normalize unicode quotes ──────────────────────
+
+function cleanText(s: string): string {
+  if (!s) return s
+  return s
+    .replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(Number(n)) })
+    .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)) })
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/[\u2018\u2019\u201A]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"')
+    .replace(/\u2026/g, '...').replace(/[\u2013\u2014]/g, '-')
+}
+
 // ── Convert comment to dataset row ─────────────────────────────────────────
 
 export function commentToRow(c: RegCommentDetail): Record<string, unknown> {
@@ -243,9 +256,9 @@ export function commentToRow(c: RegCommentDetail): Record<string, unknown> {
   const name = [a.firstName, a.lastName].filter(Boolean).join(' ') || 'Anonymous'
   return {
     comment_id: c.id,
-    comment_text: a.comment || '',
-    commenter_name: name,
-    organization: a.organization || '',
+    comment_text: cleanText(a.comment || ''),
+    commenter_name: cleanText(name),
+    organization: cleanText(a.organization || ''),
     city: a.city || '',
     state: a.stateProvinceRegion || '',
     country: a.country || '',
@@ -253,7 +266,7 @@ export function commentToRow(c: RegCommentDetail): Record<string, unknown> {
     agency: a.agencyId || '',
     docket_id: a.docketId || '',
     document_id: a.commentOnDocumentId || '',
-    title: a.title || '',
+    title: cleanText(a.title || ''),
     tracking_number: a.trackingNbr || '',
   }
 }
