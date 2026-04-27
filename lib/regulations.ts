@@ -201,9 +201,9 @@ export async function listComments(docketId: string, page: number = 1, pageSize:
   var total = result.meta?.totalElements || 0
 
   // If filter[docketId] returned 0 and we haven't tried search yet, try searchTerm fallback
-  if (!useSearch && total === 0 && page === 1) {
+  if (!useSearch && total === 0) {
     var searchResult = await listComments(docketId, page, pageSize, true)
-    if (searchResult.totalElements > 0) return { ...searchResult, usedSearch: true }
+    if (searchResult.totalElements > 0 || searchResult.data.length > 0) return { ...searchResult, usedSearch: true }
   }
 
   return {
