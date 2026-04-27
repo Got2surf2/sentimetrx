@@ -181,7 +181,7 @@ export default function RegulationsWizard({ onBack }: Props) {
                       {d.agency} · {d.id} · {d.docketType} · {formatDate(d.lastModified)}
                     </p>
                   </div>
-                  {d.commentCount >= 0 && (
+                  {d.commentCount > 0 && (
                     <div className="flex-shrink-0 text-right">
                       <span className="text-sm font-bold" style={{ color: HERMES }}>{d.commentCount.toLocaleString()}</span>
                       <p className="text-[10px] text-gray-400">comments</p>
@@ -210,7 +210,7 @@ export default function RegulationsWizard({ onBack }: Props) {
             <div className="flex-1">
               <h3 className="font-bold text-gray-800">{selectedDocket.title}</h3>
               <p className="text-xs text-gray-400 mt-1">
-                {selectedDocket.agency} · {selectedDocket.id} · {loadingCount ? 'Loading comment count...' : selectedDocket.commentCount >= 0 ? selectedDocket.commentCount.toLocaleString() + ' comments' : ''}
+                {selectedDocket.agency} · {selectedDocket.id}{loadingCount ? ' · Loading comment count...' : selectedDocket.commentCount > 0 ? ' · ' + selectedDocket.commentCount.toLocaleString() + ' comments' : ''}
               </p>
               {selectedDocket.commentCount > 5000 && (
                 <p className="text-xs text-amber-600 mt-1">
