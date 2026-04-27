@@ -209,7 +209,7 @@ export async function listComments(docketId: string, page: number = 1, pageSize:
   return {
     data: result.data || [],
     totalElements: total,
-    lastPage: result.meta?.lastPage || 1,
+    lastPage: result.meta?.totalPages || 1,
     ...(useSearch ? { usedSearch: true } : {}),
   }
 }
