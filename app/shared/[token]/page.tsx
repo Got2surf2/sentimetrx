@@ -869,7 +869,8 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                 const maxCount = countEntries.reduce(function(mx: number, e: any) { return Math.max(mx, e[1]) }, 0)
                 const nVals = countEntries.length
                 // Green→yellow→red gradient: index 0 = most positive (green), last = most negative (red)
-                var gradient = ['#059669','#34d399','#a3e635','#fbbf24','#f97316','#ef4444','#dc2626','#b91c1c','#991b1b','#7f1d1d']
+                // Green → grey/amber → warm orange. Middle is neutral, no harsh red.
+                var gradient = ['#059669','#34d399','#6ee7b7','#a7f3d0','#d1d5db','#e5c07a','#e8a44c','#e0873a','#c96830','#b04a26']
                 function gradColor(i: number, total: number): string {
                   if (total <= 1) return gradient[0]
                   var frac = i / (total - 1)
