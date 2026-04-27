@@ -42,20 +42,33 @@ export async function POST(req: Request, { params }: Params) {
     .from('dataset_state').select('theme_model').eq('dataset_id', params.datasetId).single()
   const themes: { id: string; name: string; keywords: string[] }[] = (stateRow?.theme_model as any)?.themes || []
 
-  // Fetch rows (cap at 10K)
+  // Fetch rows — collections union from member datasets (cap at 10K)
   const allRows: Record<string, any>[] = []
   const FLAT_PAGE = 1000
-  let offset = 0
-  while (allRows.length < 10000) {
-    const { data: flatRows } = await service
-      .from('dataset_rows_flat').select('data')
-      .eq('dataset_id', params.datasetId)
-      .order('row_index', { ascending: true })
-      .range(offset, offset + FLAT_PAGE - 1)
-    if (!flatRows || flatRows.length === 0) break
-    for (const fr of flatRows) allRows.push((fr as any).data || fr)
-    if (flatRows.length < FLAT_PAGE) break
-    offset += FLAT_PAGE
+
+  let flatDatasetIds: string[] = [params.datasetId]
+  if (dataset.source === 'collection') {
+    const { data: col } = await service.from('collections').select('id').eq('dataset_id', params.datasetId).single()
+    if (col) {
+      const { data: members } = await service.from('collection_members').select('dataset_id').eq('collection_id', col.id).order('sort_order', { ascending: true })
+      if (members && members.length > 0) flatDatasetIds = members.map(m => m.dataset_id)
+    }
+  }
+
+  for (const dsId of flatDatasetIds) {
+    let offset = 0
+    while (allRows.length < 10000) {
+      const { data: flatRows } = await service
+        .from('dataset_rows_flat').select('data')
+        .eq('dataset_id', dsId)
+        .order('row_index', { ascending: true })
+        .range(offset, offset + FLAT_PAGE - 1)
+      if (!flatRows || flatRows.length === 0) break
+      for (const fr of flatRows) allRows.push((fr as any).data || fr)
+      if (flatRows.length < FLAT_PAGE) break
+      offset += FLAT_PAGE
+    }
+    if (allRows.length >= 10000) break
   }
 
   if (allRows.length === 0) {

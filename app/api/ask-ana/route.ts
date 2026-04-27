@@ -2,7 +2,7 @@
 // POST /api/ask-ana — streaming AI Q&A + analysis framework mutations
 // Uses Anthropic prompt caching so the dataset context is sent once and reused
 // for follow-up questions within a 5-minute window.
-// Samples large datasets (max 200 rows) and truncates long text (300 chars).
+// Supports configurable sample sizes and collection sampling strategies.
 // When Ana detects the user wants to modify themes she returns tool_use blocks
 // which the client renders as confirmation cards before writing to dataset_state.
 
@@ -14,10 +14,12 @@ import { checkMessage } from '@/lib/contentGuard'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-const ROW_CAP       = 10000
-const SAMPLE_MAX    = 200    // max rows sent to Claude
-const TEXT_TRUNCATE = 300    // max chars per text field
-const URL_ONLY_RE   = /^(\s*(https?:\/\/\S+)\s*)+$/i
+const CONTEXT_CAP    = 1500   // absolute max rows sent to Claude
+const DEFAULT_SAMPLE = 500    // default if user doesn't configure
+const TEXT_TRUNCATE  = 300    // max chars per text field
+const FETCH_CAP      = 5000   // max rows to pull from DB before filtering
+const MEMBER_FLOOR   = 20     // min rows per collection member in 'floor' strategy
+const URL_ONLY_RE    = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
 interface Message {
   role: 'user' | 'assistant'
@@ -123,6 +125,59 @@ const ANA_TOOLS = [
   },
 ]
 
+// ── Sampling recommendation tool (metadata-only mode) ─────────────────────
+const RECOMMEND_SAMPLING_TOOL = {
+  name: 'recommend_sampling',
+  description: 'Recommend a sampling configuration based on the user\'s analysis goals. Call this after understanding what the user wants to accomplish.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      sample_size: { type: 'number', description: 'Recommended number of rows to analyze (50-1500). Consider: quick scan ~200, standard analysis ~500, deep dive ~1000.' },
+      strategy:    { type: 'string', enum: ['proportional', 'equal', 'floor'], description: 'For collections only. proportional = weight by member size, equal = same count per member, floor = minimum per member then proportional.' },
+      reasoning:   { type: 'string', description: 'Brief explanation of why this configuration fits the user\'s goals.' },
+    },
+    required: ['sample_size', 'reasoning'],
+  },
+}
+
+// ── Per-member budget computation for collections ─────────────────────────
+function computeMemberBudgets(
+  members: { dataset_id: string; name: string; row_count: number }[],
+  totalBudget: number,
+  strategy: 'proportional' | 'equal' | 'floor'
+): { dataset_id: string; budget: number }[] {
+  const totalRows = members.reduce(function(s, m) { return s + m.row_count }, 0)
+  if (totalRows === 0) return members.map(function(m) { return { dataset_id: m.dataset_id, budget: 0 } })
+
+  if (strategy === 'equal') {
+    const perMember = Math.floor(totalBudget / members.length)
+    return members.map(function(m) {
+      return { dataset_id: m.dataset_id, budget: Math.min(perMember, m.row_count) }
+    })
+  }
+
+  if (strategy === 'floor') {
+    // Give each member at least MEMBER_FLOOR rows (or all rows if smaller)
+    let remaining = totalBudget
+    const floors = members.map(function(m) {
+      const f = Math.min(MEMBER_FLOOR, m.row_count)
+      remaining -= f
+      return f
+    })
+    if (remaining < 0) remaining = 0
+    const nonFloorTotal = members.reduce(function(s, m) { return s + Math.max(0, m.row_count - MEMBER_FLOOR) }, 0)
+    return members.map(function(m, i) {
+      const extra = nonFloorTotal > 0 ? Math.round(Math.max(0, m.row_count - MEMBER_FLOOR) / nonFloorTotal * remaining) : 0
+      return { dataset_id: m.dataset_id, budget: Math.min(floors[i] + extra, m.row_count) }
+    })
+  }
+
+  // Default: proportional
+  return members.map(function(m) {
+    return { dataset_id: m.dataset_id, budget: Math.min(Math.max(1, Math.round(m.row_count / totalRows * totalBudget)), m.row_count) }
+  })
+}
+
 export async function POST(req: Request) {
   // Auth
   const supabase = createClient()
@@ -134,12 +189,15 @@ export async function POST(req: Request) {
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { datasetId, question, conversationHistory, filters } = body as {
+  const { datasetId, question, conversationHistory, filters, metadataOnly } = body as {
     datasetId: string
     question: string
     conversationHistory?: Message[]
     filters?: Record<string, any>
+    metadataOnly?: boolean
   }
+  const sampleSize = Math.max(50, Math.min(body.sampleSize || DEFAULT_SAMPLE, CONTEXT_CAP))
+  const samplingStrategy: 'proportional' | 'equal' | 'floor' = body.samplingStrategy || 'proportional'
 
   if (!datasetId || !question) {
     return NextResponse.json({ error: 'datasetId and question are required' }, { status: 400 })
@@ -161,12 +219,6 @@ export async function POST(req: Request) {
 
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
-  if (dataset.row_count > ROW_CAP) {
-    return NextResponse.json({
-      error: 'Dataset too large for Ask Ana. Maximum ' + ROW_CAP.toLocaleString() + ' rows supported.'
-    }, { status: 400 })
-  }
-
   // Fetch dataset state (themes + schema) for framework context
   const service = createServiceRoleClient()
   const { data: stateRow } = await service
@@ -177,42 +229,96 @@ export async function POST(req: Request) {
   const existingThemes: any[] = (stateRow?.theme_model as any)?.themes || []
   const schemaFields: any[] = (stateRow?.schema_config as any)?.fields || []
 
-  // Fetch all rows — collections union from member datasets
-  const allRows: Record<string, unknown>[] = []
-  const FLAT_PAGE = 1000
-
-  // Determine which dataset_ids to fetch from
-  let flatDatasetIds: string[] = [datasetId]
+  // ── Resolve collection members ──────────────────────────────────────────
+  let collectionMembers: { dataset_id: string; name: string; row_count: number }[] = []
   if (dataset.source === 'collection') {
     const { data: col } = await service.from('collections').select('id').eq('dataset_id', datasetId).single()
     if (col) {
-      const { data: members } = await service.from('collection_members').select('dataset_id').eq('collection_id', col.id).order('sort_order', { ascending: true })
-      if (members && members.length > 0) {
-        flatDatasetIds = members.map(m => m.dataset_id)
+      const { data: mems } = await service.from('collection_members').select('dataset_id, label, sort_order').eq('collection_id', col.id).order('sort_order', { ascending: true })
+      if (mems && mems.length > 0) {
+        const memIds = mems.map(function(m) { return m.dataset_id })
+        const { data: memDs } = await service.from('datasets').select('id, name, row_count').in('id', memIds)
+        const dsMap: Record<string, { name: string; row_count: number }> = {}
+        if (memDs) memDs.forEach(function(d) { dsMap[d.id] = { name: d.name, row_count: d.row_count || 0 } })
+        collectionMembers = mems.map(function(m) {
+          const info = dsMap[m.dataset_id] || { name: m.label || 'Unknown', row_count: 0 }
+          return { dataset_id: m.dataset_id, name: m.label || info.name, row_count: info.row_count }
+        })
       }
     }
   }
 
-  for (const dsId of flatDatasetIds) {
-    let offset = 0
-    let fetchMore = true
-    while (fetchMore && allRows.length < ROW_CAP) {
-      const { data: flatRows, error } = await service
-        .from('dataset_rows_flat')
-        .select('data')
-        .eq('dataset_id', dsId)
-        .order('row_index', { ascending: true })
-        .range(offset, offset + FLAT_PAGE - 1)
+  // ── Metadata-only mode: Ana recommends sampling config ──────────────────
+  if (metadataOnly) {
+    const totalRows = dataset.source === 'collection'
+      ? collectionMembers.reduce(function(s, m) { return s + m.row_count }, 0)
+      : (dataset.row_count || 0)
 
-      if (error || !flatRows || flatRows.length === 0) { fetchMore = false; break }
-      for (let i = 0; i < flatRows.length; i++) {
-        allRows.push(flatRows[i].data)
-        if (allRows.length >= ROW_CAP) { fetchMore = false; break }
-      }
-      if (flatRows.length < FLAT_PAGE) fetchMore = false
-      offset += FLAT_PAGE
+    const sourceLabel = getSourceLabel(dataset.source)
+
+    const memberBreakdown = collectionMembers.length > 0
+      ? '\n\nCollection members:\n' + collectionMembers.map(function(m) {
+          return '- ' + m.name + ': ' + m.row_count.toLocaleString() + ' rows'
+        }).join('\n')
+      : ''
+
+    const fieldList = schemaFields.length > 0
+      ? '\n\nDataset fields: ' + schemaFields
+          .filter(function(f: any) { return f.status !== 'ignored' })
+          .map(function(f: any) { return f.label + ' (' + f.type + ')' })
+          .join(', ')
+      : ''
+
+    const themeInfo = existingThemes.length > 0
+      ? '\n\nCurrent themes: ' + existingThemes.length
+      : '\n\nNo themes created yet.'
+
+    const metaPrompt = `You are Ana, a sampling advisor. The user has a dataset that needs sampling configuration before analysis.
+
+Dataset: "${dataset.name}"
+Source: ${sourceLabel}
+Total rows: ${totalRows.toLocaleString()}${memberBreakdown}${fieldList}${themeInfo}
+
+Your task: understand what the user wants to accomplish with this data, then recommend a sampling configuration using the recommend_sampling tool.
+
+Consider these factors:
+- **Quick scan** (~200 rows): good for getting a general sense, spotting obvious patterns
+- **Standard analysis** (~500 rows): good balance of coverage and speed, sufficient for most questions
+- **Deep dive** (~1,000 rows): thorough analysis, better for finding subtle patterns or rare mentions
+- **Maximum coverage** (~1,500 rows): comprehensive, best for building complete theme frameworks
+
+For collections, also recommend a distribution strategy:
+- **proportional**: each member contributes rows proportional to its size — best for understanding overall trends
+- **equal**: same number of rows per member — best for comparing across members
+- **floor**: minimum representation per member, rest proportional — best when you want to ensure small datasets aren't drowned out
+
+Ask the user 1-2 brief questions about what they're looking to learn, then make your recommendation. Be conversational and concise.`
+
+    const tools = [...ANA_TOOLS, RECOMMEND_SAMPLING_TOOL]
+    return streamAnthropicResponse(metaPrompt, question, conversationHistory, tools)
+  }
+
+  // ── Normal mode: fetch data rows with sampling ──────────────────────────
+  const allRows: Record<string, unknown>[] = []
+  const fetchBudget = Math.min(sampleSize * 3, FETCH_CAP)
+  const totalDatasetRows = dataset.source === 'collection'
+    ? collectionMembers.reduce(function(s, m) { return s + m.row_count }, 0)
+    : (dataset.row_count || 0)
+
+  if (dataset.source === 'collection' && collectionMembers.length > 0) {
+    // Collection: distribute fetch budget across members
+    const budgets = computeMemberBudgets(collectionMembers, fetchBudget, samplingStrategy)
+    for (const b of budgets) {
+      if (b.budget <= 0) continue
+      const memberInfo = collectionMembers.find(function(m) { return m.dataset_id === b.dataset_id })
+      const memberRows = memberInfo ? memberInfo.row_count : 0
+      const fetched = await fetchDatasetRows(service, b.dataset_id, b.budget, memberRows)
+      for (let i = 0; i < fetched.length; i++) allRows.push(fetched[i])
     }
-    if (allRows.length >= ROW_CAP) break
+  } else {
+    // Single dataset
+    const fetched = await fetchDatasetRows(service, datasetId, fetchBudget, dataset.row_count || 0)
+    for (let i = 0; i < fetched.length; i++) allRows.push(fetched[i])
   }
 
   if (allRows.length === 0) {
@@ -241,8 +347,6 @@ export async function POST(req: Request) {
   }
 
   // Filter out URL-only rows (no meaningful text content)
-  // Only apply to sources that have a known text field — study/collection/upload rows
-  // have varied field names so skip this filter for them.
   if (dataset.source === 'reddit' || dataset.source === 'substack' || dataset.source === 'google_reviews') {
     filteredRows = filteredRows.filter(function(r) {
       var text = String(r.body || r.user_message || r.review_text || '').trim()
@@ -256,7 +360,6 @@ export async function POST(req: Request) {
   let signalNote = ''
 
   if (dataset.source === 'reddit' && filteredRows.length > 0) {
-    // Per-thread percentile classification (same cutoffs as signalTier.ts)
     const MAINSTREAM_CUTOFF = DEFAULT_SIGNAL_CUTOFFS.mainstream
     const NOISE_CUTOFF = DEFAULT_SIGNAL_CUTOFFS.noise
     const threads: Record<string, { score: number; row: Record<string, unknown> }[]> = {}
@@ -282,17 +385,16 @@ export async function POST(req: Request) {
       filteredRows = signalRows
       signalNote = '\n\nNote: Only mainstream and controversial comments are included (top ' + (100 - NOISE_CUTOFF) + '% by score within each thread). ' + (totalFiltered - signalRows.length) + ' noise/fringe comments excluded.'
     }
-    // If fewer than 10 signal rows, fall back to all rows
   }
 
-  // Random sample if still too many rows
+  // Random sample if still too many rows for the context window
   const afterSignalCount = filteredRows.length
-  if (filteredRows.length > SAMPLE_MAX) {
+  if (filteredRows.length > sampleSize) {
     for (let i = filteredRows.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       var tmp = filteredRows[i]; filteredRows[i] = filteredRows[j]; filteredRows[j] = tmp
     }
-    filteredRows = filteredRows.slice(0, SAMPLE_MAX)
+    filteredRows = filteredRows.slice(0, sampleSize)
     sampled = true
   }
 
@@ -300,24 +402,24 @@ export async function POST(req: Request) {
   const dataContext = formatRowsForContext(filteredRows, dataset.source)
 
   // Build system prompt
-  const sourceLabel = dataset.source === 'reddit' ? 'Reddit comments and posts'
-    : dataset.source === 'substack' ? 'Substack reader comments'
-    : dataset.source === 'townhall' ? 'PulseIQ conversation responses'
-    : dataset.source === 'study' ? 'survey responses'
-    : dataset.source === 'collection' ? 'survey responses'
-    : dataset.source === 'google_reviews' ? 'Google Reviews'
-    : 'data entries'
+  const sourceLabel = getSourceLabel(dataset.source)
 
   const sampleNote = sampled
-    ? '\n\nNote: This is a representative sample of ' + filteredRows.length + ' rows from ' + afterSignalCount + ' signal rows. Base your analysis on patterns in this sample.'
+    ? '\n\nNote: This is a random sample of ' + filteredRows.length + ' rows from ' + totalDatasetRows.toLocaleString() + ' total rows (' + afterSignalCount.toLocaleString() + ' after filtering). Base your analysis on patterns in this sample and note that findings are based on a sample.'
     : ''
 
   const filterNote = filters && Object.keys(filters).length > 0
-    ? '\n\nNote: The user has active filters applied. You are seeing ' + totalFiltered + ' of ' + allRows.length + ' total rows.'
+    ? '\n\nNote: The user has active filters applied. You are seeing ' + totalFiltered + ' of ' + totalDatasetRows.toLocaleString() + ' total rows.'
     : ''
 
   const redditContext = dataset.source === 'reddit'
     ? '\n\nThis is Reddit data. Comments with high scores represent mainstream views (community consensus). Comments in the middle range are controversial (mixed reception). Noise and fringe comments (low/negative scores) have been excluded. If the user asks about fringe or rejected views, let them know those are filtered out and they can check the Signals view for that analysis.'
+    : ''
+
+  const collectionContext = dataset.source === 'collection' && collectionMembers.length > 0
+    ? '\n\nThis is a collection combining ' + collectionMembers.length + ' datasets: ' +
+      collectionMembers.map(function(m) { return m.name + ' (' + m.row_count.toLocaleString() + ' rows)' }).join(', ') +
+      '. Sampling strategy: ' + samplingStrategy + '.'
     : ''
 
   // Build theme context for the prompt
@@ -345,27 +447,71 @@ You serve two roles:
 
 When using tools, ALWAYS explain what you're about to do in your text response before calling the tool. For example: "I'll create a theme for menu items based on the 23 distinct food references I found in the data."
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${filterNote}${signalNote}${sampleNote}${redditContext}
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
 
 Here is the dataset:
 ${dataContext}`
 
-  // Build messages
+  return streamAnthropicResponse(systemPrompt, question, conversationHistory, ANA_TOOLS)
+}
+
+// ── Fetch rows from a single dataset, using RPC sampling for large ones ───
+async function fetchDatasetRows(
+  service: ReturnType<typeof createServiceRoleClient>,
+  datasetId: string,
+  budget: number,
+  totalRows: number
+): Promise<Record<string, unknown>[]> {
+  // Small dataset: fetch all rows sequentially
+  if (totalRows <= budget) {
+    const rows: Record<string, unknown>[] = []
+    const PAGE = 1000
+    let offset = 0
+    let fetchMore = true
+    while (fetchMore) {
+      const { data: flatRows, error } = await service
+        .from('dataset_rows_flat')
+        .select('data')
+        .eq('dataset_id', datasetId)
+        .order('row_index', { ascending: true })
+        .range(offset, offset + PAGE - 1)
+
+      if (error || !flatRows || flatRows.length === 0) break
+      for (let i = 0; i < flatRows.length; i++) rows.push(flatRows[i].data)
+      if (flatRows.length < PAGE) fetchMore = false
+      offset += PAGE
+    }
+    return rows
+  }
+
+  // Large dataset: use RPC random sampling
+  const { data: sampled, error } = await service.rpc('sample_row_pairs', {
+    p_dataset_id: datasetId,
+    p_fields: [],
+    p_limit: budget,
+  })
+  if (error || !sampled) return []
+  return sampled.map(function(r: any) { return r.data })
+}
+
+// ── Stream Anthropic response ─────────────────────────────────────────────
+async function streamAnthropicResponse(
+  systemPrompt: string,
+  question: string,
+  conversationHistory: Message[] | undefined,
+  tools: any[]
+): Promise<Response> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
+  }
+
   const messages: Message[] = []
   if (conversationHistory && conversationHistory.length > 0) {
     messages.push(...conversationHistory)
   }
   messages.push({ role: 'user', content: question })
 
-  // Get API key
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
-  }
-
-  // Stream response from Anthropic with prompt caching
-  // The system prompt (with dataset) is marked as cacheable so follow-up
-  // questions reuse the cached context instead of re-sending all rows.
   const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -377,7 +523,7 @@ ${dataContext}`
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       stream: true,
-      tools: ANA_TOOLS,
+      tools,
       system: [
         {
           type: 'text',
@@ -403,7 +549,6 @@ ${dataContext}`
     async start(controller) {
       const reader = anthropicRes.body!.getReader()
       let buffer = ''
-      // Track tool_use blocks being built up across deltas
       let currentToolId = ''
       let currentToolName = ''
       let toolInputJson = ''
@@ -427,17 +572,14 @@ ${dataContext}`
               if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
                 controller.enqueue(encoder.encode('data: ' + JSON.stringify({ text: event.delta.text }) + '\n\n'))
               }
-              // Tool use: start of a new tool block
               else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
                 currentToolId = event.content_block.id || ''
                 currentToolName = event.content_block.name || ''
                 toolInputJson = ''
               }
-              // Tool use: accumulate input JSON
               else if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
                 toolInputJson += event.delta.partial_json || ''
               }
-              // Tool use: block complete — emit action event
               else if (event.type === 'content_block_stop' && currentToolName) {
                 try {
                   const toolInput = JSON.parse(toolInputJson)
@@ -476,17 +618,26 @@ ${dataContext}`
   })
 }
 
-// Truncate text to max length, adding ellipsis
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function getSourceLabel(source: string): string {
+  if (source === 'reddit') return 'Reddit comments and posts'
+  if (source === 'substack') return 'Substack reader comments'
+  if (source === 'townhall') return 'PulseIQ conversation responses'
+  if (source === 'study') return 'survey responses'
+  if (source === 'collection') return 'survey responses'
+  if (source === 'google_reviews') return 'Google Reviews'
+  return 'data entries'
+}
+
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text
   return text.slice(0, max) + '...'
 }
 
-// Format rows compactly for the system prompt context
 function formatRowsForContext(rows: Record<string, unknown>[], source: string): string {
   if (rows.length === 0) return '(no data)'
 
-  // For Reddit: focus on key fields
   if (source === 'reddit') {
     return rows.map(function(r, i) {
       const parts: string[] = []
@@ -501,7 +652,6 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
     }).join('\n')
   }
 
-  // For Substack: focus on comment engagement
   if (source === 'substack') {
     return rows.map(function(r, i) {
       const parts: string[] = []
@@ -516,7 +666,6 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
     }).join('\n')
   }
 
-  // For Town Hall: focus on conversation data
   if (source === 'townhall') {
     return rows.map(function(r, i) {
       const parts: string[] = []
@@ -529,7 +678,6 @@ function formatRowsForContext(rows: Record<string, unknown>[], source: string): 
     }).join('\n')
   }
 
-  // Generic: include all fields
   return rows.map(function(r, i) {
     const parts = Object.entries(r)
       .filter(function(e) { return e[1] != null && e[1] !== '' })

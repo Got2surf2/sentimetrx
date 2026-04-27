@@ -224,6 +224,8 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
         <AskAnaPanel
           datasetId={datasetId}
           datasetName={dataset.name}
+          datasetSource={dataset.source}
+          datasetRowCount={dataset.row_count}
           filters={filters}
           onClose={function() { setAskAnaOpen(false) }}
           onThemesChanged={function() { window.dispatchEvent(new Event('ana-themes-changed')) }}

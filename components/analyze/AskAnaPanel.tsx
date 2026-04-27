@@ -2,6 +2,7 @@
 
 // components/analyze/AskAnaPanel.tsx
 // Right-side slide-out panel for Ask Ana — iMessage-style chat with streaming AI responses.
+// Supports configurable sampling for large datasets and collections.
 // Supports both Q&A (text) and analysis framework mutations (tool_use → confirmation cards).
 
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -23,12 +24,25 @@ interface Message {
   actions?: AnaAction[]
 }
 
+interface SamplingConfig {
+  sampleSize: number
+  strategy: 'proportional' | 'equal' | 'floor'
+  configured: boolean
+}
+
+interface CollectionMember {
+  name: string
+  row_count: number
+}
+
 interface Props {
   datasetId: string
   datasetName: string
+  datasetSource: string
+  datasetRowCount: number
   filters?: Filters
   onClose: () => void
-  onThemesChanged?: () => void  // called after a mutation is applied
+  onThemesChanged?: () => void
 }
 
 var IMSG_BLUE = '#007AFF'
@@ -42,12 +56,41 @@ var STARTERS = [
   'Create a theme for the most common complaints',
 ]
 
-export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, onThemesChanged }: Props) {
+// Threshold: datasets above this show the sampling config
+var SAMPLING_THRESHOLD = 200
+
+export default function AskAnaPanel({ datasetId, datasetName, datasetSource, datasetRowCount, filters, onClose, onThemesChanged }: Props) {
   var [messages, setMessages] = useState<Message[]>([])
   var [input, setInput] = useState('')
   var [loading, setLoading] = useState(false)
   var scrollRef = useRef<HTMLDivElement>(null)
   var inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Sampling state
+  var needsSampling = datasetRowCount > SAMPLING_THRESHOLD || datasetSource === 'collection'
+  var [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(
+    needsSampling
+      ? { sampleSize: 500, strategy: 'proportional', configured: false }
+      : { sampleSize: datasetRowCount, strategy: 'proportional', configured: true }
+  )
+  var [phase, setPhase] = useState<'setup' | 'deciding' | 'chat'>(needsSampling ? 'setup' : 'chat')
+  var [collectionMembers, setCollectionMembers] = useState<CollectionMember[] | null>(null)
+  var [customSizeInput, setCustomSizeInput] = useState('')
+
+  // Fetch collection members on mount if collection
+  useEffect(function() {
+    if (datasetSource !== 'collection') return
+    fetch('/api/collections/' + datasetId)
+      .then(function(r) { return r.ok ? r.json() : null })
+      .then(function(data) {
+        if (data && data.members) {
+          setCollectionMembers(data.members.map(function(m: any) {
+            return { name: m.label || m.name || 'Unknown', row_count: m.row_count || 0 }
+          }))
+        }
+      })
+      .catch(function() {})
+  }, [datasetId, datasetSource])
 
   // Auto-scroll on new messages
   useEffect(function() {
@@ -56,10 +99,12 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
     }
   }, [messages])
 
-  // Focus input on mount
+  // Focus input on mount (when in chat phase)
   useEffect(function() {
-    setTimeout(function() { inputRef.current?.focus() }, 200)
-  }, [])
+    if (phase === 'chat' || phase === 'deciding') {
+      setTimeout(function() { inputRef.current?.focus() }, 200)
+    }
+  }, [phase])
 
   // Apply a confirmed action to the dataset's theme model
   var applyAction = useCallback(async function(msgId: string, actionIdx: number) {
@@ -67,6 +112,30 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
     if (!msg || !msg.actions || !msg.actions[actionIdx]) return
     var action = msg.actions[actionIdx]
     console.log('[Ana] applyAction called:', action.tool, action.status, 'slides:', action.input?.slides?.length)
+
+    // Handle recommend_sampling action
+    if (action.tool === 'recommend_sampling') {
+      var rec = action.input
+      setSamplingConfig({
+        sampleSize: Math.max(50, Math.min(rec.sample_size || 500, 1500)),
+        strategy: rec.strategy || 'proportional',
+        configured: true,
+      })
+      // Mark as approved
+      setMessages(function(prev) {
+        return prev.map(function(m) {
+          if (m.id !== msgId || !m.actions) return m
+          var updated = m.actions.map(function(a, i) { return i === actionIdx ? { ...a, status: 'approved' as const } : a })
+          return { ...m, actions: updated }
+        })
+      })
+      // Switch to chat phase after a brief delay
+      setTimeout(function() {
+        setMessages([])
+        setPhase('chat')
+      }, 800)
+      return
+    }
 
     try {
       // Fetch current theme model
@@ -131,7 +200,6 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         var delName = (action.input.theme_name || '').toLowerCase()
         themes = themes.filter(function(t: any) { return (t.name || t.label || '').toLowerCase() !== delName })
       } else if (action.tool === 'generate_report') {
-        // Render deck and trigger download — no theme model changes
         var deckRes = await fetch('/api/ana/render-deck', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -151,7 +219,6 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
 
-        // Mark as approved and return early — no theme save needed
         setMessages(function(prev) {
           return prev.map(function(m) {
             if (m.id !== msgId || !m.actions) return m
@@ -171,7 +238,6 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
       })
       if (!patchRes.ok) throw new Error('Failed to save')
 
-      // Mark action as approved
       setMessages(function(prev) {
         return prev.map(function(m) {
           if (m.id !== msgId || !m.actions) return m
@@ -182,7 +248,6 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
 
       if (onThemesChanged) onThemesChanged()
     } catch (err: any) {
-      // Show error inline
       var errMsg = err?.message || String(err)
       setMessages(function(prev) {
         return prev.map(function(m) {
@@ -194,6 +259,22 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
   }, [messages, datasetId, onThemesChanged])
 
   var rejectAction = useCallback(function(msgId: string, actionIdx: number) {
+    var msg = messages.find(function(m) { return m.id === msgId })
+    if (msg?.actions?.[actionIdx]?.tool === 'recommend_sampling') {
+      // Rejected sampling recommendation — go back to setup
+      setMessages(function(prev) {
+        return prev.map(function(m) {
+          if (m.id !== msgId || !m.actions) return m
+          var updated = m.actions.map(function(a, i) { return i === actionIdx ? { ...a, status: 'rejected' as const } : a })
+          return { ...m, actions: updated }
+        })
+      })
+      setTimeout(function() {
+        setMessages([])
+        setPhase('setup')
+      }, 600)
+      return
+    }
     setMessages(function(prev) {
       return prev.map(function(m) {
         if (m.id !== msgId || !m.actions) return m
@@ -201,7 +282,7 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         return { ...m, actions: updated }
       })
     })
-  }, [])
+  }, [messages])
 
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return
@@ -214,15 +295,15 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
     setInput('')
     setLoading(true)
 
-    // Build conversation history (exclude the current exchange)
     var history = messages
       .filter(function(m) { return !m.streaming })
       .map(function(m) { return { role: m.role, content: m.content } })
 
-    // Serialize filters for the API
     var serializedFilters = filters && Object.keys(filters).length > 0
       ? serializeFilters(filters)
       : undefined
+
+    var isDeciding = phase === 'deciding'
 
     try {
       var res = await fetch('/api/ask-ana', {
@@ -233,6 +314,9 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
           question: text.trim(),
           conversationHistory: history,
           filters: serializedFilters,
+          metadataOnly: isDeciding,
+          sampleSize: samplingConfig.sampleSize,
+          samplingStrategy: samplingConfig.strategy,
         }),
       })
 
@@ -247,7 +331,6 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         return
       }
 
-      // Read SSE stream
       var reader = res.body!.getReader()
       var decoder = new TextDecoder()
       var buffer = ''
@@ -302,7 +385,6 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         }
       }
 
-      // Mark as done
       var final_ = accumulated
       var finalActions = [...collectedActions]
       setMessages(function(prev) {
@@ -331,9 +413,45 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
   function handleClear() {
     setMessages([])
     setInput('')
+    if (phase === 'deciding') setPhase('setup')
+  }
+
+  function handleSelectPreset(size: number) {
+    setSamplingConfig(function(c) { return { ...c, sampleSize: size, configured: true } })
+    setPhase('chat')
+  }
+
+  function handleCustomSize() {
+    var n = parseInt(customSizeInput, 10)
+    if (isNaN(n) || n < 50) n = 50
+    if (n > 1500) n = 1500
+    setSamplingConfig(function(c) { return { ...c, sampleSize: n, configured: true } })
+    setPhase('chat')
+  }
+
+  function handleAnaHelp() {
+    setPhase('deciding')
+    setTimeout(function() {
+      sendMessage('Help me figure out the right sampling configuration for my analysis of this dataset.')
+    }, 100)
+  }
+
+  function handleSkipSetup() {
+    setSamplingConfig(function(c) { return { ...c, sampleSize: 500, configured: true } })
+    setPhase('chat')
+  }
+
+  function handleReconfigure() {
+    setSamplingConfig(function(c) { return { ...c, configured: false } })
+    setMessages([])
+    setPhase('setup')
   }
 
   var hasMessages = messages.length > 0
+  var isCollection = datasetSource === 'collection'
+  var totalRows = isCollection && collectionMembers
+    ? collectionMembers.reduce(function(s, m) { return s + m.row_count }, 0)
+    : datasetRowCount
 
   return (
     <div style={{
@@ -342,13 +460,12 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
       display: 'flex', flexDirection: 'column', zIndex: 1500,
       animation: 'askAnaSlideIn .2s ease-out',
     }}>
-      {/* Inline animation keyframe */}
       <style>{`
         @keyframes askAnaSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         .ask-ana-input:focus { outline: none; border-color: ${HERMES} !important; box-shadow: 0 0 0 3px rgba(232,99,42,.15) !important; }
       `}</style>
 
-      {/* Header — matches TopNav h-14 (56px) */}
+      {/* Header */}
       <div style={{
         height: 56, padding: '0 16px', borderBottom: 'none',
         display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
@@ -361,8 +478,23 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         }}>A</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: 'white', letterSpacing: '-.2px' }}>Ask Ana</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{datasetName}</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {samplingConfig.configured && totalRows > SAMPLING_THRESHOLD
+              ? 'Analyzing ' + samplingConfig.sampleSize.toLocaleString() + ' of ' + totalRows.toLocaleString() + ' rows'
+              : datasetName
+            }
+          </div>
         </div>
+        {samplingConfig.configured && totalRows > SAMPLING_THRESHOLD && (
+          <button onClick={handleReconfigure}
+            style={{
+              fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.8)', background: 'rgba(255,255,255,.15)',
+              border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, padding: '3px 8px',
+              cursor: 'pointer',
+            }}>
+            Sampling
+          </button>
+        )}
         {hasMessages && (
           <button onClick={handleClear}
             style={{
@@ -385,7 +517,145 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         flex: 1, overflow: 'auto', padding: '16px 16px 8px',
         display: 'flex', flexDirection: 'column', gap: 8,
       }}>
-        {!hasMessages && (
+        {/* ── Setup phase: sampling config ──────────────────────────── */}
+        {phase === 'setup' && !hasMessages && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16, padding: '0 8px' }}>
+            {/* Dataset info */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>{'\uD83D\uDCCA'}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111', marginBottom: 4 }}>
+                {isCollection
+                  ? totalRows.toLocaleString() + ' rows across ' + (collectionMembers ? collectionMembers.length : '?') + ' datasets'
+                  : totalRows.toLocaleString() + ' rows'
+                }
+              </div>
+              <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>
+                Ana will analyze a representative sample. Choose how many rows to include.
+              </div>
+            </div>
+
+            {/* Collection member breakdown */}
+            {isCollection && collectionMembers && collectionMembers.length > 0 && (
+              <div style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 12px', border: '1px solid #e5e7eb' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>Members</div>
+                {/* Stacked bar */}
+                <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 8, marginBottom: 8 }}>
+                  {collectionMembers.map(function(m, i) {
+                    var pct = totalRows > 0 ? (m.row_count / totalRows * 100) : 0
+                    var colors = ['#E8632A', '#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444']
+                    return <div key={i} style={{ width: pct + '%', background: colors[i % colors.length], minWidth: 2 }} />
+                  })}
+                </div>
+                {collectionMembers.map(function(m, i) {
+                  var colors = ['#E8632A', '#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444']
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 12 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: 2, background: colors[i % colors.length], flexShrink: 0 }} />
+                      <span style={{ flex: 1, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                      <span style={{ color: '#9ca3af', fontSize: 11 }}>{m.row_count.toLocaleString()}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Sample size presets */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Sample size</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {[
+                  { label: 'Quick scan', size: 200, desc: 'Fast overview' },
+                  { label: 'Standard', size: 500, desc: 'Good balance' },
+                  { label: 'Deep dive', size: 1000, desc: 'Thorough analysis' },
+                ].map(function(p) {
+                  if (p.size > totalRows) return null
+                  return (
+                    <button key={p.size} onClick={function() { handleSelectPreset(p.size) }}
+                      style={{
+                        textAlign: 'left', padding: '10px 12px', fontSize: 13, color: '#374151',
+                        background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10,
+                        cursor: 'pointer', lineHeight: 1.4, transition: 'all .12s',
+                      }}
+                      onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.borderColor = HERMES }}
+                      onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb' }}>
+                      <div style={{ fontWeight: 600 }}>{p.label}</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.size.toLocaleString()} rows &middot; {p.desc}</div>
+                    </button>
+                  )
+                })}
+                {/* Custom size */}
+                <div style={{
+                  padding: '10px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10,
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Custom</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="number" min="50" max="1500"
+                      placeholder="50-1500"
+                      value={customSizeInput}
+                      onChange={function(e) { setCustomSizeInput(e.target.value) }}
+                      onKeyDown={function(e) { if (e.key === 'Enter') handleCustomSize() }}
+                      style={{
+                        flex: 1, fontSize: 13, padding: '4px 8px', border: '1px solid #d1d5db',
+                        borderRadius: 6, width: '100%', minWidth: 0,
+                      }}
+                    />
+                    <button onClick={handleCustomSize} disabled={!customSizeInput}
+                      style={{
+                        fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6,
+                        background: customSizeInput ? HERMES : '#d1d5db', color: 'white', border: 'none',
+                        cursor: customSizeInput ? 'pointer' : 'default',
+                      }}>Go</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Collection strategy */}
+            {isCollection && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Distribution across members</div>
+                <select
+                  value={samplingConfig.strategy}
+                  onChange={function(e) { setSamplingConfig(function(c) { return { ...c, strategy: e.target.value as any } }) }}
+                  style={{
+                    width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db',
+                    borderRadius: 8, background: 'white', color: '#374151', cursor: 'pointer',
+                  }}>
+                  <option value="proportional">Proportional &mdash; weight by dataset size</option>
+                  <option value="equal">Equal &mdash; same count per dataset</option>
+                  <option value="floor">Minimum floor &mdash; ensure small datasets are represented</option>
+                </select>
+              </div>
+            )}
+
+            {/* Ana help button */}
+            <button onClick={handleAnaHelp}
+              style={{
+                width: '100%', padding: '12px', fontSize: 14, fontWeight: 700,
+                background: HERMES, color: 'white', border: 'none', borderRadius: 10,
+                cursor: 'pointer', transition: 'opacity .15s',
+              }}
+              onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9' }}
+              onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}>
+              Let Ana help me decide
+            </button>
+
+            {/* Skip link */}
+            <div style={{ textAlign: 'center' }}>
+              <button onClick={handleSkipSetup}
+                style={{
+                  fontSize: 12, color: '#9ca3af', background: 'none', border: 'none',
+                  cursor: 'pointer', textDecoration: 'underline',
+                }}>
+                Skip, use defaults (500 rows)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Chat phase: normal starters ──────────────────────────── */}
+        {phase === 'chat' && !hasMessages && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 20, padding: '0 16px' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>{'\uD83D\uDCAC'}</div>
@@ -413,6 +683,7 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
           </div>
         )}
 
+        {/* ── Messages ─────────────────────────────────────────────── */}
         {messages.map(function(m) {
           var isUser = m.role === 'user'
           return (
@@ -454,49 +725,54 @@ export default function AskAnaPanel({ datasetId, datasetName, filters, onClose, 
         })}
       </div>
 
-      {/* Input area */}
-      <div style={{
-        padding: '12px 16px', borderTop: '1px solid #e5e7eb',
-        background: '#fafafa', flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <textarea
-            ref={inputRef}
-            className="ask-ana-input"
-            value={input}
-            onChange={function(e) { setInput(e.target.value) }}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask a question or tell Ana to modify themes..."
-            rows={1}
-            disabled={loading}
-            style={{
-              flex: 1, resize: 'none', fontSize: 14, padding: '10px 14px',
-              border: '1px solid #d1d5db', borderRadius: 12,
-              background: 'white', color: '#111', lineHeight: 1.4,
-              minHeight: 42, maxHeight: 120, overflow: 'auto',
-              fontFamily: 'inherit',
-            }}
-          />
-          <button
-            onClick={function() { sendMessage(input) }}
-            disabled={!input.trim() || loading}
-            style={{
-              width: 40, height: 40, borderRadius: '50%',
-              background: input.trim() && !loading ? HERMES : '#d1d5db',
-              border: 'none', cursor: input.trim() && !loading ? 'pointer' : 'default',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background .15s', flexShrink: 0,
-            }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
+      {/* Input area — show in chat and deciding phases */}
+      {(phase === 'chat' || phase === 'deciding') && (
+        <div style={{
+          padding: '12px 16px', borderTop: '1px solid #e5e7eb',
+          background: '#fafafa', flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <textarea
+              ref={inputRef}
+              className="ask-ana-input"
+              value={input}
+              onChange={function(e) { setInput(e.target.value) }}
+              onKeyDown={handleKeyDown}
+              placeholder={phase === 'deciding' ? 'Tell Ana what you want to learn...' : 'Ask a question or tell Ana to modify themes...'}
+              rows={1}
+              disabled={loading}
+              style={{
+                flex: 1, resize: 'none', fontSize: 14, padding: '10px 14px',
+                border: '1px solid #d1d5db', borderRadius: 12,
+                background: 'white', color: '#111', lineHeight: 1.4,
+                minHeight: 42, maxHeight: 120, overflow: 'auto',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              onClick={function() { sendMessage(input) }}
+              disabled={!input.trim() || loading}
+              style={{
+                width: 40, height: 40, borderRadius: '50%',
+                background: input.trim() && !loading ? HERMES : '#d1d5db',
+                border: 'none', cursor: input.trim() && !loading ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background .15s', flexShrink: 0,
+              }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 6, textAlign: 'center' }}>
+            {phase === 'deciding'
+              ? 'Ana will recommend a sampling configuration based on your goals.'
+              : 'Ana can answer questions and modify your analysis framework. Shift+Enter for new line.'
+            }
+          </div>
         </div>
-        <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 6, textAlign: 'center' }}>
-          Ana can answer questions and modify your analysis framework. Shift+Enter for new line.
-        </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -515,6 +791,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
     merge_themes: 'Merge Themes',
     delete_theme: 'Delete Theme',
     generate_report: 'Generate Deck',
+    recommend_sampling: 'Sampling Recommendation',
   }
 
   var toolIcon: Record<string, string> = {
@@ -523,6 +800,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
     merge_themes: '\u2194',
     delete_theme: '\u2212',
     generate_report: '\u25A3',
+    recommend_sampling: '\u2693',
   }
 
   var borderColor = action.status === 'approved' ? '#22c55e'
@@ -557,6 +835,26 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
       </div>
 
       {/* Body — varies by tool */}
+      {action.tool === 'recommend_sampling' && (
+        <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 6 }}>
+            <div>
+              <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>Sample Size</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: HERMES }}>{(inp.sample_size || 500).toLocaleString()}</div>
+            </div>
+            {inp.strategy && (
+              <div>
+                <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>Strategy</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                  {inp.strategy === 'proportional' ? 'Proportional' : inp.strategy === 'equal' ? 'Equal' : 'Min floor'}
+                </div>
+              </div>
+            )}
+          </div>
+          {inp.reasoning && <div style={{ color: '#6b7280', fontSize: 11 }}>{inp.reasoning}</div>}
+        </div>
+      )}
+
       {action.tool === 'create_theme' && (
         <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
           <div style={{ fontWeight: 600, marginBottom: 2 }}>{inp.name}</div>
@@ -640,7 +938,10 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
               borderRadius: 8, cursor: applying ? 'default' : 'pointer',
               opacity: applying ? 0.6 : 1,
             }}>
-            {applying ? (action.tool === 'generate_report' ? 'Building deck...' : 'Applying...') : (action.tool === 'generate_report' ? 'Build & Download' : 'Approve')}
+            {applying
+              ? (action.tool === 'generate_report' ? 'Building deck...' : action.tool === 'recommend_sampling' ? 'Applying...' : 'Applying...')
+              : (action.tool === 'generate_report' ? 'Build & Download' : action.tool === 'recommend_sampling' ? 'Use this' : 'Approve')
+            }
           </button>
           <button onClick={function() { onReject(msgId, actionIdx) }}
             style={{
@@ -648,7 +949,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
               background: 'white', color: '#6b7280', border: '1px solid #d1d5db',
               borderRadius: 8, cursor: 'pointer',
             }}>
-            Cancel
+            {action.tool === 'recommend_sampling' ? 'Adjust manually' : 'Cancel'}
           </button>
         </div>
       )}
@@ -662,17 +963,13 @@ function FormattedResponse({ text, streaming }: { text: string; streaming?: bool
     return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Thinking...</span>
   }
 
-  // Convert markdown-ish formatting to simple HTML
   var parts = text.split('\n')
   var elements: React.ReactNode[] = []
 
   for (var i = 0; i < parts.length; i++) {
     var line = parts[i]
-
-    // Bold: **text**
     var formatted = formatInline(line)
 
-    // Bullet points
     if (line.match(/^[\-\*]\s/)) {
       elements.push(
         <div key={i} style={{ paddingLeft: 12, position: 'relative', marginTop: 2 }}>
@@ -681,24 +978,20 @@ function FormattedResponse({ text, streaming }: { text: string; streaming?: bool
         </div>
       )
     }
-    // Numbered list
     else if (line.match(/^\d+\.\s/)) {
       elements.push(
         <div key={i} style={{ paddingLeft: 4, marginTop: 2 }}>{formatted}</div>
       )
     }
-    // Headers (### or ##)
     else if (line.match(/^#{1,3}\s/)) {
       var headerText = line.replace(/^#{1,3}\s/, '')
       elements.push(
         <div key={i} style={{ fontWeight: 700, marginTop: i > 0 ? 8 : 0, marginBottom: 2 }}>{headerText}</div>
       )
     }
-    // Empty line
     else if (line.trim() === '') {
       elements.push(<div key={i} style={{ height: 6 }} />)
     }
-    // Regular text
     else {
       elements.push(<div key={i}>{formatted}</div>)
     }
@@ -740,7 +1033,6 @@ function CopyButton({ text }: { text: string }) {
 
 // Handle inline formatting: **bold**, *italic*, "quotes"
 function formatInline(text: string): React.ReactNode {
-  // Split on **bold** markers
   var boldParts = text.split(/\*\*(.+?)\*\*/g)
   if (boldParts.length === 1) return text
 
