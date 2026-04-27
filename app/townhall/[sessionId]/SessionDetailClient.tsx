@@ -8,6 +8,7 @@ import type { TownHallSession, TownHallTheme, TownHallGuideTopic, TownHallConfig
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import TownHallAnalyticsPanel from '@/components/townhall/TownHallAnalyticsPanel'
+import ShareModal from '@/components/ui/ShareModal'
 import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
@@ -119,6 +120,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [participantList, setParticipantList] = useState<any[]>([])
   const [convModal, setConvModal] = useState<{ pid: string; turns: any[]; demographics?: any; psychographics?: any } | null>(null)
   const [convShareState, setConvShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
+  const [showShare, setShowShare] = useState(false)
   const [jsonView, setJsonView] = useState(false)
   const [jsonCopied, setJsonCopied] = useState(false)
 
@@ -369,6 +371,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   return (
     <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}>
       <div className="max-w-6xl mx-auto px-5 py-6">
+        {showShare && <ShareModal type="townhall" targetId={sessionId} title={session.name} onClose={() => setShowShare(false)} />}
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -390,6 +393,10 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
           </div>
 
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowShare(true)}
+              className="px-3 py-2 rounded-xl text-sm font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors">
+              Share
+            </button>
             {!editing && (
               <button onClick={startEdit}
                 className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 text-gray-600">
