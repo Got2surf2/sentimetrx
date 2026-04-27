@@ -3,6 +3,7 @@
 
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt, DatasetRowBatch, ProcessedRow } from './analyzeTypes'
 import type { SurveyPayload, StudyConfig } from './types'
+import { ratingAliases } from './scaleUtils'
 
 export function sanitizeColumnName(raw: string): string {
   return raw
@@ -251,7 +252,7 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
     { field: 'status',           type: 'categorical', label: 'Response Status' },
     { field: 'submitted_at',     type: 'date' },
     ...(npsOn ? [{ field: 'nps_score', type: 'numeric' as AnaFieldType, sqt: 'nps' as AnaFieldSqt }] : []),
-    ...(expOn ? [{ field: 'experience_score', type: 'numeric' as AnaFieldType, sqt: 'rating' as AnaFieldSqt, label: ratingLabel }] : []),
+    ...(expOn ? [{ field: 'experience_score', type: 'numeric' as AnaFieldType, sqt: 'rating' as AnaFieldSqt, label: ratingLabel, valueAliases: ratingAliases(config.ratingType || 'experience') || undefined }] : []),
     { field: 'sentiment',        type: 'categorical', sqt: 'single-select' },
     { field: 'duration_sec',         type: 'numeric',    sqt: 'numeric-input' },
     ...(npsOn ? [{ field: 'nps_followup', type: 'open-ended' as AnaFieldType, sqt: 'open-text' as AnaFieldSqt, label: (config.npsLabel || 'NPS') + ' Follow-up' }] : []),

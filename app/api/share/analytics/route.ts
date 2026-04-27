@@ -4,6 +4,7 @@
 // Returns only aggregates — never individual rows.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { ratingAliases } from '@/lib/scaleUtils'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -131,8 +132,36 @@ export async function GET(req: NextRequest) {
     .eq('dataset_id', meta.dataset_id)
     .single()
 
-  const schema = stateRow?.schema_config as { fields: { field: string; type: string; label?: string; section?: string; valueAliases?: Record<string, string>; remapping?: Record<string, number> }[] } | null
+  const schema = stateRow?.schema_config as { fields: { field: string; type: string; sqt?: string; label?: string; section?: string; valueAliases?: Record<string, string>; remapping?: Record<string, number> }[] } | null
   const fields = schema?.fields || []
+
+  // Enrich rating fields that lack valueAliases (legacy schemas)
+  const ratingFieldsNeedingAliases = fields.filter(f => f.type === 'numeric' && f.sqt === 'rating' && !f.valueAliases)
+  if (ratingFieldsNeedingAliases.length > 0) {
+    // Look up the study config to get the ratingType
+    let ratingType = 'experience'
+    const { data: ds } = await service.from('datasets').select('study_id').eq('id', meta.dataset_id).single()
+    if (ds?.study_id) {
+      const { data: study } = await service.from('studies').select('config').eq('id', ds.study_id).single()
+      if (study?.config) ratingType = (study.config as any).ratingType || 'experience'
+    } else if (dataset.source === 'collection') {
+      // For collections, look up first member's study
+      const { data: col } = await service.from('collections').select('id').eq('dataset_id', meta.dataset_id).single()
+      if (col) {
+        const { data: members } = await service.from('collection_members').select('dataset_id').eq('collection_id', col.id).limit(1)
+        if (members?.[0]) {
+          const { data: memberDs } = await service.from('datasets').select('study_id').eq('id', members[0].dataset_id).single()
+          if (memberDs?.study_id) {
+            const { data: study } = await service.from('studies').select('config').eq('id', memberDs.study_id).single()
+            if (study?.config) ratingType = (study.config as any).ratingType || 'experience'
+          }
+        }
+      }
+    }
+    const aliases = ratingAliases(ratingType)
+    if (aliases) ratingFieldsNeedingAliases.forEach(f => { f.valueAliases = aliases })
+  }
+
   const numericFields = fields.filter(f => f.type === 'numeric')
   const fieldLabels: Record<string, string> = {}
   fields.forEach(f => { fieldLabels[f.field] = f.label || f.field })

@@ -242,3 +242,21 @@ export function scaleDirectionLabel(values: string[]): string | null {
   if (!detected || detected.length < 2) return null
   return detected[0] + ' \u2192 ' + detected[detected.length - 1]
 }
+
+// ── Rating type scale labels (1-5) ──────────────────────────────────────
+// Maps ratingType → { "1": label, "2": label, ... "5": label }
+var RATING_SCALE_ALIASES: Record<string, Record<string, string>> = {
+  experience:  { '1': 'Very poor',          '2': 'Poor',           '3': 'OK',        '4': 'Good',           '5': 'Excellent' },
+  familiarity: { '1': 'Never heard of you', '2': 'Heard of you',   '3': 'Know a little', '4': 'Know you well', '5': 'Very familiar' },
+  satisfaction:{ '1': 'Very dissatisfied',  '2': 'Dissatisfied',   '3': 'Neutral',   '4': 'Satisfied',      '5': 'Very satisfied' },
+  value:       { '1': 'Poor value',         '2': 'Below average',  '3': 'Fair value', '4': 'Good value',     '5': 'Exceptional value' },
+  quality:     { '1': 'Very poor',          '2': 'Below standard', '3': 'Acceptable','4': 'Good quality',   '5': 'Exceptional' },
+  ease:        { '1': 'Very difficult',     '2': 'Difficult',      '3': 'Neutral',   '4': 'Easy',           '5': 'Effortless' },
+  intent:      { '1': 'Very unlikely',      '2': 'Unlikely',       '3': 'Unsure',    '4': 'Likely',         '5': 'Definitely' },
+  perception:  { '1': 'Very negative',      '2': 'Negative',       '3': 'Neutral',   '4': 'Positive',       '5': 'Very positive' },
+}
+
+/** Get valueAliases for a rating type (experience, familiarity, etc.) */
+export function ratingAliases(ratingType: string): Record<string, string> | null {
+  return RATING_SCALE_ALIASES[ratingType] || null
+}
