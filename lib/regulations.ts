@@ -245,6 +245,9 @@ function cleanText(s: string): string {
     .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)) })
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&rsquo;/g, "'").replace(/&lsquo;/g, "'")
+    .replace(/&rdquo;/g, '"').replace(/&ldquo;/g, '"')
+    .replace(/&mdash;/g, '-').replace(/&ndash;/g, '-').replace(/&hellip;/g, '...')
     .replace(/[\u2018\u2019\u201A]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"')
     .replace(/\u2026/g, '...').replace(/[\u2013\u2014]/g, '-')
 }
