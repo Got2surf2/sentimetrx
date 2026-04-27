@@ -105,8 +105,9 @@ export async function POST(req: Request, { params }: Params) {
       .from('dataset_rows')
       .insert({ dataset_id: dataset.id, rows: newRows, row_count: newRows.length, batch_index: nextBatch, source_ref: 'sync:' + syncTimestamp })
 
-    // Update dataset metadata
-    const newTotal = existingIds.size + newRows.length
+    // Update dataset metadata — count actual flat table rows for accuracy
+    const { count: flatCount } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dataset.id)
+    const newTotal = flatCount || (existingIds.size + newRows.length)
     await service
       .from('datasets')
       .update({ row_count: newTotal, last_synced_at: syncTimestamp, updated_at: syncTimestamp })
