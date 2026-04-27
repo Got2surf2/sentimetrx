@@ -310,18 +310,28 @@ export async function GET(req: NextRequest) {
     if (hasConvo > 0) funnelStages.push({ label: 'Conversation', count: hasConvo })
   }
 
-  // Custom questions (collapsed into one group): has any custom field answered
+  // Custom questions (collapsed into one group): count by max answered per respondent
   const customFields = fields.filter(f => f.section === 'custom')
   if (customFields.length > 0) {
-    const hasCustom = filteredRows.filter(r => customFields.some(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' })).length
-    if (hasCustom > 0) funnelStages.push({ label: 'Survey Questions (' + customFields.length + ')', count: hasCustom })
+    var maxCustomAnswered = 0
+    const hasCustom = filteredRows.filter(r => {
+      var answered = customFields.filter(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' }).length
+      if (answered > maxCustomAnswered) maxCustomAnswered = answered
+      return answered > 0
+    }).length
+    if (hasCustom > 0) funnelStages.push({ label: 'Survey Questions (' + maxCustomAnswered + ')', count: hasCustom })
   }
 
-  // Psychographics (collapsed into one group)
+  // Psychographics (collapsed into one group): count by max answered per respondent
   const psychoFields = fields.filter(f => f.section === 'psychographic')
   if (psychoFields.length > 0) {
-    const hasPsycho = filteredRows.filter(r => psychoFields.some(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' })).length
-    if (hasPsycho > 0) funnelStages.push({ label: 'Psychographics (' + psychoFields.length + ')', count: hasPsycho })
+    var maxPsychoAnswered = 0
+    const hasPsycho = filteredRows.filter(r => {
+      var answered = psychoFields.filter(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' }).length
+      if (answered > maxPsychoAnswered) maxPsychoAnswered = answered
+      return answered > 0
+    }).length
+    if (hasPsycho > 0) funnelStages.push({ label: 'Psychographics (' + maxPsychoAnswered + ')', count: hasPsycho })
   }
 
   // Demographics (collapsed into one group)
