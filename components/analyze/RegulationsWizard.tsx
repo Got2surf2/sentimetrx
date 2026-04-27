@@ -1,11 +1,10 @@
 'use client'
 
 // components/analyze/RegulationsWizard.tsx
-// Two-step wizard: Search dockets → Download comments
+// Two-step wizard: Search dockets → Create dataset + redirect (download continues on analyze page)
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES = '#E8632A'
 
@@ -43,10 +42,7 @@ export default function RegulationsWizard({ onBack }: Props) {
   var [selectedDocket, setSelectedDocket] = useState<Docket | null>(null)
   var [loadingCount, setLoadingCount] = useState(false)
   var [datasetName, setDatasetName] = useState('')
-
-  // Download progress
-  var [downloading, setDownloading] = useState(false)
-  var [dlProgress, setDlProgress] = useState<{ page: number; totalPages: number; comments: number } | null>(null)
+  var [creating, setCreating] = useState(false)
 
   async function handleSearch(page?: number) {
     var p = page || 1
@@ -64,6 +60,7 @@ export default function RegulationsWizard({ onBack }: Props) {
       if (!res.ok) throw new Error(data.error || 'Search failed')
       if (p === 1) {
         setDockets(data.dockets)
+        setSelectedDocket(null)
       } else {
         setDockets(function(prev) { return prev.concat(data.dockets) })
       }
@@ -100,15 +97,13 @@ export default function RegulationsWizard({ onBack }: Props) {
     }
   }
 
-  async function handleDownload() {
-    if (!selectedDocket) return
-    setDownloading(true)
+  async function handleCreate() {
+    if (!selectedDocket || !datasetName.trim()) return
+    setCreating(true)
     setError('')
-    setDlProgress({ page: 0, totalPages: 1, comments: 0 })
 
     try {
-      // Create dataset
-      var createRes = await fetch('/api/regulations-sources', {
+      var res = await fetch('/api/regulations-sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -116,86 +111,20 @@ export default function RegulationsWizard({ onBack }: Props) {
           docket_id: selectedDocket.id,
           docket_title: selectedDocket.title,
           agency: selectedDocket.agency,
-          comment_count: selectedDocket.commentCount,
+          comment_count: selectedDocket.commentCount > 0 ? selectedDocket.commentCount : 0,
         }),
       })
-      var createText = await createRes.text()
-      var createData: any
-      try { createData = JSON.parse(createText) } catch { throw new Error('Server error: ' + createText.slice(0, 200)) }
-      if (!createRes.ok) throw new Error(createData.error || 'Failed to create dataset')
-      var datasetId = createData.dataset_id
+      var text = await res.text()
+      var data: any
+      try { data = JSON.parse(text) } catch { throw new Error('Server error: ' + text.slice(0, 200)) }
+      if (!res.ok) throw new Error(data.error || 'Failed to create dataset')
 
-      // Download comments page by page (25 per page to stay within timeout)
-      var page = 1
-      var totalComments = 0
-      var totalPages = Math.max(Math.ceil((selectedDocket.commentCount > 0 ? selectedDocket.commentCount : 100) / 25), 1)
-      // API caps at 200 pages (5000 comments max)
-      if (totalPages > 200) totalPages = 200
-
-      while (page <= totalPages) {
-        setDlProgress({ page, totalPages, comments: totalComments })
-
-        var dlRes = await fetch('/api/regulations-sources/download-comments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataset_id: datasetId,
-            docket_id: selectedDocket.id,
-            page,
-          }),
-        })
-        var dlText = await dlRes.text()
-        var dlData: any
-        try { dlData = JSON.parse(dlText) } catch { throw new Error('Server error: ' + dlText.slice(0, 200)) }
-        if (!dlRes.ok) throw new Error(dlData.error || 'Download failed')
-        totalComments += dlData.inserted || 0
-
-        // Update total pages from API response
-        if (dlData.lastPage) totalPages = Math.min(dlData.lastPage, 200)
-
-        if ((dlData.inserted || 0) === 0) break
-        page++
-      }
-
-      // Finalize — compute analytics
-      setDlProgress({ page: totalPages, totalPages, comments: totalComments })
-      await fetch('/api/regulations-sources/download-comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataset_id: datasetId, docket_id: selectedDocket.id, finalize: true }),
-      })
-
-      // Navigate to dataset
-      router.push('/analyze/' + datasetId + '/settings')
+      // Redirect to settings — download will auto-start there
+      router.push('/analyze/' + data.dataset_id + '/settings')
     } catch (err: any) {
-      setError(err.message || 'Download failed')
-      setDownloading(false)
+      setError(err.message || 'Failed to create dataset')
+      setCreating(false)
     }
-  }
-
-  // ── Download overlay ──────────────────────────────────────────────
-  if (downloading && dlProgress) {
-    var pct = dlProgress.totalPages > 0 ? Math.round((dlProgress.page / dlProgress.totalPages) * 100) : 0
-    return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: 'white', borderRadius: 20, padding: '40px 48px', maxWidth: 420, width: '100%', textAlign: 'center' }}>
-          <LottieLoader size={64} />
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginTop: 16, color: '#111827' }}>
-            Downloading comments...
-          </h3>
-          <p style={{ fontSize: 13, color: '#6B7280', marginTop: 8 }}>
-            Batch {dlProgress.page} of {dlProgress.totalPages} · {dlProgress.comments.toLocaleString()} comments saved
-          </p>
-          <div style={{ height: 6, background: '#F3F4F6', borderRadius: 3, overflow: 'hidden', marginTop: 16 }}>
-            <div style={{ height: '100%', borderRadius: 3, background: HERMES, transition: 'width .5s ease', width: pct + '%' }} />
-          </div>
-          <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 8 }}>
-            {pct}% complete — rate limited to ~25 comments per batch
-          </p>
-          {error && <p style={{ fontSize: 12, color: '#EF4444', marginTop: 12 }}>{error}</p>}
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -274,7 +203,7 @@ export default function RegulationsWizard({ onBack }: Props) {
         </div>
       )}
 
-      {/* Selected docket — configure & download */}
+      {/* Selected docket — configure & create */}
       {selectedDocket && (
         <div className="bg-white border-2 rounded-2xl p-6 flex flex-col gap-4" style={{ borderColor: HERMES }}>
           <div className="flex items-start justify-between">
@@ -304,15 +233,15 @@ export default function RegulationsWizard({ onBack }: Props) {
             />
           </div>
 
+          <p className="text-xs text-gray-400">Comments will download automatically in the background after you create the dataset.</p>
+
           <button
-            onClick={handleDownload}
-            disabled={!datasetName.trim() || loadingCount}
+            onClick={handleCreate}
+            disabled={!datasetName.trim() || loadingCount || creating}
             className="px-6 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50 hover:opacity-90 transition-all"
             style={{ background: HERMES }}
           >
-            {loadingCount ? 'Loading...' : selectedDocket.commentCount > 0
-              ? 'Download ' + Math.min(selectedDocket.commentCount, 5000).toLocaleString() + ' Comments'
-              : 'Download Comments'}
+            {creating ? 'Creating...' : 'Create Dataset & Start Download'}
           </button>
         </div>
       )}

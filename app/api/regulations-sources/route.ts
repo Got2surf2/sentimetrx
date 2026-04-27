@@ -1,7 +1,7 @@
 // POST — create a dataset from a regulations.gov docket
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { buildRegulationsSchema, enrichSchemaWithStats, emptyThemeModel } from '@/lib/datasetUtils'
+import { buildRegulationsSchema, emptyThemeModel } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +19,16 @@ export async function POST(req: Request) {
 
   const service = createServiceRoleClient()
 
+  // Store download progress in description so the UI can resume
+  const downloadMeta = {
+    docket_id,
+    docket_title,
+    agency,
+    comment_count: comment_count || 0,
+    download_status: 'downloading',
+    next_page: 1,
+  }
+
   // Create dataset
   const { data: dataset, error: dsErr } = await service.from('datasets').insert({
     name: dataset_name,
@@ -26,7 +36,7 @@ export async function POST(req: Request) {
     created_by: user.id,
     source: 'regulations',
     row_count: 0,
-    description: JSON.stringify({ docket_id, docket_title, agency, comment_count }),
+    description: JSON.stringify(downloadMeta),
   }).select('id').single()
   if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
 

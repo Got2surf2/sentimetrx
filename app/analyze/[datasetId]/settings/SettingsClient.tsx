@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
 import LocationManager from '@/components/analyze/LocationManager'
 import UserLocationAssigner from '@/components/analyze/UserLocationAssigner'
+import RegulationsDownloadBanner from '@/components/analyze/RegulationsDownloadBanner'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
@@ -192,6 +193,11 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
 
   return (
     <div className="flex flex-col gap-6 py-6 max-w-5xl">
+
+      {/* Regulations.gov download progress */}
+      {dataset.source === 'regulations' && dataset.description && (
+        <RegulationsDownloadBanner datasetId={dataset.id} description={dataset.description} />
+      )}
 
       {/* Details */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">

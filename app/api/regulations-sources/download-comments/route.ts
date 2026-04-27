@@ -23,13 +23,12 @@ export async function POST(req: NextRequest) {
 
   const service = createServiceRoleClient()
 
-  // If finalizing (last step), just compute analytics
+  // If finalizing (last step), compute analytics and mark complete
   if (finalize) {
     try {
       const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', dataset_id).single()
       const schema = stateRow?.schema_config
       if (schema?.fields?.length) {
-        // Enrich schema with stats from sample rows
         const { data: sampleBatch } = await service.from('dataset_rows').select('rows').eq('dataset_id', dataset_id).limit(1)
         if (sampleBatch?.[0]?.rows) {
           const enriched = enrichSchemaWithStats(schema, sampleBatch[0].rows)
@@ -41,6 +40,15 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error('[regulations] analytics compute failed:', err)
     }
+    // Mark download as complete in description
+    try {
+      const { data: ds } = await service.from('datasets').select('description').eq('id', dataset_id).single()
+      if (ds?.description) {
+        const meta = typeof ds.description === 'string' ? JSON.parse(ds.description) : ds.description
+        meta.download_status = 'complete'
+        await service.from('datasets').update({ description: JSON.stringify(meta) }).eq('id', dataset_id)
+      }
+    } catch {}
     return NextResponse.json({ ok: true })
   }
 
@@ -86,6 +94,16 @@ export async function POST(req: NextRequest) {
       row_count: currentTotal, updated_at: syncTimestamp,
     }).eq('id', dataset_id)
   }
+
+  // Update download progress in description
+  try {
+    const { data: ds } = await service.from('datasets').select('description').eq('id', dataset_id).single()
+    if (ds?.description) {
+      const meta = typeof ds.description === 'string' ? JSON.parse(ds.description) : ds.description
+      meta.next_page = (page || 1) + 1
+      await service.from('datasets').update({ description: JSON.stringify(meta) }).eq('id', dataset_id)
+    }
+  } catch {}
 
   return NextResponse.json({
     inserted: rows.length,
