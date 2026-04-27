@@ -14,10 +14,10 @@ import { checkMessage } from '@/lib/contentGuard'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-const CONTEXT_CAP    = 1500   // absolute max rows sent to Claude
-const DEFAULT_SAMPLE = 500    // default if user doesn't configure
+const CONTEXT_CAP    = 500    // absolute max rows sent to Claude
+const DEFAULT_SAMPLE = 200    // default if user doesn't configure
 const TEXT_TRUNCATE  = 300    // max chars per text field
-const FETCH_CAP      = 5000   // max rows to pull from DB before filtering
+const FETCH_CAP      = 2000   // max rows to pull from DB before filtering
 const MEMBER_FLOOR   = 20     // min rows per collection member in 'floor' strategy
 const URL_ONLY_RE    = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
@@ -132,7 +132,7 @@ const RECOMMEND_SAMPLING_TOOL = {
   input_schema: {
     type: 'object' as const,
     properties: {
-      sample_size: { type: 'number', description: 'Recommended number of rows to analyze (50-1500). Consider: quick scan ~200, standard analysis ~500, deep dive ~1000.' },
+      sample_size: { type: 'number', description: 'Recommended number of rows to analyze (50-500). Consider: quick scan ~100, standard analysis ~200, deep dive ~500.' },
       strategy:    { type: 'string', enum: ['proportional', 'equal', 'floor'], description: 'For collections only. proportional = weight by member size, equal = same count per member, floor = minimum per member then proportional.' },
       reasoning:   { type: 'string', description: 'Brief explanation of why this configuration fits the user\'s goals.' },
     },
@@ -282,10 +282,9 @@ Total rows: ${totalRows.toLocaleString()}${memberBreakdown}${fieldList}${themeIn
 Your task: understand what the user wants to accomplish with this data, then recommend a sampling configuration using the recommend_sampling tool.
 
 Consider these factors:
-- **Quick scan** (~200 rows): good for getting a general sense, spotting obvious patterns
-- **Standard analysis** (~500 rows): good balance of coverage and speed, sufficient for most questions
-- **Deep dive** (~1,000 rows): thorough analysis, better for finding subtle patterns or rare mentions
-- **Maximum coverage** (~1,500 rows): comprehensive, best for building complete theme frameworks
+- **Quick scan** (~100 rows): good for getting a general sense, spotting obvious patterns
+- **Standard analysis** (~200 rows): good balance of coverage and speed, sufficient for most questions
+- **Deep dive** (~500 rows): thorough analysis, better for finding subtle patterns or rare mentions
 
 For collections, also recommend a distribution strategy:
 - **proportional**: each member contributes rows proportional to its size — best for understanding overall trends

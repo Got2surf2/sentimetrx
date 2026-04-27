@@ -117,7 +117,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     if (action.tool === 'recommend_sampling') {
       var rec = action.input
       setSamplingConfig({
-        sampleSize: Math.max(50, Math.min(rec.sample_size || 500, 1500)),
+        sampleSize: Math.max(50, Math.min(rec.sample_size || 200, 500)),
         strategy: rec.strategy || 'proportional',
         configured: true,
       })
@@ -424,7 +424,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   function handleCustomSize() {
     var n = parseInt(customSizeInput, 10)
     if (isNaN(n) || n < 50) n = 50
-    if (n > 1500) n = 1500
+    if (n > 500) n = 500
     setSamplingConfig(function(c) { return { ...c, sampleSize: n, configured: true } })
     setPhase('chat')
   }
@@ -564,9 +564,9 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
               <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Sample size</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {[
-                  { label: 'Quick scan', size: 200, desc: 'Fast overview' },
-                  { label: 'Standard', size: 500, desc: 'Good balance' },
-                  { label: 'Deep dive', size: 1000, desc: 'Thorough analysis' },
+                  { label: 'Quick scan', size: 100, desc: 'Fast overview' },
+                  { label: 'Standard', size: 200, desc: 'Good balance' },
+                  { label: 'Deep dive', size: 500, desc: 'Thorough analysis' },
                 ].map(function(p) {
                   if (p.size > totalRows) return null
                   return (
@@ -591,7 +591,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input
                       type="number" min="50" max="1500"
-                      placeholder="50-1500"
+                      placeholder="50-500"
                       value={customSizeInput}
                       onChange={function(e) { setCustomSizeInput(e.target.value) }}
                       onKeyDown={function(e) { if (e.key === 'Enter') handleCustomSize() }}
@@ -648,7 +648,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                   fontSize: 12, color: '#9ca3af', background: 'none', border: 'none',
                   cursor: 'pointer', textDecoration: 'underline',
                 }}>
-                Skip, use defaults (500 rows)
+                Skip, use defaults (200 rows)
               </button>
             </div>
           </div>
