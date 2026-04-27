@@ -52,8 +52,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // Step 1: List comment IDs for this page (small batches to stay within timeout)
-  const listResult = await listComments(docket_id, page || 1, 25, use_search || false)
+  // Step 1: List comment IDs for this page (10 per batch to stay within 60s timeout)
+  const listResult = await listComments(docket_id, page || 1, 10, use_search || false)
+  console.log('[regulations-dl] page', page, 'listed', listResult.data.length, 'total', listResult.totalElements, 'usedSearch', listResult.usedSearch)
   const commentIds = listResult.data.map(function(c) { return c.id })
 
   if (commentIds.length === 0) {

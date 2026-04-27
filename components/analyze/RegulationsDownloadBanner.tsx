@@ -22,7 +22,7 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
   var [comments, setComments] = useState(0)
   var [page, setPage] = useState(meta.next_page || 1)
   var [error, setError] = useState('')
-  var [totalPages, setTotalPages] = useState(Math.max(Math.ceil((meta.comment_count || 100) / 25), 1))
+  var [totalPages, setTotalPages] = useState(Math.max(Math.ceil((meta.comment_count || 100) / 10), 1))
   var [useSearch, setUseSearch] = useState(meta.use_search || false)
   var running = useRef(false)
 
