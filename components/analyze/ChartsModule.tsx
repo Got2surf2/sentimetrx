@@ -211,13 +211,17 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
   var ref = useRef<HTMLDivElement>(null)
   useEffect(function() {
     if (!ref.current || !traces.length) return
-    var baseX = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
-    var baseY = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true }
+    var baseX = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true, title: { standoff: 18 } }
+    var baseY = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true, title: { standoff: 18 } }
     var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 48, r: 90, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
     var merged = Object.assign({}, base, layout || {})
     // Deep merge axes so caller's title/tickangle don't lose grid settings
-    merged.xaxis = Object.assign({}, baseX, layout?.xaxis || {})
-    merged.yaxis = Object.assign({}, baseY, layout?.yaxis || {})
+    var lx = layout?.xaxis || {}, ly = layout?.yaxis || {}
+    // Normalize string titles to { text, standoff } so standoff is preserved
+    if (typeof lx.title === 'string') lx = Object.assign({}, lx, { title: { text: lx.title, standoff: 18 } })
+    if (typeof ly.title === 'string') ly = Object.assign({}, ly, { title: { text: ly.title, standoff: 18 } })
+    merged.xaxis = Object.assign({}, baseX, lx)
+    merged.yaxis = Object.assign({}, baseY, ly)
     getPlotly().then(function(Plotly) { Plotly.newPlot(ref.current, traces, merged, { responsive: true, displayModeBar: false }) })
     return function() { if (ref.current) getPlotly().then(function(Plotly) { try { Plotly.purge(ref.current) } catch {} }) }
   }, [traces, layout])
