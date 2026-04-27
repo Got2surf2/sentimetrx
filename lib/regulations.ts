@@ -3,7 +3,7 @@
 // Docs: https://open.gsa.gov/api/regulationsgov/
 
 const BASE = 'https://api.regulations.gov/v4'
-const RATE_DELAY = 3600 // ~1000 requests/hour = 1 per 3.6s, round up for safety
+const RATE_DELAY = 1000 // 1 req/sec = 3600/hour, well under 1000/hour API limit
 
 let lastRequest = 0
 
