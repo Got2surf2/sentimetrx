@@ -136,6 +136,23 @@ export interface RegCommentDetail {
 // ── Search dockets ─────────────────────────────────────────────────────────
 
 export async function searchDockets(query: string, page: number = 1): Promise<{ data: RegDocket[]; totalElements: number }> {
+  // If query looks like a docket or document ID (e.g. USDA-2024-0003 or USDA-2024-0003-0262),
+  // try direct docket lookup first, stripping any trailing document suffix
+  var trimmed = query.trim()
+  if (page === 1 && /^[A-Z]+-\d{4}-[A-Z0-9]+-?\d*$/i.test(trimmed)) {
+    // Try the full ID first, then without trailing segment (document ID → docket ID)
+    var candidates = [trimmed]
+    var parts = trimmed.split('-')
+    if (parts.length > 3) candidates.push(parts.slice(0, 3).join('-'))
+
+    for (var cand of candidates) {
+      try {
+        var direct = await regGet('/dockets/' + encodeURIComponent(cand))
+        if (direct?.data) return { data: [direct.data], totalElements: 1 }
+      } catch {}
+    }
+  }
+
   const result = await regGet('/dockets', {
     'filter[searchTerm]': query,
     'page[size]': '25',
