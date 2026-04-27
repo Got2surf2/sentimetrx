@@ -338,7 +338,7 @@ export async function GET(req: NextRequest) {
   const demoFields = fields.filter(f => f.section === 'demographic')
   if (demoFields.length > 0) {
     const hasDemo = filteredRows.filter(r => demoFields.some(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' })).length
-    if (hasDemo > 0) funnelStages.push({ label: 'Demographics', count: hasDemo })
+    if (hasDemo > 0) funnelStages.push({ label: 'Demographics (optional)', count: hasDemo })
   }
 
   funnelStages.push({ label: 'Completed', count: completedCount })

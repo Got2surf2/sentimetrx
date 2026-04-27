@@ -163,7 +163,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
           const dm = r.payload?.demographics || {}
           return Object.keys(dm).length > 0
         }).length
-        if (hasDemo > 0) stages.push({ label: 'Demographics', count: hasDemo })
+        if (hasDemo > 0) stages.push({ label: 'Demographics (optional)', count: hasDemo })
         const completed = all.filter((r: Response) => r.status === 'complete').length
         stages.push({ label: 'Completed', count: completed })
         setFunnel(stages)
