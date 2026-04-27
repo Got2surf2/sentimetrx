@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   const commentIds = listResult.data.map(function(c) { return c.id })
 
   if (commentIds.length === 0) {
-    return NextResponse.json({ inserted: 0, totalElements: listResult.totalElements, lastPage: listResult.lastPage, usedSearch: listResult.usedSearch || false })
+    return NextResponse.json({ inserted: 0, fetched: 0, totalElements: listResult.totalElements, lastPage: listResult.lastPage, usedSearch: listResult.usedSearch || false })
   }
 
   // Step 2: Fetch full text for each comment
@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     inserted: rows.length,
+    fetched: commentIds.length,
     totalElements: listResult.totalElements,
     lastPage: listResult.lastPage,
     usedSearch: listResult.usedSearch || false,

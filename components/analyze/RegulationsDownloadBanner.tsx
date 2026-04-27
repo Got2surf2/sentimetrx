@@ -54,7 +54,8 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
           if (data.lastPage) maxPage = Math.min(data.lastPage, 200)
           setTotalPages(maxPage)
 
-          if ((data.inserted || 0) === 0) break
+          // Only stop if API returned no comment IDs (true end), not just filtered rows
+          if ((data.fetched || 0) === 0) break
           p++
           setPage(p)
         } catch (err: any) {
