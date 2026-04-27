@@ -76,7 +76,7 @@ export default function RegulationsWizard({ onBack }: Props) {
 
   async function handleSelectDocket(d: Docket) {
     setSelectedDocket(d)
-    setDatasetName(d.agency + ' — ' + d.title.slice(0, 80))
+    setDatasetName(d.agency + ' — ' + d.title)
 
     // Fetch comment count if unknown
     if (d.commentCount < 0) {
