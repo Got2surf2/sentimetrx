@@ -266,11 +266,12 @@ function isAttachmentOnly(text: string): boolean {
 export function commentToRow(c: RegCommentDetail): Record<string, unknown> | null {
   const a = c.attributes
   const text = cleanText(a.comment || '')
-  if (!text || isAttachmentOnly(text)) return null
+  if (!text) return null
   const name = [a.firstName, a.lastName].filter(Boolean).join(' ') || 'Anonymous'
   return {
     comment_id: c.id,
     comment_text: text,
+    comment_type: isAttachmentOnly(text) ? 'Attachment Cover Note' : 'Comment',
     commenter_name: cleanText(name),
     organization: cleanText(a.organization || ''),
     city: a.city || '',
