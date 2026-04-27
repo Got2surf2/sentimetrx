@@ -1,14 +1,11 @@
 'use client'
 
 // components/analyze/ShareAnalyticsModal.tsx
-// Modal for creating shared analytics links.
-// Shares the current filtered view with optional theme cards. No comparison picker.
+// Thin wrapper around unified ShareModal — passes analytics metadata (filters, includeThemes)
 
-import { useState } from 'react'
+import ShareModal from '@/components/ui/ShareModal'
 import { useFilters } from '@/components/analyze/FilterContext'
-import { serializeFilters, filterSummary } from '@/lib/filterUtils'
-
-var HERMES = '#E8632A'
+import { serializeFilters } from '@/lib/filterUtils'
 
 interface Props {
   datasetId: string
@@ -18,162 +15,21 @@ interface Props {
 
 export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }: Props) {
   var { filters: activeFilters } = useFilters()
-  var [step, setStep] = useState<'configure' | 'created'>('configure')
-  var [label, setLabel] = useState(datasetName)
-  var [expiry, setExpiry] = useState('7d')
-  var [includeThemes, setIncludeThemes] = useState(true)
-  var [creating, setCreating] = useState(false)
-  var [createError, setCreateError] = useState('')
-  var [shareUrl, setShareUrl] = useState('')
-  var [copied, setCopied] = useState(false)
-
   var hasFilters = Object.keys(activeFilters).length > 0
-  var summary = hasFilters ? filterSummary(activeFilters, {}) : ''
-
-  async function handleCreate() {
-    setCreating(true)
-    setCreateError('')
-    try {
-      var serialized = hasFilters ? serializeFilters(activeFilters) : {}
-      var res = await fetch('/api/share', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'analytics',
-          target_id: datasetId,
-          expires_in: expiry,
-          metadata: {
-            dataset_id: datasetId,
-            filters: serialized,
-            label: label || datasetName,
-            includeThemes: includeThemes,
-          },
-        }),
-      })
-      var data = await res.json()
-      if (res.ok) {
-        setShareUrl(data.url)
-        setStep('created')
-      } else {
-        setCreateError(data.error || 'Failed to create link')
-      }
-    } catch (err: any) {
-      setCreateError(err?.message || 'Failed to create link')
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  function handleCopy() {
-    navigator.clipboard.writeText(shareUrl)
-    setCopied(true)
-    setTimeout(function() { setCopied(false) }, 2000)
-  }
+  var serialized = hasFilters ? serializeFilters(activeFilters) : {}
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.45)' }}
-      onClick={onClose}>
-      <div style={{ background: 'white', borderRadius: 16, padding: 24, maxWidth: 480, width: '100%', margin: '0 16px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.28)' }}
-        onClick={function(e) { e.stopPropagation() }}>
-
-        {step === 'configure' && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontWeight: 700, fontSize: 15, color: '#111827', margin: 0 }}>Share Analytics</h3>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#9ca3af', cursor: 'pointer' }}>&times;</button>
-            </div>
-
-            <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 16px' }}>
-              Create a shareable link to the current view{hasFilters ? ' with your active filters applied' : ''}. Anyone with the link can view it — no login required.
-            </p>
-
-            {/* Report label */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Report Label</label>
-              <input
-                type="text"
-                value={label}
-                onChange={function(e) { setLabel(e.target.value) }}
-                placeholder={datasetName}
-                style={{ width: '100%', padding: '8px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }}
-              />
-            </div>
-
-            {/* Active filters summary */}
-            {hasFilters && (
-              <div style={{ marginBottom: 16, padding: 12, background: '#fff4ef', borderRadius: 8, border: '1px solid #fbd5c2' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: HERMES, marginBottom: 4, textTransform: 'uppercase' as const }}>Filters Applied</div>
-                <div style={{ fontSize: 12, color: '#374151' }}>{summary}</div>
-                <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>These filters will be applied to the shared view.</div>
-              </div>
-            )}
-
-            {/* Include theme cards */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, cursor: 'pointer' }}>
-              <input type="checkbox" checked={includeThemes} onChange={function(e) { setIncludeThemes(e.target.checked) }}
-                style={{ width: 16, height: 16, accentColor: HERMES }} />
-              <div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Include theme cards</span>
-                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Show AI-detected themes with sentiment, keywords, and percentages</p>
-              </div>
-            </label>
-
-            {/* Expiry */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Link Expires In</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[{ key: '24h', label: '24 hours' }, { key: '7d', label: '7 days' }, { key: '30d', label: '30 days' }].map(function(opt) {
-                  return (
-                    <button key={opt.key} onClick={function() { setExpiry(opt.key) }}
-                      style={{
-                        fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8, cursor: 'pointer', border: '1px solid',
-                        background: expiry === opt.key ? HERMES : 'white',
-                        color: expiry === opt.key ? 'white' : '#374151',
-                        borderColor: expiry === opt.key ? HERMES : '#e5e7eb',
-                      }}>
-                      {opt.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {createError && (
-              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, color: '#dc2626' }}>
-                {createError}
-              </div>
-            )}
-
-            {/* Create button */}
-            <button onClick={handleCreate} disabled={creating}
-              style={{
-                width: '100%', padding: '10px 0', borderRadius: 10, fontSize: 14, fontWeight: 700, border: 'none',
-                cursor: 'pointer', background: HERMES, color: 'white', opacity: creating ? 0.6 : 1,
-              }}>
-              {creating ? 'Creating...' : 'Create Share Link'}
-            </button>
-          </>
-        )}
-
-        {step === 'created' && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontWeight: 700, fontSize: 15, color: '#111827', margin: 0 }}>Link Created</h3>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#9ca3af', cursor: 'pointer' }}>&times;</button>
-            </div>
-            <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 12px' }}>
-              Anyone with this link can view the analytics. No login required.
-            </p>
-            <div style={{ background: '#f9fafb', borderRadius: 8, padding: 12, wordBreak: 'break-all' as const, fontSize: 12, color: '#374151', marginBottom: 12, border: '1px solid #e5e7eb' }}>
-              {shareUrl}
-            </div>
-            <button onClick={handleCopy}
-              style={{ width: '100%', padding: '10px 0', borderRadius: 10, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer', background: HERMES, color: 'white' }}>
-              {copied ? '\u2713 Copied!' : 'Copy Link'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+    <ShareModal
+      type="analytics"
+      targetId={datasetId}
+      title={datasetName}
+      onClose={onClose}
+      metadata={{
+        dataset_id: datasetId,
+        filters: serialized,
+        label: datasetName,
+        includeThemes: true,
+      }}
+    />
   )
 }

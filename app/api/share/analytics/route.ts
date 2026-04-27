@@ -276,6 +276,22 @@ export async function GET(req: NextRequest) {
     comparisonValues: (meta.inViewValues || []).filter(function(v) { return !meta.primary!.values.includes(v) }),
   } : null
 
+  // Count responses with comments (non-empty text in open-ended fields)
+  const openEndedFields = fields.filter(f => f.type === 'open-ended')
+  let commentCount = 0
+  for (const row of filteredRows) {
+    for (const oe of openEndedFields) {
+      const val = row[oe.field]
+      if (val && typeof val === 'string' && val.trim().length > 0) { commentCount++; break }
+    }
+  }
+
+  // Get theme analysis prompt/field labels
+  const themeFieldLabels = textFields.map(function(tf) {
+    const f = fields.find(function(ff) { return ff.field === tf })
+    return f?.label || tf
+  })
+
   return NextResponse.json({
     label: meta.label || 'Filtered View',
     datasetName: dataset.name,
@@ -283,6 +299,8 @@ export async function GET(req: NextRequest) {
     benchmark: { n: totalBenchmark },
     total: { n: totalAll },
     inView: { n: inViewRows.length },
+    commentCount: commentCount,
+    themeFieldLabels: themeFieldLabels,
     filterSummary: filterFieldSummary,
     primarySummary: primarySummary,
     numeric: numericResults,

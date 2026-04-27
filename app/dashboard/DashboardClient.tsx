@@ -5,6 +5,7 @@ import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 import { useState, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
+import ShareModal from '@/components/ui/ShareModal'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -72,137 +73,7 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
   )
 }
 
-// -- Share modal ----------------------------------------------------------------
-function ShareModal({ type, targetId, onClose }: { type: 'study' | 'campaign'; targetId: string; onClose: () => void }) {
-  const [expiry, setExpiry] = useState<'24h' | '7d' | '30d'>('7d')
-  const [loading, setLoading] = useState(false)
-  const [copied, setCopied] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [existing, setExisting] = useState<{ url: string; token: string; expires_at: string; created_at: string; last_accessed_at: string | null }[]>([])
-  const [loadingExisting, setLoadingExisting] = useState(true)
-
-  // Load existing active links on mount
-  useEffect(() => {
-    fetch('/api/share?list_type=' + type + '&list_target_id=' + targetId)
-      .then(r => r.json())
-      .then(d => setExisting(d.links || []))
-      .catch(() => {})
-      .finally(() => setLoadingExisting(false))
-  }, [type, targetId])
-
-  const generate = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/share', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, target_id: targetId, expires_in: expiry }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Failed to create link'); return }
-      setExisting(prev => [{ url: data.url, token: data.token, expires_at: data.expires_at, created_at: new Date().toISOString(), last_accessed_at: null }, ...prev])
-    } catch { setError('Network error') }
-    finally { setLoading(false) }
-  }
-
-  const handleCopy = (url: string) => {
-    navigator.clipboard.writeText(url)
-    setCopied(url)
-    setTimeout(() => setCopied(null), 2000)
-  }
-
-  const handleDelete = async (token: string) => {
-    const res = await fetch('/api/share?token=' + encodeURIComponent(token), { method: 'DELETE' })
-    if (res.ok) {
-      setExisting(prev => prev.filter(l => l.token !== token))
-    }
-  }
-
-  const formatExpiry = (iso: string) => {
-    const d = new Date(iso)
-    const now = new Date()
-    const diffMs = d.getTime() - now.getTime()
-    if (diffMs < 0) return 'Expired'
-    const diffH = Math.round(diffMs / 3600000)
-    if (diffH < 24) return diffH + 'h left'
-    return Math.round(diffH / 24) + 'd left'
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
-        <h3 className="font-bold text-gray-800 text-sm mb-1">Share Dashboard</h3>
-        <p className="text-xs text-gray-500 mb-4">View-only links anyone can access — no login required.</p>
-
-        {/* Existing links */}
-        {loadingExisting ? (
-          <div className="text-xs text-gray-400 mb-4">Loading links...</div>
-        ) : existing.length > 0 && (
-          <div className="mb-4">
-            <label className="text-xs font-medium text-gray-600 block mb-1.5">Active links ({existing.length})</label>
-            <div className="relative">
-              <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 160 }}>
-                {existing.map(link => (
-                  <div key={link.token} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-gray-600 font-mono truncate">{link.url}</p>
-                      <p className="text-[9px] text-gray-400">
-                        Created {new Date(link.created_at).toLocaleDateString()} · {formatExpiry(link.expires_at)}
-                        {link.last_accessed_at && <> · Viewed {new Date(link.last_accessed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</>}
-                        {!link.last_accessed_at && <> · Never viewed</>}
-                      </p>
-                    </div>
-                    <button onClick={() => handleCopy(link.url)}
-                      className="text-[10px] px-2.5 py-1 rounded-md font-medium flex-shrink-0 transition-all"
-                      style={copied === link.url
-                        ? { background: '#dcfce7', color: '#16a34a' }
-                        : { background: '#fff4ef', color: HERMES }}>
-                      {copied === link.url ? 'Copied!' : 'Copy'}
-                    </button>
-                    <button onClick={() => handleDelete(link.token)}
-                      className="text-[10px] px-2 py-1 rounded-md font-medium flex-shrink-0 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
-                      title="Delete link">
-                      &times;
-                    </button>
-                  </div>
-                ))}
-              </div>
-              {existing.length > 3 && (
-                <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent pointer-events-none rounded-b-lg" />
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Create new */}
-        <div className="border-t border-gray-100 pt-3">
-          <label className="text-xs font-medium text-gray-600 block mb-1.5">Create new link</label>
-          <div className="flex gap-2 mb-3">
-            {([['24h', '24 hours'], ['7d', '7 days'], ['30d', '30 days']] as const).map(([val, label]) => (
-              <button key={val} onClick={() => setExpiry(val)}
-                className={'flex-1 text-xs py-2 rounded-lg font-medium border transition-all ' +
-                  (expiry === val ? 'text-white border-transparent' : 'text-gray-500 border-gray-200 hover:border-orange-300')}
-                style={expiry === val ? { background: HERMES } : {}}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
-          <div className="flex gap-3 justify-end">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium">Done</button>
-            <button onClick={generate} disabled={loading}
-              className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
-              style={{ background: HERMES }}>
-              {loading ? 'Creating...' : 'Create Link'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
+// ShareModal now imported from components/ui/ShareModal.tsx
 // -- Study card -----------------------------------------------------------------
 function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabled, onPatch, onDelete, onDuplicate, onRefresh }: {
   study: Study; stats: StudyStats; isAdmin: boolean; userId: string; campaignsEnabled?: boolean

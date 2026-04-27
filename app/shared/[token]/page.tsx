@@ -801,9 +801,17 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center mb-4">
-            <div className="text-3xl font-bold" style={{ color: HERMES }}>{data.filtered.n.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">Responses{filterFields.length > 0 ? ' (filtered)' : ''}</div>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-3xl font-bold" style={{ color: HERMES }}>{data.filtered.n.toLocaleString()}</div>
+              <div className="text-xs text-gray-500">Responses{filterFields.length > 0 ? ' (filtered)' : ''}</div>
+            </div>
+            {data.commentCount != null && (
+              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+                <div className="text-3xl font-bold" style={{ color: '#0F7173' }}>{data.commentCount.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">With comments</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -867,10 +875,13 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
           </div>
         )}
 
-        {/* Theme comparison — shown when includeThemes is on, or when there's a primary comparison */}
+        {/* Theme analysis */}
         {themes.length > 0 && (data.includeThemes || data.primarySummary) && (
           <div className="mb-4">
-            <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase">Theme Analysis</h3>
+            <h3 className="text-sm font-bold text-gray-700 mb-1 uppercase">Theme Analysis</h3>
+            {data.themeFieldLabels && data.themeFieldLabels.length > 0 && (
+              <p className="text-xs text-gray-500 mb-3">Based on: <span className="font-medium text-gray-700">{data.themeFieldLabels.join(', ')}</span></p>
+            )}
             <div className="space-y-3">
               {themes.map((t: any, i: number) => {
                 const color = STUDY_THEME_COLORS[i % STUDY_THEME_COLORS.length]
