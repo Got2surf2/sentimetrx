@@ -376,7 +376,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     else { trace.x = wrappedCats; trace.y = displayVals }
 
     var isCount = opts?.barMode !== 'percent'
-    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, ...(!isH ? catXAxis(wrappedCats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
+    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : '', ...(!isH ? catXAxis(wrappedCats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
   }
 
   if (chartType === 'distribution') {
@@ -724,7 +724,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? 'Percentage' : 'Count'
   var isStackedCount = barMode !== 'percent'
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Bar Aggregated Inner (average/sum of numeric value by category) ─────
@@ -805,8 +805,8 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   else { trace.x = cats; trace.y = vals }
 
   return <PlotlyChart traces={[trace]} layout={{
-    xaxis: { title: isH ? valLabel : catLabel, ...(!isH ? catXAxis(cats) : {}) },
-    yaxis: { title: isH ? catLabel : valLabel },
+    xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(cats) : {}) },
+    yaxis: { title: isH ? '' : valLabel },
     barcornerradius: 4,
   }} />
 }
@@ -1653,7 +1653,7 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
   var ganttFieldObj = schema.find(function(f) { return f.field === catField })
   var catArr = smartOrder(Object.keys(groups), ganttFieldObj?.remapping); var mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); var ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
-  return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ barmode: 'stack', yaxis: { title: flByName(catField, schema) }, xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
+  return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
 }
 
 function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; schema: SchemaField[]; datasetId: string }) {
