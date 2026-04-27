@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
     .eq('dataset_id', meta.dataset_id)
     .single()
 
-  const schema = stateRow?.schema_config as { fields: { field: string; type: string; label?: string }[] } | null
+  const schema = stateRow?.schema_config as { fields: { field: string; type: string; label?: string; section?: string }[] } | null
   const fields = schema?.fields || []
   const numericFields = fields.filter(f => f.type === 'numeric')
   const fieldLabels: Record<string, string> = {}
@@ -292,9 +292,47 @@ export async function GET(req: NextRequest) {
     return f?.label || tf
   })
 
-  // Completion funnel: count Complete vs Partial/Started
+  // Completion funnel with intermediate stages
   const completedCount = filteredRows.filter(r => String(r.status || '').toLowerCase() === 'complete').length
-  const completion = { started: totalFiltered, completed: completedCount }
+  const funnelStages: { label: string; count: number }[] = [{ label: 'Started', count: totalFiltered }]
+
+  // Rating stage: has experience_score or nps_score
+  const ratingFields = fields.filter(f => f.field === 'experience_score' || f.field === 'nps_score')
+  if (ratingFields.length > 0) {
+    const hasRating = filteredRows.filter(r => ratingFields.some(f => r[f.field] != null && String(r[f.field]).trim() !== '')).length
+    if (hasRating > 0) funnelStages.push({ label: ratingFields.find(f => f.field === 'experience_score')?.label || 'Rating', count: hasRating })
+  }
+
+  // Conversation stage: has any open-ended response
+  const oeFields = fields.filter(f => f.type === 'open-ended')
+  if (oeFields.length > 0) {
+    const hasConvo = filteredRows.filter(r => oeFields.some(f => { var v = r[f.field]; return v && typeof v === 'string' && v.trim().length > 0 })).length
+    if (hasConvo > 0) funnelStages.push({ label: 'Conversation', count: hasConvo })
+  }
+
+  // Custom questions (collapsed into one group): has any custom field answered
+  const customFields = fields.filter(f => f.section === 'custom')
+  if (customFields.length > 0) {
+    const hasCustom = filteredRows.filter(r => customFields.some(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' })).length
+    if (hasCustom > 0) funnelStages.push({ label: 'Survey Questions (' + customFields.length + ')', count: hasCustom })
+  }
+
+  // Psychographics (collapsed into one group)
+  const psychoFields = fields.filter(f => f.section === 'psychographic')
+  if (psychoFields.length > 0) {
+    const hasPsycho = filteredRows.filter(r => psychoFields.some(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' })).length
+    if (hasPsycho > 0) funnelStages.push({ label: 'Psychographics (' + psychoFields.length + ')', count: hasPsycho })
+  }
+
+  // Demographics (collapsed into one group)
+  const demoFields = fields.filter(f => f.section === 'demographic')
+  if (demoFields.length > 0) {
+    const hasDemo = filteredRows.filter(r => demoFields.some(f => { var v = r[f.field]; return v != null && String(v).trim() !== '' })).length
+    if (hasDemo > 0) funnelStages.push({ label: 'Demographics', count: hasDemo })
+  }
+
+  funnelStages.push({ label: 'Completed', count: completedCount })
+  const completion = { started: totalFiltered, completed: completedCount, stages: funnelStages }
 
   // Exclude duration_sec from numeric KPIs (replaced by completion funnel)
   const filteredNumeric: typeof numericResults = {}
