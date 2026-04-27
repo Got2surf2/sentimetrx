@@ -172,14 +172,37 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
 }
 function flByName(name: string, schema: SchemaField[]): string { var f = schema.find(function(s) { return s.field === name }); return f ? fl(f) : name }
 
+// Wraps long labels at word boundaries using <br> for Plotly tick labels.
+// targetWidth is the max characters per line before wrapping.
+function wrapLabel(label: string, targetWidth: number): string {
+  if (label.length <= targetWidth) return label
+  var words = label.split(/\s+/)
+  var lines: string[] = []
+  var cur = ''
+  for (var i = 0; i < words.length; i++) {
+    if (cur && (cur + ' ' + words[i]).length > targetWidth) {
+      lines.push(cur)
+      cur = words[i]
+    } else {
+      cur = cur ? cur + ' ' + words[i] : words[i]
+    }
+  }
+  if (cur) lines.push(cur)
+  return lines.join('<br>')
+}
+
+function wrapLabels(cats: string[], targetWidth: number): string[] {
+  return cats.map(function(c) { return wrapLabel(c, targetWidth) })
+}
+
 // Returns xaxis overrides that prevent categorical label overlap on vertical bar / waterfall / crosstab.
-// Rotates -45° when label density warrants it; uses smaller font for dense charts.
+// Wraps long labels at word boundaries; falls back to rotation only for very dense charts.
 function catXAxis(cats: string[]): Record<string, any> {
   var maxLen = cats.reduce(function(mx, c) { return Math.max(mx, String(c).length) }, 0)
-  var needsRotate = cats.length >= 5 || (cats.length >= 3 && maxLen > 10)
-  if (!needsRotate) return {}
+  // For few categories with long labels, wrapping handles it — no rotation needed
+  if (cats.length < 5 || maxLen <= 10) return {}
+  // For many categories, use smaller font to fit
   return {
-    tickangle: maxLen > 18 ? -60 : -45,
     tickfont: { size: cats.length > 10 ? 10 : 11 },
   }
 }
@@ -343,12 +366,13 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
         return ordGrad[4]
       })
     }
+    var wrappedCats = wrapLabels(cats, isH ? 28 : 18)
     var trace: any = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? Math.round(v) + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, cliponaxis: false, hovertemplate: hoverTpl }
-    if (isH) { trace.y = cats; trace.x = displayVals; trace.orientation = 'h' }
-    else { trace.x = cats; trace.y = displayVals }
+    if (isH) { trace.y = wrappedCats; trace.x = displayVals; trace.orientation = 'h' }
+    else { trace.x = wrappedCats; trace.y = displayVals }
 
     var isCount = opts?.barMode !== 'percent'
-    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, ...(!isH ? catXAxis(cats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
+    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : catLabel, ...(!isH ? catXAxis(wrappedCats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? catLabel : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
   }
 
   if (chartType === 'distribution') {
@@ -452,7 +476,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var catF4 = config.category; if (!catF4) return <EmptyChart msg="Assign a category field above." />
     var s4 = fs[catF4]; if (!s4 || !s4.counts) return <EmptyChart msg="No data." />
     var e4 = (function() { var raw = Object.entries(s4.counts); var f4Obj = schema.find(function(f) { return f.field === catF4 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f4Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 15).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
-    var wLabels = e4.map(function(e) { return e[0] }).concat(['Total'])
+    var wLabels = wrapLabels(e4.map(function(e) { return e[0] }).concat(['Total']), 18)
     var wValues = e4.map(function(e) { return e[1] })
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
     var measures: string[] = wValues.map(function() { return 'relative' }).concat(['total'])
@@ -478,7 +502,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var catF5 = config.category; if (!catF5) return <EmptyChart msg="Assign a category field above." />
     var s5 = fs[catF5]; if (!s5 || !s5.counts) return <EmptyChart msg="No data." />
     var e5 = (function() { var raw = Object.entries(s5.counts); var f5Obj = schema.find(function(f) { return f.field === catF5 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f5Obj?.remapping) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 12).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
-    return <PlotlyChart traces={[{ type: 'funnel', y: e5.map(function(e) { return e[0] }), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ margin: { t: 8, r: 16, b: 8, l: 120 }, showlegend: false }} />
+    return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ margin: { t: 8, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
   if (chartType === 'gantt') {
@@ -663,7 +687,8 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     }
   }
   cats = cats.slice(0, 30)
-  var catLabels = cats.map(function(c) { return resolveAlias(catField, c, schema) })
+  var isH = orient === 'h'
+  var catLabels = wrapLabels(cats.map(function(c) { return resolveAlias(catField, c, schema) }), isH ? 28 : 18)
   // Order color (stack/group) values — signal tiers use canonical order, others by frequency
   var colorArr = Array.from(colorVals)
   if (colorByField === 'signal_tier') {
@@ -672,7 +697,6 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     colorArr.sort(function(a, b) { return (colorTotals[b] || 0) - (colorTotals[a] || 0) })
   }
 
-  var isH = orient === 'h'
   var isBarPercent = barMode === 'percent'
   var traces = colorArr.map(function(col, i) {
     var ys = cats.map(function(cat) { return grid[cat] ? (grid[cat][col] || 0) : 0 })
@@ -742,11 +766,11 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
     ? smartOrder(groups.map(function(g) { return g.group }), catRemap).map(function(k) { return groups.find(function(g) { return g.group === k }) }).filter(Boolean) as typeof groups
     : groups.slice().sort(function(a, b) { return b.mean - a.mean })
 
-  var cats = sortedGroups.slice(0, 30).map(function(g) { return resolveAlias(catField, g.group, schema) })
+  var isH = orient === 'h'
+  var cats = wrapLabels(sortedGroups.slice(0, 30).map(function(g) { return resolveAlias(catField, g.group, schema) }), isH ? 28 : 18)
   var vals = sortedGroups.slice(0, 30).map(function(g) { return Math.round(g.mean * 100) / 100 })
   var catLabel = flByName(catField, schema)
   var valLabel = 'Avg ' + flByName(valueField, schema)
-  var isH = orient === 'h'
   var primaryColor = (colors || CHART_COLORS)[0] || '#e8622a'
 
   // Ordinal gradient like regular bar
@@ -1439,8 +1463,8 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   var rArr = smartOrder(Array.from(rSet), rowFieldObj?.remapping)
   var cArr = smartOrder(Array.from(cSet), colFieldObj?.remapping)
   var z = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
-  var rLabels = rArr.map(function(v) { return resolveAlias(rowField, v, schema) })
-  var cLabels = cArr.map(function(v) { return resolveAlias(colField, v, schema) })
+  var rLabels = wrapLabels(rArr.map(function(v) { return resolveAlias(rowField, v, schema) }), 22)
+  var cLabels = wrapLabels(cArr.map(function(v) { return resolveAlias(colField, v, schema) }), 18)
   return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
 }
 
