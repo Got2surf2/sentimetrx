@@ -209,16 +209,17 @@ export default function RegulationsWizard({ onBack }: Props) {
         <p className="text-sm text-gray-400">No dockets found. Try a different search term.</p>
       )}
 
-      {dockets.length > 0 && !selectedDocket && (
+      {dockets.length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-gray-400">{totalResults.toLocaleString()} dockets found</p>
           <div style={{ maxHeight: 400, overflowY: 'auto' }} className="flex flex-col gap-1">
             {dockets.map(function(d) {
+              var isSelected = selectedDocket?.id === d.id
               return (
                 <button
                   key={d.id}
-                  onClick={function() { handleSelectDocket(d) }}
-                  className="flex items-start gap-3 px-4 py-3 rounded-xl bg-white border border-gray-200 hover:border-orange-400 hover:bg-orange-50 transition-all text-left"
+                  onClick={function() { if (isSelected) setSelectedDocket(null); else handleSelectDocket(d) }}
+                  className={'flex items-start gap-3 px-4 py-3 rounded-xl border transition-all text-left ' + (isSelected ? 'border-orange-400 bg-orange-50' : 'bg-white border-gray-200 hover:border-orange-400 hover:bg-orange-50')}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 line-clamp-2">{d.title}</p>
@@ -262,7 +263,7 @@ export default function RegulationsWizard({ onBack }: Props) {
               )}
             </div>
             <button onClick={function() { setSelectedDocket(null) }} className="text-xs text-gray-400 hover:text-gray-600 ml-3">
-              Change
+              Close
             </button>
           </div>
 
