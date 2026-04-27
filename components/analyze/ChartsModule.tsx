@@ -217,7 +217,7 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
     var merged = Object.assign({}, base, layout || {})
     // Normalize chart-level title string to styled object
     if (typeof merged.title === 'string') {
-      merged.title = { text: merged.title, font: { size: 14, color: T.text, family: 'Inter,system-ui,sans-serif', weight: 600 }, x: 0.01, xanchor: 'left', y: 0.98, yanchor: 'top' }
+      merged.title = { text: merged.title, font: { size: 14, color: T.text, family: 'Inter,system-ui,sans-serif', weight: 600 }, x: 0.5, xanchor: 'center', y: 0.98, yanchor: 'top' }
     }
     // Deep merge axes so caller's title/tickangle don't lose grid settings
     var lx = layout?.xaxis || {}, ly = layout?.yaxis || {}
@@ -336,10 +336,16 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     // Smart axes: order by remapping, then detected scale, then alphabetical (Item 20)
     var catFieldObj = schema.find(function(f) { return f.field === catField })
     var catRemap = catFieldObj?.remapping
-    // Themes: always sort by frequency descending; other fields: smart axes or alphabetical
+    // Themes: always sort by frequency descending
+    // Smart Axes ON + ordinal field: use smartOrder (preserves scale). Smart Axes ON + nominal field: sort by frequency.
+    // Smart Axes OFF: alphabetical.
+    var rawKeys = rawEntries.map(function(e) { return e[0] })
+    var isOrd = !!(catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(rawKeys)
     var orderedKeys = catField === '__themes__'
       ? rawEntries.slice().sort(function(a, b) { return (b[1] as number) - (a[1] as number) }).map(function(e) { return e[0] })
-      : (useSmartOrder ? smartOrder(rawEntries.map(function(e) { return e[0] }), catRemap) : rawEntries.map(function(e) { return e[0] }).sort())
+      : useSmartOrder
+        ? (isOrd ? smartOrder(rawKeys, catRemap) : rawEntries.slice().sort(function(a, b) { return (b[1] as number) - (a[1] as number) }).map(function(e) { return e[0] }))
+        : rawKeys.slice().sort()
     var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
     var cats = entries.map(function(e) { return e[0] })
     var vals = entries.map(function(e) { return e[1] })
@@ -691,7 +697,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     if (catField === 'signal_tier') {
       cats = smartOrder(cats)
     } else {
-      cats.sort(function(a, b) { var ta = Object.values(grid[b]).reduce(function(s, v) { return s + v }, 0); var tb = Object.values(grid[a]).reduce(function(s, v) { return s + v }, 0); return ta - tb })
+      cats.sort()
     }
   }
   cats = cats.slice(0, 30)
@@ -767,12 +773,15 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
 
   var groups = groupKeys.map(function(k) { return { group: k, ...groupsObj[k] } })
 
-  // Sort by smart order or by mean descending
+  // Smart Axes ON + ordinal: preserve scale order. ON + nominal: sort by mean. OFF: alphabetical.
   var catFieldObj = schema.find(function(f) { return f.field === catField })
   var catRemap = catFieldObj?.remapping
+  var isOrdAgg = !!(catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(groups.map(function(g) { return g.group }))
   var sortedGroups = smartAxes
-    ? smartOrder(groups.map(function(g) { return g.group }), catRemap).map(function(k) { return groups.find(function(g) { return g.group === k }) }).filter(Boolean) as typeof groups
-    : groups.slice().sort(function(a, b) { return b.mean - a.mean })
+    ? (isOrdAgg
+        ? smartOrder(groups.map(function(g) { return g.group }), catRemap).map(function(k) { return groups.find(function(g) { return g.group === k }) }).filter(Boolean) as typeof groups
+        : groups.slice().sort(function(a, b) { return b.mean - a.mean }))
+    : groups.slice().sort(function(a, b) { return a.group.localeCompare(b.group) })
 
   var isH = orient === 'h'
   var cats = wrapLabels(sortedGroups.slice(0, 30).map(function(g) { return resolveAlias(catField, g.group, schema) }), isH ? 28 : 18)
