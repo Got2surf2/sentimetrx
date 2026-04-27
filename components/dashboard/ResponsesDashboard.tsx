@@ -128,7 +128,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
       .then(json => {
         const all = json.data || []
         if (all.length === 0) { setFunnelLoading(false); return }
-        const customQCount = studyConfig?.customQCount || 0
+        const customQuestions = studyConfig?.questions || []
+        const customQCount = studyConfig?.customQCount || customQuestions.length || 0
         const psychoCount = studyConfig?.psychoCount || 0
         const stages: { label: string; count: number }[] = []
         const started = all.length
@@ -146,7 +147,9 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
               const ca = r.payload?.customAnswers || {}
               return Object.keys(ca).length >= i
             }).length
-            stages.push({ label: `Question ${i} of ${customQCount}`, count: hasN })
+            const qLabel = customQuestions[i - 1]?.exportLabel || customQuestions[i - 1]?.prompt || `Question ${i}`
+            const shortLabel = qLabel.length > 35 ? qLabel.slice(0, 32) + '...' : qLabel
+            stages.push({ label: shortLabel, count: hasN })
           }
         }
         if (psychoCount > 0) {
