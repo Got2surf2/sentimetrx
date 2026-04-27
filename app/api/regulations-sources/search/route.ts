@@ -1,7 +1,7 @@
 // POST — search regulations.gov dockets
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { searchDockets, listComments } from '@/lib/regulations'
+import { searchDockets, listComments, searchDocuments } from '@/lib/regulations'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -17,8 +17,18 @@ export async function POST(req: NextRequest) {
   // Single-docket comment count lookup
   if (docketId) {
     try {
+      // Try direct comment listing first
       const comments = await listComments(docketId, 1, 1)
-      return NextResponse.json({ commentCount: comments.totalElements })
+      if (comments.totalElements > 0) {
+        return NextResponse.json({ commentCount: comments.totalElements })
+      }
+      // If 0, try summing comment counts from documents in this docket
+      const docs = await searchDocuments('', docketId, 1)
+      let total = 0
+      for (const d of docs.data) {
+        total += d.attributes.commentCount || 0
+      }
+      return NextResponse.json({ commentCount: total || comments.totalElements })
     } catch (err: any) {
       return NextResponse.json({ commentCount: 0, error: err.message })
     }
