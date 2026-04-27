@@ -215,6 +215,10 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
     var baseY = { gridcolor: T.border, zerolinecolor: T.borderMid, linecolor: T.border, tickfont: { size: 11 }, automargin: true, title: { standoff: 18 } }
     var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T.textMute, size: 11 }, margin: { t: 48, r: 90, b: 56, l: 56 }, bargap: 0.15, xaxis: baseX, yaxis: baseY }
     var merged = Object.assign({}, base, layout || {})
+    // Normalize chart-level title string to styled object
+    if (typeof merged.title === 'string') {
+      merged.title = { text: merged.title, font: { size: 14, color: T.text, family: 'Inter,system-ui,sans-serif', weight: 600 }, x: 0.01, xanchor: 'left', y: 0.98, yanchor: 'top' }
+    }
     // Deep merge axes so caller's title/tickangle don't lose grid settings
     var lx = layout?.xaxis || {}, ly = layout?.yaxis || {}
     // Normalize string titles to { text, standoff } so standoff is preserved
@@ -376,7 +380,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     else { trace.x = wrappedCats; trace.y = displayVals }
 
     var isCount = opts?.barMode !== 'percent'
-    return <PlotlyChart traces={[trace]} layout={{ xaxis: { title: isH ? yTitle : '', ...(!isH ? catXAxis(wrappedCats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
+    return <PlotlyChart traces={[trace]} layout={{ title: catLabel, xaxis: { title: isH ? yTitle : '', ...(!isH ? catXAxis(wrappedCats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
   }
 
   if (chartType === 'distribution') {
@@ -404,10 +408,10 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       }
       return <PlotlyChart
         traces={[{ type: 'bar', x: hx, y: hy, marker: { color: primaryColor, opacity: 0.8, line: { color: primaryColor + '60', width: 1 } }, hovertemplate: '%{x}: %{y}<extra></extra>' }]}
-        layout={{ xaxis: { title: fieldAlias, ...(intX ? { dtick: 1, tick0: sum.min } : {}) }, yaxis: { title: 'Count', tickformat: ',d' }, bargap: 0.04, barcornerradius: 3, shapes: distShapes, annotations: distAnnotations }}
+        layout={{ title: fieldAlias, xaxis: { title: fieldAlias, ...(intX ? { dtick: 1, tick0: sum.min } : {}) }, yaxis: { title: 'Count', tickformat: ',d' }, bargap: 0.04, barcornerradius: 3, shapes: distShapes, annotations: distAnnotations }}
       />
     }
-    return <PlotlyChart traces={[{ type: 'box', y: [sum.min, sum.avg, sum.median, sum.max].filter(function(v) { return v != null }), boxpoints: 'all', marker: { color: primaryColor }, name: fieldAlias }]} layout={{ yaxis: { title: fieldAlias, ...(isSmallIntRange(sum.min, sum.max) ? { dtick: 1 } : {}) } }} />
+    return <PlotlyChart traces={[{ type: 'box', y: [sum.min, sum.avg, sum.median, sum.max].filter(function(v) { return v != null }), boxpoints: 'all', marker: { color: primaryColor }, name: fieldAlias }]} layout={{ title: fieldAlias, yaxis: { title: fieldAlias, ...(isSmallIntRange(sum.min, sum.max) ? { dtick: 1 } : {}) } }} />
   }
 
   if (chartType === 'scatter') {
@@ -430,7 +434,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var s2 = fs[catF2]; if (!s2 || !s2.counts) return <EmptyChart msg="No data." />
     var e2 = (function() { var raw = Object.entries(s2.counts); var f2Obj = schema.find(function(f) { return f.field === catF2 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f2Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
-    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ margin: { t: 8, r: 8, b: 8, l: 8 } }} />
+    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ title: flByName(catF2, schema), margin: { t: 48, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'bubbles') {
@@ -473,7 +477,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       marker: { size: radii.map(function(r) { return r * 2 }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.85, line: { color: e3.map(function(_, i) { return pal[i % pal.length] }), width: 1.5 }, sizemode: 'diameter' as const },
       text: e3.map(function(e) { var pct = total3 > 0 ? Math.round(e[1] / total3 * 100) : 0; return e[0] + '\n' + e[1].toLocaleString() + ' (' + pct + '%)' }),
       textposition: 'center' as const, textfont: { size: radii.map(function(r) { return Math.max(8, Math.min(13, r * 0.28)) }) }, hoverinfo: 'text' as const
-    }]} layout={{ showlegend: false, xaxis: { visible: false, zeroline: false }, yaxis: { visible: false, zeroline: false, scaleanchor: 'x' }, margin: { t: 8, r: 8, b: 8, l: 8 } }} />
+    }]} layout={{ title: flByName(catF3, schema), showlegend: false, xaxis: { visible: false, zeroline: false }, yaxis: { visible: false, zeroline: false, scaleanchor: 'x' }, margin: { t: 48, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'waterfall') {
@@ -485,7 +489,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
     var measures: string[] = wValues.map(function() { return 'relative' }).concat(['total'])
     wValues.push(total)
-    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: primaryColor } } }]} layout={{ xaxis: { ...catXAxis(wLabels) }, margin: { t: 12, r: 16, b: 48, l: 56 }, showlegend: false }} />
+    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: primaryColor } } }]} layout={{ title: flByName(catF4, schema), xaxis: { ...catXAxis(wLabels) }, margin: { t: 48, r: 16, b: 48, l: 56 }, showlegend: false }} />
   }
 
   if (chartType === 'bullet') {
@@ -506,7 +510,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var catF5 = config.category; if (!catF5) return <EmptyChart msg="Assign a category field above." />
     var s5 = fs[catF5]; if (!s5 || !s5.counts) return <EmptyChart msg="No data." />
     var e5 = (function() { var raw = Object.entries(s5.counts); var f5Obj = schema.find(function(f) { return f.field === catF5 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f5Obj?.remapping) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 12).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
-    return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ margin: { t: 8, r: 16, b: 8, l: 120 }, showlegend: false }} />
+    return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ title: flByName(catF5, schema), margin: { t: 48, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
   if (chartType === 'gantt') {
@@ -724,7 +728,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? 'Percentage' : 'Count'
   var isStackedCount = barMode !== 'percent'
-  return <PlotlyChart traces={traces} layout={{ barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  return <PlotlyChart traces={traces} layout={{ title: catLabel + ' by ' + flByName(colorByField, schema), barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Bar Aggregated Inner (average/sum of numeric value by category) ─────
@@ -805,6 +809,7 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   else { trace.x = cats; trace.y = vals }
 
   return <PlotlyChart traces={[trace]} layout={{
+    title: catLabel,
     xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(cats) : {}) },
     yaxis: { title: isH ? '' : valLabel },
     barcornerradius: 4,
@@ -932,7 +937,7 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
     var kLabel = resolveAlias(splitByField, k, schema)
     return { type: 'box' as const, y: groups[k], name: kLabel + ' (' + pct + '%)', marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
   })
-  return <PlotlyChart traces={traces} layout={{ yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
+  return <PlotlyChart traces={traces} layout={{ title: flByName(numField, schema) + ' by ' + flByName(splitByField, schema), yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
 }
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField, smartAxes, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string; smartAxes?: boolean; colors?: string[] }) {
@@ -1443,7 +1448,7 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
   var ySum = analytics.fieldSummaries[yField]
   var intX = isSmallIntRange(xSum?.min, xSum?.max)
   var intY = isSmallIntRange(ySum?.min, ySum?.max)
-  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ xaxis: { title: flByName(xField, schema), ...(intX ? { dtick: 1, tick0: xSum?.min } : {}) }, yaxis: { title: flByName(yField, schema), ...(intY ? { dtick: 1, tick0: ySum?.min } : {}) }, showlegend: false }} />
+  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ title: flByName(xField, schema) + ' vs ' + flByName(yField, schema), xaxis: { title: flByName(xField, schema), ...(intX ? { dtick: 1, tick0: xSum?.min } : {}) }, yaxis: { title: flByName(yField, schema), ...(intY ? { dtick: 1, tick0: ySum?.min } : {}) }, showlegend: false }} />
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
@@ -1469,7 +1474,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   var z = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
   var rLabels = wrapLabels(rArr.map(function(v) { return resolveAlias(rowField, v, schema) }), 22)
   var cLabels = wrapLabels(cArr.map(function(v) { return resolveAlias(colField, v, schema) }), 18)
-  return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 12, r: 60, b: 60, l: 100 } }} />
+  return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ title: flByName(rowField, schema) + ' \u00D7 ' + flByName(colField, schema), xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 48, r: 60, b: 60, l: 100 } }} />
 }
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField, colorByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string; colorByField?: string; colors?: string[] }) {
@@ -1640,7 +1645,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
           })}
         </div>
       ) : (
-        <PlotlyChart traces={traces} layout={{ xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: { orientation: 'h' as const, y: -0.15 } }} />
+        <PlotlyChart traces={traces} layout={{ title: metricField ? flByName(metricField, schema) + ' over Time' : flByName(dateField, schema), xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: { orientation: 'h' as const, y: -0.15 } }} />
       )}
     </div>
   )
@@ -1653,7 +1658,7 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
   rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
   var ganttFieldObj = schema.find(function(f) { return f.field === catField })
   var catArr = smartOrder(Object.keys(groups), ganttFieldObj?.remapping); var mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); var ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
-  return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
+  return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ title: flByName(catField, schema), barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
 }
 
 function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; schema: SchemaField[]; datasetId: string }) {
