@@ -12,28 +12,34 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { query, page } = body
+  const { query, page, docketId } = body
+
+  // Single-docket comment count lookup
+  if (docketId) {
+    try {
+      const comments = await listComments(docketId, 1, 1)
+      return NextResponse.json({ commentCount: comments.totalElements })
+    } catch (err: any) {
+      return NextResponse.json({ commentCount: 0, error: err.message })
+    }
+  }
+
   if (!query) return NextResponse.json({ error: 'query required' }, { status: 400 })
 
   try {
     const result = await searchDockets(query, page || 1)
 
-    // For each docket, get comment count by listing first page
-    const dockets = await Promise.all(result.data.map(async function(d) {
-      let commentCount = 0
-      try {
-        const comments = await listComments(d.id, 1, 1)
-        commentCount = comments.totalElements
-      } catch {}
+    // Return dockets without comment counts (too slow to fetch per-docket)
+    const dockets = result.data.map(function(d) {
       return {
         id: d.id,
         title: d.attributes.title,
         agency: d.attributes.agencyId,
         docketType: d.attributes.docketType,
         lastModified: d.attributes.lastModifiedDate,
-        commentCount,
+        commentCount: -1, // unknown until selected
       }
-    }))
+    })
 
     return NextResponse.json({
       dockets,

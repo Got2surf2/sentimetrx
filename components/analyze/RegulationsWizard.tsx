@@ -41,6 +41,7 @@ export default function RegulationsWizard({ onBack }: Props) {
 
   // Selected docket
   var [selectedDocket, setSelectedDocket] = useState<Docket | null>(null)
+  var [loadingCount, setLoadingCount] = useState(false)
   var [datasetName, setDatasetName] = useState('')
 
   // Download progress
@@ -57,7 +58,9 @@ export default function RegulationsWizard({ onBack }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, page: p }),
       })
-      var data = await res.json()
+      var text = await res.text()
+      var data: any
+      try { data = JSON.parse(text) } catch { throw new Error(text.slice(0, 200) || 'Invalid response from server') }
       if (!res.ok) throw new Error(data.error || 'Search failed')
       if (p === 1) {
         setDockets(data.dockets)
@@ -74,9 +77,27 @@ export default function RegulationsWizard({ onBack }: Props) {
     }
   }
 
-  function handleSelectDocket(d: Docket) {
+  async function handleSelectDocket(d: Docket) {
     setSelectedDocket(d)
     setDatasetName(d.agency + ' — ' + d.title.slice(0, 80))
+
+    // Fetch comment count if unknown
+    if (d.commentCount < 0) {
+      setLoadingCount(true)
+      try {
+        var res = await fetch('/api/regulations-sources/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ docketId: d.id }),
+        })
+        var data = await res.json()
+        var count = data.commentCount || 0
+        var updated = { ...d, commentCount: count }
+        setSelectedDocket(updated)
+        setDockets(function(prev) { return prev.map(function(x) { return x.id === d.id ? updated : x }) })
+      } catch {}
+      setLoadingCount(false)
+    }
   }
 
   async function handleDownload() {
@@ -98,16 +119,18 @@ export default function RegulationsWizard({ onBack }: Props) {
           comment_count: selectedDocket.commentCount,
         }),
       })
-      var createData = await createRes.json()
+      var createText = await createRes.text()
+      var createData: any
+      try { createData = JSON.parse(createText) } catch { throw new Error('Server error: ' + createText.slice(0, 200)) }
       if (!createRes.ok) throw new Error(createData.error || 'Failed to create dataset')
       var datasetId = createData.dataset_id
 
-      // Download comments page by page
+      // Download comments page by page (25 per page to stay within timeout)
       var page = 1
       var totalComments = 0
-      var totalPages = Math.ceil(selectedDocket.commentCount / 250) || 1
-      // API caps at 20 pages (5000 comments max per query)
-      if (totalPages > 20) totalPages = 20
+      var totalPages = Math.max(Math.ceil((selectedDocket.commentCount > 0 ? selectedDocket.commentCount : 100) / 25), 1)
+      // API caps at 200 pages (5000 comments max)
+      if (totalPages > 200) totalPages = 200
 
       while (page <= totalPages) {
         setDlProgress({ page, totalPages, comments: totalComments })
@@ -121,12 +144,14 @@ export default function RegulationsWizard({ onBack }: Props) {
             page,
           }),
         })
-        var dlData = await dlRes.json()
+        var dlText = await dlRes.text()
+        var dlData: any
+        try { dlData = JSON.parse(dlText) } catch { throw new Error('Server error: ' + dlText.slice(0, 200)) }
         if (!dlRes.ok) throw new Error(dlData.error || 'Download failed')
         totalComments += dlData.inserted || 0
 
         // Update total pages from API response
-        if (dlData.lastPage) totalPages = Math.min(dlData.lastPage, 20)
+        if (dlData.lastPage) totalPages = Math.min(dlData.lastPage, 200)
 
         if ((dlData.inserted || 0) === 0) break
         page++
@@ -159,13 +184,13 @@ export default function RegulationsWizard({ onBack }: Props) {
             Downloading comments...
           </h3>
           <p style={{ fontSize: 13, color: '#6B7280', marginTop: 8 }}>
-            Page {dlProgress.page} of {dlProgress.totalPages} · {dlProgress.comments.toLocaleString()} comments
+            Batch {dlProgress.page} of {dlProgress.totalPages} · {dlProgress.comments.toLocaleString()} comments saved
           </p>
           <div style={{ height: 6, background: '#F3F4F6', borderRadius: 3, overflow: 'hidden', marginTop: 16 }}>
             <div style={{ height: '100%', borderRadius: 3, background: HERMES, transition: 'width .5s ease', width: pct + '%' }} />
           </div>
           <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 8 }}>
-            {pct}% complete — rate limited to ~250 comments per batch
+            {pct}% complete — rate limited to ~25 comments per batch
           </p>
           {error && <p style={{ fontSize: 12, color: '#EF4444', marginTop: 12 }}>{error}</p>}
         </div>
@@ -227,10 +252,12 @@ export default function RegulationsWizard({ onBack }: Props) {
                       {d.agency} · {d.id} · {d.docketType} · {formatDate(d.lastModified)}
                     </p>
                   </div>
-                  <div className="flex-shrink-0 text-right">
-                    <span className="text-sm font-bold" style={{ color: HERMES }}>{d.commentCount.toLocaleString()}</span>
-                    <p className="text-[10px] text-gray-400">comments</p>
-                  </div>
+                  {d.commentCount >= 0 && (
+                    <div className="flex-shrink-0 text-right">
+                      <span className="text-sm font-bold" style={{ color: HERMES }}>{d.commentCount.toLocaleString()}</span>
+                      <p className="text-[10px] text-gray-400">comments</p>
+                    </div>
+                  )}
                 </button>
               )
             })}
@@ -254,7 +281,7 @@ export default function RegulationsWizard({ onBack }: Props) {
             <div className="flex-1">
               <h3 className="font-bold text-gray-800">{selectedDocket.title}</h3>
               <p className="text-xs text-gray-400 mt-1">
-                {selectedDocket.agency} · {selectedDocket.id} · {selectedDocket.commentCount.toLocaleString()} comments
+                {selectedDocket.agency} · {selectedDocket.id} · {loadingCount ? 'Loading comment count...' : selectedDocket.commentCount >= 0 ? selectedDocket.commentCount.toLocaleString() + ' comments' : ''}
               </p>
               {selectedDocket.commentCount > 5000 && (
                 <p className="text-xs text-amber-600 mt-1">
@@ -279,11 +306,13 @@ export default function RegulationsWizard({ onBack }: Props) {
 
           <button
             onClick={handleDownload}
-            disabled={!datasetName.trim()}
+            disabled={!datasetName.trim() || loadingCount}
             className="px-6 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50 hover:opacity-90 transition-all"
             style={{ background: HERMES }}
           >
-            Download {Math.min(selectedDocket.commentCount, 5000).toLocaleString()} Comments
+            {loadingCount ? 'Loading...' : selectedDocket.commentCount > 0
+              ? 'Download ' + Math.min(selectedDocket.commentCount, 5000).toLocaleString() + ' Comments'
+              : 'Download Comments'}
           </button>
         </div>
       )}

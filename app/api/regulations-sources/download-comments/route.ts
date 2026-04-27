@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // Step 1: List comment IDs for this page
-  const listResult = await listComments(docket_id, page || 1, 250)
+  // Step 1: List comment IDs for this page (small batches to stay within timeout)
+  const listResult = await listComments(docket_id, page || 1, 25)
   const commentIds = listResult.data.map(function(c) { return c.id })
 
   if (commentIds.length === 0) {
