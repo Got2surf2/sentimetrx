@@ -55,7 +55,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const INITIAL_MESSAGE: Message = {
     role: 'assistant',
     content: askName
-      ? config.initialMessage + '\n\nWhat should I call you?'
+      ? "Hi, I'm " + config.name + "! What's your name?"
       : config.initialMessage,
   }
   const initMessages = [INITIAL_MESSAGE]
