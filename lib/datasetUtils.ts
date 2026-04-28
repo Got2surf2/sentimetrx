@@ -142,10 +142,11 @@ export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig 
         (colLower.includes('date') && stats.type !== 'numeric')) {
       return { field: col, ...stats, type: 'date' as AnaFieldType }
     }
-    // Tag psychographic and demographic fields by prefix
-    var section: 'psychographic' | 'demographic' | undefined = undefined
+    // Tag psychographic, demographic, and URL param fields by prefix
+    var section: 'psychographic' | 'demographic' | 'url_param' | undefined = undefined
     if (colLower.startsWith('psycho_')) section = 'psychographic'
     else if (colLower.startsWith('demo_')) section = 'demographic'
+    else if (colLower.startsWith('url_')) section = 'url_param'
     return { field: col, ...stats, ...(section ? { section } : {}) }
   })
 
@@ -201,6 +202,15 @@ export function flattenDemographics(payload: SurveyPayload | null | undefined): 
   return out
 }
 
+export function flattenUrlParams(payload: SurveyPayload | null | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (!payload || !payload.urlParams) return out
+  for (const [key, val] of Object.entries(payload.urlParams)) {
+    out['url_' + sanitizeColumnName(key)] = val
+  }
+  return out
+}
+
 interface ResponseRow {
   id:               string
   completed_at:     string | null
@@ -239,6 +249,7 @@ export function formatResponsesAsRows(
       ...(r.payload ? flattenCustomQuestions(r.payload, study.config) : {}),
       ...(r.payload ? flattenPsychographics(r.payload) : {}),
       ...(r.payload ? flattenDemographics(r.payload) : {}),
+      ...(r.payload ? flattenUrlParams(r.payload) : {}),
     }
   })
 }

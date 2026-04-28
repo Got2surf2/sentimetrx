@@ -43,6 +43,7 @@ interface State {
   lastUserMsg:     string
   conversationLog: Array<{ who: 'bot' | 'user'; text: string; ai?: boolean }>
   skipNextAck:     boolean
+  urlParams:       Record<string, string>
 }
 
 export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest }: Props) {
@@ -83,6 +84,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     lastUserMsg: '',
     conversationLog: [],
     skipNextAck: false,
+    urlParams: {},
   })
 
   // ── Session ID — persists for this browser tab, new on new visit ──────────
@@ -127,14 +129,23 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       if (rid) recipientGuid.current = rid
       // Populate hidden field values from URL params
       const hiddenQuestions = (config.questions ?? []).filter(q => q.type === 'hidden')
+      const hiddenKeys = new Set<string>()
       for (const q of hiddenQuestions) {
         const key = q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
         if (!key) continue
+        hiddenKeys.add(key)
         const val = params.get(key)
         if (val) {
           state.current.customAnswers[q.id] = val
         }
       }
+      // Capture all remaining URL params as dynamic fields
+      const INTERNAL_KEYS = new Set(['rid', 'token', 'preview'])
+      params.forEach((val, key) => {
+        if (!INTERNAL_KEYS.has(key) && !hiddenKeys.has(key) && val) {
+          state.current.urlParams[key] = val
+        }
+      })
     } catch {}
   }
 
@@ -169,6 +180,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         if (Object.values(s.demographics).some(function(v) { return !!v })) partialPayload.demographics = s.demographics
         if (Object.values(s.contactInfo).some(function(v) { return !!v })) partialPayload.contactInfo = s.contactInfo
         if (s.conversationLog.length > 0) partialPayload.conversationLog = s.conversationLog
+        if (Object.keys(s.urlParams).length) partialPayload.urlParams = s.urlParams
 
         var duration_sec = Math.round((Date.now() - s.startTime) / 1000)
         fetch('/api/respond', {
@@ -532,6 +544,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       demographics:     s.demographics,
       contactInfo:      s.contactInfo,
       conversationLog:  s.conversationLog,
+      ...(Object.keys(s.urlParams).length > 0 ? { urlParams: s.urlParams } : {}),
     }
     // Only include scores if they were actually collected
     if (s.rating != null) {

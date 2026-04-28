@@ -150,6 +150,7 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
   var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
   var customFields = fields.filter(function(f) { return f.section === 'custom' })
+  var urlParamFields = fields.filter(function(f) { return f.section === 'url_param' })
   var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
 
   var asc2 = function(a: any, b: any) { var la = a.label || a.field, lb = b.label || b.field; return la.localeCompare(lb) }
@@ -167,6 +168,7 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
       <ChartCollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} currentConfig={currentConfig} />
       <ChartCollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="URL Parameters" icon={'\uD83D\uDD17'} color="#6366f1" fields={urlParamFields} currentConfig={currentConfig} />
     </>
   )
 }
@@ -247,7 +249,8 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
   var customOpts = options.filter(function(o) { return o.section === 'custom' })
   var psychoOpts = options.filter(function(o) { return o.section === 'psychographic' })
   var demoOpts  = options.filter(function(o) { return o.section === 'demographic' })
-  var hasGroups = customOpts.length > 0 || psychoOpts.length > 0 || demoOpts.length > 0
+  var urlParamOpts = options.filter(function(o) { return o.section === 'url_param' })
+  var hasGroups = customOpts.length > 0 || psychoOpts.length > 0 || demoOpts.length > 0 || urlParamOpts.length > 0
 
   return (
     <div style={{ minWidth: 140 }}
@@ -286,6 +289,7 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
           {hasGroups && customOpts.length > 0 && <optgroup label="Survey Questions">{customOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
           {hasGroups && psychoOpts.length > 0 && <optgroup label="Psychographic">{psychoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
           {hasGroups && demoOpts.length > 0 && <optgroup label="Demographic">{demoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
+          {hasGroups && urlParamOpts.length > 0 && <optgroup label="URL Parameters">{urlParamOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
         </select>
         {value && !required && (
           <button onClick={function() { onChange('') }} title="Clear"

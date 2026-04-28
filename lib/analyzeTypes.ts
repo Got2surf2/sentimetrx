@@ -13,7 +13,7 @@ export type AnaFieldSqt =
   | 'numeric-input'
   | null
 
-export type FieldSection = 'core' | 'psychographic' | 'demographic' | 'custom' | null
+export type FieldSection = 'core' | 'psychographic' | 'demographic' | 'custom' | 'url_param' | null
 
 export interface SchemaFieldConfig {
   field:          string

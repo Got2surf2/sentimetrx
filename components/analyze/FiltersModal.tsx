@@ -61,11 +61,13 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
     var custom = filterable.filter(function(f) { return f.section === 'custom' })
     var psycho = filterable.filter(function(f) { return f.section === 'psychographic' })
     var demo = filterable.filter(function(f) { return f.section === 'demographic' })
+    var urlParam = filterable.filter(function(f) { return f.section === 'url_param' })
     var out: { key: string; label: string; fields: typeof filterable }[] = []
     if (core.length) out.push({ key: 'core', label: 'Core', fields: core })
     if (custom.length) out.push({ key: 'custom', label: 'Survey Questions', fields: custom })
     if (psycho.length) out.push({ key: 'psychographic', label: 'Psychographic', fields: psycho })
     if (demo.length) out.push({ key: 'demographic', label: 'Demographic', fields: demo })
+    if (urlParam.length) out.push({ key: 'url_param', label: 'URL Parameters', fields: urlParam })
     return out
   }, [filterable])
   var hasSections = filterSections.length > 1

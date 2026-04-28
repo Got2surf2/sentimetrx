@@ -120,7 +120,8 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
   var customOpts = options.filter(function(o) { return o.s === 'custom' })
   var psychoOpts = options.filter(function(o) { return o.s === 'psychographic' })
   var demoOpts   = options.filter(function(o) { return o.s === 'demographic' })
-  var hasGroups  = customOpts.length > 0 || psychoOpts.length > 0 || demoOpts.length > 0
+  var urlParamOpts = options.filter(function(o) { return o.s === 'url_param' })
+  var hasGroups  = customOpts.length > 0 || psychoOpts.length > 0 || demoOpts.length > 0 || urlParamOpts.length > 0
   return (
     <div style={{ flex: 1, minWidth: 150 }}
       onDragOver={function(e) { e.preventDefault(); setDragOver(true) }}
@@ -140,6 +141,7 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
         {hasGroups && customOpts.length > 0 && <optgroup label="Survey Questions">{customOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
         {hasGroups && psychoOpts.length > 0 && <optgroup label="Psychographic">{psychoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
         {hasGroups && demoOpts.length > 0 && <optgroup label="Demographic">{demoOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
+        {hasGroups && urlParamOpts.length > 0 && <optgroup label="URL Parameters">{urlParamOpts.map(function(o) { return <option key={o.v} value={o.v}>{o.l}</option> })}</optgroup>}
       </select>
     </div>
   )
@@ -1590,6 +1592,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
   var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
   var customFields = fields.filter(function(f) { return f.section === 'custom' })
+  var urlParamFields = fields.filter(function(f) { return f.section === 'url_param' })
   var coreFields = fields.filter(function(f) { return !f.section || f.section === 'core' })
 
   var numFields = coreFields.filter(function(f) { return f.type === 'numeric' })
@@ -1606,6 +1609,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
       <CollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} T={T} fl={flFn} diag={diag} />
       <CollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} T={T} fl={flFn} diag={diag} />
       <CollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} T={T} fl={flFn} diag={diag} />
+      <CollapsibleGroup label="URL Parameters" icon={'\uD83D\uDD17'} color="#6366f1" fields={urlParamFields} T={T} fl={flFn} diag={diag} />
     </>
   )
 }

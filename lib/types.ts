@@ -775,6 +775,7 @@ export interface SurveyPayload {
   demographics:      Record<string, string>
   contactInfo?:      Record<string, string>
   conversationLog?:  Array<{ who: 'bot' | 'user'; text: string; ai?: boolean }>
+  urlParams?:        Record<string, string>   // dynamic URL parameters captured from survey link
 }
 
 export interface SubmitResponseBody {
