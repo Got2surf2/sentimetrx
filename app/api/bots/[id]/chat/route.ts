@@ -65,6 +65,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Build system prompt from personality + config + knowledge base
   const systemParts = []
+  systemParts.push('Today is ' + new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + '.')
   if ((bot as any).personality) {
     systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }
