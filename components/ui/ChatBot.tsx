@@ -118,7 +118,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     try {
       // Filter out the name-ask exchange from API messages to keep context clean
       const apiMessages = newMessages
-        .filter(m => m.content !== NAME_ASK.content)
+        .filter(m => m.content !== INITIAL_MESSAGE.content)
         .map(m => ({ role: m.role, content: m.content }))
 
       const res = await fetch(config.apiEndpoint, {
