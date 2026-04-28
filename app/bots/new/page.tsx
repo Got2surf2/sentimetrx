@@ -236,6 +236,20 @@ function BotCreatorInner() {
       })
       var data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save')
+
+      // Auto-chunk knowledge base for RAG search (replaces old chunks)
+      var botId = editId || data.id
+      if (botId && knowledgeBase.trim().length > 20) {
+        try {
+          await fetch('/api/bots/' + botId + '/knowledge', { method: 'DELETE' })
+          await fetch('/api/bots/' + botId + '/knowledge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: knowledgeBase }),
+          })
+        } catch {} // non-fatal — bot still works with full-text fallback
+      }
+
       router.push('/bots')
     } catch (err: any) {
       setError(err.message || 'Failed to save')
