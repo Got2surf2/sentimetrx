@@ -52,9 +52,13 @@ function isCleanName(name: string): boolean {
 
 export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const askName = config.askName !== false // default ON
-  const INITIAL_MESSAGE: Message = { role: 'assistant', content: config.initialMessage }
-  const NAME_ASK: Message = { role: 'assistant', content: 'Before we get started — what should I call you?' }
-  const initMessages = askName ? [INITIAL_MESSAGE, NAME_ASK] : [INITIAL_MESSAGE]
+  const INITIAL_MESSAGE: Message = {
+    role: 'assistant',
+    content: askName
+      ? config.initialMessage + '\n\nWhat should I call you?'
+      : config.initialMessage,
+  }
+  const initMessages = [INITIAL_MESSAGE]
   const [messages, setMessages] = useState<Message[]>(initMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
