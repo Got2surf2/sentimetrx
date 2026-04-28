@@ -1,0 +1,148 @@
+// app/api/bots/[id]/knowledge/route.ts
+// GET  — list all knowledge chunks for a bot
+// POST — ingest text/markdown into chunks (splits by headings, stores with tsvector)
+// DELETE — clear all knowledge chunks for a bot
+
+import { NextResponse } from 'next/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
+
+interface Params { params: { id: string } }
+
+// ── GET: list chunks ──────────────────────────────────────────
+export async function GET(_req: Request, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const service = createServiceRoleClient()
+  const { data: chunks } = await service
+    .from('bot_knowledge_chunks')
+    .select('id, title, content, metadata, created_at')
+    .eq('bot_id', params.id)
+    .order('created_at', { ascending: true })
+
+  return NextResponse.json({ chunks: chunks || [], count: chunks?.length || 0 })
+}
+
+// ── POST: ingest text → chunks ────────────────────────────────
+export async function POST(req: Request, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const { text, source } = body as { text: string; source?: string }
+  if (!text || text.trim().length < 10) {
+    return NextResponse.json({ error: 'text is required (min 10 chars)' }, { status: 400 })
+  }
+
+  // Verify bot ownership
+  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const service = createServiceRoleClient()
+  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  if (!bot || bot.org_id !== userData.org_id) {
+    return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  }
+
+  // Split text into chunks by markdown headings or double newlines
+  const chunks = chunkText(text, source)
+
+  if (chunks.length === 0) {
+    return NextResponse.json({ error: 'No meaningful content found' }, { status: 400 })
+  }
+
+  // Insert chunks (tsvector is auto-populated by trigger)
+  const rows = chunks.map(function(c) {
+    return {
+      bot_id: params.id,
+      title: c.title,
+      content: c.content,
+      metadata: c.metadata,
+    }
+  })
+
+  const { error } = await service.from('bot_knowledge_chunks').insert(rows)
+  if (error) {
+    return NextResponse.json({ error: 'Failed to store chunks: ' + error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ stored: rows.length, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
+}
+
+// ── DELETE: clear all chunks ──────────────────────────────────
+export async function DELETE(_req: Request, { params }: Params) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const service = createServiceRoleClient()
+  const { error } = await service.from('bot_knowledge_chunks').delete().eq('bot_id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ cleared: true })
+}
+
+// ── Chunking logic ────────────────────────────────────────────
+// Splits markdown/text by headings (## or ---) into titled sections.
+// Falls back to paragraph-based splitting if no headings found.
+function chunkText(text: string, source?: string): { title: string; content: string; metadata: Record<string, any> }[] {
+  const lines = text.split('\n')
+  const chunks: { title: string; content: string; metadata: Record<string, any> }[] = []
+  let currentTitle = 'General'
+  let currentLines: string[] = []
+  const baseMeta = source ? { source } : {}
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    // Match markdown headings: ## Title or ### Title (skip # top-level — that's the doc title)
+    const headingMatch = line.match(/^#{2,4}\s+(.+)/)
+    // Match --- separator (at least 3 dashes on its own line)
+    const isSeparator = /^-{3,}\s*$/.test(line)
+
+    if (headingMatch || isSeparator) {
+      // Flush previous chunk
+      if (currentLines.length > 0) {
+        const content = currentLines.join('\n').trim()
+        if (content.length >= 20) {
+          chunks.push({ title: currentTitle, content, metadata: { ...baseMeta } })
+        }
+      }
+      currentTitle = headingMatch ? headingMatch[1].replace(/\*\*/g, '').trim() : 'General'
+      currentLines = []
+    } else {
+      // Skip frontmatter lines
+      if (/^---\s*$/.test(line) && i < 5) continue
+      if (/^(name|description|type|originSessionId):/.test(line) && i < 10) continue
+      currentLines.push(line)
+    }
+  }
+
+  // Flush last chunk
+  if (currentLines.length > 0) {
+    const content = currentLines.join('\n').trim()
+    if (content.length >= 20) {
+      chunks.push({ title: currentTitle, content, metadata: { ...baseMeta } })
+    }
+  }
+
+  // If only one giant chunk, try splitting by double newlines
+  if (chunks.length <= 1 && text.length > 2000) {
+    const paragraphs = text.split(/\n\n+/)
+    const splitChunks: typeof chunks = []
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i].trim()
+      if (para.length < 20) continue
+      // Use first line as title if it looks like a heading
+      const firstLine = para.split('\n')[0]
+      const title = firstLine.length < 80 ? firstLine.replace(/^#+\s*/, '').replace(/\*\*/g, '') : 'Section ' + (i + 1)
+      splitChunks.push({ title, content: para, metadata: { ...baseMeta } })
+    }
+    if (splitChunks.length > 1) return splitChunks
+  }
+
+  return chunks
+}

@@ -69,7 +69,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }
   if (bot.system_prompt) systemParts.push(bot.system_prompt)
-  if (bot.knowledge_base) {
+  // RAG: search knowledge chunks for relevant context (if chunks exist)
+  // Falls back to full knowledge_base text if no chunks are stored
+  const userQuery = lastUserMsg?.content || ''
+  let knowledgeInjected = false
+  if (userQuery) {
+    const { data: chunks } = await service.rpc('search_knowledge_chunks', {
+      p_bot_id: bot.id,
+      p_query: userQuery,
+      p_limit: 5,
+    })
+    if (chunks && chunks.length > 0) {
+      const context = chunks.map(function(c: any) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
+      systemParts.push('\n\n--- RELEVANT KNOWLEDGE ---\nUse the following information to answer the question. If the answer isn\'t here, say so honestly — don\'t make things up.\n\n' + context)
+      knowledgeInjected = true
+    }
+  }
+  if (!knowledgeInjected && bot.knowledge_base) {
     systemParts.push('\n\n--- KNOWLEDGE BASE ---\nUse the following information to answer questions. If the answer isn\'t in the knowledge base, say so honestly — don\'t make things up.\n\n' + bot.knowledge_base)
   }
   // Language instruction — if bot has a configured language, enforce it
