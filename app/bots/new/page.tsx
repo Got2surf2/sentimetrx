@@ -120,6 +120,9 @@ function BotCreatorInner() {
   const [researchQuery, setResearchQuery] = useState('')
   const [researching, setResearching] = useState(false)
   const [researchSources, setResearchSources] = useState<string[]>([])
+  const [crawlUrl, setCrawlUrl] = useState('')
+  const [crawling, setCrawling] = useState(false)
+  const [crawlResult, setCrawlResult] = useState<{ pages: number } | null>(null)
 
   // Load existing bot if editing
   useEffect(function() {
@@ -168,6 +171,29 @@ function BotCreatorInner() {
       setError(err.message || 'Research failed')
     }
     setResearching(false)
+  }
+
+  async function runDeepCrawl() {
+    if (!crawlUrl.trim()) return
+    setCrawling(true)
+    setError('')
+    setCrawlResult(null)
+    try {
+      var res = await fetch('/api/bots/deep-crawl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: crawlUrl.trim() }),
+      })
+      var data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Crawl failed')
+      setKnowledgeBase(function(prev) {
+        return (prev ? prev + '\n\n' : '') + data.text
+      })
+      setCrawlResult({ pages: data.pages_crawled })
+    } catch (err: any) {
+      setError(err.message || 'Deep crawl failed')
+    }
+    setCrawling(false)
   }
 
   async function fetchTrainingContent() {
@@ -373,6 +399,44 @@ function BotCreatorInner() {
               </select>
               <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>When enabled, AI will periodically analyze recent conversations and flag theme drift or knowledge gaps. View results on the Chats page.</p>
             </label>
+          </Section>
+
+          <Section title="Deep Crawl">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Enter a website URL to crawl all pages and build a comprehensive knowledge base. Follows internal links, keeps full detail (no compression).</p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
+              <label style={{ flex: 1 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Website URL</span>
+                <input
+                  type="text"
+                  value={crawlUrl}
+                  onChange={function(e) { setCrawlUrl(e.target.value) }}
+                  onKeyDown={function(e) { if (e.key === 'Enter' && !crawling) runDeepCrawl() }}
+                  placeholder="e.g., https://orlandohindutemple.org"
+                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none' }}
+                />
+              </label>
+              <button
+                onClick={runDeepCrawl}
+                disabled={crawling || !crawlUrl.trim()}
+                style={{
+                  padding: '8px 20px', borderRadius: 16, border: 'none',
+                  background: crawling ? '#9ca3af' : HERMES, color: 'white',
+                  fontSize: 12, fontWeight: 600, cursor: crawling ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap', height: 36,
+                }}>
+                {crawling ? 'Crawling...' : 'Deep Crawl'}
+              </button>
+            </div>
+            {crawling && (
+              <div style={{ fontSize: 11, color: '#6b7280', padding: '8px 0' }}>
+                Crawling pages and extracting content — this may take up to 2 minutes for large sites...
+              </div>
+            )}
+            {crawlResult && (
+              <div style={{ fontSize: 11, color: '#059669', marginBottom: 8 }}>
+                Crawled {crawlResult.pages} page{crawlResult.pages !== 1 ? 's' : ''} — full content added to knowledge base
+              </div>
+            )}
           </Section>
 
           <Section title="Research">
