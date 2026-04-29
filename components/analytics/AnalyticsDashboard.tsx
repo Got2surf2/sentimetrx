@@ -108,8 +108,8 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
 
         {summary && (
           <>
-            {/* Summary stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+            {/* Summary stats — spans same width as charts below */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
               <div className="bg-white border border-gray-200 rounded-xl p-4">
                 <div className="text-xl font-bold text-gray-800">{summary.totalAll || summary.total}</div>
                 <div className="text-gray-500 text-xs mt-0.5">Responses</div>
@@ -136,7 +136,7 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
 
                 {/* Rating Trend — takes 2 columns */}
                 <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5">
-                  <h2 className="font-semibold text-gray-800 mb-1 text-sm">{summary.avgNps > 0 ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'Rating')} Trend</h2>
+                  <h2 className="font-semibold text-gray-800 mb-1 text-sm">Avg {summary.avgNps > 0 ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'Rating')} by Day</h2>
                   <p className="text-gray-400 text-xs mb-4">Average {summary.avgNps > 0 ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'rating')} score per day</p>
                   {npsTrend.length < 2 ? (
                     <div className="h-40 flex items-center justify-center text-gray-400 text-xs">Not enough data points for a trend</div>
@@ -147,14 +147,14 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
 
                 {/* Sentiment Donut */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-5">
-                  <h2 className="font-semibold text-white mb-1 text-sm">Sentiment Split</h2>
-                  <p className="text-gray-400 text-xs mb-4">Overall breakdown</p>
-                  <SentimentDonut summary={summary} />
+                  <h2 className="font-semibold text-gray-800 mb-1 text-sm">{summary.avgNps > 0 ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'Familiarity')} Breakdown</h2>
+                  <p className="text-gray-400 text-xs mb-4">Overall sentiment distribution</p>
+                  <SentimentDonut summary={summary} ratingLabel={summary.avgNps > 0 ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'Familiarity')} />
                 </div>
 
                 {/* Volume bar chart — full width */}
                 <div className="lg:col-span-3 bg-white border border-gray-200 rounded-2xl p-5">
-                  <h2 className="font-semibold text-white mb-1 text-sm">Response Volume</h2>
+                  <h2 className="font-semibold text-gray-800 mb-1 text-sm">Response Volume</h2>
                   <p className="text-gray-400 text-xs mb-4">Responses per day</p>
                   {volumeByDay.length === 0 ? (
                     <div className="h-28 flex items-center justify-center text-gray-400 text-xs">No data</div>
@@ -272,8 +272,8 @@ function BarChart({ data }: { data: VolumePoint[] }) {
 }
 
 // ── Sentiment Donut ─────────────────────────────────────────
-function SentimentDonut({ summary }: { summary: Summary }) {
-  const total = summary.total || 1
+function SentimentDonut({ summary, ratingLabel }: { summary: Summary; ratingLabel?: string }) {
+  const total = summary.sentimentTotal || summary.total || 1
   const segments = [
     { value: summary.promoters,  color: '#22c55e', label: 'Positive'  },
     { value: summary.passives,   color: '#eab308', label: 'Neutral'   },
@@ -301,7 +301,7 @@ function SentimentDonut({ summary }: { summary: Summary }) {
         {arcs.map((a, i) => a.d && (
           <path key={i} d={a.d} fill="none" stroke={a.color} strokeWidth={STROKE} strokeLinecap="butt" opacity="0.85" />
         ))}
-        <text x={CX} y={CY - 6}  textAnchor="middle" fontSize="20" fontWeight="bold" fill="white">{summary.total}</text>
+        <text x={CX} y={CY - 6}  textAnchor="middle" fontSize="20" fontWeight="bold" fill="#1e293b">{total}</text>
         <text x={CX} y={CY + 10} textAnchor="middle" fontSize="9" fill="#64748b">responses</text>
       </svg>
       <div className="flex flex-col gap-2">
@@ -309,7 +309,7 @@ function SentimentDonut({ summary }: { summary: Summary }) {
           <div key={s.label} className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
             <div>
-              <div className="text-xs text-white font-medium">{Math.round(s.value / total * 100)}%</div>
+              <div className="text-xs text-gray-800 font-medium">{s.value} ({Math.round(s.value / total * 100)}%)</div>
               <div className="text-xs text-gray-400">{s.label}</div>
             </div>
           </div>
