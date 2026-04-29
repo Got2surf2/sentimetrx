@@ -215,7 +215,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div ref={wrapperRef} style={{ height: '100dvh', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
+    <div ref={wrapperRef} style={{ width: '100%', height: '100%', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
       {/* Header */}
       <header style={{
         background: config.headerGradient,

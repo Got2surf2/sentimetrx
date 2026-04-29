@@ -21,5 +21,9 @@ export default async function BotPage({ params }: Props) {
 
   if (!bot) notFound()
 
-  return <BotClient bot={bot} />
+  return (
+    <main style={{ height: '100dvh', overflow: 'hidden' }}>
+      <BotClient bot={bot} />
+    </main>
+  )
 }
