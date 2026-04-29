@@ -405,7 +405,8 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             placeholder={config.placeholder}
             rows={1}
             style={{
-              flex: 1, minWidth: 0, resize: 'none',
+              flex: 1, width: 0, minWidth: 0, boxSizing: 'border-box' as const,
+              resize: 'none',
               padding: '10px 14px', borderRadius: 24,
               border: '1.5px solid #e5e7eb', outline: 'none',
               fontSize: '0.875rem', fontFamily: 'inherit',
