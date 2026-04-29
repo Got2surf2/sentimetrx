@@ -4,7 +4,7 @@
 // Shared chatbot UI component used by /bot, /clara, /nora pages.
 // All branding, colors, and content are passed via config props.
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import SanjayModal, { checkVerboseCommand } from './SanjayModal'
 
 function genSessionId() {
@@ -96,52 +96,17 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setUserName(askName ? null : '_skip')
     if (multiLang) setSelectedLang(null)
   }
-  const wrapperRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
 
-  const scrollBottom = useCallback(() => {
+  const scrollBottom = () => {
     const el = chatRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [chatRef])
+    if (el) el.scrollTop = el.scrollHeight
+  }
 
-  // Lock body scroll on mount — prevents iOS Safari from scrolling the document when keyboard opens
-  useEffect(() => {
-    const html = document.documentElement
-    const body = document.body
-    html.style.height = '100%'
-    html.style.overflow = 'hidden'
-    body.style.height = '100%'
-    body.style.overflow = 'hidden'
-    body.style.position = 'fixed'
-    body.style.width = '100%'
-    return () => {
-      html.style.height = ''
-      html.style.overflow = ''
-      body.style.height = ''
-      body.style.overflow = ''
-      body.style.position = ''
-      body.style.width = ''
-    }
-  }, [])
-
-  // Fix mobile keyboard: on iOS, 100dvh doesn't shrink when keyboard opens.
-  // Listen to visualViewport resize and update the wrapper height.
-  // COPIED FROM SurveyWidget.tsx — do not change this pattern.
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const onResize = () => {
-      if (wrapperRef.current) {
-        wrapperRef.current.style.height = vv.height + 'px'
-      }
-      scrollBottom()
-    }
-    vv.addEventListener('resize', onResize)
-    return () => vv.removeEventListener('resize', onResize)
-  }, [scrollBottom])
+  // No JS viewport hacks — the survey works without them.
+  // height:100dvh + overflow:hidden on the page wrapper is sufficient.
 
   useEffect(() => {
     scrollBottom()
@@ -238,7 +203,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div ref={wrapperRef} style={{ width: '100%', height: '100%', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
+    <div style={{ width: '100%', height: '100%', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
       {/* Header */}
       <header style={{
         background: config.headerGradient,
