@@ -84,66 +84,79 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { url } = body
-  if (!url || typeof url !== 'string') {
-    return NextResponse.json({ error: 'URL is required' }, { status: 400 })
+  // Support single URL (string) or multiple URLs (array or newline-separated)
+  var urls: string[] = []
+  if (Array.isArray(body.urls)) {
+    urls = body.urls.filter(function(u: any) { return typeof u === 'string' && u.trim() })
+  } else if (typeof body.url === 'string') {
+    urls = body.url.split('\n').map(function(u: string) { return u.trim() }).filter(Boolean)
+  }
+  if (urls.length === 0) {
+    return NextResponse.json({ error: 'At least one URL is required' }, { status: 400 })
   }
 
-  var baseUrl: URL
-  try { baseUrl = new URL(url) } catch {
-    return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
+  // Validate all URLs upfront
+  var baseUrls: URL[] = []
+  for (var u = 0; u < urls.length; u++) {
+    try { baseUrls.push(new URL(urls[u])) } catch {
+      return NextResponse.json({ error: 'Invalid URL: ' + urls[u] }, { status: 400 })
+    }
   }
 
-  // BFS crawl
-  var queue: string[] = [baseUrl.origin + baseUrl.pathname.replace(/\/+$/, '')]
+  // BFS crawl across all provided URLs, sharing the page budget
   var visited = new Set<string>()
   var pages: { url: string; title: string; text: string }[] = []
 
-  while (queue.length > 0 && pages.length < MAX_PAGES) {
-    var currentUrl = queue.shift()!
-    if (visited.has(currentUrl)) continue
-    visited.add(currentUrl)
+  for (var b = 0; b < baseUrls.length && pages.length < MAX_PAGES; b++) {
+    var baseUrl = baseUrls[b]
+    var queue: string[] = [baseUrl.origin + baseUrl.pathname.replace(/\/+$/, '')]
 
-    try {
-      var res = await fetch(currentUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Datanautix Deep Crawler/1.0)',
-          'Accept': 'text/html,application/xhtml+xml,text/plain',
-        },
-        signal: AbortSignal.timeout(CRAWL_TIMEOUT),
-        redirect: 'follow',
-      })
+    while (queue.length > 0 && pages.length < MAX_PAGES) {
+      var currentUrl = queue.shift()!
+      if (visited.has(currentUrl)) continue
+      visited.add(currentUrl)
 
-      if (!res.ok) continue
-      var contentType = res.headers.get('content-type') || ''
-      if (!contentType.includes('html') && !contentType.includes('text')) continue
+      try {
+        var res = await fetch(currentUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Datanautix Deep Crawler/1.0)',
+            'Accept': 'text/html,application/xhtml+xml,text/plain',
+          },
+          signal: AbortSignal.timeout(CRAWL_TIMEOUT),
+          redirect: 'follow',
+        })
 
-      var html = await res.text()
+        if (!res.ok) continue
+        var contentType = res.headers.get('content-type') || ''
+        if (!contentType.includes('html') && !contentType.includes('text')) continue
 
-      // Extract title
-      var titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i)
-      var title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : currentUrl
+        var html = await res.text()
 
-      // Extract text
-      var text = htmlToText(html, currentUrl)
-      if (text.length < 50) continue  // skip empty pages
+        // Extract title
+        var titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i)
+        var title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : currentUrl
 
-      pages.push({ url: currentUrl, title, text })
+        // Extract text
+        var text = htmlToText(html, currentUrl)
+        if (text.length < 50) continue  // skip empty pages
 
-      // Extract and queue internal links
-      var links = extractLinks(html, baseUrl)
-      for (var i = 0; i < links.length; i++) {
-        if (!visited.has(links[i]) && queue.length + pages.length < MAX_PAGES * 2) {
-          queue.push(links[i])
+        pages.push({ url: currentUrl, title, text })
+
+        // Extract and queue internal links
+        var links = extractLinks(html, baseUrl)
+        for (var i = 0; i < links.length; i++) {
+          if (!visited.has(links[i]) && queue.length + pages.length < MAX_PAGES * 2) {
+            queue.push(links[i])
+          }
         }
+      } catch {
+        // Skip failed pages, keep crawling
       }
-    } catch {
-      // Skip failed pages, keep crawling
     }
   }
 
   if (pages.length === 0) {
-    return NextResponse.json({ error: 'Could not fetch any pages from ' + baseUrl.hostname }, { status: 502 })
+    return NextResponse.json({ error: 'Could not fetch any pages from the provided URLs' }, { status: 502 })
   }
 
   // Build structured knowledge base — full text per page, with markdown headings
@@ -156,12 +169,13 @@ export async function POST(req: NextRequest) {
     return '## ' + heading + '\nSource: ' + p.url + '\n\n' + p.text
   })
 
-  var fullText = '# ' + baseUrl.hostname + ' — Deep Crawl Knowledge Base\n\n' + sections.join('\n\n---\n\n')
+  var fullText = '# Deep Crawl Knowledge Base\n\n' + sections.join('\n\n---\n\n')
 
   return NextResponse.json({
     text: fullText,
     pages_crawled: pages.length,
     pages_found: visited.size,
+    sites_crawled: baseUrls.length,
     urls: pages.map(function(p) { return p.url }),
   })
 }

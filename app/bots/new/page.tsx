@@ -122,7 +122,7 @@ function BotCreatorInner() {
   const [researchSources, setResearchSources] = useState<string[]>([])
   const [crawlUrl, setCrawlUrl] = useState('')
   const [crawling, setCrawling] = useState(false)
-  const [crawlResult, setCrawlResult] = useState<{ pages: number } | null>(null)
+  const [crawlResult, setCrawlResult] = useState<{ pages: number; sites: number } | null>(null)
   const [faq, setFaq] = useState<{ question: string; answer: string }[]>([])
   const [facts, setFacts] = useState<string[]>([])
   const [guardrails, setGuardrails] = useState<string[]>([])
@@ -195,7 +195,7 @@ function BotCreatorInner() {
       setKnowledgeBase(function(prev) {
         return (prev ? prev + '\n\n' : '') + data.text
       })
-      setCrawlResult({ pages: data.pages_crawled })
+      setCrawlResult({ pages: data.pages_crawled, sites: data.sites_crawled || 1 })
     } catch (err: any) {
       setError(err.message || 'Deep crawl failed')
     }
@@ -522,17 +522,16 @@ function BotCreatorInner() {
           </Section>
 
           <Section title="Deep Crawl">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Enter a website URL to crawl all pages and build a comprehensive knowledge base. Follows internal links, keeps full detail (no compression).</p>
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Enter one or more website URLs (one per line) to crawl all pages and build a comprehensive knowledge base. Follows internal links, keeps full detail.</p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
               <label style={{ flex: 1 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Website URL</span>
-                <input
-                  type="text"
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Website URLs (one per line)</span>
+                <textarea
                   value={crawlUrl}
                   onChange={function(e) { setCrawlUrl(e.target.value) }}
-                  onKeyDown={function(e) { if (e.key === 'Enter' && !crawling) runDeepCrawl() }}
-                  placeholder="e.g., https://orlandohindutemple.org"
-                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none' }}
+                  placeholder={"e.g.,\nhttps://orlandohindutemple.org\nhttps://example.com/about"}
+                  rows={3}
+                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
                 />
               </label>
               <button
@@ -542,7 +541,7 @@ function BotCreatorInner() {
                   padding: '8px 20px', borderRadius: 16, border: 'none',
                   background: crawling ? '#9ca3af' : HERMES, color: 'white',
                   fontSize: 12, fontWeight: 600, cursor: crawling ? 'not-allowed' : 'pointer',
-                  whiteSpace: 'nowrap', height: 36,
+                  whiteSpace: 'nowrap', height: 36, alignSelf: 'flex-start', marginTop: 22,
                 }}>
                 {crawling ? 'Crawling...' : 'Deep Crawl'}
               </button>
@@ -554,7 +553,7 @@ function BotCreatorInner() {
             )}
             {crawlResult && (
               <div style={{ fontSize: 11, color: '#059669', marginBottom: 8 }}>
-                Crawled {crawlResult.pages} page{crawlResult.pages !== 1 ? 's' : ''} — full content added to knowledge base
+                Crawled {crawlResult.pages} page{crawlResult.pages !== 1 ? 's' : ''} across {crawlResult.sites} site{crawlResult.sites !== 1 ? 's' : ''} — full content added to knowledge base
               </div>
             )}
           </Section>
