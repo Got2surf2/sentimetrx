@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation'
 import BotClient from './BotClient'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 
 interface Props { params: { slug: string } }
 
