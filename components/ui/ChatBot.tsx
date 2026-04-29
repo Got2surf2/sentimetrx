@@ -218,7 +218,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div ref={rootRef} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
+    <div ref={rootRef} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden', maxWidth: '100vw' }}>
       {/* Header */}
       <header style={{
         background: config.headerGradient,
@@ -234,9 +234,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         }}>
           {config.avatarLetter}
         </div>
-        <div>
-          <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>{config.name}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>{config.subtitle}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: 'white', fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{config.name}</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{config.subtitle}</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           {messages.length > 1 && (
@@ -298,10 +298,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
 
       {/* Chat area */}
       {(selectedLang !== null || !multiLang) && <div ref={chatRef} style={{
-        flex: 1, overflowY: 'auto', minHeight: 0, padding: '20px 16px',
-        display: 'flex', flexDirection: 'column', gap: 16,
-        maxWidth: 800, width: '100%', margin: '0 auto',
-        scrollBehavior: 'smooth' as const,
+        flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0, padding: '12px 12px',
+        display: 'flex', flexDirection: 'column', gap: 12,
+        width: '100%', boxSizing: 'border-box' as const,
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}>
         {messages.map((msg, i) => (
@@ -329,7 +328,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
                 lineHeight: 1.6,
                 border: msg.role === 'assistant' ? '1px solid #e5e7eb' : 'none',
                 boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-                whiteSpace: 'pre-wrap',
+                whiteSpace: 'pre-wrap', overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const,
               }}
                 dangerouslySetInnerHTML={{ __html: formatHtml(msg.content) }}
               />
