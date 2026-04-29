@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const allowed = ['name', 'slug', 'status', 'config', 'system_prompt', 'personality', 'knowledge_base', 'training_urls', 'review_interval_hours', 'next_review_at', 'faq', 'facts', 'guardrails', 'subject', 'negative_content_mode']
+  const allowed = ['name', 'slug', 'status', 'config', 'system_prompt', 'personality', 'knowledge_base', 'training_urls', 'review_interval_hours', 'next_review_at', 'faq', 'facts', 'guardrails', 'subject', 'negative_content_mode', 'opponents', 'contrast_mode']
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]

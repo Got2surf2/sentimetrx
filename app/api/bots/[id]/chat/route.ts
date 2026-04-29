@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
   const { data: bot, error } = await service
     .from('bots')
-    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base, guardrails, subject, negative_content_mode')
+    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base, guardrails, subject, negative_content_mode, opponents, contrast_mode')
     .eq('id', params.id)
     .single()
 
@@ -129,6 +129,38 @@ export async function POST(req: NextRequest, { params }: Params) {
           }
         }
         knowledgeInjected = true
+
+        // Contrast mode: inject opponent positions for policy questions
+        const contrastMode = (bot as any).contrast_mode || 'off'
+        const opponents = (bot as any).opponents
+        if (contrastMode !== 'off' && Array.isArray(opponents) && opponents.length > 0 && !hasOnlyNegative) {
+          const opponentNames = opponents.map(function(o: any) { return typeof o === 'string' ? o : o.name || '' }).filter(Boolean)
+
+          // Check if user is asking for contrast (for user_triggered mode)
+          const queryLower = userQuery.toLowerCase()
+          const mentionsOpponent = opponentNames.some(function(n: string) { return queryLower.includes(n.toLowerCase()) })
+          const asksForContrast = /differ|compar|contrast|oppon|versus|vs\.?|against|other candidate/i.test(queryLower)
+          const shouldContrast = contrastMode === 'always' || mentionsOpponent || asksForContrast
+
+          if (shouldContrast) {
+            // Search for opponent-tagged chunks on the same topic
+            const oppoChunks = (chunks || []).filter(function(c: any) {
+              return c.metadata?.opponent || c.metadata?.sentiment === 'negative'
+            })
+            // Also search with opponent names to find relevant contrast material
+            var oppoContext = ''
+            if (oppoChunks.length > 0) {
+              oppoContext = oppoChunks.map(function(c: any) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
+            }
+
+            const oppoList = opponentNames.join(', ')
+            if (oppoContext) {
+              systemParts.push('\n\n--- OPPONENT CONTRAST ---\nWhen discussing policy positions, after presenting ' + subjectName + '\'s position, draw a clear contrast with the opponent(s) (' + oppoList + '). Use phrasing like "That\'s a stark contrast to..." or "Unlike [opponent] who...". Be factual but firm.\n\n' + oppoContext)
+            } else {
+              systemParts.push('\n\nCONTRAST INSTRUCTION: If you have knowledge about opponents (' + oppoList + '), after presenting ' + subjectName + '\'s position, draw a clear contrast. Use phrasing like "That\'s a stark contrast to..." Be factual but firm. Only contrast if you have specific information — don\'t make things up.')
+            }
+          }
+        }
       }
     } catch (e: any) {
       console.error('[bot-chat] RAG search exception:', e?.message)

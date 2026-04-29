@@ -128,6 +128,8 @@ function BotCreatorInner() {
   const [guardrails, setGuardrails] = useState<string[]>([])
   const [subject, setSubject] = useState('')
   const [negativeContentMode, setNegativeContentMode] = useState('deflect')
+  const [opponents, setOpponents] = useState<{ name: string; details: string }[]>([])
+  const [contrastMode, setContrastMode] = useState('user_triggered')
 
   // Load existing bot if editing
   useEffect(function() {
@@ -144,6 +146,8 @@ function BotCreatorInner() {
       if (bot.review_interval_hours) setReviewInterval(String(bot.review_interval_hours))
       if (bot.subject) setSubject(bot.subject)
       if (bot.negative_content_mode) setNegativeContentMode(bot.negative_content_mode)
+      if (Array.isArray(bot.opponents)) setOpponents(bot.opponents)
+      if (bot.contrast_mode) setContrastMode(bot.contrast_mode)
       if (Array.isArray(bot.faq)) setFaq(bot.faq)
       if (Array.isArray(bot.facts)) setFacts(bot.facts.map(function(f: any) { return typeof f === 'string' ? f : f.text || '' }))
       if (Array.isArray(bot.guardrails)) setGuardrails(bot.guardrails.map(function(g: any) { return typeof g === 'string' ? g : g.rule || g.text || '' }))
@@ -267,6 +271,8 @@ function BotCreatorInner() {
       guardrails: cleanGuardrails,
       subject: subject.trim(),
       negative_content_mode: negativeContentMode,
+      opponents: opponents.filter(function(o) { return o.name.trim() }),
+      contrast_mode: contrastMode,
     }
     if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
 
@@ -306,6 +312,18 @@ function BotCreatorInner() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ text: chunkParts.join('\n\n') }),
+            })
+          }
+          // Chunk opponent research separately (so it gets tagged with opponent metadata)
+          var cleanOpponents = opponents.filter(function(o) { return o.name.trim() && o.details.trim() })
+          if (cleanOpponents.length > 0) {
+            var oppoText = '## Opponent Research\n\n' + cleanOpponents.map(function(o) {
+              return '### ' + o.name.trim() + ' (Opponent)\n' + o.details
+            }).join('\n\n')
+            await fetch('/api/bots/' + botId + '/knowledge', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: oppoText }),
             })
           }
         } catch {} // non-fatal — bot still works with full-text fallback
@@ -422,6 +440,61 @@ function BotCreatorInner() {
               </select>
               <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Controls how the agent responds when users ask about criticism, scandals, or negative coverage.</p>
             </label>
+
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16, marginTop: 16 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Opponents / Contrast</p>
+              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Add opponents for contrast messaging. When enabled, the agent can draw policy contrasts after presenting the subject's position.</p>
+              {opponents.map(function(opp, i) {
+                return (
+                  <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10, position: 'relative' }}>
+                    <button
+                      onClick={function() { setOpponents(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                      style={{ position: 'absolute', top: 8, right: 10, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                      title="Remove"
+                    >&times;</button>
+                    <label style={{ display: 'block', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Opponent name</span>
+                      <input
+                        type="text"
+                        value={opp.name}
+                        onChange={function(e) { var v = e.target.value; setOpponents(function(prev) { var n = [...prev]; n[i] = { ...n[i], name: v }; return n }) }}
+                        placeholder="e.g., Jane Smith"
+                        style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
+                      />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Key positions / oppo research (optional)</span>
+                      <textarea
+                        value={opp.details}
+                        onChange={function(e) { var v = e.target.value; setOpponents(function(prev) { var n = [...prev]; n[i] = { ...n[i], details: v }; return n }) }}
+                        placeholder="e.g., Voted against infrastructure bill, supports defunding education..."
+                        rows={3}
+                        style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
+                      />
+                    </label>
+                  </div>
+                )
+              })}
+              <button
+                onClick={function() { setOpponents(function(prev) { return [...prev, { name: '', details: '' }] }) }}
+                style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer', marginBottom: 12 }}
+              >+ Add opponent</button>
+
+              {opponents.length > 0 && (
+                <label style={{ display: 'block', marginTop: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Contrast mode</span>
+                  <select
+                    value={contrastMode}
+                    onChange={function(e) { setContrastMode(e.target.value) }}
+                    style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', background: 'white' }}>
+                    <option value="off">Off — never contrast</option>
+                    <option value="user_triggered">User-triggered — contrast when user asks or mentions opponent (default)</option>
+                    <option value="always">Always — include contrast on every policy answer</option>
+                  </select>
+                  <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Controls when the agent draws contrasts with opponents after presenting the subject's position.</p>
+                </label>
+              )}
+            </div>
           </Section>
 
           <Section title="FAQ Pairs">

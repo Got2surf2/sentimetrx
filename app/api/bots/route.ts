@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { name, slug, config, system_prompt, knowledge_base, training_urls, personality, faq, facts, guardrails, subject, negative_content_mode } = body
+  const { name, slug, config, system_prompt, knowledge_base, training_urls, personality, faq, facts, guardrails, subject, negative_content_mode, opponents, contrast_mode } = body
 
   if (!name || !slug) {
     return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 })
@@ -95,6 +95,8 @@ export async function POST(req: NextRequest) {
     guardrails: guardrails || [],
     subject: subject || '',
     negative_content_mode: negative_content_mode || 'deflect',
+    opponents: opponents || [],
+    contrast_mode: contrast_mode || 'user_triggered',
     status: 'draft',
     created_by: auth.userId,
   }).select('id, name, slug, status').single()

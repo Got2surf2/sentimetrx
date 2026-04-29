@@ -90,3 +90,9 @@ ALTER TABLE bots ADD COLUMN IF NOT EXISTS subject TEXT NOT NULL DEFAULT '';
 
 -- How to handle negative content: 'deflect' (default) or 'pivot'
 ALTER TABLE bots ADD COLUMN IF NOT EXISTS negative_content_mode TEXT NOT NULL DEFAULT 'deflect';
+
+-- Opponents for contrast/oppo research
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS opponents JSONB DEFAULT '[]'::JSONB;
+
+-- Contrast mode: 'off' | 'user_triggered' (default) | 'always'
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS contrast_mode TEXT NOT NULL DEFAULT 'user_triggered';

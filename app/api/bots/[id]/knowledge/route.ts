@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: Params) {
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, org_id, subject').eq('id', params.id).single()
+  const { data: bot } = await service.from('bots').select('id, org_id, subject, opponents').eq('id', params.id).single()
   if (!bot || bot.org_id !== userData.org_id) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
@@ -88,11 +88,13 @@ export async function POST(req: Request, { params }: Params) {
       console.error('[knowledge] Embedding generation failed (chunks still usable):', e?.message)
     }
 
-    // Sentiment classification — tag chunks as positive/neutral/negative toward the subject
+    // Sentiment + opponent classification
     const subject = (bot as any).subject
-    if (subject && subject.trim()) {
+    const opponents = (bot as any).opponents
+    const opponentNames = Array.isArray(opponents) ? opponents.map(function(o: any) { return typeof o === 'string' ? o : o.name || '' }).filter(Boolean) : []
+
+    if ((subject && subject.trim()) || opponentNames.length > 0) {
       try {
-        // Batch chunks into groups of 20 for classification
         const batchSize = 20
         for (var b = 0; b < inserted.length; b += batchSize) {
           var batch = inserted.slice(b, b + batchSize)
@@ -101,33 +103,48 @@ export async function POST(req: Request, { params }: Params) {
             return (b + idx + 1) + '. [' + c.title + '] ' + preview
           }).join('\n')
 
+          var classifyPrompt = 'For each numbered chunk, respond with the number followed by classifications.\n'
+          if (subject && subject.trim()) {
+            classifyPrompt += 'Sentiment toward "' + subject.trim() + '": positive, negative, or neutral.\n'
+          }
+          if (opponentNames.length > 0) {
+            classifyPrompt += 'If the chunk is primarily about an opponent (' + opponentNames.join(', ') + '), include "opponent:<name>".\n'
+          }
+          classifyPrompt += '\nFormat per line: "1:neutral" or "1:negative,opponent:Smith"\nOne line per chunk. No explanations.'
+
           var result = await callAI({
             tier: 'fast',
-            maxTokens: 200,
+            maxTokens: 300,
             timeoutMs: 15000,
-            system: 'You classify text sentiment toward a specific subject. For each numbered chunk, respond with ONLY the number and sentiment: "1:positive", "2:negative", "3:neutral". One per line. Positive = favorable, supportive, promotional. Negative = critical, accusatory, scandalous, damaging. Neutral = factual, informational, neither favorable nor unfavorable.',
-            messages: [{ role: 'user', content: 'Subject: ' + subject.trim() + '\n\nChunks:\n' + chunkList }],
+            system: classifyPrompt,
+            messages: [{ role: 'user', content: 'Chunks:\n' + chunkList }],
           })
 
-          // Parse results like "1:positive\n2:negative\n3:neutral"
           var lines = result.text.split('\n')
           for (var li = 0; li < lines.length; li++) {
-            var match = lines[li].match(/^(\d+)\s*:\s*(positive|negative|neutral)/i)
-            if (match) {
-              var chunkIdx = parseInt(match[1]) - 1 - b
-              if (chunkIdx >= 0 && chunkIdx < batch.length) {
-                var sentiment = match[2].toLowerCase()
-                var chunkId = (batch[chunkIdx] as any).id
-                var existingMeta = rows[b + chunkIdx]?.metadata || {}
-                await service.from('bot_knowledge_chunks')
-                  .update({ metadata: { ...existingMeta, sentiment } })
-                  .eq('id', chunkId)
-              }
-            }
+            var line = lines[li].trim()
+            var numMatch = line.match(/^(\d+)\s*:\s*(.+)/i)
+            if (!numMatch) continue
+            var chunkIdx = parseInt(numMatch[1]) - 1 - b
+            if (chunkIdx < 0 || chunkIdx >= batch.length) continue
+
+            var tags = numMatch[2].toLowerCase()
+            var sentiment = /positive/.test(tags) ? 'positive' : /negative/.test(tags) ? 'negative' : 'neutral'
+            var opponentMatch = tags.match(/opponent\s*:\s*([^,]+)/)
+            var opponent = opponentMatch ? opponentMatch[1].trim() : undefined
+
+            var chunkId = (batch[chunkIdx] as any).id
+            var existingMeta = rows[b + chunkIdx]?.metadata || {}
+            var updatedMeta: any = { ...existingMeta, sentiment }
+            if (opponent) updatedMeta.opponent = opponent
+
+            await service.from('bot_knowledge_chunks')
+              .update({ metadata: updatedMeta })
+              .eq('id', chunkId)
           }
         }
       } catch (e: any) {
-        console.error('[knowledge] Sentiment classification failed (chunks still usable):', e?.message)
+        console.error('[knowledge] Classification failed (chunks still usable):', e?.message)
       }
     }
   }
