@@ -222,38 +222,38 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       {/* Header */}
       <header style={{
         background: config.headerGradient,
-        padding: '16px 24px',
-        display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+        padding: '12px 12px',
+        display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+        overflow: 'hidden',
       }}>
         <div style={{
-          width: 40, height: 40, borderRadius: '50%',
+          width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
           background: config.avatarGradient,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1.2rem', fontWeight: 700,
+          fontSize: '1.1rem', fontWeight: 700,
           color: config.avatarTextColor || 'white',
         }}>
           {config.avatarLetter}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: 'white', fontWeight: 700, fontSize: '0.9375rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{config.name}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{config.subtitle}</div>
+          <div style={{ color: 'white', fontWeight: 700, fontSize: '0.875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{config.name}</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.625rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{config.subtitle}</div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           {messages.length > 1 && (
             <button onClick={resetChat} style={{
-              padding: '5px 14px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.3)',
-              background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem',
+              padding: '4px 10px', borderRadius: 16, border: '1px solid rgba(255,255,255,0.3)',
+              background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '0.625rem',
               fontWeight: 500, cursor: 'pointer', fontFamily: 'system-ui, sans-serif',
-              transition: 'all 0.15s',
-            }}
-              onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; (e.target as HTMLElement).style.color = 'white' }}
-              onMouseLeave={e => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.7)' }}
-            >New Conversation</button>
+              whiteSpace: 'nowrap',
+            }}>New</button>
           )}
-          <a href={config.websiteUrl} target="_blank" rel="noopener noreferrer"
-            style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', textDecoration: 'none', fontFamily: 'system-ui, sans-serif' }}>
-            {config.websiteLabel}
-          </a>
+          {config.websiteLabel && (
+            <a href={config.websiteUrl} target="_blank" rel="noopener noreferrer"
+              style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.5625rem', textDecoration: 'none', fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
+              {config.websiteLabel}
+            </a>
+          )}
         </div>
       </header>
 
