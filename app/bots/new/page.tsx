@@ -30,6 +30,8 @@ interface BotConfig {
   initialMessage: string
   suggestions: string[]
   language: string
+  languages: string[]
+  askName: string
 }
 
 const DEFAULT_CONFIG: BotConfig = {
@@ -49,6 +51,8 @@ const DEFAULT_CONFIG: BotConfig = {
   initialMessage: "Hi! How can I help you today?",
   suggestions: [],
   language: 'en',
+  languages: ['en'],
+  askName: 'true',
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -379,8 +383,8 @@ function BotCreatorInner() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={(config as any).askName !== 'false' && (config as any).askName !== false}
-                onChange={function(e) { updateConfig('askName' as any, e.target.checked ? 'true' : 'false') }}
+                checked={config.askName !== 'false'}
+                onChange={function(e) { updateConfig('askName', e.target.checked ? 'true' : 'false') }}
                 style={{ width: 16, height: 16, accentColor: HERMES }}
               />
               <div>
@@ -393,7 +397,7 @@ function BotCreatorInner() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SUPPORTED_LANGUAGES.map(function(l) {
                   var isEn = l.code === 'en'
-                  var langs: string[] = (config as any).languages || ['en']
+                  var langs: string[] = config.languages || ['en']
                   var isActive = isEn || langs.includes(l.code)
                   return (
                     <button
@@ -401,10 +405,10 @@ function BotCreatorInner() {
                       type="button"
                       onClick={function() {
                         if (isEn) return
-                        var prev: string[] = (config as any).languages || ['en']
+                        var prev: string[] = config.languages || ['en']
                         var next = prev.includes(l.code) ? prev.filter(function(c) { return c !== l.code }) : [...prev, l.code]
                         if (!next.includes('en')) next.unshift('en')
-                        setConfig(function(p) { return { ...p, languages: next as any, language: next.length === 1 ? 'en' : next[next.length - 1] } })
+                        setConfig(function(p) { return { ...p, languages: next, language: next.length === 1 ? 'en' : next[next.length - 1] } })
                       }}
                       style={{
                         padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 500,
@@ -421,7 +425,7 @@ function BotCreatorInner() {
                 })}
               </div>
               <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
-                {((config as any).languages || ['en']).length > 1
+                {(config.languages || ['en']).length > 1
                   ? 'Users will choose their language before chatting. The agent will respond in their selected language.'
                   : 'English only. Select additional languages to let users chat in their preferred language.'}
               </p>
