@@ -22,6 +22,8 @@ interface Props {
 
 interface Summary {
   total: number
+  totalAll: number
+  totalComplete: number
   promoters: number
   passives: number
   detractors: number
@@ -107,7 +109,15 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
           <>
             {/* Summary stats */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-              <StatCard label="Responses"    value={summary.total} />
+              <div className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="text-xl font-bold text-gray-800">{summary.totalAll || summary.total}</div>
+                <div className="text-gray-500 text-xs mt-0.5">Responses</div>
+                {summary.totalAll > 0 && (
+                  <div className="text-[10px] text-gray-400 mt-1">
+                    {summary.totalComplete || summary.total} complete ({summary.totalAll > 0 ? Math.round((summary.totalComplete || summary.total) / summary.totalAll * 100) : 0}%)
+                  </div>
+                )}
+              </div>
               <StatCard label={'Avg ' + (studyConfig?.npsLabel || 'NPS')}   value={summary.total > 0 ? summary.avgNps : '—'} />
               <StatCard label={'Avg ' + (studyConfig?.experienceRatingLabel || 'Exp.')} value={summary.total > 0 ? summary.avgExp : '—'} />
               <StatCard label="Positive"    value={summary.total > 0 ? Math.round(summary.promoters  / summary.total * 100) + '%' : '—'} color="text-green-400" />

@@ -23,6 +23,17 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Study not found' }, { status: 404 })
   }
 
+  // Fetch ALL responses (including partial) for total count
+  let allQuery = supabase
+    .from('responses')
+    .select('status, completed_at')
+    .eq('study_id', params.id)
+    .range(0, 49999)
+
+  if (from) allQuery = allQuery.gte('completed_at', from)
+  if (to)   allQuery = allQuery.lte('completed_at', to + 'T23:59:59Z')
+
+  // Fetch completed responses for analytics
   let query = supabase
     .from('responses')
     .select('sentiment, nps_score, experience_score, completed_at, status')
@@ -34,13 +45,16 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (from) query = query.gte('completed_at', from)
   if (to)   query = query.lte('completed_at', to + 'T23:59:59Z')
 
-  const result = await query
+  const [allResult, result] = await Promise.all([allQuery, query])
 
   if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
 
+  const allRows = allResult.data || []
   const rows = result.data || []
 
-  const total = rows.length
+  const totalAll = allRows.length
+  const totalComplete = rows.length
+  const total = totalComplete
 
   // Support both old (promoter/passive/detractor) and new (positive/neutral/negative) sentiment values
   const promoters  = rows.filter(function(r) { return r.sentiment === 'positive'  || r.sentiment === 'promoter' }).length
@@ -91,7 +105,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     .map(function(entry) { return { date: entry[0], count: entry[1] } })
 
   return NextResponse.json({
-    summary: { total, promoters, passives, detractors, avgNps, avgExp },
+    summary: { total, totalAll, totalComplete, promoters, passives, detractors, avgNps, avgExp },
     sentiment: { promoters, passives, detractors },
     npsTrend,
     volumeByDay,
