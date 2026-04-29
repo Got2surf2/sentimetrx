@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors }) }
 
-  const { messages, session_id, user_name } = body
+  const { messages, session_id, user_name, language: userLanguage } = body
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages required' }, { status: 400, headers: cors })
   }
@@ -169,8 +169,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!knowledgeInjected && bot.knowledge_base) {
     systemParts.push('\n\n--- KNOWLEDGE BASE ---\nUse the following information to answer questions. If the answer isn\'t in the knowledge base, say so honestly — don\'t make things up.\n\n' + bot.knowledge_base)
   }
-  // Language instruction — if bot has a configured language, enforce it
-  const botLang = (bot.config as any)?.language || 'en'
+  // Language instruction — user-selected language takes priority, then bot config
+  const botLang = userLanguage || (bot.config as any)?.language || 'en'
   if (botLang && botLang !== 'en') {
     const LANG_NAMES: Record<string, string> = {
       es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian',

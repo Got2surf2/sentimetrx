@@ -33,6 +33,8 @@ export default function BotClient({ bot }: { bot: Bot }) {
     suggestions: c.suggestions || [],
     initialMessage: c.initialMessage || 'Hi! How can I help you today?',
     askName: (c as any).askName !== 'false',
+    languages: Array.isArray((c as any).languages) ? (c as any).languages : undefined,
+    language: (c as any).language,
   }
 
   return <ChatBot config={config} />

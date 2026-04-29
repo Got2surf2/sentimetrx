@@ -7,26 +7,11 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
+import { SUPPORTED_LANGUAGES } from '@/lib/types'
 
 const HERMES = '#E8632A'
 
-const LANGUAGES: { code: string; label: string }[] = [
-  { code: 'en', label: 'English' },
-  { code: 'es', label: 'Spanish' },
-  { code: 'fr', label: 'French' },
-  { code: 'de', label: 'German' },
-  { code: 'pt', label: 'Portuguese' },
-  { code: 'it', label: 'Italian' },
-  { code: 'zh', label: 'Chinese' },
-  { code: 'ja', label: 'Japanese' },
-  { code: 'ko', label: 'Korean' },
-  { code: 'ar', label: 'Arabic' },
-  { code: 'hi', label: 'Hindi' },
-  { code: 'vi', label: 'Vietnamese' },
-  { code: 'tl', label: 'Filipino/Tagalog' },
-  { code: 'ru', label: 'Russian' },
-  { code: 'pl', label: 'Polish' },
-]
+const HERMES_LIGHT = '#fff7ed'
 
 interface BotConfig {
   name: string
@@ -370,14 +355,23 @@ function BotCreatorInner() {
                   onChange={function(v) { updateConfig('avatarLetter', v) }}
                   size="md"
                 />
-                <span style={{ fontSize: 11, color: '#9ca3af' }}>or type a letter:</span>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>or type/paste:</span>
                 <input
                   type="text"
                   value={config.avatarLetter}
-                  onChange={function(e) { updateConfig('avatarLetter', e.target.value.slice(0, 2)) }}
+                  onChange={function(e) {
+                    var val = e.target.value
+                    // Use Intl.Segmenter to correctly handle multi-codepoint emojis (skin tones, ZWJ sequences)
+                    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+                      var segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+                      var segments = Array.from(segmenter.segment(val), function(s) { return s.segment })
+                      updateConfig('avatarLetter', segments.length > 0 ? segments[segments.length - 1] : '')
+                    } else {
+                      updateConfig('avatarLetter', val.slice(-1) || '')
+                    }
+                  }}
                   placeholder="A"
-                  maxLength={2}
-                  style={{ width: 48, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', textAlign: 'center' }}
+                  style={{ width: 56, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 18, outline: 'none', textAlign: 'center' }}
                 />
               </div>
             </label>
@@ -394,21 +388,44 @@ function BotCreatorInner() {
                 <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Prompts "What should I call you?" before chat starts. Names are checked for inappropriate content.</p>
               </div>
             </label>
-            <label style={{ display: 'block', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Language</span>
-              <select
-                value={config.language || 'en'}
-                onChange={function(e) { updateConfig('language', e.target.value) }}
-                style={{
-                  display: 'block', width: '100%', marginTop: 4,
-                  padding: '8px 12px', borderRadius: 8,
-                  border: '1px solid #d1d5db', fontSize: 13, outline: 'none',
-                  background: 'white',
-                }}>
-                {LANGUAGES.map(function(l) { return <option key={l.code} value={l.code}>{l.label}</option> })}
-              </select>
-              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>The agent will always respond in this language.</p>
-            </label>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Languages</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {SUPPORTED_LANGUAGES.map(function(l) {
+                  var isEn = l.code === 'en'
+                  var langs: string[] = (config as any).languages || ['en']
+                  var isActive = isEn || langs.includes(l.code)
+                  return (
+                    <button
+                      key={l.code}
+                      type="button"
+                      onClick={function() {
+                        if (isEn) return
+                        var prev: string[] = (config as any).languages || ['en']
+                        var next = prev.includes(l.code) ? prev.filter(function(c) { return c !== l.code }) : [...prev, l.code]
+                        if (!next.includes('en')) next.unshift('en')
+                        setConfig(function(p) { return { ...p, languages: next as any, language: next.length === 1 ? 'en' : next[next.length - 1] } })
+                      }}
+                      style={{
+                        padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 500,
+                        border: isActive ? '1.5px solid ' + HERMES : '1px solid #d1d5db',
+                        background: isActive ? HERMES_LIGHT : 'white',
+                        color: isActive ? HERMES : '#6b7280',
+                        cursor: isEn ? 'default' : 'pointer',
+                        opacity: isEn ? 0.7 : 1,
+                      }}
+                    >
+                      {l.nativeName} <span style={{ color: '#9ca3af', fontSize: 10 }}>{l.name !== l.nativeName ? l.name : ''}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                {((config as any).languages || ['en']).length > 1
+                  ? 'Users will choose their language before chatting. The agent will respond in their selected language.'
+                  : 'English only. Select additional languages to let users chat in their preferred language.'}
+              </p>
+            </div>
           </Section>
 
           <Section title="Branding">

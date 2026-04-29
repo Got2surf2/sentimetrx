@@ -35,6 +35,26 @@ export interface ChatBotConfig {
   suggestions: string[]
   initialMessage: string
   askName?: boolean
+  languages?: string[]
+  language?: string
+}
+
+const LANG_LABELS: Record<string, { name: string; native: string }> = {
+  en: { name: 'English', native: 'English' },
+  es: { name: 'Spanish', native: 'Español' },
+  fr: { name: 'French', native: 'Français' },
+  de: { name: 'German', native: 'Deutsch' },
+  pt: { name: 'Portuguese', native: 'Português' },
+  it: { name: 'Italian', native: 'Italiano' },
+  zh: { name: 'Chinese', native: '中文' },
+  ja: { name: 'Japanese', native: '日本語' },
+  ko: { name: 'Korean', native: '한국어' },
+  ar: { name: 'Arabic', native: 'العربية' },
+  hi: { name: 'Hindi', native: 'हिन्दी' },
+  vi: { name: 'Vietnamese', native: 'Tiếng Việt' },
+  tl: { name: 'Filipino', native: 'Filipino' },
+  ru: { name: 'Russian', native: 'Русский' },
+  pl: { name: 'Polish', native: 'Polski' },
 }
 
 // Simple name validation — block profanity/slurs without importing the full content guard (client-side)
@@ -52,6 +72,8 @@ function isCleanName(name: string): boolean {
 
 export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const askName = config.askName !== false // default ON
+  const multiLang = Array.isArray(config.languages) && config.languages.length > 1
+  const [selectedLang, setSelectedLang] = useState<string | null>(multiLang ? null : (config.language || 'en'))
   const INITIAL_MESSAGE: Message = {
     role: 'assistant',
     content: askName
@@ -72,6 +94,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setInput('')
     setLoading(false)
     setUserName(askName ? null : '_skip')
+    if (multiLang) setSelectedLang(null)
   }
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -129,6 +152,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           session_id: sessionId,
           debug: debugMode || undefined,
           user_name: userName && userName !== '_skip' ? userName : undefined,
+          language: selectedLang || undefined,
         }),
       })
       const data = await res.json()
@@ -221,8 +245,40 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         </div>
       )}
 
+      {/* Language selector — shown before chat when multi-language is enabled */}
+      {multiLang && selectedLang === null && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 24px', gap: 20 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', marginBottom: 8 }}>{config.avatarLetter}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>Choose your language</div>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Select the language you'd like to chat in</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 320 }}>
+            {(config.languages || []).map(function(code) {
+              var label = LANG_LABELS[code] || { name: code, native: code }
+              return (
+                <button key={code} onClick={function() { setSelectedLang(code) }}
+                  style={{
+                    padding: '12px 20px', borderRadius: 12,
+                    border: '1.5px solid #e5e7eb', background: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    cursor: 'pointer', fontSize: 14, fontWeight: 500,
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.borderColor = config.accentColor; (e.currentTarget as HTMLElement).style.background = '#f9fafb' }}
+                  onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'; (e.currentTarget as HTMLElement).style.background = 'white' }}
+                >
+                  <span style={{ color: '#111827' }}>{label.native}</span>
+                  {label.native !== label.name && <span style={{ color: '#9ca3af', fontSize: 12 }}>{label.name}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Chat area */}
-      <div ref={chatRef} style={{
+      {(selectedLang !== null || !multiLang) && <div ref={chatRef} style={{
         flex: 1, overflowY: 'auto', padding: '20px 16px',
         display: 'flex', flexDirection: 'column', gap: 16,
         maxWidth: 800, width: '100%', margin: '0 auto',
@@ -309,10 +365,10 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
-      {/* Input area */}
-      <div style={{
+      {/* Input area — hidden during language selection */}
+      {(selectedLang !== null || !multiLang) && <div style={{
         padding: '12px 16px',
         paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
         borderTop: '1px solid #e5e7eb',
@@ -368,7 +424,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               style={{ color: '#6b7280', fontWeight: 600, textDecoration: 'none' }}>Datanautix</a>
           </span>
         </div>
-      </div>
+      </div>}
 
       <style>{`
         @keyframes chatbotDotPulse {
