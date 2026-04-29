@@ -31,8 +31,14 @@ export async function GET(req: NextRequest, { params }: Params) {
     .order('completed_at', { ascending: true })
     .range(0, 49999)
 
-  if (from) query = query.gte('completed_at', from)
-  if (to)   query = query.lte('completed_at', to + 'T23:59:59Z')
+  // Date filters: include rows with null completed_at (partials) alongside date-matched rows
+  if (from && to) {
+    query = query.or('and(completed_at.gte.' + from + ',completed_at.lte.' + to + 'T23:59:59Z),completed_at.is.null')
+  } else if (from) {
+    query = query.or('completed_at.gte.' + from + ',completed_at.is.null')
+  } else if (to) {
+    query = query.or('completed_at.lte.' + to + 'T23:59:59Z,completed_at.is.null')
+  }
 
   const result = await query
 
