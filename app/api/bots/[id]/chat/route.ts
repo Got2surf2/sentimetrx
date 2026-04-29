@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
   const { data: bot, error } = await service
     .from('bots')
-    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base, guardrails, subject, negative_content_mode, opponents, contrast_mode')
+    .select('*')
     .eq('id', params.id)
     .single()
 
@@ -90,13 +90,20 @@ export async function POST(req: NextRequest, { params }: Params) {
       const rpcParams: any = { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 }
       let rpcName = 'search_knowledge_chunks'
 
-      // Use semantic search if we have an embedding
+      // Try semantic search first, fall back to basic search
       if (queryEmbedding) {
         rpcParams.p_embedding = JSON.stringify(queryEmbedding)
         rpcName = 'search_knowledge_semantic'
       }
 
-      const { data: chunks, error: rpcErr } = await service.rpc(rpcName, rpcParams)
+      var { data: chunks, error: rpcErr } = await service.rpc(rpcName, rpcParams)
+      // If semantic search fails (RPC not available), fall back to basic search
+      if (rpcErr && rpcName === 'search_knowledge_semantic') {
+        console.error('[bot-chat] Semantic search failed, falling back:', rpcErr.message)
+        var fallback = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 })
+        chunks = fallback.data
+        rpcErr = fallback.error
+      }
       if (rpcErr) console.error('[bot-chat] RAG search error:', rpcErr.message)
 
       if (chunks && chunks.length > 0) {
