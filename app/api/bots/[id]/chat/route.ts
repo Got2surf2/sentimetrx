@@ -7,6 +7,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { checkMessage } from '@/lib/contentGuard'
+import { generateEmbedding } from '@/lib/embeddings'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
   const { data: bot, error } = await service
     .from('bots')
-    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base')
+    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base, guardrails')
     .eq('id', params.id)
     .single()
 
@@ -70,23 +71,50 @@ export async function POST(req: NextRequest, { params }: Params) {
     systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }
   if (bot.system_prompt) systemParts.push(bot.system_prompt)
-  // RAG: search knowledge chunks for relevant context (if chunks exist)
+  // Guardrails: inject as explicit rules in the system prompt
+  const guardrails = (bot as any).guardrails
+  if (Array.isArray(guardrails) && guardrails.length > 0) {
+    const rules = guardrails.map(function(g: any, i: number) { return (i + 1) + '. ' + (typeof g === 'string' ? g : g.rule || g.text || '') }).filter(function(r: string) { return r.length > 3 }).join('\n')
+    if (rules) systemParts.push('\n\nRULES YOU MUST FOLLOW:\n' + rules)
+  }
+
+  // RAG: semantic search with embeddings + full-text + trigram
   // Falls back to full knowledge_base text if no chunks or if RPC not yet available
   const userQuery = lastUserMsg?.content || ''
   let knowledgeInjected = false
   if (userQuery) {
     try {
-      const { data: chunks } = await service.rpc('search_knowledge_chunks', {
-        p_bot_id: bot.id,
-        p_query: userQuery,
-        p_limit: 5,
-      })
+      // Generate query embedding for semantic search
+      const queryEmbedding = await generateEmbedding(userQuery)
+
+      const rpcParams: any = { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 }
+      let rpcName = 'search_knowledge_chunks'
+
+      // Use semantic search if we have an embedding
+      if (queryEmbedding) {
+        rpcParams.p_embedding = JSON.stringify(queryEmbedding)
+        rpcName = 'search_knowledge_semantic'
+      }
+
+      const { data: chunks, error: rpcErr } = await service.rpc(rpcName, rpcParams)
+      if (rpcErr) console.error('[bot-chat] RAG search error:', rpcErr.message)
+
       if (chunks && chunks.length > 0) {
+        const topConfidence = chunks[0].confidence ?? 0
         const context = chunks.map(function(c: any) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
-        systemParts.push('\n\n--- RELEVANT KNOWLEDGE ---\nUse the following information to answer the question. If the answer isn\'t here, say so honestly — don\'t make things up.\n\n' + context)
+
+        if (topConfidence > 0.85) {
+          // High confidence: answer strictly from this knowledge
+          systemParts.push('\n\n--- HIGHLY RELEVANT KNOWLEDGE ---\nAnswer the question using ONLY the following information. Do not add anything beyond what is provided here.\n\n' + context)
+        } else {
+          // Medium confidence: use as context but allow some flexibility
+          systemParts.push('\n\n--- RELEVANT KNOWLEDGE ---\nUse the following information to answer the question. If the answer isn\'t here, say so honestly — don\'t make things up.\n\n' + context)
+        }
         knowledgeInjected = true
       }
-    } catch {} // RPC not available yet — fall through to full text
+    } catch (e: any) {
+      console.error('[bot-chat] RAG search exception:', e?.message)
+    }
   }
   if (!knowledgeInjected && bot.knowledge_base) {
     systemParts.push('\n\n--- KNOWLEDGE BASE ---\nUse the following information to answer questions. If the answer isn\'t in the knowledge base, say so honestly — don\'t make things up.\n\n' + bot.knowledge_base)

@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { generateEmbeddings } from '@/lib/embeddings'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,9 +66,26 @@ export async function POST(req: Request, { params }: Params) {
     }
   })
 
-  const { error } = await service.from('bot_knowledge_chunks').insert(rows)
+  const { data: inserted, error } = await service.from('bot_knowledge_chunks').insert(rows).select('id, title, content')
   if (error) {
     return NextResponse.json({ error: 'Failed to store chunks: ' + error.message }, { status: 500 })
+  }
+
+  // Generate and store embeddings (non-blocking — chunks work without them via full-text fallback)
+  if (inserted && inserted.length > 0) {
+    try {
+      const texts = inserted.map(function(c: any) { return c.title + '\n' + c.content })
+      const embeddings = await generateEmbeddings(texts)
+      for (var i = 0; i < inserted.length; i++) {
+        if (embeddings[i]) {
+          await service.from('bot_knowledge_chunks')
+            .update({ embedding: JSON.stringify(embeddings[i]) })
+            .eq('id', (inserted[i] as any).id)
+        }
+      }
+    } catch (e: any) {
+      console.error('[knowledge] Embedding generation failed (chunks still usable):', e?.message)
+    }
   }
 
   return NextResponse.json({ stored: rows.length, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })

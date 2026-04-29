@@ -123,6 +123,9 @@ function BotCreatorInner() {
   const [crawlUrl, setCrawlUrl] = useState('')
   const [crawling, setCrawling] = useState(false)
   const [crawlResult, setCrawlResult] = useState<{ pages: number } | null>(null)
+  const [faq, setFaq] = useState<{ question: string; answer: string }[]>([])
+  const [facts, setFacts] = useState<string[]>([])
+  const [guardrails, setGuardrails] = useState<string[]>([])
 
   // Load existing bot if editing
   useEffect(function() {
@@ -137,6 +140,9 @@ function BotCreatorInner() {
       setSuggestions((bot.config?.suggestions || []).join('\n'))
       setConfig({ ...DEFAULT_CONFIG, ...bot.config })
       if (bot.review_interval_hours) setReviewInterval(String(bot.review_interval_hours))
+      if (Array.isArray(bot.faq)) setFaq(bot.faq)
+      if (Array.isArray(bot.facts)) setFacts(bot.facts.map(function(f: any) { return typeof f === 'string' ? f : f.text || '' }))
+      if (Array.isArray(bot.guardrails)) setGuardrails(bot.guardrails.map(function(g: any) { return typeof g === 'string' ? g : g.rule || g.text || '' }))
     }).catch(function() {
       setError('Failed to load agent')
     }).finally(function() { setLoading(false) })
@@ -240,6 +246,9 @@ function BotCreatorInner() {
     }
 
     var riHours = parseInt(reviewInterval) || null
+    var cleanFaq = faq.filter(function(f) { return f.question.trim() && f.answer.trim() })
+    var cleanFacts = facts.filter(function(f) { return f.trim() })
+    var cleanGuardrails = guardrails.filter(function(g) { return g.trim() })
     var payload: any = {
       name: name.trim(),
       slug: slug.trim(),
@@ -249,6 +258,9 @@ function BotCreatorInner() {
       knowledge_base: knowledgeBase,
       training_urls: trainingUrls.split('\n').map(function(u) { return u.trim() }).filter(Boolean),
       review_interval_hours: riHours,
+      faq: cleanFaq,
+      facts: cleanFacts,
+      guardrails: cleanGuardrails,
     }
     if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
 
@@ -263,16 +275,33 @@ function BotCreatorInner() {
       var data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save')
 
-      // Auto-chunk knowledge base for RAG search (replaces old chunks)
+      // Auto-chunk knowledge base + FAQ + facts for RAG search (replaces old chunks)
       var botId = editId || data.id
-      if (botId && knowledgeBase.trim().length > 20) {
+      if (botId) {
         try {
           await fetch('/api/bots/' + botId + '/knowledge', { method: 'DELETE' })
-          await fetch('/api/bots/' + botId + '/knowledge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: knowledgeBase }),
-          })
+          // Build combined text: knowledge base + FAQ pairs + facts
+          var chunkParts: string[] = []
+          if (knowledgeBase.trim().length > 20) chunkParts.push(knowledgeBase)
+          if (cleanFaq.length > 0) {
+            var faqText = '## Frequently Asked Questions\n\n' + cleanFaq.map(function(f) {
+              return '### ' + f.question + '\n' + f.answer
+            }).join('\n\n')
+            chunkParts.push(faqText)
+          }
+          if (cleanFacts.length > 0) {
+            var factsText = '## Key Facts\n\n' + cleanFacts.map(function(f, i) {
+              return '### Fact ' + (i + 1) + '\n' + f
+            }).join('\n\n')
+            chunkParts.push(factsText)
+          }
+          if (chunkParts.length > 0) {
+            await fetch('/api/bots/' + botId + '/knowledge', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: chunkParts.join('\n\n') }),
+            })
+          }
         } catch {} // non-fatal — bot still works with full-text fallback
       }
 
@@ -371,6 +400,97 @@ function BotCreatorInner() {
               rows={4}
               style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
             />
+          </Section>
+
+          <Section title="FAQ Pairs">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Add common questions and approved answers. These get embedded in the knowledge base for high-confidence matching.</p>
+            {faq.map(function(pair, i) {
+              return (
+                <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10, position: 'relative' }}>
+                  <button
+                    onClick={function() { setFaq(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                    style={{ position: 'absolute', top: 8, right: 10, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                    title="Remove"
+                  >&times;</button>
+                  <label style={{ display: 'block', marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Question</span>
+                    <input
+                      type="text"
+                      value={pair.question}
+                      onChange={function(e) { var v = e.target.value; setFaq(function(prev) { var n = [...prev]; n[i] = { ...n[i], question: v }; return n }) }}
+                      placeholder="e.g., What are your hours?"
+                      style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
+                    />
+                  </label>
+                  <label style={{ display: 'block' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Answer</span>
+                    <textarea
+                      value={pair.answer}
+                      onChange={function(e) { var v = e.target.value; setFaq(function(prev) { var n = [...prev]; n[i] = { ...n[i], answer: v }; return n }) }}
+                      placeholder="e.g., We're open Monday-Friday, 9am-5pm EST."
+                      rows={2}
+                      style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
+                    />
+                  </label>
+                </div>
+              )
+            })}
+            <button
+              onClick={function() { setFaq(function(prev) { return [...prev, { question: '', answer: '' }] }) }}
+              style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}
+            >+ Add FAQ pair</button>
+          </Section>
+
+          <Section title="Key Facts">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Important facts, talking points, or details the agent must know. Each fact becomes a searchable knowledge chunk.</p>
+            {facts.map(function(fact, i) {
+              return (
+                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
+                  <textarea
+                    value={fact}
+                    onChange={function(e) { var v = e.target.value; setFacts(function(prev) { var n = [...prev]; n[i] = v; return n }) }}
+                    placeholder="e.g., Founded in 2003 with a mission to..."
+                    rows={2}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
+                  />
+                  <button
+                    onClick={function() { setFacts(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                    style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '4px 6px' }}
+                    title="Remove"
+                  >&times;</button>
+                </div>
+              )
+            })}
+            <button
+              onClick={function() { setFacts(function(prev) { return [...prev, ''] }) }}
+              style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}
+            >+ Add fact</button>
+          </Section>
+
+          <Section title="Guardrails">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Rules the agent must always follow. These are injected directly into the system prompt — not searchable knowledge.</p>
+            {guardrails.map(function(rule, i) {
+              return (
+                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={rule}
+                    onChange={function(e) { var v = e.target.value; setGuardrails(function(prev) { var n = [...prev]; n[i] = v; return n }) }}
+                    placeholder="e.g., Never discuss competitor pricing"
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
+                  />
+                  <button
+                    onClick={function() { setGuardrails(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                    style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '4px 6px' }}
+                    title="Remove"
+                  >&times;</button>
+                </div>
+              )
+            })}
+            <button
+              onClick={function() { setGuardrails(function(prev) { return [...prev, ''] }) }}
+              style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}
+            >+ Add guardrail</button>
           </Section>
 
           <Section title="System prompt">
