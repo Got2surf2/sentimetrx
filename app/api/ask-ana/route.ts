@@ -91,7 +91,7 @@ const ANA_TOOLS = [
   },
   {
     name: 'generate_report',
-    description: 'Generate a PowerPoint deck from the data. Use when the user asks for a deck, report, presentation, or slides. Build slide specs based on the data you analyzed. Available slide types: bar_chart (horizontal bars), kpi_grid (metric cards), table (rows and columns), bullets (key points), quotes (verbatim responses), two_column (side-by-side content).',
+    description: 'Generate a PowerPoint deck from the data. Use when the user asks for a deck, report, presentation, slides, or to download analysis results. Build slide specs based on the data you analyzed. Available slide types: bar_chart (horizontal bars), kpi_grid (metric cards), table (rows and columns), bullets (key points), quotes (verbatim responses), two_column (side-by-side content), entity_grid (3-column card grid for extracted entities — use for entity/name extraction analysis).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -102,7 +102,7 @@ const ANA_TOOLS = [
           items: {
             type: 'object',
             properties: {
-              type:     { type: 'string', enum: ['bar_chart', 'kpi_grid', 'table', 'bullets', 'quotes', 'two_column'] },
+              type:     { type: 'string', enum: ['bar_chart', 'kpi_grid', 'table', 'bullets', 'quotes', 'two_column', 'entity_grid'] },
               title:    { type: 'string' },
               subtitle: { type: 'string' },
               data:     { type: 'array', description: 'For bar_chart: [{label, value}]' },
@@ -113,6 +113,8 @@ const ANA_TOOLS = [
               quotes:   { type: 'array', description: 'For quotes: [{text, attribution?}]' },
               left:     { type: 'object', description: 'For two_column: {heading?, bullets?, text?}' },
               right:    { type: 'object', description: 'For two_column: {heading?, bullets?, text?}' },
+              entities: { type: 'array', description: 'For entity_grid: [{name, mentions, category?, pct?}]. Up to 24 per slide.' },
+              accentColor: { type: 'string', description: 'For entity_grid: hex color for accent (e.g. "0F7173")' },
               insight:  { type: 'string', description: 'Optional insight text shown at bottom of slide' },
             },
             required: ['type', 'title'],
@@ -447,6 +449,19 @@ You serve two roles:
 2. **Modify the analysis framework** — When the user asks you to create, update, merge, or delete themes, use your tools. When you spot an opportunity to improve the framework (e.g., you notice many distinct entities that could be grouped, or themes that overlap), suggest it — but always wait for approval before acting.
 
 When using tools, ALWAYS explain what you're about to do in your text response before calling the tool. For example: "I'll create a theme for menu items based on the 23 distinct food references I found in the data."
+
+When the user asks to extract entities, identify organizations, find names, or do entity analysis on an open-ended field:
+1. Scan all rows for the relevant field
+2. Extract and normalize distinct entity names (merge duplicates like "2nd Harvest" and "Second Harvest Food Bank")
+3. Categorize entities by type (e.g. "Food Security", "Healthcare", "Faith-Based")
+4. Count mentions per entity
+5. Present results clearly, then call generate_report with:
+   - A kpi_grid overview slide (total entities, total mentions, categories)
+   - One or more entity_grid slides per category (up to 24 entities per slide)
+   - A bar_chart slide for the top 10 entities by mentions
+   Use different accentColor per category (e.g. "0F7173", "E85A1A", "3B82F6", "8B5CF6", "059669").
+
+When the user asks to download their analysis as slides or a deck, call generate_report and structure your previous analysis into appropriate slide types.
 
 Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
 

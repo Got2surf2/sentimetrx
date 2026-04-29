@@ -63,7 +63,16 @@ export interface TwoColumnSlide {
   right: { heading?: string; bullets?: string[]; text?: string }
 }
 
-export type SlideSpec = BarChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide
+export interface EntityGridSlide {
+  type: 'entity_grid'
+  title: string
+  subtitle?: string
+  entities: { name: string; mentions: number; category?: string; pct?: number }[]
+  accentColor?: string
+  insight?: string
+}
+
+export type SlideSpec = BarChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide
 
 export interface DeckSpec {
   title: string
@@ -375,6 +384,62 @@ function renderTwoColumn(pptx: any, spec: TwoColumnSlide, datasetName: string) {
   footer(slide, pptx, datasetName)
 }
 
+function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  bgFill(slide, pptx)
+  hdr(slide, pptx, spec.title, spec.subtitle)
+
+  const entities = spec.entities.slice(0, 24)
+  const accent = spec.accentColor || DN.teal
+  const maxMentions = Math.max(...entities.map(e => e.mentions), 1)
+
+  const cols = 3
+  const cardW = (W - PAD * 2 - 0.2) / cols
+  const cardH = 0.78
+  const gap = 0.1
+  const startY = CY + 0.1
+  const insightH = spec.insight ? 0.48 : 0
+
+  entities.forEach((ent, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const x = PAD + col * (cardW + gap)
+    const y = startY + row * (cardH + gap)
+    if (y + cardH > FY - insightH - 0.15) return
+
+    const barW = Math.max(0.1, (ent.mentions / maxMentions) * (cardW - 0.4))
+    const p = ent.pct ?? pct(ent.mentions, entities.reduce((s, e) => s + e.mentions, 0))
+
+    rect(slide, pptx, x, y, cardW, cardH, DN.white)
+    solidRect(slide, pptx, x, y, 0.05, cardH, accent)
+    slide.addText(trunc(ent.name, 35), {
+      x: x + 0.16, y: y + 0.06, w: cardW - 0.55, h: 0.28,
+      fontSize: 10, bold: true, color: DX.ink, wrap: true, autoFit: true,
+    })
+    slide.addText(String(ent.mentions), {
+      x: x + cardW - 0.5, y: y + 0.04, w: 0.38, h: 0.3,
+      fontSize: 16, bold: true, color: accent, align: 'right',
+    })
+    slide.addText(ent.mentions === 1 ? 'mention' : 'mentions', {
+      x: x + cardW - 0.65, y: y + 0.3, w: 0.55, h: 0.16,
+      fontSize: 7, color: DN.slate, align: 'right',
+    })
+    solidRect(slide, pptx, x + 0.16, y + cardH - 0.18, barW, 0.08, accent)
+    slide.addText(p + '% of mentions', {
+      x: x + 0.16, y: y + 0.46, w: cardW - 0.3, h: 0.14,
+      fontSize: 7, color: DN.slate,
+    })
+  })
+
+  if (spec.insight) {
+    const maxRow = Math.floor((FY - startY - insightH - 0.15) / (cardH + gap))
+    const insY = startY + maxRow * (cardH + gap) + 0.06
+    insightBox(slide, pptx, PAD, insY, W - PAD * 2, insightH, spec.insight)
+  }
+
+  footer(slide, pptx, datasetName)
+}
+
 // ── Title slide ─────────────────────────────────────────────────────────────
 function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
@@ -426,6 +491,7 @@ export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<B
       case 'bullets':     renderBullets(pptx, spec, datasetName); break
       case 'quotes':      renderQuotes(pptx, spec, datasetName); break
       case 'two_column':  renderTwoColumn(pptx, spec, datasetName); break
+      case 'entity_grid': renderEntityGrid(pptx, spec as EntityGridSlide, datasetName); break
       default:
         // Unknown type — render as bullets with the raw data
         renderBullets(pptx, { type: 'bullets', title: (spec as any).title || 'Slide', bullets: [JSON.stringify(spec)] }, datasetName)

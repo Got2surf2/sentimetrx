@@ -718,7 +718,20 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                 </div>
               )}
               {!isUser && !m.streaming && m.content && (!m.actions || m.actions.length === 0) && (
-                <CopyButton text={m.content} />
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                  <CopyButton text={m.content} />
+                  {m.content.length > 200 && (
+                    <button
+                      onClick={function() { sendMessage('Convert your previous analysis into a downloadable slide deck. Use the most appropriate slide types for the data.') }}
+                      disabled={loading}
+                      style={{
+                        fontSize: 10, color: '#6b7280', background: 'none', border: '1px solid #e5e7eb',
+                        borderRadius: 12, padding: '3px 10px', cursor: loading ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit', opacity: loading ? 0.5 : 1,
+                      }}
+                    >Download as slides</button>
+                  )}
+                </div>
               )}
             </div>
           )
