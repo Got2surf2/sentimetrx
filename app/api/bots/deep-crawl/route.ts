@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (pages.length === 0) {
-    return NextResponse.json({ error: 'Could not fetch any pages from the provided URLs' }, { status: 502 })
+    return NextResponse.json({ error: 'No content found — this site may require JavaScript to render. Try using Research instead (enter the site name as a search query).' }, { status: 502 })
   }
 
   // Build structured knowledge base — full text per page, with markdown headings

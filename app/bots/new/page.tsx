@@ -233,7 +233,7 @@ function BotCreatorInner() {
 
     var fullConfig = {
       ...config,
-      name: config.name || name,
+      name: name,
       avatarLetter: config.avatarLetter || name.charAt(0).toUpperCase(),
       suggestions: suggestions.split('\n').map(function(s) { return s.trim() }).filter(Boolean),
       initialMessage: config.initialMessage,
@@ -379,7 +379,7 @@ function BotCreatorInner() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={(config as any).askName !== false}
+                checked={(config as any).askName !== 'false' && (config as any).askName !== false}
                 onChange={function(e) { updateConfig('askName' as any, e.target.checked ? 'true' : 'false') }}
                 style={{ width: 16, height: 16, accentColor: HERMES }}
               />
