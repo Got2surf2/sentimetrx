@@ -105,8 +105,22 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     if (el) el.scrollTop = el.scrollHeight
   }
 
-  // No JS viewport hacks — the survey works without them.
-  // height:100dvh + overflow:hidden on the page wrapper is sufficient.
+  // On iOS (Safari & Chrome), when the keyboard opens the visual viewport shrinks
+  // but position:fixed elements still reference the full layout viewport.
+  // We track visualViewport size and offset to keep the container in view.
+  useEffect(() => {
+    const vv = window.visualViewport
+    const el = chatRef.current?.parentElement // the outer wrapper div
+    if (!vv || !el) return
+    const onViewport = () => {
+      el.style.height = vv.height + 'px'
+      el.style.top = vv.offsetTop + 'px'
+      scrollBottom()
+    }
+    vv.addEventListener('resize', onViewport)
+    vv.addEventListener('scroll', onViewport)
+    return () => { vv.removeEventListener('resize', onViewport); vv.removeEventListener('scroll', onViewport) }
+  }, [])
 
   useEffect(() => {
     scrollBottom()
@@ -203,7 +217,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
       {/* Header */}
       <header style={{
         background: config.headerGradient,
@@ -400,13 +414,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               lineHeight: 1.5, maxHeight: 120,
               background: '#f9fafb',
             }}
-            onFocus={e => {
-              (e.target as HTMLElement).style.borderColor = config.accentColor
-              // Prevent iOS Safari from scrolling the page to bring input into view
-              setTimeout(() => { window.scrollTo(0, 0) }, 50)
-              setTimeout(() => { window.scrollTo(0, 0) }, 150)
-              setTimeout(() => { window.scrollTo(0, 0) }, 300)
-            }}
+            onFocus={e => { (e.target as HTMLElement).style.borderColor = config.accentColor }}
             onBlur={e => (e.target as HTMLElement).style.borderColor = '#e5e7eb'}
             onInput={e => {
               const t = e.target as HTMLTextAreaElement
