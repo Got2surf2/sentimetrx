@@ -6,6 +6,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 
 const HERMES = '#E8632A'
 
@@ -361,7 +362,25 @@ function BotCreatorInner() {
             <Field label="URL slug" value={slug} onChange={setSlug} placeholder="e.g., aclu-rights" />
             <p style={{ fontSize: 11, color: '#9ca3af', marginTop: -8, marginBottom: 12 }}>Public URL: /b/{slug || 'your-slug'}</p>
             <Field label="Subtitle" value={config.subtitle} onChange={function(v) { updateConfig('subtitle', v) }} placeholder="e.g., Know Your Rights Assistant" />
-            <Field label="Avatar letter or emoji" value={config.avatarLetter} onChange={function(v) { updateConfig('avatarLetter', v) }} placeholder="e.g., A or 🤖" />
+            <label style={{ display: 'block', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Avatar letter or emoji</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <EmojiPickerPopover
+                  value={config.avatarLetter || '🤖'}
+                  onChange={function(v) { updateConfig('avatarLetter', v) }}
+                  size="md"
+                />
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>or type a letter:</span>
+                <input
+                  type="text"
+                  value={config.avatarLetter}
+                  onChange={function(e) { updateConfig('avatarLetter', e.target.value.slice(0, 2)) }}
+                  placeholder="A"
+                  maxLength={2}
+                  style={{ width: 48, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', textAlign: 'center' }}
+                />
+              </div>
+            </label>
             <Field label="Initial message" value={config.initialMessage} onChange={function(v) { updateConfig('initialMessage', v) }} placeholder="Hi! How can I help you?" />
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
               <input
