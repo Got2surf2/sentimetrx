@@ -400,7 +400,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               lineHeight: 1.5, maxHeight: 120,
               background: '#f9fafb',
             }}
-            onFocus={e => (e.target as HTMLElement).style.borderColor = config.accentColor}
+            onFocus={e => {
+              (e.target as HTMLElement).style.borderColor = config.accentColor
+              // Prevent iOS Safari from scrolling the page to bring input into view
+              setTimeout(() => { window.scrollTo(0, 0) }, 50)
+              setTimeout(() => { window.scrollTo(0, 0) }, 150)
+              setTimeout(() => { window.scrollTo(0, 0) }, 300)
+            }}
             onBlur={e => (e.target as HTMLElement).style.borderColor = '#e5e7eb'}
             onInput={e => {
               const t = e.target as HTMLTextAreaElement
