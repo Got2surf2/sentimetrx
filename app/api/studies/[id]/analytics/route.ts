@@ -23,38 +23,26 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Study not found' }, { status: 404 })
   }
 
-  // Fetch ALL responses (including partial) for total count
-  let allQuery = supabase
-    .from('responses')
-    .select('status, completed_at')
-    .eq('study_id', params.id)
-    .range(0, 49999)
-
-  if (from) allQuery = allQuery.gte('completed_at', from)
-  if (to)   allQuery = allQuery.lte('completed_at', to + 'T23:59:59Z')
-
-  // Fetch completed responses for analytics
+  // Fetch ALL responses (including partial) — partial responses still have valid closed-end data
   let query = supabase
     .from('responses')
     .select('sentiment, nps_score, experience_score, completed_at, status')
     .eq('study_id', params.id)
-    .or('status.eq.complete,status.is.null')
     .order('completed_at', { ascending: true })
     .range(0, 49999)
 
   if (from) query = query.gte('completed_at', from)
   if (to)   query = query.lte('completed_at', to + 'T23:59:59Z')
 
-  const [allResult, result] = await Promise.all([allQuery, query])
+  const result = await query
 
   if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
 
-  const allRows = allResult.data || []
   const rows = result.data || []
 
-  const totalAll = allRows.length
-  const totalComplete = rows.length
-  const total = totalComplete
+  const totalAll = rows.length
+  const totalComplete = rows.filter(function(r) { return r.status === 'complete' || r.status == null }).length
+  const total = totalAll
 
   // Support both old (promoter/passive/detractor) and new (positive/neutral/negative) sentiment values
   const promoters  = rows.filter(function(r) { return r.sentiment === 'positive'  || r.sentiment === 'promoter' }).length

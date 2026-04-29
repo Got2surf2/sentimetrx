@@ -453,7 +453,7 @@ function buildTitleSlide(pptx: any, datasetName: string, reportTitle: string, to
   })
 }
 
-function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string, filterDescription?: string, dataSource?: 'study' | 'upload', samplingNote?: string) {
+function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, computedAt: string | null, fields: SelectedField[], audience: string, filterDescription?: string, dataSource?: 'study' | 'upload', samplingNote?: string, completionNote?: string) {
   const slide = pptx.addSlide('NUMBERED')
   bg(slide, pptx)
   hdr(slide, pptx, 'About This Report — ' + datasetName, DN.teal, 'Methodology, scope and data coverage')
@@ -475,7 +475,7 @@ function buildAboutSlide(pptx: any, datasetName: string, totalRows: number, comp
     {
       v: totalRows.toLocaleString(),
       l: samplingNote ? 'Sampled Responses' : 'Total Responses',
-      sub: samplingNote ? 'sampled for this analysis' : 'in this analysis',
+      sub: completionNote || (samplingNote ? 'sampled for this analysis' : 'in this analysis'),
       bg: DN.tealPale, vc: DN.teal,
     },
     { v: fields.length.toString(),   l: 'Fields Analyzed',  sub: `${openCount} open · ${catCount} cat · ${numCount} num`, bg: DN.slateLight, vc: DN.navy },
@@ -2667,20 +2667,33 @@ export async function POST(req: Request, { params }: Params) {
     // 2: Executive Summary
     buildSummarySlide(pptx, datasetName, displayRows, narratives.executiveSummary || [], narratives.keyTakeaways || [], sortedThemes, selectedFields)
 
-    // 3: About this report
-    buildAboutSlide(pptx, datasetName, displayRows, analytics.computedAt, selectedFields, audience, filterDescription || undefined, dataSource, samplingNote)
-
-    // 4: Completion funnel (study datasets only)
+    // 3: About this report — include completion stats for study datasets
+    var completionNote: string | undefined
+    var studyResponses: any[] | null = null
     if (dataset.study_id) {
       try {
-        const studyCfg = (dataset as any).studies?.config
-        const { data: responses } = await service
+        const { data: resp } = await service
           .from('responses')
           .select('status, payload')
           .eq('study_id', dataset.study_id)
           .order('created_at', { ascending: true })
           .limit(1000)
-        if (responses && responses.length > 0) {
+        studyResponses = resp
+        if (resp && resp.length > 0) {
+          const completeCount = resp.filter((r: any) => r.status === 'complete' || r.status == null).length
+          const pct = Math.round(completeCount / resp.length * 100)
+          completionNote = resp.length.toLocaleString() + ' total responses · ' + completeCount.toLocaleString() + ' complete (' + pct + '%)'
+        }
+      } catch {}
+    }
+    buildAboutSlide(pptx, datasetName, displayRows, analytics.computedAt, selectedFields, audience, filterDescription || undefined, dataSource, samplingNote, completionNote)
+
+    // 4: Completion funnel (study datasets only)
+    if (dataset.study_id && studyResponses) {
+      try {
+        const studyCfg = (dataset as any).studies?.config
+        const responses = studyResponses
+        if (responses.length > 0) {
           const customQCount = studyCfg?.customQCount || studyCfg?.questions?.length || 0
           const psychoCount = studyCfg?.psychoCount || studyCfg?.psychographicBank?.length || 0
           const funnelStages: { label: string; count: number }[] = []
