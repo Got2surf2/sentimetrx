@@ -68,17 +68,19 @@ export async function GET(req: NextRequest, { params }: Params) {
     ? Math.round(expRows.reduce(function(s, r) { return s + r.experience_score }, 0) / expRows.length * 10) / 10
     : 0
 
-  // NPS trend by day — only rows with NPS scores
-  const npsMap: Record<string, { sum: number; count: number }> = {}
+  // Rating trend by day — use whichever score field has data (NPS or experience)
+  const useNps = npsRows.length > expRows.length
+  const ratingMap: Record<string, { sum: number; count: number }> = {}
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]
-    if (r.nps_score == null || !r.completed_at) continue
+    const score = useNps ? r.nps_score : r.experience_score
+    if (score == null || !r.completed_at) continue
     const date = r.completed_at.slice(0, 10)
-    if (!npsMap[date]) npsMap[date] = { sum: 0, count: 0 }
-    npsMap[date].sum   += r.nps_score
-    npsMap[date].count += 1
+    if (!ratingMap[date]) ratingMap[date] = { sum: 0, count: 0 }
+    ratingMap[date].sum   += score
+    ratingMap[date].count += 1
   }
-  const npsTrend = Object.entries(npsMap)
+  const npsTrend = Object.entries(ratingMap)
     .sort(function(a, b) { return a[0].localeCompare(b[0]) })
     .map(function(entry) {
       return {
