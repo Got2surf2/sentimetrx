@@ -96,9 +96,26 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setUserName(askName ? null : '_skip')
     if (multiLang) setSelectedLang(null)
   }
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
+
+  // Adapt to iOS keyboard — shrink wrapper to visual viewport height
+  useEffect(() => {
+    const vv = (window as any).visualViewport
+    if (!vv) return
+    const onResize = () => {
+      if (wrapperRef.current) {
+        wrapperRef.current.style.height = vv.height + 'px'
+      }
+      requestAnimationFrame(() => {
+        if (lastMsgRef.current) lastMsgRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -198,10 +215,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily }}>
+    <div ref={wrapperRef} style={{ height: '100dvh', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
       {/* Header */}
       <header style={{
-        position: 'sticky', top: 0, zIndex: 10,
         background: config.headerGradient,
         padding: '16px 24px',
         display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
@@ -279,7 +295,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
 
       {/* Chat area */}
       {(selectedLang !== null || !multiLang) && <div ref={chatRef} style={{
-        flex: 1, overflowY: 'auto', padding: '20px 16px',
+        flex: 1, overflowY: 'auto', minHeight: 0, padding: '20px 16px',
         display: 'flex', flexDirection: 'column', gap: 16,
         maxWidth: 800, width: '100%', margin: '0 auto',
         scrollBehavior: 'smooth' as const,
