@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
   const { data: bot, error } = await service
     .from('bots')
-    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base, guardrails')
+    .select('id, name, slug, status, config, system_prompt, personality, knowledge_base, guardrails, subject, negative_content_mode')
     .eq('id', params.id)
     .single()
 
@@ -100,15 +100,33 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (rpcErr) console.error('[bot-chat] RAG search error:', rpcErr.message)
 
       if (chunks && chunks.length > 0) {
-        const topConfidence = chunks[0].confidence ?? 0
-        const context = chunks.map(function(c: any) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
+        const negMode = (bot as any).negative_content_mode || 'deflect'
+        const subjectName = (bot as any).subject || bot.name
 
-        if (topConfidence > 0.85) {
-          // High confidence: answer strictly from this knowledge
-          systemParts.push('\n\n--- HIGHLY RELEVANT KNOWLEDGE ---\nAnswer the question using ONLY the following information. Do not add anything beyond what is provided here.\n\n' + context)
+        // Separate positive/neutral chunks from negative ones
+        const safeChunks = chunks.filter(function(c: any) { return !c.metadata?.sentiment || c.metadata.sentiment !== 'negative' })
+        const negativeChunks = chunks.filter(function(c: any) { return c.metadata?.sentiment === 'negative' })
+        const hasOnlyNegative = safeChunks.length === 0 && negativeChunks.length > 0
+
+        const topConfidence = chunks[0].confidence ?? 0
+
+        if (hasOnlyNegative) {
+          // Query matches only negative content
+          if (negMode === 'deflect') {
+            systemParts.push('\n\nThe user may be asking about criticism or negative topics related to ' + subjectName + '. Do NOT engage with the negative framing. Politely redirect: "I\'m here to help with ' + subjectName + '\'s platform, positions, and work. What would you like to know about that?"')
+          } else {
+            // pivot mode
+            systemParts.push('\n\nThe user may be asking about criticism related to ' + subjectName + '. Briefly acknowledge that discussion exists without repeating specific claims, then pivot to ' + subjectName + '\'s own position or record on the topic. Never amplify, quote, or repeat negative claims.')
+          }
         } else {
-          // Medium confidence: use as context but allow some flexibility
-          systemParts.push('\n\n--- RELEVANT KNOWLEDGE ---\nUse the following information to answer the question. If the answer isn\'t here, say so honestly — don\'t make things up.\n\n' + context)
+          // Use safe chunks as context
+          const context = safeChunks.map(function(c: any) { return '### ' + c.title + '\n' + c.content }).join('\n\n')
+
+          if (topConfidence > 0.85) {
+            systemParts.push('\n\n--- HIGHLY RELEVANT KNOWLEDGE ---\nAnswer the question using ONLY the following information. Do not add anything beyond what is provided here.\n\n' + context)
+          } else {
+            systemParts.push('\n\n--- RELEVANT KNOWLEDGE ---\nUse the following information to answer the question. If the answer isn\'t here, say so honestly — don\'t make things up.\n\n' + context)
+          }
         }
         knowledgeInjected = true
       }

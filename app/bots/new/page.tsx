@@ -126,6 +126,8 @@ function BotCreatorInner() {
   const [faq, setFaq] = useState<{ question: string; answer: string }[]>([])
   const [facts, setFacts] = useState<string[]>([])
   const [guardrails, setGuardrails] = useState<string[]>([])
+  const [subject, setSubject] = useState('')
+  const [negativeContentMode, setNegativeContentMode] = useState('deflect')
 
   // Load existing bot if editing
   useEffect(function() {
@@ -140,6 +142,8 @@ function BotCreatorInner() {
       setSuggestions((bot.config?.suggestions || []).join('\n'))
       setConfig({ ...DEFAULT_CONFIG, ...bot.config })
       if (bot.review_interval_hours) setReviewInterval(String(bot.review_interval_hours))
+      if (bot.subject) setSubject(bot.subject)
+      if (bot.negative_content_mode) setNegativeContentMode(bot.negative_content_mode)
       if (Array.isArray(bot.faq)) setFaq(bot.faq)
       if (Array.isArray(bot.facts)) setFacts(bot.facts.map(function(f: any) { return typeof f === 'string' ? f : f.text || '' }))
       if (Array.isArray(bot.guardrails)) setGuardrails(bot.guardrails.map(function(g: any) { return typeof g === 'string' ? g : g.rule || g.text || '' }))
@@ -261,6 +265,8 @@ function BotCreatorInner() {
       faq: cleanFaq,
       facts: cleanFacts,
       guardrails: cleanGuardrails,
+      subject: subject.trim(),
+      negative_content_mode: negativeContentMode,
     }
     if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
 
@@ -400,6 +406,22 @@ function BotCreatorInner() {
               rows={4}
               style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
             />
+          </Section>
+
+          <Section title="Content Protection">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Specify who or what this agent represents. Crawled content that is negative toward the subject will be automatically flagged and filtered from responses.</p>
+            <Field label="Subject (person, organization, or brand)" value={subject} onChange={setSubject} placeholder="e.g., Alex Vindman, ACLU, Tesla" />
+            <label style={{ display: 'block', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Negative content handling</span>
+              <select
+                value={negativeContentMode}
+                onChange={function(e) { setNegativeContentMode(e.target.value) }}
+                style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', background: 'white' }}>
+                <option value="deflect">Deflect — redirect to platform and positions (safest)</option>
+                <option value="pivot">Acknowledge &amp; pivot — briefly acknowledge, then redirect to subject's own position</option>
+              </select>
+              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Controls how the agent responds when users ask about criticism, scandals, or negative coverage.</p>
+            </label>
           </Section>
 
           <Section title="FAQ Pairs">

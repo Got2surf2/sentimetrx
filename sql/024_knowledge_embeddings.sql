@@ -84,3 +84,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 ALTER TABLE bots ADD COLUMN IF NOT EXISTS faq        JSONB DEFAULT '[]'::JSONB;
 ALTER TABLE bots ADD COLUMN IF NOT EXISTS facts      JSONB DEFAULT '[]'::JSONB;
 ALTER TABLE bots ADD COLUMN IF NOT EXISTS guardrails JSONB DEFAULT '[]'::JSONB;
+
+-- Subject the agent represents (for sentiment filtering)
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS subject TEXT NOT NULL DEFAULT '';
+
+-- How to handle negative content: 'deflect' (default) or 'pivot'
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS negative_content_mode TEXT NOT NULL DEFAULT 'deflect';

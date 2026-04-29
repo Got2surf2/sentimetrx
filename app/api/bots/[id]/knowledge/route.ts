@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { generateEmbeddings } from '@/lib/embeddings'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,7 @@ export async function POST(req: Request, { params }: Params) {
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  const { data: bot } = await service.from('bots').select('id, org_id, subject').eq('id', params.id).single()
   if (!bot || bot.org_id !== userData.org_id) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
@@ -85,6 +86,49 @@ export async function POST(req: Request, { params }: Params) {
       }
     } catch (e: any) {
       console.error('[knowledge] Embedding generation failed (chunks still usable):', e?.message)
+    }
+
+    // Sentiment classification — tag chunks as positive/neutral/negative toward the subject
+    const subject = (bot as any).subject
+    if (subject && subject.trim()) {
+      try {
+        // Batch chunks into groups of 20 for classification
+        const batchSize = 20
+        for (var b = 0; b < inserted.length; b += batchSize) {
+          var batch = inserted.slice(b, b + batchSize)
+          var chunkList = batch.map(function(c: any, idx: number) {
+            var preview = (c.content || '').slice(0, 300)
+            return (b + idx + 1) + '. [' + c.title + '] ' + preview
+          }).join('\n')
+
+          var result = await callAI({
+            tier: 'fast',
+            maxTokens: 200,
+            timeoutMs: 15000,
+            system: 'You classify text sentiment toward a specific subject. For each numbered chunk, respond with ONLY the number and sentiment: "1:positive", "2:negative", "3:neutral". One per line. Positive = favorable, supportive, promotional. Negative = critical, accusatory, scandalous, damaging. Neutral = factual, informational, neither favorable nor unfavorable.',
+            messages: [{ role: 'user', content: 'Subject: ' + subject.trim() + '\n\nChunks:\n' + chunkList }],
+          })
+
+          // Parse results like "1:positive\n2:negative\n3:neutral"
+          var lines = result.text.split('\n')
+          for (var li = 0; li < lines.length; li++) {
+            var match = lines[li].match(/^(\d+)\s*:\s*(positive|negative|neutral)/i)
+            if (match) {
+              var chunkIdx = parseInt(match[1]) - 1 - b
+              if (chunkIdx >= 0 && chunkIdx < batch.length) {
+                var sentiment = match[2].toLowerCase()
+                var chunkId = (batch[chunkIdx] as any).id
+                var existingMeta = rows[b + chunkIdx]?.metadata || {}
+                await service.from('bot_knowledge_chunks')
+                  .update({ metadata: { ...existingMeta, sentiment } })
+                  .eq('id', chunkId)
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        console.error('[knowledge] Sentiment classification failed (chunks still usable):', e?.message)
+      }
     }
   }
 
