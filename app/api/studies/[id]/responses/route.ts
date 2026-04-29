@@ -96,7 +96,15 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!isCSV) return NextResponse.json({ data, count, limit, offset })
+
+  if (!isCSV) {
+    // Also fetch total + complete counts for the response header
+    const [allRes, completeRes] = await Promise.all([
+      service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', params.id),
+      service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', params.id).or('status.eq.complete,status.is.null'),
+    ])
+    return NextResponse.json({ data, count, limit, offset, totalAll: allRes.count || 0, totalComplete: completeRes.count || 0 })
+  }
 
   const rows = data || []
   if (rows.length === 0) {

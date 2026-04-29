@@ -39,6 +39,8 @@ const SENTIMENTS = ['', 'promoter', 'passive', 'detractor']
 export default function ResponsesDashboard({ studyId, studyName, botName='', botEmoji, studyConfig, logoUrl='', orgName='', isAdmin=false, analyzeEnabled=false, userEmail='', fullName='' }: Props) {
   const [responses,   setResponses]   = useState<Response[]>([])
   const [total,       setTotal]       = useState(0)
+  const [totalAll,    setTotalAll]    = useState(0)
+  const [totalComplete, setTotalComplete] = useState(0)
   const [loading,     setLoading]     = useState(true)
   const [selected,    setSelected]    = useState<Response | null>(null)
   const [checkedIds,  setCheckedIds]  = useState<Set<string>>(new Set())
@@ -111,6 +113,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
     const json = await res.json()
     setResponses(json.data || [])
     setTotal(json.count || 0)
+    if (json.totalAll != null) setTotalAll(json.totalAll)
+    if (json.totalComplete != null) setTotalComplete(json.totalComplete)
     setLoading(false)
   }, [studyId, sentiment, minNps, maxNps, statusFilter, dateFrom, dateTo, offset])
 
@@ -253,7 +257,7 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
       <main className="max-w-5xl mx-auto px-6 py-8">
 
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm text-gray-400">{total} total responses</p>
+          <p className="text-sm text-gray-400">{totalAll || total} responses{totalAll > 0 ? <span className="text-gray-300"> · {totalComplete} complete ({Math.round(totalComplete / totalAll * 100)}%)</span> : ''}</p>
         </div>
 
         {/* Filters — auto-apply, no button needed */}

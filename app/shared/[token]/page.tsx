@@ -340,10 +340,7 @@ function SharedStudyDashboard({ study, responses, expiresAt, ratingScale, rating
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <div className="text-2xl font-bold" style={{ color: HERMES }}>{total}</div>
             <div className="text-xs text-gray-500">Responses</div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{total > 0 ? Math.round(complete / total * 100) : 0}%</div>
-            <div className="text-xs text-gray-500">Complete</div>
+            {total > 0 && <div className="text-[10px] text-gray-400 mt-1">{complete} complete ({Math.round(complete / total * 100)}%)</div>}
           </div>
           {scored > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
