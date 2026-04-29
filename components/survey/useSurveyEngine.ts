@@ -49,6 +49,13 @@ interface State {
 export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
+
+  // Verbose/debug command check — returns true if command was handled (caller should return early)
+  function checkVerbose(v: string, ta?: HTMLTextAreaElement): boolean {
+    if (/^#verbose$/i.test(v)) { if (ta) ta.value = ''; if (onVerboseRequest) onVerboseRequest(); return true }
+    if (/^#sanjay\s+mvuli609$/i.test(v)) { if (ta) ta.value = ''; if (onVerboseRequest) onVerboseRequest('bypass'); return true }
+    return false
+  }
   // iMessage-style colors — always light background with gray bot bubbles / blue user bubbles
   const IMSG_BLUE = '#007AFF'
   const IMSG_GRAY = '#E9E9EB'
@@ -985,8 +992,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     skipBtn.style.cssText = 'background:transparent;border:1.5px solid ' + C.textMute + ';color:' + C.textMid + ';cursor:pointer;font-family:inherit;'
     const submit = async () => {
       const v = ta.value.trim()
-      if (/^#verbose$/i.test(v)) { ta.value = ''; if (onVerboseRequest) onVerboseRequest(); return }
-      if (/^#sanjay\s+mvuli609$/i.test(v)) { ta.value = ''; if (onVerboseRequest) onVerboseRequest('bypass'); return }
+      if (checkVerbose(v, ta)) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (v) {
         addMsg('user', v)
@@ -1043,6 +1049,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.style.cssText = `background:${config.theme.primaryColor};color:#fff;border:none;cursor:pointer;font-family:inherit;`
     sendBtn.onclick = async () => {
       const val = ta.value.trim()
+      if (checkVerbose(val, ta)) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (val && !isDecline(val)) {
         addMsg('user', val)
@@ -1203,6 +1210,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
           sendBtn.onclick = async () => {
             const v = ta.value.trim()
+            if (checkVerbose(v, ta)) return
             if (!v && q.required) return
             wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
             if (v) addMsg('user', v)
@@ -1681,6 +1689,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
           sendBtn.onclick = () => {
             const v = ta.value.trim()
+            if (checkVerbose(v, ta)) return
             if (!v && q.required) return
             wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
             if (v) addMsg('user', v)
@@ -1918,6 +1927,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     })
     sendBtn.onclick = () => {
       const val = ta.value.trim(); if (!val) return
+      if (checkVerbose(val, ta)) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', val)
       // Store immediately and save — belt-and-suspenders, don't rely solely on handleOpenEnded
@@ -1967,6 +1977,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     })
     sendBtn.onclick = async () => {
       const val = ta.value.trim(); if (!val) return
+      if (checkVerbose(val, ta)) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       addMsg('user', val)
       if (!isDecline(val)) state.current.answers[qKey] = originalVal + ' [+ ' + val + ']'
@@ -2022,6 +2033,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     sendBtn.style.cssText = 'background:' + C.disabledBg + ';color:' + C.textMute + ';border:none;cursor:pointer;font-family:inherit;'
     sendBtn.onclick = () => {
       const val = ta.value.trim()
+      if (checkVerbose(val, ta)) return
       wrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
       if (val) {
         addMsg('user', val)
@@ -2481,6 +2493,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); oeSendBtn.click() } }
           oeSendBtn.onclick = async () => {
             const v = ta.value.trim()
+            if (checkVerbose(v, ta)) return
             oeWrap.querySelectorAll('textarea,button').forEach((el: any) => el.disabled = true)
             if (v) { addMsg('user', v); state.current.openingAnswers[item.id] = v }
             savePartial()
