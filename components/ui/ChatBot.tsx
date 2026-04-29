@@ -107,6 +107,26 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     el.scrollTop = el.scrollHeight
   }, [chatRef])
 
+  // Lock body scroll on mount — prevents iOS Safari from scrolling the document when keyboard opens
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    html.style.height = '100%'
+    html.style.overflow = 'hidden'
+    body.style.height = '100%'
+    body.style.overflow = 'hidden'
+    body.style.position = 'fixed'
+    body.style.width = '100%'
+    return () => {
+      html.style.height = ''
+      html.style.overflow = ''
+      body.style.height = ''
+      body.style.overflow = ''
+      body.style.position = ''
+      body.style.width = ''
+    }
+  }, [])
+
   // Fix mobile keyboard: on iOS, 100dvh doesn't shrink when keyboard opens.
   // Listen to visualViewport resize and update the wrapper height.
   // COPIED FROM SurveyWidget.tsx — do not change this pattern.
