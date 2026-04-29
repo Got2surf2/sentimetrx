@@ -1,15 +1,7 @@
 // app/b/[slug]/layout.tsx
-// Bot public page layout — viewport meta for mobile keyboard handling
+// Bot public page layout
 
-import type { Metadata, Viewport } from 'next'
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  interactiveWidget: 'resizes-content',
-}
+import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Chat',

@@ -4,7 +4,7 @@
 // Shared chatbot UI component used by /bot, /clara, /nora pages.
 // All branding, colors, and content are passed via config props.
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import SanjayModal, { checkVerboseCommand } from './SanjayModal'
 
 function genSessionId() {
@@ -96,19 +96,37 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setUserName(askName ? null : '_skip')
     if (multiLang) setSelectedLang(null)
   }
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
 
-  const scrollBottom = () => {
+  const scrollBottom = useCallback(() => {
     const el = chatRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [chatRef])
+
+  // Fix mobile keyboard: on iOS, 100dvh doesn't shrink when keyboard opens.
+  // Listen to visualViewport resize and update the wrapper height.
+  // COPIED FROM SurveyWidget.tsx — do not change this pattern.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const onResize = () => {
+      if (wrapperRef.current) {
+        wrapperRef.current.style.height = vv.height + 'px'
+      }
+      scrollBottom()
+    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [scrollBottom])
 
   useEffect(() => {
     scrollBottom()
     setTimeout(scrollBottom, 100)
-  }, [messages, loading])
+  }, [messages, loading, scrollBottom])
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return
@@ -200,7 +218,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
+    <div ref={wrapperRef} style={{ width: '100%', height: '100%', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
       {/* Header */}
       <header style={{
         background: config.headerGradient,
@@ -370,11 +388,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
 
       {/* Input area — hidden during language selection */}
       {(selectedLang !== null || !multiLang) && <div style={{
+        flexShrink: 0,
         padding: '12px 16px',
         paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
         borderTop: '1px solid #e5e7eb',
         background: 'white',
-        flexShrink: 0,
+        maxHeight: '50vh',
+        overflowY: 'auto',
       }}>
         <div style={{
           maxWidth: 800, margin: '0 auto',
