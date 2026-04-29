@@ -183,6 +183,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian',
       zh: 'Chinese', ja: 'Japanese', ko: 'Korean', ar: 'Arabic', hi: 'Hindi',
       vi: 'Vietnamese', tl: 'Filipino/Tagalog', ru: 'Russian', pl: 'Polish',
+      ht: 'Haitian Creole',
     }
     const langName = LANG_NAMES[botLang] || botLang
     systemParts.push('\n\nIMPORTANT LANGUAGE RULE: You MUST respond ONLY in ' + langName + '. All your responses — greetings, answers, redirects — must be in ' + langName + '. Even if the user writes in English or another language, always reply in ' + langName + '.')

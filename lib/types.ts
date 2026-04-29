@@ -341,6 +341,7 @@ export var SUPPORTED_LANGUAGES: { code: string; name: string; nativeName: string
   { code: 'tl', name: 'Filipino',   nativeName: 'Filipino',   confirmLabel: 'Kumpirmahin' },
   { code: 'ru', name: 'Russian',    nativeName: 'Русский',    confirmLabel: 'Подтвердить' },
   { code: 'pl', name: 'Polish',     nativeName: 'Polski',     confirmLabel: 'Potwierdź' },
+  { code: 'ht', name: 'Haitian Creole', nativeName: 'Kreyòl ayisyen', confirmLabel: 'Konfime' },
 ]
 
 // Built-in UI string translations — used as fallback when stored translation lacks the ui field

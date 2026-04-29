@@ -55,6 +55,7 @@ const LANG_LABELS: Record<string, { name: string; native: string }> = {
   tl: { name: 'Filipino', native: 'Filipino' },
   ru: { name: 'Russian', native: 'Русский' },
   pl: { name: 'Polish', native: 'Polski' },
+  ht: { name: 'Haitian Creole', native: 'Kreyòl ayisyen' },
 }
 
 // Simple name validation — block profanity/slurs without importing the full content guard (client-side)
