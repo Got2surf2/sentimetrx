@@ -27,6 +27,7 @@ interface Summary {
   promoters: number
   passives: number
   detractors: number
+  sentimentTotal: number
   avgNps: number
   avgExp: number
 }
@@ -118,11 +119,11 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
                   </div>
                 )}
               </div>
-              <StatCard label={'Avg ' + (studyConfig?.npsLabel || 'NPS')}   value={summary.total > 0 ? summary.avgNps : '—'} />
-              <StatCard label={'Avg ' + (studyConfig?.experienceRatingLabel || 'Exp.')} value={summary.total > 0 ? summary.avgExp : '—'} />
-              <StatCard label="Positive"    value={summary.total > 0 ? Math.round(summary.promoters  / summary.total * 100) + '%' : '—'} color="text-green-400" />
-              <StatCard label="Neutral"     value={summary.total > 0 ? Math.round(summary.passives   / summary.total * 100) + '%' : '—'} color="text-yellow-400" />
-              <StatCard label="Negative"   value={summary.total > 0 ? Math.round(summary.detractors / summary.total * 100) + '%' : '—'} color="text-red-400" />
+              {summary.avgNps > 0 && <StatCard label={'Avg ' + (studyConfig?.npsLabel || 'NPS')} value={summary.avgNps} />}
+              {summary.avgExp > 0 && <StatCard label={'Avg ' + (studyConfig?.experienceRatingLabel || 'Familiarity')} value={summary.avgExp} />}
+              {(summary.sentimentTotal || summary.total) > 0 && <StatCard label="Positive" value={Math.round(summary.promoters / (summary.sentimentTotal || summary.total) * 100) + '%'} color="text-green-400" />}
+              {(summary.sentimentTotal || summary.total) > 0 && <StatCard label="Neutral" value={Math.round(summary.passives / (summary.sentimentTotal || summary.total) * 100) + '%'} color="text-yellow-400" />}
+              {(summary.sentimentTotal || summary.total) > 0 && <StatCard label="Negative" value={Math.round(summary.detractors / (summary.sentimentTotal || summary.total) * 100) + '%'} color="text-red-400" />}
             </div>
 
             {summary.total === 0 ? (
@@ -133,10 +134,10 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-                {/* NPS Trend — takes 2 columns */}
+                {/* Rating Trend — takes 2 columns */}
                 <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5">
-                  <h2 className="font-semibold text-gray-800 mb-1 text-sm">{studyConfig?.npsLabel || 'NPS'} Trend</h2>
-                  <p className="text-gray-400 text-xs mb-4">Average {studyConfig?.npsLabel || 'NPS'} score per day</p>
+                  <h2 className="font-semibold text-gray-800 mb-1 text-sm">{summary.avgNps > 0 ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'Rating')} Trend</h2>
+                  <p className="text-gray-400 text-xs mb-4">Average {summary.avgNps > 0 ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'rating')} score per day</p>
                   {npsTrend.length < 2 ? (
                     <div className="h-40 flex items-center justify-center text-gray-400 text-xs">Not enough data points for a trend</div>
                   ) : (

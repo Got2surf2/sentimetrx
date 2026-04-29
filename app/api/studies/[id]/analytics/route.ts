@@ -48,6 +48,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const promoters  = rows.filter(function(r) { return r.sentiment === 'positive'  || r.sentiment === 'promoter' }).length
   const passives   = rows.filter(function(r) { return r.sentiment === 'neutral'   || r.sentiment === 'passive' }).length
   const detractors = rows.filter(function(r) { return r.sentiment === 'negative'  || r.sentiment === 'detractor' }).length
+  const sentimentTotal = promoters + passives + detractors
 
   // Average NPS — only rows that actually have an NPS score
   const npsRows = rows.filter(function(r) { return r.nps_score != null })
@@ -93,7 +94,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     .map(function(entry) { return { date: entry[0], count: entry[1] } })
 
   return NextResponse.json({
-    summary: { total, totalAll, totalComplete, promoters, passives, detractors, avgNps, avgExp },
+    summary: { total, totalAll, totalComplete, promoters, passives, detractors, sentimentTotal, avgNps, avgExp },
     sentiment: { promoters, passives, detractors },
     npsTrend,
     volumeByDay,
