@@ -409,7 +409,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               resize: 'none',
               padding: '10px 14px', borderRadius: 24,
               border: '1.5px solid #e5e7eb', outline: 'none',
-              fontSize: '0.875rem', fontFamily: 'inherit',
+              fontSize: '16px', fontFamily: 'inherit',
               lineHeight: 1.5, maxHeight: 120,
               background: '#f9fafb',
             }}
