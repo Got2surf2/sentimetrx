@@ -99,25 +99,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
-  const [wrapHeight, setWrapHeight] = useState('100%')
 
   const scrollBottom = () => {
     const el = chatRef.current
-    if (el) { el.scrollTop = el.scrollHeight }
+    if (el) el.scrollTop = el.scrollHeight
   }
-
-  // iOS keyboard: use visualViewport to track actual visible height
-  useEffect(() => {
-    const vv = (window as any).visualViewport
-    if (!vv) return
-    const onResize = () => {
-      setWrapHeight(vv.height + 'px')
-      setTimeout(scrollBottom, 50)
-    }
-    vv.addEventListener('resize', onResize)
-    vv.addEventListener('scroll', onResize)
-    return () => { vv.removeEventListener('resize', onResize); vv.removeEventListener('scroll', onResize) }
-  }, [])
 
   useEffect(() => {
     scrollBottom()
@@ -214,7 +200,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: wrapHeight, background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden', zIndex: 1 }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
       {/* Header */}
       <header style={{
         background: config.headerGradient,
