@@ -204,8 +204,6 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
   const isNps = !!studyConfig?.npsEnabled
   const ratingLabel = isNps ? (studyConfig?.npsLabel || 'NPS') : (studyConfig?.experienceRatingLabel || 'Rating')
   const scoreField = isNps ? 'nps_score' : 'experience_score'
-  const topLabel = isNps ? 'Promoters' : 'Top Box'
-  const botLabel = isNps ? 'Detractors' : 'Bottom Box'
   const ratingScale = studyConfig?.ratingScale || []
   const maxScore = ratingScale.length > 0 ? Math.max(...ratingScale.map((s: any) => s.score)) : (isNps ? 10 : 5)
 
@@ -217,6 +215,8 @@ export default function ResponsesDashboard({ studyId, studyName, botName='', bot
   // Top box = top 20% of scale, bottom box = bottom 20%
   const topThreshold = isNps ? 9 : Math.ceil(maxScore * 0.8)
   const botThreshold = isNps ? 6 : Math.floor(maxScore * 0.2) || 1
+  const topLabel = isNps ? 'Promoters (9-10)' : 'Top Box (' + topThreshold + '-' + maxScore + ')'
+  const botLabel = isNps ? 'Detractors (0-6)' : 'Bottom Box (1-' + botThreshold + ')'
   const topCount = scoredResponses.filter(r => (r[scoreField] || 0) >= topThreshold).length
   const botCount = scoredResponses.filter(r => (r[scoreField] || 0) <= botThreshold).length
 
