@@ -74,14 +74,15 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const askName = config.askName !== false // default ON
   const multiLang = Array.isArray(config.languages) && config.languages.length > 1
   const [selectedLang, setSelectedLang] = useState<string | null>(multiLang ? null : (config.language || 'en'))
-  const INITIAL_MESSAGE: Message = {
+  const isNonEnglish = selectedLang !== null && selectedLang !== 'en'
+
+  const EN_INITIAL: Message = {
     role: 'assistant',
     content: askName
       ? "Hi, I'm " + config.name + "! What's your name?"
       : config.initialMessage,
   }
-  const initMessages = [INITIAL_MESSAGE]
-  const [messages, setMessages] = useState<Message[]>(initMessages)
+  const [messages, setMessages] = useState<Message[]>([EN_INITIAL])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
@@ -89,8 +90,31 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const [userName, setUserName] = useState<string | null>(askName ? null : '_skip')
   const sessionId = useMemo(() => genSessionId(), [])
 
+  // When a non-English language is selected, fetch the greeting from the API in that language
+  useEffect(() => {
+    if (!isNonEnglish) return
+    setMessages([])
+    setLoading(true)
+    const greetPrompt = askName
+      ? 'Greet the user warmly and ask for their name. Keep it to one short sentence.'
+      : 'Greet the user warmly. Keep it to one short sentence.'
+    fetch(config.apiEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: greetPrompt }], session_id: sessionId, language: selectedLang }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        setMessages([{ role: 'assistant', content: data.reply || config.initialMessage }])
+      })
+      .catch(() => {
+        setMessages([{ role: 'assistant', content: config.initialMessage }])
+      })
+      .finally(() => setLoading(false))
+  }, [selectedLang])
+
   const resetChat = () => {
-    setMessages(initMessages)
+    setMessages([EN_INITIAL])
     setInput('')
     setLoading(false)
     setUserName(askName ? null : '_skip')
@@ -142,11 +166,33 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       setMessages(prev => [...prev, { role: 'user', content: name }])
       setInput('')
       if (!isCleanName(name)) {
-        setMessages(prev => [...prev, { role: 'assistant', content: "Let's try a different name — what would you like me to call you?" }])
+        if (isNonEnglish) {
+          setLoading(true)
+          fetch(config.apiEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: [{ role: 'user', content: 'The user gave an inappropriate name. Ask them to try a different name. One sentence.' }], session_id: sessionId, language: selectedLang }),
+          }).then(r => r.json()).then(data => {
+            setMessages(prev => [...prev, { role: 'assistant', content: data.reply || "Let's try a different name." }])
+          }).finally(() => setLoading(false))
+        } else {
+          setMessages(prev => [...prev, { role: 'assistant', content: "Let's try a different name — what would you like me to call you?" }])
+        }
       } else {
         const cleanName = name.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
         setUserName(cleanName)
-        setMessages(prev => [...prev, { role: 'assistant', content: 'Great to meet you, ' + cleanName + '! How can I help you today?' }])
+        if (isNonEnglish) {
+          setLoading(true)
+          fetch(config.apiEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: [{ role: 'user', content: 'My name is ' + cleanName + '. Greet me by name and ask how you can help. One sentence.' }], session_id: sessionId, language: selectedLang, user_name: cleanName }),
+          }).then(r => r.json()).then(data => {
+            setMessages(prev => [...prev, { role: 'assistant', content: data.reply || ('Great to meet you, ' + cleanName + '!') }])
+          }).finally(() => setLoading(false))
+        } else {
+          setMessages(prev => [...prev, { role: 'assistant', content: 'Great to meet you, ' + cleanName + '! How can I help you today?' }])
+        }
       }
       setTimeout(() => inputRef.current?.focus(), 100)
       return
@@ -161,7 +207,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     try {
       // Filter out the name-ask exchange from API messages to keep context clean
       const apiMessages = newMessages
-        .filter(m => m.content !== INITIAL_MESSAGE.content)
+        .filter(m => m.content !== EN_INITIAL.content)
         .map(m => ({ role: m.role, content: m.content }))
 
       const res = await fetch(config.apiEndpoint, {
