@@ -172,10 +172,27 @@ export default function EmojiPickerPopover({
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">&times;</button>
             </div>
 
-            {/* Current selection */}
+            {/* Current selection + paste input */}
             <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-100 flex-shrink-0">
               <span className="text-3xl">{value || '😊'}</span>
-              <span className="text-xs text-gray-400">Current selection</span>
+              <span className="text-xs text-gray-400 flex-1">Current selection</span>
+              <input
+                type="text"
+                placeholder="Paste emoji"
+                className="w-16 text-center text-xl border border-gray-200 rounded-lg px-1 py-1 outline-none focus:border-orange-400"
+                style={{ fontSize: 16 }}
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (!val) return
+                  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+                    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+                    const segments = Array.from(segmenter.segment(val), s => s.segment)
+                    if (segments.length > 0) { onChange(segments[segments.length - 1]); setOpen(false) }
+                  } else {
+                    onChange(val.slice(-2)); setOpen(false)
+                  }
+                }}
+              />
             </div>
 
             {/* Industry / curated quick-picks */}
