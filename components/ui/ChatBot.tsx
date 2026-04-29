@@ -96,33 +96,31 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setUserName(askName ? null : '_skip')
     if (multiLang) setSelectedLang(null)
   }
-  const wrapperRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
+  const [wrapHeight, setWrapHeight] = useState('100%')
 
   const scrollBottom = () => {
     const el = chatRef.current
     if (el) { el.scrollTop = el.scrollHeight }
   }
 
-  // Adapt to iOS keyboard — shrink wrapper to visual viewport height
+  // iOS keyboard: use visualViewport to track actual visible height
   useEffect(() => {
     const vv = (window as any).visualViewport
     if (!vv) return
     const onResize = () => {
-      if (wrapperRef.current) {
-        wrapperRef.current.style.height = vv.height + 'px'
-      }
-      scrollBottom()
+      setWrapHeight(vv.height + 'px')
+      setTimeout(scrollBottom, 50)
     }
     vv.addEventListener('resize', onResize)
-    return () => vv.removeEventListener('resize', onResize)
+    vv.addEventListener('scroll', onResize)
+    return () => { vv.removeEventListener('resize', onResize); vv.removeEventListener('scroll', onResize) }
   }, [])
 
   useEffect(() => {
     scrollBottom()
-    // Delayed scroll for any late-rendering content
     setTimeout(scrollBottom, 100)
   }, [messages, loading])
 
@@ -216,7 +214,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   return (
-    <div ref={wrapperRef} style={{ width: '100%', height: '100%', background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: wrapHeight, background: config.pageBg, display: 'flex', flexDirection: 'column', fontFamily: config.fontFamily, overflow: 'hidden', zIndex: 1 }}>
       {/* Header */}
       <header style={{
         background: config.headerGradient,
