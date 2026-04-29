@@ -388,12 +388,10 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       {/* Input area — hidden during language selection */}
       {(selectedLang !== null || !multiLang) && <div style={{
         flexShrink: 0,
-        padding: '12px 16px',
-        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+        padding: '10px 12px',
+        paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
         borderTop: '1px solid #e5e7eb',
         background: 'white',
-        maxHeight: '50vh',
-        overflowY: 'auto',
       }}>
         <div style={{
           maxWidth: 800, margin: '0 auto',
@@ -407,10 +405,10 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             placeholder={config.placeholder}
             rows={1}
             style={{
-              flex: 1, resize: 'none',
-              padding: '10px 16px', borderRadius: 24,
+              flex: 1, minWidth: 0, resize: 'none',
+              padding: '10px 14px', borderRadius: 24,
               border: '1.5px solid #e5e7eb', outline: 'none',
-              fontSize: '0.9rem', fontFamily: 'inherit',
+              fontSize: '0.875rem', fontFamily: 'inherit',
               lineHeight: 1.5, maxHeight: 120,
               background: '#f9fafb',
             }}
