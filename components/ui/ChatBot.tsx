@@ -101,6 +101,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const lastMsgRef = useRef<HTMLDivElement>(null)
 
+  const scrollBottom = () => {
+    const el = chatRef.current
+    if (el) { el.scrollTop = el.scrollHeight }
+  }
+
   // Adapt to iOS keyboard — shrink wrapper to visual viewport height
   useEffect(() => {
     const vv = (window as any).visualViewport
@@ -109,20 +114,16 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       if (wrapperRef.current) {
         wrapperRef.current.style.height = vv.height + 'px'
       }
-      requestAnimationFrame(() => {
-        if (lastMsgRef.current) lastMsgRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      })
+      scrollBottom()
     }
     vv.addEventListener('resize', onResize)
     return () => vv.removeEventListener('resize', onResize)
   }, [])
 
   useEffect(() => {
-    requestAnimationFrame(() => {
-      if (lastMsgRef.current) {
-        lastMsgRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    })
+    scrollBottom()
+    // Delayed scroll for any late-rendering content
+    setTimeout(scrollBottom, 100)
   }, [messages, loading])
 
   const sendMessage = async (text: string) => {
