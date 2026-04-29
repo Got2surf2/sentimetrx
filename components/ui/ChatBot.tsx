@@ -58,6 +58,25 @@ const LANG_LABELS: Record<string, { name: string; native: string }> = {
   ht: { name: 'Haitian Creole', native: 'Kreyòl ayisyen' },
 }
 
+const PLACEHOLDER_TRANSLATIONS: Record<string, string> = {
+  en: 'Ask me anything...',
+  es: 'Pregúntame lo que quieras...',
+  fr: 'Posez-moi une question...',
+  de: 'Frag mich was...',
+  pt: 'Pergunte-me qualquer coisa...',
+  it: 'Chiedimi qualcosa...',
+  zh: '问我任何问题...',
+  ja: '何でも聞いてください...',
+  ko: '무엇이든 물어보세요...',
+  ar: 'اسألني أي شيء...',
+  hi: 'मुझसे कुछ भी पूछें...',
+  vi: 'Hỏi tôi bất cứ điều gì...',
+  tl: 'Magtanong ng kahit ano...',
+  ru: 'Спросите меня о чём угодно...',
+  pl: 'Zapytaj mnie o cokolwiek...',
+  ht: 'Mande m nenpòt bagay...',
+}
+
 // Simple name validation — block profanity/slurs without importing the full content guard (client-side)
 const BAD_NAME_PATTERNS = [
   /\b(f+u+c+k|c+u+n+t|shit|bitch|asshole|bastard|dick|cock|pussy|damn|hell|crap)\w*/i,
@@ -449,7 +468,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={config.placeholder}
+            placeholder={isNonEnglish ? (PLACEHOLDER_TRANSLATIONS[selectedLang!] || config.placeholder) : config.placeholder}
             rows={1}
             style={{
               flex: 1, width: 0, minWidth: 0, boxSizing: 'border-box' as const,
