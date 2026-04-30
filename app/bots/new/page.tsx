@@ -178,6 +178,7 @@ function BotCreatorInner() {
   const [newFocusTopic, setNewFocusTopic] = useState('')
   const [builderMode, setBuilderMode] = useState<'assisted' | 'expert'>(editId ? 'expert' : 'assisted')
   const [step, setStep] = useState(0)
+  const [showBehavior, setShowBehavior] = useState(false)
 
   // Load existing bot if editing
   useEffect(function() {
@@ -877,6 +878,66 @@ function BotCreatorInner() {
             </label>
           </Section>
         </Group>}
+
+        {/* Agent Behavior Summary */}
+        <button onClick={function() { setShowBehavior(!showBehavior) }}
+          style={{
+            width: '100%', padding: '12px 20px', borderRadius: showBehavior ? '12px 12px 0 0' : 12,
+            border: '1px solid #e5e7eb', background: showBehavior ? '#0A1628' : 'white',
+            color: showBehavior ? 'white' : '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showBehavior ? 0 : 0,
+            transition: 'all 0.2s',
+          }}>
+          <span>Agent Behavior Summary</span>
+          <span style={{ fontSize: 11, opacity: 0.6 }}>{showBehavior ? 'Hide' : 'Review what this agent will do'}</span>
+        </button>
+        {showBehavior && (
+          <div style={{ background: 'white', border: '1px solid #e5e7eb', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 20, marginBottom: 0, fontSize: 12, lineHeight: 1.7, color: '#374151' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8 }}>Identity</div>
+                <p><strong>Name:</strong> {name || '(not set)'}</p>
+                <p><strong>URL:</strong> /b/{slug || '...'}</p>
+                {config.subtitle && <p><strong>Subtitle:</strong> {config.subtitle}</p>}
+                <p><strong>Ask name:</strong> {config.askName !== 'false' ? 'Yes' : 'No'}</p>
+                <p><strong>Profile users:</strong> {askProfile ? 'Yes' : 'No'}</p>
+                <p><strong>Languages:</strong> {(config.languages || ['en']).join(', ')}</p>
+
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8, marginTop: 16 }}>Personality</div>
+                {personality ? <p style={{ fontStyle: 'italic', color: '#6b7280' }}>{personality.length > 200 ? personality.slice(0, 200) + '...' : personality}</p> : <p style={{ color: '#9ca3af' }}>(not set)</p>}
+
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8, marginTop: 16 }}>Conversation Controls</div>
+                <p><strong>Focus topics:</strong> {focusTopics.length > 0 ? focusTopics.join(', ') : '(none)'}</p>
+                <p><strong>Sensitive topics:</strong> {sensitiveTopics.length > 0 ? sensitiveTopics.join(', ') : '(none)'}</p>
+                <p><strong>Deflection:</strong> {deflectionEnabled ? (deflectionMessage ? 'Custom message' : 'AI-generated') : 'Disabled'}</p>
+                <p><strong>Hard rules:</strong> {guardrails.filter(function(g) { return g.trim() }).length || '(none)'}</p>
+                {systemPrompt && <p><strong>System prompt:</strong> {systemPrompt.length} chars</p>}
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8 }}>Knowledge</div>
+                <p><strong>Subject:</strong> {subject || '(not set)'}</p>
+                <p><strong>Knowledge base:</strong> {knowledgeBase.length > 0 ? knowledgeBase.length.toLocaleString() + ' chars' : '(empty)'}</p>
+                <p><strong>FAQ pairs:</strong> {faq.filter(function(f) { return f.question.trim() }).length}</p>
+                <p><strong>Key facts:</strong> {facts.filter(function(f) { return f.trim() }).length}</p>
+
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8, marginTop: 16 }}>Competitive Intelligence</div>
+                <p><strong>Negative content:</strong> {negativeContentMode === 'deflect' ? 'Deflect (safest)' : 'Acknowledge & pivot'}</p>
+                <p><strong>Opponents:</strong> {opponents.filter(function(o) { return o.name.trim() }).length > 0 ? opponents.filter(function(o) { return o.name.trim() }).map(function(o) { return o.name }).join(', ') : '(none)'}</p>
+                {opponents.length > 0 && <p><strong>Contrast mode:</strong> {contrastMode === 'off' ? 'Off' : contrastMode === 'always' ? 'Always' : 'User-triggered'}</p>}
+
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8, marginTop: 16 }}>Monitoring</div>
+                <p><strong>Review interval:</strong> {reviewInterval ? (reviewInterval === '24' ? 'Daily' : reviewInterval === '48' ? 'Every 2 days' : 'Weekly') : 'Disabled'}</p>
+
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8, marginTop: 16 }}>Opening Flow</div>
+                <p style={{ color: '#6b7280' }}>
+                  1. Bot says: "{config.initialMessage || 'Hi! How can I help you today?'}"
+                  {config.askName !== 'false' && <><br />2. Asks for name</>}
+                  {askProfile && <><br />{config.askName !== 'false' ? '3' : '2'}. Asks profile question</>}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Navigation (assisted mode) or Save (expert mode) */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 20 }}>

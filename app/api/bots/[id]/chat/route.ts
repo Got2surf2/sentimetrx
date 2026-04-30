@@ -347,14 +347,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Store conversation turns (fire-and-forget)
     if (session_id) {
       const userContent = lastUserMsg?.content || ''
-      const turnNumber = Math.max(0, recentMessages.filter((m: any) => m.role === 'user').length - 1) * 2
-      var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnNumber, role: 'user', content: userContent, language: botLang }
+      const userMsgIndex = recentMessages.filter((m: any) => m.role === 'user').length - 1
+      const turnsToInsert: Record<string, unknown>[] = []
+
+      // On first user message, capture the initial bot greeting so shared/reviewed conversations are complete
+      if (userMsgIndex === 0) {
+        // The first assistant message in the conversation is the initial greeting
+        var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
+        if (initialMsg) {
+          turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
+        }
+      }
+
+      var turnBase = userMsgIndex === 0 && turnsToInsert.length > 0 ? 1 : userMsgIndex * 2
+      var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang }
       if (auditFlags.length > 0) userTurn.content_flags = auditFlags
-      const turns = [
-        userTurn,
-        { bot_id: bot.id, session_id, turn_number: turnNumber + 1, role: 'assistant', content: result.text, language: botLang },
-      ]
-      service.from('bot_conversation_turns').insert(turns).then(function() {})
+      turnsToInsert.push(userTurn)
+      turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang })
+
+      service.from('bot_conversation_turns').insert(turnsToInsert).then(function() {})
     }
 
     return NextResponse.json({ reply: result.text }, { headers: cors })
