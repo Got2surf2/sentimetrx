@@ -419,19 +419,28 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Store conversation turns (fire-and-forget)
     if (session_id) {
       const userContent = lastUserMsg?.content || ''
-      const userMsgIndex = recentMessages.filter((m: any) => m.role === 'user').length - 1
       const turnsToInsert: Record<string, unknown>[] = []
 
-      // On first user message, capture the initial bot greeting so shared/reviewed conversations are complete
-      if (userMsgIndex === 0) {
-        // The first assistant message in the conversation is the initial greeting
+      // Check how many turns already stored for this session to avoid duplicates
+      const { data: existingTurns } = await service
+        .from('bot_conversation_turns')
+        .select('turn_number')
+        .eq('bot_id', bot.id)
+        .eq('session_id', session_id)
+        .order('turn_number', { ascending: false })
+        .limit(1)
+
+      const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
+
+      // On first user message (nothing stored yet), capture the initial bot greeting
+      if (maxExisting < 0) {
         var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
         if (initialMsg) {
           turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
         }
       }
 
-      var turnBase = userMsgIndex === 0 && turnsToInsert.length > 0 ? 1 : userMsgIndex * 2
+      var turnBase = maxExisting + 1
       var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang }
       if (auditFlags.length > 0) userTurn.content_flags = auditFlags
       turnsToInsert.push(userTurn)

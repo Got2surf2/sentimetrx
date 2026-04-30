@@ -502,16 +502,17 @@ export default function ConversationsPage() {
             {/* Persona bar */}
             {selectedSessionData?.persona && (function() {
               var p = selectedSessionData.persona
-              var bits: string[] = []
-              if (p.life_stage?.value) bits.push(p.life_stage.value)
-              if (p.occupation?.value) bits.push(p.occupation.value)
-              if (p.industry?.value) bits.push(p.industry.value)
-              if (p.location_type?.value) bits.push(p.location_type.value)
-              if (p.communication_style?.value) bits.push(p.communication_style.value + ' tone')
-              if (p.concerns?.values?.length) bits.push('concerns: ' + p.concerns.values.join(', '))
-              if (bits.length === 0) return null
+              var profileBits: string[] = []
+              if (p.life_stage?.value) profileBits.push(p.life_stage.value)
+              if (p.occupation?.value) profileBits.push(p.occupation.value)
+              if (p.industry?.value) profileBits.push(p.industry.value)
+              if (p.location_type?.value) profileBits.push(p.location_type.value)
+              if (p.communication_style?.value) profileBits.push(p.communication_style.value + ' tone')
+              var concerns = p.concerns?.values?.length ? p.concerns.values.join(', ') : ''
+              if (profileBits.length === 0 && !concerns) return null
               return <div style={{ background: '#F0FDFA', borderBottom: '1px solid #CCFBF1', padding: '8px 20px', fontSize: 11, color: '#0F766E', flexShrink: 0 }}>
-                <span style={{ fontWeight: 600 }}>Profile:</span> {bits.join(' · ')}
+                {profileBits.length > 0 && <div><span style={{ fontWeight: 600 }}>Profile:</span> {profileBits.join(' · ')}</div>}
+                {concerns && <div style={{ marginTop: profileBits.length > 0 ? 2 : 0 }}><span style={{ fontWeight: 600 }}>Concerns:</span> {concerns}</div>}
               </div>
             })()}
 
