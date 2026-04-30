@@ -26,18 +26,36 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Get conversation sessions with summary stats
   const { data: turns, error } = await supabase
     .from('bot_conversation_turns')
-    .select('session_id, turn_number, role, content, created_at')
+    .select('session_id, turn_number, role, content, content_flags, source, created_at')
     .eq('bot_id', params.id)
     .order('created_at', { ascending: false })
     .limit(1000)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Get personas for this bot's sessions
+  const { data: personas } = await supabase
+    .from('bot_session_personas')
+    .select('session_id, persona')
+    .eq('bot_id', params.id)
+
+  const personaMap: Record<string, any> = {}
+  for (const p of (personas || [])) { personaMap[p.session_id] = p.persona }
+
   // Group by session_id
-  const sessions: Record<string, { session_id: string; first_message: string; turn_count: number; started_at: string; last_at: string }> = {}
+  interface SessionSummary {
+    session_id: string; first_message: string; turn_count: number
+    started_at: string; last_at: string; user_name: string
+    flags: string[]; has_deflection: boolean; persona: any | null
+  }
+  const sessions: Record<string, SessionSummary> = {}
   for (const t of (turns || [])) {
     if (!sessions[t.session_id]) {
-      sessions[t.session_id] = { session_id: t.session_id, first_message: '', turn_count: 0, started_at: t.created_at, last_at: t.created_at }
+      sessions[t.session_id] = {
+        session_id: t.session_id, first_message: '', turn_count: 0,
+        started_at: t.created_at, last_at: t.created_at, user_name: '',
+        flags: [], has_deflection: false, persona: personaMap[t.session_id] || null,
+      }
     }
     const s = sessions[t.session_id]
     s.turn_count++
@@ -45,6 +63,15 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (t.created_at > s.last_at) s.last_at = t.created_at
     // Capture first user message
     if (t.role === 'user' && !s.first_message) s.first_message = t.content.slice(0, 120)
+    // Detect name from "My name is ..." pattern
+    if (t.role === 'user' && !s.user_name && /^my name is /i.test(t.content)) {
+      s.user_name = t.content.replace(/^my name is /i, '').replace(/[.!].*/, '').trim()
+    }
+    // Aggregate content flags
+    if (Array.isArray(t.content_flags)) {
+      for (var f of t.content_flags) { if (!s.flags.includes(f)) s.flags.push(f) }
+    }
+    if (t.source === 'deflect') s.has_deflection = true
   }
 
   // Sort by most recent first
