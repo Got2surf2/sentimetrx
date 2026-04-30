@@ -385,8 +385,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
   if (!knowledgeInjected && bot.knowledge_base) {
-    systemParts.push('\n\n--- KNOWLEDGE BASE ---\nUse the following information to answer questions. If the answer isn\'t in the knowledge base, say so honestly — don\'t make things up.\n\n' + bot.knowledge_base)
-    if (debugMode) _debug.push('RAG: no chunks — using full KB fallback (' + Math.round(bot.knowledge_base.length / 1000) + 'K chars)')
+    // Cap KB fallback to ~30K chars (~8K tokens) to avoid rate limits
+    var kbText = bot.knowledge_base.length > 30000 ? bot.knowledge_base.substring(0, 30000) + '\n\n[Knowledge base truncated — apply sql/025_bot_enhancements.sql to enable chunked RAG search]' : bot.knowledge_base
+    systemParts.push('\n\n--- KNOWLEDGE BASE ---\nUse the following information to answer questions. If the answer isn\'t in the knowledge base, say so honestly — don\'t make things up.\n\n' + kbText)
+    if (debugMode) _debug.push('RAG: no chunks — using KB fallback (' + Math.round(bot.knowledge_base.length / 1000) + 'K chars' + (bot.knowledge_base.length > 30000 ? ', truncated to 30K' : '') + ')')
   } else if (!knowledgeInjected && debugMode) {
     _debug.push('RAG: no knowledge base configured')
   }
