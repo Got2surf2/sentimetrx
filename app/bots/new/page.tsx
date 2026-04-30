@@ -176,6 +176,7 @@ function BotCreatorInner() {
   const [profileQuestion, setProfileQuestion] = useState('')
   const [newSensitiveTopic, setNewSensitiveTopic] = useState('')
   const [newFocusTopic, setNewFocusTopic] = useState('')
+  const [intents, setIntents] = useState<{ label: string; description: string; keywords: string; url: string; message: string; enabled: boolean }[]>([])
   const [builderMode, setBuilderMode] = useState<'assisted' | 'expert'>(editId ? 'expert' : 'assisted')
   const [step, setStep] = useState(0)
   const [showBehavior, setShowBehavior] = useState(false)
@@ -206,6 +207,9 @@ function BotCreatorInner() {
       if (bot.deflection_message) setDeflectionMessage(bot.deflection_message)
       if (bot.ask_profile) setAskProfile(true)
       if (bot.profile_question) setProfileQuestion(bot.profile_question)
+      if (Array.isArray(bot.intents)) setIntents(bot.intents.map(function(i: any) {
+        return { label: i.label || '', description: i.description || '', keywords: (i.keywords || []).join(', '), url: i.url || '', message: i.message || '', enabled: i.enabled !== false }
+      }))
     }).catch(function() {
       setError('Failed to load agent')
     }).finally(function() { setLoading(false) })
@@ -334,6 +338,9 @@ function BotCreatorInner() {
       deflection_message: deflectionMessage,
       ask_profile: askProfile,
       profile_question: profileQuestion,
+      intents: intents.filter(function(i) { return i.label.trim() }).map(function(i) {
+        return { label: i.label.trim(), description: i.description.trim(), keywords: i.keywords.split(',').map(function(k) { return k.trim() }).filter(Boolean), url: i.url.trim(), message: i.message.trim(), enabled: i.enabled }
+      }),
     }
     if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
 
@@ -832,6 +839,65 @@ function BotCreatorInner() {
                 placeholder="Custom redirect message (optional). Leave empty for AI-generated redirects."
                 rows={2} style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', marginLeft: 26, maxWidth: 'calc(100% - 26px)' }} />
             )}
+          </Section>
+
+          <Section title="Intents & Actions">
+            <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>Detect user interests and direct them to the right place. Describe what to look for — the AI will pick up on subtle signals, not just exact keywords.</p>
+            {intents.map(function(intent, i) {
+              return (
+                <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10, position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={intent.enabled}
+                        onChange={function(e) { var v = e.target.checked; setIntents(function(prev) { var n = [...prev]; n[i] = { ...n[i], enabled: v }; return n }) }}
+                        style={{ width: 14, height: 14, accentColor: '#7C3AED' }} />
+                      <input type="text" value={intent.label}
+                        onChange={function(e) { var v = e.target.value; setIntents(function(prev) { var n = [...prev]; n[i] = { ...n[i], label: v }; return n }) }}
+                        placeholder="Intent name (e.g., Donate, Volunteer, Purchase)"
+                        style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, fontWeight: 600, width: 250 }} />
+                    </label>
+                    <button onClick={function() { setIntents(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                      style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16 }}>&times;</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>What to look for</span>
+                      <textarea value={intent.description}
+                        onChange={function(e) { var v = e.target.value; setIntents(function(prev) { var n = [...prev]; n[i] = { ...n[i], description: v }; return n }) }}
+                        placeholder="e.g., Any indication they want to donate, contribute money, or support financially"
+                        rows={2}
+                        style={{ display: 'block', width: '100%', marginTop: 2, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11, resize: 'vertical' }} />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Fast-match keywords (optional, comma-separated)</span>
+                      <textarea value={intent.keywords}
+                        onChange={function(e) { var v = e.target.value; setIntents(function(prev) { var n = [...prev]; n[i] = { ...n[i], keywords: v }; return n }) }}
+                        placeholder="e.g., donate, contribution, give money"
+                        rows={2}
+                        style={{ display: 'block', width: '100%', marginTop: 2, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11, resize: 'vertical' }} />
+                    </label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Action URL (where to send them)</span>
+                      <input type="text" value={intent.url}
+                        onChange={function(e) { var v = e.target.value; setIntents(function(prev) { var n = [...prev]; n[i] = { ...n[i], url: v }; return n }) }}
+                        placeholder="https://example.com/donate"
+                        style={{ display: 'block', width: '100%', marginTop: 2, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }} />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#374151' }}>Response message</span>
+                      <input type="text" value={intent.message}
+                        onChange={function(e) { var v = e.target.value; setIntents(function(prev) { var n = [...prev]; n[i] = { ...n[i], message: v }; return n }) }}
+                        placeholder="That's great to hear! Here's how you can contribute:"
+                        style={{ display: 'block', width: '100%', marginTop: 2, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11 }} />
+                    </label>
+                  </div>
+                </div>
+              )
+            })}
+            <button onClick={function() { setIntents(function(prev) { return [...prev, { label: '', description: '', keywords: '', url: '', message: '', enabled: true }] }) }}
+              style={{ padding: '5px 14px', borderRadius: 14, border: '1px dashed #c4b5fd', background: '#F5F3FF', color: '#7C3AED', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>+ Add intent</button>
           </Section>
 
           <Section title="Hard Rules">

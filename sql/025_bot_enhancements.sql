@@ -40,3 +40,7 @@ CREATE POLICY persona_org_read ON bot_session_personas FOR SELECT
 
 CREATE POLICY persona_service_write ON bot_session_personas FOR ALL
   USING (true);
+
+-- ── Intent detection config on bots ─────────────────────────────────
+-- Each intent: { label, keywords[], url?, message?, enabled }
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS intents JSONB DEFAULT '[]'::JSONB;

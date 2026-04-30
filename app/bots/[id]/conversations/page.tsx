@@ -20,6 +20,14 @@ var FLAG_COLORS: Record<string, { bg: string; color: string; label: string }> = 
   outside_scope: { bg: '#EDE9FE', color: '#7c3aed', label: 'Off-topic' },
 }
 
+function getFlagStyle(f: string): { bg: string; color: string; label: string } {
+  if (FLAG_COLORS[f]) return FLAG_COLORS[f]
+  if (f.startsWith('intent:')) {
+    return { bg: '#DBEAFE', color: '#1D4ED8', label: f.replace('intent:', '').replace(/_/g, ' ') }
+  }
+  return { bg: '#F3F4F6', color: '#6b7280', label: f }
+}
+
 var TIME_RANGES = [
   { label: 'Yesterday', hours: 24 },
   { label: 'Last 7 days', hours: 168 },
@@ -449,8 +457,7 @@ export default function ConversationsPage() {
                     {personaLabel && <span style={{ fontSize: 10, color: '#0F7173', background: '#E0F7F7', padding: '1px 6px', borderRadius: 8 }}>{personaLabel}</span>}
                     {s.has_deflection && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: '#EDE9FE', color: '#7c3aed' }}>Redirected</span>}
                     {s.flags.map(function(f) {
-                      var c = FLAG_COLORS[f]
-                      if (!c) return null
+                      var c = getFlagStyle(f)
                       return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
                     })}
                   </div>
@@ -541,7 +548,7 @@ export default function ConversationsPage() {
                     {flags.length > 0 && (
                       <div style={{ display: 'flex', gap: 3, marginTop: 3, justifyContent: isUser ? 'flex-end' : 'flex-start', paddingLeft: isUser ? 0 : 36 }}>
                         {flags.map(function(f) {
-                          var c = FLAG_COLORS[f] || { bg: '#F3F4F6', color: '#6b7280', label: f }
+                          var c = getFlagStyle(f)
                           return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
                         })}
                       </div>
