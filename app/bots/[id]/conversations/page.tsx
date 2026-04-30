@@ -238,7 +238,7 @@ export default function ConversationsPage() {
       var html = buildConversationHtml(botName, botConfig, turns)
       var r = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'conversation', target_id: botId, html: html, expires_in: '30d' }) })
       var d = await r.json()
-      if (d.url) { await navigator.clipboard.writeText(window.location.origin + d.url); setShareState('copied'); setTimeout(function() { setShareState('idle') }, 3000) }
+      if (d.url) { await navigator.clipboard.writeText(d.url); setShareState('copied'); setTimeout(function() { setShareState('idle') }, 3000) }
       else setShareState('idle')
     } catch { setShareState('idle') }
   }
