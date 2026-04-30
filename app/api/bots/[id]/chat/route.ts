@@ -328,7 +328,12 @@ export async function POST(req: NextRequest, { params }: Params) {
           if (negativeChunks.length > 0) _debug.push('Negative chunks: ' + negativeChunks.length + ' (mode: ' + negMode + ')')
         }
 
-        if (hasOnlyNegative) {
+        // Skip RAG injection when confidence is too low — no relevant knowledge found
+        if (topConfidence < 0.05) {
+          if (debugMode) _debug.push('RAG: skipped injection (confidence < 5% — no relevant match)')
+          // Don't set knowledgeInjected, but also don't fall back to full KB
+          knowledgeInjected = true
+        } else if (hasOnlyNegative) {
           // Query matches only negative content
           if (negMode === 'deflect') {
             systemParts.push('\n\nThe user may be asking about criticism or negative topics related to ' + subjectName + '. Do NOT engage with the negative framing. Politely redirect: "I\'m here to help with ' + subjectName + '\'s platform, positions, and work. What would you like to know about that?"')
@@ -406,16 +411,24 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Adaptive verbosity: mirror the user's message length
   var userWords = lastUserMsg ? lastUserMsg.content.trim().split(/\s+/).length : 10
-  var verbosityGuide = userWords <= 5
-    ? 'The user is being very brief. Match their energy — reply in 1-2 short sentences max.'
-    : userWords <= 20
-    ? 'The user wrote a short message. Keep your reply to 2-3 sentences.'
-    : userWords <= 50
-    ? 'The user wrote a moderate message. You can reply in 3-5 sentences.'
-    : 'The user wrote a detailed message. You can be more thorough — up to 5-6 sentences — but still stay focused.'
-  var verbosityLabel = userWords <= 5 ? 'brief (1-2 sent)' : userWords <= 20 ? 'short (2-3 sent)' : userWords <= 50 ? 'moderate (3-5 sent)' : 'detailed (5-6 sent)'
-  if (debugMode) _debug.push('Verbosity: user ' + userWords + ' words → ' + verbosityLabel)
-  systemParts.push('\n\nRESPONSE STYLE: Mirror the user\'s verbosity. ' + verbosityGuide + ' If a topic has multiple angles, give a brief summary and ask which to explore further. Never dump everything you know into one message — it\'s a conversation, not a speech. Always finish your thought.')
+  var maxWords: number
+  var verbosityGuide: string
+  if (userWords <= 5) {
+    maxWords = 40
+    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 40 words (1-2 sentences). The user sent a very brief message — match that energy. Do NOT write paragraphs.'
+  } else if (userWords <= 20) {
+    maxWords = 75
+    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 75 words (2-3 sentences). Keep it tight and conversational.'
+  } else if (userWords <= 50) {
+    maxWords = 120
+    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 120 words (3-5 sentences). Be thorough but focused.'
+  } else {
+    maxWords = 160
+    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 160 words (5-6 sentences). Stay focused even on detailed topics.'
+  }
+  var verbosityLabel = 'user ' + userWords + ' words → max ' + maxWords + ' words'
+  if (debugMode) _debug.push('Verbosity: ' + verbosityLabel)
+  systemParts.push('\n\nRESPONSE LENGTH: ' + verbosityGuide + ' If a topic has multiple angles, give a brief summary and ask which to explore. Never dump everything you know — it\'s a conversation, not a speech.')
   if (user_name && typeof user_name === 'string' && user_name.length <= 40) {
     systemParts.push('\nThe user\'s name is ' + user_name + '. Address them by name occasionally to keep the conversation personal, but don\'t overdo it.')
   }
