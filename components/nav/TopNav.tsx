@@ -86,7 +86,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     townhall: features?.townhall !== undefined ? features.townhall : true,
     campaigns: features?.campaigns !== undefined ? features.campaigns : (campaignsEnabled ?? false),
     bots:     features?.bots ?? false,
-    social:   features?.social ?? false,
+    social:   features?.social ?? true,
   }
 
   const surveyPages = new Set(['dashboard', 'new', 'edit', 'deploy', 'responses'])
