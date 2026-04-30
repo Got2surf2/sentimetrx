@@ -71,6 +71,8 @@ export default function ConversationsPage() {
   var [reportRange, setReportRange] = useState<string>('168') // default last 7 days
   var [customFrom, setCustomFrom] = useState('')
   var [customTo, setCustomTo] = useState('')
+  var [actions, setActions] = useState<{ type: string; title: string; content: string; applied: boolean }[]>([])
+  var [extracting, setExtracting] = useState(false)
 
   useEffect(function() {
     fetch('/api/bots/' + botId).then(function(r) { return r.json() }).then(function(d) {
@@ -163,6 +165,62 @@ export default function ConversationsPage() {
       setReportStats(d.stats || null)
     } catch { setReport('Failed to generate report.') }
     setReportLoading(false)
+  }
+
+  async function extractActions() {
+    if (!report || extracting) return
+    setExtracting(true)
+    try {
+      var r = await fetch('/api/bots/' + botId + '/conversations/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          since: new Date('2020-01-01').toISOString(),
+          extract_actions: true,
+          report_text: report,
+        }),
+      })
+      var d = await r.json()
+      if (d.actions && d.actions.length > 0) {
+        setActions(d.actions.map(function(a: any) { return { ...a, applied: false } }))
+      } else {
+        setActions([])
+      }
+    } catch { setActions([]) }
+    setExtracting(false)
+  }
+
+  async function applyAction(idx: number) {
+    var action = actions[idx]
+    if (!action || action.applied) return
+    try {
+      if (action.type === 'guardrail') {
+        // Add as guardrail to bot config
+        var botRes = await fetch('/api/bots/' + botId)
+        var bot = await botRes.json()
+        var existing = Array.isArray(bot.guardrails) ? bot.guardrails : []
+        await fetch('/api/bots/' + botId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guardrails: [...existing, action.content] }),
+        })
+      } else {
+        // Add as knowledge chunk (fact or faq)
+        var text = action.type === 'faq'
+          ? '### ' + action.title + '\n' + action.content
+          : '### ' + action.title + '\n' + action.content
+        await fetch('/api/bots/' + botId + '/knowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text }),
+        })
+      }
+      setActions(function(prev) {
+        var next = [...prev]
+        next[idx] = { ...next[idx], applied: true }
+        return next
+      })
+    } catch { alert('Failed to apply') }
   }
 
   async function shareConversation() {
@@ -269,6 +327,37 @@ export default function ConversationsPage() {
             </div>
           </div>
           <div style={{ whiteSpace: 'pre-wrap' }}>{report}</div>
+          {/* Extract actions button */}
+          <div style={{ borderTop: '1px solid #fcd34d', marginTop: 16, paddingTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={extractActions} disabled={extracting}
+              style={{ padding: '6px 16px', borderRadius: 14, border: 'none', background: extracting ? '#9ca3af' : '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: extracting ? 'not-allowed' : 'pointer' }}>
+              {extracting ? 'Extracting...' : 'Extract Actions'}
+            </button>
+            <span style={{ fontSize: 11, color: '#92400e' }}>Parse recommendations into quick-add items for your knowledge base</span>
+          </div>
+          {/* Action items */}
+          {actions.length > 0 && (
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {actions.map(function(a, i) {
+                var typeLabel = a.type === 'guardrail' ? 'Rule' : a.type === 'faq' ? 'FAQ' : 'Fact'
+                var typeBg = a.type === 'guardrail' ? '#EDE9FE' : a.type === 'faq' ? '#DBEAFE' : '#D1FAE5'
+                var typeColor = a.type === 'guardrail' ? '#7c3aed' : a.type === 'faq' ? '#1D4ED8' : '#059669'
+                return (
+                  <div key={i} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, opacity: a.applied ? 0.5 : 1 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: typeBg, color: typeColor, textTransform: 'uppercase', flexShrink: 0 }}>{typeLabel}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>{a.title}</div>
+                      <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.content}</div>
+                    </div>
+                    <button onClick={function() { applyAction(i) }} disabled={a.applied}
+                      style={{ padding: '4px 12px', borderRadius: 12, border: 'none', background: a.applied ? '#D1FAE5' : HERMES, color: a.applied ? '#059669' : 'white', fontSize: 10, fontWeight: 600, cursor: a.applied ? 'default' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      {a.applied ? 'Added' : 'Apply'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

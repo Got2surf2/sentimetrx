@@ -79,6 +79,26 @@ Be concise. Use bullet points. This is for a dashboard display.`,
     messages: [{ role: 'user', content: `Here are ${sessionCount} recent conversations (${totalTurns} total turns) since ${since}:\n${transcript}\n\nPlease analyze these conversations.` }],
   })
 
+  // Extract actionable items if requested
+  if (body.extract_actions && body.report_text) {
+    try {
+      var actionResult = await callAI({
+        tier: 'fast',
+        maxTokens: 500,
+        timeoutMs: 15000,
+        system: 'Extract actionable improvement items from this AI agent report. For each item, decide if it should be a "fact" (knowledge to add), "faq" (question + answer pair), or "guardrail" (rule the agent must follow).\n\nReturn a JSON array of objects:\n[{"type":"fact|faq|guardrail","title":"short title","content":"the content to add"}]\n\nOnly include items that are specific and actionable — skip vague suggestions. Max 5 items. Return ONLY the JSON array, no explanation.',
+        messages: [{ role: 'user', content: body.report_text }],
+      })
+      var actionsText = (actionResult.text || '').trim()
+      var jsonMatch = actionsText.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        var parsed = JSON.parse(jsonMatch[0])
+        return NextResponse.json({ actions: parsed })
+      }
+    } catch {}
+    return NextResponse.json({ actions: [] })
+  }
+
   return NextResponse.json({
     report: result.text,
     stats: { session_count: sessionCount, total_turns: totalTurns, since },
