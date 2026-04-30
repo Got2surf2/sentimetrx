@@ -320,7 +320,7 @@ export default function ConversationsPage() {
         )}
         <button onClick={generateReport} disabled={reportLoading}
           style={{ padding: '6px 18px', borderRadius: 16, border: 'none', background: reportLoading ? '#9ca3af' : HERMES, color: 'white', fontSize: 12, fontWeight: 600, cursor: reportLoading ? 'not-allowed' : 'pointer', marginLeft: 'auto' }}>
-          {reportLoading ? 'Analyzing...' : 'Generate'}
+          {reportLoading ? 'Analyzing...' : 'Mine Conversations'}
         </button>
       </div>
 
@@ -346,6 +346,19 @@ export default function ConversationsPage() {
           {/* Action items */}
           {actions.length > 0 && (
             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {actions.some(function(a) { return !a.applied }) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <button onClick={async function() {
+                    var pending = actions.filter(function(a) { return !a.applied })
+                    if (!confirm('Apply all ' + pending.length + ' recommendations to your agent? This will add them to your knowledge base and guardrails.')) return
+                    for (var i = 0; i < actions.length; i++) { if (!actions[i].applied) await applyAction(i) }
+                  }}
+                    style={{ padding: '6px 16px', borderRadius: 14, border: 'none', background: '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                    Apply All ({actions.filter(function(a) { return !a.applied }).length})
+                  </button>
+                  <span style={{ fontSize: 11, color: '#6b7280' }}>Add all recommendations to your agent at once</span>
+                </div>
+              )}
               {actions.map(function(a, i) {
                 var typeLabel = a.type === 'guardrail' ? 'Rule' : a.type === 'faq' ? 'FAQ' : 'Fact'
                 var typeBg = a.type === 'guardrail' ? '#EDE9FE' : a.type === 'faq' ? '#DBEAFE' : '#D1FAE5'
