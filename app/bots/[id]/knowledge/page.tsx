@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 var HERMES = '#E8632A'
 
@@ -202,8 +203,8 @@ export default function KnowledgePage() {
             <button onClick={function() { setShowAdd(false) }}
               style={{ padding: '6px 16px', borderRadius: 16, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>Cancel</button>
             <button onClick={addChunk} disabled={saving || !addContent.trim()}
-              style={{ padding: '6px 16px', borderRadius: 16, border: 'none', background: saving ? '#9ca3af' : HERMES, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-              {saving ? 'Adding...' : 'Add'}
+              style={{ padding: '6px 16px', borderRadius: 16, border: 'none', background: saving ? '#9ca3af' : HERMES, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {saving ? <><LottieLoader size={16} /> Adding...</> : 'Add'}
             </button>
           </div>
         </div>
@@ -223,7 +224,7 @@ export default function KnowledgePage() {
 
       {/* Chunks list */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading...</div>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><LottieLoader size={60} /></div>
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 48, background: 'white', borderRadius: 16, border: '2px dashed #e5e7eb' }}>
           <p style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>{chunks.length === 0 ? 'No knowledge yet' : 'No chunks match'}</p>
@@ -248,8 +249,8 @@ export default function KnowledgePage() {
                     <button onClick={function() { setEditId(null) }}
                       style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>Cancel</button>
                     <button onClick={updateChunk} disabled={saving}
-                      style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: HERMES, color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                      {saving ? 'Saving...' : 'Save'}
+                      style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: HERMES, color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {saving ? <><LottieLoader size={14} /> Saving...</> : 'Save'}
                     </button>
                   </div>
                 </div>
