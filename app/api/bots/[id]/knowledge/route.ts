@@ -208,6 +208,32 @@ function chunkText(text: string, source?: string): { title: string; content: str
     }
   }
 
+  // Sub-divide any chunks over 1500 chars into smaller pieces
+  const MAX_CHUNK = 1500
+  const subdivided: typeof chunks = []
+  for (const chunk of chunks) {
+    if (chunk.content.length <= MAX_CHUNK) {
+      subdivided.push(chunk)
+    } else {
+      // Split by paragraphs, then combine into chunks under the limit
+      const paras = chunk.content.split(/\n\n+/)
+      let buf = ''
+      let subIdx = 1
+      for (const para of paras) {
+        if (buf.length + para.length > MAX_CHUNK && buf.length > 0) {
+          subdivided.push({ title: chunk.title + (subIdx > 1 ? ' (' + subIdx + ')' : ''), content: buf.trim(), metadata: { ...chunk.metadata } })
+          subIdx++
+          buf = ''
+        }
+        buf += (buf ? '\n\n' : '') + para
+      }
+      if (buf.trim().length >= 20) {
+        subdivided.push({ title: chunk.title + (subIdx > 1 ? ' (' + subIdx + ')' : ''), content: buf.trim(), metadata: { ...chunk.metadata } })
+      }
+    }
+  }
+  if (subdivided.length > chunks.length) return subdivided
+
   // If only one giant chunk, try splitting by double newlines
   if (chunks.length <= 1 && text.length > 2000) {
     const paragraphs = text.split(/\n\n+/)
