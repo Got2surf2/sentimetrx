@@ -64,6 +64,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+function Group({ title, subtitle, color, children }: { title: string; subtitle: string; color: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ background: color, borderRadius: '12px 12px 0 0', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{title}</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>{subtitle}</div>
+        </div>
+      </div>
+      <div style={{ background: 'white', borderRadius: '0 0 12px 12px', border: '1px solid #e5e7eb', borderTop: 'none', padding: 24 }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function Field({ label, value, onChange, placeholder, type = 'text', small }: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; small?: boolean
 }) {
@@ -365,64 +381,122 @@ function BotCreatorInner() {
 
         {error && <p style={{ color: '#dc2626', fontSize: 13, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>{error}</p>}
 
-        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', padding: 24 }}>
-          <Section title="Identity">
-            <Field label="Agent name" value={name} onChange={function(v) { setName(v); if (!editId) setSlug(autoSlug(v)) }} placeholder="e.g., ACLU Rights Agent" />
-            <Field label="URL slug" value={slug} onChange={setSlug} placeholder="e.g., aclu-rights" />
+        {/* ═══ GROUP 1: IDENTITY & APPEARANCE ═══ */}
+        <Group title="Identity & Appearance" subtitle="Who is this agent and how does it look?" color="#0A1628">
+          <Section title="Agent Identity">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="Agent name" value={name} onChange={function(v) { setName(v); if (!editId) setSlug(autoSlug(v)) }} placeholder="e.g., ACLU Rights Agent" />
+              <Field label="URL slug" value={slug} onChange={setSlug} placeholder="e.g., aclu-rights" />
+            </div>
             <p style={{ fontSize: 11, color: '#9ca3af', marginTop: -8, marginBottom: 12 }}>Public URL: /b/{slug || 'your-slug'}</p>
             <Field label="Subtitle" value={config.subtitle} onChange={function(v) { updateConfig('subtitle', v) }} placeholder="e.g., Know Your Rights Assistant" />
-            <label style={{ display: 'block', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Avatar letter or emoji</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <EmojiPickerPopover
-                  value={config.avatarLetter || '🤖'}
-                  onChange={function(v) { updateConfig('avatarLetter', v) }}
-                  size="md"
-                />
-                <span style={{ fontSize: 11, color: '#9ca3af' }}>or type/paste:</span>
-                <input
-                  type="text"
-                  value={config.avatarLetter}
-                  onChange={function(e) {
-                    var val = e.target.value
-                    // Use Intl.Segmenter to correctly handle multi-codepoint emojis (skin tones, ZWJ sequences)
-                    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-                      var segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
-                      var segments = Array.from(segmenter.segment(val), function(s) { return s.segment })
-                      updateConfig('avatarLetter', segments.length > 0 ? segments[segments.length - 1] : '')
-                    } else {
-                      updateConfig('avatarLetter', val.slice(-1) || '')
-                    }
-                  }}
-                  placeholder="A"
-                  style={{ width: 56, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 18, outline: 'none', textAlign: 'center' }}
-                />
-              </div>
-            </label>
-            <Field label="Initial message" value={config.initialMessage} onChange={function(v) { updateConfig('initialMessage', v) }} placeholder="Hi! How can I help you?" />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={config.askName !== 'false'}
-                onChange={function(e) { updateConfig('askName', e.target.checked ? 'true' : 'false') }}
-                style={{ width: 16, height: 16, accentColor: HERMES }}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
+              <label style={{ display: 'block', marginBottom: 12 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Avatar</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <EmojiPickerPopover
+                    value={config.avatarLetter || '🤖'}
+                    onChange={function(v) { updateConfig('avatarLetter', v) }}
+                    size="md"
+                  />
+                  <input
+                    type="text"
+                    value={config.avatarLetter}
+                    onChange={function(e) {
+                      var val = e.target.value
+                      if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+                        var segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+                        var segments = Array.from(segmenter.segment(val), function(s) { return s.segment })
+                        updateConfig('avatarLetter', segments.length > 0 ? segments[segments.length - 1] : '')
+                      } else {
+                        updateConfig('avatarLetter', val.slice(-1) || '')
+                      }
+                    }}
+                    placeholder="A"
+                    style={{ width: 56, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 18, outline: 'none', textAlign: 'center' }}
+                  />
+                </div>
+              </label>
+              <Field label="Initial message" value={config.initialMessage} onChange={function(v) { updateConfig('initialMessage', v) }} placeholder="Hi! How can I help you?" />
+            </div>
+          </Section>
+
+          <Section title="Personality & Voice">
+            <textarea
+              value={personality}
+              onChange={function(e) { setPersonality(e.target.value) }}
+              placeholder={"Describe who this agent emulates and how it should communicate.\n\ne.g., Emulates Alex Vindman — retired Army lieutenant colonel, direct and measured communication style. Uses military precision in language. Approachable but serious.\n\ne.g., Friendly customer support rep for a SaaS product. Casual, uses first names, explains technical concepts simply."}
+              rows={4}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
+            />
+          </Section>
+
+          <Section title="Conversation Openers">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
-                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Ask user's name</span>
-                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Prompts "What should I call you?" before chat starts. Names are checked for inappropriate content.</p>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={config.askName !== 'false'} onChange={function(e) { updateConfig('askName', e.target.checked ? 'true' : 'false') }} style={{ width: 16, height: 16, accentColor: HERMES }} />
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Ask user's name</span>
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Prompts "What should I call you?"</p>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={askProfile} onChange={function(e) { setAskProfile(e.target.checked) }} style={{ width: 16, height: 16, accentColor: HERMES }} />
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Profile users</span>
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Adapts tone to each user's persona</p>
+                  </div>
+                </label>
               </div>
-            </label>
-            <div style={{ marginBottom: 12 }}>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Suggestion chips</span>
+                <textarea
+                  value={suggestions}
+                  onChange={function(e) { setSuggestions(e.target.value) }}
+                  placeholder={"One per line:\nWhat do you do?\nHow can you help me?"}
+                  rows={3}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
+                />
+              </div>
+            </div>
+            {askProfile && (
+              <div style={{ marginTop: 12, padding: '12px 14px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Custom profile question</span>
+                <textarea
+                  value={profileQuestion}
+                  onChange={function(e) { setProfileQuestion(e.target.value) }}
+                  placeholder="Tell me a bit about yourself so I can make our conversation more relevant to you."
+                  rows={2}
+                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
+                />
+                <p style={{ fontSize: 10, color: '#9ca3af', marginTop: 4, margin: 0 }}>Extracts life stage, occupation, location, and concerns. Adapts vocabulary and tone automatically.</p>
+              </div>
+            )}
+          </Section>
+
+          <Section title="Branding">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+              <Field label="Accent color" value={config.accentColor} onChange={function(v) { updateConfig('accentColor', v) }} placeholder="#00b4d8" small />
+              <Field label="Page background" value={config.pageBg} onChange={function(v) { updateConfig('pageBg', v) }} placeholder="#f8fafc" small />
+              <Field label="User bubble" value={config.userBubbleBg} onChange={function(v) { updateConfig('userBubbleBg', v) }} placeholder="#0a1628" small />
+              <Field label="Avatar text" value={config.avatarTextColor} onChange={function(v) { updateConfig('avatarTextColor', v) }} placeholder="white" small />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label="Header gradient" value={config.headerGradient} onChange={function(v) { updateConfig('headerGradient', v) }} placeholder="linear-gradient(135deg, #0a1628, #1a2d4a)" small />
+              <Field label="Avatar gradient" value={config.avatarGradient} onChange={function(v) { updateConfig('avatarGradient', v) }} placeholder="linear-gradient(135deg, #00b4d8, #0077a8)" small />
+              <Field label="Website URL" value={config.websiteUrl} onChange={function(v) { updateConfig('websiteUrl', v) }} placeholder="https://www.example.com" small />
+              <Field label="Website label" value={config.websiteLabel} onChange={function(v) { updateConfig('websiteLabel', v) }} placeholder="example.com" small />
+            </div>
+            <div style={{ marginTop: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Languages</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                 {SUPPORTED_LANGUAGES.map(function(l) {
                   var isEn = l.code === 'en'
                   var langs: string[] = config.languages || ['en']
                   var isActive = isEn || langs.includes(l.code)
                   return (
-                    <button
-                      key={l.code}
-                      type="button"
+                    <button key={l.code} type="button"
                       onClick={function() {
                         if (isEn) return
                         var prev: string[] = config.languages || ['en']
@@ -431,496 +505,296 @@ function BotCreatorInner() {
                         setConfig(function(p) { return { ...p, languages: next, language: next.length === 1 ? 'en' : next[next.length - 1] } })
                       }}
                       style={{
-                        padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 500,
+                        padding: '4px 10px', borderRadius: 14, fontSize: 11, fontWeight: 500,
                         border: isActive ? '1.5px solid ' + HERMES : '1px solid #d1d5db',
-                        background: isActive ? HERMES_LIGHT : 'white',
-                        color: isActive ? HERMES : '#6b7280',
-                        cursor: isEn ? 'default' : 'pointer',
-                        opacity: isEn ? 0.7 : 1,
-                      }}
-                    >
-                      {l.nativeName} <span style={{ color: '#9ca3af', fontSize: 10 }}>{l.name !== l.nativeName ? l.name : ''}</span>
+                        background: isActive ? HERMES_LIGHT : 'white', color: isActive ? HERMES : '#6b7280',
+                        cursor: isEn ? 'default' : 'pointer', opacity: isEn ? 0.7 : 1,
+                      }}>
+                      {l.nativeName}
                     </button>
                   )
                 })}
               </div>
-              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
-                {(config.languages || ['en']).length > 1
-                  ? 'Users will choose their language before chatting. The agent will respond in their selected language.'
-                  : 'English only. Select additional languages to let users chat in their preferred language.'}
-              </p>
+            </div>
+          </Section>
+        </Group>
+
+        {/* ═══ GROUP 2: PRIMARY KNOWLEDGE ═══ */}
+        <Group title="Primary Knowledge" subtitle="What does this agent know? Train it on your subject." color="#0F7173">
+          <Section title="Subject">
+            <Field label="Who or what does this agent represent?" value={subject} onChange={setSubject} placeholder="e.g., Alex Vindman, ACLU, Tesla, Orlando Hindu Temple" />
+            <p style={{ fontSize: 11, color: '#9ca3af', marginTop: -8 }}>Used for content filtering — negative content about this subject is automatically handled.</p>
+          </Section>
+
+          <Section title="Knowledge Sources">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>Build the agent's knowledge base from multiple sources. All content feeds into a unified searchable index.</p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              {/* Deep Crawl */}
+              <div style={{ padding: '14px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Website Crawl</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Crawl all pages from a website. Follows internal links.</p>
+                <textarea
+                  value={crawlUrl}
+                  onChange={function(e) { setCrawlUrl(e.target.value) }}
+                  placeholder={"https://example.com\nhttps://example.com/about"}
+                  rows={2}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', marginBottom: 6 }}
+                />
+                <button onClick={runDeepCrawl} disabled={crawling || !crawlUrl.trim()}
+                  style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: crawling ? '#9ca3af' : '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: crawling ? 'not-allowed' : 'pointer' }}>
+                  {crawling ? 'Crawling...' : 'Crawl'}
+                </button>
+                {crawlResult && <p style={{ fontSize: 10, color: '#059669', marginTop: 4, marginBottom: 0 }}>Crawled {crawlResult.pages} page{crawlResult.pages !== 1 ? 's' : ''}</p>}
+              </div>
+
+              {/* Web Research */}
+              <div style={{ padding: '14px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Web Research</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Search the web and auto-summarize top results.</p>
+                <input type="text" value={researchQuery} onChange={function(e) { setResearchQuery(e.target.value) }}
+                  onKeyDown={function(e) { if (e.key === 'Enter' && !researching) runResearch() }}
+                  placeholder="e.g., ACLU, Tesla Cybertruck"
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, marginBottom: 6 }} />
+                <button onClick={runResearch} disabled={researching || !researchQuery.trim()}
+                  style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: researching ? '#9ca3af' : '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: researching ? 'not-allowed' : 'pointer' }}>
+                  {researching ? 'Researching...' : 'Research'}
+                </button>
+                {researchSources.length > 0 && <p style={{ fontSize: 10, color: '#059669', marginTop: 4, marginBottom: 0 }}>{researchSources.length} source{researchSources.length !== 1 ? 's' : ''} added</p>}
+              </div>
+            </div>
+
+            {/* Training URLs */}
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Training URLs</span>
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: '2px 0 6px' }}>Individual pages to fetch and add to knowledge base.</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <textarea value={trainingUrls} onChange={function(e) { setTrainingUrls(e.target.value) }}
+                  placeholder={"https://example.com/about\nhttps://example.com/faq"} rows={3}
+                  style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }} />
+                <button onClick={fetchTrainingContent} disabled={fetchingUrls || !trainingUrls.trim()}
+                  style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #d1d5db', background: fetchingUrls ? '#f3f4f6' : 'white', color: '#374151', fontSize: 11, fontWeight: 500, cursor: fetchingUrls ? 'not-allowed' : 'pointer', alignSelf: 'flex-start', whiteSpace: 'nowrap' }}>
+                  {fetchingUrls ? 'Fetching...' : 'Fetch'}
+                </button>
+              </div>
+            </div>
+
+            {/* Knowledge base */}
+            <div>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Knowledge Base</span>
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: '2px 0 6px' }}>All fetched, crawled, and researched content accumulates here. You can also paste or edit directly.</p>
+              <textarea value={knowledgeBase} onChange={function(e) { setKnowledgeBase(e.target.value) }}
+                placeholder="Paste or type the content your agent should know about..."
+                rows={10}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5 }} />
+              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{knowledgeBase.length.toLocaleString()} characters</p>
             </div>
           </Section>
 
-          <Section title="Branding">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field label="Accent color" value={config.accentColor} onChange={function(v) { updateConfig('accentColor', v) }} placeholder="#00b4d8" small />
-              <Field label="Page background" value={config.pageBg} onChange={function(v) { updateConfig('pageBg', v) }} placeholder="#f8fafc" small />
-              <Field label="User bubble color" value={config.userBubbleBg} onChange={function(v) { updateConfig('userBubbleBg', v) }} placeholder="#0a1628" small />
-              <Field label="Avatar text color" value={config.avatarTextColor} onChange={function(v) { updateConfig('avatarTextColor', v) }} placeholder="white" small />
+          <Section title="Curated Knowledge">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {/* FAQ Pairs */}
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>FAQ Pairs</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>High-confidence Q&A matching.</p>
+                {faq.map(function(pair, i) {
+                  return (
+                    <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, marginBottom: 8, position: 'relative' }}>
+                      <button onClick={function() { setFaq(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                        style={{ position: 'absolute', top: 6, right: 8, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>&times;</button>
+                      <input type="text" value={pair.question}
+                        onChange={function(e) { var v = e.target.value; setFaq(function(prev) { var n = [...prev]; n[i] = { ...n[i], question: v }; return n }) }}
+                        placeholder="Question" style={{ display: 'block', width: '100%', padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11, marginBottom: 5 }} />
+                      <textarea value={pair.answer}
+                        onChange={function(e) { var v = e.target.value; setFaq(function(prev) { var n = [...prev]; n[i] = { ...n[i], answer: v }; return n }) }}
+                        placeholder="Answer" rows={2} style={{ display: 'block', width: '100%', padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11, resize: 'vertical' }} />
+                    </div>
+                  )
+                })}
+                <button onClick={function() { setFaq(function(prev) { return [...prev, { question: '', answer: '' }] }) }}
+                  style={{ padding: '4px 12px', borderRadius: 14, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 11, cursor: 'pointer' }}>+ Add FAQ</button>
+              </div>
+
+              {/* Key Facts */}
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Key Facts & Talking Points</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Important details the agent must know.</p>
+                {facts.map(function(fact, i) {
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                      <textarea value={fact} onChange={function(e) { var v = e.target.value; setFacts(function(prev) { var n = [...prev]; n[i] = v; return n }) }}
+                        placeholder="e.g., Founded in 2003..." rows={2}
+                        style={{ flex: 1, padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 11, resize: 'vertical' }} />
+                      <button onClick={function() { setFacts(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                        style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}>&times;</button>
+                    </div>
+                  )
+                })}
+                <button onClick={function() { setFacts(function(prev) { return [...prev, ''] }) }}
+                  style={{ padding: '4px 12px', borderRadius: 14, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 11, cursor: 'pointer' }}>+ Add fact</button>
+              </div>
             </div>
-            <Field label="Header gradient" value={config.headerGradient} onChange={function(v) { updateConfig('headerGradient', v) }} placeholder="linear-gradient(135deg, #0a1628, #1a2d4a)" />
-            <Field label="Avatar gradient" value={config.avatarGradient} onChange={function(v) { updateConfig('avatarGradient', v) }} placeholder="linear-gradient(135deg, #00b4d8, #0077a8)" />
-            <Field label="Website URL" value={config.websiteUrl} onChange={function(v) { updateConfig('websiteUrl', v) }} placeholder="https://www.example.com" />
-            <Field label="Website label" value={config.websiteLabel} onChange={function(v) { updateConfig('websiteLabel', v) }} placeholder="example.com" />
           </Section>
+        </Group>
 
-          <Section title="Suggestion chips">
-            <textarea
-              value={suggestions}
-              onChange={function(e) { setSuggestions(e.target.value) }}
-              placeholder={"One suggestion per line, e.g.:\nWhat do you do?\nHow can you help me?\nTell me about pricing"}
-              rows={4}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
-            />
-          </Section>
-
-          <Section title="Personality">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Describe who this agent emulates and how it should communicate. This shapes tone, vocabulary, and style automatically.</p>
-            <textarea
-              value={personality}
-              onChange={function(e) { setPersonality(e.target.value) }}
-              placeholder={"e.g., Emulates Alex Vindman — retired Army lieutenant colonel, direct and measured communication style. Uses military precision in language. Patriotic but nonpartisan. Speaks with authority on national security and civil-military relations. Approachable but serious."}
-              rows={4}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
-            />
-          </Section>
-
-          <Section title="Content Protection">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Specify who or what this agent represents. Crawled content that is negative toward the subject will be automatically flagged and filtered from responses.</p>
-            <Field label="Subject (person, organization, or brand)" value={subject} onChange={setSubject} placeholder="e.g., Alex Vindman, ACLU, Tesla" />
+        {/* ═══ GROUP 3: COMPETITIVE INTELLIGENCE ═══ */}
+        <Group title="Competitive Intelligence" subtitle="How the agent handles competitors, opponents, and criticism" color="#E85A1A">
+          <Section title="Negative Content Strategy">
             <label style={{ display: 'block', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Negative content handling</span>
-              <select
-                value={negativeContentMode}
-                onChange={function(e) { setNegativeContentMode(e.target.value) }}
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>When users ask about criticism, attacks, or scandals</span>
+              <select value={negativeContentMode} onChange={function(e) { setNegativeContentMode(e.target.value) }}
                 style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', background: 'white' }}>
                 <option value="deflect">Deflect — redirect to platform and positions (safest)</option>
-                <option value="pivot">Acknowledge &amp; pivot — briefly acknowledge, then redirect to subject's own position</option>
+                <option value="pivot">Acknowledge &amp; pivot — briefly acknowledge, then redirect to subject's record</option>
               </select>
-              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Controls how the agent responds when users ask about criticism, scandals, or negative coverage.</p>
             </label>
+          </Section>
 
-            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16, marginTop: 16 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Opponents / Contrast</p>
-              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Add opponents for contrast messaging. When enabled, the agent can draw policy contrasts after presenting the subject's position.</p>
-              {opponents.map(function(opp, i) {
-                return (
-                  <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10, position: 'relative' }}>
-                    <button
-                      onClick={function() { setOpponents(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
-                      style={{ position: 'absolute', top: 8, right: 10, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-                      title="Remove"
-                    >&times;</button>
-                    <label style={{ display: 'block', marginBottom: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Opponent name</span>
-                      <input
-                        type="text"
-                        value={opp.name}
+          <Section title="Opponents & Contrast">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>Add competitors or opponents. The agent can draw direct comparisons when users ask — factual, on-message, sourced.</p>
+            {opponents.map(function(opp, i) {
+              return (
+                <div key={i} style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10, padding: 14, marginBottom: 10, position: 'relative' }}>
+                  <button onClick={function() { setOpponents(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                    style={{ position: 'absolute', top: 8, right: 10, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>&times;</button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Name</span>
+                      <input type="text" value={opp.name}
                         onChange={function(e) { var v = e.target.value; setOpponents(function(prev) { var n = [...prev]; n[i] = { ...n[i], name: v }; return n }) }}
-                        placeholder="e.g., Jane Smith"
-                        style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
-                      />
+                        placeholder="e.g., Jane Smith" style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12 }} />
                     </label>
                     <label style={{ display: 'block' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Key positions / oppo research (optional)</span>
-                      <textarea
-                        value={opp.details}
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Key positions / research</span>
+                      <textarea value={opp.details}
                         onChange={function(e) { var v = e.target.value; setOpponents(function(prev) { var n = [...prev]; n[i] = { ...n[i], details: v }; return n }) }}
-                        placeholder="e.g., Voted against infrastructure bill, supports defunding education..."
-                        rows={3}
-                        style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
-                      />
+                        placeholder="Voting record, policy positions, public statements..."
+                        rows={2} style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }} />
                     </label>
                   </div>
-                )
-              })}
-              <button
-                onClick={function() { setOpponents(function(prev) { return [...prev, { name: '', details: '' }] }) }}
-                style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer', marginBottom: 12 }}
-              >+ Add opponent</button>
-
-              {opponents.length > 0 && (
-                <label style={{ display: 'block', marginTop: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Contrast mode</span>
-                  <select
-                    value={contrastMode}
-                    onChange={function(e) { setContrastMode(e.target.value) }}
-                    style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', background: 'white' }}>
-                    <option value="off">Off — never contrast</option>
-                    <option value="user_triggered">User-triggered — contrast when user asks or mentions opponent (default)</option>
-                    <option value="always">Always — include contrast on every policy answer</option>
-                  </select>
-                  <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Controls when the agent draws contrasts with opponents after presenting the subject's position.</p>
-                </label>
-              )}
-            </div>
-          </Section>
-
-          <Section title="FAQ Pairs">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Add common questions and approved answers. These get embedded in the knowledge base for high-confidence matching.</p>
-            {faq.map(function(pair, i) {
-              return (
-                <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10, position: 'relative' }}>
-                  <button
-                    onClick={function() { setFaq(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
-                    style={{ position: 'absolute', top: 8, right: 10, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-                    title="Remove"
-                  >&times;</button>
-                  <label style={{ display: 'block', marginBottom: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Question</span>
-                    <input
-                      type="text"
-                      value={pair.question}
-                      onChange={function(e) { var v = e.target.value; setFaq(function(prev) { var n = [...prev]; n[i] = { ...n[i], question: v }; return n }) }}
-                      placeholder="e.g., What are your hours?"
-                      style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
-                    />
-                  </label>
-                  <label style={{ display: 'block' }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Answer</span>
-                    <textarea
-                      value={pair.answer}
-                      onChange={function(e) { var v = e.target.value; setFaq(function(prev) { var n = [...prev]; n[i] = { ...n[i], answer: v }; return n }) }}
-                      placeholder="e.g., We're open Monday-Friday, 9am-5pm EST."
-                      rows={2}
-                      style={{ display: 'block', width: '100%', marginTop: 3, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
-                    />
-                  </label>
                 </div>
               )
             })}
-            <button
-              onClick={function() { setFaq(function(prev) { return [...prev, { question: '', answer: '' }] }) }}
-              style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}
-            >+ Add FAQ pair</button>
-          </Section>
+            <button onClick={function() { setOpponents(function(prev) { return [...prev, { name: '', details: '' }] }) }}
+              style={{ padding: '5px 14px', borderRadius: 14, border: '1px dashed #FED7AA', background: '#FFF7ED', color: HERMES, fontSize: 12, fontWeight: 500, cursor: 'pointer', marginBottom: 8 }}>+ Add competitor / opponent</button>
 
-          <Section title="Key Facts">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Important facts, talking points, or details the agent must know. Each fact becomes a searchable knowledge chunk.</p>
-            {facts.map(function(fact, i) {
-              return (
-                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
-                  <textarea
-                    value={fact}
-                    onChange={function(e) { var v = e.target.value; setFacts(function(prev) { var n = [...prev]; n[i] = v; return n }) }}
-                    placeholder="e.g., Founded in 2003 with a mission to..."
-                    rows={2}
-                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
-                  />
-                  <button
-                    onClick={function() { setFacts(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
-                    style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '4px 6px' }}
-                    title="Remove"
-                  >&times;</button>
-                </div>
-              )
-            })}
-            <button
-              onClick={function() { setFacts(function(prev) { return [...prev, ''] }) }}
-              style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}
-            >+ Add fact</button>
-          </Section>
-
-          <Section title="Guardrails">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Rules the agent must always follow. These are injected directly into the system prompt — not searchable knowledge.</p>
-            {guardrails.map(function(rule, i) {
-              return (
-                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    value={rule}
-                    onChange={function(e) { var v = e.target.value; setGuardrails(function(prev) { var n = [...prev]; n[i] = v; return n }) }}
-                    placeholder="e.g., Never discuss competitor pricing"
-                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
-                  />
-                  <button
-                    onClick={function() { setGuardrails(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
-                    style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '4px 6px' }}
-                    title="Remove"
-                  >&times;</button>
-                </div>
-              )
-            })}
-            <button
-              onClick={function() { setGuardrails(function(prev) { return [...prev, ''] }) }}
-              style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}
-            >+ Add guardrail</button>
-          </Section>
-
-          <Section title="Topic Management">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>Control what the agent can and cannot discuss. Sensitive topics trigger automatic redirection. Focus topics guide the agent's priorities.</p>
-
-            <div style={{ marginBottom: 16 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Sensitive topics to avoid</span>
-              <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Messages mentioning these terms will be redirected. Press Enter to add.</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {sensitiveTopics.map(function(t, i) {
-                  return (
-                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 16, background: '#FEE2E2', color: '#dc2626', fontSize: 12, fontWeight: 500 }}>
-                      {t}
-                      <button onClick={function() { setSensitiveTopics(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
-                        style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>&times;</button>
-                    </span>
-                  )
-                })}
-              </div>
-              <input
-                type="text"
-                value={newSensitiveTopic}
-                onChange={function(e) { setNewSensitiveTopic(e.target.value) }}
-                onKeyDown={function(e) {
-                  if (e.key === 'Enter' && newSensitiveTopic.trim()) {
-                    e.preventDefault()
-                    setSensitiveTopics(function(prev) { return [...prev, newSensitiveTopic.trim()] })
-                    setNewSensitiveTopic('')
-                  }
-                }}
-                onBlur={function() {
-                  if (newSensitiveTopic.trim()) {
-                    setSensitiveTopics(function(prev) { return [...prev, newSensitiveTopic.trim()] })
-                    setNewSensitiveTopic('')
-                  }
-                }}
-                placeholder="e.g., salary, lawsuits, internal disputes"
-                style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Focus topics</span>
-              <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Primary topics the agent should prioritize. Used to detect off-topic questions. Press Enter to add.</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {focusTopics.map(function(t, i) {
-                  return (
-                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 16, background: '#DBEAFE', color: '#2563eb', fontSize: 12, fontWeight: 500 }}>
-                      {t}
-                      <button onClick={function() { setFocusTopics(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
-                        style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>&times;</button>
-                    </span>
-                  )
-                })}
-              </div>
-              <input
-                type="text"
-                value={newFocusTopic}
-                onChange={function(e) { setNewFocusTopic(e.target.value) }}
-                onKeyDown={function(e) {
-                  if (e.key === 'Enter' && newFocusTopic.trim()) {
-                    e.preventDefault()
-                    setFocusTopics(function(prev) { return [...prev, newFocusTopic.trim()] })
-                    setNewFocusTopic('')
-                  }
-                }}
-                onBlur={function() {
-                  if (newFocusTopic.trim()) {
-                    setFocusTopics(function(prev) { return [...prev, newFocusTopic.trim()] })
-                    setNewFocusTopic('')
-                  }
-                }}
-                placeholder="e.g., healthcare policy, community safety, education"
-                style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
-              />
-            </div>
-
-            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={deflectionEnabled}
-                  onChange={function(e) { setDeflectionEnabled(e.target.checked) }}
-                  style={{ width: 16, height: 16, accentColor: HERMES }}
-                />
-                <div>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Enable deflection</span>
-                  <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Automatically redirect off-topic questions and sensitive topics back to focus areas.</p>
-                </div>
-              </label>
-              {deflectionEnabled && (
-                <label style={{ display: 'block', marginLeft: 26 }}>
-                  <span style={{ fontSize: 11, fontWeight: 500, color: '#374151' }}>Custom deflection message (optional)</span>
-                  <textarea
-                    value={deflectionMessage}
-                    onChange={function(e) { setDeflectionMessage(e.target.value) }}
-                    placeholder="Leave empty for AI-generated redirects, or set a custom message like: I appreciate your interest, but I'm best suited to help with healthcare and education topics."
-                    rows={3}
-                    style={{ display: 'block', width: '100%', marginTop: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
-                  />
-                </label>
-              )}
-            </div>
-          </Section>
-
-          <Section title="Persona Profiling">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>When enabled, the agent will ask users to share a bit about themselves early in the conversation and adapt its communication style to match their persona.</p>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={askProfile}
-                onChange={function(e) { setAskProfile(e.target.checked) }}
-                style={{ width: 16, height: 16, accentColor: HERMES }}
-              />
-              <div>
-                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Profile users</span>
-                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Ask 1-2 natural questions to understand life stage, occupation, and concerns. Adapts tone and vocabulary automatically.</p>
-              </div>
-            </label>
-            {askProfile && (
-              <label style={{ display: 'block', marginLeft: 26 }}>
-                <span style={{ fontSize: 11, fontWeight: 500, color: '#374151' }}>Profile question (optional)</span>
-                <textarea
-                  value={profileQuestion}
-                  onChange={function(e) { setProfileQuestion(e.target.value) }}
-                  placeholder="Tell me a bit about yourself so I can make our conversation more relevant to you."
-                  rows={2}
-                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
-                />
-                <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Fires after the name question (if enabled). Extracts life stage, occupation, location type, and key concerns from the response.</p>
+            {opponents.length > 0 && (
+              <label style={{ display: 'block', marginTop: 12 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Contrast mode</span>
+                <select value={contrastMode} onChange={function(e) { setContrastMode(e.target.value) }}
+                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', background: 'white' }}>
+                  <option value="off">Off — never contrast</option>
+                  <option value="user_triggered">User-triggered — contrast when user asks or mentions opponent</option>
+                  <option value="always">Always — include contrast on every relevant answer</option>
+                </select>
               </label>
             )}
           </Section>
+        </Group>
 
-          <Section title="System prompt">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Advanced: direct instructions for the AI. The personality spec above is automatically included. Use this for additional rules or boundaries.</p>
-            <textarea
-              value={systemPrompt}
-              onChange={function(e) { setSystemPrompt(e.target.value) }}
-              placeholder={"You are [Agent Name], an assistant for [Company]. You help users with...\n\nYou should:\n- Be friendly and concise\n- Only discuss topics related to [Company]\n- Never make up information"}
-              rows={8}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical', fontFamily: 'monospace' }}
-            />
+        {/* ═══ GROUP 4: CONVERSATION CONTROLS ═══ */}
+        <Group title="Conversation Controls" subtitle="Guardrails, topic management, and deflection rules" color="#7C3AED">
+          <Section title="Focus & Boundaries">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', display: 'block', marginBottom: 4 }}>Focus Topics</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 6px' }}>What the agent should prioritize. Press Enter to add.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
+                  {focusTopics.map(function(t, i) {
+                    return (
+                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 14, background: '#DBEAFE', color: '#2563eb', fontSize: 11, fontWeight: 500 }}>
+                        {t}
+                        <button onClick={function() { setFocusTopics(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                          style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>&times;</button>
+                      </span>
+                    )
+                  })}
+                </div>
+                <input type="text" value={newFocusTopic} onChange={function(e) { setNewFocusTopic(e.target.value) }}
+                  onKeyDown={function(e) { if (e.key === 'Enter' && newFocusTopic.trim()) { e.preventDefault(); setFocusTopics(function(prev) { return [...prev, newFocusTopic.trim()] }); setNewFocusTopic('') } }}
+                  onBlur={function() { if (newFocusTopic.trim()) { setFocusTopics(function(prev) { return [...prev, newFocusTopic.trim()] }); setNewFocusTopic('') } }}
+                  placeholder="e.g., healthcare, education" style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12 }} />
+              </div>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#dc2626', display: 'block', marginBottom: 4 }}>Sensitive Topics to Avoid</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 6px' }}>Automatically redirected. Press Enter to add.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
+                  {sensitiveTopics.map(function(t, i) {
+                    return (
+                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 14, background: '#FEE2E2', color: '#dc2626', fontSize: 11, fontWeight: 500 }}>
+                        {t}
+                        <button onClick={function() { setSensitiveTopics(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                          style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>&times;</button>
+                      </span>
+                    )
+                  })}
+                </div>
+                <input type="text" value={newSensitiveTopic} onChange={function(e) { setNewSensitiveTopic(e.target.value) }}
+                  onKeyDown={function(e) { if (e.key === 'Enter' && newSensitiveTopic.trim()) { e.preventDefault(); setSensitiveTopics(function(prev) { return [...prev, newSensitiveTopic.trim()] }); setNewSensitiveTopic('') } }}
+                  onBlur={function() { if (newSensitiveTopic.trim()) { setSensitiveTopics(function(prev) { return [...prev, newSensitiveTopic.trim()] }); setNewSensitiveTopic('') } }}
+                  placeholder="e.g., salary, lawsuits" style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12 }} />
+              </div>
+            </div>
           </Section>
 
-          <Section title="Conversation Review">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Schedule automatic AI review of conversations to detect theme drift, common questions, and knowledge gaps.</p>
-            <label style={{ display: 'block', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Review interval</span>
-              <select
-                value={reviewInterval}
-                onChange={function(e) { setReviewInterval(e.target.value) }}
+          <Section title="Deflection">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={deflectionEnabled} onChange={function(e) { setDeflectionEnabled(e.target.checked) }} style={{ width: 16, height: 16, accentColor: '#7C3AED' }} />
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Auto-redirect off-topic and sensitive messages</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>AI distinguishes genuine feedback from irrelevant questions. Feedback is welcomed; off-topic questions are gently redirected.</p>
+              </div>
+            </label>
+            {deflectionEnabled && (
+              <textarea value={deflectionMessage} onChange={function(e) { setDeflectionMessage(e.target.value) }}
+                placeholder="Custom redirect message (optional). Leave empty for AI-generated redirects."
+                rows={2} style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', marginLeft: 26, maxWidth: 'calc(100% - 26px)' }} />
+            )}
+          </Section>
+
+          <Section title="Hard Rules">
+            <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Rules injected directly into the AI's instructions. The agent cannot ignore these.</p>
+            {guardrails.map(function(rule, i) {
+              return (
+                <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, width: 20, textAlign: 'center', flexShrink: 0 }}>{i + 1}.</span>
+                  <input type="text" value={rule}
+                    onChange={function(e) { var v = e.target.value; setGuardrails(function(prev) { var n = [...prev]; n[i] = v; return n }) }}
+                    placeholder="e.g., Never discuss competitor pricing"
+                    style={{ flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12 }} />
+                  <button onClick={function() { setGuardrails(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                    style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}>&times;</button>
+                </div>
+              )
+            })}
+            <button onClick={function() { setGuardrails(function(prev) { return [...prev, ''] }) }}
+              style={{ padding: '4px 12px', borderRadius: 14, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 11, cursor: 'pointer' }}>+ Add rule</button>
+          </Section>
+
+          <Section title="Advanced: System Prompt">
+            <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>Direct instructions for the AI. Personality, guardrails, and knowledge are injected automatically — use this only for additional custom behavior.</p>
+            <textarea value={systemPrompt} onChange={function(e) { setSystemPrompt(e.target.value) }}
+              placeholder={"Optional. Most agents don't need this.\n\nYou should:\n- Be friendly and concise\n- Only discuss topics related to [subject]"}
+              rows={6} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5 }} />
+          </Section>
+        </Group>
+
+        {/* ═══ GROUP 5: MONITORING ═══ */}
+        <Group title="Monitoring" subtitle="Automatic conversation review and quality control" color="#0D2B45">
+          <Section title="Scheduled Review">
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>AI review interval</span>
+              <select value={reviewInterval} onChange={function(e) { setReviewInterval(e.target.value) }}
                 style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', background: 'white' }}>
                 <option value="">Disabled</option>
                 <option value="24">Every 24 hours</option>
                 <option value="48">Every 2 days</option>
                 <option value="168">Weekly</option>
               </select>
-              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>When enabled, AI will periodically analyze recent conversations and flag theme drift or knowledge gaps. View results on the Chats page.</p>
+              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>AI analyzes recent conversations and flags theme drift, common questions, and knowledge gaps. Results appear on the Chats page.</p>
             </label>
           </Section>
-
-          <Section title="Deep Crawl">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Enter one or more website URLs (one per line) to crawl all pages and build a comprehensive knowledge base. Follows internal links, keeps full detail.</p>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
-              <label style={{ flex: 1 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Website URLs (one per line)</span>
-                <textarea
-                  value={crawlUrl}
-                  onChange={function(e) { setCrawlUrl(e.target.value) }}
-                  placeholder={"e.g.,\nhttps://orlandohindutemple.org\nhttps://example.com/about"}
-                  rows={3}
-                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
-                />
-              </label>
-              <button
-                onClick={runDeepCrawl}
-                disabled={crawling || !crawlUrl.trim()}
-                style={{
-                  padding: '8px 20px', borderRadius: 16, border: 'none',
-                  background: crawling ? '#9ca3af' : HERMES, color: 'white',
-                  fontSize: 12, fontWeight: 600, cursor: crawling ? 'not-allowed' : 'pointer',
-                  whiteSpace: 'nowrap', height: 36, alignSelf: 'flex-start', marginTop: 22,
-                }}>
-                {crawling ? 'Crawling...' : 'Deep Crawl'}
-              </button>
-            </div>
-            {crawling && (
-              <div style={{ fontSize: 11, color: '#6b7280', padding: '8px 0' }}>
-                Crawling pages and extracting content — this may take up to 2 minutes for large sites...
-              </div>
-            )}
-            {crawlResult && (
-              <div style={{ fontSize: 11, color: '#059669', marginBottom: 8 }}>
-                Crawled {crawlResult.pages} page{crawlResult.pages !== 1 ? 's' : ''} across {crawlResult.sites} site{crawlResult.sites !== 1 ? 's' : ''} — full content added to knowledge base
-              </div>
-            )}
-          </Section>
-
-          <Section title="Research">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Enter a person, organization, or topic to automatically search the web, read top results, and build a summarized knowledge base.</p>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
-              <label style={{ flex: 1 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Search query</span>
-                <input
-                  type="text"
-                  value={researchQuery}
-                  onChange={function(e) { setResearchQuery(e.target.value) }}
-                  onKeyDown={function(e) { if (e.key === 'Enter' && !researching) runResearch() }}
-                  placeholder="e.g., Alex Vindman, ACLU, Tesla Cybertruck"
-                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none' }}
-                />
-              </label>
-              <button
-                onClick={runResearch}
-                disabled={researching || !researchQuery.trim()}
-                style={{
-                  padding: '8px 20px', borderRadius: 16, border: 'none',
-                  background: researching ? '#9ca3af' : HERMES, color: 'white',
-                  fontSize: 12, fontWeight: 600, cursor: researching ? 'not-allowed' : 'pointer',
-                  whiteSpace: 'nowrap', height: 36,
-                }}>
-                {researching ? 'Researching...' : 'Research'}
-              </button>
-            </div>
-            {researching && (
-              <div style={{ fontSize: 11, color: '#6b7280', padding: '8px 0' }}>
-                Searching the web, fetching pages, and summarizing — this may take 15-30 seconds...
-              </div>
-            )}
-            {researchSources.length > 0 && (
-              <div style={{ fontSize: 11, color: '#059669', marginBottom: 8 }}>
-                Researched {researchSources.length} source{researchSources.length !== 1 ? 's' : ''}: {researchSources.map(function(u) {
-                  try { return new URL(u).hostname } catch { return u }
-                }).join(', ')}
-              </div>
-            )}
-          </Section>
-
-          <Section title="Training content">
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Add URLs to fetch content from, or paste knowledge directly. This becomes the agent's reference material.</p>
-            <label style={{ display: 'block', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Training URLs (one per line)</span>
-              <textarea
-                value={trainingUrls}
-                onChange={function(e) { setTrainingUrls(e.target.value) }}
-                placeholder={"https://www.example.com/about\nhttps://www.example.com/faq\nhttps://www.example.com/products"}
-                rows={4}
-                style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
-              />
-            </label>
-            <button
-              onClick={fetchTrainingContent}
-              disabled={fetchingUrls || !trainingUrls.trim()}
-              style={{
-                padding: '6px 16px', borderRadius: 16, border: '1px solid #d1d5db',
-                background: fetchingUrls ? '#f3f4f6' : 'white', color: fetchingUrls ? '#9ca3af' : '#374151',
-                fontSize: 12, fontWeight: 500, cursor: fetchingUrls ? 'not-allowed' : 'pointer', marginBottom: 16,
-              }}
-            >{fetchingUrls ? 'Fetching...' : 'Fetch content from URLs'}</button>
-
-            <label style={{ display: 'block' }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Knowledge base</span>
-              <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>Fetched content appears here. You can also paste or edit directly.</p>
-              <textarea
-                value={knowledgeBase}
-                onChange={function(e) { setKnowledgeBase(e.target.value) }}
-                placeholder="Paste or type the content your agent should know about..."
-                rows={12}
-                style={{ display: 'block', width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5 }}
-              />
-            </label>
-            <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{knowledgeBase.length.toLocaleString()} characters</p>
-          </Section>
-        </div>
+        </Group>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
           <button onClick={function() { router.push('/bots') }}

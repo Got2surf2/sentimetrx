@@ -234,8 +234,9 @@ export async function GET() {
   s9.addText('datanautix.com', { x: W - 3.5, y: H - 1, w: 3, h: 0.4, fontSize: 13, fontFace: 'Arial', color: DN.slate, align: 'right' })
 
   // Generate and return
-  var buf = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
-  return new NextResponse(buf, {
+  var buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
+  var uint8 = new Uint8Array(buffer)
+  return new NextResponse(uint8, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'Content-Disposition': 'attachment; filename="Datanautix_Branded_AI_Agents.pptx"',
