@@ -99,7 +99,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const EN_INITIAL: Message = {
     role: 'assistant',
     content: askName
-      ? "Hi, I'm " + config.name + "! What's your name?"
+      ? (config.initialMessage || ("Hi, I'm " + config.name + "!")) + " What's your name?"
       : config.initialMessage,
   }
   const [messages, setMessages] = useState<Message[]>([EN_INITIAL])
@@ -201,18 +201,17 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       } else {
         const cleanName = name.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
         setUserName(cleanName)
-        if (isNonEnglish) {
-          setLoading(true)
-          fetch(config.apiEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: [{ role: 'user', content: 'My name is ' + cleanName + '. Greet me by name and ask how you can help. One sentence.' }], session_id: sessionId, language: selectedLang, user_name: cleanName }),
-          }).then(r => r.json()).then(data => {
-            setMessages(prev => [...prev, { role: 'assistant', content: data.reply || ('Great to meet you, ' + cleanName + '!') }])
-          }).finally(() => setLoading(false))
-        } else {
+        // Always call the API for name greeting — lets the server inject profile question if enabled
+        setLoading(true)
+        fetch(config.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content: 'My name is ' + cleanName + '.' }], session_id: sessionId, language: selectedLang || 'en', user_name: cleanName }),
+        }).then(r => r.json()).then(data => {
+          setMessages(prev => [...prev, { role: 'assistant', content: data.reply || ('Great to meet you, ' + cleanName + '! How can I help you today?') }])
+        }).catch(function() {
           setMessages(prev => [...prev, { role: 'assistant', content: 'Great to meet you, ' + cleanName + '! How can I help you today?' }])
-        }
+        }).finally(() => setLoading(false))
       }
       setTimeout(() => inputRef.current?.focus(), 100)
       return
