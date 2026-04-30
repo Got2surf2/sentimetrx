@@ -216,12 +216,16 @@ export default function ConversationsPage() {
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <button onClick={function() { router.push('/bots') }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#6b7280' }}>&larr; Back</button>
+        <button onClick={function() { router.push('/bots') }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#6b7280' }}>&larr; Agents</button>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{botName || 'Agent'} — Conversations</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{sessions.length} total · {filtered.length} shown</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={function() { router.push('/bots/' + botId + '/knowledge') }}
+            style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Knowledge
+          </button>
           <button onClick={function() { window.location.href = '/api/bots/' + botId + '/conversations/export' }} disabled={sessions.length === 0}
             style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: sessions.length === 0 ? 'default' : 'pointer' }}>
             CSV
