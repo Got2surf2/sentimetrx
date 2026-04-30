@@ -13,6 +13,8 @@ const HERMES = '#E8632A'
 
 const HERMES_LIGHT = '#fff7ed'
 
+const STEP_LABELS = ['Identity', 'Knowledge', 'Competitors', 'Controls', 'Monitoring']
+
 interface BotConfig {
   name: string
   subtitle: string
@@ -64,14 +66,44 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function Group({ title, subtitle, color, children }: { title: string; subtitle: string; color: string; children: React.ReactNode }) {
+function InfoTip({ text }: { text: string }) {
+  var [open, setOpen] = useState(false)
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={function(e) { e.stopPropagation(); setOpen(!open) }}
+        onMouseEnter={function() { setOpen(true) }}
+        onMouseLeave={function() { setOpen(false) }}
+        style={{
+          width: 20, height: 20, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.4)',
+          background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)',
+          fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex',
+          alignItems: 'center', justifyContent: 'center', fontStyle: 'italic', fontFamily: 'Georgia, serif',
+        }}>i</button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 28, left: '50%', transform: 'translateX(-50%)',
+          background: '#1F2937', color: '#F9FAFB', padding: '10px 14px', borderRadius: 10,
+          fontSize: 12, lineHeight: 1.5, width: 280, zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+          whiteSpace: 'normal',
+        }}>
+          <div style={{ position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)', width: 12, height: 12, background: '#1F2937', rotate: '45deg', borderRadius: 2 }} />
+          {text}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function Group({ title, subtitle, color, info, children }: { title: string; subtitle: string; color: string; info?: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 24 }}>
       <div style={{ background: color, borderRadius: '12px 12px 0 0', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{title}</div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>{subtitle}</div>
         </div>
+        {info && <InfoTip text={info} />}
       </div>
       <div style={{ background: 'white', borderRadius: '0 0 12px 12px', border: '1px solid #e5e7eb', borderTop: 'none', padding: 24 }}>
         {children}
@@ -144,6 +176,8 @@ function BotCreatorInner() {
   const [profileQuestion, setProfileQuestion] = useState('')
   const [newSensitiveTopic, setNewSensitiveTopic] = useState('')
   const [newFocusTopic, setNewFocusTopic] = useState('')
+  const [builderMode, setBuilderMode] = useState<'assisted' | 'expert'>(editId ? 'expert' : 'assisted')
+  const [step, setStep] = useState(0)
 
   // Load existing bot if editing
   useEffect(function() {
@@ -373,16 +407,60 @@ function BotCreatorInner() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{editId ? 'Edit Agent' : 'Create Agent'}</h1>
             <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Configure your branded AI agent</p>
           </div>
-          <button onClick={function() { router.push('/bots') }}
-            style={{ padding: '6px 16px', borderRadius: 16, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
-            Cancel
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Mode toggle */}
+            <div style={{ display: 'flex', borderRadius: 20, border: '1px solid #d1d5db', overflow: 'hidden' }}>
+              <button onClick={function() { setBuilderMode('assisted'); setStep(0) }}
+                style={{ padding: '5px 14px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: builderMode === 'assisted' ? HERMES : 'white', color: builderMode === 'assisted' ? 'white' : '#6b7280' }}>
+                Assisted
+              </button>
+              <button onClick={function() { setBuilderMode('expert') }}
+                style={{ padding: '5px 14px', border: 'none', borderLeft: '1px solid #d1d5db', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: builderMode === 'expert' ? HERMES : 'white', color: builderMode === 'expert' ? 'white' : '#6b7280' }}>
+                Expert
+              </button>
+            </div>
+            <button onClick={function() { router.push('/bots') }}
+              style={{ padding: '6px 16px', borderRadius: 16, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
         </div>
+
+        {/* Stepper (assisted mode) */}
+        {builderMode === 'assisted' && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 24 }}>
+            {STEP_LABELS.map(function(label, i) {
+              var isActive = i === step
+              var isDone = i < step
+              return (
+                <button key={i} onClick={function() { setStep(i) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', background: 'none', border: 'none', padding: '4px 2px' }}>
+                  <span style={{
+                    width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 700,
+                    background: isActive ? HERMES : isDone ? '#10B981' : '#E5E7EB',
+                    color: isActive || isDone ? 'white' : '#9CA3AF',
+                    transition: 'all 0.2s',
+                  }}>
+                    {isDone ? '\u2713' : i + 1}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: isActive ? 600 : 400, color: isActive ? '#111827' : '#9CA3AF', display: i === step || window.innerWidth > 640 ? 'inline' : 'none' }}>
+                    {label}
+                  </span>
+                  {i < STEP_LABELS.length - 1 && <span style={{ width: 20, height: 1, background: '#D1D5DB', display: 'block' }} />}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {error && <p style={{ color: '#dc2626', fontSize: 13, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>{error}</p>}
 
         {/* ═══ GROUP 1: IDENTITY & APPEARANCE ═══ */}
-        <Group title="Identity & Appearance" subtitle="Who is this agent and how does it look?" color="#0A1628">
+        {(builderMode === 'expert' || step === 0) && <Group title="Identity & Appearance" subtitle="Who is this agent and how does it look?" color="#0A1628"
+          info="Set up your agent's name, personality, visual branding, and conversation openers. This defines the first impression users get when they start chatting.">
           <Section title="Agent Identity">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <Field label="Agent name" value={name} onChange={function(v) { setName(v); if (!editId) setSlug(autoSlug(v)) }} placeholder="e.g., ACLU Rights Agent" />
@@ -517,10 +595,11 @@ function BotCreatorInner() {
               </div>
             </div>
           </Section>
-        </Group>
+        </Group>}
 
         {/* ═══ GROUP 2: PRIMARY KNOWLEDGE ═══ */}
-        <Group title="Primary Knowledge" subtitle="What does this agent know? Train it on your subject." color="#0F7173">
+        {(builderMode === 'expert' || step === 1) && <Group title="Primary Knowledge" subtitle="What does this agent know? Train it on your subject." color="#0F7173"
+          info="Build the agent's knowledge from multiple sources — crawl websites, run web research, paste content, or add curated FAQ and facts. Everything feeds into a unified searchable index.">
           <Section title="Subject">
             <Field label="Who or what does this agent represent?" value={subject} onChange={setSubject} placeholder="e.g., Alex Vindman, ACLU, Tesla, Orlando Hindu Temple" />
             <p style={{ fontSize: 11, color: '#9ca3af', marginTop: -8 }}>Used for content filtering — negative content about this subject is automatically handled.</p>
@@ -635,10 +714,11 @@ function BotCreatorInner() {
               </div>
             </div>
           </Section>
-        </Group>
+        </Group>}
 
         {/* ═══ GROUP 3: COMPETITIVE INTELLIGENCE ═══ */}
-        <Group title="Competitive Intelligence" subtitle="How the agent handles competitors, opponents, and criticism" color="#E85A1A">
+        {(builderMode === 'expert' || step === 2) && <Group title="Competitive Intelligence" subtitle="How the agent handles competitors, opponents, and criticism" color="#E85A1A"
+          info="Control how the agent responds to criticism, attacks, and competitor mentions. Add opponents with their positions for factual contrast messaging.">
           <Section title="Negative Content Strategy">
             <label style={{ display: 'block', marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>When users ask about criticism, attacks, or scandals</span>
@@ -690,10 +770,11 @@ function BotCreatorInner() {
               </label>
             )}
           </Section>
-        </Group>
+        </Group>}
 
         {/* ═══ GROUP 4: CONVERSATION CONTROLS ═══ */}
-        <Group title="Conversation Controls" subtitle="Guardrails, topic management, and deflection rules" color="#7C3AED">
+        {(builderMode === 'expert' || step === 3) && <Group title="Conversation Controls" subtitle="Guardrails, topic management, and deflection rules" color="#7C3AED"
+          info="Define what the agent should focus on, what it should avoid, and how it handles off-topic questions. Add hard rules the AI cannot break.">
           <Section title="Focus & Boundaries">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
@@ -777,10 +858,11 @@ function BotCreatorInner() {
               placeholder={"Optional. Most agents don't need this.\n\nYou should:\n- Be friendly and concise\n- Only discuss topics related to [subject]"}
               rows={6} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5 }} />
           </Section>
-        </Group>
+        </Group>}
 
         {/* ═══ GROUP 5: MONITORING ═══ */}
-        <Group title="Monitoring" subtitle="Automatic conversation review and quality control" color="#0D2B45">
+        {(builderMode === 'expert' || step === 4) && <Group title="Monitoring" subtitle="Automatic conversation review and quality control" color="#0D2B45"
+          info="Schedule automatic AI reviews of conversations. The system detects theme drift, surfaces common questions, and identifies gaps in the agent's knowledge.">
           <Section title="Scheduled Review">
             <label style={{ display: 'block' }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>AI review interval</span>
@@ -794,21 +876,42 @@ function BotCreatorInner() {
               <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>AI analyzes recent conversations and flags theme drift, common questions, and knowledge gaps. Results appear on the Chats page.</p>
             </label>
           </Section>
-        </Group>
+        </Group>}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
-          <button onClick={function() { router.push('/bots') }}
-            style={{ padding: '10px 24px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button onClick={save} disabled={saving}
-            style={{
-              padding: '10px 28px', borderRadius: 20, border: 'none',
-              background: saving ? '#9ca3af' : HERMES, color: 'white', fontSize: 13, fontWeight: 600,
-              cursor: saving ? 'not-allowed' : 'pointer',
-            }}>
-            {saving ? 'Saving...' : editId ? 'Save Changes' : 'Create Agent'}
-          </button>
+        {/* Navigation (assisted mode) or Save (expert mode) */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 20 }}>
+          <div>
+            {builderMode === 'assisted' && step > 0 && (
+              <button onClick={function() { setStep(step - 1) }}
+                style={{ padding: '10px 24px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                Back
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button onClick={function() { router.push('/bots') }}
+              style={{ padding: '10px 24px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+              Cancel
+            </button>
+            {builderMode === 'assisted' && step < STEP_LABELS.length - 1 ? (
+              <button onClick={function() { setStep(step + 1) }}
+                style={{
+                  padding: '10px 28px', borderRadius: 20, border: 'none',
+                  background: HERMES, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}>
+                Next
+              </button>
+            ) : (
+              <button onClick={save} disabled={saving}
+                style={{
+                  padding: '10px 28px', borderRadius: 20, border: 'none',
+                  background: saving ? '#9ca3af' : HERMES, color: 'white', fontSize: 13, fontWeight: 600,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                }}>
+                {saving ? 'Saving...' : editId ? 'Save Changes' : 'Create Agent'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
