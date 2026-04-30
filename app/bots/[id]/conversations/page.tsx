@@ -3,10 +3,22 @@
 // app/bots/[id]/conversations/page.tsx
 // Review page: lists all conversation sessions for a bot, view individual turns, generate reports
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 
 const HERMES = '#E8632A'
+const IMSG_BLUE = '#007AFF'
+const IMSG_GRAY = '#E9E9EB'
+
+const FLAG_COLORS: Record<string, { bg: string; color: string }> = {
+  profanity: { bg: '#FEF3C7', color: '#92400E' },
+  insult: { bg: '#FEF3C7', color: '#92400E' },
+  slur: { bg: '#FEE2E2', color: '#dc2626' },
+  threat: { bg: '#FEE2E2', color: '#dc2626' },
+  sexual: { bg: '#FEE2E2', color: '#dc2626' },
+  spam: { bg: '#F3F4F6', color: '#6b7280' },
+  outside_scope: { bg: '#EDE9FE', color: '#7c3aed' },
+}
 
 interface Session {
   session_id: string
@@ -24,12 +36,24 @@ interface Turn {
   content_en: string | null
   language: string
   created_at: string
+  content_flags: string[] | null
+  source: string | null
+}
+
+interface BotConfig {
+  name?: string
+  subtitle?: string
+  avatarLetter?: string
+  headerGradient?: string
+  avatarGradient?: string
+  avatarTextColor?: string
 }
 
 export default function ConversationsPage() {
   const params = useParams()
   const router = useRouter()
   const botId = params.id as string
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,35 +64,43 @@ export default function ConversationsPage() {
   const [reportLoading, setReportLoading] = useState(false)
   const [reportStats, setReportStats] = useState<{ session_count: number; total_turns: number; since: string } | null>(null)
   const [botName, setBotName] = useState('')
+  const [botConfig, setBotConfig] = useState<BotConfig>({})
   const [pptxLoading, setPptxLoading] = useState(false)
   const [reviews, setReviews] = useState<{ id: string; reviewed_at: string; session_count: number; turn_count: number; report: string; theme_drift: boolean }[]>([])
+  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
 
-  useEffect(() => {
-    // Fetch bot name
-    fetch('/api/bots/' + botId).then(r => r.json()).then(d => {
+  useEffect(function() {
+    // Fetch bot config
+    fetch('/api/bots/' + botId).then(function(r) { return r.json() }).then(function(d) {
       if (d.name) setBotName(d.name)
-    }).catch(() => {})
+      if (d.config) setBotConfig(d.config)
+    }).catch(function() {})
 
     // Fetch sessions
     fetch('/api/bots/' + botId + '/conversations')
-      .then(r => r.json())
-      .then(d => setSessions(d.sessions || []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .then(function(r) { return r.json() })
+      .then(function(d) { setSessions(d.sessions || []) })
+      .catch(function() {})
+      .finally(function() { setLoading(false) })
 
     // Fetch scheduled reviews
     fetch('/api/bots/' + botId + '/conversations/reviews')
-      .then(r => r.json())
-      .then(d => setReviews(d.reviews || []))
-      .catch(() => {})
+      .then(function(r) { return r.json() })
+      .then(function(d) { setReviews(d.reviews || []) })
+      .catch(function() {})
   }, [botId])
+
+  useEffect(function() {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+  }, [turns])
 
   async function loadSession(sid: string) {
     setSelectedSession(sid)
     setTurnsLoading(true)
+    setShareState('idle')
     try {
-      const r = await fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(sid))
-      const d = await r.json()
+      var r = await fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(sid))
+      var d = await r.json()
       setTurns(d.turns || [])
     } catch { setTurns([]) }
     setTurnsLoading(false)
@@ -77,11 +109,11 @@ export default function ConversationsPage() {
   async function generatePptx() {
     setPptxLoading(true)
     try {
-      const r = await fetch('/api/bots/' + botId + '/conversations/insights-deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to generate deck'); return }
-      const blob = await r.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = (botName || 'Agent') + '_Insights.pptx'; a.click(); URL.revokeObjectURL(url)
+      var r = await fetch('/api/bots/' + botId + '/conversations/insights-deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      if (!r.ok) { var d = await r.json().catch(function() { return {} }); alert(d.error || 'Failed to generate deck'); return }
+      var blob = await r.blob()
+      var url = URL.createObjectURL(blob)
+      var a = document.createElement('a'); a.href = url; a.download = (botName || 'Agent') + '_Insights.pptx'; a.click(); URL.revokeObjectURL(url)
     } catch { alert('Failed to generate deck') }
     finally { setPptxLoading(false) }
   }
@@ -90,35 +122,62 @@ export default function ConversationsPage() {
     setReportLoading(true)
     setReport('')
     try {
-      const r = await fetch('/api/bots/' + botId + '/conversations/report', {
+      var r = await fetch('/api/bots/' + botId + '/conversations/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       })
-      const d = await r.json()
+      var d = await r.json()
       setReport(d.report || 'No report generated.')
       setReportStats(d.stats || null)
     } catch { setReport('Failed to generate report.') }
     setReportLoading(false)
   }
 
-  const fmtDate = (iso: string) => {
-    const d = new Date(iso)
+  async function shareConversation() {
+    if (shareState === 'sharing' || turns.length === 0) return
+    setShareState('sharing')
+    try {
+      var html = buildConversationHtml(botName, botConfig, turns)
+      var r = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'conversation', target_id: botId, html: html, expires_in: '30d' }),
+      })
+      var d = await r.json()
+      if (d.url) {
+        await navigator.clipboard.writeText(window.location.origin + d.url)
+        setShareState('copied')
+        setTimeout(function() { setShareState('idle') }, 3000)
+      } else {
+        setShareState('idle')
+      }
+    } catch {
+      setShareState('idle')
+    }
+  }
+
+  var fmtDate = function(iso: string) {
+    var d = new Date(iso)
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
   }
+
+  var avatar = botConfig.avatarLetter || (botName ? botName.charAt(0).toUpperCase() : 'A')
+  var headerGrad = botConfig.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
+  var avatarGrad = botConfig.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <button onClick={() => router.push('/bots')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#6b7280' }}>&larr; Back</button>
+        <button onClick={function() { router.push('/bots') }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#6b7280' }}>&larr; Back</button>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{botName || 'Agent'} — Conversations</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{sessions.length} conversation{sessions.length !== 1 ? 's' : ''} recorded</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={() => { window.location.href = '/api/bots/' + botId + '/conversations/export' }}
+            onClick={function() { window.location.href = '/api/bots/' + botId + '/conversations/export' }}
             disabled={sessions.length === 0}
             style={{
               padding: '8px 20px', borderRadius: 20, border: '1px solid #d1d5db',
@@ -170,16 +229,18 @@ export default function ConversationsPage() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Scheduled Reviews</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {reviews.map(r => (
-              <details key={r.id} style={{ background: r.theme_drift ? '#fef2f2' : 'white', border: '1px solid ' + (r.theme_drift ? '#fecaca' : '#e5e7eb'), borderRadius: 12, overflow: 'hidden' }}>
-                <summary style={{ padding: '10px 16px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontWeight: 600, color: '#111827' }}>{fmtDate(r.reviewed_at)}</span>
-                  <span style={{ color: '#9ca3af' }}>{r.session_count} sessions, {r.turn_count} turns</span>
-                  {r.theme_drift && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }}>Drift Detected</span>}
-                </summary>
-                <div style={{ padding: '0 16px 12px', fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{r.report}</div>
-              </details>
-            ))}
+            {reviews.map(function(r) {
+              return (
+                <details key={r.id} style={{ background: r.theme_drift ? '#fef2f2' : 'white', border: '1px solid ' + (r.theme_drift ? '#fecaca' : '#e5e7eb'), borderRadius: 12, overflow: 'hidden' }}>
+                  <summary style={{ padding: '10px 16px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontWeight: 600, color: '#111827' }}>{fmtDate(r.reviewed_at)}</span>
+                    <span style={{ color: '#9ca3af' }}>{r.session_count} sessions, {r.turn_count} turns</span>
+                    {r.theme_drift && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }}>Drift Detected</span>}
+                  </summary>
+                  <div style={{ padding: '0 16px 12px', fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{r.report}</div>
+                </details>
+              )
+            })}
           </div>
         </div>
       )}
@@ -197,59 +258,177 @@ export default function ConversationsPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {sessions.map(s => (
-                <button
-                  key={s.session_id}
-                  onClick={() => loadSession(s.session_id)}
-                  style={{
-                    background: selectedSession === s.session_id ? '#fff4ef' : 'white',
-                    border: '1px solid ' + (selectedSession === s.session_id ? HERMES + '40' : '#e5e7eb'),
-                    borderRadius: 12, padding: '12px 16px', cursor: 'pointer', textAlign: 'left',
-                    transition: 'all 0.15s',
-                  }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.first_message || '(empty)'}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#9ca3af' }}>
-                    <span>{s.turn_count} turn{s.turn_count !== 1 ? 's' : ''}</span>
-                    <span>{fmtDate(s.started_at)}</span>
-                  </div>
-                </button>
-              ))}
+              {sessions.map(function(s) {
+                return (
+                  <button
+                    key={s.session_id}
+                    onClick={function() { loadSession(s.session_id) }}
+                    style={{
+                      background: selectedSession === s.session_id ? '#fff4ef' : 'white',
+                      border: '1px solid ' + (selectedSession === s.session_id ? HERMES + '40' : '#e5e7eb'),
+                      borderRadius: 12, padding: '12px 16px', cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.15s',
+                    }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.first_message || '(empty)'}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#9ca3af' }}>
+                      <span>{s.turn_count} turn{s.turn_count !== 1 ? 's' : ''}</span>
+                      <span>{fmtDate(s.started_at)}</span>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
 
-        {/* Conversation detail */}
+        {/* Conversation detail — iMessage-style chat viewer */}
         {selectedSession && (
-          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 20px', borderBottom: '1px solid #f3f4f6', fontSize: 12, color: '#6b7280', fontWeight: 600 }}>
-              Conversation — {turns.length} turns
+          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 700 }}>
+            {/* Chat header */}
+            <div style={{ background: headerGrad, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', background: avatarGrad,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, color: botConfig.avatarTextColor || 'white',
+              }}>
+                {avatar}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {botName || 'Agent'}
+                </div>
+                {botConfig.subtitle && (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{botConfig.subtitle}</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{turns.length} turns</span>
+                <button
+                  onClick={shareConversation}
+                  disabled={shareState === 'sharing' || turns.length === 0}
+                  style={{
+                    padding: '5px 14px', borderRadius: 16, border: '1px solid rgba(255,255,255,0.3)',
+                    background: shareState === 'copied' ? 'rgba(255,255,255,0.2)' : 'transparent',
+                    color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    opacity: shareState === 'sharing' ? 0.5 : 1,
+                  }}>
+                  {shareState === 'copied' ? 'Link copied!' : shareState === 'sharing' ? 'Sharing...' : 'Share'}
+                </button>
+              </div>
             </div>
-            <div style={{ padding: 20, maxHeight: 600, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            {/* Chat messages */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 8px', display: 'flex', flexDirection: 'column', gap: 8, background: '#FFFFFF' }}>
               {turnsLoading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading...</div>
-              ) : turns.map(t => (
-                <div key={t.id} style={{ display: 'flex', justifyContent: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                  <div style={{
-                    maxWidth: '75%', padding: '10px 14px',
-                    borderRadius: t.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                    background: t.role === 'user' ? '#007AFF' : '#f3f4f6',
-                    color: t.role === 'user' ? 'white' : '#111827',
-                    fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
-                  }}>
-                    {t.content}
-                    <div style={{ fontSize: 10, marginTop: 4, opacity: 0.5 }}>
-                      {new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                      {t.language !== 'en' && ` · ${t.language}`}
+              ) : turns.map(function(t) {
+                var isUser = t.role === 'user'
+                var isDeflect = t.source === 'deflect'
+                var flags = t.content_flags || []
+
+                return (
+                  <div key={t.id}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: isUser ? 'flex-end' : 'flex-start', flexDirection: isUser ? 'row-reverse' : 'row' }}>
+                      {/* Bot avatar */}
+                      {!isUser && (
+                        <div style={{
+                          width: 28, height: 28, borderRadius: '50%', background: avatarGrad, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 14, color: botConfig.avatarTextColor || 'white',
+                        }}>
+                          {avatar}
+                        </div>
+                      )}
+                      {/* Bubble */}
+                      <div style={{
+                        maxWidth: '75%', padding: '10px 14px',
+                        borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                        background: isUser ? IMSG_BLUE : IMSG_GRAY,
+                        color: isUser ? 'white' : '#000',
+                        fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                        border: isDeflect ? '1.5px solid #c4b5fd' : 'none',
+                      }}>
+                        {t.content}
+                        <div style={{ fontSize: 10, marginTop: 4, opacity: 0.5 }}>
+                          {new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                          {t.language !== 'en' ? ' \u00b7 ' + t.language : ''}
+                          {isDeflect ? ' \u00b7 redirected' : ''}
+                        </div>
+                      </div>
                     </div>
+                    {/* Content flags */}
+                    {flags.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 4, justifyContent: isUser ? 'flex-end' : 'flex-start', paddingLeft: isUser ? 0 : 36 }}>
+                        {flags.map(function(f) {
+                          var c = FLAG_COLORS[f] || { bg: '#F3F4F6', color: '#6b7280' }
+                          return (
+                            <span key={f} style={{
+                              fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 10,
+                              background: c.bg, color: c.color, textTransform: 'uppercase', letterSpacing: '0.02em',
+                            }}>
+                              {f.replace('_', ' ')}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
+              <div ref={chatEndRef} />
             </div>
           </div>
         )}
       </div>
     </div>
   )
+}
+
+// ── Build self-contained HTML for share link ──────────────────────────
+function buildConversationHtml(name: string, config: BotConfig, turns: Turn[]): string {
+  var avatar = config.avatarLetter || (name ? name.charAt(0).toUpperCase() : 'A')
+  var headerGrad = config.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
+  var avatarGrad = config.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
+
+  var rows = turns.map(function(t) {
+    var isUser = t.role === 'user'
+    var time = new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    var flagHtml = ''
+    if (t.content_flags && t.content_flags.length > 0) {
+      flagHtml = '<div style="display:flex;gap:3px;margin-top:4px;justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';padding-left:' + (isUser ? '0' : '36px') + '">' +
+        t.content_flags.map(function(f) {
+          var colors: Record<string, string> = { profanity: '#92400E', insult: '#92400E', slur: '#dc2626', threat: '#dc2626', sexual: '#dc2626', spam: '#6b7280', outside_scope: '#7c3aed' }
+          var bgs: Record<string, string> = { profanity: '#FEF3C7', insult: '#FEF3C7', slur: '#FEE2E2', threat: '#FEE2E2', sexual: '#FEE2E2', spam: '#F3F4F6', outside_scope: '#EDE9FE' }
+          return '<span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:10px;background:' + (bgs[f] || '#F3F4F6') + ';color:' + (colors[f] || '#6b7280') + ';text-transform:uppercase">' + f.replace('_', ' ') + '</span>'
+        }).join('') + '</div>'
+    }
+    if (isUser) {
+      return '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:#007AFF;color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' +
+        escHtml(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>' + flagHtml
+    } else {
+      var isDeflect = t.source === 'deflect'
+      return '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px">' +
+        '<div style="width:28px;height:28px;border-radius:50%;background:' + avatarGrad + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + escHtml(avatar) + '</div>' +
+        '<div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap' + (isDeflect ? ';border:1.5px solid #c4b5fd' : '') + '">' +
+        escHtml(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + (isDeflect ? ' \u00b7 redirected' : '') + '</div></div></div>'
+    }
+  }).join('')
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escHtml(name) + ' — Conversation</title>' +
+    '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head>' +
+    '<body><div style="width:100%;max-width:600px">' +
+    '<div style="background:' + headerGrad + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px">' +
+    '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarGrad + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + escHtml(avatar) + '</div>' +
+    '<div><div style="font-size:15px;font-weight:600;color:white">' + escHtml(name) + '</div>' +
+    (config.subtitle ? '<div style="font-size:11px;color:rgba(255,255,255,0.6)">' + escHtml(config.subtitle) + '</div>' : '') +
+    '</div></div>' +
+    '<div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div>' +
+    '<div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">Shared from Sentimetrx</div>' +
+    '</div></body></html>'
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }

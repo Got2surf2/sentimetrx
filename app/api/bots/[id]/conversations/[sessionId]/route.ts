@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const { data: turns, error } = await supabase
     .from('bot_conversation_turns')
-    .select('id, turn_number, role, content, content_en, language, created_at')
+    .select('id, turn_number, role, content, content_en, language, created_at, content_flags, source')
     .eq('bot_id', params.id)
     .eq('session_id', params.sessionId)
     .order('turn_number', { ascending: true })

@@ -120,6 +120,14 @@ function BotCreatorInner() {
   const [negativeContentMode, setNegativeContentMode] = useState('deflect')
   const [opponents, setOpponents] = useState<{ name: string; details: string }[]>([])
   const [contrastMode, setContrastMode] = useState('user_triggered')
+  const [sensitiveTopics, setSensitiveTopics] = useState<string[]>([])
+  const [focusTopics, setFocusTopics] = useState<string[]>([])
+  const [deflectionEnabled, setDeflectionEnabled] = useState(true)
+  const [deflectionMessage, setDeflectionMessage] = useState('')
+  const [askProfile, setAskProfile] = useState(false)
+  const [profileQuestion, setProfileQuestion] = useState('')
+  const [newSensitiveTopic, setNewSensitiveTopic] = useState('')
+  const [newFocusTopic, setNewFocusTopic] = useState('')
 
   // Load existing bot if editing
   useEffect(function() {
@@ -141,6 +149,12 @@ function BotCreatorInner() {
       if (Array.isArray(bot.faq)) setFaq(bot.faq)
       if (Array.isArray(bot.facts)) setFacts(bot.facts.map(function(f: any) { return typeof f === 'string' ? f : f.text || '' }))
       if (Array.isArray(bot.guardrails)) setGuardrails(bot.guardrails.map(function(g: any) { return typeof g === 'string' ? g : g.rule || g.text || '' }))
+      if (Array.isArray(bot.sensitive_topics)) setSensitiveTopics(bot.sensitive_topics)
+      if (Array.isArray(bot.focus_topics)) setFocusTopics(bot.focus_topics)
+      if (bot.deflection_enabled === false) setDeflectionEnabled(false)
+      if (bot.deflection_message) setDeflectionMessage(bot.deflection_message)
+      if (bot.ask_profile) setAskProfile(true)
+      if (bot.profile_question) setProfileQuestion(bot.profile_question)
     }).catch(function() {
       setError('Failed to load agent')
     }).finally(function() { setLoading(false) })
@@ -263,6 +277,12 @@ function BotCreatorInner() {
       negative_content_mode: negativeContentMode,
       opponents: opponents.filter(function(o) { return o.name.trim() }),
       contrast_mode: contrastMode,
+      sensitive_topics: sensitiveTopics,
+      focus_topics: focusTopics,
+      deflection_enabled: deflectionEnabled,
+      deflection_message: deflectionMessage,
+      ask_profile: askProfile,
+      profile_question: profileQuestion,
     }
     if (riHours) payload.next_review_at = new Date(Date.now() + riHours * 3600000).toISOString()
 
@@ -626,6 +646,138 @@ function BotCreatorInner() {
               onClick={function() { setGuardrails(function(prev) { return [...prev, ''] }) }}
               style={{ padding: '6px 14px', borderRadius: 16, border: '1px dashed #d1d5db', background: 'white', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}
             >+ Add guardrail</button>
+          </Section>
+
+          <Section title="Topic Management">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>Control what the agent can and cannot discuss. Sensitive topics trigger automatic redirection. Focus topics guide the agent's priorities.</p>
+
+            <div style={{ marginBottom: 16 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Sensitive topics to avoid</span>
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Messages mentioning these terms will be redirected. Press Enter to add.</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {sensitiveTopics.map(function(t, i) {
+                  return (
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 16, background: '#FEE2E2', color: '#dc2626', fontSize: 12, fontWeight: 500 }}>
+                      {t}
+                      <button onClick={function() { setSensitiveTopics(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>&times;</button>
+                    </span>
+                  )
+                })}
+              </div>
+              <input
+                type="text"
+                value={newSensitiveTopic}
+                onChange={function(e) { setNewSensitiveTopic(e.target.value) }}
+                onKeyDown={function(e) {
+                  if (e.key === 'Enter' && newSensitiveTopic.trim()) {
+                    e.preventDefault()
+                    setSensitiveTopics(function(prev) { return [...prev, newSensitiveTopic.trim()] })
+                    setNewSensitiveTopic('')
+                  }
+                }}
+                onBlur={function() {
+                  if (newSensitiveTopic.trim()) {
+                    setSensitiveTopics(function(prev) { return [...prev, newSensitiveTopic.trim()] })
+                    setNewSensitiveTopic('')
+                  }
+                }}
+                placeholder="e.g., salary, lawsuits, internal disputes"
+                style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Focus topics</span>
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Primary topics the agent should prioritize. Used to detect off-topic questions. Press Enter to add.</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {focusTopics.map(function(t, i) {
+                  return (
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 16, background: '#DBEAFE', color: '#2563eb', fontSize: 12, fontWeight: 500 }}>
+                      {t}
+                      <button onClick={function() { setFocusTopics(function(prev) { return prev.filter(function(_, idx) { return idx !== i }) }) }}
+                        style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>&times;</button>
+                    </span>
+                  )
+                })}
+              </div>
+              <input
+                type="text"
+                value={newFocusTopic}
+                onChange={function(e) { setNewFocusTopic(e.target.value) }}
+                onKeyDown={function(e) {
+                  if (e.key === 'Enter' && newFocusTopic.trim()) {
+                    e.preventDefault()
+                    setFocusTopics(function(prev) { return [...prev, newFocusTopic.trim()] })
+                    setNewFocusTopic('')
+                  }
+                }}
+                onBlur={function() {
+                  if (newFocusTopic.trim()) {
+                    setFocusTopics(function(prev) { return [...prev, newFocusTopic.trim()] })
+                    setNewFocusTopic('')
+                  }
+                }}
+                placeholder="e.g., healthcare policy, community safety, education"
+                style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, outline: 'none' }}
+              />
+            </div>
+
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={deflectionEnabled}
+                  onChange={function(e) { setDeflectionEnabled(e.target.checked) }}
+                  style={{ width: 16, height: 16, accentColor: HERMES }}
+                />
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Enable deflection</span>
+                  <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Automatically redirect off-topic questions and sensitive topics back to focus areas.</p>
+                </div>
+              </label>
+              {deflectionEnabled && (
+                <label style={{ display: 'block', marginLeft: 26 }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: '#374151' }}>Custom deflection message (optional)</span>
+                  <textarea
+                    value={deflectionMessage}
+                    onChange={function(e) { setDeflectionMessage(e.target.value) }}
+                    placeholder="Leave empty for AI-generated redirects, or set a custom message like: I appreciate your interest, but I'm best suited to help with healthcare and education topics."
+                    rows={3}
+                    style={{ display: 'block', width: '100%', marginTop: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
+                  />
+                </label>
+              )}
+            </div>
+          </Section>
+
+          <Section title="Persona Profiling">
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>When enabled, the agent will ask users to share a bit about themselves early in the conversation and adapt its communication style to match their persona.</p>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={askProfile}
+                onChange={function(e) { setAskProfile(e.target.checked) }}
+                style={{ width: 16, height: 16, accentColor: HERMES }}
+              />
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Profile users</span>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Ask 1-2 natural questions to understand life stage, occupation, and concerns. Adapts tone and vocabulary automatically.</p>
+              </div>
+            </label>
+            {askProfile && (
+              <label style={{ display: 'block', marginLeft: 26 }}>
+                <span style={{ fontSize: 11, fontWeight: 500, color: '#374151' }}>Profile question (optional)</span>
+                <textarea
+                  value={profileQuestion}
+                  onChange={function(e) { setProfileQuestion(e.target.value) }}
+                  placeholder="Tell me a bit about yourself so I can make our conversation more relevant to you."
+                  rows={2}
+                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical' }}
+                />
+                <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Fires after the name question (if enabled). Extracts life stage, occupation, location type, and key concerns from the response.</p>
+              </label>
+            )}
           </Section>
 
           <Section title="System prompt">

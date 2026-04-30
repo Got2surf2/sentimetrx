@@ -215,7 +215,7 @@ export function isContentSafe(text: string, maxLength = 600): boolean {
 // Scans text and returns content flags without blocking.
 // Used to tag survey responses for analyst-side filtering.
 
-export type ContentFlag = 'profanity' | 'slur' | 'threat' | 'sexual' | 'insult' | 'spam'
+export type ContentFlag = 'profanity' | 'slur' | 'threat' | 'sexual' | 'insult' | 'spam' | 'outside_scope'
 
 export interface AuditResult {
   flags: ContentFlag[]

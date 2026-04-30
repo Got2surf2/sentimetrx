@@ -1,0 +1,132 @@
+// lib/personaExtractor.ts
+// Extracts user persona from early conversation turns for agent style matching.
+// Uses AI to identify life stage, occupation, location, concerns, and communication style.
+
+import { callAI } from '@/lib/ai'
+
+export interface PersonaField {
+  value: string
+  source: 'explicit' | 'inferred'
+  confidence: 'high' | 'medium' | 'low'
+}
+
+export interface Persona {
+  life_stage?: PersonaField
+  occupation?: PersonaField
+  industry?: PersonaField
+  location_type?: PersonaField
+  concerns?: { values: string[]; source: 'explicit' | 'inferred'; confidence: 'high' | 'medium' | 'low' }
+  communication_style?: PersonaField
+}
+
+/**
+ * Extract persona fields from user messages using a fast AI call.
+ * Only extracts what the user actually shared — does NOT infer race, ethnicity, or income.
+ */
+export async function extractPersona(userMessages: string[]): Promise<Persona> {
+  if (userMessages.length === 0) return {}
+
+  var combined = userMessages.join('\n---\n')
+
+  try {
+    var result = await callAI({
+      tier: 'fast',
+      maxTokens: 300,
+      timeoutMs: 5000,
+      messages: [{ role: 'user', content: 'Extract persona from these user messages.' }],
+      system: 'Analyze these user messages and extract persona fields. Return ONLY valid JSON.\n\n' +
+        'User messages:\n"' + combined + '"\n\n' +
+        'Extract ONLY fields the user explicitly mentioned or strongly implied. For each field, set source to "explicit" if they directly stated it, or "inferred" if you deduced it from context. Set confidence to "high", "medium", or "low".\n\n' +
+        'Fields to extract (omit if no evidence):\n' +
+        '- life_stage: e.g., "student", "young professional", "working parent", "retiree", "stay-at-home parent"\n' +
+        '- occupation: their job/role if mentioned\n' +
+        '- industry: their field/sector if mentioned\n' +
+        '- location_type: "urban", "suburban", "rural" if mentioned or implied\n' +
+        '- concerns: array of topics/issues they care about\n' +
+        '- communication_style: "casual", "formal", "technical", "conversational" — based on how they write\n\n' +
+        'Do NOT infer race, ethnicity, gender, age, or income unless explicitly stated.\n' +
+        'communication_style should always be inferred from writing patterns.\n\n' +
+        'Return format:\n' +
+        '{"life_stage":{"value":"...","source":"explicit","confidence":"high"},"concerns":{"values":["..."],"source":"explicit","confidence":"high"},...}\n\n' +
+        'ONLY output the JSON object. No explanation.',
+    })
+
+    var text = (result.text || '').trim()
+    // Extract JSON from response (handle markdown code blocks)
+    var jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return {}
+
+    var parsed = JSON.parse(jsonMatch[0]) as Persona
+    return parsed
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Merge a new persona extraction into an existing one.
+ * New explicit fields override existing inferred ones.
+ * Confidence can only upgrade, never downgrade.
+ */
+export function mergePersona(existing: Persona, update: Persona): Persona {
+  var merged = { ...existing }
+  var simpleFields: (keyof Persona)[] = ['life_stage', 'occupation', 'industry', 'location_type', 'communication_style']
+
+  for (var i = 0; i < simpleFields.length; i++) {
+    var key = simpleFields[i]
+    var newVal = update[key] as PersonaField | undefined
+    var oldVal = merged[key] as PersonaField | undefined
+    if (!newVal) continue
+    if (!oldVal) {
+      (merged as any)[key] = newVal
+    } else if (newVal.source === 'explicit' && oldVal.source === 'inferred') {
+      (merged as any)[key] = newVal
+    } else if (confRank(newVal.confidence) > confRank(oldVal.confidence)) {
+      (merged as any)[key] = newVal
+    }
+  }
+
+  // Merge concerns (union of values)
+  if (update.concerns && update.concerns.values.length > 0) {
+    if (!merged.concerns) {
+      merged.concerns = update.concerns
+    } else {
+      var existing_values = merged.concerns.values
+      var new_values = update.concerns.values.filter(function(v) {
+        return !existing_values.some(function(e) { return e.toLowerCase() === v.toLowerCase() })
+      })
+      merged.concerns = {
+        values: [...existing_values, ...new_values],
+        source: update.concerns.source === 'explicit' ? 'explicit' : merged.concerns.source,
+        confidence: confRank(update.concerns.confidence) > confRank(merged.concerns.confidence) ? update.concerns.confidence : merged.concerns.confidence,
+      }
+    }
+  }
+
+  return merged
+}
+
+/**
+ * Convert persona into a short prompt injection for style matching.
+ */
+export function personaToPromptContext(persona: Persona): string {
+  var parts: string[] = []
+
+  if (persona.life_stage) parts.push('Life stage: ' + persona.life_stage.value)
+  if (persona.occupation) parts.push('Occupation: ' + persona.occupation.value)
+  if (persona.industry) parts.push('Industry: ' + persona.industry.value)
+  if (persona.location_type) parts.push('Location: ' + persona.location_type.value)
+  if (persona.concerns && persona.concerns.values.length > 0) parts.push('Key concerns: ' + persona.concerns.values.join(', '))
+  if (persona.communication_style) parts.push('Communication style: ' + persona.communication_style.value)
+
+  if (parts.length === 0) return ''
+
+  return '\n\nUSER PROFILE (adapt your tone and examples accordingly):\n' + parts.join('\n') +
+    '\n\nMatch their communication style — if they\'re casual, be casual. If they\'re technical, use precise language. Tailor examples and analogies to their life stage and concerns.'
+}
+
+function confRank(c: string): number {
+  if (c === 'high') return 3
+  if (c === 'medium') return 2
+  return 1
+}
