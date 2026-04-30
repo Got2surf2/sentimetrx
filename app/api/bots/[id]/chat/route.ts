@@ -264,6 +264,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + (bot as any).personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }
   if (bot.system_prompt) systemParts.push(bot.system_prompt)
+  systemParts.push('\nFACTUAL ACCURACY: Only state facts that appear in your knowledge base or system prompt. If you don\'t have specific information about something, say so — never fill gaps with assumptions or invented details. Getting a fact wrong is far worse than saying "I\'m not sure about that specific detail."')
   // Guardrails: inject as explicit rules in the system prompt
   const guardrails = (bot as any).guardrails
   if (Array.isArray(guardrails) && guardrails.length > 0) {
