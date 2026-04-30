@@ -1,0 +1,73 @@
+// app/api/cron/social-token-refresh/route.ts
+// Cron endpoint: refreshes Meta long-lived tokens before they expire.
+// Runs daily. Tokens expire after 60 days; refresh when <7 days remaining.
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 30
+
+export async function GET(req: NextRequest) {
+  const authHeader = req.headers.get('authorization')
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const service = createServiceRoleClient()
+
+  // Find tokens expiring within the next 7 days
+  const sevenDaysOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: expiring, error } = await service
+    .from('social_connections')
+    .select('id, platform, account_name, access_token, token_expires_at')
+    .lt('token_expires_at', sevenDaysOut)
+    .gt('token_expires_at', new Date().toISOString())
+
+  if (error) {
+    console.error('[social-token-refresh] query error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!expiring?.length) {
+    return NextResponse.json({ ok: true, refreshed: 0, message: 'No tokens need refresh' })
+  }
+
+  let refreshed = 0
+  let failed = 0
+
+  for (const conn of expiring) {
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&fb_exchange_token=${conn.access_token}`
+      )
+
+      if (!res.ok) {
+        console.error('[social-token-refresh] refresh failed for', conn.account_name, ':', await res.text())
+        failed++
+        continue
+      }
+
+      const data = await res.json()
+      const newExpiry = new Date(Date.now() + data.expires_in * 1000).toISOString()
+
+      await service
+        .from('social_connections')
+        .update({
+          access_token: data.access_token,
+          token_expires_at: newExpiry,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', conn.id)
+
+      refreshed++
+    } catch (err: any) {
+      console.error('[social-token-refresh] error for', conn.id, ':', err.message)
+      failed++
+    }
+  }
+
+  return NextResponse.json({ ok: true, refreshed, failed })
+}

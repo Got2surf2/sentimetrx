@@ -19,6 +19,14 @@
     {
       "path": "/api/cron/bot-conversation-review",
       "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/social-sync",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/social-token-refresh",
+      "schedule": "0 6 * * *"
     }
   ]
 }

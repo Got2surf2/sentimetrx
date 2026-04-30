@@ -12,8 +12,8 @@ interface Props {
   crumbs?:         any
   analyzeEnabled?: boolean   // legacy — use features.analyze instead
   campaignsEnabled?: boolean // legacy — use features.campaigns instead
-  features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean }
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'test-spinner'
+  features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
@@ -86,6 +86,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     townhall: features?.townhall !== undefined ? features.townhall : true,
     campaigns: features?.campaigns !== undefined ? features.campaigns : (campaignsEnabled ?? false),
     bots:     features?.bots ?? false,
+    social:   features?.social ?? false,
   }
 
   const surveyPages = new Set(['dashboard', 'new', 'edit', 'deploy', 'responses'])
@@ -157,6 +158,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
         {(f.campaigns || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
         {f.townhall && navLink('townhall', '/townhall', 'PulseIQ')}
         {f.bots && navLink('bots', '/bots', 'Agents')}
+        {f.social && navLink('social', '/social', 'Social')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />
         <form action="/api/auth/signout" method="POST">
