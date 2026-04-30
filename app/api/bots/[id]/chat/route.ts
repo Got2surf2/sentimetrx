@@ -382,7 +382,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     systemParts.push('\n\nIMPORTANT LANGUAGE RULE: You MUST respond ONLY in ' + langName + '. All your responses — greetings, answers, redirects — must be in ' + langName + '. Even if the user writes in English or another language, always reply in ' + langName + '.')
   }
 
-  systemParts.push('\n\nHARD LIMIT: Keep responses concise but ALWAYS finish your thought. Never leave a sentence incomplete.')
+  systemParts.push('\n\nRESPONSE STYLE: Keep responses SHORT — aim for 2-4 sentences. If a topic has multiple angles (e.g. safety involves lighting, policing, homelessness), give a brief summary and then ask which aspect they want to explore further. Let the user guide the depth. Never dump everything you know into one message. Think of it as a conversation, not a speech. Always finish your thought — never leave a sentence incomplete.')
   if (user_name && typeof user_name === 'string' && user_name.length <= 40) {
     systemParts.push('\nThe user\'s name is ' + user_name + '. Address them by name occasionally to keep the conversation personal, but don\'t overdo it.')
   }
