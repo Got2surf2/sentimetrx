@@ -1,16 +1,16 @@
 'use client'
 
 // app/bots/[id]/conversations/page.tsx
-// Review page: conversation cards with flags/personas, modal viewer, reports
+// Conversation cards with filters, modal viewer, time-range reports, delete
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 
-const HERMES = '#E8632A'
-const IMSG_BLUE = '#007AFF'
-const IMSG_GRAY = '#E9E9EB'
+var HERMES = '#E8632A'
+var IMSG_BLUE = '#007AFF'
+var IMSG_GRAY = '#E9E9EB'
 
-const FLAG_COLORS: Record<string, { bg: string; color: string; label: string }> = {
+var FLAG_COLORS: Record<string, { bg: string; color: string; label: string }> = {
   profanity: { bg: '#FEF3C7', color: '#92400E', label: 'Profanity' },
   insult: { bg: '#FEF3C7', color: '#92400E', label: 'Insult' },
   slur: { bg: '#FEE2E2', color: '#dc2626', label: 'Slur' },
@@ -20,37 +20,28 @@ const FLAG_COLORS: Record<string, { bg: string; color: string; label: string }> 
   outside_scope: { bg: '#EDE9FE', color: '#7c3aed', label: 'Off-topic' },
 }
 
+var TIME_RANGES = [
+  { label: 'Yesterday', hours: 24 },
+  { label: 'Last 7 days', hours: 168 },
+  { label: 'Last 30 days', hours: 720 },
+  { label: 'All time', hours: 0 },
+]
+
 interface Session {
-  session_id: string
-  first_message: string
-  turn_count: number
-  started_at: string
-  last_at: string
-  user_name: string
-  flags: string[]
-  has_deflection: boolean
-  persona: any | null
+  session_id: string; first_message: string; turn_count: number
+  started_at: string; last_at: string; user_name: string
+  flags: string[]; has_deflection: boolean; persona: any | null
 }
 
 interface Turn {
-  id: string
-  turn_number: number
-  role: 'user' | 'assistant'
-  content: string
-  content_en: string | null
-  language: string
-  created_at: string
-  content_flags: string[] | null
-  source: string | null
+  id: string; turn_number: number; role: 'user' | 'assistant'
+  content: string; content_en: string | null; language: string
+  created_at: string; content_flags: string[] | null; source: string | null
 }
 
 interface BotConfig {
-  name?: string
-  subtitle?: string
-  avatarLetter?: string
-  headerGradient?: string
-  avatarGradient?: string
-  avatarTextColor?: string
+  name?: string; subtitle?: string; avatarLetter?: string
+  headerGradient?: string; avatarGradient?: string; avatarTextColor?: string
 }
 
 export default function ConversationsPage() {
@@ -72,6 +63,14 @@ export default function ConversationsPage() {
   var [pptxLoading, setPptxLoading] = useState(false)
   var [reviews, setReviews] = useState<{ id: string; reviewed_at: string; session_count: number; turn_count: number; report: string; theme_drift: boolean }[]>([])
   var [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied'>('idle')
+
+  // Filters
+  var [filterFlag, setFilterFlag] = useState<string>('all')
+  var [filterTime, setFilterTime] = useState<number>(0) // hours, 0 = all
+  var [filterSearch, setFilterSearch] = useState('')
+  var [reportRange, setReportRange] = useState<string>('168') // default last 7 days
+  var [customFrom, setCustomFrom] = useState('')
+  var [customTo, setCustomTo] = useState('')
 
   useEffect(function() {
     fetch('/api/bots/' + botId).then(function(r) { return r.json() }).then(function(d) {
@@ -95,6 +94,25 @@ export default function ConversationsPage() {
     if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
   }, [turns])
 
+  // Filtered sessions
+  var filtered = sessions.filter(function(s) {
+    // Time filter
+    if (filterTime > 0) {
+      var cutoff = Date.now() - filterTime * 3600000
+      if (new Date(s.started_at).getTime() < cutoff) return false
+    }
+    // Flag filter
+    if (filterFlag === 'flagged' && s.flags.length === 0 && !s.has_deflection) return false
+    if (filterFlag === 'clean' && (s.flags.length > 0 || s.has_deflection)) return false
+    if (filterFlag !== 'all' && filterFlag !== 'flagged' && filterFlag !== 'clean' && !s.flags.includes(filterFlag)) return false
+    // Search
+    if (filterSearch.trim()) {
+      var q = filterSearch.toLowerCase()
+      if (!(s.user_name || '').toLowerCase().includes(q) && !(s.first_message || '').toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+
   async function loadSession(sid: string) {
     setSelectedSession(sid)
     setTurnsLoading(true)
@@ -107,23 +125,39 @@ export default function ConversationsPage() {
     setTurnsLoading(false)
   }
 
+  async function deleteSession(sid: string) {
+    if (!confirm('Delete this conversation? This cannot be undone.')) return
+    try {
+      await fetch('/api/bots/' + botId + '/conversations/' + encodeURIComponent(sid), { method: 'DELETE' })
+      setSessions(function(prev) { return prev.filter(function(s) { return s.session_id !== sid }) })
+      if (selectedSession === sid) { setSelectedSession(null); setTurns([]) }
+    } catch { alert('Failed to delete') }
+  }
+
   async function generatePptx() {
     setPptxLoading(true)
     try {
       var r = await fetch('/api/bots/' + botId + '/conversations/insights-deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-      if (!r.ok) { var d = await r.json().catch(function() { return {} }); alert(d.error || 'Failed to generate deck'); return }
+      if (!r.ok) { var d = await r.json().catch(function() { return {} }); alert(d.error || 'Failed'); return }
       var blob = await r.blob()
       var url = URL.createObjectURL(blob)
       var a = document.createElement('a'); a.href = url; a.download = (botName || 'Agent') + '_Insights.pptx'; a.click(); URL.revokeObjectURL(url)
-    } catch { alert('Failed to generate deck') }
+    } catch { alert('Failed') }
     finally { setPptxLoading(false) }
   }
 
   async function generateReport() {
     setReportLoading(true)
     setReport('')
+    var since: string
+    if (reportRange === 'custom' && customFrom) {
+      since = new Date(customFrom).toISOString()
+    } else {
+      var hours = parseInt(reportRange) || 168
+      since = hours > 0 ? new Date(Date.now() - hours * 3600000).toISOString() : new Date('2020-01-01').toISOString()
+    }
     try {
-      var r = await fetch('/api/bots/' + botId + '/conversations/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      var r = await fetch('/api/bots/' + botId + '/conversations/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ since: since }) })
       var d = await r.json()
       setReport(d.report || 'No report generated.')
       setReportStats(d.stats || null)
@@ -165,37 +199,70 @@ export default function ConversationsPage() {
   var avatarGrad = botConfig.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
   var selectedSessionData = sessions.find(function(s) { return s.session_id === selectedSession })
 
+  // Unique flags across all sessions for filter dropdown
+  var allFlags: string[] = []
+  sessions.forEach(function(s) { s.flags.forEach(function(f) { if (!allFlags.includes(f)) allFlags.push(f) }) })
+
+  var pill = function(active: boolean, color?: string) {
+    return {
+      padding: '4px 12px', borderRadius: 16, fontSize: 11, fontWeight: 600 as const, cursor: 'pointer' as const, border: 'none',
+      background: active ? (color || HERMES) : '#F3F4F6',
+      color: active ? 'white' : '#6b7280',
+      transition: 'all 0.15s',
+    }
+  }
+
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <button onClick={function() { router.push('/bots') }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#6b7280' }}>&larr; Back</button>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{botName || 'Agent'} — Conversations</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{sessions.length} conversation{sessions.length !== 1 ? 's' : ''} recorded</p>
+          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{sessions.length} total · {filtered.length} shown</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={function() { window.location.href = '/api/bots/' + botId + '/conversations/export' }} disabled={sessions.length === 0}
-            style={{ padding: '8px 20px', borderRadius: 20, border: '1px solid #d1d5db', background: sessions.length === 0 ? '#e5e7eb' : 'white', color: '#374151', fontSize: 13, fontWeight: 600, cursor: sessions.length === 0 ? 'default' : 'pointer' }}>
-            Export CSV
+            style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: sessions.length === 0 ? 'default' : 'pointer' }}>
+            CSV
           </button>
           <button onClick={generatePptx} disabled={pptxLoading || sessions.length === 0}
-            style={{ padding: '8px 20px', borderRadius: 20, border: '1px solid #d1d5db', background: sessions.length === 0 ? '#e5e7eb' : 'white', color: '#374151', fontSize: 13, fontWeight: 600, cursor: sessions.length === 0 ? 'default' : 'pointer', opacity: pptxLoading ? 0.6 : 1 }}>
-            {pptxLoading ? 'Building...' : 'Insights Deck'}
-          </button>
-          <button onClick={generateReport} disabled={reportLoading || sessions.length === 0}
-            style={{ padding: '8px 20px', borderRadius: 20, border: 'none', background: sessions.length === 0 ? '#e5e7eb' : HERMES, color: 'white', fontSize: 13, fontWeight: 600, cursor: sessions.length === 0 ? 'default' : 'pointer', opacity: reportLoading ? 0.6 : 1 }}>
-            {reportLoading ? 'Analyzing...' : 'Generate Report'}
+            style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: pptxLoading ? 0.6 : 1 }}>
+            {pptxLoading ? '...' : 'Deck'}
           </button>
         </div>
       </div>
 
+      {/* Report generator */}
+      <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Report:</span>
+        {[{ label: 'Yesterday', val: '24' }, { label: 'Last 7 days', val: '168' }, { label: 'Last 30 days', val: '720' }, { label: 'All time', val: '0' }, { label: 'Custom', val: 'custom' }].map(function(opt) {
+          return <button key={opt.val} onClick={function() { setReportRange(opt.val) }} style={pill(reportRange === opt.val)}>{opt.label}</button>
+        })}
+        {reportRange === 'custom' && (
+          <>
+            <input type="date" value={customFrom} onChange={function(e) { setCustomFrom(e.target.value) }}
+              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 11 }} />
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>to</span>
+            <input type="date" value={customTo} onChange={function(e) { setCustomTo(e.target.value) }}
+              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 11 }} />
+          </>
+        )}
+        <button onClick={generateReport} disabled={reportLoading}
+          style={{ padding: '6px 18px', borderRadius: 16, border: 'none', background: reportLoading ? '#9ca3af' : HERMES, color: 'white', fontSize: 12, fontWeight: 600, cursor: reportLoading ? 'not-allowed' : 'pointer', marginLeft: 'auto' }}>
+          {reportLoading ? 'Analyzing...' : 'Generate'}
+        </button>
+      </div>
+
       {/* Report panel */}
       {report && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: 20, marginBottom: 24, fontSize: 13, lineHeight: 1.7, color: '#78350f' }}>
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: 20, marginBottom: 16, fontSize: 13, lineHeight: 1.7, color: '#78350f', position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <span style={{ fontWeight: 700, fontSize: 14 }}>Conversation Report</span>
-            {reportStats && <span style={{ fontSize: 11, color: '#92400e' }}>{reportStats.session_count} sessions, {reportStats.total_turns} turns since {new Date(reportStats.since).toLocaleDateString()}</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {reportStats && <span style={{ fontSize: 11, color: '#92400e' }}>{reportStats.session_count} sessions, {reportStats.total_turns} turns</span>}
+              <button onClick={function() { setReport('') }} style={{ background: 'none', border: 'none', color: '#92400e', cursor: 'pointer', fontSize: 16 }}>&times;</button>
+            </div>
           </div>
           <div style={{ whiteSpace: 'pre-wrap' }}>{report}</div>
         </div>
@@ -203,18 +270,18 @@ export default function ConversationsPage() {
 
       {/* Scheduled reviews */}
       {reviews.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Scheduled Reviews</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', marginBottom: 8 }}>Scheduled Reviews</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {reviews.map(function(r) {
               return (
-                <details key={r.id} style={{ background: r.theme_drift ? '#fef2f2' : 'white', border: '1px solid ' + (r.theme_drift ? '#fecaca' : '#e5e7eb'), borderRadius: 12, overflow: 'hidden' }}>
-                  <summary style={{ padding: '10px 16px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <details key={r.id} style={{ background: r.theme_drift ? '#fef2f2' : 'white', border: '1px solid ' + (r.theme_drift ? '#fecaca' : '#e5e7eb'), borderRadius: 10, overflow: 'hidden' }}>
+                  <summary style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontWeight: 600, color: '#111827' }}>{fmtDate(r.reviewed_at)}</span>
                     <span style={{ color: '#9ca3af' }}>{r.session_count} sessions, {r.turn_count} turns</span>
-                    {r.theme_drift && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }}>Drift Detected</span>}
+                    {r.theme_drift && <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: '#fee2e2', color: '#dc2626' }}>Drift</span>}
                   </summary>
-                  <div style={{ padding: '0 16px 12px', fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{r.report}</div>
+                  <div style={{ padding: '0 14px 10px', fontSize: 11, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{r.report}</div>
                 </details>
               )
             })}
@@ -222,18 +289,38 @@ export default function ConversationsPage() {
         </div>
       )}
 
+      {/* Filter bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <input type="text" value={filterSearch} onChange={function(e) { setFilterSearch(e.target.value) }}
+          placeholder="Search by name or message..."
+          style={{ padding: '6px 12px', borderRadius: 20, border: '1px solid #d1d5db', fontSize: 12, width: 200, outline: 'none' }} />
+        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 4 }}>Time:</span>
+        {TIME_RANGES.map(function(tr) {
+          return <button key={tr.hours} onClick={function() { setFilterTime(tr.hours) }} style={pill(filterTime === tr.hours, '#0F7173')}>{tr.label}</button>
+        })}
+        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 4 }}>Flags:</span>
+        <button onClick={function() { setFilterFlag('all') }} style={pill(filterFlag === 'all', '#6b7280')}>All</button>
+        <button onClick={function() { setFilterFlag('flagged') }} style={pill(filterFlag === 'flagged', '#dc2626')}>Flagged</button>
+        <button onClick={function() { setFilterFlag('clean') }} style={pill(filterFlag === 'clean', '#059669')}>Clean</button>
+        {allFlags.map(function(f) {
+          var fc = FLAG_COLORS[f]
+          if (!fc) return null
+          return <button key={f} onClick={function() { setFilterFlag(f) }} style={pill(filterFlag === f, fc.color)}>{fc.label}</button>
+        })}
+      </div>
+
       {/* Conversation cards grid */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading...</div>
-      ) : sessions.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 64, background: 'white', borderRadius: 16, border: '2px dashed #e5e7eb' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>💬</div>
-          <p style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>No conversations yet</p>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>Conversations will appear here once users start chatting with your agent.</p>
+          <p style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>{sessions.length === 0 ? 'No conversations yet' : 'No conversations match filters'}</p>
+          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>{sessions.length === 0 ? 'Conversations will appear here once users start chatting.' : 'Try adjusting your filters.'}</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
-          {sessions.map(function(s) {
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+          {filtered.map(function(s) {
             var persona = s.persona
             var personaLabel = ''
             if (persona) {
@@ -245,14 +332,10 @@ export default function ConversationsPage() {
             }
 
             return (
-              <button key={s.session_id} onClick={function() { loadSession(s.session_id) }}
-                style={{
-                  background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, padding: 0,
-                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', overflow: 'hidden',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                }}>
-                {/* Card header */}
-                <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #f3f4f6' }}>
+              <div key={s.session_id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', transition: 'all 0.15s' }}>
+                {/* Card header — clickable */}
+                <button onClick={function() { loadSession(s.session_id) }}
+                  style={{ display: 'block', width: '100%', padding: '14px 16px 10px', cursor: 'pointer', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid #f3f4f6' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.user_name ? '#E0F2FE' : '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: s.user_name ? '#0369A1' : '#9CA3AF' }}>
@@ -262,33 +345,27 @@ export default function ConversationsPage() {
                     </div>
                     <span style={{ fontSize: 11, color: '#9ca3af' }}>{fmtRelative(s.started_at)}</span>
                   </div>
-                  <p style={{ fontSize: 12, color: '#6b7280', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.4 }}>
+                  <p style={{ fontSize: 12, color: '#6b7280', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.first_message || '(no message)'}
                   </p>
-                </div>
-                {/* Card body — metadata */}
-                <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {/* Persona row */}
-                  {personaLabel && (
-                    <div style={{ fontSize: 11, color: '#0F7173', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#E0F7F7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, flexShrink: 0 }}>P</span>
-                      {personaLabel}
-                    </div>
-                  )}
-                  {/* Stats + flags row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{s.turn_count} turn{s.turn_count !== 1 ? 's' : ''}</span>
-                    {s.has_deflection && (
-                      <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: '#EDE9FE', color: '#7c3aed' }}>Redirected</span>
-                    )}
+                </button>
+                {/* Card footer — metadata + delete */}
+                <div style={{ padding: '8px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{s.turn_count} turns</span>
+                    {personaLabel && <span style={{ fontSize: 10, color: '#0F7173', background: '#E0F7F7', padding: '1px 6px', borderRadius: 8 }}>{personaLabel}</span>}
+                    {s.has_deflection && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: '#EDE9FE', color: '#7c3aed' }}>Redirected</span>}
                     {s.flags.map(function(f) {
                       var c = FLAG_COLORS[f]
                       if (!c) return null
-                      return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: c.bg, color: c.color }}>{c.label}</span>
+                      return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
                     })}
                   </div>
+                  <button onClick={function() { deleteSession(s.session_id) }}
+                    style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer', fontSize: 14, padding: '2px 4px', flexShrink: 0 }}
+                    title="Delete conversation">&times;</button>
                 </div>
-              </button>
+              </div>
             )
           })}
         </div>
@@ -297,34 +374,32 @@ export default function ConversationsPage() {
       {/* ═══ CONVERSATION MODAL ═══ */}
       {selectedSession && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {/* Backdrop */}
           <div onClick={function() { setSelectedSession(null); setTurns([]) }}
             style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} />
-          {/* Modal */}
           <div style={{ position: 'relative', width: '100%', maxWidth: 560, maxHeight: '85vh', borderRadius: 20, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 48px rgba(0,0,0,0.2)' }}>
-            {/* Chat header */}
+            {/* Header */}
             <div style={{ background: headerGrad, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: botConfig.avatarTextColor || 'white' }}>
-                {avatar}
-              </div>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: botConfig.avatarTextColor || 'white' }}>{avatar}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>{botName || 'Agent'}</div>
-                {selectedSessionData?.user_name && (
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Conversation with {selectedSessionData.user_name}</div>
-                )}
+                {selectedSessionData?.user_name && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>with {selectedSessionData.user_name}</div>}
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{turns.length} turns</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{turns.length}</span>
                 <button onClick={shareConversation} disabled={shareState === 'sharing' || turns.length === 0}
-                  style={{ padding: '5px 14px', borderRadius: 16, border: '1px solid rgba(255,255,255,0.3)', background: shareState === 'copied' ? 'rgba(255,255,255,0.2)' : 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: shareState === 'sharing' ? 0.5 : 1 }}>
-                  {shareState === 'copied' ? 'Copied!' : shareState === 'sharing' ? '...' : 'Share'}
+                  style={{ padding: '5px 12px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.3)', background: shareState === 'copied' ? 'rgba(255,255,255,0.2)' : 'transparent', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                  {shareState === 'copied' ? 'Copied!' : 'Share'}
+                </button>
+                <button onClick={function() { if (selectedSession) deleteSession(selectedSession) }}
+                  style={{ padding: '5px 12px', borderRadius: 14, border: '1px solid rgba(255,100,100,0.4)', background: 'transparent', color: '#fca5a5', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                  Delete
                 </button>
                 <button onClick={function() { setSelectedSession(null); setTurns([]) }}
                   style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', width: 28, height: 28, borderRadius: '50%', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&times;</button>
               </div>
             </div>
 
-            {/* Persona bar (if exists) */}
+            {/* Persona bar */}
             {selectedSessionData?.persona && (function() {
               var p = selectedSessionData.persona
               var bits: string[] = []
@@ -335,16 +410,13 @@ export default function ConversationsPage() {
               if (p.communication_style?.value) bits.push(p.communication_style.value + ' tone')
               if (p.concerns?.values?.length) bits.push('concerns: ' + p.concerns.values.join(', '))
               if (bits.length === 0) return null
-              return (
-                <div style={{ background: '#F0FDFA', borderBottom: '1px solid #CCFBF1', padding: '8px 20px', fontSize: 11, color: '#0F766E', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  <span style={{ fontWeight: 600 }}>Profile:</span>
-                  {bits.join(' · ')}
-                </div>
-              )
+              return <div style={{ background: '#F0FDFA', borderBottom: '1px solid #CCFBF1', padding: '8px 20px', fontSize: 11, color: '#0F766E', flexShrink: 0 }}>
+                <span style={{ fontWeight: 600 }}>Profile:</span> {bits.join(' · ')}
+              </div>
             })()}
 
-            {/* Chat messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 8px', display: 'flex', flexDirection: 'column', gap: 8, background: '#FFFFFF' }}>
+            {/* Messages */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 8px', display: 'flex', flexDirection: 'column', gap: 8, background: '#FFF' }}>
               {turnsLoading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading...</div>
               ) : turns.map(function(t) {
@@ -352,15 +424,10 @@ export default function ConversationsPage() {
                 var isDeflect = t.source === 'deflect'
                 var isGreeting = t.source === 'greeting'
                 var flags = t.content_flags || []
-
                 return (
                   <div key={t.id}>
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: isUser ? 'flex-end' : 'flex-start', flexDirection: isUser ? 'row-reverse' : 'row' }}>
-                      {!isUser && (
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: avatarGrad, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: botConfig.avatarTextColor || 'white' }}>
-                          {avatar}
-                        </div>
-                      )}
+                      {!isUser && <div style={{ width: 28, height: 28, borderRadius: '50%', background: avatarGrad, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: botConfig.avatarTextColor || 'white' }}>{avatar}</div>}
                       <div style={{
                         maxWidth: '75%', padding: '10px 14px',
                         borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
@@ -375,15 +442,14 @@ export default function ConversationsPage() {
                           {new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                           {t.language !== 'en' ? ' \u00b7 ' + t.language : ''}
                           {isDeflect ? ' \u00b7 redirected' : ''}
-                          {isGreeting ? ' \u00b7 greeting' : ''}
                         </div>
                       </div>
                     </div>
                     {flags.length > 0 && (
-                      <div style={{ display: 'flex', gap: 4, marginTop: 4, justifyContent: isUser ? 'flex-end' : 'flex-start', paddingLeft: isUser ? 0 : 36 }}>
+                      <div style={{ display: 'flex', gap: 3, marginTop: 3, justifyContent: isUser ? 'flex-end' : 'flex-start', paddingLeft: isUser ? 0 : 36 }}>
                         {flags.map(function(f) {
                           var c = FLAG_COLORS[f] || { bg: '#F3F4F6', color: '#6b7280', label: f }
-                          return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: c.bg, color: c.color, textTransform: 'uppercase', letterSpacing: '0.02em' }}>{c.label}</span>
+                          return <span key={f} style={{ fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 8, background: c.bg, color: c.color }}>{c.label}</span>
                         })}
                       </div>
                     )}
@@ -399,48 +465,22 @@ export default function ConversationsPage() {
   )
 }
 
-// ── Build self-contained HTML for share link ──────────────────────────
+// ── Share HTML builder ────────────────────────────────────────────────
 function buildConversationHtml(name: string, config: BotConfig, turns: Turn[]): string {
-  var avatarChar = config.avatarLetter || (name ? name.charAt(0).toUpperCase() : 'A')
-  var hGrad = config.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
-  var aGrad = config.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
-
+  var av = config.avatarLetter || (name ? name.charAt(0).toUpperCase() : 'A')
+  var hG = config.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
+  var aG = config.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
   var rows = turns.map(function(t) {
     var isUser = t.role === 'user'
     var time = new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    var flagHtml = ''
-    if (t.content_flags && t.content_flags.length > 0) {
-      flagHtml = '<div style="display:flex;gap:3px;margin-top:4px;justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';padding-left:' + (isUser ? '0' : '36px') + '">' +
-        t.content_flags.map(function(f) {
-          var fc = FLAG_COLORS[f] || { bg: '#F3F4F6', color: '#6b7280', label: f }
-          return '<span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:10px;background:' + fc.bg + ';color:' + fc.color + ';text-transform:uppercase">' + fc.label + '</span>'
-        }).join('') + '</div>'
-    }
     if (isUser) {
-      return '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:#007AFF;color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' +
-        escHtml(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>' + flagHtml
-    } else {
-      var isDeflect = t.source === 'deflect'
-      return '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px">' +
-        '<div style="width:28px;height:28px;border-radius:50%;background:' + aGrad + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + escHtml(avatarChar) + '</div>' +
-        '<div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap' + (isDeflect ? ';border:1.5px solid #c4b5fd' : '') + '">' +
-        escHtml(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + (isDeflect ? ' \u00b7 redirected' : '') + '</div></div></div>'
+      return '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:#007AFF;color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
     }
+    return '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px"><div style="width:28px;height:28px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + esc(av) + '</div><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
   }).join('')
-
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escHtml(name) + ' — Conversation</title>' +
-    '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head>' +
-    '<body><div style="width:100%;max-width:600px">' +
-    '<div style="background:' + hGrad + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px">' +
-    '<div style="width:40px;height:40px;border-radius:50%;background:' + aGrad + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + escHtml(avatarChar) + '</div>' +
-    '<div><div style="font-size:15px;font-weight:600;color:white">' + escHtml(name) + '</div>' +
-    (config.subtitle ? '<div style="font-size:11px;color:rgba(255,255,255,0.6)">' + escHtml(config.subtitle) + '</div>' : '') +
-    '</div></div>' +
-    '<div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div>' +
-    '<div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">Shared from Sentimetrx</div>' +
-    '</div></body></html>'
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head><body><div style="width:100%;max-width:600px"><div style="background:' + hG + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + esc(av) + '</div><div style="font-size:15px;font-weight:600;color:white">' + esc(name) + '</div></div><div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div><div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">Shared from Sentimetrx</div></div></body></html>'
 }
 
-function escHtml(s: string): string {
+function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
