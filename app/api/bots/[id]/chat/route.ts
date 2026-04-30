@@ -382,7 +382,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     systemParts.push('\n\nIMPORTANT LANGUAGE RULE: You MUST respond ONLY in ' + langName + '. All your responses — greetings, answers, redirects — must be in ' + langName + '. Even if the user writes in English or another language, always reply in ' + langName + '.')
   }
 
-  systemParts.push('\n\nRESPONSE STYLE: Keep responses SHORT — aim for 2-4 sentences. If a topic has multiple angles (e.g. safety involves lighting, policing, homelessness), give a brief summary and then ask which aspect they want to explore further. Let the user guide the depth. Never dump everything you know into one message. Think of it as a conversation, not a speech. Always finish your thought — never leave a sentence incomplete.')
+  // Adaptive verbosity: mirror the user's message length
+  var userWords = lastUserMsg ? lastUserMsg.content.trim().split(/\s+/).length : 10
+  var verbosityGuide = userWords <= 5
+    ? 'The user is being very brief. Match their energy — reply in 1-2 short sentences max.'
+    : userWords <= 20
+    ? 'The user wrote a short message. Keep your reply to 2-3 sentences.'
+    : userWords <= 50
+    ? 'The user wrote a moderate message. You can reply in 3-5 sentences.'
+    : 'The user wrote a detailed message. You can be more thorough — up to 5-6 sentences — but still stay focused.'
+  systemParts.push('\n\nRESPONSE STYLE: Mirror the user\'s verbosity. ' + verbosityGuide + ' If a topic has multiple angles, give a brief summary and ask which to explore further. Never dump everything you know into one message — it\'s a conversation, not a speech. Always finish your thought.')
   if (user_name && typeof user_name === 'string' && user_name.length <= 40) {
     systemParts.push('\nThe user\'s name is ' + user_name + '. Address them by name occasionally to keep the conversation personal, but don\'t overdo it.')
   }
