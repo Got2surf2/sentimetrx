@@ -83,31 +83,33 @@ export async function GET(req: NextRequest) {
 
     // Store each page as a Facebook connection + check for linked IG account
     for (const page of pages) {
-      // Upsert Facebook Page connection
-      await service.from('social_connections').upsert({
+      // Delete existing connection for this page, then insert fresh
+      await service.from('social_connections').delete().eq('org_id', userData.org_id).eq('platform', 'facebook').eq('account_id', page.id)
+      const { error: fbErr } = await service.from('social_connections').insert({
         org_id: userData.org_id,
         platform: 'facebook',
         account_id: page.id,
         account_name: page.name,
-        access_token: page.access_token, // page-level long-lived token
+        access_token: page.access_token,
         token_expires_at: expiresAt,
         connected_by: userId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'org_id,platform,account_id', ignoreDuplicates: false })
+      })
+      if (fbErr) console.error('[social/callback] FB insert error:', fbErr.message)
 
       // Check for linked Instagram Business account
       const ig = await getInstagramAccount(page.id, page.access_token)
       if (ig) {
-        await service.from('social_connections').upsert({
+        await service.from('social_connections').delete().eq('org_id', userData.org_id).eq('platform', 'instagram').eq('account_id', ig.id)
+        const { error: igErr } = await service.from('social_connections').insert({
           org_id: userData.org_id,
           platform: 'instagram',
           account_id: ig.id,
           account_name: ig.username,
-          access_token: page.access_token, // IG uses the page token
+          access_token: page.access_token,
           token_expires_at: expiresAt,
           connected_by: userId,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'org_id,platform,account_id', ignoreDuplicates: false })
+        })
+        if (igErr) console.error('[social/callback] IG insert error:', igErr.message)
       }
     }
 
