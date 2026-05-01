@@ -12,10 +12,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const appId = process.env.META_APP_ID
-  // Derive redirect URI from the incoming request to avoid env var mismatches
-  const origin = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'www.sentimetrx.ai'
-  const proto = req.headers.get('x-forwarded-proto') || 'https'
-  const redirectUri = process.env.META_REDIRECT_URI || `${proto}://${origin}/api/social/callback`
+  const redirectUri = process.env.META_REDIRECT_URI || `${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.sentimetrx.ai'}/api/social/callback`
 
   if (!appId) return NextResponse.json({ error: 'META_APP_ID not configured' }, { status: 500 })
 
