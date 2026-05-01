@@ -387,6 +387,27 @@ export function buildRegulationsSchema(): SchemaConfig {
   return { fields, primaryTextField: 'comment_text', autoDetected: false, version: 1 }
 }
 
+export function buildSocialSchema(): SchemaConfig {
+  const fields: SchemaFieldConfig[] = [
+    { field: 'comment_id',      type: 'id' },
+    { field: 'platform',        type: 'categorical', label: 'Platform' },
+    { field: 'author_name',     type: 'categorical', label: 'Author' },
+    { field: 'text',            type: 'open-ended',  sqt: 'open-text', label: 'Comment' },
+    { field: 'sentiment',       type: 'categorical', label: 'Sentiment' },
+    { field: 'emotion',         type: 'categorical', label: 'Emotion' },
+    { field: 'topics',          type: 'categorical', label: 'Topics' },
+    { field: 'intents',         type: 'categorical', label: 'Intents' },
+    { field: 'is_hidden',       type: 'categorical', label: 'Hidden' },
+    { field: 'is_deleted',      type: 'categorical', label: 'Deleted' },
+    { field: 'is_reply',        type: 'categorical', label: 'Is Reply' },
+    { field: 'post_text',       type: 'open-ended',  sqt: 'open-text', label: 'Post Text' },
+    { field: 'comment_date',    type: 'date',        label: 'Date' },
+    { field: 'flag_types',      type: 'categorical', label: 'Flag Types' },
+    { field: 'max_severity',    type: 'categorical', label: 'Max Severity' },
+  ]
+  return { fields, primaryTextField: 'text', autoDetected: false, version: 1 }
+}
+
 export function emptyThemeModel() {
   return { themes: [] as unknown[], aiGenerated: false, version: 1 }
 }

@@ -132,6 +132,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   // Tab + view mode
   const [tab, setTab] = useState<'feed' | 'settings'>('feed')
   const [viewMode, setViewMode] = useState<'recent' | 'bypost'>('recent')
+  const [exporting, setExporting] = useState(false)
   const [postFilter, setPostFilter] = useState<Record<string, string>>({})
 
   const fetchComments = useCallback(function() {
@@ -193,6 +194,30 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   async function handleToggleHandled(id: string) {
     await fetch('/api/social/comments/' + id + '/handle', { method: 'POST' })
     fetchComments()
+  }
+
+  async function handleExportToTextMine() {
+    setExporting(true)
+    try {
+      var body: any = {}
+      if (platform) body.platform = platform
+      if (sentiment) body.sentiment = sentiment
+      if (flaggedOnly) body.flagged = true
+      var res = await fetch('/api/social/export-dataset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      var data = await res.json()
+      if (data.ok) {
+        alert('Created dataset "' + data.name + '" with ' + data.rowCount + ' comments. Go to TextMine to analyze.')
+      } else {
+        alert(data.error || 'Export failed')
+      }
+    } catch (e) {
+      alert('Export failed')
+    }
+    setExporting(false)
   }
 
   async function handleReply(id: string) {
@@ -435,7 +460,13 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
+              <button
+                onClick={handleExportToTextMine}
+                disabled={exporting}
+                style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #4f46e5', fontSize: 12, fontWeight: 600, background: '#4f46e5', color: 'white', cursor: 'pointer', opacity: exporting ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                {exporting ? 'Exporting...' : 'Send to TextMine'}
+              </button>
               <input
                 value={searchInput}
                 onChange={function(e) { setSearchInput(e.target.value) }}
