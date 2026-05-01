@@ -10,6 +10,7 @@ import { checkMessage, auditContent } from '@/lib/contentGuard'
 import { cleanDeflectResponse } from '@/lib/guardrails'
 import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, type Persona } from '@/lib/personaExtractor'
+import { POSITIVE_WORDS, NEGATIVE_WORDS } from '@/lib/sentimentLexicon'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors }) }
 
-  const { messages, session_id, user_name, language: userLanguage, debug: debugMode } = body
+  const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode } = body
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages required' }, { status: 400, headers: cors })
   }
@@ -58,6 +59,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Debug trace — collects pipeline info when verbose mode is on
   const _debug: string[] = []
+  // Demo signals — lightweight labels for client-facing demo mode
+  const _signals: Array<{ label: string; type: string; color: string }> = []
 
   // Content safety check on latest user message
   const recentMessages = messages.slice(-20)
@@ -81,6 +84,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (debugMode) {
     _debug.push('Content audit: ' + (auditFlags.length > 0 ? auditFlags.join(', ') : 'clean'))
     _debug.push('Language: ' + botLang)
+  }
+  // Demo signals for content flags
+  if (demoMode && auditFlags.length > 0) {
+    var flagColors: Record<string, string> = { profanity: '#D97706', slur: '#DC2626', threat: '#DC2626', sexual: '#9333EA', insult: '#F97316', spam: '#6B7280', outside_scope: '#7C3AED' }
+    for (var af of auditFlags) {
+      if (!af.startsWith('intent:')) _signals.push({ label: af.charAt(0).toUpperCase() + af.slice(1).replace(/_/g, ' '), type: 'flag', color: flagColors[af] || '#6B7280' })
+    }
   }
 
   // ── Smart deflection: redirect off-topic / sensitive topics ────────
@@ -139,7 +149,8 @@ export async function POST(req: NextRequest, { params }: Params) {
           }
 
           if (debugMode) _debug.push('Deflection triggered' + (hitsSensitive ? ' (sensitive topic)' : ' (off-topic)'))
-          return NextResponse.json({ reply: deflectText, _debug: debugMode ? _debug : undefined }, { headers: cors })
+          if (demoMode) _signals.push({ label: hitsSensitive ? 'Sensitive Topic' : 'Redirected', type: 'deflect', color: '#7C3AED' })
+          return NextResponse.json({ reply: deflectText, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }, { headers: cors })
         }
       } catch {
         // Deflection AI failed — proceed normally
@@ -216,6 +227,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (!auditFlags.includes(intentFlag)) auditFlags.push(intentFlag)
     }
     if (debugMode) _debug.push('Intents: ' + (detectedIntents.length > 0 ? detectedIntents.join(', ') : 'none detected') + ' (' + activeIntents.length + ' active rules)')
+    if (demoMode && detectedIntents.length > 0) {
+      for (var di2 of detectedIntents) _signals.push({ label: di2 + ' Intent', type: 'intent', color: '#1D4ED8' })
+    }
   } else if (debugMode) {
     _debug.push('Intents: disabled (0 rules configured)')
   }
@@ -269,6 +283,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
   if (debugMode) _debug.push('Persona: ' + (personaContext ? 'active' : 'none') + (askProfileEnabled ? ' (profiling on, turn ' + userTurnCount + ')' : ''))
+  if (demoMode && personaContext) _signals.push({ label: 'Persona Active', type: 'persona', color: '#0F7173' })
 
   // Build system prompt from personality + config + knowledge base
   const systemParts = []
@@ -536,8 +551,21 @@ export async function POST(req: NextRequest, { params }: Params) {
       var replyWords = result.text.trim().split(/\s+/).length
       _debug.push('Response: ' + replyWords + ' words, stop=' + result.stopReason)
     }
-    return NextResponse.json({ reply: result.text, _debug: debugMode ? _debug : undefined }, { headers: cors })
+    // Add sentiment signal based on the user's message
+    if (demoMode && lastUserMsg) {
+      var sentScore = 0
+      var sentWords = lastUserMsg.content.toLowerCase().replace(/[^a-z\s']/g, '').split(/\s+/)
+      for (var sw of sentWords) {
+        if (POSITIVE_WORDS.has(sw)) sentScore++
+        else if (NEGATIVE_WORDS.has(sw)) sentScore--
+      }
+      if (sentScore > 0) _signals.push({ label: 'Positive', type: 'sentiment', color: '#059669' })
+      else if (sentScore < 0) _signals.push({ label: 'Negative', type: 'sentiment', color: '#DC2626' })
+      // Add knowledge source signal
+      if (knowledgeInjected && !intentHasAction) _signals.push({ label: 'Knowledge Base', type: 'rag', color: '#0369A1' })
+    }
+    return NextResponse.json({ reply: result.text, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }, { headers: cors })
   } catch (err: any) {
-    return NextResponse.json({ reply: "I'm having trouble right now. Please try again in a moment.", _debug: debugMode ? [..._debug, 'ERROR: ' + (err?.message || 'unknown')] : undefined }, { headers: cors })
+    return NextResponse.json({ reply: "I'm having trouble right now. Please try again in a moment.", _debug: debugMode ? [..._debug, 'ERROR: ' + (err?.message || 'unknown')] : undefined, _signals: demoMode ? _signals : undefined }, { headers: cors })
   }
 }

@@ -15,6 +15,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   _debug?: string[]
+  _signals?: Array<{ label: string; type: string; color: string }>
 }
 
 export interface ChatBotConfig {
@@ -106,6 +107,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
+  const [demoMode, setDemoMode] = useState(false)
   const [showVerboseAuth, setShowVerboseAuth] = useState(false)
   const [userName, setUserName] = useState<string | null>(askName ? null : '_skip')
   const sessionId = useMemo(() => genSessionId(), [])
@@ -179,6 +181,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     const cmd = checkVerboseCommand(text.trim())
     if (cmd === 'bypass') { setInput(''); setDebugMode(true); return }
     if (cmd === 'auth') { setInput(''); setShowVerboseAuth(true); return }
+    if (cmd === 'demo') { setInput(''); setDemoMode(v => !v); return }
 
     // Name capture step — before first real chat message (only if askName is on)
     if (userName === null) {
@@ -236,12 +239,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           messages: apiMessages,
           session_id: sessionId,
           debug: debugMode || undefined,
+          demo: demoMode || undefined,
           user_name: userName && userName !== '_skip' ? userName : undefined,
           language: selectedLang || undefined,
         }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, something went wrong.', _debug: data._debug }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, something went wrong.', _debug: data._debug, _signals: data._signals }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: "I'm having trouble connecting. Please try again." }])
     } finally {
@@ -329,6 +333,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         </div>
       )}
 
+      {/* Demo mode banner */}
+      {demoMode && !debugMode && (
+        <div style={{ background: '#EDE9FE', borderBottom: '1px solid #C4B5FD', padding: '4px 16px', fontSize: '0.6875rem', color: '#5B21B6', fontWeight: 600, flexShrink: 0, textAlign: 'center' }}>
+          Demo mode — AI signals visible
+        </div>
+      )}
+
       {/* Language selector — shown before chat when multi-language is enabled */}
       {multiLang && selectedLang === null && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 24px', gap: 20 }}>
@@ -402,6 +413,15 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               <div style={{ margin: '4px 0 6px 40px', padding: '8px 12px', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 12, fontSize: '0.6875rem', color: '#92400e', lineHeight: 1.5, maxWidth: '85%' }}>
                 <div style={{ fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, color: '#78350f' }}>AI Thinking</div>
                 {msg._debug.map((line, j) => <div key={j} style={{ marginBottom: 2 }}>{line}</div>)}
+              </div>
+            )}
+            {demoMode && !debugMode && msg._signals && msg._signals.length > 0 && (
+              <div style={{ margin: '4px 0 6px 40px', display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: '85%' }}>
+                {msg._signals.map((sig, j) => (
+                  <span key={j} style={{ padding: '2px 8px', borderRadius: 20, fontSize: 9, fontWeight: 700, background: sig.color + '20', color: sig.color, border: '1px solid ' + sig.color + '40' }}>
+                    {sig.label}
+                  </span>
+                ))}
               </div>
             )}
           </div>

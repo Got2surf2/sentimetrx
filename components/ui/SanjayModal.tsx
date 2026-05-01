@@ -8,11 +8,13 @@ import { useState } from 'react'
 
 const BYPASS_PATTERN = /^#sanjay\s+mvuli609$/i
 const VERBOSE_PATTERN = /^#verbose$/i
+const DEMO_PATTERN = /^#demo$/i
 
-/** Check if input is a verbose/sanjay command. Returns action or null. */
-export function checkVerboseCommand(text: string): 'bypass' | 'auth' | null {
+/** Check if input is a verbose/sanjay/demo command. Returns action or null. */
+export function checkVerboseCommand(text: string): 'bypass' | 'auth' | 'demo' | null {
   if (BYPASS_PATTERN.test(text.trim())) return 'bypass'
   if (VERBOSE_PATTERN.test(text.trim())) return 'auth'
+  if (DEMO_PATTERN.test(text.trim())) return 'demo'
   return null
 }
 
