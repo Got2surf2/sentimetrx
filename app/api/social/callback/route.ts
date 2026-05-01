@@ -7,8 +7,14 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 
 async function exchangeCodeForToken(code: string, redirectUri: string): Promise<{ access_token: string; expires_in?: number }> {
-  const res = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`)
-  if (!res.ok) throw new Error('Failed to exchange code: ' + (await res.text()))
+  console.log('[social/callback] exchanging code with redirect_uri:', redirectUri)
+  const url = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`
+  const res = await fetch(url)
+  if (!res.ok) {
+    const body = await res.text()
+    console.error('[social/callback] token exchange failed:', res.status, body)
+    throw new Error('Failed to exchange code: ' + body)
+  }
   return res.json()
 }
 
