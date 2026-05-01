@@ -131,6 +131,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   // Tab + view mode
   const [tab, setTab] = useState<'feed' | 'settings'>('feed')
   const [viewMode, setViewMode] = useState<'recent' | 'bypost'>('recent')
+  const [postFilter, setPostFilter] = useState<Record<string, string>>({})
 
   const fetchComments = useCallback(function() {
     setLoading(true)
@@ -505,16 +506,26 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                           <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', flex: 1, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>{group.postText}</span>
                           <span style={{ fontSize: 10, color: '#9ca3af', flexShrink: 0, marginLeft: 12, whiteSpace: 'nowrap' }}>Last: {timeAgo(lastTime)}</span>
                         </div>
-                        {/* Pills row */}
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: '#374151', padding: '2px 8px', borderRadius: 10, background: '#e5e7eb' }}>{group.comments.length} comments</span>
-                          {posCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#d1fae5', color: '#059669' }}>{posCount} positive</span>}
-                          {neuCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#f3f4f6', color: '#6b7280' }}>{neuCount} neutral</span>}
-                          {negCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fee2e2', color: '#dc2626' }}>{negCount} negative</span>}
-                          {deletedCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5' }}>{deletedCount} deleted</span>}
-                          {hiddenCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d' }}>{hiddenCount} hidden</span>}
-                          {reviewCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fef9c3', color: '#a16207', border: '1px solid #fde68a' }}>{reviewCount} review</span>}
-                          {offTopicCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#f1f5f9', color: '#94a3b8', border: '1px solid #cbd5e1' }}>{offTopicCount} off-topic</span>}
+                        {/* Pills row — clickable to filter */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }} onClick={function(e) { e.preventDefault() }}>
+                          {(function() {
+                            var pf = postFilter[postId] || ''
+                            var pillStyle = function(key: string, bg: string, color: string, border?: string) {
+                              var active = pf === key
+                              return { fontSize: 10, fontWeight: 600 as const, padding: '2px 6px', borderRadius: 10, cursor: 'pointer', background: active ? color : bg, color: active ? 'white' : color, border: border || 'none', transition: 'all 0.15s' }
+                            }
+                            var toggle = function(key: string) { setPostFilter(function(prev) { var n = { ...prev }; n[postId] = prev[postId] === key ? '' : key; return n }) }
+                            return <>
+                              <span onClick={function() { toggle('') }} style={{ fontSize: 11, fontWeight: 600, color: !pf ? 'white' : '#374151', padding: '2px 8px', borderRadius: 10, background: !pf ? '#374151' : '#e5e7eb', cursor: 'pointer' }}>{group.comments.length} all</span>
+                              {posCount > 0 && <span onClick={function() { toggle('positive') }} style={pillStyle('positive', '#d1fae5', '#059669')}>{posCount} positive</span>}
+                              {neuCount > 0 && <span onClick={function() { toggle('neutral') }} style={pillStyle('neutral', '#f3f4f6', '#6b7280')}>{neuCount} neutral</span>}
+                              {negCount > 0 && <span onClick={function() { toggle('negative') }} style={pillStyle('negative', '#fee2e2', '#dc2626')}>{negCount} negative</span>}
+                              {deletedCount > 0 && <span onClick={function() { toggle('deleted') }} style={pillStyle('deleted', '#fee2e2', '#dc2626', '1px solid #fca5a5')}>{deletedCount} deleted</span>}
+                              {hiddenCount > 0 && <span onClick={function() { toggle('hidden') }} style={pillStyle('hidden', '#fef3c7', '#d97706', '1px solid #fcd34d')}>{hiddenCount} hidden</span>}
+                              {reviewCount > 0 && <span onClick={function() { toggle('review') }} style={pillStyle('review', '#fef9c3', '#a16207', '1px solid #fde68a')}>{reviewCount} review</span>}
+                              {offTopicCount > 0 && <span onClick={function() { toggle('off_topic') }} style={pillStyle('off_topic', '#f1f5f9', '#94a3b8', '1px solid #cbd5e1')}>{offTopicCount} off-topic</span>}
+                            </>
+                          })()}
                         </div>
                         {/* Preview: first 3 comments truncated */}
                         <div style={{ marginTop: 8 }}>
@@ -528,9 +539,19 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                         </div>
                       </summary>
                       <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #e5e7eb' }}>
-                        {group.comments.map(function(c) {
-                          return renderComment(c)
-                        })}
+                        {(function() {
+                          var pf = postFilter[postId] || ''
+                          var filtered = group.comments.filter(function(c) {
+                            if (!pf) return true
+                            if (pf === 'positive' || pf === 'negative' || pf === 'neutral') return c.sentiment === pf
+                            if (pf === 'deleted') return c.is_deleted
+                            if (pf === 'hidden') return c.is_hidden && !c.is_deleted
+                            if (pf === 'review') return !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' })
+                            if (pf === 'off_topic') return Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'off_topic' })
+                            return true
+                          })
+                          return filtered.map(function(c) { return renderComment(c) })
+                        })()}
                       </div>
                     </details>
                   )
