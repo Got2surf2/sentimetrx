@@ -496,6 +496,7 @@ export default function ConversationsClient() {
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: botConfig.avatarTextColor || 'white' }}>{avatar}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>{botName || 'Agent'}</div>
+                {botConfig.subtitle && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>{botConfig.subtitle}</div>}
                 {selectedSessionData?.user_name && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>with {selectedSessionData.user_name}</div>}
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
