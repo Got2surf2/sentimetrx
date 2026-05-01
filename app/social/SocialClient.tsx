@@ -59,6 +59,25 @@ const FLAG_COLORS: Record<string, string> = {
   sexual: '#9333ea',
   insult: '#f97316',
   spam: '#6b7280',
+  auto_delete: '#dc2626',
+  auto_hide: '#d97706',
+  review: '#7c3aed',
+  competitor: '#0369a1',
+  intent: '#059669',
+}
+
+const FLAG_LABELS: Record<string, string> = {
+  profanity: 'Profanity',
+  slur: 'Slur',
+  threat: 'Threat',
+  sexual: 'Sexual',
+  insult: 'Insult',
+  spam: 'Spam',
+  auto_delete: 'Auto-Delete',
+  auto_hide: 'Auto-Hide',
+  review: 'Review',
+  competitor: 'Competitor',
+  intent: 'Engagement',
 }
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -385,12 +404,14 @@ export default function SocialClient({ orgId }: { orgId: string }) {
 
                         {/* Flag badges */}
                         {Array.isArray(c.flags) && c.flags.map(function(f: any, i: number) {
+                          var flagColor = FLAG_COLORS[f.type] || '#dc2626'
+                          var flagLabel = FLAG_LABELS[f.type] || f.type
                           return (
-                            <span key={i} style={{
+                            <span key={i} title={f.action || ''} style={{
                               padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600,
-                              background: '#fef2f2', color: FLAG_COLORS[f.type] || '#dc2626',
+                              background: flagColor + '15', color: flagColor, border: '1px solid ' + flagColor + '30',
                             }}>
-                              {f.type}
+                              {flagLabel}
                             </span>
                           )
                         })}

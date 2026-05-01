@@ -397,13 +397,17 @@ export default function SimulatorPage() {
                 ) : demoResult.deleted !== undefined ? (
                   <p className="text-sm text-gray-600">Deleted {demoResult.deleted} demo comments.</p>
                 ) : (
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-4 gap-3 text-center mb-3">
                     <div><div className="text-2xl font-bold text-gray-900">{demoResult.generated}</div><div className="text-xs text-gray-500 mt-1">Generated</div></div>
                     <div><div className="text-2xl font-bold text-amber-600">{demoResult.flagged}</div><div className="text-xs text-gray-500 mt-1">Flagged</div></div>
-                    <div><div className="text-2xl font-bold text-red-600">{demoResult.autoHidden}</div><div className="text-xs text-gray-500 mt-1">Auto-Hidden</div></div>
+                    <div><div className="text-2xl font-bold text-orange-600">{demoResult.autoHidden}</div><div className="text-xs text-gray-500 mt-1">Auto-Hidden</div></div>
+                    <div><div className="text-2xl font-bold text-red-600">{demoResult.autoDeleted || 0}</div><div className="text-xs text-gray-500 mt-1">Auto-Deleted</div></div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3 text-center">
                     <div><div className="text-lg font-bold text-green-600">{demoResult.sentiment?.positive || 0}</div><div className="text-xs text-gray-500 mt-1">Positive</div></div>
-                    <div><div className="text-lg font-bold text-gray-600">{demoResult.sentiment?.neutral || 0}</div><div className="text-xs text-gray-500 mt-1">Neutral</div></div>
-                    <div><div className="text-lg font-bold text-red-600">{demoResult.sentiment?.negative || 0}</div><div className="text-xs text-gray-500 mt-1">Negative</div></div>
+                    <div><div className="text-lg font-bold text-gray-500">{demoResult.sentiment?.neutral || 0}</div><div className="text-xs text-gray-500 mt-1">Neutral</div></div>
+                    <div><div className="text-lg font-bold text-red-500">{demoResult.sentiment?.negative || 0}</div><div className="text-xs text-gray-500 mt-1">Negative</div></div>
+                    <div><div className="text-lg font-bold text-purple-600">{demoResult.flaggedForReview || 0}</div><div className="text-xs text-gray-500 mt-1">For Review</div></div>
                   </div>
                 )}
               </div>

@@ -107,12 +107,54 @@ Output ONLY the JSON array, nothing else.`,
   }
 
   // Process each comment through content guard + sentiment
+  // Assign moderation actions based on severity and content
   const now = new Date()
+  let autoHiddenCount = 0
+  let autoDeletedCount = 0
+  let flaggedForReviewCount = 0
+
   const rows = comments.map(function(cm, i) {
     const sentiment = scoreSentiment(cm.text)
     const audit = auditContent(cm.text)
-    const flags = audit.flags.map(f => ({ type: f, severity: audit.maxSeverity }))
-    const shouldAutoHide = audit.maxSeverity === 'severe'
+    const flags: Array<{ type: string; severity: string | null; action?: string }> = audit.flags.map(f => ({ type: f, severity: audit.maxSeverity }))
+
+    let isHidden = false
+    let isDeleted = false
+
+    if (audit.maxSeverity === 'severe') {
+      // Threats and slurs → auto-delete
+      const hasThreatsOrSlurs = audit.flags.some(f => f === 'threat' || f === 'slur')
+      if (hasThreatsOrSlurs) {
+        isDeleted = true
+        autoDeletedCount++
+        flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: threats/slurs' })
+      } else {
+        // Other severe (profanity, sexual) → auto-hide
+        isHidden = true
+        autoHiddenCount++
+        flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: severe content' })
+      }
+    } else if (audit.maxSeverity === 'rude') {
+      // Rude content → flag for review
+      flaggedForReviewCount++
+      flags.push({ type: 'review', severity: 'rude', action: 'Flagged for review' })
+    }
+
+    // Detect spam patterns
+    if (/https?:\/\/|buy now|click here|free money|earn \$/i.test(cm.text)) {
+      flags.push({ type: 'spam', severity: 'moderate', action: 'Auto-hidden: spam detected' })
+      if (!isHidden && !isDeleted) { isHidden = true; autoHiddenCount++ }
+    }
+
+    // Detect competitor mentions
+    if (/competitor|qualtrics|surveymonkey|typeform|medallia/i.test(cm.text)) {
+      flags.push({ type: 'competitor', severity: null, action: 'Competitor mention detected' })
+    }
+
+    // Detect intent signals
+    if (/donat|volunteer|sign up|join|help|contribute|campaign/i.test(cm.text)) {
+      flags.push({ type: 'intent', severity: null, action: 'Engagement signal detected' })
+    }
 
     // Spread comments over the last 24 hours
     const minutesAgo = Math.floor((i / comments.length) * 24 * 60)
@@ -130,8 +172,8 @@ Output ONLY the JSON array, nothing else.`,
       text: cm.text,
       sentiment,
       flags,
-      is_hidden: shouldAutoHide,
-      is_deleted: false,
+      is_hidden: isHidden,
+      is_deleted: isDeleted,
       is_reply: false,
       platform_created_at: ts,
     }
@@ -140,13 +182,14 @@ Output ONLY the JSON array, nothing else.`,
   const { error } = await service.from('social_comments').insert(rows)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const hidden = rows.filter(r => r.is_hidden).length
   const flagged = rows.filter(r => r.flags.length > 0).length
 
   return NextResponse.json({
     generated: rows.length,
     flagged,
-    autoHidden: hidden,
+    autoHidden: autoHiddenCount,
+    autoDeleted: autoDeletedCount,
+    flaggedForReview: flaggedForReviewCount,
     sentiment: {
       positive: rows.filter(r => r.sentiment === 'positive').length,
       negative: rows.filter(r => r.sentiment === 'negative').length,
