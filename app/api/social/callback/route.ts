@@ -80,6 +80,12 @@ export async function GET(req: NextRequest) {
 
     // Get pages the user manages
     const pages = await getPageTokens(longToken.access_token)
+    console.log('[social/callback] Token exchange OK. Pages found:', pages.length, pages.map(p => p.name).join(', '))
+
+    if (pages.length === 0) {
+      console.log('[social/callback] No pages found — user may not manage any Facebook Pages')
+      return NextResponse.redirect(`${siteUrl}/social?error=no_pages`)
+    }
 
     // Store each page as a Facebook connection + check for linked IG account
     for (const page of pages) {
@@ -95,6 +101,7 @@ export async function GET(req: NextRequest) {
         connected_by: userId,
       })
       if (fbErr) console.error('[social/callback] FB insert error:', fbErr.message)
+      else console.log('[social/callback] Stored FB page:', page.name, page.id)
 
       // Check for linked Instagram Business account
       const ig = await getInstagramAccount(page.id, page.access_token)

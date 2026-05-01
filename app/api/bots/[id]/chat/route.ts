@@ -150,6 +150,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // ── Intent detection ────────────────────────────────────────────────
   // Two-tier: fast keyword match first, then AI detection for subtle signals
   var intentContext = ''
+  var intentHasAction = false
   var detectedIntents: string[] = []
   var botIntents: any[] = (bot as any).intents || []
   var activeIntents = botIntents.filter(function(i: any) { return i.enabled !== false })
@@ -203,7 +204,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       detectedIntents.push(hit.label || 'unknown')
       var parts: string[] = []
       if (hit.message) parts.push(hit.message)
-      if (hit.url) parts.push('Include this link: ' + hit.url)
+      if (hit.url) { parts.push('Include this link: ' + hit.url); intentHasAction = true }
       if (parts.length > 0) {
         intentContext += '\n\nINTENT DETECTED — ' + (hit.label || '') + ': The user expressed interest in "' + (hit.label || '') + '". ' + parts.join('. ') + ' Weave this naturally into your response — don\'t just dump a link. Acknowledge their interest warmly first.'
       }
@@ -285,10 +286,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // RAG: semantic search with embeddings + full-text + trigram
-  // Falls back to full knowledge_base text if no chunks or if RPC not yet available
+  // Skip RAG when an intent with action URL was detected — the response is the action, not knowledge
   const userQuery = lastUserMsg?.content || ''
   let knowledgeInjected = false
-  if (userQuery) {
+  if (intentHasAction) {
+    knowledgeInjected = true // skip RAG entirely
+    if (debugMode) _debug.push('RAG: skipped (intent with action URL detected)')
+  } else if (userQuery) {
     try {
       // Generate query embedding for semantic search
       const queryEmbedding = await generateEmbedding(userQuery)
