@@ -81,6 +81,22 @@ Output ONLY the JSON array, nothing else.`,
     return NextResponse.json({ error: 'No comments generated' }, { status: 500 })
   }
 
+  // Inject hardcoded offensive comments to guarantee content guard flags fire
+  // AI self-censors so these ensure the demo shows auto-hide and auto-delete in action
+  const offensiveInjections = [
+    { author: 'TrollMaster420', text: 'fuck off nobody wants you in office you piece of shit', platform: 'facebook' },
+    { author: 'AngryVoter99', text: 'kill yourself you worthless corrupt politician', platform: 'facebook' },
+    { author: 'HateAccount', text: 'go back where you came from you stupid bitch', platform: 'instagram' },
+    { author: 'SpamBot3000', text: 'CLICK HERE for FREE MONEY https://scam-site.com/earn-cash-now BUY NOW!!!', platform: 'facebook' },
+    { author: 'EdgeLord', text: 'shut up you dumbass nobody gives a crap about your policies idiot', platform: 'instagram' },
+    { author: 'ToxicUser', text: 'what a retarded idea from a retarded person lmao', platform: 'facebook' },
+  ]
+  // Replace the last N AI-generated comments with offensive ones
+  const injectCount = Math.min(offensiveInjections.length, Math.floor(comments.length * 0.25))
+  for (let i = 0; i < injectCount; i++) {
+    comments[comments.length - 1 - i] = offensiveInjections[i]
+  }
+
   // Get or create a connection for demo purposes
   let connectionId: string
   const { data: existingConn } = await service
