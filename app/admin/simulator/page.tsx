@@ -216,6 +216,7 @@ export default function SimulatorPage() {
   // Social demo state
   const [demoCandidate, setDemoCandidate] = useState('')
   const [demoContext, setDemoContext] = useState('')
+  const [demoPostText, setDemoPostText] = useState('')
   const [demoCount, setDemoCount] = useState(25)
   const [demoLoading, setDemoLoading] = useState(false)
   const [demoResult, setDemoResult] = useState<any>(null)
@@ -357,10 +358,17 @@ export default function SimulatorPage() {
                 </select>
               </div>
             </div>
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Context (optional)</label>
+            <div className="mb-3">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Account Context <span className="font-normal text-gray-400">(what is this org/candidate about?)</span></label>
               <textarea value={demoContext} onChange={e => setDemoContext(e.target.value)}
                 placeholder="e.g. Running for mayor, focuses on housing + public safety, has opponents like Buddy Dyer..."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-vertical" />
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Post Text <span className="font-normal text-gray-400">(the specific post comments are responding to)</span></label>
+              <textarea value={demoPostText} onChange={e => setDemoPostText(e.target.value)}
+                placeholder="e.g. Excited to announce our downtown safety plan! More lighting, community policing, and mental health resources..."
                 rows={2}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-vertical" />
             </div>
@@ -369,7 +377,7 @@ export default function SimulatorPage() {
                 if (!demoCandidate.trim()) return
                 setDemoLoading(true); setDemoResult(null)
                 try {
-                  const r = await fetch('/api/social/demo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidate: demoCandidate, context: demoContext, count: demoCount }) })
+                  const r = await fetch('/api/social/demo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidate: demoCandidate, context: demoContext, postText: demoPostText, count: demoCount }) })
                   setDemoResult(await r.json())
                 } catch { setDemoResult({ error: 'Failed' }) }
                 setDemoLoading(false)

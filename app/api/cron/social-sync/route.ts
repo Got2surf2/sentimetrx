@@ -5,25 +5,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { auditContent } from '@/lib/contentGuard'
-import { POSITIVE_WORDS, NEGATIVE_WORDS, NEGATORS } from '@/lib/sentimentLexicon'
+import { tagComment } from '@/lib/socialTagging'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
-
-function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral' {
-  const words = text.toLowerCase().replace(/[^a-z\s']/g, '').split(/\s+/)
-  let score = 0
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i]
-    const negated = i > 0 && NEGATORS.has(words[i - 1])
-    if (POSITIVE_WORDS.has(w)) score += negated ? -1 : 1
-    else if (NEGATIVE_WORDS.has(w)) score += negated ? 1 : -1
-  }
-  if (score > 0) return 'positive'
-  if (score < 0) return 'negative'
-  return 'neutral'
-}
 
 async function fetchFacebookComments(pageId: string, token: string, since?: string): Promise<any[]> {
   // Use /posts instead of /feed — /feed requires pages_read_engagement which needs App Review
@@ -179,11 +164,9 @@ export async function GET(req: NextRequest) {
       const newComments = rawComments.filter(c => !existingIds.has(c.comment_id))
       if (newComments.length === 0) continue
 
-      // Process each comment: sentiment + content flags
+      // Process each comment through the shared tagging pipeline
       const rows = newComments.map(c => {
-        const sentiment = scoreSentiment(c.text)
-        const audit = auditContent(c.text)
-        const flags = audit.flags.map(f => ({ type: f, severity: audit.maxSeverity }))
+        const tagged = tagComment(c.text, c.post_text)
 
         return {
           org_id: conn.org_id,
@@ -196,9 +179,9 @@ export async function GET(req: NextRequest) {
           author_name: c.author_name,
           author_id: c.author_id,
           text: c.text,
-          sentiment,
-          flags,
-          is_hidden: c.is_hidden,
+          sentiment: tagged.sentiment,
+          flags: tagged.flags,
+          is_hidden: c.is_hidden || tagged.isHidden,
           is_reply: c.is_reply,
           platform_created_at: c.platform_created_at,
         }

@@ -5,38 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
-import { auditContent } from '@/lib/contentGuard'
-import { POSITIVE_WORDS, NEGATIVE_WORDS, NEGATORS } from '@/lib/sentimentLexicon'
+import { tagComment } from '@/lib/socialTagging'
 
 export const dynamic = 'force-dynamic'
-
-// Additional sentiment words not in the base lexicon
-const EXTRA_POSITIVE = new Set(['appreciate', 'appreciated', 'appreciation', 'hope', 'hoping', 'hopeful', 'support', 'supporting', 'supporter', 'thank', 'thanks', 'thankful', 'grateful', 'inspire', 'inspired', 'inspiring', 'congrats', 'congratulations', 'bravo', 'kudos', 'excited', 'exciting', 'thrilled'])
-const EXTRA_NEGATIVE = new Set(['corrupt', 'corruption', 'liar', 'lying', 'lies', 'scam', 'scammer', 'fraud', 'fake', 'crooked', 'fail', 'failure', 'failing', 'joke', 'clown', 'useless', 'trash', 'garbage', 'sucks', 'suck'])
-// Words that look negative but aren't in sentiment context
-const SENTIMENT_STOPWORDS = new Set(['covid', 'pandemic', 'crisis', 'issue', 'issues', 'problem', 'problems', 'challenge', 'challenges', 'change', 'remember'])
-
-function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral' {
-  const words = text.toLowerCase().replace(/[^a-z\s']/g, '').split(/\s+/)
-  let score = 0
-  let firstHit = true
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i]
-    if (SENTIMENT_STOPWORDS.has(w)) continue
-    const negated = i > 0 && NEGATORS.has(words[i - 1])
-    let delta = 0
-    if (POSITIVE_WORDS.has(w) || EXTRA_POSITIVE.has(w)) delta = negated ? -1 : 1
-    else if (NEGATIVE_WORDS.has(w) || EXTRA_NEGATIVE.has(w)) delta = negated ? 1 : -1
-    if (delta !== 0) {
-      // First sentiment word gets double weight — opening tone usually sets the sentiment
-      score += firstHit ? delta * 2 : delta
-      firstHit = false
-    }
-  }
-  if (score > 0) return 'positive'
-  if (score < 0) return 'negative'
-  return 'neutral'
-}
 
 async function getAuth(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()
@@ -51,7 +22,7 @@ export async function POST(req: NextRequest) {
   const auth = await getAuth(supabase)
   if (!auth?.orgId || !auth.isAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { candidate, context, count = 25 } = await req.json()
+  const { candidate, context, postText: userPostText, count = 25 } = await req.json()
   if (!candidate) return NextResponse.json({ error: 'candidate name is required' }, { status: 400 })
 
   const total = Math.min(count, 50)
@@ -79,7 +50,7 @@ Each comment should feel authentic — use casual social media language, typos, 
 
 Output as JSON array: [{"author": "Display Name", "text": "comment text", "platform": "facebook"|"instagram"}]
 Output ONLY the JSON array, nothing else.`,
-    messages: [{ role: 'user', content: `Candidate/Org: ${candidate}\nContext: ${context || 'Political campaign, running for office'}\n\nGenerate ${total} realistic comments.` }],
+    messages: [{ role: 'user', content: `Candidate/Org: ${candidate}\nContext: ${context || 'Political campaign, running for office'}${userPostText ? '\nOriginal Post: "' + userPostText + '"' : ''}\n\nGenerate ${total} realistic comments${userPostText ? ' responding to that specific post' : ''}.` }],
   })
 
   // Parse the AI response
@@ -139,102 +110,18 @@ Output ONLY the JSON array, nothing else.`,
     connectionId = newConn?.id || ''
   }
 
-  // Process each comment through content guard + sentiment
-  // Assign moderation actions based on severity and content
+  // Process each comment through the shared tagging pipeline
   const now = new Date()
+  const demoPostText = userPostText || (candidate + ' — Campaign Update')
   let autoHiddenCount = 0
   let autoDeletedCount = 0
   let flaggedForReviewCount = 0
 
   const rows = comments.map(function(cm, i) {
-    const sentiment = scoreSentiment(cm.text)
-    const audit = auditContent(cm.text)
-    const flags: Array<{ type: string; severity: string | null; action?: string }> = audit.flags.map(f => ({ type: f, severity: audit.maxSeverity }))
-
-    let isHidden = false
-    let isDeleted = false
-
-    if (audit.maxSeverity === 'severe') {
-      // Threats and slurs → auto-delete
-      const hasThreatsOrSlurs = audit.flags.some(f => f === 'threat' || f === 'slur')
-      if (hasThreatsOrSlurs) {
-        isDeleted = true
-        autoDeletedCount++
-        flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: threats/slurs' })
-      } else {
-        // Other severe (profanity, sexual) → auto-hide
-        isHidden = true
-        autoHiddenCount++
-        flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: severe content' })
-      }
-    } else if (audit.maxSeverity === 'rude') {
-      // Rude content → flag for review
-      flaggedForReviewCount++
-      flags.push({ type: 'review', severity: 'rude', action: 'Flagged for review' })
-    }
-
-    // Detect spam patterns
-    if (/https?:\/\/|buy now|click here|free money|earn \$/i.test(cm.text)) {
-      flags.push({ type: 'spam', severity: 'moderate', action: 'Auto-hidden: spam detected' })
-      if (!isHidden && !isDeleted) { isHidden = true; autoHiddenCount++ }
-    }
-
-    // Detect competitor mentions
-    if (/competitor|qualtrics|surveymonkey|typeform|medallia/i.test(cm.text)) {
-      flags.push({ type: 'competitor', severity: null, action: 'Competitor mention detected' })
-    }
-
-    // Detect intent signals
-    var intents: string[] = []
-    if (/donat|contribut|give money|chip in|fundrais/i.test(cm.text)) { intents.push('donate'); flags.push({ type: 'intent', severity: null, action: 'Donate intent detected' }) }
-    if (/volunteer|sign up|join|get involved|help out|canvass/i.test(cm.text)) { intents.push('volunteer'); flags.push({ type: 'intent', severity: null, action: 'Volunteer intent detected' }) }
-    if (/event|rally|town hall|meet.*greet|attend/i.test(cm.text)) { intents.push('event'); flags.push({ type: 'intent', severity: null, action: 'Event interest detected' }) }
-
-    // Topic detection — keyword match with word boundaries (no AI)
-    var topics: string[] = []
-    var TOPIC_KEYWORDS: Record<string, RegExp> = {
-      'safety': /\b(safe(?:ty)?|crime|police|policing|security|dangerous|scary|homeless(?:ness)?|violence|gun\b|shoot(?:ing)?|murder)\b/i,
-      'housing': /\b(housing|rent(?:al|er|s)?|afford(?:able|ability)|home\s*owner|apartment|mortgage|evict(?:ion)?|landlord|shelter)\b/i,
-      'economy': /\b(econom|job(?:s|less)?|business(?:es)?|tax(?:es|ation)?|inflation|wage(?:s)?|employ(?:ment|er|ee)?|small\s+business|workforce)\b/i,
-      'education': /\b(school(?:s)?|education|teacher|student|university|college|tuition|curriculum)\b/i,
-      'healthcare': /\b(health\s*care|hospital|doctor|insurance|medical|mental\s+health|prescription|medicare|medicaid)\b/i,
-      'transportation': /\b(traffic|transit|bus(?:es)?|road(?:s)?|highway|parking|commut(?:e|ing|er)|bike\s*lane|public\s+transit)\b/i,
-      'environment': /\b(environment(?:al)?|climate|pollution|clean\s+energy|solar|carbon|sustainability|recycl)\b/i,
-      'immigration': /\b(immigra(?:nt|tion)|border|undocumented|visa|citizenship|\bICE\b|deport(?:ation)?)\b/i,
-      'development': /\b(develop(?:ment|er)|construction|downtown|zoning|density|gentrification|infrastructure)\b/i,
-      'culture': /\b(restaurant|dining|arts\b|cultural|entertainment|museum|venue|nightlife)\b/i,
-    }
-    for (var topicName in TOPIC_KEYWORDS) {
-      if (TOPIC_KEYWORDS[topicName].test(cm.text)) topics.push(topicName)
-    }
-
-    // Off-topic detection — check against topics, campaign words, AND post text overlap
-    var campaignRelated = /\b(vote|elect|campaign|mayor|council|city|county|district|candidate|support|endorse|run(?:ning)?|office|politic|rally|debate)/i.test(cm.text)
-    var postRelated = false
-    // Check word overlap with the original post text
-    var postText = 'demo_post_' // placeholder for demo — real posts use cm.post_text
-    if (cm.post_text || postText) {
-      var STOPWORDS = new Set(['the','a','an','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','to','of','in','for','on','with','at','by','from','and','or','but','not','no','this','that','it','its','i','me','my','we','our','you','your','he','she','they','them','their','what','how','when','where','who','why','so','if','then','than','just','also','about','up','out','all','more','some','very','too'])
-      var postWords = (cm.post_text || candidate || '').toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(function(w: string) { return w.length > 2 && !STOPWORDS.has(w) })
-      var commentWords = cm.text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(function(w: string) { return w.length > 2 && !STOPWORDS.has(w) })
-      var overlap = commentWords.filter(function(w: string) { return postWords.includes(w) })
-      postRelated = overlap.length >= 2 // at least 2 meaningful words in common
-    }
-    var isOffTopic = topics.length === 0 && !campaignRelated && !postRelated
-    if (isOffTopic && !isHidden && !isDeleted) {
-      flags.push({ type: 'off_topic', severity: null, action: 'Off-topic: unrelated to post or campaign' })
-    }
-    if (topics.length > 0) flags.push({ type: 'topics', severity: null, action: 'Topics: ' + topics.join(', ') })
-
-    // Emotion detection — keyword match
-    var emotion = 'neutral'
-    if (/love|amazing|fantastic|incredible|excited|thrilled|proud|inspired/i.test(cm.text)) emotion = 'enthusiastic'
-    else if (/hate|furious|outraged|disgusted|livid|enraged/i.test(cm.text)) emotion = 'angry'
-    else if (/worried|concerned|afraid|scared|anxious|nervous/i.test(cm.text)) emotion = 'worried'
-    else if (/disappoint|frustrat|upset|annoyed|let down/i.test(cm.text)) emotion = 'frustrated'
-    else if (/curious|wonder|interest|intrigued|question/i.test(cm.text)) emotion = 'curious'
-    else if (/hope|wish|optimis|looking forward|can't wait/i.test(cm.text)) emotion = 'hopeful'
-    if (emotion !== 'neutral') flags.push({ type: 'emotion', severity: null, action: 'Emotion: ' + emotion })
+    const tagged = tagComment(cm.text, demoPostText)
+    if (tagged.isDeleted) autoDeletedCount++
+    if (tagged.isHidden) autoHiddenCount++
+    if (tagged.flags.some(function(f) { return f.type === 'review' })) flaggedForReviewCount++
 
     // Spread comments over the last 24 hours
     const minutesAgo = Math.floor((i / comments.length) * 24 * 60)
@@ -245,15 +132,15 @@ Output ONLY the JSON array, nothing else.`,
       connection_id: connectionId,
       platform: cm.platform || (i % 3 === 0 ? 'instagram' : 'facebook'),
       post_id: 'demo_post_' + candidate.toLowerCase().replace(/\s+/g, '_'),
-      post_text: candidate + ' — Campaign Update',
+      post_text: demoPostText,
       comment_id: 'demo_' + Date.now() + '_' + i,
       author_name: cm.author,
       author_id: 'demo_user_' + i,
       text: cm.text,
-      sentiment,
-      flags,
-      is_hidden: isHidden,
-      is_deleted: isDeleted,
+      sentiment: tagged.sentiment,
+      flags: tagged.flags,
+      is_hidden: tagged.isHidden,
+      is_deleted: tagged.isDeleted,
       is_reply: false,
       platform_created_at: ts,
     }
