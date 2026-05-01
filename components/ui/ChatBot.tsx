@@ -489,6 +489,9 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
             onKeyDown={handleKeyDown}
             placeholder={isNonEnglish ? (PLACEHOLDER_TRANSLATIONS[selectedLang!] || config.placeholder) : config.placeholder}
             rows={1}
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            spellCheck={true}
             style={{
               flex: 1, width: 0, minWidth: 0, boxSizing: 'border-box' as const,
               resize: 'none',
@@ -525,7 +528,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         <div style={{ textAlign: 'center', marginTop: 8 }}>
           <span style={{ color: '#9ca3af', fontSize: '0.6875rem' }}>
             Powered by <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
-              style={{ color: '#6b7280', fontWeight: 600, textDecoration: 'none' }}>Datanautix</a>
+              style={{ color: '#E8632A', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}>Datanautix</a>
           </span>
         </div>
       </div>}
