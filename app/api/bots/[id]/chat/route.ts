@@ -534,10 +534,10 @@ export async function POST(req: NextRequest, { params }: Params) {
           }
 
           var turnBase = maxExisting + 1
-          var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang }
+          var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
           if (auditFlags.length > 0) userTurn.content_flags = auditFlags
           turnsToInsert.push(userTurn)
-          turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang })
+          turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' })
 
           const { error: insertErr } = await service.from('bot_conversation_turns').insert(turnsToInsert)
           if (insertErr) console.error('[bot-chat] turn insert error:', insertErr.message)
