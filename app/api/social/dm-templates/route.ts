@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
+// All queries use service role client — social tables have no RLS user policies
+
 export const dynamic = 'force-dynamic'
 
 async function getAuth(supabase: ReturnType<typeof createClient>) {
@@ -20,7 +22,8 @@ export async function GET() {
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
+  const service = createServiceRoleClient()
+  const { data, error } = await service
     .from('social_alert_rules')
     .select('*')
     .eq('org_id', auth.orgId)

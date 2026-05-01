@@ -2,7 +2,7 @@
 // GET — dashboard stats: counts, sentiment breakdown, flag counts
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
   // Default: last 24 hours
   const since = from || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-  let query = supabase
+  const service = createServiceRoleClient()
+  let query = service
     .from('social_comments')
     .select('id, sentiment, flags, is_hidden, our_reply, platform')
     .eq('org_id', auth.orgId)

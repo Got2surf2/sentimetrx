@@ -2,7 +2,7 @@
 // GET — list connected social accounts for the org
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +18,8 @@ export async function GET() {
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
+  const service = createServiceRoleClient()
+  const { data, error } = await service
     .from('social_connections')
     .select('id, platform, account_id, account_name, token_expires_at, connected_by, created_at, updated_at')
     .eq('org_id', auth.orgId)

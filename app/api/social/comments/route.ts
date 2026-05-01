@@ -2,7 +2,7 @@
 // GET — list comments with filtering, pagination
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200)
   const offset = (page - 1) * limit
 
-  let query = supabase
+  const service = createServiceRoleClient()
+  let query = service
     .from('social_comments')
     .select('*', { count: 'exact' })
     .eq('org_id', auth.orgId)
