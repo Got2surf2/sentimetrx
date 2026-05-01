@@ -409,8 +409,8 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                           {sentBadge.label}
                         </span>
 
-                        {/* Flag badges — only show keyword-detected flags */}
-                        {Array.isArray(c.flags) && c.flags.filter(function(f: any) { return VISIBLE_FLAGS.has(f.type) }).map(function(f: any, i: number) {
+                        {/* Flag badges — show all detected flags */}
+                        {Array.isArray(c.flags) && c.flags.map(function(f: any, i: number) {
                           var flagColor = FLAG_COLORS[f.type] || '#6b7280'
                           // Use action text for detail flags, label for action flags
                           var displayText = f.action && (f.type === 'topics' || f.type === 'emotion' || f.type === 'intent')
