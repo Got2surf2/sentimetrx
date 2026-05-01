@@ -29,7 +29,7 @@ interface PatternDef { pattern: RegExp; severity: Severity; category: Category }
 // ── Bleep patterns: simpler regexes for word replacement in display ───────────
 const BLEEP_PATTERNS: { pattern: RegExp; category: Category }[] = [
   // Slurs
-  { pattern: /\b(n[i1!]gg\w*|sp[i1!]c[ks]?|ch[i1!]nk[s]?|k[i1!]ke[s]?|w[e3]tb[a4@]ck[s]?|f[a4@]gg?\w*|r[e3]t[a4@]rd\w*)\b/gi, category: 'slur' },
+  { pattern: /\b(n[i1!]gg\w*|sp[i1!]c[ks]?|ch[i1!]nk[s]?|k[i1!]ke[s]?|w[e3]tb[a4@]ck[s]?|f[a4@]gg?\w*|r[e3]t[a4@]rd\w*|beaner[s]?|gook[s]?|tranny|trannie[s]?|dyke[s]?|coon[s]?|gaywad)\b/gi, category: 'slur' },
   // Threats
   { pattern: /\b(kill\s+(you|them|myself|him|her)|murder|bomb\s+threat|shoot(?:ing)?|stab(?:bing)?|rape|molest|assault)\b/gi, category: 'threat' },
   // Sexual
@@ -76,18 +76,31 @@ const PATTERNS: PatternDef[] = [
   // Severe: xenophobic / defamatory accusations
   { pattern: /\b(terrorist\s*(sympathiz|support|lov)|terror\s*apolog)/i, severity: 'severe', category: 'slur' },
   { pattern: /\b(extremist|radical\s*islamist|jihadist|insurgent)\b/i, severity: 'severe', category: 'slur' },
+  // Severe: additional slurs
+  { pattern: /\b(beaner[s]?|gook[s]?|tranny|trannie[s]?|dyke[s]?|coon[s]?)\b/i, severity: 'severe', category: 'slur' },
+  { pattern: /\b(white\s+trash|trailer\s+trash)\b/i, severity: 'severe', category: 'slur' },
+  { pattern: /\b(cripple[ds]?|handicapped)\b/i, severity: 'rude', category: 'slur' },
+  { pattern: /\b(queer[s]?|gaywad)\b/i, severity: 'rude', category: 'slur' },
 
   // Rude: insults that get a gentle nudge (message still processed, no strikes)
   { pattern: /\b(dumbass(es)?|idiot[s]?|moron[s]?|stupid|dumb|loser[s]?|pathetic|ignorant|incompetent)\b/i, severity: 'rude', category: 'insult' },
   { pattern: /\b(shut\s*up|get\s*lost|waste\s+of\s+time)\b/i, severity: 'rude', category: 'insult' },
 
-  // Mild: common profanity (logged but no escalation)
-  { pattern: /\b(shit+y?|bullshit|shitt?ing)\b/i, severity: 'mild', category: 'profanity' },
-  { pattern: /\b(bitch(es|ing|y)?|bastard[s]?|asshole[s]?|ass(es)?)\b/i, severity: 'mild', category: 'profanity' },
-  { pattern: /\b(damn(it|ed)?|hell|crap(py)?|piss(ed)?)\b/i, severity: 'mild', category: 'profanity' },
+  // Rude: profanity that warrants a nudge (used as insults frequently)
+  { pattern: /\bbitch(es|y)?\b/i, severity: 'rude', category: 'profanity' },
+  { pattern: /\b(shit+y?|bullshit|shitt?ing)\b/i, severity: 'rude', category: 'profanity' },
+  { pattern: /\b(bastard[s]?|asshole[s]?)\b/i, severity: 'rude', category: 'profanity' },
+  { pattern: /\bn+[i1!]+g+[a@]+[sz]?\b/i, severity: 'rude', category: 'slur' },
+  // Rude: vulgar/sexual slang
+  { pattern: /\bhoe[s]?\b/i, severity: 'rude', category: 'profanity' },
+  { pattern: /\bpuss(y|ies)\b/i, severity: 'rude', category: 'sexual' },
 
-  // Severe: URLs (spam/phishing)
-  { pattern: /https?:\/\//i, severity: 'severe', category: 'spam' },
+  // Mild: light profanity (logged but no escalation)
+  { pattern: /\b(damn(it|ed)?|hell|crap(py)?|piss(ed)?|ass(es)?)\b/i, severity: 'mild', category: 'profanity' },
+  { pattern: /\bbitching\b/i, severity: 'mild', category: 'profanity' },
+
+  // URLs: only flag shortened/suspicious URLs (not full URLs or t.co which is Twitter's own shortener)
+  { pattern: /\b(bit\.ly|tinyurl|goo\.gl|shorturl|rb\.gy)\b/i, severity: 'rude', category: 'spam' },
 
   // Rude: verbose/debug/prompt probing — redirect without revealing anything
   { pattern: /\b(show\s+(me\s+)?(your|the)\s+(think|reason|debug|verbose|system\s*prompt|instructions|internal))/i, severity: 'rude', category: 'prompt_probe' as Category },
