@@ -208,7 +208,19 @@ function generatePayload(config: any, weights: number[]) {
 
 interface LogEntry { text: string; type: 'ok' | 'err' | 'info' | 'dim' }
 
+var HERMES = '#E8632A'
+
 export default function SimulatorPage() {
+  const [simTab, setSimTab] = useState<'survey' | 'social'>('survey')
+
+  // Social demo state
+  const [demoCandidate, setDemoCandidate] = useState('')
+  const [demoContext, setDemoContext] = useState('')
+  const [demoCount, setDemoCount] = useState(25)
+  const [demoLoading, setDemoLoading] = useState(false)
+  const [demoResult, setDemoResult] = useState<any>(null)
+
+  // Survey sim state
   const [guid, setGuid] = useState('')
   const [count, setCount] = useState(10)
   const [mix, setMix] = useState('realistic')
@@ -301,15 +313,106 @@ export default function SimulatorPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-xl font-bold text-gray-800">Survey Simulator</h1>
-            <p className="text-sm text-gray-500">Generate realistic test responses without needing humans</p>
+            <h1 className="text-xl font-bold text-gray-800">Simulators</h1>
+            <p className="text-sm text-gray-500">Generate realistic test data for demos</p>
           </div>
           <a href="/admin/simulator/townhall" className="text-xs text-teal-600 hover:text-teal-800 font-medium">
             PulseIQ Simulator →
           </a>
         </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
+          <button onClick={() => setSimTab('survey')} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${simTab === 'survey' ? 'text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            style={simTab === 'survey' ? { background: HERMES } : {}}>
+            Survey Responses
+          </button>
+          <button onClick={() => setSimTab('social')} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${simTab === 'social' ? 'text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            style={simTab === 'social' ? { background: HERMES } : {}}>
+            Social Comments
+          </button>
+        </div>
+
+        {/* Social Demo Tab */}
+        {simTab === 'social' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+            <p className="text-sm text-gray-500 mb-4">Generate realistic social media comments for a candidate or organization to demo the Social Moderation dashboard.</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Candidate / Organization</label>
+                <input type="text" value={demoCandidate} onChange={e => setDemoCandidate(e.target.value)}
+                  placeholder="e.g. Anna Eskamani for Orlando Mayor"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Comment Count</label>
+                <select value={demoCount} onChange={e => setDemoCount(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                  <option value={15}>15 comments</option>
+                  <option value={25}>25 comments</option>
+                  <option value={40}>40 comments</option>
+                  <option value={50}>50 comments</option>
+                </select>
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Context (optional)</label>
+              <textarea value={demoContext} onChange={e => setDemoContext(e.target.value)}
+                placeholder="e.g. Running for mayor, focuses on housing + public safety, has opponents like Buddy Dyer..."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-vertical" />
+            </div>
+            <div className="flex gap-3 mb-4">
+              <button onClick={async () => {
+                if (!demoCandidate.trim()) return
+                setDemoLoading(true); setDemoResult(null)
+                try {
+                  const r = await fetch('/api/social/demo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidate: demoCandidate, context: demoContext, count: demoCount }) })
+                  setDemoResult(await r.json())
+                } catch { setDemoResult({ error: 'Failed' }) }
+                setDemoLoading(false)
+              }} disabled={demoLoading || !demoCandidate.trim()}
+                className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: HERMES }}>
+                {demoLoading ? 'Generating...' : 'Generate Demo Comments'}
+              </button>
+              <button onClick={async () => {
+                if (!confirm('Delete all demo/test comments?')) return
+                setDemoLoading(true)
+                const r = await fetch('/api/social/demo', { method: 'DELETE' })
+                const d = await r.json()
+                setDemoResult({ deleted: d.deleted })
+                setDemoLoading(false)
+              }} disabled={demoLoading}
+                className="px-5 py-2 rounded-lg text-sm font-semibold border border-red-300 text-red-600 bg-red-50 hover:bg-red-100">
+                Clear Demo Data
+              </button>
+            </div>
+            {demoResult && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                {demoResult.error ? (
+                  <p className="text-sm text-red-600">{demoResult.error}</p>
+                ) : demoResult.deleted !== undefined ? (
+                  <p className="text-sm text-gray-600">Deleted {demoResult.deleted} demo comments.</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div><div className="text-2xl font-bold text-gray-900">{demoResult.generated}</div><div className="text-xs text-gray-500 mt-1">Generated</div></div>
+                    <div><div className="text-2xl font-bold text-amber-600">{demoResult.flagged}</div><div className="text-xs text-gray-500 mt-1">Flagged</div></div>
+                    <div><div className="text-2xl font-bold text-red-600">{demoResult.autoHidden}</div><div className="text-xs text-gray-500 mt-1">Auto-Hidden</div></div>
+                    <div><div className="text-lg font-bold text-green-600">{demoResult.sentiment?.positive || 0}</div><div className="text-xs text-gray-500 mt-1">Positive</div></div>
+                    <div><div className="text-lg font-bold text-gray-600">{demoResult.sentiment?.neutral || 0}</div><div className="text-xs text-gray-500 mt-1">Neutral</div></div>
+                    <div><div className="text-lg font-bold text-red-600">{demoResult.sentiment?.negative || 0}</div><div className="text-xs text-gray-500 mt-1">Negative</div></div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Survey Simulator Tab */}
+        {simTab === 'survey' && (<>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
           <div className="flex gap-3 mb-4">
@@ -403,6 +506,7 @@ export default function SimulatorPage() {
             <div ref={logEndRef} />
           </div>
         )}
+        </>)}
       </div>
     </div>
   )
