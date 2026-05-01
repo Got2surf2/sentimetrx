@@ -372,6 +372,16 @@ export default function SimulatorPage() {
                 rows={2}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-vertical" />
             </div>
+            {demoLoading && (
+              <div className="mb-4">
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
+                  <div className="h-full rounded-full transition-all duration-[2s] ease-out" style={{ background: HERMES, width: demoResult ? '100%' : '65%' }} />
+                </div>
+                <p className="text-xs text-gray-500 text-center">
+                  {!demoResult ? 'Clearing old data, generating comments with AI, processing flags...' : 'Done!'}
+                </p>
+              </div>
+            )}
             <div className="flex gap-3 mb-4">
               <button onClick={async () => {
                 if (!demoCandidate.trim()) return

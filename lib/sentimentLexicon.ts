@@ -20,7 +20,7 @@ export const NEGATIVE_WORDS = new Set([
   'soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless',
   'mediocre','disappointing','disgusting','unpleasant','uncomfortable','unfriendly','inattentive',
   'lazy','careless','unprofessional','disorganized','chaotic','filthy','gross','lukewarm',
-  'watery','tough','chewy','rubbery','mushy','hard','old','late','wrong','missing',
+  'watery','tough','chewy','rubbery','mushy','old','late','wrong','missing',
   'broken','ignored','forgotten','waited','waiting','complained','annoyed','frustrated',
   'underwhelming','overrated','average','meh','okay','ok',
   'upset','angry','disappointed','unhappy','dissatisfied','regret',

@@ -83,8 +83,21 @@ export function tagComment(text: string, postText?: string | null): TagResult {
     flags.push({ type: 'review', severity: 'rude', action: 'Flagged for review' })
   }
 
-  // Spam detection
-  if (/https?:\/\/|buy now|click here|free money|earn \$/i.test(text)) {
+  // Spam detection — expanded patterns
+  var spamHit = false
+  if (/https?:\/\//i.test(text)) spamHit = true // raw URLs
+  if (/\b(buy now|click here|free money|earn \$|act now|limited time|order now|sign up now)\b/i.test(text)) spamHit = true
+  if (/\b(click\s+link\s+in\s+(bio|profile)|check\s+(my|our)\s+(bio|profile)|DM\s+(me|us)\s+for)\b/i.test(text)) spamHit = true
+  if (/\b(proven\s+(system|method|results)|FREE\s+(consultation|trial|offer|gift))\b/i.test(text)) spamHit = true
+  // ALL CAPS spam (>60% uppercase, min 20 chars)
+  if (text.length >= 20) {
+    var upperCount = (text.match(/[A-Z]/g) || []).length
+    var letterCount = (text.match(/[a-zA-Z]/g) || []).length
+    if (letterCount > 0 && upperCount / letterCount > 0.6) spamHit = true
+  }
+  // Excessive same emoji (3+ of the same emoji in a row)
+  if (/(\p{Emoji})\1{2,}/u.test(text)) spamHit = true
+  if (spamHit) {
     flags.push({ type: 'spam', severity: 'moderate', action: 'Auto-hidden: spam detected' })
     if (!isHidden && !isDeleted) { isHidden = true }
   }

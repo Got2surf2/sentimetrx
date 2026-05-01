@@ -58,10 +58,13 @@ const PATTERNS: PatternDef[] = [
   { pattern: /go\s+back\s+(where|to\s+where)\s+you\s+came\s+from/i, severity: 'severe', category: 'slur' },
   // Severe: "bitch" when directed (you/stupid/dumb + bitch)
   { pattern: /\b(you|stupid|dumb|ugly|fat|lazy)\s+bitch/i, severity: 'severe', category: 'profanity' },
+  // Severe: xenophobic / defamatory accusations
+  { pattern: /\b(terrorist\s*(sympathiz|support|lov)|terror\s*apolog)/i, severity: 'severe', category: 'slur' },
+  { pattern: /\b(extremist|radical\s*islamist|jihadist|insurgent)\b/i, severity: 'severe', category: 'slur' },
 
   // Rude: insults that get a gentle nudge (message still processed, no strikes)
   { pattern: /\b(dumbass(es)?|idiot[s]?|moron[s]?|stupid|dumb|loser[s]?|pathetic|ignorant|incompetent)\b/i, severity: 'rude', category: 'insult' },
-  { pattern: /\b(shut\s*up|get\s*lost|whatever|waste\s+of\s+time)\b/i, severity: 'rude', category: 'insult' },
+  { pattern: /\b(shut\s*up|get\s*lost|waste\s+of\s+time)\b/i, severity: 'rude', category: 'insult' },
 
   // Mild: common profanity (logged but no escalation)
   { pattern: /\b(shit+y?|bullshit|shitt?ing)\b/i, severity: 'mild', category: 'profanity' },
