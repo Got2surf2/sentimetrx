@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { tagComment } from '@/lib/socialTagging'
+import { moderateTexts } from '@/lib/moderation'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -164,9 +165,12 @@ export async function GET(req: NextRequest) {
       const newComments = rawComments.filter(c => !existingIds.has(c.comment_id))
       if (newComments.length === 0) continue
 
+      // Batch-score all comments through OpenAI moderation (free, async)
+      const moderationScores = await moderateTexts(newComments.map(c => c.text))
+
       // Process each comment through the shared tagging pipeline
-      const rows = newComments.map(c => {
-        const tagged = tagComment(c.text, c.post_text)
+      const rows = newComments.map((c, idx) => {
+        const tagged = tagComment(c.text, c.post_text, moderationScores[idx])
 
         return {
           org_id: conn.org_id,

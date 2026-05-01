@@ -5,6 +5,7 @@
 
 import { auditContent } from '@/lib/contentGuard'
 import { POSITIVE_WORDS, NEGATIVE_WORDS, NEGATORS } from '@/lib/sentimentLexicon'
+import type { ModerationScore } from '@/lib/moderation'
 
 // Additional sentiment words not in the base lexicon
 const EXTRA_POSITIVE = new Set(['appreciate', 'appreciated', 'appreciation', 'hope', 'hoping', 'hopeful', 'support', 'supporting', 'supporter', 'thank', 'thanks', 'thankful', 'grateful', 'inspire', 'inspired', 'inspiring', 'congrats', 'congratulations', 'bravo', 'kudos', 'excited', 'exciting', 'thrilled'])
@@ -61,7 +62,7 @@ export interface TagResult {
   emotion: string
 }
 
-export function tagComment(text: string, postText?: string | null): TagResult {
+export function tagComment(text: string, postText?: string | null, moderation?: ModerationScore | null): TagResult {
   var sentiment = scoreSentiment(text)
   var audit = auditContent(text)
   var flags: Array<{ type: string; severity: string | null; action?: string }> = audit.flags.map(function(f) { return { type: f, severity: audit.maxSeverity } })
@@ -83,21 +84,42 @@ export function tagComment(text: string, postText?: string | null): TagResult {
     flags.push({ type: 'review', severity: 'rude', action: 'Flagged for review' })
   }
 
+  // OpenAI moderation — catches toxicity that regex misses
+  if (moderation) {
+    if (moderation.threat >= 0.5) {
+      if (!isDeleted) { isDeleted = true; flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: threat detected (AI)' }) }
+    } else if (moderation.toxicity >= 0.7) {
+      if (!isHidden && !isDeleted) { isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: toxic content (AI)' }) }
+    } else if (moderation.toxicity >= 0.4) {
+      if (!flags.some(function(f) { return f.type === 'review' })) { flags.push({ type: 'review', severity: 'rude', action: 'Flagged for review: borderline toxic (AI)' }) }
+    }
+    if (moderation.sexual >= 0.5 && !isHidden && !isDeleted) {
+      isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: sexual content (AI)' })
+    }
+    if (moderation.identity >= 0.5 && !isDeleted) {
+      isDeleted = true; flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: hate speech (AI)' })
+    }
+  }
+
   // Spam detection — expanded patterns
   var spamHit = false
-  if (/https?:\/\//i.test(text)) spamHit = true // raw URLs
-  if (/\b(buy now|click here|free money|earn \$|act now|limited time|order now|sign up now)\b/i.test(text)) spamHit = true
-  if (/\b(click\s+link\s+in\s+(bio|profile)|check\s+(my|our)\s+(bio|profile)|DM\s+(me|us)\s+for)\b/i.test(text)) spamHit = true
-  if (/\b(proven\s+(system|method|results)|FREE\s+(consultation|trial|offer|gift))\b/i.test(text)) spamHit = true
-  // ALL CAPS spam (>60% uppercase, min 20 chars)
+  var hasUrl = /https?:\/\//i.test(text)
+  var hasPromoLanguage = /\b(buy now|click here|free money|earn \$|act now|limited time|order now|sign up now)\b/i.test(text)
+  var hasSocialBait = /\b(click\s+link\s+in\s+(bio|profile)|check\s+(my|our)\s+(bio|profile)|DM\s+(me|us)\s+for)\b/i.test(text)
+  var hasScamLanguage = /\b(proven\s+(system|method|results)|FREE\s+(consultation|trial|offer|gift))\b/i.test(text)
+  var hasAllCaps = false
   if (text.length >= 20) {
     var upperCount = (text.match(/[A-Z]/g) || []).length
     var letterCount = (text.match(/[a-zA-Z]/g) || []).length
-    if (letterCount > 0 && upperCount / letterCount > 0.6) spamHit = true
+    if (letterCount > 0 && upperCount / letterCount > 0.6) hasAllCaps = true
   }
-  // Excessive same emoji (3+ of the same emoji in a row)
-  // Excessive repeated punctuation/characters (!!!!! or $$$$$ etc.)
-  if (/([!?$%])\1{3,}/.test(text)) spamHit = true
+  var hasExcessivePunctuation = /([!?$%])\1{3,}/.test(text)
+  // URL alone is NOT spam — only flag when combined with other spam signals
+  if (hasUrl && (hasPromoLanguage || hasSocialBait || hasScamLanguage || hasAllCaps)) spamHit = true
+  // Non-URL spam signals are spam on their own
+  if (hasPromoLanguage || hasSocialBait || hasScamLanguage) spamHit = true
+  if (hasAllCaps) spamHit = true
+  if (hasExcessivePunctuation) spamHit = true
   if (spamHit) {
     flags.push({ type: 'spam', severity: 'moderate', action: 'Auto-hidden: spam detected' })
     if (!isHidden && !isDeleted) { isHidden = true }
