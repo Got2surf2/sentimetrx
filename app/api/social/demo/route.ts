@@ -42,6 +42,10 @@ export async function POST(req: NextRequest) {
 
   const total = Math.min(count, 50)
 
+  // Auto-clear previous demo data before generating new
+  await service.from('social_comments').delete().eq('org_id', auth.orgId).like('comment_id', 'demo_%')
+  await service.from('social_comments').delete().eq('org_id', auth.orgId).like('comment_id', 'test_comment_%')
+
   const result = await callAI({
     tier: 'standard',
     maxTokens: 4000,
@@ -179,8 +183,27 @@ Output ONLY the JSON array, nothing else.`,
     }
   })
 
-  const { error } = await service.from('social_comments').insert(rows)
+  // Insert comments and log moderation actions for each flagged one
+  const { data: inserted, error } = await service.from('social_comments').insert(rows).select('id, comment_id, flags, is_hidden, is_deleted')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Create moderation log entries for auto-actioned comments
+  const modLogs: Array<{ org_id: string; comment_id: string; action: string; reply_text: string | null; performed_by: string | null }> = []
+  for (const row of (inserted || [])) {
+    const rowFlags = row.flags as any[]
+    if (row.is_deleted) {
+      modLogs.push({ org_id: auth.orgId, comment_id: row.id, action: 'delete', reply_text: 'Auto-deleted: threats/slurs detected', performed_by: null })
+    } else if (row.is_hidden) {
+      modLogs.push({ org_id: auth.orgId, comment_id: row.id, action: 'hide', reply_text: 'Auto-hidden: severe content or spam', performed_by: null })
+    }
+    // Log review flags too
+    if (Array.isArray(rowFlags) && rowFlags.some((f: any) => f.type === 'review')) {
+      modLogs.push({ org_id: auth.orgId, comment_id: row.id, action: 'hide', reply_text: 'Flagged for human review', performed_by: null })
+    }
+  }
+  if (modLogs.length > 0) {
+    await service.from('social_moderation_log').insert(modLogs)
+  }
 
   const flagged = rows.filter(r => r.flags.length > 0).length
 
