@@ -539,8 +539,8 @@ export default function ConversationsClient() {
                 var isGreeting = t.source === 'greeting'
                 var flags = t.content_flags || []
                 return (
-                  <div key={t.id}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: isUser ? 'flex-end' : 'flex-start', flexDirection: isUser ? 'row-reverse' : 'row' }}>
+                  <div key={t.id} style={{ width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: isUser ? 'flex-end' : 'flex-start', flexDirection: isUser ? 'row-reverse' : 'row', width: '100%' }}>
                       {!isUser && <div style={{ width: 28, height: 28, borderRadius: '50%', background: avatarGrad, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: botConfig.avatarTextColor || 'white' }}>{avatar}</div>}
                       <div style={{
                         maxWidth: '75%', padding: '10px 14px',
