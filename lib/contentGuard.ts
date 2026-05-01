@@ -44,8 +44,12 @@ const PATTERNS: PatternDef[] = [
   // Severe: explicit sexual content
   { pattern: /\b(porn|hentai|xxx|nude[s]?|naked|d[i1!]ck\s*pic|c[o0]ck\s*suck)/i, severity: 'severe', category: 'sexual' },
 
-  // Severe: strong profanity (with evasion: f*ck, f u c k, fck, etc.)
+  // Severe: strong profanity (with evasion: f*ck, f u c k, fck, f***, etc.)
   { pattern: /\bf+[\s.*_-]*[u\xfc]+[\s.*_-]*c+[\s.*_-]*k+/i, severity: 'severe', category: 'profanity' },
+  { pattern: /\bf[*]{2,}/i, severity: 'severe', category: 'profanity' },  // f***, f**k, etc.
+  { pattern: /\bb[*]+[tch]*/i, severity: 'severe', category: 'profanity' },  // b****, b*tch, b***h
+  { pattern: /\bs[*h]+[it]*/i, severity: 'severe', category: 'profanity' },  // s**t, sh*t, s***
+  { pattern: /\ba[*]+[s]+/i, severity: 'mild', category: 'profanity' },  // a**, a***
   { pattern: /\bc+[\s.*_-]*u+[\s.*_-]*n+[\s.*_-]*t+/i, severity: 'severe', category: 'profanity' },
 
   // Severe: directed hostility (triggers strikes)
