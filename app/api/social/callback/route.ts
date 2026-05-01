@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
 
     // Exchange for long-lived token (60 days)
     const longToken = await getLongLivedToken(shortToken.access_token)
-    const expiresAt = new Date(Date.now() + longToken.expires_in * 1000).toISOString()
+    const expiresIn = longToken.expires_in || shortToken.expires_in || 5184000 // default 60 days
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
 
     // Get user's org
     const { data: userData } = await service.from('users').select('org_id').eq('id', userId).single()
