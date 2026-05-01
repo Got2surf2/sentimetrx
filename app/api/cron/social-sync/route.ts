@@ -5,8 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { tagComment, type ModerationSensitivity } from '@/lib/socialTagging'
+import { tagComment, routeResponse, type ModerationSensitivity } from '@/lib/socialTagging'
 import { moderateTexts } from '@/lib/moderation'
+import { callAI } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -201,8 +202,87 @@ export async function GET(req: NextRequest) {
 
       if (insertError) {
         console.error('[social-sync] insert error for connection', conn.id, ':', insertError)
-      } else {
-        totalIngested += rows.length
+        continue
+      }
+
+      totalIngested += rows.length
+
+      // ── Auto-hide on platform (Meta API) ──────────────────────────
+      const autoConfig = orgData?.features?.social_auto_config || {}
+      if (autoConfig.auto_hide_enabled) {
+        const toHide = newComments.filter(function(c, idx) {
+          var tagged = tagComment(c.text, c.post_text, moderationScores[idx], sensitivity)
+          return tagged.isHidden && !c.is_hidden && !c.comment_id.startsWith('demo_')
+        })
+        for (const c of toHide) {
+          try {
+            await fetch(`https://graph.facebook.com/v19.0/${c.comment_id}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ is_hidden: true, access_token: conn.access_token }),
+            })
+          } catch (e: any) {
+            console.error('[social-sync] auto-hide error:', c.comment_id, e.message)
+          }
+        }
+        if (toHide.length > 0) console.log('[social-sync] auto-hid', toHide.length, 'comments for connection', conn.id)
+      }
+
+      // ── Auto-reply (template or AI) ───────────────────────────────
+      if (autoConfig.auto_reply_enabled) {
+        const replyMode = autoConfig.auto_reply_mode || 'queue'
+        for (var idx = 0; idx < newComments.length; idx++) {
+          const c = newComments[idx]
+          if (c.is_reply) continue // don't reply to replies
+          if (c.comment_id.startsWith('demo_')) continue
+
+          const tagged = tagComment(c.text, c.post_text, moderationScores[idx], sensitivity)
+          const route = routeResponse(tagged, c.author_name, c.post_text?.substring(0, 50))
+
+          // Skip if mode is queue (human review only)
+          if (replyMode === 'queue') continue
+          // Skip negative if mode is positive_neutral
+          if (replyMode === 'positive_neutral' && tagged.sentiment === 'negative') continue
+          // Skip silent/review routes
+          if (route.route === 'silent' || route.route === 'review') continue
+
+          var replyText: string | null = null
+
+          if (route.route === 'template' && route.response) {
+            replyText = route.response
+          } else if (route.route === 'ai' && replyMode === 'all') {
+            try {
+              const result = await callAI({
+                tier: 'fast',
+                maxTokens: 200,
+                timeoutMs: 15000,
+                system: 'You are a social media manager replying to a comment on ' + conn.platform + '. Keep replies concise (1-3 sentences), friendly, and on-brand. Never be defensive or argumentative.',
+                messages: [{ role: 'user', content: 'Reply to this comment: "' + c.text + '"' }],
+              })
+              replyText = result.text.trim()
+            } catch (e: any) {
+              console.error('[social-sync] AI reply error:', e.message)
+            }
+          }
+
+          if (replyText) {
+            try {
+              await fetch(`https://graph.facebook.com/v19.0/${c.comment_id}/replies`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: replyText, access_token: conn.access_token }),
+              })
+              // Update the stored comment with our reply
+              await service
+                .from('social_comments')
+                .update({ our_reply: replyText, replied_at: new Date().toISOString() })
+                .eq('comment_id', c.comment_id)
+                .eq('org_id', conn.org_id)
+            } catch (e: any) {
+              console.error('[social-sync] auto-reply error:', c.comment_id, e.message)
+            }
+          }
+        }
       }
     } catch (err: any) {
       console.error('[social-sync] error processing connection', conn.id, ':', err.message)
