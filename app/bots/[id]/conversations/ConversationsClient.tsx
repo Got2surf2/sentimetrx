@@ -543,28 +543,21 @@ export default function ConversationsClient() {
                   <div key={t.id} style={{ width: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: isUser ? 'flex-end' : 'flex-start', flexDirection: isUser ? 'row-reverse' : 'row', width: '100%' }}>
                       {!isUser && <div style={{ width: 28, height: 28, borderRadius: '50%', background: avatarGrad, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: botConfig.avatarTextColor || 'white' }}>{avatar}</div>}
-                      <div style={{ position: 'relative', maxWidth: '75%' }}>
-                        <div style={{
-                          padding: '10px 14px',
-                          borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                          background: isUser ? (botConfig.userBubbleBg || IMSG_BLUE) : IMSG_GRAY,
-                          color: isUser ? 'white' : '#000',
-                          fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
-                          border: isDeflect ? '1.5px solid #c4b5fd' : 'none',
-                          opacity: isGreeting ? 0.8 : 1,
-                        }}>
-                          <span dangerouslySetInnerHTML={{ __html: linkify(t.content) }} />
-                          <div style={{ fontSize: 10, marginTop: 4, opacity: 0.5 }}>
-                            {new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                            {t.language !== 'en' ? ' \u00b7 ' + t.language : ''}
-                            {isDeflect ? ' \u00b7 redirected' : ''}
-                          </div>
+                      <div style={{
+                        maxWidth: '75%', padding: '10px 14px',
+                        borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                        background: isUser ? (botConfig.userBubbleBg || IMSG_BLUE) : IMSG_GRAY,
+                        color: isUser ? 'white' : '#000',
+                        fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                        border: isDeflect ? '1.5px solid #c4b5fd' : 'none',
+                        opacity: isGreeting ? 0.8 : 1,
+                      }}>
+                        <span dangerouslySetInnerHTML={{ __html: linkify(t.content) }} />
+                        <div style={{ fontSize: 10, marginTop: 4, opacity: 0.5 }}>
+                          {new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                          {t.language !== 'en' ? ' \u00b7 ' + t.language : ''}
+                          {isDeflect ? ' \u00b7 redirected' : ''}
                         </div>
-                        {!isUser && (
-                          <div style={{ position: 'absolute', bottom: -4, left: -4, width: 16, height: 16, borderRadius: '50%', background: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid white' }}>
-                            <span style={{ fontSize: 7, fontWeight: 800, color: 'white', letterSpacing: '0.02em' }}>AI</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                     {flags.length > 0 && (
@@ -599,9 +592,10 @@ function buildConversationHtml(name: string, config: BotConfig, turns: Turn[]): 
     if (isUser) {
       return '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:' + uB + ';color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
     }
-    return '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px"><div style="width:28px;height:28px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + esc(av) + '</div><div style="position:relative;max-width:75%"><div style="padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div><div style="position:absolute;bottom:-4px;left:-4px;width:16px;height:16px;border-radius:50%;background:#6B7280;display:flex;align-items:center;justify-content:center;border:1.5px solid white"><span style="font-size:7px;font-weight:800;color:white">AI</span></div></div></div>'
+    return '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px"><div style="width:28px;height:28px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + esc(av) + '</div><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
   }).join('')
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head><body><div style="width:100%;max-width:600px"><div style="background:' + hG + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + esc(av) + '</div><div style="font-size:15px;font-weight:600;color:white">' + esc(name) + '</div></div><div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div><div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">Shared from Sentimetrx</div></div></body></html>'
+  var sub = config.subtitle || ''
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;display:flex;justify-content:center;padding:24px}</style></head><body><div style="width:100%;max-width:600px"><div style="background:' + hG + ';padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:20px;color:white">' + esc(av) + '</div><div><div style="font-size:15px;font-weight:600;color:white">' + esc(name) + '</div>' + (sub ? '<div style="font-size:11px;color:rgba(255,255,255,0.6)">' + esc(sub) + '</div>' : '') + '</div></div><div style="background:white;padding:16px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">' + rows + '</div><div style="text-align:center;padding:12px;font-size:10px;color:#9ca3af">Shared from Sentimetrx</div></div></body></html>'
 }
 
 function esc(s: string): string {
