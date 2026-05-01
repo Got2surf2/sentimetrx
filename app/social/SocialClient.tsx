@@ -66,6 +66,7 @@ const FLAG_COLORS: Record<string, string> = {
   intent: '#059669',
   topics: '#0f766e',
   emotion: '#8b5cf6',
+  off_topic: '#94a3b8',
 }
 
 const FLAG_LABELS: Record<string, string> = {
@@ -82,6 +83,7 @@ const FLAG_LABELS: Record<string, string> = {
   intent: 'Engagement',
   topics: 'Topic',
   emotion: 'Emotion',
+  off_topic: 'Off-Topic',
 }
 
 // Only show these flag types on the dashboard (keyword-detected, not content guard internals)
