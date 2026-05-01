@@ -21,8 +21,6 @@ const TOPIC_KEYWORDS: Record<string, RegExp> = {
   'culture': /\b(restaurant|dining|arts\b|cultural|entertainment|museum|venue|nightlife)\b/i,
 }
 
-// ── Sentiment scoring (AFINN-165 via `sentiment` package) ─────────────
-
 // Re-export for consumers that import from socialTagging
 export { scoreSentiment } from '@/lib/contentGuard'
 
@@ -38,7 +36,14 @@ export interface TagResult {
   emotion: string
 }
 
-export function tagComment(text: string, postText?: string | null, moderation?: ModerationScore | null): TagResult {
+// Sensitivity controls what auto-actions are taken:
+//   strict:   auto-delete threats/hate, auto-hide severe, review rude
+//   moderate: auto-hide threats/hate, review everything else (default)
+//   lenient:  review everything, no auto-delete or auto-hide
+export type ModerationSensitivity = 'strict' | 'moderate' | 'lenient'
+
+export function tagComment(text: string, postText?: string | null, moderation?: ModerationScore | null, sensitivity?: ModerationSensitivity): TagResult {
+  var sens = sensitivity || 'moderate'
   var sentiment = scoreSentiment(text)
   var audit = auditContent(text)
   var flags: Array<{ type: string; severity: string | null; action?: string }> = audit.flags.map(function(f) { return { type: f, severity: audit.maxSeverity } })
@@ -46,15 +51,16 @@ export function tagComment(text: string, postText?: string | null, moderation?: 
   var isHidden = false
   var isDeleted = false
 
-  // Moderation actions based on content guard severity
+  // Moderation actions based on content guard severity + sensitivity
   if (audit.maxSeverity === 'severe') {
     var hasThreatsOrSlurs = audit.flags.some(function(f) { return f === 'threat' || f === 'slur' })
     if (hasThreatsOrSlurs) {
-      isDeleted = true
-      flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: threats/slurs' })
+      if (sens === 'strict') { isDeleted = true; flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: threats/slurs' }) }
+      else if (sens === 'moderate') { isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: threats/slurs' }) }
+      else { flags.push({ type: 'review', severity: 'severe', action: 'Flagged for review: threats/slurs' }) }
     } else {
-      isHidden = true
-      flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: severe content' })
+      if (sens === 'strict') { isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: severe content' }) }
+      else { flags.push({ type: 'review', severity: 'severe', action: 'Flagged for review: severe content' }) }
     }
   } else if (audit.maxSeverity === 'rude') {
     flags.push({ type: 'review', severity: 'rude', action: 'Flagged for review' })
@@ -62,18 +68,25 @@ export function tagComment(text: string, postText?: string | null, moderation?: 
 
   // OpenAI moderation — catches toxicity that regex misses
   if (moderation) {
-    if (moderation.threat >= 0.5) {
-      if (!isDeleted) { isDeleted = true; flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: threat detected (AI)' }) }
-    } else if (moderation.toxicity >= 0.7) {
-      if (!isHidden && !isDeleted) { isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: toxic content (AI)' }) }
-    } else if (moderation.toxicity >= 0.4) {
+    var isThreat = moderation.threat >= 0.5
+    var isHate = moderation.identity >= 0.5
+    var isToxic = moderation.toxicity >= 0.7
+    var isBorderline = moderation.toxicity >= 0.4 && moderation.toxicity < 0.7
+    var isSexual = moderation.sexual >= 0.5
+
+    if (isThreat || isHate) {
+      if (sens === 'strict' && !isDeleted) { isDeleted = true; flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: ' + (isThreat ? 'threat' : 'hate speech') + ' (AI)' }) }
+      else if (sens === 'moderate' && !isHidden && !isDeleted) { isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: ' + (isThreat ? 'threat' : 'hate speech') + ' (AI)' }) }
+      else if (!isDeleted && !isHidden) { flags.push({ type: 'review', severity: 'severe', action: 'Flagged for review: ' + (isThreat ? 'threat' : 'hate speech') + ' (AI)' }) }
+    } else if (isToxic) {
+      if (sens === 'strict' && !isHidden && !isDeleted) { isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: toxic content (AI)' }) }
+      else if (!isHidden && !isDeleted) { flags.push({ type: 'review', severity: 'severe', action: 'Flagged for review: toxic content (AI)' }) }
+    } else if (isBorderline) {
       if (!flags.some(function(f) { return f.type === 'review' })) { flags.push({ type: 'review', severity: 'rude', action: 'Flagged for review: borderline toxic (AI)' }) }
     }
-    if (moderation.sexual >= 0.5 && !isHidden && !isDeleted) {
-      isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: sexual content (AI)' })
-    }
-    if (moderation.identity >= 0.5 && !isDeleted) {
-      isDeleted = true; flags.push({ type: 'auto_delete', severity: 'severe', action: 'Auto-deleted: hate speech (AI)' })
+    if (isSexual) {
+      if (sens === 'strict' && !isHidden && !isDeleted) { isHidden = true; flags.push({ type: 'auto_hide', severity: 'severe', action: 'Auto-hidden: sexual content (AI)' }) }
+      else if (!isHidden && !isDeleted && !flags.some(function(f) { return f.action?.includes('sexual') })) { flags.push({ type: 'review', severity: 'severe', action: 'Flagged for review: sexual content (AI)' }) }
     }
   }
 

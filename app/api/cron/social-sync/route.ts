@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { tagComment } from '@/lib/socialTagging'
+import { tagComment, type ModerationSensitivity } from '@/lib/socialTagging'
 import { moderateTexts } from '@/lib/moderation'
 
 export const dynamic = 'force-dynamic'
@@ -113,10 +113,10 @@ export async function GET(req: NextRequest) {
 
   const service = createServiceRoleClient()
 
-  // Get all active connections
+  // Get all active connections with org settings
   const { data: connections, error } = await service
     .from('social_connections')
-    .select('id, org_id, platform, account_id, access_token, token_expires_at')
+    .select('id, org_id, platform, account_id, access_token, token_expires_at, organizations(features)')
     .gt('token_expires_at', new Date().toISOString())
 
   if (error) {
@@ -168,9 +168,13 @@ export async function GET(req: NextRequest) {
       // Batch-score all comments through OpenAI moderation (free, async)
       const moderationScores = await moderateTexts(newComments.map(c => c.text))
 
+      // Get org's moderation sensitivity
+      const orgData = Array.isArray((conn as any).organizations) ? (conn as any).organizations[0] : (conn as any).organizations
+      const sensitivity = (orgData?.features?.social_auto_config?.moderation_sensitivity || 'moderate') as ModerationSensitivity
+
       // Process each comment through the shared tagging pipeline
       const rows = newComments.map((c, idx) => {
-        const tagged = tagComment(c.text, c.post_text, moderationScores[idx])
+        const tagged = tagComment(c.text, c.post_text, moderationScores[idx], sensitivity)
 
         return {
           org_id: conn.org_id,

@@ -859,23 +859,51 @@ function AutoConfigPanel() {
         )}
       </div>
 
+      {/* Moderation Sensitivity */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Moderation Sensitivity</span>
+        </div>
+        <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+          {[
+            { value: 'lenient', label: 'Lenient', desc: 'Review only' },
+            { value: 'moderate', label: 'Moderate', desc: 'Auto-hide severe' },
+            { value: 'strict', label: 'Strict', desc: 'Auto-delete + hide' },
+          ].map(function(opt) {
+            var isActive = (config.moderation_sensitivity || 'moderate') === opt.value
+            return <button key={opt.value} onClick={function() { update('moderation_sensitivity', opt.value) }} style={{ flex: 1, padding: '10px 8px', background: isActive ? '#4f46e5' : '#fff', color: isActive ? '#fff' : '#374151', border: 'none', cursor: 'pointer', textAlign: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{opt.label}</div>
+              <div style={{ fontSize: 10, opacity: 0.7 }}>{opt.desc}</div>
+            </button>
+          })}
+        </div>
+        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6 }}>
+          {(config.moderation_sensitivity || 'moderate') === 'lenient' && 'All flagged content is queued for human review. Nothing is automatically hidden or deleted.'}
+          {(config.moderation_sensitivity || 'moderate') === 'moderate' && 'Threats and hate speech are auto-hidden. Everything else is queued for review.'}
+          {(config.moderation_sensitivity || 'moderate') === 'strict' && 'Threats and hate speech are auto-deleted. Severe content is auto-hidden. Use with caution — may catch false positives.'}
+        </div>
+      </div>
+
       {/* Auto-hide */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Auto-Hide Flagged</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Auto-Hide on Platform</span>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
             <input type="checkbox" checked={config.auto_hide_enabled} onChange={function(e) { update('auto_hide_enabled', e.target.checked) }} />
             <span style={{ fontSize: 12, color: '#6b7280' }}>Enabled</span>
           </label>
         </div>
         {config.auto_hide_enabled && (
-          <select
-            value={config.auto_hide_severity}
-            onChange={function(e) { update('auto_hide_severity', e.target.value) }}
-            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: 'white' }}>
-            <option value="severe">Severe only (threats, slurs, sexual)</option>
-            <option value="rude">Severe + rude (includes insults)</option>
-          </select>
+          <div>
+            <select
+              value={config.auto_hide_severity}
+              onChange={function(e) { update('auto_hide_severity', e.target.value) }}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: 'white' }}>
+              <option value="severe">Severe only (threats, slurs, sexual)</option>
+              <option value="rude">Severe + rude (includes insults)</option>
+            </select>
+            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Hides comments on Facebook/Instagram via Meta API</div>
+          </div>
         )}
       </div>
     </div>

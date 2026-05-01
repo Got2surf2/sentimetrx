@@ -17,14 +17,21 @@ export async function moderateTexts(texts: string[]): Promise<ModerationScore[]>
   if (!key || texts.length === 0) return texts.map(() => emptyScore())
 
   // OpenAI moderation accepts an array of strings
-  const res = await fetch('https://api.openai.com/v1/moderations', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input: texts }),
-  })
+  // Retry with backoff on rate limits
+  var res: Response | null = null
+  for (var attempt = 0; attempt < 3; attempt++) {
+    res = await fetch('https://api.openai.com/v1/moderations', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: texts }),
+    })
+    if (res.ok || res.status !== 429) break
+    var wait = (attempt + 1) * 2000
+    await new Promise(r => setTimeout(r, wait))
+  }
 
-  if (!res.ok) {
-    console.error('[moderation] OpenAI error:', res.status, await res.text())
+  if (!res || !res.ok) {
+    console.error('[moderation] OpenAI error:', res?.status, res ? await res.text() : 'no response')
     return texts.map(() => emptyScore())
   }
 
