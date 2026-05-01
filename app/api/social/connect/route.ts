@@ -17,11 +17,9 @@ export async function GET(req: NextRequest) {
   if (!appId) return NextResponse.json({ error: 'META_APP_ID not configured' }, { status: 500 })
 
   const scopes = [
+    'pages_show_list',
     'pages_read_engagement',
-    'pages_manage_engagement',
     'pages_manage_posts',
-    'instagram_basic',
-    'instagram_manage_comments',
   ].join(',')
 
   const state = Buffer.from(JSON.stringify({ userId: user.id })).toString('base64')
