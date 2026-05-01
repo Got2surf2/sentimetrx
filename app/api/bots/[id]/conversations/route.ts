@@ -63,12 +63,20 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (t.created_at > s.last_at) s.last_at = t.created_at
     // Capture first user message
     if (t.role === 'user' && !s.first_message) s.first_message = t.content.slice(0, 120)
-    // Detect name: "My name is X" pattern or short first user message (just a name)
-    if (t.role === 'user' && !s.user_name) {
-      if (/^my name is /i.test(t.content)) {
+    // Detect name from multiple sources
+    if (!s.user_name) {
+      // "My name is X" pattern
+      if (t.role === 'user' && /^my name is /i.test(t.content)) {
         s.user_name = t.content.replace(/^my name is /i, '').replace(/[.!].*/, '').trim()
-      } else if (t.turn_number <= 1 && t.content.trim().split(/\s+/).length <= 3 && /^[A-Z]/.test(t.content.trim())) {
+      }
+      // Short first user message (just a name)
+      else if (t.role === 'user' && t.turn_number <= 1 && t.content.trim().split(/\s+/).length <= 3 && /^[A-Z]/.test(t.content.trim())) {
         s.user_name = t.content.trim()
+      }
+      // Extract from bot greeting: "Hey Sanjay!" or "Hi Sanjay," etc.
+      else if (t.role === 'assistant' && t.source === 'greeting') {
+        var greetMatch = t.content.match(/^(?:Hey|Hi|Hello|Welcome)\s+([A-Z][a-z]+)[!,.\s]/i)
+        if (greetMatch) s.user_name = greetMatch[1]
       }
     }
     // Aggregate content flags
