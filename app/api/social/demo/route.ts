@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
   if (!candidate) return NextResponse.json({ error: 'candidate name is required' }, { status: 400 })
 
   const total = Math.min(count, 50)
+  const service = createServiceRoleClient()
 
   // Auto-clear previous demo data before generating new
   await service.from('social_comments').delete().eq('org_id', auth.orgId).like('comment_id', 'demo_%')
@@ -79,8 +80,6 @@ Output ONLY the JSON array, nothing else.`,
   if (comments.length === 0) {
     return NextResponse.json({ error: 'No comments generated' }, { status: 500 })
   }
-
-  const service = createServiceRoleClient()
 
   // Get or create a connection for demo purposes
   let connectionId: string
@@ -259,12 +258,19 @@ export async function DELETE(req: NextRequest) {
   const service = createServiceRoleClient()
 
   // Delete demo comments (comment_id starts with demo_ or test_comment_)
-  const { data: deleted } = await service
+  const { data: d1 } = await service
     .from('social_comments')
     .delete()
     .eq('org_id', auth.orgId)
-    .or('comment_id.like.demo_%,comment_id.like.test_comment_%')
+    .like('comment_id', 'demo_%')
     .select('id')
 
-  return NextResponse.json({ deleted: deleted?.length || 0 })
+  const { data: d2 } = await service
+    .from('social_comments')
+    .delete()
+    .eq('org_id', auth.orgId)
+    .like('comment_id', 'test_comment_%')
+    .select('id')
+
+  return NextResponse.json({ deleted: (d1?.length || 0) + (d2?.length || 0) })
 }

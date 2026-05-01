@@ -364,16 +364,6 @@ export default function SimulatorPage() {
                 rows={2}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-vertical" />
             </div>
-            {demoLoading && (
-              <div className="mb-4">
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
-                  <div className="h-full rounded-full transition-all duration-1000" style={{ background: HERMES, width: demoResult ? '100%' : '60%', animation: demoResult ? 'none' : 'pulse 1.5s ease-in-out infinite' }} />
-                </div>
-                <p className="text-xs text-gray-500 text-center">
-                  {!demoResult ? 'Clearing old data + generating comments with AI + processing flags...' : 'Done!'}
-                </p>
-              </div>
-            )}
             <div className="flex gap-3 mb-4">
               <button onClick={async () => {
                 if (!demoCandidate.trim()) return
@@ -388,6 +378,17 @@ export default function SimulatorPage() {
                 style={{ background: HERMES }}>
                 {demoLoading ? 'Generating...' : 'Generate Demo Comments'}
               </button>
+              <button onClick={async () => {
+                if (!confirm('Delete all demo/test comments?')) return
+                setDemoLoading(true)
+                const r = await fetch('/api/social/demo', { method: 'DELETE' })
+                const d = await r.json()
+                setDemoResult({ deleted: d.deleted })
+                setDemoLoading(false)
+              }} disabled={demoLoading}
+                className="px-5 py-2 rounded-lg text-sm font-semibold border border-red-300 text-red-600 bg-red-50 hover:bg-red-100">
+                Clear Demo Data
+              </button>
             </div>
             {demoResult && (
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
@@ -396,6 +397,7 @@ export default function SimulatorPage() {
                 ) : demoResult.deleted !== undefined ? (
                   <p className="text-sm text-gray-600">Deleted {demoResult.deleted} demo comments.</p>
                 ) : (
+                  <>
                   <div className="grid grid-cols-4 gap-3 text-center mb-3">
                     <div><div className="text-2xl font-bold text-gray-900">{demoResult.generated}</div><div className="text-xs text-gray-500 mt-1">Generated</div></div>
                     <div><div className="text-2xl font-bold text-amber-600">{demoResult.flagged}</div><div className="text-xs text-gray-500 mt-1">Flagged</div></div>
@@ -408,6 +410,7 @@ export default function SimulatorPage() {
                     <div><div className="text-lg font-bold text-red-500">{demoResult.sentiment?.negative || 0}</div><div className="text-xs text-gray-500 mt-1">Negative</div></div>
                     <div><div className="text-lg font-bold text-purple-600">{demoResult.flaggedForReview || 0}</div><div className="text-xs text-gray-500 mt-1">For Review</div></div>
                   </div>
+                  </>
                 )}
               </div>
             )}
