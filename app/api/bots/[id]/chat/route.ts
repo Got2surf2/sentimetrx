@@ -6,11 +6,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { checkMessage, auditContent } from '@/lib/contentGuard'
+import { checkMessage, auditContent, scoreSentiment } from '@/lib/contentGuard'
 import { cleanDeflectResponse } from '@/lib/guardrails'
 import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, type Persona } from '@/lib/personaExtractor'
-import { POSITIVE_WORDS, NEGATIVE_WORDS } from '@/lib/sentimentLexicon'
 
 export const dynamic = 'force-dynamic'
 
@@ -589,14 +588,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
     // Add sentiment signal based on the user's message
     if (demoMode && lastUserMsg) {
-      var sentScore = 0
-      var sentWords = lastUserMsg.content.toLowerCase().replace(/[^a-z\s']/g, '').split(/\s+/)
-      for (var sw of sentWords) {
-        if (POSITIVE_WORDS.has(sw)) sentScore++
-        else if (NEGATIVE_WORDS.has(sw)) sentScore--
-      }
-      if (sentScore > 0) _signals.push({ label: 'Positive', type: 'sentiment', color: '#059669' })
-      else if (sentScore < 0) _signals.push({ label: 'Negative', type: 'sentiment', color: '#DC2626' })
+      var userSentiment = scoreSentiment(lastUserMsg.content)
+      if (userSentiment === 'positive') _signals.push({ label: 'Positive', type: 'sentiment', color: '#059669' })
+      else if (userSentiment === 'negative') _signals.push({ label: 'Negative', type: 'sentiment', color: '#DC2626' })
       // Add knowledge source signal
       if (knowledgeInjected && !intentHasAction) _signals.push({ label: 'Knowledge Base', type: 'rag', color: '#0369A1' })
     }

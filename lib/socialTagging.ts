@@ -3,11 +3,8 @@
 // Used by both the sync cron (real comments) and the demo generator.
 // Single source of truth for sentiment, content flags, topics, emotions, intents, and off-topic detection.
 
-import { auditContent } from '@/lib/contentGuard'
+import { auditContent, scoreSentiment } from '@/lib/contentGuard'
 import type { ModerationScore } from '@/lib/moderation'
-import Sentiment from 'sentiment'
-
-const analyzer = new Sentiment()
 
 const STOPWORDS = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'and', 'or', 'but', 'not', 'no', 'this', 'that', 'it', 'its', 'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'she', 'they', 'them', 'their', 'what', 'how', 'when', 'where', 'who', 'why', 'so', 'if', 'then', 'than', 'just', 'also', 'about', 'up', 'out', 'all', 'more', 'some', 'very', 'too'])
 
@@ -26,12 +23,8 @@ const TOPIC_KEYWORDS: Record<string, RegExp> = {
 
 // ── Sentiment scoring (AFINN-165 via `sentiment` package) ─────────────
 
-export function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral' {
-  var result = analyzer.analyze(text)
-  if (result.comparative > 0.05) return 'positive'
-  if (result.comparative < -0.05) return 'negative'
-  return 'neutral'
-}
+// Re-export for consumers that import from socialTagging
+export { scoreSentiment } from '@/lib/contentGuard'
 
 // ── Full tagging pipeline ──────────────────────────────────────────────
 

@@ -1,6 +1,21 @@
 // lib/contentGuard.ts
-// Centralized content safety system with strike-based escalation
-// Used by: /api/townhall/chat, /api/clarify, /api/deflect
+// Centralized content safety + sentiment system.
+// Detection: regex patterns + OpenAI moderation (when available)
+// Sentiment: AFINN-165 via `sentiment` package
+// Used by: social tagging, townhall chat, bots, surveys, clarify/deflect
+
+import Sentiment from 'sentiment'
+
+const analyzer = new Sentiment()
+
+// ── Sentiment scoring (AFINN-165: 3,382 words, -5 to +5 intensity) ──────────
+
+export function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral' {
+  var result = analyzer.analyze(text)
+  if (result.comparative > 0.05) return 'positive'
+  if (result.comparative < -0.05) return 'negative'
+  return 'neutral'
+}
 
 // ── Severity levels ──────────────────────────────────────────────────────────
 // 'mild' = logged only, no escalation (damn, hell, crap, etc.)

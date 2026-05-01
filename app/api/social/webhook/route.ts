@@ -5,8 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { auditContent } from '@/lib/contentGuard'
-import { scoreSentiment } from '@/lib/socialTagging'
+import { auditContent, scoreSentiment } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
 
