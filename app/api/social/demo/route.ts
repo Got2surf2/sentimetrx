@@ -156,9 +156,39 @@ Output ONLY the JSON array, nothing else.`,
     }
 
     // Detect intent signals
-    if (/donat|volunteer|sign up|join|help|contribute|campaign/i.test(cm.text)) {
-      flags.push({ type: 'intent', severity: null, action: 'Engagement signal detected' })
+    var intents: string[] = []
+    if (/donat|contribut|give money|chip in|fundrais/i.test(cm.text)) { intents.push('donate'); flags.push({ type: 'intent', severity: null, action: 'Donate intent detected' }) }
+    if (/volunteer|sign up|join|get involved|help out|canvass/i.test(cm.text)) { intents.push('volunteer'); flags.push({ type: 'intent', severity: null, action: 'Volunteer intent detected' }) }
+    if (/event|rally|town hall|meet.*greet|attend/i.test(cm.text)) { intents.push('event'); flags.push({ type: 'intent', severity: null, action: 'Event interest detected' }) }
+
+    // Topic detection — keyword match (no AI)
+    var topics: string[] = []
+    var TOPIC_KEYWORDS: Record<string, RegExp> = {
+      'safety': /safe|crime|police|security|dangerous|scary|homeless|violence|gun|shoot/i,
+      'housing': /housing|rent|afford|home|apartment|mortgage|evict|landlord/i,
+      'economy': /economy|job|business|tax|cost|price|inflation|wage|employ|small business/i,
+      'education': /school|education|teacher|student|university|college|tuition/i,
+      'healthcare': /health|hospital|doctor|insurance|medical|mental health|drug/i,
+      'transportation': /traffic|transit|bus|road|highway|parking|commute|bike|walk/i,
+      'environment': /environment|climate|clean|pollution|water|energy|green|solar/i,
+      'immigration': /immigra|border|undocumented|visa|citizenship|ICE|deport/i,
+      'development': /development|growth|construction|downtown|zoning|density|building/i,
+      'culture': /restaurant|food|dining|arts|culture|entertainment|music|venue/i,
     }
+    for (var topicName in TOPIC_KEYWORDS) {
+      if (TOPIC_KEYWORDS[topicName].test(cm.text)) topics.push(topicName)
+    }
+    if (topics.length > 0) flags.push({ type: 'topics', severity: null, action: 'Topics: ' + topics.join(', ') })
+
+    // Emotion detection — keyword match
+    var emotion = 'neutral'
+    if (/love|amazing|fantastic|incredible|excited|thrilled|proud|inspired/i.test(cm.text)) emotion = 'enthusiastic'
+    else if (/hate|furious|outraged|disgusted|livid|enraged/i.test(cm.text)) emotion = 'angry'
+    else if (/worried|concerned|afraid|scared|anxious|nervous/i.test(cm.text)) emotion = 'worried'
+    else if (/disappoint|frustrat|upset|annoyed|let down/i.test(cm.text)) emotion = 'frustrated'
+    else if (/curious|wonder|interest|intrigued|question/i.test(cm.text)) emotion = 'curious'
+    else if (/hope|wish|optimis|looking forward|can't wait/i.test(cm.text)) emotion = 'hopeful'
+    if (emotion !== 'neutral') flags.push({ type: 'emotion', severity: null, action: 'Emotion: ' + emotion })
 
     // Spread comments over the last 24 hours
     const minutesAgo = Math.floor((i / comments.length) * 24 * 60)

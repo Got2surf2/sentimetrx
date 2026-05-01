@@ -64,6 +64,8 @@ const FLAG_COLORS: Record<string, string> = {
   review: '#7c3aed',
   competitor: '#0369a1',
   intent: '#059669',
+  topics: '#0f766e',
+  emotion: '#8b5cf6',
 }
 
 const FLAG_LABELS: Record<string, string> = {
@@ -78,7 +80,12 @@ const FLAG_LABELS: Record<string, string> = {
   review: 'Review',
   competitor: 'Competitor',
   intent: 'Engagement',
+  topics: 'Topic',
+  emotion: 'Emotion',
 }
+
+// Only show these flag types on the dashboard (keyword-detected, not content guard internals)
+const VISIBLE_FLAGS = new Set(['auto_delete', 'auto_hide', 'review', 'spam', 'competitor', 'intent', 'topics', 'emotion'])
 
 const PLATFORM_ICONS: Record<string, string> = {
   facebook: '\uD83D\uDCD8',
@@ -402,16 +409,18 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                           {sentBadge.label}
                         </span>
 
-                        {/* Flag badges */}
-                        {Array.isArray(c.flags) && c.flags.map(function(f: any, i: number) {
-                          var flagColor = FLAG_COLORS[f.type] || '#dc2626'
-                          var flagLabel = FLAG_LABELS[f.type] || f.type
+                        {/* Flag badges — only show keyword-detected flags */}
+                        {Array.isArray(c.flags) && c.flags.filter(function(f: any) { return VISIBLE_FLAGS.has(f.type) }).map(function(f: any, i: number) {
+                          var flagColor = FLAG_COLORS[f.type] || '#6b7280'
+                          // Use action text for detail flags, label for action flags
+                          var displayText = f.action && (f.type === 'topics' || f.type === 'emotion' || f.type === 'intent')
+                            ? f.action : (FLAG_LABELS[f.type] || f.type)
                           return (
                             <span key={i} title={f.action || ''} style={{
                               padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600,
                               background: flagColor + '15', color: flagColor, border: '1px solid ' + flagColor + '30',
                             }}>
-                              {flagLabel}
+                              {displayText}
                             </span>
                           )
                         })}
