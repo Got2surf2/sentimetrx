@@ -22,7 +22,7 @@ const TOPIC_KEYWORDS: Record<string, RegExp> = {
   'transportation': /\b(traffic|transit|bus(?:es)?|road(?:s)?|highway|parking|commut(?:e|ing|er)|bike\s*lane|public\s+transit)\b/i,
   'environment': /\b(environment(?:al)?|climate|pollution|clean\s+energy|solar|carbon|sustainability|recycl)\b/i,
   'immigration': /\b(immigra(?:nt|tion)|border|undocumented|visa|citizenship|\bICE\b|deport(?:ation)?)\b/i,
-  'development': /\b(develop(?:ment|er)|construction|downtown|zoning|density|gentrification|infrastructure)\b/i,
+  'development': /\b(develop(?:ment|er)|construction|zoning|density|gentrification|infrastructure|downtown\s+(?:develop|project|build|revitaliz|plan))\b/i,
   'culture': /\b(restaurant|dining|arts\b|cultural|entertainment|museum|venue|nightlife)\b/i,
 }
 

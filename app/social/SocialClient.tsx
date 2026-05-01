@@ -467,7 +467,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
 
           {/* Comment Feed */}
           {comments.length > 0 && viewMode === 'bypost' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {(function() {
                 // Group comments by post_id
                 var groups: Record<string, { postText: string; comments: Comment[] }> = {}
@@ -476,22 +476,56 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                   if (!groups[pid]) groups[pid] = { postText: gc.post_text || 'Post', comments: [] }
                   groups[pid].comments.push(gc)
                 }
-                return Object.entries(groups).map(function(entry) {
+                // Sort by most recent comment per post
+                var sorted = Object.entries(groups).sort(function(a, b) {
+                  var lastA = a[1].comments.reduce(function(max, c) { return c.platform_created_at && c.platform_created_at > max ? c.platform_created_at : max }, '')
+                  var lastB = b[1].comments.reduce(function(max, c) { return c.platform_created_at && c.platform_created_at > max ? c.platform_created_at : max }, '')
+                  return lastB > lastA ? 1 : -1
+                })
+                return sorted.map(function(entry) {
                   var postId = entry[0]
                   var group = entry[1]
+                  // Compute detailed counts
                   var posCount = group.comments.filter(function(c) { return c.sentiment === 'positive' }).length
                   var negCount = group.comments.filter(function(c) { return c.sentiment === 'negative' }).length
-                  var flagCount = group.comments.filter(function(c) { return Array.isArray(c.flags) && c.flags.length > 0 }).length
+                  var neuCount = group.comments.filter(function(c) { return c.sentiment === 'neutral' }).length
+                  var deletedCount = group.comments.filter(function(c) { return c.is_deleted }).length
+                  var hiddenCount = group.comments.filter(function(c) { return c.is_hidden && !c.is_deleted }).length
+                  var reviewCount = group.comments.filter(function(c) { return !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' }) }).length
+                  var offTopicCount = group.comments.filter(function(c) { return Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'off_topic' }) }).length
+                  // Last comment time
+                  var lastTime = group.comments.reduce(function(max, c) { return c.platform_created_at && c.platform_created_at > max ? c.platform_created_at : max }, '')
                   return (
-                    <details key={postId} open style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-                      <summary style={{ padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', flex: 1 }}>{group.postText}</span>
-                        <span style={{ fontSize: 11, color: '#6b7280', flexShrink: 0 }}>{group.comments.length} comments</span>
-                        {posCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#d1fae5', color: '#059669' }}>{posCount} positive</span>}
-                        {negCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fee2e2', color: '#dc2626' }}>{negCount} negative</span>}
-                        {flagCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fef3c7', color: '#d97706' }}>{flagCount} flagged</span>}
+                    <details key={postId} style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                      <summary style={{ padding: '14px 16px', cursor: 'pointer', background: '#f9fafb' }}>
+                        {/* Top row: post text + last comment time */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', flex: 1, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>{group.postText}</span>
+                          <span style={{ fontSize: 10, color: '#9ca3af', flexShrink: 0, marginLeft: 12, whiteSpace: 'nowrap' }}>Last: {timeAgo(lastTime)}</span>
+                        </div>
+                        {/* Pills row */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#374151', padding: '2px 8px', borderRadius: 10, background: '#e5e7eb' }}>{group.comments.length} comments</span>
+                          {posCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#d1fae5', color: '#059669' }}>{posCount} positive</span>}
+                          {neuCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#f3f4f6', color: '#6b7280' }}>{neuCount} neutral</span>}
+                          {negCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fee2e2', color: '#dc2626' }}>{negCount} negative</span>}
+                          {deletedCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5' }}>{deletedCount} deleted</span>}
+                          {hiddenCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d' }}>{hiddenCount} hidden</span>}
+                          {reviewCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fef9c3', color: '#a16207', border: '1px solid #fde68a' }}>{reviewCount} review</span>}
+                          {offTopicCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#f1f5f9', color: '#94a3b8', border: '1px solid #cbd5e1' }}>{offTopicCount} off-topic</span>}
+                        </div>
+                        {/* Preview: first 3 comments truncated */}
+                        <div style={{ marginTop: 8 }}>
+                          {group.comments.slice(0, 3).map(function(c, i) {
+                            var previewColor = c.is_deleted ? '#dc2626' : c.is_hidden ? '#d97706' : '#6b7280'
+                            return <div key={i} style={{ fontSize: 11, color: previewColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', lineHeight: 1.6 }}>
+                              <span style={{ fontWeight: 600 }}>{c.author_name || 'Unknown'}:</span> {c.text}
+                            </div>
+                          })}
+                          {group.comments.length > 3 && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>+ {group.comments.length - 3} more</div>}
+                        </div>
                       </summary>
-                      <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #e5e7eb' }}>
                         {group.comments.map(function(c) {
                           return renderComment(c)
                         })}

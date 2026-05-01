@@ -37,7 +37,7 @@ const PATTERNS: PatternDef[] = [
   { pattern: /\b(r[e3]t[a4@]rd(ed)?)\b/i, severity: 'severe', category: 'slur' },
 
   // Severe: threats & violence
-  { pattern: /\b(kill\s+(you|them|myself|him|her)|murder|bomb\s+threat|shoot(ing)?|stab(bing)?)\b/i, severity: 'severe', category: 'threat' },
+  { pattern: /\b(kill\s+(you|your|them|myself|yourself|himself|herself|themselves|him|her)|murder|bomb\s+threat|shoot(ing)?|stab(bing)?)\b/i, severity: 'severe', category: 'threat' },
   { pattern: /\bi['']?ll\s+(kill|hurt|destroy|end)\s+(you|them|him|her)/i, severity: 'severe', category: 'threat' },
   { pattern: /\b(rape|molest|assault)\b/i, severity: 'severe', category: 'threat' },
 
@@ -46,14 +46,18 @@ const PATTERNS: PatternDef[] = [
 
   // Severe: strong profanity (with evasion: f*ck, f u c k, fck, f***, etc.)
   { pattern: /\bf+[\s.*_-]*[u\xfc]+[\s.*_-]*c+[\s.*_-]*k+/i, severity: 'severe', category: 'profanity' },
-  { pattern: /\bf[*]{2,}/i, severity: 'severe', category: 'profanity' },  // f***, f**k, etc.
-  { pattern: /\bb[*]+[tch]*/i, severity: 'severe', category: 'profanity' },  // b****, b*tch, b***h
-  { pattern: /\bs[*h]+[it]*/i, severity: 'severe', category: 'profanity' },  // s**t, sh*t, s***
-  { pattern: /\ba[*]+[s]+/i, severity: 'mild', category: 'profanity' },  // a**, a***
+  { pattern: /\bf[*]{2,}/i, severity: 'severe', category: 'profanity' },  // f***, f**k
+  { pattern: /\bb[*]{2,}/i, severity: 'severe', category: 'profanity' },  // b****, b***
+  { pattern: /\bs[*]{2,}/i, severity: 'severe', category: 'profanity' },  // s**t, s***
+  { pattern: /\ba[*]{2,}/i, severity: 'mild', category: 'profanity' },  // a**, a***
   { pattern: /\bc+[\s.*_-]*u+[\s.*_-]*n+[\s.*_-]*t+/i, severity: 'severe', category: 'profanity' },
 
   // Severe: directed hostility (triggers strikes)
   { pattern: /\b(screw\s*you|go\s*to\s*hell|piss\s*off|bite\s*me|eat\s*shit)\b/i, severity: 'severe', category: 'insult' },
+  // Severe: hate speech patterns
+  { pattern: /go\s+back\s+(where|to\s+where)\s+you\s+came\s+from/i, severity: 'severe', category: 'slur' },
+  // Severe: "bitch" when directed (you/stupid/dumb + bitch)
+  { pattern: /\b(you|stupid|dumb|ugly|fat|lazy)\s+bitch/i, severity: 'severe', category: 'profanity' },
 
   // Rude: insults that get a gentle nudge (message still processed, no strikes)
   { pattern: /\b(dumbass(es)?|idiot[s]?|moron[s]?|stupid|dumb|loser[s]?|pathetic|ignorant|incompetent)\b/i, severity: 'rude', category: 'insult' },
