@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
         author_name: c.author_name || 'Unknown',
         text: c.text,
         sentiment: c.sentiment || 'neutral',
+        sentiment_score: c.sentiment_score ?? 0,
         emotion: emotion,
         topics: topics || 'none',
         intents: intents || 'none',

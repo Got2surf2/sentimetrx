@@ -17,6 +17,15 @@ export function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral
   return 'neutral'
 }
 
+/** Returns both the label and the raw numeric score (-1.0 to +1.0 range). */
+export function scoreSentimentFull(text: string): { label: 'positive' | 'negative' | 'neutral'; score: number } {
+  var result = analyzer.analyze(text)
+  var label: 'positive' | 'negative' | 'neutral' = 'neutral'
+  if (result.comparative > 0.05) label = 'positive'
+  else if (result.comparative < -0.05) label = 'negative'
+  return { label, score: Math.round(result.comparative * 100) / 100 }
+}
+
 // ── Severity levels ──────────────────────────────────────────────────────────
 // 'mild' = logged only, no escalation (damn, hell, crap, etc.)
 // 'rude' = message processed but bot nudges the participant

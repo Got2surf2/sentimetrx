@@ -189,6 +189,7 @@ export async function GET(req: NextRequest) {
           author_id: c.author_id,
           text: c.text,
           sentiment: tagged.sentiment,
+          sentiment_score: tagged.sentimentScore,
           flags: tagged.flags,
           is_hidden: c.is_hidden || tagged.isHidden,
           is_reply: c.is_reply,

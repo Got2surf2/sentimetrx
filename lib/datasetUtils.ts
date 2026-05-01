@@ -394,6 +394,7 @@ export function buildSocialSchema(): SchemaConfig {
     { field: 'author_name',     type: 'categorical', label: 'Author' },
     { field: 'text',            type: 'open-ended',  sqt: 'open-text', label: 'Comment' },
     { field: 'sentiment',       type: 'categorical', label: 'Sentiment' },
+    { field: 'sentiment_score', type: 'numeric',     label: 'Sentiment Score', min: -1, max: 1 },
     { field: 'emotion',         type: 'categorical', label: 'Emotion' },
     { field: 'topics',          type: 'categorical', label: 'Topics' },
     { field: 'intents',         type: 'categorical', label: 'Intents' },

@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { auditContent, scoreSentiment } from '@/lib/contentGuard'
+import { auditContent, scoreSentimentFull } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,7 +111,7 @@ async function processComment(
   const text = comment.message || comment.text || ''
   if (!text) return
 
-  const sentiment = scoreSentiment(text)
+  const sentFull = scoreSentimentFull(text)
   const audit = auditContent(text)
   const flags = audit.flags.map(f => ({ type: f, severity: audit.maxSeverity }))
 
@@ -126,7 +126,8 @@ async function processComment(
     author_name: comment.from?.name || comment.username || null,
     author_id: comment.from?.id || comment.username || null,
     text,
-    sentiment,
+    sentiment: sentFull.label,
+    sentiment_score: sentFull.score,
     flags,
     is_hidden: comment.is_hidden || false,
     is_reply: !!comment.parent?.id,
@@ -137,6 +138,6 @@ async function processComment(
   if (error) {
     console.error('[social/webhook] Insert error:', error.message)
   } else {
-    console.log('[social/webhook] Ingested comment:', commentId, '| sentiment:', sentiment, '| flags:', audit.flags.length)
+    console.log('[social/webhook] Ingested comment:', commentId, '| sentiment:', sentFull.label, '| flags:', audit.flags.length)
   }
 }

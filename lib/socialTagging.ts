@@ -3,7 +3,7 @@
 // Used by both the sync cron (real comments) and the demo generator.
 // Single source of truth for sentiment, content flags, topics, emotions, intents, and off-topic detection.
 
-import { auditContent, scoreSentiment } from '@/lib/contentGuard'
+import { auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
 import type { ModerationScore } from '@/lib/moderation'
 
 const STOPWORDS = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'and', 'or', 'but', 'not', 'no', 'this', 'that', 'it', 'its', 'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'she', 'they', 'them', 'their', 'what', 'how', 'when', 'where', 'who', 'why', 'so', 'if', 'then', 'than', 'just', 'also', 'about', 'up', 'out', 'all', 'more', 'some', 'very', 'too'])
@@ -28,6 +28,7 @@ export { scoreSentiment } from '@/lib/contentGuard'
 
 export interface TagResult {
   sentiment: 'positive' | 'negative' | 'neutral'
+  sentimentScore: number  // raw AFINN comparative score (-1.0 to +1.0)
   flags: Array<{ type: string; severity: string | null; action?: string }>
   isHidden: boolean
   isDeleted: boolean
@@ -44,7 +45,9 @@ export type ModerationSensitivity = 'strict' | 'moderate' | 'lenient'
 
 export function tagComment(text: string, postText?: string | null, moderation?: ModerationScore | null, sensitivity?: ModerationSensitivity): TagResult {
   var sens = sensitivity || 'moderate'
-  var sentiment = scoreSentiment(text)
+  var sentFull = scoreSentimentFull(text)
+  var sentiment = sentFull.label
+  var sentimentScore = sentFull.score
   var audit = auditContent(text)
   var flags: Array<{ type: string; severity: string | null; action?: string }> = audit.flags.map(function(f) { return { type: f, severity: audit.maxSeverity } })
 
@@ -155,7 +158,7 @@ export function tagComment(text: string, postText?: string | null, moderation?: 
   else if (/hope|wish|optimis|looking forward|can't wait/i.test(text)) emotion = 'hopeful'
   if (emotion !== 'neutral') flags.push({ type: 'emotion', severity: null, action: 'Emotion: ' + emotion })
 
-  return { sentiment, flags, isHidden, isDeleted, topics, intents, emotion }
+  return { sentiment, sentimentScore, flags, isHidden, isDeleted, topics, intents, emotion }
 }
 
 // ── Response routing ───────────────────────────────────────────────────
