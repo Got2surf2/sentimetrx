@@ -29,17 +29,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
 
+  // Call Meta API to delete (skip for demo comments with no real platform ID)
   const token = (comment as any).social_connections?.access_token
-  if (!token) return NextResponse.json({ error: 'No access token' }, { status: 400 })
-
-  // Call Meta API to delete
-  const res = await fetch(`https://graph.facebook.com/v19.0/${comment.comment_id}?access_token=${token}`, {
-    method: 'DELETE',
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('[social/delete] Meta API error:', err)
-    return NextResponse.json({ error: 'Failed to delete on platform' }, { status: 502 })
+  const isDemo = comment.comment_id.startsWith('demo_') || comment.comment_id.startsWith('test_comment_')
+  if (!isDemo) {
+    if (!token) return NextResponse.json({ error: 'No access token' }, { status: 400 })
+    const res = await fetch(`https://graph.facebook.com/v19.0/${comment.comment_id}?access_token=${token}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      console.error('[social/delete] Meta API error:', err)
+      return NextResponse.json({ error: 'Failed to delete on platform' }, { status: 502 })
+    }
   }
 
   // Soft-delete locally

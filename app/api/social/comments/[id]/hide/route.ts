@@ -31,21 +31,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
 
   const token = (comment as any).social_connections?.access_token
-  if (!token) return NextResponse.json({ error: 'No access token for this connection' }, { status: 400 })
-
   const newHidden = !comment.is_hidden
+  const isDemo = comment.comment_id.startsWith('demo_') || comment.comment_id.startsWith('test_comment_')
 
-  // Call Meta API to hide/unhide
-  if (comment.platform === 'facebook') {
-    const res = await fetch(`https://graph.facebook.com/v19.0/${comment.comment_id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_hidden: newHidden, access_token: token }),
-    })
-    if (!res.ok) {
-      const err = await res.text()
-      console.error('[social/hide] Meta API error:', err)
-      return NextResponse.json({ error: 'Failed to update on platform' }, { status: 502 })
+  // Call Meta API to hide/unhide (skip for demo comments)
+  if (!isDemo) {
+    if (!token) return NextResponse.json({ error: 'No access token for this connection' }, { status: 400 })
+    if (comment.platform === 'facebook') {
+      const res = await fetch(`https://graph.facebook.com/v19.0/${comment.comment_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_hidden: newHidden, access_token: token }),
+      })
+      if (!res.ok) {
+        const err = await res.text()
+        console.error('[social/hide] Meta API error:', err)
+        return NextResponse.json({ error: 'Failed to update on platform' }, { status: 502 })
+      }
     }
   }
   // Instagram comment hiding uses the same Graph API endpoint
