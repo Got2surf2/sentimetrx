@@ -63,9 +63,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (t.created_at > s.last_at) s.last_at = t.created_at
     // Capture first user message
     if (t.role === 'user' && !s.first_message) s.first_message = t.content.slice(0, 120)
-    // Detect name from "My name is ..." pattern
-    if (t.role === 'user' && !s.user_name && /^my name is /i.test(t.content)) {
-      s.user_name = t.content.replace(/^my name is /i, '').replace(/[.!].*/, '').trim()
+    // Detect name: "My name is X" pattern or short first user message (just a name)
+    if (t.role === 'user' && !s.user_name) {
+      if (/^my name is /i.test(t.content)) {
+        s.user_name = t.content.replace(/^my name is /i, '').replace(/[.!].*/, '').trim()
+      } else if (t.turn_number <= 1 && t.content.trim().split(/\s+/).length <= 3 && /^[A-Z]/.test(t.content.trim())) {
+        s.user_name = t.content.trim()
+      }
     }
     // Aggregate content flags
     if (Array.isArray(t.content_flags)) {
