@@ -50,6 +50,7 @@ interface Turn {
 interface BotConfig {
   name?: string; subtitle?: string; avatarLetter?: string
   headerGradient?: string; avatarGradient?: string; avatarTextColor?: string
+  userBubbleBg?: string; accentColor?: string
 }
 
 export default function ConversationsClient() {
@@ -545,7 +546,7 @@ export default function ConversationsClient() {
                       <div style={{
                         maxWidth: '75%', padding: '10px 14px',
                         borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                        background: isUser ? IMSG_BLUE : IMSG_GRAY,
+                        background: isUser ? (botConfig.userBubbleBg || IMSG_BLUE) : IMSG_GRAY,
                         color: isUser ? 'white' : '#000',
                         fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
                         border: isDeflect ? '1.5px solid #c4b5fd' : 'none',
@@ -587,11 +588,12 @@ function buildConversationHtml(name: string, config: BotConfig, turns: Turn[]): 
   var av = config.avatarLetter || (name ? name.charAt(0).toUpperCase() : 'A')
   var hG = config.headerGradient || 'linear-gradient(135deg, #0a1628, #1a2d4a)'
   var aG = config.avatarGradient || 'linear-gradient(135deg, #00b4d8, #0077a8)'
+  var uB = config.userBubbleBg || '#007AFF'
   var rows = turns.map(function(t) {
     var isUser = t.role === 'user'
     var time = new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     if (isUser) {
-      return '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:#007AFF;color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
+      return '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:' + uB + ';color:white;font-size:13px;line-height:1.5;white-space:pre-wrap">' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
     }
     return '<div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px"><div style="width:28px;height:28px;border-radius:50%;background:' + aG + ';display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">' + esc(av) + '</div><div style="max-width:75%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#E9E9EB;color:#000;font-size:13px;line-height:1.5;white-space:pre-wrap"><span style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:4px;background:rgba(0,0,0,0.06);color:#9ca3af;letter-spacing:0.05em;margin-bottom:4px;display:inline-block">AI</span><br/>' + linkify(t.content) + '<div style="font-size:10px;margin-top:4px;opacity:0.5">' + time + '</div></div></div>'
   }).join('')
