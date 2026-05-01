@@ -127,8 +127,9 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   const [replyText, setReplyText] = useState('')
   const [replyLoading, setReplyLoading] = useState(false)
 
-  // Tab
+  // Tab + view mode
   const [tab, setTab] = useState<'feed' | 'settings'>('feed')
+  const [viewMode, setViewMode] = useState<'recent' | 'bypost'>('recent')
 
   const fetchComments = useCallback(function() {
     setLoading(true)
@@ -245,6 +246,79 @@ export default function SocialClient({ orgId }: { orgId: string }) {
     else setSelected(new Set(comments.map(function(c) { return c.id })))
   }
 
+  function renderComment(c: Comment) {
+    var sentBadge = SENTIMENT_BADGES[c.sentiment || 'neutral'] || SENTIMENT_BADGES.neutral
+    var isReplying = replyingTo === c.id
+    var needsReview = !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' })
+
+    return (
+      <div key={c.id} style={{
+        background: c.is_deleted ? '#fef2f2' : c.is_hidden ? '#fffbeb' : needsReview ? '#fefce8' : 'white',
+        borderRadius: 12,
+        border: '1px solid ' + (c.is_deleted ? '#fca5a5' : c.is_hidden ? '#fcd34d' : needsReview ? '#fde68a' : '#e5e7eb'),
+        borderLeft: c.is_deleted ? '4px solid #dc2626' : c.is_hidden ? '4px solid #d97706' : needsReview ? '4px solid #eab308' : '1px solid #e5e7eb',
+        padding: 16,
+        opacity: c.is_deleted ? 0.7 : 1,
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <input type="checkbox" checked={selected.has(c.id)} onChange={function() { toggleSelect(c.id) }} />
+          <span style={{ fontSize: 16 }}>{PLATFORM_ICONS[c.platform] || ''}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{c.author_name || 'Unknown'}</span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{timeAgo(c.platform_created_at)}</span>
+          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: sentBadge.bg, color: sentBadge.text }}>{sentBadge.label}</span>
+          {Array.isArray(c.flags) && c.flags.map(function(f: any, i: number) {
+            var flagColor = FLAG_COLORS[f.type] || '#6b7280'
+            var displayText = f.action && (f.type === 'topics' || f.type === 'emotion' || f.type === 'intent') ? f.action : (FLAG_LABELS[f.type] || f.type)
+            return <span key={i} title={f.action || ''} style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: flagColor + '15', color: flagColor, border: '1px solid ' + flagColor + '30' }}>{displayText}</span>
+          })}
+          {c.is_deleted && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>Deleted</span>}
+          {c.is_hidden && !c.is_deleted && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#d97706' }}>Hidden</span>}
+          {needsReview && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>Needs Review</span>}
+          {c.is_reply && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#eff6ff', color: '#3b82f6' }}>Reply</span>}
+        </div>
+        {/* Post context — only in recent view */}
+        {viewMode === 'recent' && c.post_text && (
+          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, paddingLeft: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 600 }}>
+            Re: {c.post_text}
+          </div>
+        )}
+        {/* Comment text */}
+        <div style={{ fontSize: 14, lineHeight: 1.5, paddingLeft: 28, marginBottom: 10, color: c.is_deleted ? '#9ca3af' : '#374151', textDecoration: c.is_deleted ? 'line-through' : 'none', fontStyle: c.is_deleted ? 'italic' : 'normal' }}>
+          {c.text}
+        </div>
+        {/* Our reply */}
+        {c.our_reply && (
+          <div style={{ paddingLeft: 28, marginBottom: 10 }}>
+            <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 8, borderLeft: '3px solid #22c55e', fontSize: 13, color: '#15803d' }}>
+              <span style={{ fontWeight: 600, fontSize: 11 }}>Your reply:</span> {c.our_reply}
+            </div>
+          </div>
+        )}
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 6, paddingLeft: 28 }}>
+          <ActionBtn label={c.is_hidden ? 'Unhide' : 'Hide'} onClick={function() { handleHide(c.id) }} />
+          <ActionBtn label="Delete" onClick={function() { handleDelete(c.id) }} danger />
+          <ActionBtn label="Reply" onClick={function() { setReplyingTo(isReplying ? null : c.id); setReplyText('') }} active={isReplying} />
+          <ActionBtn label="AI Reply" onClick={function() { handleAiReply(c.id) }} loading={replyLoading && replyingTo === c.id} />
+        </div>
+        {/* Reply composer */}
+        {isReplying && (
+          <div style={{ paddingLeft: 28, marginTop: 10, display: 'flex', gap: 8 }}>
+            <input value={replyText} onChange={function(e) { setReplyText(e.target.value) }}
+              onKeyDown={function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(c.id) } }}
+              placeholder="Type your reply..."
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, minHeight: 0 }} />
+            <button onClick={function() { handleReply(c.id) }} disabled={replyLoading || !replyText.trim()}
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: replyLoading || !replyText.trim() ? '#d1d5db' : HERMES, color: 'white' }}>
+              {replyLoading ? '...' : 'Send'}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (loading && comments.length === 0) {
     return <div className="flex items-center justify-center py-32"><LottieLoader size={80} /></div>
   }
@@ -319,6 +393,22 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               Flagged only
             </label>
 
+            {/* View mode toggle */}
+            <div style={{ display: 'flex', gap: 2, background: '#f3f4f6', borderRadius: 8, padding: 2 }}>
+              <button onClick={function() { setViewMode('recent') }}
+                style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: viewMode === 'recent' ? 'white' : 'transparent', color: viewMode === 'recent' ? '#111827' : '#9ca3af',
+                  boxShadow: viewMode === 'recent' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none' }}>
+                Recent
+              </button>
+              <button onClick={function() { setViewMode('bypost') }}
+                style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: viewMode === 'bypost' ? 'white' : 'transparent', color: viewMode === 'bypost' ? '#111827' : '#9ca3af',
+                  boxShadow: viewMode === 'bypost' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none' }}>
+                By Post
+              </button>
+            </div>
+
             <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
               <input
                 value={searchInput}
@@ -376,7 +466,44 @@ export default function SocialClient({ orgId }: { orgId: string }) {
           )}
 
           {/* Comment Feed */}
-          {comments.length > 0 && (
+          {comments.length > 0 && viewMode === 'bypost' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {(function() {
+                // Group comments by post_id
+                var groups: Record<string, { postText: string; comments: Comment[] }> = {}
+                for (var gc of comments) {
+                  var pid = gc.post_id || 'unknown'
+                  if (!groups[pid]) groups[pid] = { postText: gc.post_text || 'Post', comments: [] }
+                  groups[pid].comments.push(gc)
+                }
+                return Object.entries(groups).map(function(entry) {
+                  var postId = entry[0]
+                  var group = entry[1]
+                  var posCount = group.comments.filter(function(c) { return c.sentiment === 'positive' }).length
+                  var negCount = group.comments.filter(function(c) { return c.sentiment === 'negative' }).length
+                  var flagCount = group.comments.filter(function(c) { return Array.isArray(c.flags) && c.flags.length > 0 }).length
+                  return (
+                    <details key={postId} open style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                      <summary style={{ padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', flex: 1 }}>{group.postText}</span>
+                        <span style={{ fontSize: 11, color: '#6b7280', flexShrink: 0 }}>{group.comments.length} comments</span>
+                        {posCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#d1fae5', color: '#059669' }}>{posCount} positive</span>}
+                        {negCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fee2e2', color: '#dc2626' }}>{negCount} negative</span>}
+                        {flagCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#fef3c7', color: '#d97706' }}>{flagCount} flagged</span>}
+                      </summary>
+                      <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {group.comments.map(function(c) {
+                          return renderComment(c)
+                        })}
+                      </div>
+                    </details>
+                  )
+                })
+              })()}
+            </div>
+          )}
+
+          {comments.length > 0 && viewMode === 'recent' && (
             <>
               <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#6b7280', cursor: 'pointer' }}>
@@ -387,133 +514,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {comments.map(function(c) {
-                  const sentBadge = SENTIMENT_BADGES[c.sentiment || 'neutral'] || SENTIMENT_BADGES.neutral
-                  const isReplying = replyingTo === c.id
-
-                  var needsReview = !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' })
-
-                  return (
-                    <div key={c.id} style={{
-                      background: c.is_deleted ? '#fef2f2' : c.is_hidden ? '#fffbeb' : needsReview ? '#fefce8' : 'white',
-                      borderRadius: 12,
-                      border: '1px solid ' + (c.is_deleted ? '#fca5a5' : c.is_hidden ? '#fcd34d' : needsReview ? '#fde68a' : '#e5e7eb'),
-                      borderLeft: c.is_deleted ? '4px solid #dc2626' : c.is_hidden ? '4px solid #d97706' : needsReview ? '4px solid #eab308' : '1px solid #e5e7eb',
-                      padding: 16,
-                      opacity: c.is_deleted ? 0.7 : 1,
-                    }}>
-                      {/* Header */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <input type="checkbox" checked={selected.has(c.id)} onChange={function() { toggleSelect(c.id) }} />
-                        <span style={{ fontSize: 16 }}>{PLATFORM_ICONS[c.platform] || ''}</span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{c.author_name || 'Unknown'}</span>
-                        <span style={{ fontSize: 11, color: '#9ca3af' }}>{timeAgo(c.platform_created_at)}</span>
-
-                        {/* Sentiment badge */}
-                        <span style={{
-                          padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600,
-                          background: sentBadge.bg, color: sentBadge.text,
-                        }}>
-                          {sentBadge.label}
-                        </span>
-
-                        {/* Flag badges — show all detected flags */}
-                        {Array.isArray(c.flags) && c.flags.map(function(f: any, i: number) {
-                          var flagColor = FLAG_COLORS[f.type] || '#6b7280'
-                          // Use action text for detail flags, label for action flags
-                          var displayText = f.action && (f.type === 'topics' || f.type === 'emotion' || f.type === 'intent')
-                            ? f.action : (FLAG_LABELS[f.type] || f.type)
-                          return (
-                            <span key={i} title={f.action || ''} style={{
-                              padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600,
-                              background: flagColor + '15', color: flagColor, border: '1px solid ' + flagColor + '30',
-                            }}>
-                              {displayText}
-                            </span>
-                          )
-                        })}
-
-                        {c.is_deleted && (
-                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>
-                            Deleted
-                          </span>
-                        )}
-                        {c.is_hidden && !c.is_deleted && (
-                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#d97706' }}>
-                            Hidden
-                          </span>
-                        )}
-                        {needsReview && (
-                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>
-                            Needs Review
-                          </span>
-                        )}
-
-                        {c.is_reply && (
-                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#eff6ff', color: '#3b82f6' }}>
-                            Reply
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Post context */}
-                      {c.post_text && (
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, paddingLeft: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 600 }}>
-                          Re: {c.post_text}
-                        </div>
-                      )}
-
-                      {/* Comment text */}
-                      <div style={{
-                        fontSize: 14, lineHeight: 1.5, paddingLeft: 28, marginBottom: 10,
-                        color: c.is_deleted ? '#9ca3af' : '#374151',
-                        textDecoration: c.is_deleted ? 'line-through' : 'none',
-                        fontStyle: c.is_deleted ? 'italic' : 'normal',
-                      }}>
-                        {c.text}
-                      </div>
-
-                      {/* Our reply if exists */}
-                      {c.our_reply && (
-                        <div style={{ paddingLeft: 28, marginBottom: 10 }}>
-                          <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 8, borderLeft: '3px solid #22c55e', fontSize: 13, color: '#15803d' }}>
-                            <span style={{ fontWeight: 600, fontSize: 11 }}>Your reply:</span> {c.our_reply}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Action buttons */}
-                      <div style={{ display: 'flex', gap: 6, paddingLeft: 28 }}>
-                        <ActionBtn label={c.is_hidden ? 'Unhide' : 'Hide'} onClick={function() { handleHide(c.id) }} />
-                        <ActionBtn label="Delete" onClick={function() { handleDelete(c.id) }} danger />
-                        <ActionBtn label="Reply" onClick={function() { setReplyingTo(isReplying ? null : c.id); setReplyText('') }} active={isReplying} />
-                        <ActionBtn label="AI Reply" onClick={function() { handleAiReply(c.id) }} loading={replyLoading && replyingTo === c.id} />
-                      </div>
-
-                      {/* Reply composer */}
-                      {isReplying && (
-                        <div style={{ paddingLeft: 28, marginTop: 10, display: 'flex', gap: 8 }}>
-                          <input
-                            value={replyText}
-                            onChange={function(e) { setReplyText(e.target.value) }}
-                            onKeyDown={function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(c.id) } }}
-                            placeholder="Type your reply..."
-                            style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, minHeight: 0 }}
-                          />
-                          <button
-                            onClick={function() { handleReply(c.id) }}
-                            disabled={replyLoading || !replyText.trim()}
-                            style={{
-                              padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                              background: replyLoading || !replyText.trim() ? '#d1d5db' : HERMES, color: 'white',
-                            }}>
-                            {replyLoading ? '...' : 'Send'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                {comments.map(function(c) { return renderComment(c) })}
               </div>
 
               {/* Pagination */}

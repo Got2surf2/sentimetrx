@@ -132,3 +132,90 @@ export function tagComment(text: string, postText?: string | null): TagResult {
 
   return { sentiment, flags, isHidden, isDeleted, topics, intents, emotion }
 }
+
+// ── Response routing ───────────────────────────────────────────────────
+// Determines whether a comment needs an AI call or can be handled by a template.
+// Returns null if AI is needed, or a response string if a template suffices.
+
+function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)] }
+
+function inject(template: string, name?: string | null, topic?: string): string {
+  var result = template
+  if (name) result = result.replace('[name]', name).replace('[Name]', name)
+  else result = result.replace(/,?\s*\[name\]/gi, '').replace(/\[Name\]\s*/gi, '')
+  if (topic) result = result.replace('[topic]', topic)
+  else result = result.replace(/about \[topic\]\s*/gi, '').replace(/\[topic\]/gi, 'this')
+  return result.replace(/\s{2,}/g, ' ').trim()
+}
+
+const TEMPLATES = {
+  off_topic: [
+    'Thanks for commenting, [name]! This post is about [topic] — would love to hear your thoughts on that.',
+    'Appreciate you chiming in, [name]! We\'re focused on [topic] here — what\'s your perspective?',
+    'Hey [name], glad you\'re here! This thread is about [topic] — any thoughts?',
+    'Thanks for stopping by, [name]! We\'d love to hear what you think about [topic].',
+    'Hey [name]! This conversation is about [topic] — what are your thoughts on it?',
+  ],
+  spam: null, // no response — auto-hide silently
+  auto_delete: null, // no response — auto-delete silently
+  auto_hide: null, // no response — auto-hide silently
+  positive: [
+    'Thank you so much, [name]! That really means a lot.',
+    'Appreciate the kind words, [name]! We\'re working hard to make a difference.',
+    'Thanks, [name]! Your support keeps us going.',
+    'Love hearing this, [name]! Thank you for being part of this.',
+    'Means the world, [name]! Let us know if there\'s anything we can do for you.',
+    'Thank you, [name]! We\'re in this together.',
+  ],
+  positive_intent_donate: [
+    'That\'s amazing, [name]! Every contribution makes a real difference. You can donate here: [url]',
+    'Thank you, [name]! If you\'d like to chip in, here\'s the link: [url]',
+    'Appreciate that, [name]! Here\'s where you can contribute: [url]',
+  ],
+  positive_intent_volunteer: [
+    'Love that energy, [name]! Sign up to volunteer here: [url]',
+    'That\'s awesome, [name]! We\'d love to have you — sign up here: [url]',
+    'Thanks, [name]! Here\'s where you can get involved: [url]',
+  ],
+  review: null, // needs human review — no auto-response
+}
+
+export type ResponseRoute = 'ai' | 'template' | 'silent' | 'review'
+
+export interface RouteResult {
+  route: ResponseRoute
+  response: string | null
+  reason: string
+}
+
+export function routeResponse(tagged: TagResult, authorName?: string | null, postTopic?: string): RouteResult {
+  // Auto-delete / auto-hide → silent (no response)
+  if (tagged.isDeleted) return { route: 'silent', response: null, reason: 'Auto-deleted' }
+  if (tagged.isHidden) return { route: 'silent', response: null, reason: 'Auto-hidden' }
+
+  // Needs review → queue for human
+  if (tagged.flags.some(function(f) { return f.type === 'review' })) {
+    return { route: 'review', response: null, reason: 'Flagged for human review' }
+  }
+
+  // Off-topic → template response
+  if (tagged.flags.some(function(f) { return f.type === 'off_topic' })) {
+    return { route: 'template', response: inject(pick(TEMPLATES.off_topic), authorName, postTopic), reason: 'Off-topic redirect' }
+  }
+
+  // Positive with intent → template with action URL
+  if (tagged.sentiment === 'positive' && tagged.intents.length > 0) {
+    var intentKey = 'positive_intent_' + tagged.intents[0]
+    var pool = (TEMPLATES as any)[intentKey]
+    if (pool) return { route: 'template', response: inject(pick(pool), authorName), reason: 'Positive + intent' }
+  }
+
+  // Simple positive → template acknowledgment
+  if (tagged.sentiment === 'positive' && tagged.topics.length === 0) {
+    return { route: 'template', response: inject(pick(TEMPLATES.positive), authorName), reason: 'Positive acknowledgment' }
+  }
+
+  // Everything else → needs AI (negative, critical, complex questions, on-topic discussion)
+  return { route: 'ai', response: null, reason: 'Needs AI: ' + (tagged.sentiment === 'negative' ? 'negative sentiment' : 'complex/on-topic') }
+}
+
