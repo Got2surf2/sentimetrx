@@ -6,23 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { auditContent } from '@/lib/contentGuard'
-import { POSITIVE_WORDS, NEGATIVE_WORDS, NEGATORS } from '@/lib/sentimentLexicon'
+import { scoreSentiment } from '@/lib/socialTagging'
 
 export const dynamic = 'force-dynamic'
-
-function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral' {
-  const words = text.toLowerCase().replace(/[^a-z\s']/g, '').split(/\s+/)
-  let score = 0
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i]
-    const negated = i > 0 && NEGATORS.has(words[i - 1])
-    if (POSITIVE_WORDS.has(w)) score += negated ? -1 : 1
-    else if (NEGATIVE_WORDS.has(w)) score += negated ? 1 : -1
-  }
-  if (score > 0) return 'positive'
-  if (score < 0) return 'negative'
-  return 'neutral'
-}
 
 // ── GET: Meta verification handshake ─────────────────────────────
 export async function GET(req: NextRequest) {
