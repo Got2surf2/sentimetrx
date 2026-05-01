@@ -38,8 +38,12 @@ export async function GET(req: NextRequest) {
   const stateRaw = searchParams.get('state')
   const error = searchParams.get('error')
 
+  const origin = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'www.sentimetrx.ai'
+  const proto = req.headers.get('x-forwarded-proto') || 'https'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${origin}`
+
   if (error || !code || !stateRaw) {
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_SITE_URL}/social?error=oauth_denied`)
+    return NextResponse.redirect(`${siteUrl}/social?error=oauth_denied`)
   }
 
   let userId: string
@@ -47,11 +51,11 @@ export async function GET(req: NextRequest) {
     const state = JSON.parse(Buffer.from(stateRaw, 'base64').toString())
     userId = state.userId
   } catch {
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_SITE_URL}/social?error=invalid_state`)
+    return NextResponse.redirect(`${siteUrl}/social?error=invalid_state`)
   }
 
   const service = createServiceRoleClient()
-  const redirectUri = process.env.META_REDIRECT_URI || `${process.env.NEXT_PUBLIC_SITE_URL}/api/social/callback`
+  const redirectUri = process.env.META_REDIRECT_URI || `${siteUrl}/api/social/callback`
 
   try {
     // Exchange code for short-lived token
@@ -64,7 +68,7 @@ export async function GET(req: NextRequest) {
     // Get user's org
     const { data: userData } = await service.from('users').select('org_id').eq('id', userId).single()
     if (!userData?.org_id) {
-      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_SITE_URL}/social?error=no_org`)
+      return NextResponse.redirect(`${siteUrl}/social?error=no_org`)
     }
 
     // Get pages the user manages
@@ -100,9 +104,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_SITE_URL}/social?connected=true`)
+    return NextResponse.redirect(`${siteUrl}/social?connected=true`)
   } catch (err: any) {
     console.error('[social/callback] OAuth error:', err)
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_SITE_URL}/social?error=oauth_failed`)
+    return NextResponse.redirect(`${siteUrl}/social?error=oauth_failed`)
   }
 }
