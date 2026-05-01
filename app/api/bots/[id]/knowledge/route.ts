@@ -57,8 +57,21 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'No meaningful content found' }, { status: 400 })
   }
 
+  // Dedup: fetch existing chunk contents for this bot to avoid duplicates
+  const { data: existingChunks } = await service
+    .from('bot_knowledge_chunks')
+    .select('content')
+    .eq('bot_id', params.id)
+
+  const existingSet = new Set((existingChunks || []).map(function(c: any) { return c.content.trim() }))
+  const deduped = chunks.filter(function(c) { return !existingSet.has(c.content.trim()) })
+
+  if (deduped.length === 0) {
+    return NextResponse.json({ stored: 0, skipped: chunks.length, message: 'All content already exists' })
+  }
+
   // Insert chunks (tsvector is auto-populated by trigger)
-  const rows = chunks.map(function(c) {
+  const rows = deduped.map(function(c) {
     return {
       bot_id: params.id,
       title: c.title,
