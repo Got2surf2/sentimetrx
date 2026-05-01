@@ -29,9 +29,8 @@ export async function GET(req: NextRequest) {
   const service = createServiceRoleClient()
   let query = service
     .from('social_comments')
-    .select('id, sentiment, flags, is_hidden, our_reply, platform')
+    .select('id, sentiment, flags, is_hidden, is_deleted, our_reply, platform')
     .eq('org_id', auth.orgId)
-    .eq('is_deleted', false)
     .gte('platform_created_at', since)
 
   if (to) query = query.lte('platform_created_at', to)
@@ -47,7 +46,8 @@ export async function GET(req: NextRequest) {
     const f = c.flags as any
     return Array.isArray(f) && f.length > 0
   }).length
-  const hidden = rows.filter(c => c.is_hidden).length
+  const hidden = rows.filter(c => c.is_hidden && !c.is_deleted).length
+  const deleted = rows.filter(c => c.is_deleted).length
   const replied = rows.filter(c => !!c.our_reply).length
   const responseRate = total > 0 ? Math.round((replied / total) * 100) : 0
 
@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
     sentiment: { positive, negative, neutral },
     flagged,
     hidden,
+    deleted,
     replied,
     responseRate,
     byPlatform,

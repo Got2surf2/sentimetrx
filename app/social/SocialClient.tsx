@@ -33,6 +33,7 @@ interface Stats {
   sentiment: { positive: number; negative: number; neutral: number }
   flagged: number
   hidden: number
+  deleted: number
   replied: number
   responseRate: number
   byPlatform: Record<string, number>
@@ -364,7 +365,8 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               <StatCard label="Positive" value={stats.sentiment.positive} color="#059669" />
               <StatCard label="Negative" value={stats.sentiment.negative} color="#dc2626" />
               <StatCard label="Flagged" value={stats.flagged} color="#f59e0b" />
-              <StatCard label="Hidden" value={stats.hidden} color="#6b7280" />
+              <StatCard label="Hidden" value={stats.hidden} color="#d97706" />
+              <StatCard label="Deleted" value={stats.deleted || 0} color="#dc2626" />
               <StatCard label="Response Rate" value={stats.responseRate + '%'} color={HERMES} />
             </div>
           )}

@@ -37,7 +37,6 @@ export async function GET(req: NextRequest) {
     .from('social_comments')
     .select('*', { count: 'exact' })
     .eq('org_id', auth.orgId)
-    .eq('is_deleted', false)
     .order('platform_created_at', { ascending: false })
 
   if (platform) query = query.eq('platform', platform)

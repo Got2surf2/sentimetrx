@@ -96,7 +96,8 @@ export function tagComment(text: string, postText?: string | null): TagResult {
     if (letterCount > 0 && upperCount / letterCount > 0.6) spamHit = true
   }
   // Excessive same emoji (3+ of the same emoji in a row)
-  if (/(\p{Emoji})\1{2,}/u.test(text)) spamHit = true
+  // Excessive repeated punctuation/characters (!!!!! or $$$$$ etc.)
+  if (/([!?$%])\1{3,}/.test(text)) spamHit = true
   if (spamHit) {
     flags.push({ type: 'spam', severity: 'moderate', action: 'Auto-hidden: spam detected' })
     if (!isHidden && !isDeleted) { isHidden = true }
