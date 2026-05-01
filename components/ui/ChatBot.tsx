@@ -206,7 +206,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         fetch(config.apiEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: [{ role: 'user', content: 'My name is ' + cleanName + '.' }], session_id: sessionId, language: selectedLang || 'en', user_name: cleanName }),
+          body: JSON.stringify({ messages: [{ role: 'user', content: cleanName }], session_id: sessionId, language: selectedLang || 'en', user_name: cleanName }),
         }).then(r => r.json()).then(data => {
           setMessages(prev => [...prev, { role: 'assistant', content: data.reply || ('Great to meet you, ' + cleanName + '! How can I help you today?') }])
         }).catch(function() {
