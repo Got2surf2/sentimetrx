@@ -26,21 +26,27 @@ function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral' {
 }
 
 async function fetchFacebookComments(pageId: string, token: string, since?: string): Promise<any[]> {
+  // Use /posts instead of /feed — /feed requires pages_read_engagement which needs App Review
   const sinceParam = since ? `&since=${Math.floor(new Date(since).getTime() / 1000)}` : ''
-  const url = `https://graph.facebook.com/v19.0/${pageId}/feed?fields=id,message,created_time,comments{id,message,from,created_time,is_hidden,parent{id}}&limit=25&access_token=${token}${sinceParam}`
+  const postsUrl = `https://graph.facebook.com/v19.0/${pageId}/posts?fields=id,message,created_time&limit=25&access_token=${token}${sinceParam}`
 
-  const res = await fetch(url)
-  if (!res.ok) {
-    console.error('[social-sync] FB feed error:', await res.text())
+  const postsRes = await fetch(postsUrl)
+  if (!postsRes.ok) {
+    console.error('[social-sync] FB posts error:', await postsRes.text())
     return []
   }
 
-  const data = await res.json()
+  const postsData = await postsRes.json()
   const comments: any[] = []
 
-  for (const post of (data.data || [])) {
-    if (!post.comments?.data) continue
-    for (const c of post.comments.data) {
+  for (const post of (postsData.data || [])) {
+    // Fetch comments for each post separately
+    const commentsUrl = `https://graph.facebook.com/v19.0/${post.id}/comments?fields=id,message,from,created_time,is_hidden,parent{id}&limit=100&access_token=${token}`
+    const commentsRes = await fetch(commentsUrl)
+    if (!commentsRes.ok) continue
+
+    const commentsData = await commentsRes.json()
+    for (const c of (commentsData.data || [])) {
       comments.push({
         post_id: post.id,
         post_text: post.message || null,
