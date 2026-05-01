@@ -846,16 +846,20 @@ var OUTCOME_DATA: Record<string, { review: number; hidden: number; deleted: numb
 
 function OutcomeVisualization({ sensitivity, autoHide, autoDelete }: { sensitivity: string; autoHide: boolean; autoDelete: boolean }) {
   var base = OUTCOME_DATA[sensitivity] || OUTCOME_DATA.moderate
-  // If auto-delete off: those items become auto-hidden (if hide is on) or review (if hide is off)
-  // If auto-hide off: hidden items go to review
+  // When a toggle is off, those items flow to the next level:
+  // delete off → becomes hidden (if hide on) or review (if hide off)
+  // hide off → goes to review
   var deletedToHide = !autoDelete && autoHide ? base.deleted : 0
   var deletedToReview = !autoDelete && !autoHide ? base.deleted : 0
   var review = base.review + (!autoHide ? base.hidden : 0) + deletedToReview
   var hidden = (autoHide ? base.hidden : 0) + deletedToHide
   var deleted = autoDelete ? base.deleted : 0
-  var total = review + hidden + deleted
-  var slip = 5 // constant ~5% miss rate
-  var harmless = 20 // ~20% FP rate
+  var slip = 5
+  var harmless = 20
+
+  // "Potential" values — what these would be if the toggle was on
+  var potentialHidden = base.hidden + (!autoDelete ? base.deleted : 0)
+  var potentialDeleted = base.deleted
 
   return (
     <div style={{ background: '#f9fafb', borderRadius: 10, padding: 16, border: '1px solid #e5e7eb', marginTop: 16 }}>
@@ -874,29 +878,35 @@ function OutcomeVisualization({ sensitivity, autoHide, autoDelete }: { sensitivi
         </div>
       </div>
 
-      {/* Breakdown of caught */}
+      {/* Breakdown — always show all 3, gray out disabled */}
       <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Of the ~95 caught:</div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        {review > 0 && (
-          <div style={{ flex: review, background: '#dbeafe', borderRadius: 6, padding: '10px 8px', textAlign: 'center', minWidth: 70 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#1d4ed8' }}>~{review}</div>
-            <div style={{ fontSize: 10, color: '#1e40af' }}>in your review queue</div>
-          </div>
-        )}
-        {hidden > 0 && (
-          <div style={{ flex: hidden, background: '#fef3c7', borderRadius: 6, padding: '10px 8px', textAlign: 'center', minWidth: 70 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#b45309' }}>~{hidden}</div>
-            <div style={{ fontSize: 10, color: '#92400e' }}>auto-hidden</div>
-            <div style={{ fontSize: 9, color: '#a3a3a3' }}>you can unhide</div>
-          </div>
-        )}
-        {deleted > 0 && (
-          <div style={{ flex: deleted, background: '#fee2e2', borderRadius: 6, padding: '10px 8px', textAlign: 'center', minWidth: 70 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#dc2626' }}>~{deleted}</div>
-            <div style={{ fontSize: 10, color: '#991b1b' }}>auto-deleted</div>
-            <div style={{ fontSize: 9, color: '#a3a3a3' }}>permanent</div>
-          </div>
-        )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+        {/* Review queue — always active */}
+        <div style={{ background: '#dbeafe', borderRadius: 8, padding: '12px 8px', textAlign: 'center' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#1d4ed8' }}>~{review}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#1e40af', marginTop: 2 }}>Review Queue</div>
+          <div style={{ fontSize: 10, color: '#3b82f6', marginTop: 2 }}>you decide</div>
+        </div>
+
+        {/* Auto-hidden */}
+        <div style={{ background: autoHide ? '#fef3c7' : '#f3f4f6', borderRadius: 8, padding: '12px 8px', textAlign: 'center', opacity: autoHide ? 1 : 0.5 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: autoHide ? '#b45309' : '#9ca3af' }}>~{autoHide ? hidden : potentialHidden}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: autoHide ? '#92400e' : '#9ca3af', marginTop: 2 }}>Auto-Hidden</div>
+          {autoHide
+            ? <div style={{ fontSize: 10, color: '#b45309', marginTop: 2 }}>you can unhide</div>
+            : <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>turn on Auto-Hide</div>
+          }
+        </div>
+
+        {/* Auto-deleted */}
+        <div style={{ background: autoDelete ? '#fee2e2' : '#f3f4f6', borderRadius: 8, padding: '12px 8px', textAlign: 'center', opacity: autoDelete ? 1 : 0.5 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: autoDelete ? '#dc2626' : '#9ca3af' }}>~{autoDelete ? deleted : potentialDeleted}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: autoDelete ? '#991b1b' : '#9ca3af', marginTop: 2 }}>Auto-Deleted</div>
+          {autoDelete
+            ? <div style={{ fontSize: 10, color: '#dc2626', marginTop: 2 }}>permanent</div>
+            : <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>turn on Auto-Delete</div>
+          }
+        </div>
       </div>
 
       {/* Harmless warning */}
