@@ -149,7 +149,7 @@ export function checkMessage(
   const cfg = safetyConfig || CONTENT_SAFETY_DEFAULTS
   cleanupOldEntries()
 
-  if (!text || text.trim().length < 2) return { safe: false, category: 'empty' }
+  if (!text || text.trim().length === 0) return { safe: false, category: 'empty' }
   if (text.length > maxLength) return { safe: false, category: 'too_long' }
 
   if (cfg.enabled === false) return { safe: true }

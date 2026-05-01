@@ -413,9 +413,29 @@ export async function POST(req: NextRequest, { params }: Params) {
   var userWords = lastUserMsg ? lastUserMsg.content.trim().split(/\s+/).length : 10
   var maxWords: number
   var verbosityGuide: string
+  // Common shortcodes — treat as conversational acknowledgments
+  var shortcodeHint = ''
+  if (lastUserMsg) {
+    var msgLc = lastUserMsg.content.trim().toLowerCase()
+    var SHORTCODES: Record<string, string> = {
+      'k': 'ok', 'kk': 'ok', 'ok': 'ok', 'yep': 'yes', 'ya': 'yes', 'yea': 'yes', 'ye': 'yes',
+      'nah': 'no', 'nope': 'no', 'na': 'no', 'nm': 'not much', 'nvm': 'never mind',
+      'ty': 'thank you', 'thx': 'thanks', 'thnx': 'thanks', 'tysm': 'thank you so much',
+      'np': 'no problem', 'yw': 'you\'re welcome', 'idk': 'I don\'t know',
+      'lol': 'that\'s funny', 'lmao': 'that\'s very funny', 'omg': 'oh my god',
+      'brb': 'be right back', 'gtg': 'got to go', 'ttyl': 'talk to you later',
+      'imo': 'in my opinion', 'tbh': 'to be honest', 'smh': 'shaking my head',
+      'w/e': 'whatever', 'idc': 'I don\'t care', 'wym': 'what do you mean',
+      'hbu': 'how about you', 'wbu': 'what about you', 'rn': 'right now',
+    }
+    if (SHORTCODES[msgLc]) {
+      shortcodeHint = '\nNote: The user sent "' + lastUserMsg.content.trim() + '" which means "' + SHORTCODES[msgLc] + '". Respond naturally to that meaning.'
+    }
+  }
+
   if (userWords <= 5) {
     maxWords = 40
-    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 40 words (1-2 sentences). The user sent a very brief message — match that energy. Do NOT write paragraphs.'
+    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 40 words (1-2 sentences). The user sent a very brief message — match that energy. Do NOT write paragraphs.' + shortcodeHint
   } else if (userWords <= 20) {
     maxWords = 75
     verbosityGuide = 'HARD LIMIT: Your reply MUST be under 75 words (2-3 sentences). Keep it tight and conversational.'
