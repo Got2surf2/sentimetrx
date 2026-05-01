@@ -208,10 +208,21 @@ Output ONLY the JSON array, nothing else.`,
       if (TOPIC_KEYWORDS[topicName].test(cm.text)) topics.push(topicName)
     }
 
-    // Off-topic detection — no topics matched and doesn't relate to the candidate/post
-    var isOffTopic = topics.length === 0 && !/\b(vote|elect|campaign|mayor|council|city|county|district|candidate|support|endorse|run(?:ning)?|office|politic)/i.test(cm.text)
+    // Off-topic detection — check against topics, campaign words, AND post text overlap
+    var campaignRelated = /\b(vote|elect|campaign|mayor|council|city|county|district|candidate|support|endorse|run(?:ning)?|office|politic|rally|debate)/i.test(cm.text)
+    var postRelated = false
+    // Check word overlap with the original post text
+    var postText = 'demo_post_' // placeholder for demo — real posts use cm.post_text
+    if (cm.post_text || postText) {
+      var STOPWORDS = new Set(['the','a','an','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','to','of','in','for','on','with','at','by','from','and','or','but','not','no','this','that','it','its','i','me','my','we','our','you','your','he','she','they','them','their','what','how','when','where','who','why','so','if','then','than','just','also','about','up','out','all','more','some','very','too'])
+      var postWords = (cm.post_text || candidate || '').toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(function(w: string) { return w.length > 2 && !STOPWORDS.has(w) })
+      var commentWords = cm.text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(function(w: string) { return w.length > 2 && !STOPWORDS.has(w) })
+      var overlap = commentWords.filter(function(w: string) { return postWords.includes(w) })
+      postRelated = overlap.length >= 2 // at least 2 meaningful words in common
+    }
+    var isOffTopic = topics.length === 0 && !campaignRelated && !postRelated
     if (isOffTopic && !isHidden && !isDeleted) {
-      flags.push({ type: 'off_topic', severity: null, action: 'Off-topic: unrelated to campaign' })
+      flags.push({ type: 'off_topic', severity: null, action: 'Off-topic: unrelated to post or campaign' })
     }
     if (topics.length > 0) flags.push({ type: 'topics', severity: null, action: 'Topics: ' + topics.join(', ') })
 
