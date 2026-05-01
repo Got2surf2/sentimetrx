@@ -389,12 +389,14 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                   const sentBadge = SENTIMENT_BADGES[c.sentiment || 'neutral'] || SENTIMENT_BADGES.neutral
                   const isReplying = replyingTo === c.id
 
+                  var needsReview = !c.is_deleted && !c.is_hidden && Array.isArray(c.flags) && c.flags.some(function(f: any) { return f.type === 'review' })
+
                   return (
                     <div key={c.id} style={{
-                      background: c.is_deleted ? '#fef2f2' : c.is_hidden ? '#fffbeb' : 'white',
+                      background: c.is_deleted ? '#fef2f2' : c.is_hidden ? '#fffbeb' : needsReview ? '#fefce8' : 'white',
                       borderRadius: 12,
-                      border: '1px solid ' + (c.is_deleted ? '#fca5a5' : c.is_hidden ? '#fcd34d' : '#e5e7eb'),
-                      borderLeft: c.is_deleted ? '4px solid #dc2626' : c.is_hidden ? '4px solid #d97706' : '1px solid #e5e7eb',
+                      border: '1px solid ' + (c.is_deleted ? '#fca5a5' : c.is_hidden ? '#fcd34d' : needsReview ? '#fde68a' : '#e5e7eb'),
+                      borderLeft: c.is_deleted ? '4px solid #dc2626' : c.is_hidden ? '4px solid #d97706' : needsReview ? '4px solid #eab308' : '1px solid #e5e7eb',
                       padding: 16,
                       opacity: c.is_deleted ? 0.7 : 1,
                     }}>
@@ -437,6 +439,11 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                         {c.is_hidden && !c.is_deleted && (
                           <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#d97706' }}>
                             Hidden
+                          </span>
+                        )}
+                        {needsReview && (
+                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>
+                            Needs Review
                           </span>
                         )}
 
