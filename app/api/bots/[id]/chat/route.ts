@@ -62,8 +62,43 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Demo signals — lightweight labels for client-facing demo mode
   const _signals: Array<{ label: string; type: string; color: string }> = []
 
+  // Conversation compression: if history is long, summarize older turns
+  // Keep the last 8 messages verbatim, compress earlier ones into a summary
+  let recentMessages: Array<{ role: string; content: string }>
+  if (messages.length > 12) {
+    const olderMessages = messages.slice(0, -8)
+    const recentRaw = messages.slice(-8)
+
+    // Build a quick summary of older turns
+    const olderSummary = olderMessages.map(function(m: any) {
+      const prefix = m.role === 'user' ? 'User' : 'Bot'
+      return prefix + ': ' + m.content.substring(0, 100)
+    }).join('\n')
+
+    try {
+      const summaryResult = await callAI({
+        tier: 'fast',
+        maxTokens: 150,
+        timeoutMs: 5000,
+        system: 'Summarize this conversation history in 2-3 sentences. Focus on: what topics were discussed, what the user cares about, and any important context. Be factual and concise.',
+        messages: [{ role: 'user', content: olderSummary }],
+      })
+
+      recentMessages = [
+        { role: 'user', content: '[Earlier in this conversation: ' + summaryResult.text.trim() + ']' },
+        ...recentRaw,
+      ]
+      if (debugMode) _debug.push('Context: compressed ' + olderMessages.length + ' older messages into summary')
+    } catch {
+      // If summary fails, just use the last 10 messages
+      recentMessages = messages.slice(-10)
+      if (debugMode) _debug.push('Context: summary failed, using last 10 messages')
+    }
+  } else {
+    recentMessages = messages.slice(-12)
+  }
+
   // Content safety check on latest user message
-  const recentMessages = messages.slice(-20)
   const lastUserMsg = [...recentMessages].reverse().find((m: any) => m.role === 'user')
   if (lastUserMsg) {
     const check = checkMessage('cbot_' + ip, lastUserMsg.content)
