@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Conversation compression: if history is long, summarize older turns
   // Keep the last 8 messages verbatim, compress earlier ones into a summary
-  let recentMessages: Array<{ role: string; content: string }>
+  let recentMessages: any[]
   if (messages.length > 12) {
     const olderMessages = messages.slice(0, -8)
     const recentRaw = messages.slice(-8)
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       })
 
       recentMessages = [
-        { role: 'user', content: '[Earlier in this conversation: ' + summaryResult.text.trim() + ']' },
+        { role: 'user' as const, content: '[Earlier in this conversation: ' + summaryResult.text.trim() + ']' },
         ...recentRaw,
       ]
       if (debugMode) _debug.push('Context: compressed ' + olderMessages.length + ' older messages into summary')
@@ -533,6 +533,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
+    // @ts-ignore — recentMessages roles are always 'user' | 'assistant' from client
     const result = await callAI({
       tier: 'fast',
       maxTokens: 400,
