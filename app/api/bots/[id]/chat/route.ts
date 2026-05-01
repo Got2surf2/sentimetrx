@@ -489,37 +489,42 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Update last_session_at (fire-and-forget). Conversation count is computed live from turns.
     service.from('bots').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
 
-    // Store conversation turns (fire-and-forget)
+    // Store conversation turns (non-blocking — must not crash the response)
     if (session_id) {
-      const userContent = lastUserMsg?.content || ''
-      const turnsToInsert: Record<string, unknown>[] = []
+      (async function storeTurns() {
+        try {
+          const userContent = lastUserMsg?.content || ''
+          const turnsToInsert: Record<string, unknown>[] = []
 
-      // Check how many turns already stored for this session to avoid duplicates
-      const { data: existingTurns } = await service
-        .from('bot_conversation_turns')
-        .select('turn_number')
-        .eq('bot_id', bot.id)
-        .eq('session_id', session_id)
-        .order('turn_number', { ascending: false })
-        .limit(1)
+          const { data: existingTurns } = await service
+            .from('bot_conversation_turns')
+            .select('turn_number')
+            .eq('bot_id', bot.id)
+            .eq('session_id', session_id)
+            .order('turn_number', { ascending: false })
+            .limit(1)
 
-      const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
+          const maxExisting = existingTurns?.length ? existingTurns[0].turn_number : -1
 
-      // On first user message (nothing stored yet), capture the initial bot greeting
-      if (maxExisting < 0) {
-        var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
-        if (initialMsg) {
-          turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
+          if (maxExisting < 0) {
+            var initialMsg = recentMessages.find(function(m: any) { return m.role === 'assistant' })
+            if (initialMsg) {
+              turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: 0, role: 'assistant', content: initialMsg.content, language: botLang, source: 'greeting' })
+            }
+          }
+
+          var turnBase = maxExisting + 1
+          var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang }
+          if (auditFlags.length > 0) userTurn.content_flags = auditFlags
+          turnsToInsert.push(userTurn)
+          turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang })
+
+          const { error: insertErr } = await service.from('bot_conversation_turns').insert(turnsToInsert)
+          if (insertErr) console.error('[bot-chat] turn insert error:', insertErr.message)
+        } catch (e: any) {
+          console.error('[bot-chat] turn storage failed:', e?.message)
         }
-      }
-
-      var turnBase = maxExisting + 1
-      var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang }
-      if (auditFlags.length > 0) userTurn.content_flags = auditFlags
-      turnsToInsert.push(userTurn)
-      turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang })
-
-      service.from('bot_conversation_turns').insert(turnsToInsert).then(function() {})
+      })()
     }
 
     if (debugMode) {
