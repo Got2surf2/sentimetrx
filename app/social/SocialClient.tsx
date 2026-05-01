@@ -391,8 +391,12 @@ export default function SocialClient({ orgId }: { orgId: string }) {
 
                   return (
                     <div key={c.id} style={{
-                      background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', padding: 16,
-                      opacity: c.is_hidden ? 0.6 : 1,
+                      background: c.is_deleted ? '#fef2f2' : c.is_hidden ? '#fffbeb' : 'white',
+                      borderRadius: 12,
+                      border: '1px solid ' + (c.is_deleted ? '#fca5a5' : c.is_hidden ? '#fcd34d' : '#e5e7eb'),
+                      borderLeft: c.is_deleted ? '4px solid #dc2626' : c.is_hidden ? '4px solid #d97706' : '1px solid #e5e7eb',
+                      padding: 16,
+                      opacity: c.is_deleted ? 0.7 : 1,
                     }}>
                       {/* Header */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -425,8 +429,13 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                           )
                         })}
 
-                        {c.is_hidden && (
-                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#f3f4f6', color: '#6b7280' }}>
+                        {c.is_deleted && (
+                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>
+                            Deleted
+                          </span>
+                        )}
+                        {c.is_hidden && !c.is_deleted && (
+                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#d97706' }}>
                             Hidden
                           </span>
                         )}
@@ -446,7 +455,12 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                       )}
 
                       {/* Comment text */}
-                      <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.5, paddingLeft: 28, marginBottom: 10 }}>
+                      <div style={{
+                        fontSize: 14, lineHeight: 1.5, paddingLeft: 28, marginBottom: 10,
+                        color: c.is_deleted ? '#9ca3af' : '#374151',
+                        textDecoration: c.is_deleted ? 'line-through' : 'none',
+                        fontStyle: c.is_deleted ? 'italic' : 'normal',
+                      }}>
                         {c.text}
                       </div>
 
