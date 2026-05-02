@@ -20,6 +20,7 @@ const DEFAULT_CONFIG = {
   auto_reply_mode: 'queue', // 'all', 'positive_neutral', 'queue' (human review)
   auto_hide_enabled: false,
   auto_hide_severity: 'severe', // 'severe', 'rude' (severe + rude)
+  auto_delete_enabled: false,
   moderation_sensitivity: 'moderate', // 'strict' | 'moderate' | 'lenient'
 }
 
