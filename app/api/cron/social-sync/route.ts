@@ -257,7 +257,7 @@ export async function GET(req: NextRequest) {
                 tier: 'fast',
                 maxTokens: 200,
                 timeoutMs: 15000,
-                system: 'You are a social media manager replying to a comment on ' + conn.platform + '. Keep replies concise (1-3 sentences), friendly, and on-brand. Never be defensive or argumentative.',
+                system: 'You are a social media manager replying to a comment on ' + conn.platform + '. Keep replies concise (1-3 sentences), friendly, and on-brand. Never be defensive or argumentative.\n\nCRITICAL: NEVER mention "Datanautix", "sentimetrx", "Sentimetrx", "Sarina", "Ana", or any internal platform/tool names. You are replying on behalf of the page owner, not as a software company. Do not reference any AI tools, moderation systems, or analytics platforms.',
                 messages: [{ role: 'user', content: 'Reply to this comment: "' + c.text + '"' }],
               })
               replyText = result.text.trim()

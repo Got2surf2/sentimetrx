@@ -870,7 +870,7 @@ function AlertRulesPanel() {
 
 // Benchmark data: for every 100 harmful comments caught, how are they distributed?
 var OUTCOME_DATA: Record<string, { review: number; hidden: number; deleted: number }> = {
-  'lenient':  { review: 92, hidden: 4, deleted: 0 },
+  'lenient':  { review: 96, hidden: 4, deleted: 0 },
   'moderate': { review: 59, hidden: 41, deleted: 0 },
   'strict':   { review: 29, hidden: 33, deleted: 38 },
 }

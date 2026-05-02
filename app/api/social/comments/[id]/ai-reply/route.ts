@@ -49,6 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   systemParts.push('You are a social media manager replying to a comment on ' + comment.platform + '.')
   systemParts.push('Keep replies concise (1-3 sentences), friendly, and on-brand.')
   systemParts.push('Never be defensive or argumentative. Be helpful and warm.')
+  systemParts.push('CRITICAL: NEVER mention "Datanautix", "sentimetrx", "Sentimetrx", "Sarina", "Ana", or any internal platform/tool names. You are replying on behalf of the page owner, not as a software company. Do not reference any AI tools, moderation systems, or analytics platforms.')
 
   if (bot) {
     const config = bot.config as any
