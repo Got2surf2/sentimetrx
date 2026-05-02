@@ -13,6 +13,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1024.0",
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.44.4",
+    "@types/sentiment": "^5.0.4",
     "emoji-picker-element": "^1.29.1",
     "html-to-image": "^1.11.13",
     "lottie-web": "^5.13.0",
@@ -22,6 +23,7 @@
     "qrcode": "^1.5.4",
     "react": "^18",
     "react-dom": "^18",
+    "sentiment": "^5.0.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
