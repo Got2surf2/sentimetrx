@@ -118,6 +118,8 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   const [sentiment, setSentiment] = useState('')
   const [flaggedOnly, setFlaggedOnly] = useState(false)
   const [handledFilter, setHandledFilter] = useState<'' | 'true' | 'false'>('false') // default: needs attention
+  const [statusFilter, setStatusFilter] = useState('') // hidden, deleted, replied
+  const [flagType, setFlagType] = useState('') // specific flag type
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
 
@@ -144,6 +146,10 @@ export default function SocialClient({ orgId }: { orgId: string }) {
     if (sentiment) params.set('sentiment', sentiment)
     if (flaggedOnly) params.set('flagged', 'true')
     if (handledFilter) params.set('handled', handledFilter)
+    if (statusFilter === 'hidden') params.set('hidden', 'true')
+    if (statusFilter === 'deleted') params.set('deleted', 'true')
+    if (statusFilter === 'replied') params.set('replied', 'true')
+    if (flagType) params.set('flag_type', flagType)
     if (search) params.set('search', search)
 
     fetch('/api/social/comments?' + params.toString())
@@ -154,7 +160,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
         setPages(d.pages || 1)
       })
       .finally(function() { setLoading(false) })
-  }, [page, platform, sentiment, flaggedOnly, handledFilter, search])
+  }, [page, platform, sentiment, flaggedOnly, handledFilter, statusFilter, flagType, search])
 
   const fetchStats = useCallback(function() {
     fetch('/api/social/stats')
@@ -414,8 +420,8 @@ export default function SocialClient({ orgId }: { orgId: string }) {
             </div>
           )}
 
-          {/* Filters */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Filters — Row 1: dropdowns + search */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <select
               value={platform} onChange={function(e) { setPlatform(e.target.value); setPage(1) }}
               style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: 'white' }}>
@@ -433,40 +439,32 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               <option value="negative">Negative</option>
             </select>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
-              <input type="checkbox" checked={flaggedOnly} onChange={function(e) { setFlaggedOnly(e.target.checked); setPage(1) }} />
-              Flagged only
-            </label>
+            <select
+              value={statusFilter} onChange={function(e) { setStatusFilter(e.target.value); setPage(1) }}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: 'white' }}>
+              <option value="">All Status</option>
+              <option value="hidden">Hidden</option>
+              <option value="deleted">Deleted</option>
+              <option value="replied">Replied</option>
+            </select>
 
-            {/* Handled filter */}
-            <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
-              {[
-                { value: '', label: 'All' },
-                { value: 'false', label: 'Needs Attention' },
-                { value: 'true', label: 'Handled' },
-              ].map(function(f) {
-                var isActive = handledFilter === f.value
-                return <button key={f.value} onClick={function() { setHandledFilter(f.value as any); setPage(1) }} style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, background: isActive ? '#4f46e5' : '#fff', color: isActive ? '#fff' : '#6b7280', border: 'none', cursor: 'pointer' }}>
-                  {f.label}
-                </button>
-              })}
-            </div>
-
-            {/* View mode toggle */}
-            <div style={{ display: 'flex', gap: 2, background: '#f3f4f6', borderRadius: 8, padding: 2 }}>
-              <button onClick={function() { setViewMode('recent') }}
-                style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
-                  background: viewMode === 'recent' ? 'white' : 'transparent', color: viewMode === 'recent' ? '#111827' : '#9ca3af',
-                  boxShadow: viewMode === 'recent' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none' }}>
-                Recent
-              </button>
-              <button onClick={function() { setViewMode('bypost') }}
-                style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
-                  background: viewMode === 'bypost' ? 'white' : 'transparent', color: viewMode === 'bypost' ? '#111827' : '#9ca3af',
-                  boxShadow: viewMode === 'bypost' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none' }}>
-                By Post
-              </button>
-            </div>
+            <select
+              value={flagType} onChange={function(e) { setFlagType(e.target.value); setPage(1) }}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: 'white' }}>
+              <option value="">All Flags</option>
+              <option value="auto_delete">Auto-Delete</option>
+              <option value="auto_hide">Auto-Hide</option>
+              <option value="review">Needs Review</option>
+              <option value="spam">Spam</option>
+              <option value="profanity">Profanity</option>
+              <option value="slur">Slur</option>
+              <option value="threat">Threat</option>
+              <option value="sexual">Sexual</option>
+              <option value="insult">Insult</option>
+              <option value="competitor">Competitor</option>
+              <option value="off_topic">Off-Topic</option>
+              <option value="intent">Engagement Intent</option>
+            </select>
 
             <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
               <button
@@ -486,6 +484,55 @@ export default function SocialClient({ orgId }: { orgId: string }) {
                 onClick={function() { setSearch(searchInput); setPage(1) }}
                 style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: 'white', cursor: 'pointer' }}>
                 Search
+              </button>
+            </div>
+          </div>
+
+          {/* Filters — Row 2: review status + view mode */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Handled filter */}
+            <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+              {[
+                { value: '', label: 'All Comments' },
+                { value: 'false', label: 'Needs Attention' },
+                { value: 'true', label: 'Handled' },
+              ].map(function(f) {
+                var isActive = handledFilter === f.value
+                return <button key={f.value} onClick={function() { setHandledFilter(f.value as any); setPage(1) }} style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, background: isActive ? '#4f46e5' : '#fff', color: isActive ? '#fff' : '#6b7280', border: 'none', cursor: 'pointer' }}>
+                  {f.label}
+                </button>
+              })}
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+              <input type="checkbox" checked={flaggedOnly} onChange={function(e) { setFlaggedOnly(e.target.checked); setPage(1) }} />
+              Flagged only
+            </label>
+
+            {/* Active filter pills — show what's active for quick clearing */}
+            {(platform || sentiment || statusFilter || flagType || search) && (
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {platform && <span onClick={function() { setPlatform(''); setPage(1) }} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#dbeafe', color: '#1d4ed8', cursor: 'pointer' }}>{platform} x</span>}
+                {sentiment && <span onClick={function() { setSentiment(''); setPage(1) }} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#dcfce7', color: '#15803d', cursor: 'pointer' }}>{sentiment} x</span>}
+                {statusFilter && <span onClick={function() { setStatusFilter(''); setPage(1) }} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#fef3c7', color: '#b45309', cursor: 'pointer' }}>{statusFilter} x</span>}
+                {flagType && <span onClick={function() { setFlagType(''); setPage(1) }} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#fee2e2', color: '#dc2626', cursor: 'pointer' }}>{FLAG_LABELS[flagType] || flagType} x</span>}
+                {search && <span onClick={function() { setSearch(''); setSearchInput(''); setPage(1) }} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#f3f4f6', color: '#374151', cursor: 'pointer' }}>"{search}" x</span>}
+              </div>
+            )}
+
+            {/* View mode toggle — pushed right */}
+            <div style={{ display: 'flex', gap: 2, background: '#f3f4f6', borderRadius: 8, padding: 2, marginLeft: 'auto' }}>
+              <button onClick={function() { setViewMode('recent') }}
+                style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: viewMode === 'recent' ? 'white' : 'transparent', color: viewMode === 'recent' ? '#111827' : '#9ca3af',
+                  boxShadow: viewMode === 'recent' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none' }}>
+                Recent
+              </button>
+              <button onClick={function() { setViewMode('bypost') }}
+                style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: viewMode === 'bypost' ? 'white' : 'transparent', color: viewMode === 'bypost' ? '#111827' : '#9ca3af',
+                  boxShadow: viewMode === 'bypost' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none' }}>
+                By Post
               </button>
             </div>
           </div>
