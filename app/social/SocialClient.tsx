@@ -248,6 +248,8 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   }
 
   async function handleAiReply(id: string) {
+    setReplyingTo(id)
+    setReplyText('')
     setReplyLoading(true)
     const res = await fetch('/api/social/comments/' + id + '/ai-reply', {
       method: 'POST',
@@ -255,7 +257,6 @@ export default function SocialClient({ orgId }: { orgId: string }) {
       body: JSON.stringify({ autoPost: false }),
     })
     const data = await res.json()
-    setReplyingTo(id)
     setReplyText(data.reply || '')
     setReplyLoading(false)
   }
@@ -352,7 +353,13 @@ export default function SocialClient({ orgId }: { orgId: string }) {
           <ActionBtn label="AI Reply" onClick={function() { handleAiReply(c.id) }} loading={replyLoading && replyingTo === c.id} />
         </div>
         {/* Reply composer */}
-        {isReplying && (
+        {isReplying && replyLoading && replyingTo === c.id && (
+          <div style={{ paddingLeft: 28, marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <LottieLoader size={24} />
+            <span style={{ fontSize: 12, color: '#6b7280' }}>Generating AI reply...</span>
+          </div>
+        )}
+        {isReplying && !(replyLoading && replyingTo === c.id) && (
           <div style={{ paddingLeft: 28, marginTop: 10, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <textarea value={replyText} onChange={function(e) { setReplyText(e.target.value) }}
               onKeyDown={function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(c.id) } }}
