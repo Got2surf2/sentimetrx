@@ -35,7 +35,8 @@ interface Stats {
   hidden: number
   deleted: number
   replied: number
-  responseRate: number
+  handled: number
+  needsAttention: number
   byPlatform: Record<string, number>
 }
 
@@ -429,7 +430,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               <StatCard label="Flagged" value={stats.flagged} color="#f59e0b" />
               <StatCard label="Hidden" value={stats.hidden} color="#d97706" />
               <StatCard label="Deleted" value={stats.deleted || 0} color="#dc2626" />
-              <StatCard label="Response Rate" value={stats.responseRate + '%'} color={HERMES} />
+              <StatCard label="Handled" value={stats.handled + ' of ' + stats.needsAttention} color={HERMES} />
             </div>
           )}
 
