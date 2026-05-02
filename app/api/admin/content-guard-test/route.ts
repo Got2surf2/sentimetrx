@@ -10,6 +10,7 @@ import { tagComment } from '@/lib/socialTagging'
 import { moderateTexts } from '@/lib/moderation'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()

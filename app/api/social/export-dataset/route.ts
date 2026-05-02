@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { buildSocialSchema, emptyThemeModel } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 
 async function getAuth(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()

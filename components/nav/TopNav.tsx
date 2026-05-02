@@ -66,6 +66,12 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83C\uDFB2'} Simulators
             </Link>
+            <Link href="/admin/content-guard" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83D\uDEE1'} Content Guard
+            </Link>
             <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
             <div style={{ padding: '8px 16px' }}>
               <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Build {process.env.NEXT_PUBLIC_BUILD_NUMBER}</div>
