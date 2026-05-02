@@ -177,9 +177,14 @@ export default function SocialClient({ orgId }: { orgId: string }) {
     fetchConnections()
   }, [fetchStats, fetchConnections])
 
-  // Actions
+  // Actions — all status changes auto-mark as handled
+  async function markHandled(id: string) {
+    await fetch('/api/social/comments/' + id + '/handle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handled: true }) })
+  }
+
   async function handleHide(id: string) {
     await fetch('/api/social/comments/' + id + '/hide', { method: 'POST' })
+    await markHandled(id)
     fetchComments()
     fetchStats()
   }
@@ -187,6 +192,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   async function handleDelete(id: string) {
     if (!confirm('Delete this comment? This will remove it from the platform.')) return
     await fetch('/api/social/comments/' + id + '/delete', { method: 'POST' })
+    await markHandled(id)
     fetchComments()
     fetchStats()
   }
@@ -228,10 +234,11 @@ export default function SocialClient({ orgId }: { orgId: string }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: replyText }),
     })
-    setReplyingTo(null)
+    await markHandled(id)
     setReplyText('')
     setReplyLoading(false)
     fetchComments()
+    // Keep reply composer open so user can see the sent reply
   }
 
   async function handleAiReply(id: string) {
@@ -340,11 +347,12 @@ export default function SocialClient({ orgId }: { orgId: string }) {
         </div>
         {/* Reply composer */}
         {isReplying && (
-          <div style={{ paddingLeft: 28, marginTop: 10, display: 'flex', gap: 8 }}>
-            <input value={replyText} onChange={function(e) { setReplyText(e.target.value) }}
+          <div style={{ paddingLeft: 28, marginTop: 10, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <textarea value={replyText} onChange={function(e) { setReplyText(e.target.value) }}
               onKeyDown={function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(c.id) } }}
               placeholder="Type your reply..."
-              style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, minHeight: 0 }} />
+              rows={Math.max(2, Math.ceil((replyText.length || 1) / 60))}
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
             <button onClick={function() { handleReply(c.id) }} disabled={replyLoading || !replyText.trim()}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: replyLoading || !replyText.trim() ? '#d1d5db' : HERMES, color: 'white' }}>
               {replyLoading ? '...' : 'Send'}

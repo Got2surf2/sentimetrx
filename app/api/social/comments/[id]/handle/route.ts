@@ -29,7 +29,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
 
-  const newHandled = !comment.is_handled
+  // Accept explicit value or toggle
+  var body: any = {}
+  try { body = await req.json() } catch (e) { /* no body = toggle */ }
+  const newHandled = body.handled !== undefined ? !!body.handled : !comment.is_handled
 
   await service
     .from('social_comments')
