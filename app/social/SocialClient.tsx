@@ -374,12 +374,13 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)' }}>
+      {/* Header — sticky */}
+      <div style={{ flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>Social Moderation</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Monitor and moderate comments across Facebook and Instagram</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>Social Moderation</h1>
+          <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 0 }}>Monitor and moderate comments across Facebook and Instagram</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -403,13 +404,18 @@ export default function SocialClient({ orgId }: { orgId: string }) {
         </div>
       </div>
 
+      </div>{/* end sticky header (title + tabs) */}
+
       {tab === 'settings' ? (
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         <SettingsPanel connections={connections} onDisconnect={handleDisconnect} />
+        </div>
       ) : (
         <>
-          {/* Stats Bar */}
+          {/* Stats Bar — part of sticky area */}
+          <div style={{ flexShrink: 0 }}>
           {stats && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               <StatCard label="Today" value={stats.total} />
               <StatCard label="Positive" value={stats.sentiment.positive} color="#059669" />
               <StatCard label="Negative" value={stats.sentiment.negative} color="#dc2626" />
@@ -536,6 +542,10 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               </button>
             </div>
           </div>
+          </div>{/* end sticky header */}
+
+          {/* Scrollable content area */}
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
 
           {/* Bulk Actions */}
           {selected.size > 0 && (
@@ -712,6 +722,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               </p>
             </div>
           )}
+          </div>{/* end scrollable content */}
         </>
       )}
     </div>
@@ -722,12 +733,12 @@ export default function SocialClient({ orgId }: { orgId: string }) {
 
 function StatCard({ label, value, color }: { label: string; value: number | string; color?: string }) {
   return (
-    <div style={{ background: 'white', borderRadius: 10, border: '1px solid #e5e7eb', padding: '14px 16px' }}>
-      <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: color || '#111827' }}>
+    <div style={{ background: 'white', borderRadius: 8, border: '1px solid #e5e7eb', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: color || '#111827' }}>
         {value}
+      </div>
+      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
+        {label}
       </div>
     </div>
   )
