@@ -34,32 +34,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
 
-  // Look for an agent (bot) linked to this org to use its personality/guardrails
-  const { data: bot } = await service
-    .from('bots')
-    .select('id, name, config, system_prompt')
-    .eq('org_id', auth.orgId)
-    .eq('status', 'active')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .single()
-
-  // Build system prompt
+  // Build system prompt — standalone, no bot injection
+  // Bot system prompts are for the chat widget, not social replies.
+  // Injecting them causes brand leakage (e.g., Datanautix product bot prompt).
   const systemParts: string[] = []
   systemParts.push('You are a social media manager replying to a comment on ' + comment.platform + '.')
   systemParts.push('Keep replies concise (1-3 sentences), friendly, and on-brand.')
   systemParts.push('Never be defensive or argumentative. Be helpful and warm.')
   systemParts.push('CRITICAL: NEVER mention "Datanautix", "sentimetrx", "Sentimetrx", "Sarina", "Ana", or any internal platform/tool names. You are replying on behalf of the page owner, not as a software company. Do not reference any AI tools, moderation systems, or analytics platforms.')
-
-  if (bot) {
-    const config = bot.config as any
-    if (config?.personality) systemParts.push('PERSONALITY:\n' + config.personality)
-    if (bot.system_prompt) systemParts.push(bot.system_prompt)
-    if (Array.isArray(config?.guardrails) && config.guardrails.length > 0) {
-      const rules = config.guardrails.map((g: any, i: number) => (i + 1) + '. ' + (typeof g === 'string' ? g : g.rule)).join('\n')
-      systemParts.push('\nRULES:\n' + rules)
-    }
-  }
 
   if (comment.post_text) {
     systemParts.push('\nORIGINAL POST:\n' + comment.post_text)
