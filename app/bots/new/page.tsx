@@ -6,6 +6,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import TransferOrg from '@/components/ui/TransferOrg'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 
@@ -1014,6 +1015,15 @@ function BotCreatorInner() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Transfer org (admin only, edit mode only) */}
+        {editId && (
+          <TransferOrg
+            resourceName={name || 'Agent'}
+            resourceLabel="agent"
+            apiUrl={'/api/bots/' + editId}
+          />
         )}
 
         {/* Navigation (assisted mode) or Save (expert mode) */}

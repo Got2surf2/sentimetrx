@@ -12,6 +12,7 @@ import ShareModal from '@/components/ui/ShareModal'
 import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
+import TransferOrg from '@/components/ui/TransferOrg'
 
 interface Props {
   sessionId: string
@@ -1087,7 +1088,14 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
         {/* ── ANALYTICS TAB ────────────────────────────────────────── */}
         {!editing && activeTab === 'analytics' && (
-          <TownHallAnalyticsPanel sessionId={sessionId} />
+          <>
+            <TownHallAnalyticsPanel sessionId={sessionId} />
+            <TransferOrg
+              resourceName={session?.name || 'Session'}
+              resourceLabel="session"
+              apiUrl={'/api/townhall/sessions/' + sessionId}
+            />
+          </>
         )}
 
         {/* ── TOPICS TAB (main content) ────────────────────────────── */}

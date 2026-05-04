@@ -13,8 +13,9 @@ interface Params { params: { id: string } }
 async function getAuth(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  return { userId: user.id, orgId: data?.org_id as string | null }
+  const { data } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
+  const orgData = Array.isArray(data?.organizations) ? (data.organizations as any)[0] : data?.organizations as any
+  return { userId: user.id, orgId: data?.org_id as string | null, isAdmin: !!orgData?.is_admin_org }
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
@@ -45,6 +46,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (body[key] !== undefined) updates[key] = body[key]
   }
 
+  // Admin-only: allow changing org_id (transfer agent to another org)
+  if ('org_id' in body) {
+    if (!auth.isAdmin) {
+      return NextResponse.json({ error: 'Only admins can transfer agents' }, { status: 403 })
+    }
+    updates.org_id = body.org_id
+  }
+
   // Validate slug if changing
   if (updates.slug) {
     if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(updates.slug as string)) {
@@ -57,7 +66,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  const { error } = await supabase
+  // Use service role when transferring (org_id change bypasses RLS)
+  const updateClient = updates.org_id ? createServiceRoleClient() : supabase
+  const { error } = await updateClient
     .from('bots')
     .update(updates)
     .eq('id', params.id)

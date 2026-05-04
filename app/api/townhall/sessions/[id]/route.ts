@@ -483,6 +483,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
+  // Admin-only: allow changing org_id (transfer session to another org)
+  if ('org_id' in body) {
+    const { data: uData } = await supabase.from('users').select('organizations(is_admin_org)').eq('id', user.id).single()
+    const oData = Array.isArray(uData?.organizations) ? (uData.organizations as any)[0] : uData?.organizations as any
+    if (!oData?.is_admin_org) {
+      return NextResponse.json({ error: 'Only admins can transfer sessions' }, { status: 403 })
+    }
+    const { error: txErr } = await db.from('townhall_sessions').update({ org_id: body.org_id }).eq('id', params.id)
+    if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
+    return NextResponse.json({ success: true, transferred: true })
+  }
+
   // Only allow updating specific fields
   const allowed = ['name', 'config', 'discussion_guide', 'status', 'slug']
   const updates: Record<string, unknown> = {}
