@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { generateEmbeddings } from '@/lib/embeddings'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -133,6 +134,7 @@ export async function POST(req: Request, { params }: Params) {
             messages: [{ role: 'user', content: 'Chunks:\n' + chunkList }],
           })
 
+          logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'knowledge_classify' }, result.usage)
           var lines = result.text.split('\n')
           for (var li = 0; li < lines.length; li++) {
             var line = lines[li].trim()

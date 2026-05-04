@@ -3,6 +3,11 @@
 // Uses AI to identify life stage, occupation, location, concerns, and communication style.
 
 import { callAI } from '@/lib/ai'
+import { logUsage, type UsageContext } from '@/lib/usageLog'
+
+// Set externally by callers who know the org/resource context
+var _personaUsageCtx: UsageContext | null = null
+export function setPersonaUsageCtx(ctx: UsageContext | null) { _personaUsageCtx = ctx }
 
 export interface PersonaField {
   value: string
@@ -58,6 +63,7 @@ export async function extractPersona(userMessages: string[]): Promise<Persona> {
         'ONLY output the JSON object. No explanation.',
     })
 
+    if (_personaUsageCtx) logUsage({ ..._personaUsageCtx, event_type: 'persona' }, result.usage)
     var text = (result.text || '').trim()
     // Extract JSON from response (handle markdown code blocks)
     var jsonMatch = text.match(/\{[\s\S]*\}/)
@@ -163,6 +169,7 @@ export async function extractDemographics(userMessages: string[]): Promise<Demog
         'ONLY output the JSON object. No explanation.',
     })
 
+    if (_personaUsageCtx) logUsage({ ..._personaUsageCtx, event_type: 'demographics' }, result.usage)
     var text = (result.text || '').trim()
     var jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return {}

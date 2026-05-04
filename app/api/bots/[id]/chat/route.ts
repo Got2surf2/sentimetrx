@@ -9,7 +9,8 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
 import { cleanDeflectResponse } from '@/lib/guardrails'
 import { generateEmbedding } from '@/lib/embeddings'
-import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, type Persona, type Demographics } from '@/lib/personaExtractor'
+import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +57,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This bot is not currently active' }, { status: 403, headers: cors })
   }
 
+  // Set usage context for persona/demographic extraction
+  setPersonaUsageCtx({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'persona' })
+
   // Debug trace — collects pipeline info when verbose mode is on
   const _debug: string[] = []
   // Demo signals — lightweight labels for client-facing demo mode
@@ -82,6 +86,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         system: 'Summarize this conversation history in 2-3 sentences. Focus on: what topics were discussed, what the user cares about, and any important context. Be factual and concise.',
         messages: [{ role: 'user', content: olderSummary }],
       })
+      logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'summary' }, summaryResult.usage)
 
       recentMessages = [
         { role: 'user' as const, content: '[Earlier in this conversation: ' + summaryResult.text.trim() + ']' },
@@ -162,6 +167,7 @@ export async function POST(req: NextRequest, { params }: Params) {
             'Output ONLY "NONE" or the redirect message. Nothing else.'
         })
 
+        logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'deflect' }, deflectResult.usage)
         var cleaned = cleanDeflectResponse(deflectResult.text || '')
         var deflectText = cleaned.deflection
 
@@ -231,6 +237,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           system: 'Does this user message match any of these intents?\n\n' + intentDescriptions +
             '\n\nUser said: "' + lastUserMsg.content + '"\n\nRespond with ONLY the matching intent numbers (comma-separated) or "NONE". Look for subtle signals — the user doesn\'t have to say the exact words, just express the underlying interest.',
         })
+        logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'intent' }, intentCheck.usage)
         var checkText = (intentCheck.text || '').trim()
         if (!/^NONE/i.test(checkText)) {
           var nums = checkText.match(/\d+/g) || []
@@ -579,6 +586,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       messages: recentMessages,
       system: systemParts.join('\n'),
     })
+
+    // Log usage
+    logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'chat' }, result.usage)
 
     // Update last_session_at (fire-and-forget). Conversation count is computed live from turns.
     service.from('bots').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})

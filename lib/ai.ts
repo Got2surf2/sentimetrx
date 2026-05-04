@@ -25,9 +25,20 @@ export interface AIRequestOptions {
   apiKey?: string                     // shorthand: user-provided key (uses env AI_PROVIDER)
 }
 
+export interface AIUsage {
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
+  model: string
+  provider: AIProvider
+  tier: ModelTier
+}
+
 export interface AIResponse {
   text: string
   stopReason: 'end_turn' | 'max_tokens' | string
+  usage?: AIUsage
 }
 
 // ── Model mapping ────────────────────────────────────────────────────────────
@@ -165,22 +176,42 @@ function buildAzureRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {
 
 // ── Response parsers ─────────────────────────────────────────────────────────
 
-function parseAnthropicResponse(data: any): AIResponse {
+function parseAnthropicResponse(data: any, model: string, tier: ModelTier): AIResponse {
   const text = (data.content || [])
     .filter((b: any) => b.type === 'text')
     .map((b: any) => b.text || '')
     .join('')
+  const u = data.usage || {}
   return {
     text,
     stopReason: data.stop_reason === 'max_tokens' ? 'max_tokens' : 'end_turn',
+    usage: {
+      input_tokens: u.input_tokens || 0,
+      output_tokens: u.output_tokens || 0,
+      cache_read_tokens: u.cache_read_input_tokens || 0,
+      cache_creation_tokens: u.cache_creation_input_tokens || 0,
+      model,
+      provider: 'anthropic',
+      tier,
+    },
   }
 }
 
-function parseOpenAIResponse(data: any): AIResponse {
+function parseOpenAIResponse(data: any, model: string, tier: ModelTier): AIResponse {
   const choice = data.choices?.[0]
+  const u = data.usage || {}
   return {
     text: choice?.message?.content || '',
     stopReason: choice?.finish_reason === 'length' ? 'max_tokens' : 'end_turn',
+    usage: {
+      input_tokens: u.prompt_tokens || 0,
+      output_tokens: u.completion_tokens || 0,
+      cache_read_tokens: u.prompt_tokens_details?.cached_tokens || 0,
+      cache_creation_tokens: 0,
+      model,
+      provider: 'openai',
+      tier,
+    },
   }
 }
 
@@ -240,6 +271,6 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
 
   // Parse response based on provider
   return resolved.provider === 'anthropic'
-    ? parseAnthropicResponse(data)
-    : parseOpenAIResponse(data)
+    ? parseAnthropicResponse(data, resolved.model, opts.tier)
+    : parseOpenAIResponse(data, resolved.model, opts.tier)
 }

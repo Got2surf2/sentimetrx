@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     messages: [{ role: 'user', content: 'Reply to this comment: "' + comment.text + '"' }],
   })
 
+  logUsage({ org_id: auth.orgId || undefined, resource_type: 'social', event_type: 'ai_reply' }, result.usage)
   const replyText = result.text.trim()
 
   // Optionally post to platform

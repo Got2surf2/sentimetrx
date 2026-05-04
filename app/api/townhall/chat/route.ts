@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { isOutputClean, cleanAiOutput, cleanDeflectResponse } from '@/lib/guardrails'
 import { checkMessage, scoreSentimentFull } from '@/lib/contentGuard'
 import { callAI } from '@/lib/ai'
+import { logUsage, type UsageContext } from '@/lib/usageLog'
 import { detectThemesForSession } from '@/lib/townhallThemeDetection'
 
 export const dynamic = 'force-dynamic'
@@ -40,14 +41,17 @@ export async function POST(req: NextRequest) {
   let session: any = null
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
   if (isUUID) {
-    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config, response_counter, started_at').eq('id', session_id).single()
+    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config, response_counter, started_at, org_id').eq('id', session_id).single()
     session = data
   }
   if (!session) {
-    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config, response_counter, started_at').eq('slug', session_id.toLowerCase()).single()
+    const { data } = await supabase.from('townhall_sessions').select('id, name, status, config, response_counter, started_at, org_id').eq('slug', session_id.toLowerCase()).single()
     session = data
   }
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+
+  // Set usage context for all AI calls in this request
+  _usageCtx = { org_id: session.org_id, resource_type: 'townhall', resource_id: session.id, event_type: 'chat' }
 
   const config = session.config as any
 
@@ -694,6 +698,9 @@ Output ONLY "NONE" or the redirect message. Nothing else.` +
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
 
+// Set by POST handler so callClaude can log usage without threading context
+var _usageCtx: UsageContext | null = null
+
 function wrapUp(config: any) {
   return NextResponse.json({
     bot_message: config?.closing_message || config?.display?.thank_you_message || 'Thank you for sharing your thoughts. Your input is really valuable.',
@@ -713,6 +720,7 @@ async function callClaude(system: string, user: string, timeoutMs = 3000, verbos
       system: verboseSystem,
       messages: [{ role: 'user', content: user }],
     })
+    if (_usageCtx) logUsage(_usageCtx, result.usage)
     const raw = result.text?.trim() || ''
     if (verbose && raw.includes('---RESPONSE---')) {
       const [thinkingPart, responsePart] = raw.split('---RESPONSE---')
