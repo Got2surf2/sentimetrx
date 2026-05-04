@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -70,6 +71,8 @@ export async function POST(req: Request) {
         content: `Study description: "${description}"\n\nGenerate starter values for this study.`,
       }],
     })
+
+    logUsage({ resource_type: 'system', event_type: 'study_suggest' }, aiResult.usage)
 
     const raw = aiResult.text?.trim() || ''
 

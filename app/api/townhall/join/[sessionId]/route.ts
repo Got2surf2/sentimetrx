@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +16,7 @@ async function translateText(text: string, targetLang: string): Promise<string> 
       system: 'Translate the following text to ' + targetLang + '. Return ONLY the translation, nothing else. Preserve tone and formatting.',
       messages: [{ role: 'user', content: text }],
     })
+    logUsage({ resource_type: 'townhall', event_type: 'translate' }, result.usage)
     return result.text?.trim() || text
   } catch { return text }
 }

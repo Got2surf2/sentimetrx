@@ -6,6 +6,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -103,6 +104,8 @@ Analyze these conversations for:
 Start your response with exactly "DRIFT: YES" or "DRIFT: NO" on the first line, then the analysis.`,
         messages: [{ role: 'user', content: `${sessionCount} conversations (${turns.length} turns) since ${since}:\n${transcript}` }],
       })
+
+      logUsage({ resource_type: 'bot', resource_id: bot.id, event_type: 'review' }, aiResult.usage)
 
       const themeDrift = /^DRIFT:\s*YES/i.test(aiResult.text)
 

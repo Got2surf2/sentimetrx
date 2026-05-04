@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +50,8 @@ export async function POST(req: Request) {
       if (status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + e.message }, { status: 429 })
       return NextResponse.json({ error: e.message }, { status })
     }
+
+    logUsage({ resource_type: 'dataset', event_type: 'insights' }, result.usage)
 
     return NextResponse.json({ text: result.text })
   } catch (e: unknown) {

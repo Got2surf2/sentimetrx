@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { checkMessage } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
@@ -203,6 +204,8 @@ ACCURACY: Don't invent facts about Craniometrix. Point unknowns to craniometrix.
 
 ${KNOWLEDGE_BASE}`,
     })
+
+    logUsage({ resource_type: 'dataset', event_type: 'ana' }, result.usage)
 
     let text = result.text || 'Sorry, I had trouble generating a response. Please try again.'
     if (result.stopReason === 'max_tokens') text = trimIncomplete(text)

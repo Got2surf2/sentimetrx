@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { cleanDeflectResponse } from '@/lib/guardrails'
 
 export const dynamic = 'force-dynamic'
@@ -81,6 +82,8 @@ ${body.testing ? `\nDEBUG MODE — Think step by step. Before your response, exp
       system: systemPrompt,
       messages: [{ role: 'user', content: 'Analyze the respondent\'s reply and respond accordingly.' }],
     })
+
+    logUsage({ resource_type: 'system', event_type: 'deflect' }, result.usage)
 
     const cleaned = cleanDeflectResponse(result.text || '', !!body.testing)
 

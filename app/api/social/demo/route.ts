@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { tagComment } from '@/lib/socialTagging'
 
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,8 @@ Output as JSON array: [{"author": "Display Name", "text": "comment text", "platf
 Output ONLY the JSON array, nothing else.`,
     messages: [{ role: 'user', content: `Candidate/Org: ${candidate}\nContext: ${context || 'Political campaign, running for office'}${userPostText ? '\nOriginal Post: "' + userPostText + '"' : ''}\n\nGenerate ${total} realistic comments${userPostText ? ' responding to that specific post' : ''}.` }],
   })
+
+  logUsage({ org_id: auth.orgId, resource_type: 'social', event_type: 'demo' }, result.usage)
 
   // Parse the AI response
   let comments: Array<{ author: string; text: string; platform: string }>

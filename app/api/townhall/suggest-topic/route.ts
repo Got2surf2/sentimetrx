@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -52,6 +53,8 @@ Return ONLY valid JSON:
       system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks, no explanation.',
       messages: [{ role: 'user', content: prompt }],
     })
+
+    logUsage({ resource_type: 'townhall', event_type: 'suggest_topic' }, result.usage)
 
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)

@@ -5,6 +5,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore, classifySentiment, evenSample } from '@/lib/themeUtils'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 // Check keyword overlap ratio between two keyword sets
 function keywordOverlap(existing: string[], candidate: string[]): number {
@@ -86,6 +87,7 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
       system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks.',
       messages: [{ role: 'user', content: prompt }],
     })
+    logUsage({ resource_type: 'townhall', resource_id: sessionId, event_type: 'theme_detect' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
     aiThemes = parsed.themes || []

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { StudyTranslation } from '@/lib/types'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -199,6 +200,7 @@ Return ONLY valid JSON, no markdown, no explanation.`
       timeoutMs: 45000,
       messages: [{ role: 'user', content: prompt }],
     })
+    logUsage({ resource_type: 'system', event_type: 'translate' }, result.usage)
     let text = result.text?.trim() || ''
     text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()
     return JSON.parse(text)

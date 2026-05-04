@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { pickBestComments } from '@/lib/export/scoreComments'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
@@ -107,6 +108,7 @@ ${fields.map(f => {
     messages: [{ role: 'user', content: prompt }],
     apiKey,
   })
+  logUsage({ resource_type: 'dataset', event_type: 'html_export' }, result.usage)
   const raw = result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'')
   try { return JSON.parse(raw) }
   catch { return { reportTitle: '', executiveSummary: [], keyTakeaways: [], fieldInsights: Object.fromEntries(fields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])) } }

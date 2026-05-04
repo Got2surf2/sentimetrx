@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +53,8 @@ Return ONLY valid JSON, no markdown, no explanation.`
       maxTokens: 4000,
       messages: [{ role: 'user', content: prompt }],
     })
+
+    logUsage({ resource_type: 'system', event_type: 'translate' }, result.usage)
 
     let text = result.text?.trim() || ''
     text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()

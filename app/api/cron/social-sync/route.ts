@@ -8,6 +8,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { tagComment, routeResponse, type ModerationSensitivity } from '@/lib/socialTagging'
 import { moderateTexts } from '@/lib/moderation'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -260,6 +261,7 @@ export async function GET(req: NextRequest) {
                 system: 'You are a social media manager replying to a comment on ' + conn.platform + '. Keep replies concise (1-3 sentences), friendly, and on-brand. Never be defensive or argumentative.\n\nCRITICAL: NEVER mention "Datanautix", "sentimetrx", "Sentimetrx", "Sarina", "Ana", or any internal platform/tool names. You are replying on behalf of the page owner, not as a software company. Do not reference any AI tools, moderation systems, or analytics platforms.',
                 messages: [{ role: 'user', content: 'Reply to this comment: "' + c.text + '"' }],
               })
+              logUsage({ org_id: conn.org_id, resource_type: 'social', event_type: 'auto_reply' }, result.usage)
               replyText = result.text.trim()
             } catch (e: any) {
               console.error('[social-sync] AI reply error:', e.message)

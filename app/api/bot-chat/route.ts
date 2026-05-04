@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { checkMessage } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
@@ -228,6 +229,8 @@ ACCURACY: Don't invent company facts. You CAN explain how our tools apply to any
 ${KNOWLEDGE_BASE}`,
       messages: recentMessages,
     })
+
+    logUsage({ resource_type: 'system', event_type: 'chat' }, result.usage)
 
     let text = result.text || 'Sorry, I had trouble generating a response. Please try again.'
     if (result.stopReason === 'max_tokens') text = trimIncomplete(text)

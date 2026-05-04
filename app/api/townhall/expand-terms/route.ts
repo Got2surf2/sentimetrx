@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -45,6 +46,7 @@ All lowercase. Return ONLY a JSON array:
       system: 'Return ONLY raw JSON — no markdown, no backticks.',
       messages: [{ role: 'user', content: prompt }],
     })
+    logUsage({ resource_type: 'townhall', event_type: 'expand_terms' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const terms = JSON.parse(raw)
     return NextResponse.json({

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { renderDeck, type DeckSpec, type SlideSpec } from '@/lib/pptx/slideRenderer'
 
 export const dynamic = 'force-dynamic'
@@ -116,6 +117,8 @@ Analyze the conversations and return a JSON object with these exact keys:
 Return ONLY valid JSON, no markdown.`,
     messages: [{ role: 'user', content: transcript }],
   })
+
+  logUsage({ resource_type: 'bot', resource_id: params.id, event_type: 'insights_deck' }, aiResult.usage)
 
   // Parse AI response
   let analysis: any = {}

@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -34,6 +35,7 @@ All lowercase. Return ONLY a JSON array of strings:
         system: 'Return ONLY raw JSON — no markdown, no backticks.',
         messages: [{ role: 'user', content: prompt }],
       })
+      logUsage({ resource_type: 'townhall', event_type: 'suggest_sensitive' }, result.usage)
       const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
       const terms = JSON.parse(raw)
       return NextResponse.json({ terms: Array.isArray(terms) ? terms.map((t: string) => t.toLowerCase().trim()).filter(Boolean) : [] })
@@ -69,6 +71,7 @@ Return ONLY valid JSON:
       system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks.',
       messages: [{ role: 'user', content: prompt }],
     })
+    logUsage({ resource_type: 'townhall', event_type: 'suggest_sensitive' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
     const categories = Array.isArray(parsed.categories) ? parsed.categories.map((c: any) => ({

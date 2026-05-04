@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
@@ -344,6 +345,8 @@ ${fields.map(f => {
     messages: [{ role: 'user', content: prompt }],
     apiKey,
   })
+
+  logUsage({ resource_type: 'dataset', event_type: 'pptx' }, result.usage)
 
   const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
 

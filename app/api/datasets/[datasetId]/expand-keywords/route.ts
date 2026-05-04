@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 interface Props { params: { datasetId: string } }
 
@@ -61,6 +62,8 @@ Return a flat JSON array: ["term1", "term2", ...]`
     } catch (e: any) {
       return NextResponse.json({ error: e.message || 'API error' }, { status: e.status || 500 })
     }
+
+    logUsage({ resource_type: 'dataset', resource_id: params.datasetId, event_type: 'expand_keywords' }, aiResult.usage)
 
     const rawText = aiResult.text
     const clean = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()

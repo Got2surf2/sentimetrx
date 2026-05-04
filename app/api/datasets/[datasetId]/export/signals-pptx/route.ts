@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { buildKwRegex } from '@/lib/themeUtils'
 import { renderDeck, type DeckSpec, type SlideSpec } from '@/lib/pptx/slideRenderer'
@@ -217,6 +218,8 @@ export async function POST(req: Request, { params }: Params) {
       system: 'You are a research analyst writing 4-5 concise strategic bullet points about a ' + source + ' dataset\'s signal tier distribution. Each bullet should be one sentence — an actionable insight, not a restatement of numbers. Focus on what the distribution reveals about community sentiment, what the high-signal content tells us, and what organizations should pay attention to.',
       messages: [{ role: 'user', content: 'Dataset: ' + dataset.name + '\nDistribution: ' + tierSummary + '\n\nSample comments:\n' + aiSamples }],
     })
+
+    logUsage({ resource_type: 'dataset', resource_id: params.datasetId, event_type: 'signals_pptx' }, aiResult.usage)
 
     const bullets = aiResult.text.split('\n')
       .map(l => l.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '').trim())

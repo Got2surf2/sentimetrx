@@ -4,6 +4,7 @@
 // then returns the best ones. Falls back to keyword-only if AI is unavailable.
 
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export interface ScoredComment {
   text: string
@@ -72,6 +73,8 @@ No explanation, no markdown, just the array.`
       messages: [{ role: 'user', content: prompt }],
       apiKey,
     })
+
+    logUsage({ resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
 
@@ -215,6 +218,8 @@ One inner array per comment, in order. No markdown, no explanation, just the JSO
       messages: [{ role: 'user', content: prompt }],
       apiKey,
     })
+
+    logUsage({ resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     const parsed: string[][] = JSON.parse(clean)

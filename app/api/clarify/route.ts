@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isInputSafe, isOutputSafe, extractQuestion } from '@/lib/guardrails'
 import { callAI } from '@/lib/ai'
+import { logUsage } from '@/lib/usageLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,6 +94,8 @@ Generate a targeted follow-up question or return SKIP.`
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     })
+
+    logUsage({ resource_type: 'system', event_type: 'clarify' }, result.usage)
 
     let rawText = result.text?.trim() || 'SKIP'
     let aiThinking: string[] = []
