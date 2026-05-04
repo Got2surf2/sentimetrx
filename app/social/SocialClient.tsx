@@ -136,6 +136,7 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   const [tab, setTab] = useState<'feed' | 'settings'>('feed')
   const [viewMode, setViewMode] = useState<'recent' | 'bypost'>('recent')
   const [exporting, setExporting] = useState(false)
+  const [socialDataset, setSocialDataset] = useState<{ id: string; name: string; row_count: number; last_synced_at: string } | null>(null)
   const [postFilter, setPostFilter] = useState<Record<string, string>>({})
 
   const fetchComments = useCallback(function() {
@@ -182,6 +183,10 @@ export default function SocialClient({ orgId }: { orgId: string }) {
   useEffect(function() {
     fetchStats()
     fetchConnections()
+    // Check for existing social dataset
+    fetch('/api/social/export-dataset').then(function(r) { return r.json() }).then(function(d) {
+      if (d.exists && d.dataset) setSocialDataset(d.dataset)
+    }).catch(function() {})
   }, [fetchStats, fetchConnections])
 
   // Actions — all status changes auto-mark as handled
@@ -223,7 +228,14 @@ export default function SocialClient({ orgId }: { orgId: string }) {
       })
       var data = await res.json()
       if (data.ok) {
-        alert('Created dataset "' + data.name + '" with ' + data.rowCount + ' comments. Go to TextMine to analyze.')
+        setSocialDataset({ id: data.datasetId, name: data.name || 'Social Comments', row_count: data.total, last_synced_at: new Date().toISOString() })
+        if (data.created) {
+          alert('Created dataset with ' + data.total + ' comments. Go to TextMine to analyze.')
+        } else if (data.synced > 0) {
+          alert('Synced ' + data.synced + ' new comments (' + data.total + ' total).')
+        } else {
+          alert('Already up to date (' + data.total + ' comments).')
+        }
       } else {
         alert(data.error || 'Export failed')
       }
@@ -484,8 +496,9 @@ export default function SocialClient({ orgId }: { orgId: string }) {
               <button
                 onClick={handleExportToTextMine}
                 disabled={exporting}
+                title={socialDataset ? 'Last synced: ' + new Date(socialDataset.last_synced_at).toLocaleString() + ' (' + socialDataset.row_count + ' rows)' : 'Export comments as a TextMine dataset'}
                 style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #4f46e5', fontSize: 12, fontWeight: 600, background: '#4f46e5', color: 'white', cursor: 'pointer', opacity: exporting ? 0.6 : 1, whiteSpace: 'nowrap' }}>
-                {exporting ? 'Exporting...' : 'Send to TextMine'}
+                {exporting ? 'Syncing...' : socialDataset ? 'Sync TextMine' : 'Send to TextMine'}
               </button>
               <input
                 value={searchInput}
