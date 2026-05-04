@@ -1,7 +1,8 @@
 // lib/ai.ts
 // Provider-agnostic AI abstraction layer.
 // Supports Anthropic (default), OpenAI, and Azure OpenAI.
-// All 18 AI call sites route through callAI() for consistent behavior.
+// All AI call sites route through callAI() for consistent behavior.
+// IMPORTANT: Always pass `usage` context so calls are logged for cost tracking.
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,13 @@ export interface AIProviderConfig {
   azureApiVersion?: string
 }
 
+export interface AIUsageContext {
+  org_id?: string
+  resource_type: 'bot' | 'townhall' | 'social' | 'dataset' | 'system'
+  resource_id?: string
+  event_type: string
+}
+
 export interface AIRequestOptions {
   tier: ModelTier
   system?: string
@@ -23,6 +31,7 @@ export interface AIRequestOptions {
   timeoutMs?: number
   providerConfig?: AIProviderConfig   // explicit override
   apiKey?: string                     // shorthand: user-provided key (uses env AI_PROVIDER)
+  usage?: AIUsageContext              // if provided, auto-logs token usage for cost tracking
 }
 
 export interface AIUsage {
@@ -270,7 +279,17 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
   const data = await response.json()
 
   // Parse response based on provider
-  return resolved.provider === 'anthropic'
+  const result = resolved.provider === 'anthropic'
     ? parseAnthropicResponse(data, resolved.model, opts.tier)
     : parseOpenAIResponse(data, resolved.model, opts.tier)
+
+  // Auto-log usage if context provided
+  if (opts.usage && result.usage) {
+    try {
+      const { logUsage } = require('@/lib/usageLog')
+      logUsage(opts.usage, result.usage)
+    } catch {}
+  }
+
+  return result
 }
