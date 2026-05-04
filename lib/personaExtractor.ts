@@ -19,6 +19,13 @@ export interface Persona {
   communication_style?: PersonaField
 }
 
+export interface Demographics {
+  age_range?: PersonaField    // e.g. "18-24", "25-34", "35-44", "45-54", "55-64", "65+"
+  gender?: PersonaField       // e.g. "male", "female", "non-binary"
+  education?: PersonaField    // e.g. "high school", "some college", "bachelors", "graduate"
+  socioeconomic?: PersonaField // e.g. "lower", "lower-middle", "middle", "upper-middle", "upper"
+}
+
 /**
  * Extract persona fields from user messages using a fast AI call.
  * Only extracts what the user actually shared — does NOT infer race, ethnicity, or income.
@@ -123,6 +130,86 @@ export function personaToPromptContext(persona: Persona): string {
 
   return '\n\nUSER PROFILE (adapt your tone and examples accordingly):\n' + parts.join('\n') +
     '\n\nMatch their communication style — if they\'re casual, be casual. If they\'re technical, use precise language. Tailor examples and analogies to their life stage and concerns.'
+}
+
+/**
+ * Extract demographic estimates from user messages.
+ * Only runs when demographic_inference is enabled on the bot.
+ * Designed to piggyback on existing AI calls — lightweight prompt, fast tier.
+ */
+export async function extractDemographics(userMessages: string[]): Promise<Demographics> {
+  if (userMessages.length < 3) return {} // need enough signal
+
+  var combined = userMessages.join('\n---\n')
+
+  try {
+    var result = await callAI({
+      tier: 'fast',
+      maxTokens: 200,
+      timeoutMs: 5000,
+      messages: [{ role: 'user', content: 'Estimate demographics from these user messages.' }],
+      system: 'Analyze these user messages and estimate demographic attributes. Return ONLY valid JSON.\n\n' +
+        'User messages:\n"' + combined + '"\n\n' +
+        'Estimate ONLY fields you have reasonable evidence for. For each field, set source to "explicit" if they directly stated it, or "inferred" if you deduced it from writing style, vocabulary, references, or context. Set confidence to "high", "medium", or "low".\n\n' +
+        'Fields to estimate (omit if insufficient evidence):\n' +
+        '- age_range: "18-24", "25-34", "35-44", "45-54", "55-64", or "65+"\n' +
+        '- gender: "male", "female", or "non-binary"\n' +
+        '- education: "high school", "some college", "bachelors", or "graduate"\n' +
+        '- socioeconomic: "lower", "lower-middle", "middle", "upper-middle", or "upper"\n\n' +
+        'Use writing style, vocabulary complexity, cultural references, topics discussed, and any explicit mentions as signals.\n' +
+        'Be conservative — only include a field if you have meaningful evidence. Prefer "medium" or "low" confidence for inferred fields.\n\n' +
+        'Return format:\n' +
+        '{"age_range":{"value":"25-34","source":"inferred","confidence":"medium"},...}\n\n' +
+        'ONLY output the JSON object. No explanation.',
+    })
+
+    var text = (result.text || '').trim()
+    var jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return {}
+
+    return JSON.parse(jsonMatch[0]) as Demographics
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Merge new demographic estimates into existing ones.
+ * Same logic as mergePersona — explicit overrides inferred, confidence only upgrades.
+ */
+export function mergeDemographics(existing: Demographics, update: Demographics): Demographics {
+  var merged = { ...existing }
+  var fields: (keyof Demographics)[] = ['age_range', 'gender', 'education', 'socioeconomic']
+
+  for (var i = 0; i < fields.length; i++) {
+    var key = fields[i]
+    var newVal = update[key]
+    var oldVal = merged[key]
+    if (!newVal) continue
+    if (!oldVal) {
+      merged[key] = newVal
+    } else if (newVal.source === 'explicit' && oldVal.source === 'inferred') {
+      merged[key] = newVal
+    } else if (confRank(newVal.confidence) > confRank(oldVal.confidence)) {
+      merged[key] = newVal
+    }
+  }
+
+  return merged
+}
+
+/**
+ * Convert demographics into a short prompt context string.
+ */
+export function demographicsToPromptContext(demographics: Demographics): string {
+  var parts: string[] = []
+  if (demographics.age_range) parts.push('Age range: ' + demographics.age_range.value)
+  if (demographics.gender) parts.push('Gender: ' + demographics.gender.value)
+  if (demographics.education) parts.push('Education: ' + demographics.education.value)
+  if (demographics.socioeconomic) parts.push('Socioeconomic: ' + demographics.socioeconomic.value)
+
+  if (parts.length === 0) return ''
+  return '\n\nESTIMATED DEMOGRAPHICS (use to tailor examples and tone):\n' + parts.join('\n')
 }
 
 function confRank(c: string): number {

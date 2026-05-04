@@ -289,6 +289,10 @@ export default function ConversationsClient() {
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{sessions.length} total · {filtered.length} shown</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={function() { router.push('/bots/' + botId + '/intents') }}
+            style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Intents
+          </button>
           <button onClick={function() { router.push('/bots/' + botId + '/knowledge') }}
             style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             Knowledge

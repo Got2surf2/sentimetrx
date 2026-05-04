@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { text, source } = body as { text: string; source?: string }
+  const { text, source, source_type } = body as { text: string; source?: string; source_type?: string }
   if (!text || text.trim().length < 10) {
     return NextResponse.json({ error: 'text is required (min 10 chars)' }, { status: 400 })
   }
@@ -51,7 +51,7 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   // Split text into chunks by markdown headings or double newlines
-  const chunks = chunkText(text, source)
+  const chunks = chunkText(text, source, source_type)
 
   if (chunks.length === 0) {
     return NextResponse.json({ error: 'No meaningful content found' }, { status: 400 })
@@ -165,28 +165,40 @@ export async function POST(req: Request, { params }: Params) {
   return NextResponse.json({ stored: rows.length, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
 }
 
-// ── DELETE: clear all chunks ──────────────────────────────────
-export async function DELETE(_req: Request, { params }: Params) {
+// ── DELETE: clear chunks (all, or by source_type) ────────────
+export async function DELETE(req: Request, { params }: Params) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const url = new URL(req.url)
+  const sourceType = url.searchParams.get('source_type')
+
   const service = createServiceRoleClient()
-  const { error } = await service.from('bot_knowledge_chunks').delete().eq('bot_id', params.id)
+  let query = service.from('bot_knowledge_chunks').delete().eq('bot_id', params.id)
+
+  if (sourceType) {
+    // Delete only chunks tagged with this source_type
+    query = query.contains('metadata', { source_type: sourceType })
+  }
+
+  const { error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ cleared: true })
+  return NextResponse.json({ cleared: true, source_type: sourceType || 'all' })
 }
 
 // ── Chunking logic ────────────────────────────────────────────
 // Splits markdown/text by headings (## or ---) into titled sections.
 // Falls back to paragraph-based splitting if no headings found.
-function chunkText(text: string, source?: string): { title: string; content: string; metadata: Record<string, any> }[] {
+function chunkText(text: string, source?: string, sourceType?: string): { title: string; content: string; metadata: Record<string, any> }[] {
   const lines = text.split('\n')
   const chunks: { title: string; content: string; metadata: Record<string, any> }[] = []
   let currentTitle = 'General'
   let currentLines: string[] = []
-  const baseMeta = source ? { source } : {}
+  const baseMeta: Record<string, any> = {}
+  if (source) baseMeta.source = source
+  if (sourceType) baseMeta.source_type = sourceType
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]

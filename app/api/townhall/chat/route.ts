@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { isOutputClean, cleanAiOutput, cleanDeflectResponse } from '@/lib/guardrails'
-import { checkMessage } from '@/lib/contentGuard'
+import { checkMessage, scoreSentimentFull } from '@/lib/contentGuard'
 import { callAI } from '@/lib/ai'
 import { detectThemesForSession } from '@/lib/townhallThemeDetection'
 
@@ -203,6 +203,12 @@ export async function POST(req: NextRequest) {
       user_message_en: skipped ? skipLabel : (messageEn || message),
       language: language || 'en',
       skipped: !!skipped,
+    }
+    // Score sentiment on user messages (not skipped/filtered)
+    if (message && !skipped) {
+      var sentResult = scoreSentimentFull(messageEn || message)
+      turnUpdate.sentiment = sentResult.label
+      turnUpdate.sentiment_score = sentResult.score
     }
     const { error: updateError } = await supabase
       .from('townhall_turns')

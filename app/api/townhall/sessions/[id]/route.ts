@@ -97,7 +97,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // ── Analytics mode: enrich themes with keyword matching, sentiment, quotes ──
   const { data: allTurnsWithText } = await db
     .from('townhall_turns')
-    .select('user_message_en, user_message, theme_id, created_at, skipped')
+    .select('user_message_en, user_message, theme_id, created_at, skipped, sentiment, sentiment_score')
     .eq('session_id', params.id)
     .order('created_at', { ascending: true })
 
@@ -310,6 +310,60 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
   }
 
+  // ── Sentiment trend: cumulative moving average per theme + overall ──
+  // For each theme, track the running average of sentiment_score over turns
+  // Also backfill sentiment for turns that don't have it stored yet (scored on the fly)
+  const sentimentTurns = (allTurnsWithText || []).filter(function(t: any) { return !t.skipped && (t.user_message_en || t.user_message) })
+
+  // Overall sentiment trend (all turns, chronological)
+  const overallTrend: { turn: number; score: number; cumulative: number }[] = []
+  let cumSum = 0, cumCount = 0
+  for (var si = 0; si < sentimentTurns.length; si++) {
+    var t = sentimentTurns[si]
+    var score = t.sentiment_score
+    if (score === null || score === undefined) {
+      // Backfill: score on the fly for turns that predate the migration
+      var txt = (t.user_message_en || t.user_message || '').trim()
+      if (txt) {
+        var ls = lexiconScore(txt)
+        score = Math.round((ls.pos - ls.neg) / Math.max(1, ls.pos + ls.neg + 1) * 100) / 100
+      } else {
+        score = 0
+      }
+    }
+    cumSum += score
+    cumCount++
+    overallTrend.push({ turn: si + 1, score: score, cumulative: Math.round((cumSum / cumCount) * 100) / 100 })
+  }
+
+  // Per-theme sentiment trend
+  const themeSentimentTrends: { theme_id: string; label: string; trend: { turn: number; score: number; cumulative: number }[] }[] = []
+  for (var ti = 0; ti < activeThemeList.length; ti++) {
+    var theme = activeThemeList[ti]
+    var themeTurns = sentimentTurns.filter(function(t: any) { return t.theme_id === theme.id })
+    if (themeTurns.length < 2) continue
+
+    var tCumSum = 0, tCumCount = 0
+    var trend: { turn: number; score: number; cumulative: number }[] = []
+    for (var tj = 0; tj < themeTurns.length; tj++) {
+      var tt = themeTurns[tj]
+      var tScore = tt.sentiment_score
+      if (tScore === null || tScore === undefined) {
+        var tTxt = (tt.user_message_en || tt.user_message || '').trim()
+        if (tTxt) {
+          var tLs = lexiconScore(tTxt)
+          tScore = Math.round((tLs.pos - tLs.neg) / Math.max(1, tLs.pos + tLs.neg + 1) * 100) / 100
+        } else {
+          tScore = 0
+        }
+      }
+      tCumSum += tScore
+      tCumCount++
+      trend.push({ turn: tj + 1, score: tScore, cumulative: Math.round((tCumSum / tCumCount) * 100) / 100 })
+    }
+    themeSentimentTrends.push({ theme_id: theme.id, label: theme.label, trend })
+  }
+
   return NextResponse.json({
     session,
     themes: enrichedThemes,
@@ -321,6 +375,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       topic_shifts: shifts,
       time_bucket: chosenBucket,
       total_responses: allResponseTexts.length,
+      sentiment_trend: overallTrend,
+      theme_sentiment_trends: themeSentimentTrends,
     },
   })
 }

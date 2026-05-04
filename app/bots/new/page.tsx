@@ -177,6 +177,7 @@ function BotCreatorInner() {
   const [newSensitiveTopic, setNewSensitiveTopic] = useState('')
   const [newFocusTopic, setNewFocusTopic] = useState('')
   const [intents, setIntents] = useState<{ label: string; description: string; keywords: string; url: string; message: string; enabled: boolean }[]>([])
+  const [demographicInference, setDemographicInference] = useState(false)
   const [builderMode, setBuilderMode] = useState<'assisted' | 'expert'>(editId ? 'expert' : 'assisted')
   const [step, setStep] = useState(0)
   const [showBehavior, setShowBehavior] = useState(false)
@@ -207,6 +208,7 @@ function BotCreatorInner() {
       if (bot.deflection_message) setDeflectionMessage(bot.deflection_message)
       if (bot.ask_profile) setAskProfile(true)
       if (bot.profile_question) setProfileQuestion(bot.profile_question)
+      if (bot.demographic_inference) setDemographicInference(true)
       if (Array.isArray(bot.intents)) setIntents(bot.intents.map(function(i: any) {
         return { label: i.label || '', description: i.description || '', keywords: (i.keywords || []).join(', '), url: i.url || '', message: i.message || '', enabled: i.enabled !== false }
       }))
@@ -338,6 +340,7 @@ function BotCreatorInner() {
       deflection_message: deflectionMessage,
       ask_profile: askProfile,
       profile_question: profileQuestion,
+      demographic_inference: demographicInference,
       intents: intents.filter(function(i) { return i.label.trim() }).map(function(i) {
         return { label: i.label.trim(), description: i.description.trim(), keywords: i.keywords.split(',').map(function(k) { return k.trim() }).filter(Boolean), url: i.url.trim(), message: i.message.trim(), enabled: i.enabled }
       }),
@@ -532,6 +535,13 @@ function BotCreatorInner() {
                   <div>
                     <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Profile users</span>
                     <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Adapts tone to each user's persona</p>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={demographicInference} onChange={function(e) { setDemographicInference(e.target.checked) }} style={{ width: 16, height: 16, accentColor: HERMES }} />
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>Infer demographics</span>
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Estimates age, gender, education, SES from conversation</p>
                   </div>
                 </label>
               </div>
@@ -967,6 +977,7 @@ function BotCreatorInner() {
                 {config.subtitle && <p><strong>Subtitle:</strong> {config.subtitle}</p>}
                 <p><strong>Ask name:</strong> {config.askName !== 'false' ? 'Yes' : 'No'}</p>
                 <p><strong>Profile users:</strong> {askProfile ? 'Yes' : 'No'}</p>
+                <p><strong>Infer demographics:</strong> {demographicInference ? 'Yes' : 'No'}</p>
                 <p><strong>Languages:</strong> {(config.languages || ['en']).join(', ')}</p>
 
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 8, marginTop: 16 }}>Personality</div>

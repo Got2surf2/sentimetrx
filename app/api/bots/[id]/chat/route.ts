@@ -6,10 +6,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { checkMessage, auditContent, scoreSentiment } from '@/lib/contentGuard'
+import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
 import { cleanDeflectResponse } from '@/lib/guardrails'
 import { generateEmbedding } from '@/lib/embeddings'
-import { extractPersona, mergePersona, personaToPromptContext, type Persona } from '@/lib/personaExtractor'
+import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, type Persona, type Demographics } from '@/lib/personaExtractor'
 
 export const dynamic = 'force-dynamic'
 
@@ -319,6 +319,42 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (debugMode) _debug.push('Persona: ' + (personaContext ? 'active' : 'none') + (askProfileEnabled ? ' (profiling on, turn ' + userTurnCount + ')' : ''))
   if (demoMode && personaContext) _signals.push({ label: 'Persona Active', type: 'persona', color: '#0F7173' })
 
+  // ── Demographic inference ──────────────────────────────────────────
+  var demographicContext = ''
+  var demographicEnabled = (bot as any).demographic_inference === true
+
+  if (session_id && demographicEnabled && userTurnCount >= 3) {
+    var { data: existingPersonaRow } = await service
+      .from('bot_session_personas')
+      .select('demographics')
+      .eq('bot_id', bot.id)
+      .eq('session_id', session_id)
+      .single()
+
+    var existingDemographics = (existingPersonaRow?.demographics || {}) as Demographics
+
+    // Extract/re-extract every 5th turn (same cadence as persona)
+    if (userTurnCount <= 5 || (userTurnCount % 5 === 0)) {
+      var demoMsgs = recentMessages.filter(function(m: any) { return m.role === 'user' }).map(function(m: any) { return m.content })
+      extractDemographics(demoMsgs).then(function(update) {
+        if (Object.keys(update).length > 0) {
+          var merged = Object.keys(existingDemographics).length > 0 ? mergeDemographics(existingDemographics, update) : update
+          service.from('bot_session_personas')
+            .update({ demographics: merged, updated_at: new Date().toISOString() })
+            .eq('bot_id', bot.id)
+            .eq('session_id', session_id)
+            .then(function() {})
+        }
+      }).catch(function() {})
+    }
+
+    if (Object.keys(existingDemographics).length > 0) {
+      demographicContext = demographicsToPromptContext(existingDemographics)
+    }
+  }
+  if (debugMode) _debug.push('Demographics: ' + (demographicContext ? 'active' : demographicEnabled ? 'waiting (turn ' + userTurnCount + ')' : 'disabled'))
+  if (demoMode && demographicContext) _signals.push({ label: 'Demographics Active', type: 'demographics', color: '#6366F1' })
+
   // Build system prompt from personality + config + knowledge base
   const systemParts = []
   systemParts.push('Today is ' + new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + '.')
@@ -518,6 +554,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (personaContext) {
     systemParts.push(personaContext)
   }
+  if (demographicContext) {
+    systemParts.push(demographicContext)
+  }
   if (intentContext) {
     systemParts.push(intentContext)
   }
@@ -571,6 +610,11 @@ export async function POST(req: NextRequest, { params }: Params) {
           var turnBase = maxExisting + 1
           var userTurn: Record<string, unknown> = { bot_id: bot.id, session_id, turn_number: turnBase, role: 'user', content: userContent, language: botLang, source: 'normal' }
           if (auditFlags.length > 0) userTurn.content_flags = auditFlags
+          if (userContent) {
+            var sentResult = scoreSentimentFull(userContent)
+            userTurn.sentiment = sentResult.label
+            userTurn.sentiment_score = sentResult.score
+          }
           turnsToInsert.push(userTurn)
           turnsToInsert.push({ bot_id: bot.id, session_id, turn_number: turnBase + 1, role: 'assistant', content: result.text, language: botLang, source: 'normal' })
 

@@ -27,6 +27,9 @@ interface TopicShift {
   theme_id: string; label: string; latest: number; avg: number
 }
 
+interface SentimentPoint { turn: number; score: number; cumulative: number }
+interface ThemeSentimentTrend { theme_id: string; label: string; trend: SentimentPoint[] }
+
 interface Analytics {
   sentiment_breakdown: { positive: number; negative: number; mixed: number; neutral: number }
   responses_over_time: { bucket: string; count: number }[]
@@ -34,6 +37,8 @@ interface Analytics {
   topic_shifts?: TopicShift[]
   time_bucket: TimeBucket
   total_responses: number
+  sentiment_trend?: SentimentPoint[]
+  theme_sentiment_trends?: ThemeSentimentTrend[]
 }
 
 interface Props { sessionId: string }
@@ -116,6 +121,83 @@ export default function TownHallAnalyticsPanel({ sessionId }: Props) {
           </div>
         </div>
       )}
+
+      {/* Sentiment Trend Chart */}
+      {analytics?.sentiment_trend && analytics.sentiment_trend.length > 3 && (() => {
+        const overall = analytics.sentiment_trend!
+        const themesTrends = analytics.theme_sentiment_trends || []
+        const W = 500, H = 160, PAD_L = 30, PAD_R = 10, PAD_T = 10, PAD_B = 25
+        const chartW = W - PAD_L - PAD_R
+        const chartH = H - PAD_T - PAD_B
+
+        // Compute y-axis range from all data
+        const allScores = overall.map(p => p.cumulative)
+        for (const tt of themesTrends) for (const p of tt.trend) allScores.push(p.cumulative)
+        const minY = Math.min(-0.1, ...allScores)
+        const maxY = Math.max(0.1, ...allScores)
+        const rangeY = maxY - minY || 0.2
+
+        function toX(turn: number, total: number) { return PAD_L + ((turn - 1) / Math.max(1, total - 1)) * chartW }
+        function toY(val: number) { return PAD_T + (1 - (val - minY) / rangeY) * chartH }
+        function toPoints(trend: SentimentPoint[]) {
+          return trend.map(p => toX(p.turn, trend.length) + ',' + toY(p.cumulative)).join(' ')
+        }
+
+        const zeroY = toY(0)
+
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase">Sentiment Trend (Cumulative)</h3>
+            <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" style={{ height: 180 }}>
+              {/* Grid lines */}
+              <line x1={PAD_L} y1={zeroY} x2={W - PAD_R} y2={zeroY} stroke="#e5e7eb" strokeWidth={1} strokeDasharray="4,3" />
+              <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={H - PAD_B} stroke="#e5e7eb" strokeWidth={1} />
+
+              {/* Y-axis labels */}
+              <text x={PAD_L - 4} y={toY(maxY) + 4} fontSize={9} fill="#9ca3af" textAnchor="end">{maxY > 0 ? '+' : ''}{maxY.toFixed(1)}</text>
+              <text x={PAD_L - 4} y={zeroY + 3} fontSize={9} fill="#9ca3af" textAnchor="end">0</text>
+              <text x={PAD_L - 4} y={toY(minY) + 4} fontSize={9} fill="#9ca3af" textAnchor="end">{minY.toFixed(1)}</text>
+
+              {/* Positive/negative zones */}
+              <rect x={PAD_L} y={PAD_T} width={chartW} height={Math.max(0, zeroY - PAD_T)} fill="#f0fdf4" opacity={0.5} />
+              <rect x={PAD_L} y={zeroY} width={chartW} height={Math.max(0, H - PAD_B - zeroY)} fill="#fef2f2" opacity={0.5} />
+
+              {/* Zone labels */}
+              <text x={W - PAD_R - 2} y={PAD_T + 12} fontSize={8} fill="#16a34a" textAnchor="end" opacity={0.6}>Positive</text>
+              <text x={W - PAD_R - 2} y={H - PAD_B - 4} fontSize={8} fill="#dc2626" textAnchor="end" opacity={0.6}>Negative</text>
+
+              {/* Theme trend lines */}
+              {themesTrends.map((tt, i) => (
+                <polyline key={tt.theme_id} points={toPoints(tt.trend)} fill="none"
+                  stroke={THEME_COLORS[i % THEME_COLORS.length]} strokeWidth={1.5} opacity={0.5} />
+              ))}
+
+              {/* Overall trend line (thick, on top) */}
+              <polyline points={toPoints(overall)} fill="none" stroke={HERMES} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+
+              {/* X-axis labels */}
+              {[0, Math.floor(overall.length / 4), Math.floor(overall.length / 2), Math.floor(overall.length * 3 / 4), overall.length - 1].map(idx => {
+                if (idx < 0 || idx >= overall.length) return null
+                return <text key={idx} x={toX(overall[idx].turn, overall.length)} y={H - 5} fontSize={8} fill="#9ca3af" textAnchor="middle">#{overall[idx].turn}</text>
+              })}
+            </svg>
+
+            {/* Legend */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-0.5 rounded" style={{ background: HERMES }} />
+                <span className="text-[10px] font-semibold text-gray-600">Overall</span>
+              </div>
+              {themesTrends.map((tt, i) => (
+                <div key={tt.theme_id} className="flex items-center gap-1.5">
+                  <div className="w-5 h-0.5 rounded" style={{ background: THEME_COLORS[i % THEME_COLORS.length], opacity: 0.6 }} />
+                  <span className="text-[10px] text-gray-500">{tt.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Theme cards */}
       <div>
