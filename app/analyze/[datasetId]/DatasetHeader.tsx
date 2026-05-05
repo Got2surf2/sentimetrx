@@ -11,6 +11,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
+import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 
 interface DatasetMeta {
   id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'; visibility: 'private' | 'public'
@@ -49,6 +50,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [aiEnabled,   setAiEnabled]   = useState(false)
   var [showExport,  setShowExport]  = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
+  var [showSearch,  setShowSearch]  = useState(false)
 
   useEffect(function() {
     try {
@@ -125,6 +127,15 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           onClose={function() { setShowShareAnalytics(false) }}
         />
       )}
+      {showSearch && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80 }}
+          onClick={function() { setShowSearch(false) }}>
+          <div style={{ width: '100%', maxWidth: 700, maxHeight: '70vh', overflow: 'hidden' }}
+            onClick={function(e) { e.stopPropagation() }}>
+            <SearchPanel datasetId={dataset.id} />
+          </div>
+        </div>
+      )}
       <style>{'\
         .ana-tab { padding: 0 14px; transition: all .12s; }\
         .ana-tab .ana-lbl { transition: all .15s; }\
@@ -199,6 +210,19 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               <span>{'\uD83D\uDCAC'}</span><span className="ana-lbl">Ask Ana</span>
             </button>
           )}
+
+          {/* Search */}
+          <button onClick={function() { setShowSearch(true) }} className="ana-tab ana-c6" title="Search"
+            style={{
+              height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 13, fontWeight: showSearch ? 700 : 500,
+              color: showSearch ? 'white' : 'rgba(255,255,255,.65)',
+              background: showSearch ? 'rgba(255,255,255,.18)' : 'transparent',
+              border: 'none', borderBottom: showSearch ? '3px solid white' : '3px solid transparent',
+              cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+            <span>{'\uD83D\uDD0D'}</span><span className="ana-lbl">Search</span>
+          </button>
 
           {/* StoryTime */}
           <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="StoryTime"
