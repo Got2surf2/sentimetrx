@@ -24,6 +24,7 @@ import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
 import SignalsView from '@/components/analyze/textmine/SignalsView'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
+import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -867,6 +868,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [previousTab, setPreviousTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
   const [opinionWord, setOpinionWord] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
 
   // Rating field for avg rating display on theme cards / compare
   const ratingFields = schema.fields.filter(function(f) {
@@ -1462,6 +1464,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
             {/* Right: status + action pills */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px' }}>
+              <button onClick={function() { setShowSearch(!showSearch) }}
+                style={{ padding: '3px 10px', borderRadius: 14, fontSize: 11, fontWeight: 600, border: '1px solid ' + (showSearch ? T.accent : T.border), background: showSearch ? T.accentBg : 'transparent', color: showSearch ? T.accent : T.textMid, cursor: 'pointer' }}>
+                {'\uD83D\uDD0D'} Search
+              </button>
               {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
               {computing && !rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Computing themes…</span>}
               {themeSource && (
@@ -1517,6 +1523,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               )}
             </div>
           </div>
+
+          {/* ─── Search panel (collapsible) ──────────────────────────── */}
+          {showSearch && (
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+              <SearchPanel datasetId={datasetId} openEndedField={activeField || undefined} />
+            </div>
+          )}
 
           {/* ─── Tab content ─────────────────────────────────────────── */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
