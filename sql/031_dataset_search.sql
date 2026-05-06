@@ -39,7 +39,9 @@ CREATE TRIGGER trg_drf_tsv
   FOR EACH ROW EXECUTE FUNCTION drf_tsv_trigger();
 
 -- ── Search function: full-text ranked ────────────────────────────
--- Returns rows matching a query, ranked by relevance
+-- Returns rows matching a query, ranked by relevance.
+-- Uses websearch_to_tsquery so the caller can pass natural-language operators
+-- like "OR" — important for AI-expanded synonym queries.
 CREATE OR REPLACE FUNCTION search_dataset_rows(
   p_dataset_id UUID,
   p_query      TEXT,
@@ -56,7 +58,7 @@ RETURNS TABLE(
 DECLARE
   tsquery_val TSQUERY;
 BEGIN
-  tsquery_val := plainto_tsquery('english', p_query);
+  tsquery_val := websearch_to_tsquery('english', p_query);
 
   RETURN QUERY
   SELECT
@@ -81,9 +83,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ── Backfill existing rows ───────────────────────────────────────
--- Run this AFTER creating the trigger to populate tsv for existing data.
--- For large tables this may take a while — run during off-hours.
--- UPDATE dataset_rows_flat SET tsv = to_tsvector('english',
---   COALESCE((SELECT string_agg(v, ' ') FROM jsonb_each_text(data) AS x(k, v)
---     WHERE length(v) > 2 AND v ~ '[a-zA-Z]'), ''))
--- WHERE tsv IS NULL;
+-- Populate tsv for any rows that pre-date the trigger.
+UPDATE dataset_rows_flat SET tsv = to_tsvector('english',
+  COALESCE((SELECT string_agg(v, ' ') FROM jsonb_each_text(data) AS x(k, v)
+    WHERE length(v) > 2 AND v ~ '[a-zA-Z]'), ''))
+WHERE tsv IS NULL;

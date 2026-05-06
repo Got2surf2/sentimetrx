@@ -38,9 +38,10 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const service = createServiceRoleClient()
 
-  // AI query expansion: natural language → search keywords
+  // AI query expansion: natural language → list of synonyms (OR-matched)
   var searchQuery = rawQuery
   var aiInterpretation: string | null = null
+  var isExpanded = false
 
   if (useAI) {
     try {
@@ -62,64 +63,48 @@ export async function GET(req: NextRequest, { params }: Params) {
       if (expanded && expanded.length > 2) {
         aiInterpretation = expanded
         searchQuery = expanded
+        isExpanded = true
       }
     } catch {}
   }
 
-  // Try full-text search via RPC
-  var { data: results, error: rpcErr } = await service.rpc('search_dataset_rows', {
-    p_dataset_id: params.datasetId,
-    p_query: searchQuery,
-    p_limit: limit,
-    p_offset: offset,
-  })
-
-  // Fallback: if RPC doesn't exist yet (migration not applied), do JSONB text search
-  if (rpcErr) {
-    console.error('[dataset/search] RPC failed, falling back to JSONB:', rpcErr.message)
-
-    // Simple JSONB text search fallback — slower but works without migration
-    var keywords = searchQuery.toLowerCase().split(/\s+/).filter(function(w) { return w.length > 2 })
-    if (keywords.length === 0) {
-      return NextResponse.json({ results: [], total: 0, query: rawQuery })
-    }
-
-    // Build ILIKE conditions on data::text
-    var { data: fallbackRows, error: fbErr } = await service
-      .from('dataset_rows_flat')
-      .select('id, row_index, data')
-      .eq('dataset_id', params.datasetId)
-      .ilike('data::text', '%' + keywords[0] + '%')
-      .order('row_index', { ascending: true })
-      .limit(limit)
-
-    if (fbErr) return NextResponse.json({ error: fbErr.message }, { status: 500 })
-
-    // Filter by additional keywords client-side
-    var filtered = (fallbackRows || []).filter(function(row: any) {
-      var text = JSON.stringify(row.data).toLowerCase()
-      return keywords.every(function(kw) { return text.includes(kw) })
-    })
-
-    results = filtered.map(function(row: any) {
-      return { id: row.id, row_index: row.row_index, data: row.data, rank: 1, headline: '' }
-    })
+  // Build a websearch-format query.
+  // For expanded queries, OR the synonyms so any of them matches (vs. the default AND).
+  // websearch_to_tsquery treats the literal token "OR" as an OR operator.
+  var tsQueryStr = searchQuery
+  if (isExpanded) {
+    var terms = searchQuery.split(/\s+/).filter(function(w: string) { return w.length > 1 })
+    if (terms.length > 1) tsQueryStr = terms.join(' OR ')
   }
 
+  // Search via .textSearch — uses websearch_to_tsquery, supports OR semantics.
+  var { data: matched, error: searchErr } = await service
+    .from('dataset_rows_flat')
+    .select('id, row_index, data')
+    .eq('dataset_id', params.datasetId)
+    .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
+    .order('row_index', { ascending: true })
+    .range(offset, offset + limit - 1)
+
+  if (searchErr) return NextResponse.json({ error: searchErr.message }, { status: 500 })
+
+  var results = (matched || []).map(function(r: any) {
+    return { id: r.id, row_index: r.row_index, data: r.data, rank: 1, headline: '' }
+  })
+
   // Count total matches (for pagination)
-  var total = (results || []).length
+  var total = results.length
   if (total === limit) {
-    // Hit the limit — there may be more. Do a count query.
     var { count } = await service
       .from('dataset_rows_flat')
       .select('id', { count: 'exact', head: true })
       .eq('dataset_id', params.datasetId)
-      .textSearch('tsv', searchQuery.split(/\s+/).join(' & '), { type: 'plain' })
+      .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
     total = count || total
   }
 
   return NextResponse.json({
-    results: results || [],
+    results,
     total,
     query: rawQuery,
     searchQuery: searchQuery !== rawQuery ? searchQuery : undefined,
