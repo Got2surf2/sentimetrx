@@ -109,6 +109,8 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [session, setSession] = useState<TownHallSession | null>(null)
   const [themes, setThemes] = useState<TownHallTheme[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
+  // Show diagnostic banner only when ?debug=1 is in the URL.
+  const debugMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1'
   const searchParams = useSearchParams()
   const initialTab = (['topics', 'responses', 'analytics'] as const).includes(searchParams.get('tab') as any) ? searchParams.get('tab') as 'topics' | 'responses' | 'analytics' : 'topics'
   const [activeTab, setActiveTab] = useState<'topics' | 'responses' | 'analytics'>(initialTab)
@@ -215,8 +217,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
 
   const fetchData = useCallback(async (analytics?: boolean) => {
     try {
-      const url = '/api/townhall/sessions/' + sessionId + (analytics ? '?analytics=true' : '')
-      const res = await fetch(url)
+      // Cache-bust + no-store so moderator never sees stale data after a topic action.
+      const url = '/api/townhall/sessions/' + sessionId + '?t=' + Date.now() + (analytics ? '&analytics=true' : '')
+      const res = await fetch(url, { cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json()
       setSession(data.session)
@@ -369,8 +372,41 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const customTopics = themes.filter(t => t.source === 'custom')
   const defaultResponseTarget = cfg?.engine?.default_response_target || 30
 
+  // ── Diagnostic data for ?debug=1 banner ─────────────────────────────
+  const debugStateBreakdown = themes.reduce((acc: Record<string, number>, t: any) => {
+    acc[t.state || 'null'] = (acc[t.state || 'null'] || 0) + 1
+    return acc
+  }, {})
+  const debugAllThemes = themes
+    .map(t => ({ label: t.label, state: (t as any).state || 'null', source: t.source }))
+    .sort((a, b) => a.state.localeCompare(b.state) || a.label.localeCompare(b.label))
+
   return (
     <Shell {...{ logoUrl, analyzeEnabled, campaignsEnabled, features, user }}>
+      {/* ── Debug banner (only when ?debug=1 is in URL) ── */}
+      {debugMode && (
+        <div style={{ background: '#DBEAFE', color: '#1E3A8A', padding: '12px 24px', fontSize: 13, lineHeight: 1.6, borderBottom: '2px solid #3B82F6' }}>
+          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Moderator debug — every topic from this dashboard&apos;s data</div>
+          <div><b>Total topics:</b> {themes.length} — <b>by status:</b> {Object.entries(debugStateBreakdown).map(([k, v]) => `${k}=${v}`).join(', ')}</div>
+          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '4px 16px', fontSize: 12 }}>
+            {debugAllThemes.map((t, i) => {
+              const stateColor: Record<string, string> = {
+                active: '#15803D', completed: '#1D4ED8', detected: '#9CA3AF', parked: '#D97706', dismissed: '#6B7280', paused: '#A16207',
+              }
+              return (
+                <div key={t.label + ':' + i} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ display: 'inline-block', minWidth: 70, fontWeight: 700, color: stateColor[t.state] || '#374151', textTransform: 'uppercase', fontSize: 10 }}>{t.state}</span>
+                  <span style={{ flex: 1, color: '#374151' }}>{t.label}</span>
+                  <span style={{ fontSize: 10, color: '#9CA3AF' }}>{t.source === 'auto_detected' ? 'organic' : t.source}</span>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: '#1E40AF' }}>
+            Compare to the live screen&apos;s yellow banner (same URL, just <code>/th/[sessionId]/live?debug=1</code>). Both should match exactly. If they don&apos;t, one has stale data.
+          </div>
+        </div>
+      )}
       <div className="max-w-6xl mx-auto px-5 py-6">
         {showShare && <ShareModal type="townhall" targetId={sessionId} title={session.name} onClose={() => setShowShare(false)} />}
         {/* Header */}

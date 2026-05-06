@@ -4,6 +4,9 @@ import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
 import { bleepText } from '@/lib/contentGuard'
 
+// Always serve fresh — moderator must see latest theme states, never a cache.
+export const dynamic = 'force-dynamic'
+
 // GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
@@ -91,7 +94,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const liveCounts: Record<string, number> = {}
     for (const r of turnCountRows || []) { if (r.theme_id) liveCounts[r.theme_id] = (liveCounts[r.theme_id] || 0) + 1 }
     const themesWithLiveCounts = (themes || []).map((t: any) => ({ ...t, response_count: liveCounts[t.id] || 0 }))
-    return NextResponse.json({ session, themes: themesWithLiveCounts, stats, participants: participantSummary })
+    return NextResponse.json({ session, themes: themesWithLiveCounts, stats, participants: participantSummary }, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
+    })
   }
 
   // ── Analytics mode: enrich themes with keyword matching, sentiment, quotes ──
@@ -378,6 +383,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       sentiment_trend: overallTrend,
       theme_sentiment_trends: themeSentimentTrends,
     },
+  }, {
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
   })
 }
 
