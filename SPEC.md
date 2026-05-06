@@ -39,7 +39,7 @@ Browser ─── Next.js (Vercel) ─── Supabase (PostgreSQL)
 - **Two-phase async for reviews** — DataForSEO tasks take 30-90s, so submit/check pattern across multiple sync calls
 - **Server-side theme counting** — `/api/datasets/[id]/theme-counts` for accurate full-dataset counts (avoids sampling bias)
 - **Value aliases** — Schema fields can define `valueAliases: Record<string, string>` to remap raw data values to display labels, applied via shared `lib/aliasUtils.ts`
-- **Flat row table** — `dataset_rows_flat` stores one row per JSON document for fast pagination; legacy `dataset_rows` stores batched arrays
+- **Flat row table** — `dataset_rows_flat` stores one row per JSON document, GIN-indexed on `data` for JSONB lookups and on `tsv` for full-text search. Source of truth (legacy `dataset_rows` batched table was removed in May 2026).
 
 ---
 
@@ -72,8 +72,7 @@ Browser ─── Next.js (Vercel) ─── Supabase (PostgreSQL)
 | Table | Purpose |
 |-------|---------|
 | `datasets` | Dataset metadata (name, source, row_count, schema JSON, org_id) |
-| `dataset_rows_flat` | Individual rows as JSON documents (dataset_id, row_index, data JSONB) |
-| `dataset_rows` | Legacy batched rows (batch_index, rows JSON array) |
+| `dataset_rows_flat` | Individual rows as JSON documents (dataset_id, row_index, data JSONB). Source of truth — every read and write goes here. GIN-indexed `tsv` column for full-text search. |
 | `dataset_state` | Computation state (status, theme_model JSON, analytics JSON) |
 
 ### Google Reviews

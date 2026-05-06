@@ -2,7 +2,18 @@
 ### Target: 500K+ row datasets, multiple concurrent datasets per org
 
 **Authored:** 2026-04-04  
-**Status:** Planning — no development started
+**Status (as of 2026-05-06):** ✅ **Substantially complete.** Phases 1–4 shipped over April–May 2026:
+
+- **Flat row table** (`dataset_rows_flat`, one row per record, GIN-indexed JSONB) — `sql/phase4_flat_rows.sql`
+- **Server-side analytics RPCs** (`count_field_values`, `numeric_field_stats`, `count_theme_matches`, `crosstab_counts`, `group_numeric_stats`, `date_series_stats`, `sample_row_pairs`) — `sql/phase5_aggregations.sql`
+- **Server-side full-text search** (`tsv` column with GIN index, `search_dataset_rows()` RPC using `websearch_to_tsquery` for OR semantics) — `sql/031_dataset_search.sql`
+- **Pre-computed dashboard MV** (`study_response_stats`) refreshed after every response insert
+- **Dual-write removal** — the legacy batched `dataset_rows` table is no longer written; reads have no fallback; the table itself has been dropped (PR #1, May 2026)
+- **Deterministic per-dataset sampling** seeded by `dataset_id` for stable Stats numbers across refreshes
+
+The original "problems" section below describes the pre-Phase-4 architecture and is retained for historical reference. Several specific suggestions in this doc — partitioning `dataset_rows`, adding `pg_trgm` indexes to it, hash-partitioning by `dataset_id` — are now moot because that table is gone. The actual implementation took a different path (flat one-row-per-record + GIN-indexed JSONB + tsvector + materialized views).
+
+**What's still open:** moving the MV refresh to `pg_cron` + `REFRESH CONCURRENTLY` at high write volume, streaming PPTX export, a "showing sample of N" banner on TextMine's RowsContext when it downsamples to 50K. None are blocking 500K today.
 
 ---
 

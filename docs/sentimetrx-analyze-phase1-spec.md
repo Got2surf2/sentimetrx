@@ -1,5 +1,16 @@
 # SENTIMETRX — Analyze Module: Phase 1 Specification
 
+> ⚠ **HISTORICAL DOCUMENT (Phase 1 — March 2026).** This spec describes the
+> initial batched-rows data model (`dataset_rows` with `batch_index` + JSONB
+> `rows` array). That model has since been replaced by `dataset_rows_flat`
+> (one row per record, GIN-indexed) per **Phase 4** (`sql/phase4_flat_rows.sql`)
+> and **PR #1** (May 2026), which removed dual-write and made flat the sole
+> source of truth. The `dataset_rows` table itself has been dropped.
+>
+> Treat this doc as a record of the original design. For current data-layer
+> reference, see `sql/phase4_flat_rows.sql`, `sql/phase5_aggregations.sql`,
+> and `sql/031_dataset_search.sql`.
+
 **Version:** 1.0 | March 2026  
 **Scope:** Dataset infrastructure, permissions gating, survey-to-dataset bridge, Analyze nav section, Ana module hook scaffolding  
 **Builds on:** sentimetrx-spec-v4.md — read that first. All v4 rules apply here.  

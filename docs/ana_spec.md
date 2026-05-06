@@ -151,8 +151,15 @@ Must be preserved exactly:
 
 ### Constants
 
+> **Model selection:** model strings are no longer hardcoded in this spec. AI calls
+> route through `lib/ai.ts`'s `callAI({ tier: 'fast' | 'standard' | 'advanced', ... })`,
+> which resolves to the current Anthropic model for that tier (see `lib/ai.ts` for
+> the live mapping). Replacing this string in feature code would silently miss
+> tier-aware behaviors (caching, cost logging, provider abstraction) — always
+> use `callAI`.
+
 ```javascript
-const CLAUDE_MODEL    = "claude-sonnet-4-20250514"
+// Tier picked per call; resolved by lib/ai.ts
 const DISCOVERY_ROWS  = 60      // max rows sent to Claude for theme discovery
 const DISCOVERY_CHARS = 150     // max chars per response for discovery
 const STORAGE_KEY     = "textmine_claude_api_key"
@@ -615,7 +622,7 @@ router.post('/mine-themes', async (req, res) => {
   
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: STANDARD_TIER_MODEL,  // production uses callAI({ tier: 'standard' }) — see lib/ai.ts
       max_tokens: 4000,
       system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks. Start with { and end with }.',
       messages: [{ role: 'user', content: userMsg }]
@@ -635,7 +642,7 @@ router.post('/summarise-theme', async (req, res) => {
   
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: STANDARD_TIER_MODEL,  // production uses callAI({ tier: 'standard' }) — see lib/ai.ts
       max_tokens: 4000,
       system: 'You are an expert qualitative researcher. Return ONLY raw JSON starting with { and ending with }.',
       messages: [{ role: 'user', content: userMsg }]
@@ -654,7 +661,7 @@ router.post('/compare-groups', async (req, res) => {
   
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: STANDARD_TIER_MODEL,  // production uses callAI({ tier: 'standard' }) — see lib/ai.ts
       max_tokens: 4000,
       system: 'You are a qualitative research expert. Return ONLY raw JSON, no markdown, starting with { and ending with }.',
       messages: [{ role: 'user', content: userMsg }]
@@ -674,7 +681,7 @@ router.post('/auto-label', async (req, res) => {
   
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: STANDARD_TIER_MODEL,  // production uses callAI({ tier: 'standard' }) — see lib/ai.ts
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }]
     })
@@ -692,7 +699,7 @@ router.post('/validate-key', async (req, res) => {
   try {
     const client = new Anthropic({ apiKey })
     await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: STANDARD_TIER_MODEL,  // production uses callAI({ tier: 'standard' }) — see lib/ai.ts
       max_tokens: 5,
       messages: [{ role: 'user', content: 'hi' }]
     })
