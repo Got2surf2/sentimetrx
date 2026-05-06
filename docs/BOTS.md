@@ -237,6 +237,10 @@ Returns `{ reviewed: number, errors: string[] }`.
 
 **There is no end-user authentication.** Sessions are identified by a client-generated `session_id` (`crypto.randomUUID()` stored in localStorage).
 
+### Mandatory "Powered by DATANAUTIX" badge
+
+Every bot rendered through the shared `components/ui/ChatBot.tsx` shell — that includes `/bot`, `/nora`, `/clara`, and `/b/[slug]` — shows a hardcoded "Powered by **DATANAUTIX**" link in the top-right corner of the chat header (linking to `https://www.datanautix.com`). It is **not** configurable via `bot.config`; it renders unconditionally so customer-branded bots still attribute the platform. The customer's own `websiteLabel` link (when configured) sits to its left.
+
 ---
 
 ## 6. Public Chat — `POST /api/bots/[id]/chat`

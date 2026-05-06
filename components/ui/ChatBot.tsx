@@ -323,6 +323,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               {config.websiteLabel}
             </a>
           )}
+          {/* Mandatory: Powered by Datanautix — always shown on every bot */}
+          <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
+            style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.5625rem', textDecoration: 'none', fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
+            Powered by <span style={{ fontWeight: 700, letterSpacing: '0.05em' }}>DATANAUTIX</span>
+          </a>
         </div>
       </header>
 
