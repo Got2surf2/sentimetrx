@@ -179,14 +179,19 @@ export async function GET(req: NextRequest, { params }: Params) {
         maxTokens: 1500,
         timeoutMs: 20000,
         system:
-          'You are a search relevance scorer. Given a user query and a numbered list of candidate text snippets, score each candidate from 0.0 to 1.0 for how well it matches the user\'s intent.\n\n' +
-          'Score guide:\n' +
-          '- 1.0: directly and clearly addresses the query\n' +
-          '- 0.7-0.9: relevant; the topic is the focus of the snippet\n' +
-          '- 0.4-0.6: tangentially related; mentions the topic but isn\'t about it\n' +
-          '- 0.0-0.3: unrelated or coincidental keyword match\n\n' +
-          'Consider semantic intent, not just keyword presence. A snippet that paraphrases the query (e.g., "the wait was forever" for "slow service") should score high even without the exact words.\n\n' +
-          'Return ONLY one line per candidate in the form "INDEX|SCORE". No explanation. No header.',
+          'You are a strict search relevance scorer. Score each candidate snippet 0.0-1.0 for how fully it answers the user\'s query.\n\n' +
+          'CRITICAL: identify every distinct concern in the query (split on "and", "+", commas, "with", lists). The score MUST reflect how many concerns the snippet actually addresses with substance — not just keyword presence.\n\n' +
+          'For multi-concern queries (e.g. "X and Y", "A, B, and C"):\n' +
+          '- A snippet must address ALL concerns substantively to score above 0.75.\n' +
+          '- Addressing only one of two concerns: maximum 0.55.\n' +
+          '- Addressing two of three concerns: maximum 0.65.\n' +
+          'For single-concern queries:\n' +
+          '- Snippet directly and substantively about the topic: 0.8-1.0.\n' +
+          '- Mentions the topic in passing: 0.4-0.6.\n' +
+          'Always:\n' +
+          '- Coincidental keyword match without intent alignment: 0.0-0.2.\n' +
+          '- Treat paraphrases as full matches ("staff hurried us" = "rushed service").\n\n' +
+          'Return ONLY one line per candidate in the form "INDEX|SCORE". No explanation. No header. No extra text.',
         messages: [{ role: 'user', content: 'Query: ' + rawQuery + '\n\nCandidates:\n' + numbered }],
         usage: { org_id: userData.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search_rerank' },
       })
