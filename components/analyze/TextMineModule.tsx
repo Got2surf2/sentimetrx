@@ -1820,7 +1820,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       rows={filteredRows}
                                       fields={activeField || (themes ? themes.fieldName : '')}
                                       onClose={function() { setOpinionWord(null) }}
-                                      onViewComments={function(w) { setOpinionWord(null); handleDrillTheme(t) }}
                                     />
                                   </div>
                                 )}
@@ -1961,23 +1960,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         rows={filteredRows}
                         fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                         onClose={function() { setOpinionWord(null) }}
-                        onViewComments={function(w) {
-                          setOpinionWord(null)
-                          // Always drill to a single-keyword synthetic theme so the
-                          // comments view filters specifically to comments containing
-                          // this word — not to the broader parent theme that happens
-                          // to include this word among other keywords.
-                          handleDrillTheme({
-                            id: '__search__:' + w.toLowerCase(),
-                            name: w,
-                            description: 'Comments containing "' + w + '"',
-                            keywords: [w],
-                            sentiment: 'mixed',
-                            count: 0,
-                            percentage: 0,
-                            relatedThemes: [],
-                          } as any)
-                        }}
                       />
                     </div>
                   )}
