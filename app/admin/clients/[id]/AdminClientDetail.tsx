@@ -24,7 +24,7 @@ interface Props {
   userEmail?:    string
 }
 
-export default function AdminClientDetail({ org, members, studies: initialStudies, allOrgs, invites: initialInvites, baseUrl, currentUserId, userEmail='' }: Props) {
+export default function AdminClientDetail({ org, members: initialMembers, studies: initialStudies, allOrgs, invites: initialInvites, baseUrl, currentUserId, userEmail='' }: Props) {
   const [studies,       setStudies]       = useState(initialStudies)
   const [invites,       setInvites]       = useState(initialInvites)
   const [togglingStudy, setTogglingStudy] = useState<string | null>(null)
@@ -83,6 +83,30 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
       setError('Failed to transfer study.')
     } finally {
       setTransferring(null)
+    }
+  }
+
+  const [transferringUser, setTransferringUser] = useState<string | null>(null)
+  const [members, setMembers] = useState<Member[]>(initialMembers)
+  const handleTransferUser = async (userId: string, newOrgId: string) => {
+    setTransferringUser(userId)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/users/' + userId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: newOrgId }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d?.error || 'Failed to transfer user')
+      }
+      // User is no longer in this org — remove from list
+      setMembers(prev => prev.filter(m => m.id !== userId))
+    } catch (e: any) {
+      setError(e?.message || 'Failed to transfer user.')
+    } finally {
+      setTransferringUser(null)
     }
   }
 
@@ -255,6 +279,28 @@ export default function AdminClientDetail({ org, members, studies: initialStudie
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-gray-400 capitalize">{m.role}</span>
                     <span className="text-xs text-slate-600">{new Date(m.created_at).toLocaleDateString()}</span>
+                    {allOrgs.length > 0 && m.id !== currentUserId && (
+                      <select
+                        disabled={transferringUser === m.id}
+                        value=""
+                        onChange={e => {
+                          if (e.target.value) {
+                            const targetName = allOrgs.find(o => o.id === e.target.value)?.name || 'another org'
+                            if (confirm('Transfer ' + (m.full_name || m.email) + ' to ' + targetName + '? Their per-user feature overrides will be cleared.')) {
+                              handleTransferUser(m.id, e.target.value)
+                            } else {
+                              e.target.value = ''
+                            }
+                          }
+                        }}
+                        className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 border-none cursor-pointer transition-colors disabled:opacity-50 appearance-none"
+                      >
+                        <option value="">{transferringUser === m.id ? 'Transferring...' : 'Transfer'}</option>
+                        {allOrgs.map(o => (
+                          <option key={o.id} value={o.id}>{o.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </div>
               ))}
