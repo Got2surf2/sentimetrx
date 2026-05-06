@@ -9,8 +9,11 @@
 //   fields     (optional)      — comma-separated column names to return
 //   all        (optional)      — if 'true', return ALL rows (ignores page/pageSize)
 //   sampleMax  (optional)      — when used with all=true, cap result to this many rows
-//                                using systematic sampling (every N-th row).
-//                                If totalRows <= sampleMax, all rows are returned unchanged.
+//                                using deterministic seeded random sampling. Seeded
+//                                by dataset_id, so the same dataset always yields the
+//                                same sample (e.g. Stats numbers don't drift across
+//                                refreshes). If totalRows <= sampleMax, all rows are
+//                                returned unchanged.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -20,6 +23,31 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 30   // allow 30s for large datasets in bulk mode
 
 interface Params { params: { datasetId: string } }
+
+// Tiny deterministic PRNG (mulberry32). Same seed → same sequence.
+function mulberry32(seed: number): () => number {
+  let s = seed | 0
+  return function () {
+    s = (s + 0x6D2B79F5) | 0
+    let t = Math.imul(s ^ (s >>> 15), 1 | s)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+// djb2 hash — convert a UUID string to a 32-bit seed.
+function seedFromString(s: string): number {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = (((h << 5) + h) + s.charCodeAt(i)) | 0
+  return h
+}
+// Fisher-Yates shuffle in place using a provided RNG, then truncate to `n`.
+function sampleInPlace<T>(arr: T[], n: number, rng: () => number): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp
+  }
+  arr.length = n
+}
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
   const result = await supabase.auth.getUser()
@@ -113,13 +141,9 @@ export async function GET(req: Request, { params }: Params) {
         if (flatRows.length < FLAT_PAGE) fetchMore = false
         offset += FLAT_PAGE
       }
-      // Random sampling: Fisher-Yates shuffle then take first sampleMax
+      // Seeded random sampling — same dataset always yields the same sample
       if (doSample && allRows.length > sampleMax!) {
-        for (let i = allRows.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          var tmp = allRows[i]; allRows[i] = allRows[j]; allRows[j] = tmp
-        }
-        allRows.length = sampleMax!
+        sampleInPlace(allRows, sampleMax!, mulberry32(seedFromString(params.datasetId)))
       }
       return NextResponse.json({
         rows: allRows, page: 1, pageSize: allRows.length, totalRows, totalPages: 1,
@@ -151,13 +175,9 @@ export async function GET(req: Request, { params }: Params) {
       if (batches.length < BULK_FETCH) hasMore = false
       bulkPage++
     }
-    // Random sampling
+    // Seeded random sampling
     if (doSample && allRows.length > sampleMax!) {
-      for (let i = allRows.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        var tmp2 = allRows[i]; allRows[i] = allRows[j]; allRows[j] = tmp2
-      }
-      allRows.length = sampleMax!
+      sampleInPlace(allRows, sampleMax!, mulberry32(seedFromString(params.datasetId)))
     }
 
     return NextResponse.json({
@@ -295,14 +315,10 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
 
   var totalRows = allRows.length
 
-  // Sample if needed
+  // Seeded random sampling — same dataset always yields the same sample
   var doSample = sampleMax !== null && totalRows > sampleMax
   if (doSample) {
-    for (var si = allRows.length - 1; si > 0; si--) {
-      var sj = Math.floor(Math.random() * (si + 1))
-      var tmp = allRows[si]; allRows[si] = allRows[sj]; allRows[sj] = tmp
-    }
-    allRows.length = sampleMax!
+    sampleInPlace(allRows, sampleMax!, mulberry32(seedFromString(datasetId)))
   }
 
   return NextResponse.json({
