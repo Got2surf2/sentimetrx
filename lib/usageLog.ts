@@ -43,15 +43,29 @@ export function logUsage(context: UsageContext, usage: AIUsage | undefined): voi
 }
 
 /**
- * Cost estimate (USD) from token counts.
- * Rates as of May 2025.
+ * Per-1M-token rates (USD). Source of truth for both the dashboard's
+ * historical cost computation AND the forward-looking cost estimator at
+ * /admin/estimator. Update this table when provider prices change and both
+ * surfaces stay in sync.
+ *
+ * Snapshot: May 2025.
  */
-const RATES: Record<string, { input: number; output: number; cache_read: number }> = {
+export const RATES: Record<string, { input: number; output: number; cache_read: number }> = {
   'claude-haiku-4-5-20251001': { input: 0.80, output: 4.00, cache_read: 0.08 },
   'claude-sonnet-4-20250514':  { input: 3.00, output: 15.00, cache_read: 0.30 },
   'claude-sonnet-4-6':         { input: 3.00, output: 15.00, cache_read: 0.30 },
   'gpt-4o-mini':               { input: 0.15, output: 0.60, cache_read: 0.075 },
   'gpt-4o':                    { input: 2.50, output: 10.00, cache_read: 1.25 },
+}
+
+/**
+ * Tier → default model used for forward estimation. Mirrors lib/ai.ts:MODEL_MAP
+ * for the Anthropic provider (the most-used tier in this codebase).
+ */
+export const TIER_DEFAULT_MODEL: Record<'fast' | 'standard' | 'advanced', string> = {
+  fast:     'claude-haiku-4-5-20251001',
+  standard: 'claude-sonnet-4-20250514',
+  advanced: 'claude-sonnet-4-6',
 }
 
 export function estimateCost(model: string, input_tokens: number, output_tokens: number, cache_read_tokens: number): number {
