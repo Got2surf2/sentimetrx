@@ -31,6 +31,13 @@ export default function AuthConfirmPage() {
       } else if (type === 'recovery') {
         router.replace('/auth/reset-password')
       } else {
+        // Magic-link sign-in — log the event (best-effort)
+        const method = type === 'magiclink' ? 'magic' : type === 'invite' ? 'invite' : 'magic'
+        fetch('/api/auth/log-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method }),
+        }).catch(() => {})
         router.replace('/analyze')
       }
     })

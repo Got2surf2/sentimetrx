@@ -6,7 +6,7 @@ import SubHeader from '@/components/nav/SubHeader'
 import OrgFeatureToggles from '@/components/analyze/OrgFeatureToggles'
 import Link from 'next/link'
 
-interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string }
+interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string; disabled?: boolean; last_login_at?: string | null; logins_30d?: number }
 interface Study   { id: string; guid: string; name: string; bot_name: string; bot_emoji: string; status: string; visibility: string; created_at: string; response_count: number }
 interface Invite  { id: string; token: string; email: string | null; role: string; used_at: string | null; expires_at: string; created_at: string; invite_url: string }
 interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean; logo_url?: string; features?: Record<string, boolean | unknown> }
@@ -270,11 +270,24 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
             <Empty text="No members yet" />
           ) : (
             <div className="flex flex-col divide-y divide-gray-200">
-              {members.map(m => (
-                <div key={m.id} className="flex items-center justify-between py-3 gap-3">
+              {members.map(m => {
+                const last = m.last_login_at ? new Date(m.last_login_at) : null
+                const daysSince = last ? Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24)) : null
+                const activity = last == null ? { label: 'never logged in', cls: 'text-red-600' }
+                  : daysSince! > 30 ? { label: `last login ${daysSince}d ago`, cls: 'text-red-600' }
+                  : daysSince! > 7  ? { label: `last login ${daysSince}d ago`, cls: 'text-amber-600' }
+                  :                   { label: `last login ${daysSince}d ago`, cls: 'text-green-700' }
+                return (
+                <div key={m.id} className="flex items-center justify-between py-3 gap-3" style={m.disabled ? { opacity: 0.6 } : undefined}>
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-800 truncate">{m.full_name || m.email}</div>
+                    <div className="text-sm font-medium text-gray-800 truncate">
+                      {m.full_name || m.email}
+                      {m.disabled && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 font-semibold">Disabled</span>}
+                    </div>
                     {m.full_name && <div className="text-xs text-gray-400 truncate">{m.email}</div>}
+                    <div className={'text-xs mt-0.5 ' + activity.cls} title={last ? last.toLocaleString() : 'No login recorded'}>
+                      {activity.label}{m.logins_30d != null && m.logins_30d > 0 ? ` · ${m.logins_30d} login${m.logins_30d !== 1 ? 's' : ''} in 30d` : ''}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-gray-400 capitalize">{m.role}</span>
@@ -303,7 +316,8 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                     )}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </Section>

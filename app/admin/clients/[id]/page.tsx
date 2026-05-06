@@ -31,11 +31,37 @@ export default async function AdminClientPage({ params }: Props) {
 
   if (!org) notFound()
 
-  const { data: members } = await service
+  const { data: rawMembers } = await service
     .from('users')
-    .select('id, email, full_name, role, created_at')
+    .select('id, email, full_name, role, created_at, disabled')
     .eq('org_id', params.id)
     .order('created_at')
+
+  // Attach last-login + 30-day login count to each member.
+  const memberIds = (rawMembers || []).map((m: any) => m.id)
+  let loginByUser: Record<string, { last_login_at: string | null; logins_30d: number }> = {}
+  if (memberIds.length > 0) {
+    const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: logs } = await service
+      .from('user_logins')
+      .select('user_id, created_at')
+      .in('user_id', memberIds)
+      .order('created_at', { ascending: false })
+    for (const l of (logs || [])) {
+      const uid = (l as any).user_id
+      const t = (l as any).created_at
+      if (!loginByUser[uid]) loginByUser[uid] = { last_login_at: null, logins_30d: 0 }
+      if (!loginByUser[uid].last_login_at || t > loginByUser[uid].last_login_at!) {
+        loginByUser[uid].last_login_at = t
+      }
+      if (t >= since30) loginByUser[uid].logins_30d++
+    }
+  }
+  const members = (rawMembers || []).map((m: any) => ({
+    ...m,
+    last_login_at: loginByUser[m.id]?.last_login_at || null,
+    logins_30d:    loginByUser[m.id]?.logins_30d || 0,
+  }))
 
   const { data: studies } = await service
     .from('studies')

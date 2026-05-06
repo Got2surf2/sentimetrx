@@ -31,6 +31,12 @@ function LoginFormInner() {
       setError(error.message)
       setLoading(false)
     } else {
+      // Best-effort login logging — don't block redirect on failure
+      fetch('/api/auth/log-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'password' }),
+      }).catch(() => {})
       router.push('/analyze')
       router.refresh()
     }

@@ -31,6 +31,20 @@ export async function GET() {
 
   if (!orgs) return NextResponse.json([])
 
+  // Pre-compute "users active in last 30 days" per org in a single query
+  // so we can show a churn-risk indicator on the listing.
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: recentLogins } = await service
+    .from('user_logins')
+    .select('user_id, org_id')
+    .gte('created_at', since30)
+  const activeUsersByOrg: Record<string, Set<string>> = {}
+  for (const r of (recentLogins || [])) {
+    if (!r.org_id) continue
+    if (!activeUsersByOrg[r.org_id]) activeUsersByOrg[r.org_id] = new Set()
+    activeUsersByOrg[r.org_id].add(r.user_id)
+  }
+
   // Per-org counts using count queries (not fetching all rows)
   const result = await Promise.all(orgs.map(async (org: any) => {
     const [userResult, studyResult] = await Promise.all([
@@ -45,9 +59,10 @@ export async function GET() {
     }
     return {
       ...org,
-      user_count:     userResult.count || 0,
-      study_count:    studyIds.length,
-      response_count: responseCount,
+      user_count:        userResult.count || 0,
+      active_users_30d:  activeUsersByOrg[org.id]?.size || 0,
+      study_count:       studyIds.length,
+      response_count:    responseCount,
     }
   }))
 

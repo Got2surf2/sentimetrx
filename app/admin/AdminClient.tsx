@@ -14,6 +14,7 @@ interface Org {
   is_admin_org: boolean
   created_at: string
   user_count: number
+  active_users_30d?: number
   study_count: number
   response_count: number
 }
@@ -75,11 +76,23 @@ function OrgCard({ org, toggling, onToggle }: { org: Org; toggling: string | nul
             {org.slug} · {new Date(org.created_at).toLocaleDateString()}
           </div>
           {/* Stats */}
-          <div className="flex gap-5 text-xs">
+          <div className="flex gap-5 text-xs flex-wrap">
             <div>
               <span className="font-bold text-gray-700">{org.user_count.toLocaleString()}</span>
               <span className="text-gray-400 ml-1">users</span>
             </div>
+            {org.user_count > 0 && (
+              <div title="Users active in the last 30 days">
+                <span className={'font-bold ' + (
+                  (org.active_users_30d || 0) === 0 ? 'text-red-600'
+                  : (org.active_users_30d || 0) < org.user_count ? 'text-amber-600'
+                  : 'text-green-700'
+                )}>
+                  {(org.active_users_30d || 0).toLocaleString()}
+                </span>
+                <span className="text-gray-400 ml-1">active 30d</span>
+              </div>
+            )}
             <div>
               <span className="font-bold text-gray-700">{org.study_count.toLocaleString()}</span>
               <span className="text-gray-400 ml-1">studies</span>
