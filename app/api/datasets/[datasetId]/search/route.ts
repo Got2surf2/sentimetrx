@@ -4,12 +4,29 @@
 //   q        — search query (required)
 //   limit    — max results (default 50, max 200)
 //   offset   — pagination offset (default 0)
-//   ai       — if 'true', use AI to expand/interpret the query before searching
+//   ai       — if 'true', expand the query with AI synonyms then re-rank candidates by relevance
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
-import { logUsage } from '@/lib/usageLog'
+
+// Number of candidates to pull from full-text per target before AI re-ranking.
+// Larger pools give better recall but cost more tokens / latency.
+const AI_CANDIDATE_POOL = 100
+// Drop re-ranked candidates with relevance below this threshold.
+const AI_RELEVANCE_THRESHOLD = 0.3
+
+function snippetFromRow(data: Record<string, unknown>, maxChars: number): string {
+  const parts: string[] = []
+  for (const k in data) {
+    const v = data[k]
+    if (typeof v === 'string' && v.length > 2 && /[a-zA-Z]/.test(v)) {
+      parts.push(v)
+    }
+  }
+  const joined = parts.join(' | ')
+  return joined.length > maxChars ? joined.slice(0, maxChars) + '…' : joined
+}
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -97,9 +114,10 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   // Search each target via .textSearch (websearch_to_tsquery, OR semantics).
-  // For multi-target collections, fetch up to `limit` from each then trim;
-  // we accept that ordering across members is by member sort_order, not rank.
+  // When AI is on, fetch a wider candidate pool so the re-ranker has more to work with.
   type Hit = { id: number; row_index: number; data: Record<string, unknown>; rank: number; headline: string }
+  const candidatePool = useAI ? AI_CANDIDATE_POOL : limit
+  const perTargetCap = targets.length > 0 ? Math.ceil(candidatePool / targets.length) : candidatePool
   var results: Hit[] = []
   var total = 0
 
@@ -111,7 +129,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       .eq('dataset_id', t.datasetId)
       .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
       .order('row_index', { ascending: true })
-      .range(0, limit - 1)
+      .range(0, perTargetCap - 1)
     if (searchErr) return NextResponse.json({ error: searchErr.message }, { status: 500 })
 
     for (var ri = 0; ri < (matched || []).length; ri++) {
@@ -129,12 +147,64 @@ export async function GET(req: NextRequest, { params }: Params) {
     total += count || 0
   }
 
-  // Apply offset/limit across the unioned result set
+  // AI re-ranking: score each candidate by relevance to the user's intent (not just keyword presence).
+  // We pass the candidates to a fast model with stable [N] indexes and ask for "index|score" per line.
+  var reranked = false
+  if (useAI && results.length > 1) {
+    try {
+      const numbered = results.map(function(r, i) {
+        return '[' + (i + 1) + '] ' + snippetFromRow(r.data, 240)
+      }).join('\n\n')
+
+      const rankResult = await callAI({
+        tier: 'fast',
+        maxTokens: 1500,
+        timeoutMs: 20000,
+        system:
+          'You are a search relevance scorer. Given a user query and a numbered list of candidate text snippets, score each candidate from 0.0 to 1.0 for how well it matches the user\'s intent.\n\n' +
+          'Score guide:\n' +
+          '- 1.0: directly and clearly addresses the query\n' +
+          '- 0.7-0.9: relevant; the topic is the focus of the snippet\n' +
+          '- 0.4-0.6: tangentially related; mentions the topic but isn\'t about it\n' +
+          '- 0.0-0.3: unrelated or coincidental keyword match\n\n' +
+          'Consider semantic intent, not just keyword presence. A snippet that paraphrases the query (e.g., "the wait was forever" for "slow service") should score high even without the exact words.\n\n' +
+          'Return ONLY one line per candidate in the form "INDEX|SCORE". No explanation. No header.',
+        messages: [{ role: 'user', content: 'Query: ' + rawQuery + '\n\nCandidates:\n' + numbered }],
+        usage: { org_id: userData.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search_rerank' },
+      })
+
+      const scores = new Map<number, number>()
+      const lines = (rankResult.text || '').split('\n')
+      for (let li = 0; li < lines.length; li++) {
+        const m = lines[li].match(/(\d+)\s*[|:]\s*([01](?:\.\d+)?)/)
+        if (m) {
+          const idx = parseInt(m[1]) - 1
+          const score = parseFloat(m[2])
+          if (idx >= 0 && idx < results.length && !isNaN(score)) {
+            scores.set(idx, score)
+          }
+        }
+      }
+
+      if (scores.size > 0) {
+        const annotated = results.map(function(r, i) { return Object.assign({}, r, { rank: scores.get(i) ?? 0 }) })
+        annotated.sort(function(a, b) { return b.rank - a.rank })
+        results = annotated.filter(function(r) { return r.rank >= AI_RELEVANCE_THRESHOLD })
+        reranked = true
+      }
+    } catch (err) {
+      console.error('[search/rerank] failed, falling back to keyword order:', err)
+    }
+  }
+
+  // Apply offset/limit across the (possibly re-ranked) result set
   var paged = results.slice(offset, offset + limit)
 
   return NextResponse.json({
     results: paged,
-    total,
+    total: reranked ? results.length : total,
+    rawTotal: total,
+    reranked,
     query: rawQuery,
     searchQuery: searchQuery !== rawQuery ? searchQuery : undefined,
     aiInterpretation,

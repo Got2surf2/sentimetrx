@@ -27,6 +27,8 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
   var [searched, setSearched] = useState(false)
   var [aiMode, setAiMode] = useState(false)
   var [aiInterpretation, setAiInterpretation] = useState<string | null>(null)
+  var [reranked, setReranked] = useState(false)
+  var [rawTotal, setRawTotal] = useState(0)
   var [expanded, setExpanded] = useState<number | null>(null)
 
   var search = useCallback(async function(q: string) {
@@ -34,6 +36,7 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
     setSearching(true)
     setSearched(true)
     setAiInterpretation(null)
+    setReranked(false)
     try {
       var url = '/api/datasets/' + datasetId + '/search?q=' + encodeURIComponent(q.trim()) + '&limit=50'
       if (aiMode) url += '&ai=true'
@@ -41,10 +44,13 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
       var d = await res.json()
       setResults(d.results || [])
       setTotal(d.total || 0)
+      setRawTotal(d.rawTotal || d.total || 0)
+      setReranked(!!d.reranked)
       if (d.aiInterpretation) setAiInterpretation(d.aiInterpretation)
     } catch {
       setResults([])
       setTotal(0)
+      setRawTotal(0)
     }
     setSearching(false)
   }, [datasetId, aiMode])
@@ -53,6 +59,8 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
     setQuery('')
     setResults([])
     setTotal(0)
+    setRawTotal(0)
+    setReranked(false)
     setSearched(false)
     setAiInterpretation(null)
   }
@@ -116,10 +124,15 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
         </button>
       </div>
 
-      {/* AI interpretation */}
+      {/* AI interpretation + re-rank indicator */}
       {aiInterpretation && (
         <div style={{ padding: '8px 16px', background: T.accentBg, fontSize: 11, color: T.accent }}>
           AI expanded your search to: <strong>{aiInterpretation}</strong>
+          {reranked && rawTotal > 0 && (
+            <span style={{ marginLeft: 8, opacity: 0.85 }}>
+              · re-ranked {total} of {rawTotal} keyword matches by relevance
+            </span>
+          )}
         </div>
       )}
 
@@ -167,7 +180,7 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
                           {String(r.data.platform)}
                         </span>
                       ) : null}
-                      {r.rank > 0 && (
+                      {reranked && r.rank > 0 && r.rank < 1 && (
                         <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: T.bg, color: T.textFaint }}>
                           relevance: {(r.rank * 100).toFixed(0)}%
                         </span>
