@@ -25,6 +25,33 @@
 --   - Anon queries (no auth) are blocked everywhere.
 
 -- ============================================================
+-- 0. Drop pre-existing permissive policies that mistakenly use USING (true)
+-- ============================================================
+-- Several earlier migrations (phase4/7/8, 013, 023, 025, 030) created
+-- policies labeled "Service role full access" or similar with USING (true).
+-- USING (true) is permissive for EVERY role — including anon — not just the
+-- service role. Service role already bypasses RLS automatically (it has the
+-- BYPASSRLS attribute in Supabase), so these policies aren't needed; they
+-- were the actual cause of the public-data leak that triggered this
+-- migration. Dropping them returns the table to default-deny for all
+-- non-service-role queries.
+--
+-- The invites_public_read policy on `invites` is INTENTIONAL — invitees
+-- have no account when they first follow the link, so SELECT must be
+-- public. Keeping it.
+
+DROP POLICY IF EXISTS "Service role full access on dataset_rows_flat"      ON public.dataset_rows_flat;
+DROP POLICY IF EXISTS "Service role full access on review_sources"         ON public.review_sources;
+DROP POLICY IF EXISTS "Service role full access on review_source_locations" ON public.review_source_locations;
+DROP POLICY IF EXISTS "Service role full access on user_locations"         ON public.user_locations;
+DROP POLICY IF EXISTS "Service role full access on reddit_sources"         ON public.reddit_sources;
+DROP POLICY IF EXISTS "Service role full access on reddit_source_threads"  ON public.reddit_source_threads;
+DROP POLICY IF EXISTS "th_responses_service_all"                            ON public.townhall_participant_responses;
+DROP POLICY IF EXISTS "service_all"                                         ON public.bot_knowledge_chunks;
+DROP POLICY IF EXISTS "persona_service_write"                               ON public.bot_session_personas;
+DROP POLICY IF EXISTS "usage_logs_service_write"                            ON public.usage_logs;
+
+-- ============================================================
 -- 1. Enable RLS on every table in public schema (idempotent loop)
 -- ============================================================
 DO $$
