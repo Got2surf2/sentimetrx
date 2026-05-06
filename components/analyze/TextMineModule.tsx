@@ -1963,13 +1963,20 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         onClose={function() { setOpinionWord(null) }}
                         onViewComments={function(w) {
                           setOpinionWord(null)
-                          if (themes) {
-                            var owner = themes.themes.find(function(th) {
-                              return (th.keywords || []).some(function(k) { return k.toLowerCase() === w.toLowerCase() })
-                            })
-                            if (owner) handleDrillTheme(owner)
-                            else handleDrillTheme({ id: '__search__', name: w, description: 'Comments containing "' + w + '"', keywords: [w], sentiment: 'mixed', count: 0, percentage: 0, relatedThemes: [] } as any)
-                          }
+                          // Always drill to a single-keyword synthetic theme so the
+                          // comments view filters specifically to comments containing
+                          // this word — not to the broader parent theme that happens
+                          // to include this word among other keywords.
+                          handleDrillTheme({
+                            id: '__search__:' + w.toLowerCase(),
+                            name: w,
+                            description: 'Comments containing "' + w + '"',
+                            keywords: [w],
+                            sentiment: 'mixed',
+                            count: 0,
+                            percentage: 0,
+                            relatedThemes: [],
+                          } as any)
                         }}
                       />
                     </div>
