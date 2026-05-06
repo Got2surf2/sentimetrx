@@ -65,19 +65,48 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
     setAiInterpretation(null)
   }
 
-  function getDisplayText(data: Record<string, unknown>): string {
-    // Try the primary OE field first
-    if (openEndedField && data[openEndedField]) return String(data[openEndedField])
-    // Fall back to the first long text field
-    for (var key in data) {
-      var val = data[key]
-      if (typeof val === 'string' && val.length > 20) return val
+  // Field-name patterns that indicate the row's primary comment / response text.
+  // Ordered by preference — earlier matches win.
+  const COMMENT_FIELD_PATTERNS = [
+    /^review_text$/i, /^comment_text$/i, /^body$/i, /^message$/i, /^content$/i,
+    /^text$/i, /^comment$/i, /^response$/i, /^answer$/i, /^feedback$/i,
+    /comment/i, /text$/i, /response/i,
+  ]
+  // Field-name patterns we want to NEVER use as the primary snippet.
+  const NON_COMMENT_FIELDS = /^(_|location|address|place_id|review_id|review_date|author|rating|likes|city|state|country|name|title|url|id$|created|updated|date)/i
+
+  function getCommentText(data: Record<string, unknown>): string {
+    if (openEndedField && typeof data[openEndedField] === 'string' && (data[openEndedField] as string).length > 0) {
+      return String(data[openEndedField])
     }
-    // Last resort: first string value
-    for (var k in data) {
-      if (typeof data[k] === 'string') return String(data[k])
+    // 1. Try each comment-name pattern in order
+    for (const pat of COMMENT_FIELD_PATTERNS) {
+      for (const key in data) {
+        if (pat.test(key) && !NON_COMMENT_FIELDS.test(key)) {
+          const val = data[key]
+          if (typeof val === 'string' && val.length > 20) return val
+        }
+      }
     }
-    return JSON.stringify(data).slice(0, 200)
+    // 2. Fallback: longest string field that isn't a known non-comment field
+    let best = ''
+    for (const key in data) {
+      const val = data[key]
+      if (typeof val === 'string' && val.length > best.length && !NON_COMMENT_FIELDS.test(key)) {
+        best = val
+      }
+    }
+    return best || JSON.stringify(data).slice(0, 200)
+  }
+
+  function getLocationLabel(data: Record<string, unknown>): string {
+    const parts: string[] = []
+    if (data._collection_label) parts.push(String(data._collection_label))
+    if (data.location) parts.push(String(data.location))
+    else if (data.location_name) parts.push(String(data.location_name))
+    if (data.author) parts.push(String(data.author))
+    if (data.rating !== undefined && data.rating !== null) parts.push('★ ' + String(data.rating))
+    return parts.join(' · ')
   }
 
   return (
@@ -149,54 +178,48 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
                 {total} result{total !== 1 ? 's' : ''}
               </div>
               {results.map(function(r, i) {
-                var text = getDisplayText(r.data)
+                var commentText = getCommentText(r.data)
+                var locationLabel = getLocationLabel(r.data)
                 var isExpanded = expanded === i
-                var truncated = text.length > 200 && !isExpanded
+                var snippet = isExpanded ? commentText : (commentText.length > 600 ? commentText.slice(0, 600) + '…' : commentText)
 
                 return (
                   <div key={r.id} style={{
-                    padding: '10px 16px', borderTop: '1px solid ' + T.border,
+                    padding: '12px 16px', borderTop: '1px solid ' + T.border,
                     cursor: 'pointer', background: isExpanded ? T.bg : 'transparent',
                   }} onClick={function() { setExpanded(isExpanded ? null : i) }}>
-                    {/* Headline with highlights */}
-                    {r.headline ? (
-                      <div style={{ fontSize: 12, color: T.text, lineHeight: 1.6, marginBottom: 4 }}
-                        dangerouslySetInnerHTML={{ __html: r.headline }} />
-                    ) : (
-                      <div style={{ fontSize: 12, color: T.text, lineHeight: 1.6, marginBottom: 4 }}>
-                        {truncated ? text.slice(0, 200) + '...' : text}
-                      </div>
-                    )}
+                    {/* Comment text — the main thing */}
+                    <div style={{ fontSize: 13, color: T.text, lineHeight: 1.55, marginBottom: 6, whiteSpace: 'pre-wrap' as const }}>
+                      {snippet}
+                    </div>
 
-                    {/* Metadata pills */}
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {/* Subtitle: location, author, rating + relevance pill */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 11, color: T.textFaint }}>
+                      {locationLabel && <span>{locationLabel}</span>}
                       {r.data.sentiment ? (
-                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: T.bg, color: T.textMid }}>
+                        <span style={{ padding: '1px 6px', borderRadius: 8, background: T.bg, color: T.textMid }}>
                           {String(r.data.sentiment)}
                         </span>
                       ) : null}
-                      {r.data.platform ? (
-                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: T.bg, color: T.textMid }}>
-                          {String(r.data.platform)}
-                        </span>
-                      ) : null}
                       {reranked && r.rank > 0 && r.rank < 1 && (
-                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: T.bg, color: T.textFaint }}>
+                        <span style={{ padding: '1px 6px', borderRadius: 8, background: T.bg, color: T.textFaint }}>
                           relevance: {(r.rank * 100).toFixed(0)}%
                         </span>
                       )}
                     </div>
 
-                    {/* Expanded: show all fields */}
+                    {/* Expanded: show all other fields below the (now full-length) comment */}
                     {isExpanded && (
-                      <div style={{ marginTop: 8, padding: 10, background: T.bgCard, borderRadius: 8, border: '1px solid ' + T.border }}>
+                      <div style={{ marginTop: 10, padding: 10, background: T.bgCard, borderRadius: 8, border: '1px solid ' + T.border }}>
                         {Object.entries(r.data).map(function(e) {
                           var val = String(e[1] ?? '')
                           if (!val || val === 'none' || val === 'null') return null
+                          // Comment text is already shown in full above; don't repeat it
+                          if (val === commentText) return null
                           return (
                             <div key={e[0]} style={{ fontSize: 11, marginBottom: 3 }}>
                               <span style={{ color: T.textFaint, fontWeight: 600 }}>{e[0]}:</span>{' '}
-                              <span style={{ color: T.text }}>{val.length > 300 ? val.slice(0, 300) + '...' : val}</span>
+                              <span style={{ color: T.text }}>{val}</span>
                             </div>
                           )
                         })}
