@@ -7,8 +7,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { buildStudySchema, formatResponsesAsRows } from '@/lib/datasetUtils'
-import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
-import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -105,31 +103,22 @@ export async function POST(_req: Request, { params }: Params) {
   // Format responses as dataset rows
   const rows = formatResponsesAsRows(responses as Parameters<typeof formatResponsesAsRows>[0], study as Parameters<typeof formatResponsesAsRows>[1])
 
-  // Get next batch index
-  const { data: existingBatches } = await service
-    .from('dataset_rows')
-    .select('batch_index')
-    .eq('dataset_id', datasetId)
-    .order('batch_index', { ascending: false })
-    .limit(1)
-
-  const nextIndex = existingBatches && existingBatches.length > 0 ? existingBatches[0].batch_index + 1 : 0
   const syncTimestamp = new Date().toISOString()
 
-  // Insert batch
-  const { error: batchErr } = await service
-    .from('dataset_rows')
-    .insert({ dataset_id: datasetId, rows, row_count: rows.length, batch_index: nextIndex, source_ref: 'study-sync:' + syncTimestamp })
+  // Determine next row_index (append after existing rows)
+  const { data: maxRowResp } = await service
+    .from('dataset_rows_flat')
+    .select('row_index')
+    .eq('dataset_id', datasetId)
+    .order('row_index', { ascending: false })
+    .limit(1)
+  const startIndex = maxRowResp && maxRowResp.length > 0 ? maxRowResp[0].row_index + 1 : 0
 
-  if (batchErr) return NextResponse.json({ error: 'Failed to insert rows', detail: batchErr.message }, { status: 500 })
-
-  // Insert flat rows
   const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
-    return { dataset_id: datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r }
+    return { dataset_id: datasetId, row_index: startIndex + i, data: r }
   })
-  if (flatRows.length > 0) {
-    try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
-  }
+  const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
+  if (flatErr) return NextResponse.json({ error: 'Failed to insert rows', detail: flatErr.message }, { status: 500 })
 
   const newTotal = (existing?.[0]?.row_count || 0) + rows.length
 

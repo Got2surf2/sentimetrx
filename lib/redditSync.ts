@@ -4,8 +4,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchThreadComments, commentToRow, type RedditComment } from './reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from './datasetUtils'
-import { computeAnalytics, computeAnalyticsSQL } from './analyticsCompute'
-import { ROWS_PER_BATCH } from './constants'
+import { computeAnalyticsSQL } from './analyticsCompute'
 
 export interface RedditSyncResult {
   total_comments: number
@@ -160,26 +159,22 @@ export async function syncRedditSource(
 
 async function insertRedditRows(service: SupabaseClient, datasetId: string, rows: Record<string, unknown>[]): Promise<void> {
   const syncTimestamp = new Date().toISOString()
-  const { data: existingBatches } = await service
-    .from('dataset_rows').select('batch_index').eq('dataset_id', datasetId)
-    .order('batch_index', { ascending: false }).limit(1)
-  let nextBatchIndex = existingBatches?.length ? existingBatches[0].batch_index + 1 : 0
+  const { data: maxRowResp } = await service
+    .from('dataset_rows_flat').select('row_index').eq('dataset_id', datasetId)
+    .order('row_index', { ascending: false }).limit(1)
+  let nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
   const { data: dsData } = await service
     .from('datasets').select('row_count').eq('id', datasetId).single()
   let currentTotal = dsData?.row_count || 0
 
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE)
-    await service.from('dataset_rows').insert({
-      dataset_id: datasetId, rows: chunk, row_count: chunk.length,
-      batch_index: nextBatchIndex, source_ref: 'reddit:' + syncTimestamp,
-    })
     const flatRows = chunk.map(function(r, j) {
-      return { dataset_id: datasetId, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
+      return { dataset_id: datasetId, row_index: nextRowIndex + j, data: r }
     })
-    try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
+    await service.from('dataset_rows_flat').insert(flatRows)
     currentTotal += chunk.length
-    nextBatchIndex++
+    nextRowIndex += chunk.length
   }
 
   await service.from('datasets').update({
@@ -200,10 +195,7 @@ async function ensureSchemaAndRecompute(service: SupabaseClient, datasetId: stri
   }
   if (schema?.fields?.length) {
     try {
-      const flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', datasetId)
-      const analytics = (flatCheck.count || 0) > 0
-        ? await computeAnalyticsSQL(service, datasetId, schema)
-        : await computeAnalytics(service, datasetId, schema)
+      const analytics = await computeAnalyticsSQL(service, datasetId, schema)
       await service.from('dataset_state').update({
         analytics, updated_at: new Date().toISOString(),
       }).eq('dataset_id', datasetId)

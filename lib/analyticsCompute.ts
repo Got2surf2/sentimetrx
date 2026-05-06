@@ -1,8 +1,5 @@
 // lib/analyticsCompute.ts
 // SERVER-SIDE ONLY — never imported by client components.
-// Reads dataset_rows in pages of BATCH_PAGE_SIZE records at a time so peak
-// memory stays bounded regardless of total row count.
-// For 100k rows @ 50 rows/batch = 2000 batch records → 20 DB round-trips.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
@@ -17,11 +14,6 @@ import type {
   IgnoredSummary,
   HistogramBucket,
 } from './analyzeTypes'
-
-// How many dataset_rows records to fetch per DB round-trip.
-// Each record holds up to ROWS_PER_BATCH (200) data rows, so 500 records = up to 100K rows per pass.
-// For 500K rows this means ~5 DB round-trips instead of 50.
-const BATCH_PAGE_SIZE = 500
 
 // -- Running accumulators per field type ---------------------------------
 
@@ -257,98 +249,6 @@ function finalize(accum: Accum, totalRows: number): FieldSummary {
 }
 
 // -- Main export ---------------------------------------------------------
-
-/**
- * Streams through all dataset_rows batches in pages, accumulates per-field
- * statistics, and returns a DatasetAnalytics object ready to write to
- * dataset_state.analytics.
- *
- * Never holds more than BATCH_PAGE_SIZE * 50 = ~10000 rows in memory at once.
- */
-export async function computeAnalytics(
-  service:   SupabaseClient,
-  datasetId: string,
-  schema:    SchemaConfig
-): Promise<DatasetAnalytics> {
-  const activeFields = schema.fields.filter(function(f) {
-    return f.type !== 'ignore' && f.type !== 'id'
-  })
-
-  // Initialise accumulators
-  const accumulators: Record<string, Accum> = {}
-  for (let ai = 0; ai < activeFields.length; ai++) {
-    accumulators[activeFields[ai].field] = makeAccum(activeFields[ai])
-  }
-  // Also track id fields for nonNull count
-  for (let si = 0; si < schema.fields.length; si++) {
-    if (!accumulators[schema.fields[si].field]) {
-      accumulators[schema.fields[si].field] = makeAccum(schema.fields[si])
-    }
-  }
-
-  let totalRows = 0
-  let page      = 0
-  let hasMore   = true
-
-  while (hasMore) {
-    const from = page * BATCH_PAGE_SIZE
-    const to   = from + BATCH_PAGE_SIZE - 1
-
-    const result = await service
-      .from('dataset_rows')
-      .select('rows, row_count')
-      .eq('dataset_id', datasetId)
-      .order('batch_index', { ascending: true })
-      .range(from, to)
-
-    if (result.error) throw new Error('analyticsCompute: ' + result.error.message)
-    const batches = result.data
-    if (!batches || batches.length === 0) { hasMore = false; break }
-
-    for (let bi = 0; bi < batches.length; bi++) {
-      const batchRows: Record<string, unknown>[] = batches[bi].rows || []
-      totalRows += batchRows.length
-
-      // Build a normalized-key → actual-key map from the first row so we can
-      // match schema field keys (snake_case) against raw row keys (any casing/spacing).
-      // e.g. schema "general_experience_comments" → row "General Experience Comments"
-      const keyMap: Record<string, string> = {}
-      if (batchRows.length > 0) {
-        for (const rk of Object.keys(batchRows[0])) {
-          const norm = rk.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-          keyMap[norm] = rk
-        }
-      }
-
-      for (let ri = 0; ri < batchRows.length; ri++) {
-        const row = batchRows[ri]
-        for (let fi = 0; fi < schema.fields.length; fi++) {
-          const accum = accumulators[schema.fields[fi].field]
-          if (!accum) continue
-          const fieldKey = schema.fields[fi].field
-          // Direct match first; fall back to normalized key lookup
-          const val = row[fieldKey] !== undefined ? row[fieldKey] : row[keyMap[fieldKey] || '']
-          accumRow(accum, val)
-        }
-      }
-    }
-
-    if (batches.length < BATCH_PAGE_SIZE) { hasMore = false }
-    page++
-  }
-
-  // Finalize all accumulators
-  const fieldSummaries: Record<string, FieldSummary> = {}
-  for (let ffi = 0; ffi < schema.fields.length; ffi++) {
-    fieldSummaries[schema.fields[ffi].field] = finalize(accumulators[schema.fields[ffi].field], totalRows)
-  }
-
-  return {
-    totalRows,
-    computedAt:     new Date().toISOString(),
-    fieldSummaries,
-  }
-}
 
 // -- In-memory analytics from pre-loaded rows (used by collections) ----------
 

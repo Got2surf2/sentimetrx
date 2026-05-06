@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
-import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -76,10 +76,7 @@ export async function POST(_req: Request, { params }: Params) {
 
     if (schema?.fields?.length) {
       try {
-        var flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', datasetId)
-        var analytics = (flatCheck.count || 0) > 0
-          ? await computeAnalyticsSQL(service, datasetId, schema)
-          : await computeAnalytics(service, datasetId, schema)
+        const analytics = await computeAnalyticsSQL(service, datasetId, schema)
         await service.from('dataset_state').update({
           analytics, updated_at: new Date().toISOString(),
         }).eq('dataset_id', datasetId)

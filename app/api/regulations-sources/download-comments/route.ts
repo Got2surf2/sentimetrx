@@ -4,7 +4,6 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { listComments, fetchCommentsBatch, commentToRow } from '@/lib/regulations'
 import { enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
-import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -29,9 +28,11 @@ export async function POST(req: NextRequest) {
       const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', dataset_id).single()
       const schema = stateRow?.schema_config
       if (schema?.fields?.length) {
-        const { data: sampleBatch } = await service.from('dataset_rows').select('rows').eq('dataset_id', dataset_id).limit(1)
-        if (sampleBatch?.[0]?.rows) {
-          const enriched = enrichSchemaWithStats(schema, sampleBatch[0].rows)
+        const { data: sampleFlat } = await service.from('dataset_rows_flat')
+          .select('data').eq('dataset_id', dataset_id).limit(100)
+        if (sampleFlat?.length) {
+          const sampleRows = sampleFlat.map(function(r: { data: Record<string, unknown> }) { return r.data })
+          const enriched = enrichSchemaWithStats(schema, sampleRows)
           await service.from('dataset_state').update({ schema_config: enriched, updated_at: new Date().toISOString() }).eq('dataset_id', dataset_id)
         }
         const analytics = await computeAnalyticsSQL(service, dataset_id, schema)
@@ -69,26 +70,22 @@ export async function POST(req: NextRequest) {
 
   if (rows.length > 0) {
     const syncTimestamp = new Date().toISOString()
-    const { data: existingBatches } = await service
-      .from('dataset_rows').select('batch_index').eq('dataset_id', dataset_id)
-      .order('batch_index', { ascending: false }).limit(1)
-    let nextBatchIndex = existingBatches?.length ? existingBatches[0].batch_index + 1 : 0
+    const { data: maxRowResp } = await service
+      .from('dataset_rows_flat').select('row_index').eq('dataset_id', dataset_id)
+      .order('row_index', { ascending: false }).limit(1)
+    let nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
     const { data: dsData } = await service
       .from('datasets').select('row_count').eq('id', dataset_id).single()
     let currentTotal = dsData?.row_count || 0
 
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE)
-      await service.from('dataset_rows').insert({
-        dataset_id, rows: chunk, row_count: chunk.length,
-        batch_index: nextBatchIndex, source_ref: 'regulations:' + syncTimestamp,
-      })
       const flatRows = chunk.map(function(r, j) {
-        return { dataset_id, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
+        return { dataset_id, row_index: nextRowIndex + j, data: r }
       })
-      try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
+      await service.from('dataset_rows_flat').insert(flatRows)
       currentTotal += chunk.length
-      nextBatchIndex++
+      nextRowIndex += chunk.length
     }
 
     await service.from('datasets').update({

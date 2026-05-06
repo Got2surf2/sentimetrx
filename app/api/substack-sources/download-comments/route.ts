@@ -4,7 +4,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { fetchPostComments, commentToRow as substackCommentToRow } from '@/lib/substack'
-import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -49,24 +48,20 @@ export async function POST(req: Request) {
 
     // Insert rows into dataset
     var syncTimestamp = new Date().toISOString()
-    var { data: existingBatches } = await service
-      .from('dataset_rows').select('batch_index').eq('dataset_id', dataset_id)
-      .order('batch_index', { ascending: false }).limit(1)
-    var nextBatchIndex = existingBatches?.length ? existingBatches[0].batch_index + 1 : 0
+    var { data: maxRowResp } = await service
+      .from('dataset_rows_flat').select('row_index').eq('dataset_id', dataset_id)
+      .order('row_index', { ascending: false }).limit(1)
+    var nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
     var currentTotal = dataset.row_count || 0
 
     for (var i = 0; i < rows.length; i += CHUNK_SIZE) {
       var chunk = rows.slice(i, i + CHUNK_SIZE)
-      await service.from('dataset_rows').insert({
-        dataset_id: dataset_id, rows: chunk, row_count: chunk.length,
-        batch_index: nextBatchIndex, source_ref: 'substack:' + syncTimestamp,
-      })
       var flatRows = chunk.map(function(r, j) {
-        return { dataset_id: dataset_id, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
+        return { dataset_id: dataset_id, row_index: nextRowIndex + j, data: r }
       })
-      try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
+      await service.from('dataset_rows_flat').insert(flatRows)
       currentTotal += chunk.length
-      nextBatchIndex++
+      nextRowIndex += chunk.length
     }
 
     await service.from('datasets').update({
