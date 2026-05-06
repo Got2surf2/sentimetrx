@@ -114,16 +114,43 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
 
   const surveyPages = new Set(['dashboard', 'new', 'edit', 'deploy', 'responses'])
 
-  const navLink = (page: string, href: string, label: string) => {
+  // Mobile drawer state — used by the hamburger when the bar collapses.
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // navLink renders icon + label. The label hides at narrower widths via
+  // `hidden xl:inline` so the bar shrinks to icons only between md and xl.
+  // The same function is reused vertically inside the mobile drawer.
+  const navLink = (page: string, href: string, label: string, icon: string, mode: 'bar' | 'drawer' = 'bar') => {
     const active = page === 'dashboard' ? surveyPages.has(currentPage || '') : currentPage === page
+    if (mode === 'drawer') {
+      return (
+        <Link key={page} href={href} onClick={() => setMobileOpen(false)}
+          className={'flex items-center gap-3 px-5 py-3 text-sm font-medium transition-colors ' +
+            (active ? 'bg-orange-50 text-orange-700' : 'text-gray-700 hover:bg-gray-50')}>
+          <span className="text-base w-5 text-center">{icon}</span>
+          <span>{label}</span>
+        </Link>
+      )
+    }
     return (
-      <Link href={href}
-        className={'text-sm font-medium transition-all whitespace-nowrap px-3 py-1.5 rounded-full ' +
+      <Link key={page} href={href} title={label}
+        className={'flex items-center gap-1.5 text-sm font-medium transition-all whitespace-nowrap px-2.5 py-1.5 rounded-full ' +
           (active ? 'bg-white/25 text-white' : 'text-orange-100 hover:bg-white/15 hover:text-white')}>
-        {label}
+        <span className="text-base leading-none">{icon}</span>
+        <span className="hidden xl:inline">{label}</span>
       </Link>
     )
   }
+
+  // Items array drives both the desktop bar and the mobile drawer.
+  const navItems: Array<{ page: string; href: string; label: string; icon: string; show: boolean }> = [
+    { page: 'analyze',   href: '/analyze',   label: 'Analytics', icon: '📊', show: f.analyze },   // 📊
+    { page: 'dashboard', href: '/dashboard', label: 'Surveys',   icon: '📝', show: f.surveys },   // 📝
+    { page: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: '✉',       show: f.campaigns }, // ✉
+    { page: 'townhall',  href: '/townhall',  label: 'PulseIQ',   icon: '💬', show: f.townhall },  // 💬
+    { page: 'bots',      href: '/bots',      label: 'Agents',    icon: '🤖', show: f.bots },     // 🤖
+    { page: 'social',    href: '/social',    label: 'Social',    icon: '📱', show: f.social },   // 📱
+  ]
 
   const displayName = fullName
     ? (fullName + (userEmail ? ' (' + userEmail + ')' : ''))
@@ -174,22 +201,60 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
         )}
       </div>
 
-      {/* Right: nav links */}
+      {/* Right: nav — full bar at md+, hamburger on smaller screens */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
-        {f.analyze   && navLink('analyze',   '/analyze',   'Analytics')}
-        {f.surveys   && navLink('dashboard', '/dashboard', 'Surveys')}
-        {f.campaigns && navLink('campaigns', '/campaigns', 'Campaigns')}
-        {f.townhall  && navLink('townhall',  '/townhall',  'PulseIQ')}
-        {f.bots      && navLink('bots',      '/bots',      'Agents')}
-        {f.social    && navLink('social',    '/social',    'Social')}
-        {isAdmin && <CogMenu currentPage={currentPage} />}
-        <div className="w-px h-5 bg-white/20 mx-2" />
-        <form action="/api/auth/signout" method="POST">
-          <button className="text-sm text-orange-100 hover:text-white hover:bg-white/15 transition-all px-3 py-1.5 rounded-full whitespace-nowrap">
-            Sign out
-          </button>
-        </form>
+        {/* Desktop / tablet: horizontal nav with icons (labels appear at xl+) */}
+        <div className="hidden md:flex items-center gap-0.5">
+          {navItems.filter(n => n.show).map(n => navLink(n.page, n.href, n.label, n.icon, 'bar'))}
+          {isAdmin && <CogMenu currentPage={currentPage} />}
+          <div className="w-px h-5 bg-white/20 mx-2" />
+          <form action="/api/auth/signout" method="POST">
+            <button title="Sign out" className="flex items-center gap-1.5 text-sm text-orange-100 hover:text-white hover:bg-white/15 transition-all px-2.5 py-1.5 rounded-full whitespace-nowrap">
+              <span className="text-base leading-none">↦</span>
+              <span className="hidden xl:inline">Sign out</span>
+            </button>
+          </form>
+        </div>
+
+        {/* Mobile: hamburger button */}
+        <button onClick={() => setMobileOpen(v => !v)} aria-label="Menu"
+          className="md:hidden text-white text-2xl px-2 py-1 rounded-full hover:bg-white/15 transition-colors">
+          {mobileOpen ? '✕' : '☰'}
+        </button>
       </div>
+
+      {/* Mobile drawer — overlays from below the nav bar */}
+      {mobileOpen && (
+        <>
+          <div className="md:hidden fixed inset-0 top-14 bg-black/30 z-40" onClick={() => setMobileOpen(false)} />
+          <div className="md:hidden fixed top-14 right-0 left-0 bg-white shadow-lg z-50 max-h-[80vh] overflow-y-auto">
+            {navItems.filter(n => n.show).map(n => navLink(n.page, n.href, n.label, n.icon, 'drawer'))}
+            {isAdmin && (
+              <>
+                <div className="border-t border-gray-100 my-1" />
+                <Link href="/settings/team" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <span className="text-base w-5 text-center">{'👥'}</span><span>Team Management</span>
+                </Link>
+                <Link href="/admin" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <span className="text-base w-5 text-center">{'🔧'}</span><span>Admin Panel</span>
+                </Link>
+                <Link href="/admin/usage" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <span className="text-base w-5 text-center">{'💰'}</span><span>AI Usage</span>
+                </Link>
+              </>
+            )}
+            <div className="border-t border-gray-100 my-1" />
+            <form action="/api/auth/signout" method="POST">
+              <button className="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 text-left">
+                <span className="text-base w-5 text-center">↦</span><span>Sign out</span>
+              </button>
+            </form>
+          </div>
+        </>
+      )}
     </nav>
   )
 }
