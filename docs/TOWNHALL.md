@@ -126,10 +126,11 @@ Public presenter display (no auth, aggregate data only):
 - **Dark theme**, designed for projection
 - **QR code** + participant URL
 - **Stats bar**: Participants, Responses, Total Turns
-- **Active theme cards**: Donut progress, sentiment, keywords with frequency, example quote
-- **Emerging Topics**: Organic theme pills with sentiment color, mention count badge, toggle to show/hide
+- **Active theme cards**: Donut progress, sentiment, keywords with frequency, example quote.
+  - **Seed vs Organic shading**: Seed cards (`source='guide'`) use `#1f2937` background and a blue "Seed" pill; organic cards (`source='auto_detected'`) use `#1e293b` and a green "Organic" pill. No "AI" branding shown — the moderator-facing distinction (planned vs. emerged) is what's surfaced to the audience.
+  - Cards only appear once the moderator approves the topic (state → `active`); detected/parked/dismissed are hidden from the public view.
 - **Sentiment bar**: Stacked horizontal (positive/negative/mixed/neutral)
-- **Auto-refresh**: Every 10 seconds
+- **Auto-refresh**: Every 10 seconds. Fetch is `cache: 'no-store'` with cache-busting timestamp; route response sets `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` so newly-approved topics appear immediately.
 
 ---
 

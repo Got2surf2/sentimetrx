@@ -57,7 +57,9 @@ export default function LivePresenter() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/townhall/live/' + sessionId)
+      // cache: no-store + cache-buster to bypass any browser/CDN caching
+      // (without this, newly-approved organic topics didn't appear on live screen)
+      const res = await fetch('/api/townhall/live/' + sessionId + '?t=' + Date.now(), { cache: 'no-store' })
       if (!res.ok) { setError(true); return }
       const d = await res.json()
       setData(d)
@@ -252,10 +254,13 @@ function StatBox({ label, value }: { label: string; value: number }) {
 
 function LiveThemeCard({ theme: t }: { theme: ThemeData }) {
   const sent = t.sentiment || 'neutral'
-  const isAI = t.source === 'auto_detected'
+  const isOrganic = t.source === 'auto_detected'
+  // Different shades to distinguish topic origin: seed (planned) vs organic (emerged from conversation)
+  const cardBg = isOrganic ? '#1e293b' : '#1f2937'
+  const cardBorder = isOrganic ? '#334155' : '#374151'
 
   return (
-    <div style={{ background: '#1f2937', borderRadius: 16, overflow: 'hidden', border: '1px solid #374151' }}>
+    <div style={{ background: cardBg, borderRadius: 16, overflow: 'hidden', border: '1px solid ' + cardBorder }}>
       {sent !== 'insufficient' && <div style={{ height: 3, background: SENT_COLOR[sent] || SENT_COLOR.neutral }} />}
       <div style={{ padding: 16 }}>
         {/* Header: donut + label */}
@@ -266,7 +271,9 @@ function LiveThemeCard({ theme: t }: { theme: ThemeData }) {
               <span style={{ fontSize: 14, fontWeight: 700, color: '#f9fafb' }}>{t.label}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 {sent !== 'insufficient' && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: SENT_BG[sent], color: SENT_COLOR[sent], textTransform: 'capitalize' }}>{sent}</span>}
-                {isAI && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#ede9fe', color: '#7c3aed' }}>AI</span>}
+                {isOrganic
+                  ? <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#064e3b', color: '#6ee7b7' }}>Organic</span>
+                  : <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#1e3a8a', color: '#93c5fd' }}>Seed</span>}
               </div>
             </div>
             <span style={{ fontSize: 11, color: '#6b7280' }}>

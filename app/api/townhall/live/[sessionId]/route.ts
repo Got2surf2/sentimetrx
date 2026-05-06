@@ -154,5 +154,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     sentiment: sentimentCounts,
     themes: enrichedThemes.filter(t => t.state !== 'dismissed' && t.state !== 'detected'),
     timeline,
+  }, {
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
   })
 }
