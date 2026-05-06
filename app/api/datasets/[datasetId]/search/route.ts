@@ -113,8 +113,11 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Search each target via .textSearch (websearch_to_tsquery, OR semantics).
-  // When AI is on, fetch a wider candidate pool so the re-ranker has more to work with.
+  // Search each target. Prefer the search_dataset_rows RPC because it returns rows
+  // ordered by ts_rank (full-text relevance), so the AI re-ranker sees the densest
+  // matches instead of an arbitrary slice by row_index. Fall back to .textSearch if
+  // the RPC isn't available or returns zero (e.g. stale function still using
+  // plainto_tsquery on an OR-expanded query).
   type Hit = { id: number; row_index: number; data: Record<string, unknown>; rank: number; headline: string }
   const candidatePool = useAI ? AI_CANDIDATE_POOL : limit
   const perTargetCap = targets.length > 0 ? Math.ceil(candidatePool / targets.length) : candidatePool
@@ -123,19 +126,34 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   for (var ti = 0; ti < targets.length; ti++) {
     var t = targets[ti]
-    var { data: matched, error: searchErr } = await service
-      .from('dataset_rows_flat')
-      .select('id, row_index, data')
-      .eq('dataset_id', t.datasetId)
-      .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
-      .order('row_index', { ascending: true })
-      .range(0, perTargetCap - 1)
-    if (searchErr) return NextResponse.json({ error: searchErr.message }, { status: 500 })
+    var matched: Array<{ id: number; row_index: number; data: Record<string, unknown> }> | null = null
+
+    // Try ts_rank-ordered RPC first
+    const rpcResult = await service.rpc('search_dataset_rows', {
+      p_dataset_id: t.datasetId,
+      p_query: tsQueryStr,
+      p_limit: perTargetCap,
+      p_offset: 0,
+    })
+    if (!rpcResult.error && rpcResult.data && rpcResult.data.length > 0) {
+      matched = rpcResult.data.map(function(r: any) { return { id: r.id, row_index: r.row_index, data: r.data || {} } })
+    } else {
+      // Fall back to .textSearch (no rank ordering, but works without the RPC update)
+      const fb = await service
+        .from('dataset_rows_flat')
+        .select('id, row_index, data')
+        .eq('dataset_id', t.datasetId)
+        .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
+        .order('row_index', { ascending: true })
+        .range(0, perTargetCap - 1)
+      if (fb.error) return NextResponse.json({ error: fb.error.message }, { status: 500 })
+      matched = (fb.data || []).map(function(r: any) { return { id: r.id, row_index: r.row_index, data: r.data || {} } })
+    }
 
     for (var ri = 0; ri < (matched || []).length; ri++) {
       var r = matched![ri]
       var data: Record<string, unknown> = r.data || {}
-      if (t.label) data = { ...data, _collection_label: t.label }
+      if (t.label) data = Object.assign({}, data, { _collection_label: t.label })
       results.push({ id: r.id, row_index: r.row_index, data, rank: 1, headline: '' })
     }
 
