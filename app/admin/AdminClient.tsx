@@ -199,7 +199,19 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
               {adminOrgs.length} admin · {activeOrgs.length} active · {inactiveOrgs.length} inactive
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link
+              href="/admin/usage"
+              className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-orange-300 hover:text-orange-600 text-gray-700 font-semibold text-sm transition-all"
+            >
+              💰 AI Usage
+            </Link>
+            <Link
+              href="/admin/estimator"
+              className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-orange-300 hover:text-orange-600 text-gray-700 font-semibold text-sm transition-all"
+            >
+              🧮 Cost Estimator
+            </Link>
             <Link
               href="/admin/questions"
               className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold text-sm transition-all"
