@@ -203,6 +203,20 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
   var [metaExpanded, setMetaExpanded] = useState(false)
   var hasMoreMeta = allMeta.length > 3 // 3+ pills may exceed 2 rows depending on label width
 
+  // Comment text 4-line clamp + Show more / Show less. We measure overflow via a ref
+  // so the toggle button only appears when the clamped text is actually being cut off
+  // (different cards have different column widths and font wrapping).
+  var [textExpanded, setTextExpanded] = useState(false)
+  var [isClamped, setIsClamped] = useState(false)
+  var commentTextRef = useRef<HTMLDivElement>(null)
+  useEffect(function() {
+    var el = commentTextRef.current
+    if (!el) return
+    // Element scrolls (has overflow) when content is taller than its clamped box.
+    // Add 1px tolerance for sub-pixel rounding.
+    setIsClamped(el.scrollHeight > el.clientHeight + 1)
+  }, [segments, textExpanded])
+
   // Format metadata values — dates shown as mm/dd/yy
   var formatFieldValue = function(val: unknown, f: SchemaField): string {
     var s = String(val ?? '').trim()
@@ -264,19 +278,37 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
         )}
       </div>
 
-      {/* Comment text with highlights — flex:1 so pills always sit at the bottom of the card */}
-      <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: allMeta.length > 0 ? 8 : 0, flex: 1 }}>
-        {segments.map(function(seg, i) {
-          if (seg.matched) {
-            var sp = segPal(seg.text)
-            return (
-              <mark key={i} style={{ background: sp.light || sp.bg, color: sp.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + sp.border, fontWeight: 600 }}>
-                {seg.text}
-              </mark>
-            )
-          }
-          return <span key={i}>{seg.text}</span>
-        })}
+      {/* Comment text + show-more toggle. Wrapper takes flex:1 so pills pin
+          to the bottom of the card; inner div is line-clamped to 4 lines
+          unless the user expands it. */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: allMeta.length > 0 ? 8 : 0 }}>
+        <div ref={commentTextRef} style={{
+          fontSize: 13, color: T.text, lineHeight: 1.75,
+          ...(textExpanded ? {} : {
+            display: '-webkit-box' as const,
+            WebkitLineClamp: 4,
+            WebkitBoxOrient: 'vertical' as const,
+            overflow: 'hidden',
+          }),
+        }}>
+          {segments.map(function(seg, i) {
+            if (seg.matched) {
+              var sp = segPal(seg.text)
+              return (
+                <mark key={i} style={{ background: sp.light || sp.bg, color: sp.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + sp.border, fontWeight: 600 }}>
+                  {seg.text}
+                </mark>
+              )
+            }
+            return <span key={i}>{seg.text}</span>
+          })}
+        </div>
+        {(isClamped || textExpanded) && (
+          <button onClick={function() { setTextExpanded(!textExpanded) }}
+            style={{ alignSelf: 'flex-start', marginTop: 4, padding: 0, background: 'transparent', border: 'none', color: T.accent, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+            {textExpanded ? 'Show less' : 'Show more'}
+          </button>
+        )}
       </div>
 
       {/* Metadata pills — 2 rows max, expand to show all */}
