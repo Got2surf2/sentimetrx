@@ -9,9 +9,58 @@ import Sentiment from 'sentiment'
 const analyzer = new Sentiment()
 
 // ── Sentiment scoring (AFINN-165: 3,382 words, -5 to +5 intensity) ──────────
+//
+// Standard AFINN doesn't model negation — "loud" scores -1 whether the text
+// says "very loud" or "never too loud". We add a negation valence-shifter
+// (a well-known NLP technique used by VADER, NLTK SentiText, etc.):
+// scored tokens get their polarity flipped when preceded by a negation word
+// within a short window. This generalizes to "not bad", "never disappointed",
+// "no problems", "didn't expect", "isn't great", etc. — no per-phrase rules.
+
+const NEGATION_TOKENS = new Set([
+  'not', 'never', 'no', 'nothing', 'none', 'neither', 'nor', 'nobody',
+  'cannot', 'cant', "can't",
+  'wont',  "won't",  'dont',   "don't",
+  'doesnt',"doesn't",'didnt',  "didn't",
+  'wouldnt',"wouldn't",'shouldnt',"shouldn't",
+  'isnt', "isn't",  'wasnt',  "wasn't",  'werent', "weren't",
+  'hasnt',"hasn't", 'havent', "haven't", 'hadnt',  "hadn't",
+  'aint', "ain't",  'arent',  "aren't",
+])
+const NEGATION_WINDOW = 3 // tokens — VADER uses 3, NLTK uses 3-4
+
+function tokenize(text: string): string[] {
+  return text.toLowerCase().replace(/[^a-z'\s]+/g, ' ').split(/\s+/).filter(Boolean)
+}
+
+/**
+ * Negation-aware AFINN scoring. Returns the AFINN sum and the comparative
+ * (sum / token-count). Mirrors the shape of `sentiment`'s analyze() output
+ * for the fields we actually use, so the existing comparative thresholds
+ * (>0.05 / <-0.05) carry over directly.
+ */
+function scoreWithNegation(text: string): { score: number; comparative: number; tokenCount: number } {
+  const tokens = tokenize(text)
+  if (tokens.length === 0) return { score: 0, comparative: 0, tokenCount: 0 }
+  let total = 0
+  for (let i = 0; i < tokens.length; i++) {
+    // Look up AFINN via the analyzer (single-token analyze is the simplest
+    // way to access the dictionary the package ships with).
+    const baseScore = analyzer.analyze(tokens[i]).score
+    if (baseScore === 0) continue
+    // Is there a negation token in the preceding window?
+    let negated = false
+    const start = Math.max(0, i - NEGATION_WINDOW)
+    for (let j = start; j < i; j++) {
+      if (NEGATION_TOKENS.has(tokens[j])) { negated = true; break }
+    }
+    total += negated ? -baseScore : baseScore
+  }
+  return { score: total, comparative: total / tokens.length, tokenCount: tokens.length }
+}
 
 export function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral' {
-  var result = analyzer.analyze(text)
+  const result = scoreWithNegation(text)
   if (result.comparative > 0.05) return 'positive'
   if (result.comparative < -0.05) return 'negative'
   return 'neutral'
@@ -19,7 +68,7 @@ export function scoreSentiment(text: string): 'positive' | 'negative' | 'neutral
 
 /** Returns both the label and the raw numeric score (-1.0 to +1.0 range). */
 export function scoreSentimentFull(text: string): { label: 'positive' | 'negative' | 'neutral'; score: number } {
-  var result = analyzer.analyze(text)
+  const result = scoreWithNegation(text)
   var label: 'positive' | 'negative' | 'neutral' = 'neutral'
   if (result.comparative > 0.05) label = 'positive'
   else if (result.comparative < -0.05) label = 'negative'
