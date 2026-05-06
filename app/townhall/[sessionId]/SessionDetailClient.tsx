@@ -387,6 +387,9 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       {debugMode && (
         <div style={{ background: '#DBEAFE', color: '#1E3A8A', padding: '12px 24px', fontSize: 13, lineHeight: 1.6, borderBottom: '2px solid #3B82F6' }}>
           <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Moderator debug — every topic from this dashboard&apos;s data</div>
+          <div style={{ background: '#BFDBFE', padding: '4px 8px', borderRadius: 4, marginBottom: 6, fontSize: 12 }}>
+            <b>Session:</b> {session.name} — <b>id:</b> <code>{session.id}</code> — <b>fetched at:</b> {new Date().toLocaleTimeString()}
+          </div>
           <div><b>Total topics:</b> {themes.length} — <b>by status:</b> {Object.entries(debugStateBreakdown).map(([k, v]) => `${k}=${v}`).join(', ')}</div>
           <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '4px 16px', fontSize: 12 }}>
             {debugAllThemes.map((t, i) => {

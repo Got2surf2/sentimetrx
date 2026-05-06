@@ -27,6 +27,9 @@ interface LiveData {
   themes: ThemeData[]
   timeline: { time: string; count: number }[]
   _debug?: {
+    resolved_session_id?: string
+    resolved_session_name?: string
+    request_param?: string
     raw_themes_count: number
     state_breakdown: Record<string, number>
     active_themes: { id: string; label: string; source: string }[]
@@ -152,7 +155,10 @@ export default function LivePresenter() {
       {/* ── Diagnostic banner (only when ?debug=1 is in the URL) ── */}
       {debugMode && data._debug && (
         <div style={{ background: '#FEF3C7', color: '#78350F', padding: '12px 32px', fontSize: 13, lineHeight: 1.6, borderBottom: '2px solid #F59E0B' }}>
-          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Debug — every topic in this session, straight from the database</div>
+          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Live debug — every topic in this session, straight from the database</div>
+          <div style={{ background: '#FEE9B0', padding: '4px 8px', borderRadius: 4, marginBottom: 6, fontSize: 12 }}>
+            <b>Session:</b> {data._debug.resolved_session_name} — <b>id:</b> <code>{data._debug.resolved_session_id}</code> — <b>fetched at:</b> {new Date().toLocaleTimeString()}
+          </div>
           <div><b>Total topics:</b> {data._debug.raw_themes_count} — <b>by status:</b> {Object.entries(data._debug.state_breakdown).map(([k, v]) => `${k}=${v}`).join(', ')}</div>
           <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '4px 16px', fontSize: 12 }}>
             {data._debug.all_themes

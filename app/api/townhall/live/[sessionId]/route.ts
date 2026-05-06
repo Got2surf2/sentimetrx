@@ -139,6 +139,9 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
 
   // Diagnostic payload \u2014 request with ?debug=1 to inspect why a theme might not appear.
   const debugPayload = debug ? {
+    resolved_session_id: session.id,
+    resolved_session_name: session.name,
+    request_param: params.sessionId,
     raw_themes_count: (themes || []).length,
     enriched_count: enrichedThemes.length,
     visible_count: visibleThemes.length,
