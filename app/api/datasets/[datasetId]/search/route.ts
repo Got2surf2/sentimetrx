@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Verify dataset ownership
-  const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  const { data: dataset } = await supabase.from('datasets').select('org_id, source').eq('id', params.datasetId).single()
   if (!dataset || dataset.org_id !== userData.org_id) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const url = req.nextUrl
@@ -77,34 +77,63 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (terms.length > 1) tsQueryStr = terms.join(' OR ')
   }
 
-  // Search via .textSearch — uses websearch_to_tsquery, supports OR semantics.
-  var { data: matched, error: searchErr } = await service
-    .from('dataset_rows_flat')
-    .select('id, row_index, data')
-    .eq('dataset_id', params.datasetId)
-    .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
-    .order('row_index', { ascending: true })
-    .range(offset, offset + limit - 1)
+  // Resolve dataset IDs to search across. For collections, union member datasets;
+  // each member's row gets a `_collection_label` to identify which dataset it came from.
+  var targets: Array<{ datasetId: string; label: string | null }> = [{ datasetId: params.datasetId, label: null }]
+  if ((dataset as any).source === 'collection') {
+    const { data: collection } = await service.from('collections').select('id').eq('dataset_id', params.datasetId).single()
+    if (collection) {
+      const { data: members } = await service
+        .from('collection_members')
+        .select('dataset_id, label')
+        .eq('collection_id', collection.id)
+        .order('sort_order', { ascending: true })
+      if (members && members.length > 0) {
+        targets = members.map(function(m: any) { return { datasetId: m.dataset_id, label: m.label } })
+      } else {
+        targets = []
+      }
+    }
+  }
 
-  if (searchErr) return NextResponse.json({ error: searchErr.message }, { status: 500 })
+  // Search each target via .textSearch (websearch_to_tsquery, OR semantics).
+  // For multi-target collections, fetch up to `limit` from each then trim;
+  // we accept that ordering across members is by member sort_order, not rank.
+  type Hit = { id: number; row_index: number; data: Record<string, unknown>; rank: number; headline: string }
+  var results: Hit[] = []
+  var total = 0
 
-  var results = (matched || []).map(function(r: any) {
-    return { id: r.id, row_index: r.row_index, data: r.data, rank: 1, headline: '' }
-  })
+  for (var ti = 0; ti < targets.length; ti++) {
+    var t = targets[ti]
+    var { data: matched, error: searchErr } = await service
+      .from('dataset_rows_flat')
+      .select('id, row_index, data')
+      .eq('dataset_id', t.datasetId)
+      .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
+      .order('row_index', { ascending: true })
+      .range(0, limit - 1)
+    if (searchErr) return NextResponse.json({ error: searchErr.message }, { status: 500 })
 
-  // Count total matches (for pagination)
-  var total = results.length
-  if (total === limit) {
+    for (var ri = 0; ri < (matched || []).length; ri++) {
+      var r = matched![ri]
+      var data: Record<string, unknown> = r.data || {}
+      if (t.label) data = { ...data, _collection_label: t.label }
+      results.push({ id: r.id, row_index: r.row_index, data, rank: 1, headline: '' })
+    }
+
     var { count } = await service
       .from('dataset_rows_flat')
       .select('id', { count: 'exact', head: true })
-      .eq('dataset_id', params.datasetId)
+      .eq('dataset_id', t.datasetId)
       .textSearch('tsv', tsQueryStr, { type: 'websearch', config: 'english' })
-    total = count || total
+    total += count || 0
   }
 
+  // Apply offset/limit across the unioned result set
+  var paged = results.slice(offset, offset + limit)
+
   return NextResponse.json({
-    results,
+    results: paged,
     total,
     query: rawQuery,
     searchQuery: searchQuery !== rawQuery ? searchQuery : undefined,
