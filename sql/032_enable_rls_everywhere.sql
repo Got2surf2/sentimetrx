@@ -38,8 +38,15 @@ BEGIN
   END LOOP;
 END $$;
 
--- Also enable on the materialized view (pg 15+ supports this).
-ALTER MATERIALIZED VIEW IF EXISTS public.study_response_stats ENABLE ROW LEVEL SECURITY;
+-- Materialized views cannot have RLS until Postgres 17. As a stand-in,
+-- REVOKE SELECT from the anon role so anonymous callers can't read the MV.
+-- Authenticated users can still read it; the dashboard's auth-client query
+-- is `.from('study_response_stats').select('*').in('study_id', studyIds)`
+-- where studyIds come from the (RLS-protected) studies table, so a user
+-- only ever asks for their own org's study_ids. Cross-org enumeration is
+-- theoretical only since study IDs are random UUIDs.
+-- TODO: replace direct MV read with a SECURITY DEFINER RPC for full isolation.
+REVOKE ALL ON public.study_response_stats FROM anon;
 
 -- ============================================================
 -- 2. SELECT policies for auth-client-read tables
@@ -155,16 +162,7 @@ CREATE POLICY "org members read townhall_turns" ON public.townhall_turns
     WHERE org_id IN (SELECT org_id FROM public.users WHERE id = auth.uid())
   ));
 
--- ── study_response_stats (MV): org-scoped via study ─────────
--- Materialized views support RLS in pg15+. If your Postgres version errors
--- on this CREATE POLICY, ALTER MATERIALIZED VIEW DISABLE RLS as a fallback.
-DROP POLICY IF EXISTS "org members read study_response_stats" ON public.study_response_stats;
-CREATE POLICY "org members read study_response_stats" ON public.study_response_stats
-  FOR SELECT
-  USING (study_id IN (
-    SELECT id FROM public.studies
-    WHERE org_id IN (SELECT org_id FROM public.users WHERE id = auth.uid())
-  ));
+-- (study_response_stats: handled via REVOKE above; cannot have RLS as MV in pg15)
 
 -- ============================================================
 -- 3. Verification helper (run manually after applying)
