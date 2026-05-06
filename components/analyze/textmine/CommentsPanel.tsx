@@ -231,6 +231,7 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
       background: accentBg, border: '1px solid ' + T.border, borderRadius: 10,
       padding: '12px 14px', borderLeft: '4px solid ' + accentColor,
       boxShadow: '0 1px 4px rgba(0,0,0,.04)',
+      display: 'flex', flexDirection: 'column', height: '100%',
     }}>
       {/* Theme badge(s) + field name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
@@ -263,8 +264,8 @@ function CommentCard({ row, theme, pal, schema, aliases, ignoredFields, activeFi
         )}
       </div>
 
-      {/* Comment text with highlights */}
-      <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: (ratingFields.length > 0 || hasMoreMeta) ? 8 : 0 }}>
+      {/* Comment text with highlights — flex:1 so pills always sit at the bottom of the card */}
+      <div style={{ fontSize: 13, color: T.text, lineHeight: 1.75, marginBottom: allMeta.length > 0 ? 8 : 0, flex: 1 }}>
         {segments.map(function(seg, i) {
           if (seg.matched) {
             var sp = segPal(seg.text)
