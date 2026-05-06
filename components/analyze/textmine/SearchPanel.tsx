@@ -111,9 +111,12 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
   }
 
   return (
-    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, overflow: 'hidden' }}>
-      {/* Search bar */}
-      <div style={{ padding: '12px 16px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: searched ? '1px solid ' + T.border : 'none' }}>
+    <div style={{
+      background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12,
+      overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
+    }}>
+      {/* Search bar — pinned at top */}
+      <div style={{ flexShrink: 0, padding: '12px 16px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: searched ? '1px solid ' + T.border : 'none' }}>
         <div style={{ position: 'relative', flex: 1 }}>
           <input
             type="text"
@@ -154,9 +157,9 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
         </button>
       </div>
 
-      {/* AI interpretation + re-rank indicator */}
+      {/* AI interpretation + re-rank indicator — pinned at top */}
       {aiInterpretation && (
-        <div style={{ padding: '8px 16px', background: T.accentBg, fontSize: 11, color: T.accent }}>
+        <div style={{ flexShrink: 0, padding: '8px 16px', background: T.accentBg, fontSize: 11, color: T.accent }}>
           AI expanded your search to: <strong>{aiInterpretation}</strong>
           {reranked && rawTotal > 0 && (
             <span style={{ marginLeft: 8, opacity: 0.85 }}>
@@ -168,14 +171,15 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
 
       {/* Searching spinner */}
       {searching && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
           <LottieLoader size={80} message={aiMode ? 'AI is searching and re-ranking…' : 'Searching…'} />
         </div>
       )}
 
-      {/* Results */}
+      {/* Results — fills remaining space and scrolls internally; expanding a card
+          scrolls within this area instead of pushing the search bar off screen */}
       {searched && !searching && (
-        <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {results.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: T.textFaint, fontSize: 13 }}>
               No results found for &ldquo;{query}&rdquo;

@@ -128,9 +128,9 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         />
       )}
       {showSearch && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80 }}
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 24px' }}
           onClick={function() { setShowSearch(false) }}>
-          <div style={{ width: '100%', maxWidth: 700, maxHeight: '70vh', overflow: 'hidden' }}
+          <div style={{ width: '100%', maxWidth: 700, height: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
             onClick={function(e) { e.stopPropagation() }}>
             <SearchPanel datasetId={dataset.id} />
           </div>
