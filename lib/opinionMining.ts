@@ -6,10 +6,29 @@ import {
   POSITIVE_WORDS as POSITIVE_OPINIONS,
   NEGATIVE_WORDS as NEGATIVE_OPINIONS,
   NEUTRAL_WORDS as NEUTRAL_OPINIONS,
+  NEGATORS,
 } from './sentimentLexicon'
 
 // Conjunction words — skip when scanning for opinion targets
 const CONJUNCTIONS = new Set(['and', 'or', 'nor', 'also', 'plus', 'with'])
+
+// Look back this many tokens for a negator before the target/opinion word.
+// Same window as themeUtils.lexiconScore and contentGuard's AFINN scorer.
+const NEGATION_WINDOW = 3
+
+function flipSentiment(s: 'positive' | 'negative' | 'neutral'): 'positive' | 'negative' | 'neutral' {
+  if (s === 'positive') return 'negative'
+  if (s === 'negative') return 'positive'
+  return s
+}
+
+function isNegatedAt(words: string[], idx: number): boolean {
+  const start = Math.max(0, idx - NEGATION_WINDOW)
+  for (let k = start; k < idx; k++) {
+    if (NEGATORS.has(words[k])) return true
+  }
+  return false
+}
 
 // Extra stop words to exclude when looking for nouns near an adjective
 const EXTRA_STOPS = new Set([
@@ -65,7 +84,15 @@ export function extractOpinions(
   const target = targetWord.toLowerCase()
   // If target is an adjective/opinion word, look for nouns it modifies instead
   const targetIsOpinion = isOpinionWord(target)
-  const opinionCounts: Record<string, { count: number; sentiment: 'positive' | 'negative' | 'neutral'; samples: string[] }> = {}
+  // Per-noun pos/neg/neutral counters so the displayed sentiment reflects the
+  // majority across all occurrences (not just the first match).
+  const opinionCounts: Record<string, {
+    count: number
+    pos: number
+    neg: number
+    neu: number
+    samples: string[]
+  }> = {}
   let totalMentions = 0
 
   for (const row of rows) {
@@ -101,28 +128,26 @@ export function extractOpinions(
                 if (CONJUNCTIONS.has(words[k])) { blocked = true; break }
               }
               if (blocked) continue
-              // If target is an adjective, look for nouns; otherwise look for opinion words
+              // Bump the appropriate sentiment counter for this noun. Sentiment
+              // is determined per-occurrence so e.g. "never too loud" (positive)
+              // doesn't lock "too" to negative just because it was first.
+              var occSent: 'positive' | 'negative' | 'neutral'
               if (targetIsOpinion) {
                 if (!isSubjectWord(w)) continue
-                var nounSentiment = getSentiment(target) || 'neutral'
-                if (!opinionCounts[w]) {
-                  opinionCounts[w] = { count: 0, sentiment: nounSentiment, samples: [] }
-                }
-                opinionCounts[w].count++
-                if (opinionCounts[w].samples.length < 3) {
-                  const trimmed = sentence.trim().slice(0, 120)
-                  if (!opinionCounts[w].samples.includes(trimmed)) {
-                    opinionCounts[w].samples.push(trimmed)
-                  }
-                }
-                continue
+                const baseTargetSent = getSentiment(target) || 'neutral'
+                occSent = isNegatedAt(words, i) ? flipSentiment(baseTargetSent) : baseTargetSent
+              } else {
+                const baseOpinionSent = getSentiment(w)
+                if (!baseOpinionSent) continue
+                occSent = isNegatedAt(words, j) ? flipSentiment(baseOpinionSent) : baseOpinionSent
               }
-              const sentiment = getSentiment(w)
-              if (!sentiment) continue
               if (!opinionCounts[w]) {
-                opinionCounts[w] = { count: 0, sentiment, samples: [] }
+                opinionCounts[w] = { count: 0, pos: 0, neg: 0, neu: 0, samples: [] }
               }
               opinionCounts[w].count++
+              if (occSent === 'positive') opinionCounts[w].pos++
+              else if (occSent === 'negative') opinionCounts[w].neg++
+              else opinionCounts[w].neu++
               if (opinionCounts[w].samples.length < 3) {
                 const trimmed = sentence.trim().slice(0, 120)
                 if (!opinionCounts[w].samples.includes(trimmed)) {
@@ -136,14 +161,29 @@ export function extractOpinions(
     }
   }
 
-  // Sort by frequency
+  // Sort by frequency. Each noun's displayed sentiment is the majority among
+  // its per-occurrence counts (positive / negative / neutral); ties resolve
+  // to neutral so we don't claim a polarity we don't have.
   const opinions: OpinionPair[] = Object.entries(opinionCounts)
-    .map(function(e) { return { opinion: e[0], count: e[1].count, sentiment: e[1].sentiment, samples: e[1].samples } })
+    .map(function(e) {
+      const c = e[1]
+      let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral'
+      if (c.pos > c.neg && c.pos > c.neu) sentiment = 'positive'
+      else if (c.neg > c.pos && c.neg > c.neu) sentiment = 'negative'
+      return { opinion: e[0], count: c.count, sentiment, samples: c.samples }
+    })
     .sort(function(a, b) { return b.count - a.count })
     .slice(0, 30)
 
+  // Sentiment summary uses the per-occurrence counts (not the per-noun majority)
+  // so the modal's overall % positive/negative reflects the *true* mix across
+  // every individual mention, not how many noun categories tip each way.
   const sentimentSummary = { positive: 0, negative: 0, neutral: 0 }
-  opinions.forEach(function(o) { sentimentSummary[o.sentiment] += o.count })
+  for (const k in opinionCounts) {
+    sentimentSummary.positive += opinionCounts[k].pos
+    sentimentSummary.negative += opinionCounts[k].neg
+    sentimentSummary.neutral  += opinionCounts[k].neu
+  }
 
   return { aspect: targetWord, totalMentions, opinions, sentimentSummary, mode: targetIsOpinion ? 'nouns' : 'opinions' }
 }
