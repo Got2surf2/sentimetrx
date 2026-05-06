@@ -30,6 +30,7 @@ interface LiveData {
     raw_themes_count: number
     state_breakdown: Record<string, number>
     active_themes: { id: string; label: string; source: string }[]
+    all_themes: { label: string; state: string; source: string }[]
     visible_count: number
   }
 }
@@ -151,20 +152,27 @@ export default function LivePresenter() {
       {/* ── Diagnostic banner (only when ?debug=1 is in the URL) ── */}
       {debugMode && data._debug && (
         <div style={{ background: '#FEF3C7', color: '#78350F', padding: '12px 32px', fontSize: 13, lineHeight: 1.6, borderBottom: '2px solid #F59E0B' }}>
-          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Debug — what the live screen is seeing</div>
-          <div><b>Total topics in this session:</b> {data._debug.raw_themes_count}</div>
-          <div><b>Topics by status:</b> {Object.entries(data._debug.state_breakdown).map(([k, v]) => `"${k}" = ${v}`).join(', ')}</div>
-          <div><b>Topics shown on this live screen:</b> {data.themes.filter(t => t.state === 'active').length} active, {data.themes.filter(t => t.state === 'completed').length} closed</div>
-          <div style={{ marginTop: 6 }}><b>The {data._debug.active_themes.length} active topic(s) the server is sending:</b></div>
-          <ol style={{ margin: '4px 0 0 20px', padding: 0 }}>
-            {data._debug.active_themes.map((t, i) => (
-              <li key={t.id + ':' + i}>
-                <code style={{ fontSize: 11 }}>{t.label}</code> — source: <b>{t.source}</b>, id: <code style={{ fontSize: 10, opacity: 0.7 }}>{t.id}</code>
-              </li>
-            ))}
-          </ol>
-          <div style={{ marginTop: 8, fontSize: 11, color: '#92400E' }}>
-            Compare this to what the moderator dashboard shows. If the moderator says &ldquo;7 active&rdquo; and this banner lists 6, the missing one is in the database with a different state — or there&apos;s a duplicate id above (look for the same id twice).
+          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Debug — every topic in this session, straight from the database</div>
+          <div><b>Total topics:</b> {data._debug.raw_themes_count} — <b>by status:</b> {Object.entries(data._debug.state_breakdown).map(([k, v]) => `${k}=${v}`).join(', ')}</div>
+          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '4px 16px', fontSize: 12 }}>
+            {data._debug.all_themes
+              .slice()
+              .sort((a, b) => a.state.localeCompare(b.state) || a.label.localeCompare(b.label))
+              .map((t, i) => {
+                const stateColor: Record<string, string> = {
+                  active: '#15803D', completed: '#1D4ED8', detected: '#9CA3AF', parked: '#D97706', dismissed: '#6B7280', paused: '#A16207',
+                }
+                return (
+                  <div key={t.label + ':' + i} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ display: 'inline-block', minWidth: 70, fontWeight: 700, color: stateColor[t.state] || '#374151', textTransform: 'uppercase', fontSize: 10 }}>{t.state}</span>
+                    <span style={{ flex: 1, color: '#374151' }}>{t.label}</span>
+                    <span style={{ fontSize: 10, color: '#9CA3AF' }}>{t.source === 'auto_detected' ? 'organic' : t.source}</span>
+                  </div>
+                )
+              })}
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: '#92400E' }}>
+            Find any topic by name above to see its actual database status. Only <b>active</b> topics appear as live cards on this screen; <b>completed</b> appears in the &ldquo;Closed&rdquo; section; everything else is hidden from the public.
           </div>
         </div>
       )}

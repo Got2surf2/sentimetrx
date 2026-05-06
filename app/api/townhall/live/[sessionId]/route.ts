@@ -140,7 +140,6 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
   // Diagnostic payload \u2014 request with ?debug=1 to inspect why a theme might not appear.
   const debugPayload = debug ? {
     raw_themes_count: (themes || []).length,
-    raw_themes: (themes || []).map(t => ({ id: t.id, label: t.label, state: t.state, source: t.source, sort_order: t.sort_order })),
     enriched_count: enrichedThemes.length,
     visible_count: visibleThemes.length,
     state_breakdown: (themes || []).reduce((acc: Record<string, number>, t: any) => {
@@ -148,6 +147,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       return acc
     }, {}),
     active_themes: (themes || []).filter((t: any) => t.state === 'active').map((t: any) => ({ id: t.id, label: t.label, source: t.source })),
+    all_themes: (themes || []).map((t: any) => ({ label: t.label, state: t.state, source: t.source })),
   } : undefined
 
   return NextResponse.json({
