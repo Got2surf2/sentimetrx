@@ -26,6 +26,12 @@ interface LiveData {
   sentiment: Record<string, number>
   themes: ThemeData[]
   timeline: { time: string; count: number }[]
+  _debug?: {
+    raw_themes_count: number
+    state_breakdown: Record<string, number>
+    active_themes: { id: string; label: string; source: string }[]
+    visible_count: number
+  }
 }
 
 function Donut({ current, target, size = 56 }: { current: number; target: number; size?: number }) {
@@ -53,20 +59,22 @@ export default function LivePresenter() {
   const [data, setData] = useState<LiveData | null>(null)
   const [error, setError] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  // Organic themes are hidden from public view until moderator approves them
+  // Show diagnostic banner only when ?debug=1 is in the URL.
+  const debugMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1'
 
   const fetchData = useCallback(async () => {
     try {
       // cache: no-store + cache-buster to bypass any browser/CDN caching
       // (without this, newly-approved organic topics didn't appear on live screen)
-      const res = await fetch('/api/townhall/live/' + sessionId + '?t=' + Date.now(), { cache: 'no-store' })
+      const dbg = debugMode ? '&debug=1' : ''
+      const res = await fetch('/api/townhall/live/' + sessionId + '?t=' + Date.now() + dbg, { cache: 'no-store' })
       if (!res.ok) { setError(true); return }
       const d = await res.json()
       setData(d)
       setLastUpdate(new Date())
       setError(false)
     } catch { setError(true) }
-  }, [sessionId])
+  }, [sessionId, debugMode])
 
   useEffect(() => {
     fetchData()
@@ -139,6 +147,27 @@ export default function LivePresenter() {
           </div>
         </div>
       </div>
+
+      {/* ── Diagnostic banner (only when ?debug=1 is in the URL) ── */}
+      {debugMode && data._debug && (
+        <div style={{ background: '#FEF3C7', color: '#78350F', padding: '12px 32px', fontSize: 13, lineHeight: 1.6, borderBottom: '2px solid #F59E0B' }}>
+          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Debug — what the live screen is seeing</div>
+          <div><b>Total topics in this session:</b> {data._debug.raw_themes_count}</div>
+          <div><b>Topics by status:</b> {Object.entries(data._debug.state_breakdown).map(([k, v]) => `"${k}" = ${v}`).join(', ')}</div>
+          <div><b>Topics shown on this live screen:</b> {data.themes.filter(t => t.state === 'active').length} active, {data.themes.filter(t => t.state === 'completed').length} closed</div>
+          <div style={{ marginTop: 6 }}><b>The {data._debug.active_themes.length} active topic(s) the server is sending:</b></div>
+          <ol style={{ margin: '4px 0 0 20px', padding: 0 }}>
+            {data._debug.active_themes.map((t, i) => (
+              <li key={t.id + ':' + i}>
+                <code style={{ fontSize: 11 }}>{t.label}</code> — source: <b>{t.source}</b>, id: <code style={{ fontSize: 10, opacity: 0.7 }}>{t.id}</code>
+              </li>
+            ))}
+          </ol>
+          <div style={{ marginTop: 8, fontSize: 11, color: '#92400E' }}>
+            Compare this to what the moderator dashboard shows. If the moderator says &ldquo;7 active&rdquo; and this banner lists 6, the missing one is in the database with a different state — or there&apos;s a duplicate id above (look for the same id twice).
+          </div>
+        </div>
+      )}
 
       {/* ── Main content ────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 0, minHeight: 'calc(100vh - 72px)' }}>
