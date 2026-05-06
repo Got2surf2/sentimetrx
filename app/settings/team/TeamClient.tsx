@@ -21,6 +21,7 @@ interface Member {
   role: string
   created_at: string
   features?: ModuleFeatures | null
+  disabled?: boolean
 }
 
 interface Invite {
@@ -137,6 +138,25 @@ export default function TeamClient({ org, members: initialMembers, invites: init
     }
   }
 
+  async function toggleDisabled(memberId: string, nextDisabled: boolean) {
+    const verb = nextDisabled ? 'Disable login for' : 'Re-enable login for'
+    const member = members.find(m => m.id === memberId)
+    if (!member) return
+    if (!confirm(`${verb} ${member.full_name || member.email}?`)) return
+    const res = await fetch('/api/settings/team/disable', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: memberId, disabled: nextDisabled }),
+    })
+    if (res.ok) {
+      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, disabled: nextDisabled } : m))
+      flash(nextDisabled ? 'Login disabled' : 'Login re-enabled')
+    } else {
+      const d = await res.json().catch(() => ({}))
+      flash(d?.error || 'Failed to update')
+    }
+  }
+
   async function uploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -212,11 +232,16 @@ export default function TeamClient({ org, members: initialMembers, invites: init
           <h2 className="text-lg font-semibold mb-4">Team Members</h2>
           <div className="space-y-2">
             {members.map(m => (
-              <div key={m.id} className="bg-white rounded-lg border border-gray-200">
+              <div key={m.id} className="bg-white rounded-lg border border-gray-200" style={m.disabled ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium">{m.full_name || m.email}</p>
-                    {m.full_name && <p className="text-xs text-gray-500">{m.email}</p>}
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {m.full_name || m.email}
+                        {m.disabled && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 font-semibold">Disabled</span>}
+                      </p>
+                      {m.full_name && <p className="text-xs text-gray-500">{m.email}</p>}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {isOwner && m.id !== currentUserId ? (
@@ -234,6 +259,14 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                           <option value="owner">Owner</option>
                           <option value="member">Member</option>
                         </select>
+                        <button onClick={() => toggleDisabled(m.id, !m.disabled)}
+                          className="text-xs px-2 py-1 rounded border transition-colors font-semibold"
+                          style={m.disabled
+                            ? { color: '#16a34a', borderColor: '#bbf7d0', background: '#f0fdf4' }
+                            : { color: '#a16207', borderColor: '#fde68a', background: '#fffbeb' }
+                          }>
+                          {m.disabled ? 'Re-enable' : 'Disable'}
+                        </button>
                         <button onClick={() => removeMember(m.id)}
                           className="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors font-semibold">
                           Remove

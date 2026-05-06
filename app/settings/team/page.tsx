@@ -22,7 +22,7 @@ export default async function TeamPage() {
 
   const { data: members } = await supabase
     .from('users')
-    .select('id, email, full_name, role, created_at, features')
+    .select('id, email, full_name, role, created_at, features, disabled')
     .eq('org_id', userData.org_id)
     .order('created_at', { ascending: true })
 

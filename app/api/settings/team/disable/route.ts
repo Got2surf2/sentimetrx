@@ -1,0 +1,60 @@
+// app/api/settings/team/disable/route.ts
+// PATCH — Toggle a user's disabled status. Only org owners can disable
+// members of their own org. Disabling sets users.disabled = true AND tells
+// Supabase auth to ban the user (banned_until far-future) so new login
+// attempts are blocked at the auth layer. Re-enabling clears both flags.
+
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+const FAR_FUTURE = '2099-12-31T23:59:59Z'
+
+export async function PATCH(req: NextRequest) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
+  const { user_id, disabled } = body
+  if (!user_id || typeof disabled !== 'boolean') {
+    return NextResponse.json({ error: 'Missing user_id or disabled' }, { status: 400 })
+  }
+  if (user_id === user.id) {
+    return NextResponse.json({ error: 'Cannot disable yourself' }, { status: 400 })
+  }
+
+  const { data: actor } = await supabase.from('users').select('org_id, role').eq('id', user.id).single()
+  const { data: target } = await supabase.from('users').select('org_id').eq('id', user_id).single()
+  if (!actor || !target || actor.org_id !== target.org_id) {
+    return NextResponse.json({ error: 'Not in same org' }, { status: 403 })
+  }
+  if (actor.role !== 'owner') {
+    return NextResponse.json({ error: 'Only owners can disable members' }, { status: 403 })
+  }
+
+  const service = createServiceRoleClient()
+
+  // Update the canonical flag in our public.users table first — this is what
+  // the app reads. Then update auth.users to enforce at the auth layer.
+  const { error: dbErr } = await service.from('users')
+    .update({ disabled }).eq('id', user_id)
+  if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+
+  // Ban / unban via Supabase admin. ban_duration accepts a duration string
+  // ("none" to clear, or e.g. "8760h" for a year). We use the far-future
+  // banned_until pattern via direct admin call.
+  try {
+    if (disabled) {
+      await service.auth.admin.updateUserById(user_id, { ban_duration: '876000h' /* 100 years */ })
+    } else {
+      await service.auth.admin.updateUserById(user_id, { ban_duration: 'none' })
+    }
+  } catch (e: any) {
+    // Non-fatal: even if the admin call fails, the public.users.disabled flag
+    // means the app will reject the user (in pages that check). Log only.
+    console.error('[team/disable] admin updateUserById failed:', e?.message || e)
+  }
+
+  return NextResponse.json({ success: true, disabled })
+}

@@ -12,7 +12,7 @@ export async function GET(_req: NextRequest) {
 
   var { data: members, error } = await supabase
     .from('users')
-    .select('id, email, full_name, role, created_at')
+    .select('id, email, full_name, role, created_at, disabled, features')
     .eq('org_id', actor.org_id)
     .order('created_at', { ascending: true })
 
