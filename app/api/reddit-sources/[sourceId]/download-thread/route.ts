@@ -6,7 +6,6 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { fetchThreadComments, commentToRow, type RedditComment } from '@/lib/reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
-import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -96,26 +95,22 @@ export async function POST(req: Request, { params }: Params) {
     // Insert rows
     if (rows.length > 0) {
       var syncTimestamp = new Date().toISOString()
-      var { data: existingBatches } = await service
-        .from('dataset_rows').select('batch_index').eq('dataset_id', datasetId)
-        .order('batch_index', { ascending: false }).limit(1)
-      var nextBatchIndex = existingBatches?.length ? existingBatches[0].batch_index + 1 : 0
+      var { data: maxRowResp } = await service
+        .from('dataset_rows_flat').select('row_index').eq('dataset_id', datasetId)
+        .order('row_index', { ascending: false }).limit(1)
+      var nextRowIndex = maxRowResp?.length ? maxRowResp[0].row_index + 1 : 0
       var { data: dsData } = await service
         .from('datasets').select('row_count').eq('id', datasetId).single()
       var currentTotal = dsData?.row_count || 0
 
       for (var i = 0; i < rows.length; i += CHUNK_SIZE) {
         var chunk = rows.slice(i, i + CHUNK_SIZE)
-        await service.from('dataset_rows').insert({
-          dataset_id: datasetId, rows: chunk, row_count: chunk.length,
-          batch_index: nextBatchIndex, source_ref: 'reddit:' + syncTimestamp,
-        })
         var flatRows = chunk.map(function(r, j) {
-          return { dataset_id: datasetId, row_index: nextBatchIndex * ROWS_PER_BATCH + j, data: r }
+          return { dataset_id: datasetId, row_index: nextRowIndex + j, data: r }
         })
-        try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
+        await service.from('dataset_rows_flat').insert(flatRows)
         currentTotal += chunk.length
-        nextBatchIndex++
+        nextRowIndex += chunk.length
       }
 
       await service.from('datasets').update({

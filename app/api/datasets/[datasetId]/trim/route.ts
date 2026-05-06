@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { computeAnalytics, computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -56,50 +56,19 @@ export async function POST(req: Request, { params }: Params) {
 
     // Delete from flat table
     const deleteIds = rowsToDelete!.map(function(r: any) { return r.id })
-    // Delete in chunks of 500 to avoid URL length limits
     for (let i = 0; i < deleteIds.length; i += 500) {
       const chunk = deleteIds.slice(i, i + 500)
       await service.from('dataset_rows_flat').delete().in('id', chunk)
     }
 
-    // Rebuild batched table from flat table (simpler than trying to edit JSONB arrays)
-    // Delete all batched rows and re-insert from flat
-    await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
+    // Update dataset row count from authoritative flat table count
+    const { count: totalRemaining } = await service
+      .from('dataset_rows_flat')
+      .select('id', { count: 'exact', head: true })
+      .eq('dataset_id', params.datasetId)
 
-    // Read remaining flat rows in pages and re-batch
-    const BATCH_SIZE = 200
-    let offset = 0
-    let batchIndex = 0
-    let totalRemaining = 0
-
-    while (true) {
-      const { data: page } = await service
-        .from('dataset_rows_flat')
-        .select('data')
-        .eq('dataset_id', params.datasetId)
-        .order('row_index', { ascending: true })
-        .range(offset, offset + BATCH_SIZE - 1)
-
-      if (!page || page.length === 0) break
-      totalRemaining += page.length
-
-      const rows = page.map(function(r: any) { return r.data })
-      await service.from('dataset_rows').insert({
-        dataset_id: params.datasetId,
-        rows: rows,
-        row_count: rows.length,
-        batch_index: batchIndex,
-        source_ref: 'trim:' + new Date().toISOString(),
-      })
-
-      batchIndex++
-      offset += BATCH_SIZE
-    }
-
-    // Update dataset row count
-    const remaining = dataset.row_count - deleteCount
     await service.from('datasets').update({
-      row_count: remaining > 0 ? remaining : totalRemaining,
+      row_count: totalRemaining || 0,
       updated_at: new Date().toISOString(),
     }).eq('id', params.datasetId)
 

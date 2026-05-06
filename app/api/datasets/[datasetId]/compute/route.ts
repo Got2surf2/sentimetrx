@@ -9,7 +9,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { computeAnalytics, computeAnalyticsSQL, computeAnalyticsFromRows } from '@/lib/analyticsCompute'
+import { computeAnalyticsSQL, computeAnalyticsFromRows } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,9 +52,9 @@ export async function POST(_req: Request, { params }: Params) {
   // Handles studies where demoFields weren't in config at auto-setup time, or where
   // the survey engine used hardcoded default demographics (age, gender, zip).
   try {
-    const { data: sampleBatch } = await service
-      .from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).limit(1).single()
-    const sampleRow: Record<string, unknown> = (sampleBatch?.rows as any[])?.[0] || {}
+    const { data: sampleFlat } = await service
+      .from('dataset_rows_flat').select('data').eq('dataset_id', params.datasetId).limit(1).single()
+    const sampleRow: Record<string, unknown> = (sampleFlat?.data as Record<string, unknown>) || {}
     const existingCols = new Set(schema.fields.map((f: any) => f.field as string))
     const newFields: any[] = []
     for (const col of Object.keys(sampleRow)) {
@@ -110,17 +110,9 @@ export async function POST(_req: Request, { params }: Params) {
     }
   }
 
-  // Check if flat table is populated — use SQL-based compute (handles 2M+ rows)
-  const flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', params.datasetId)
-  const hasFlat = (flatCheck.count || 0) > 0
-
   let analytics
   try {
-    if (hasFlat) {
-      analytics = await computeAnalyticsSQL(service, params.datasetId, schema)
-    } else {
-      analytics = await computeAnalytics(service, params.datasetId, schema)
-    }
+    analytics = await computeAnalyticsSQL(service, params.datasetId, schema)
   } catch (err) {
     console.error('[compute] error:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

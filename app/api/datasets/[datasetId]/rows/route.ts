@@ -9,8 +9,11 @@
 //   fields     (optional)      — comma-separated column names to return
 //   all        (optional)      — if 'true', return ALL rows (ignores page/pageSize)
 //   sampleMax  (optional)      — when used with all=true, cap result to this many rows
-//                                using systematic sampling (every N-th row).
-//                                If totalRows <= sampleMax, all rows are returned unchanged.
+//                                using deterministic seeded random sampling. Seeded
+//                                by dataset_id, so the same dataset always yields the
+//                                same sample (e.g. Stats numbers don't drift across
+//                                refreshes). If totalRows <= sampleMax, all rows are
+//                                returned unchanged.
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -20,6 +23,31 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 30   // allow 30s for large datasets in bulk mode
 
 interface Params { params: { datasetId: string } }
+
+// Tiny deterministic PRNG (mulberry32). Same seed → same sequence.
+function mulberry32(seed: number): () => number {
+  let s = seed | 0
+  return function () {
+    s = (s + 0x6D2B79F5) | 0
+    let t = Math.imul(s ^ (s >>> 15), 1 | s)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+// djb2 hash — convert a UUID string to a 32-bit seed.
+function seedFromString(s: string): number {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = (((h << 5) + h) + s.charCodeAt(i)) | 0
+  return h
+}
+// Fisher-Yates shuffle in place using a provided RNG, then truncate to `n`.
+function sampleInPlace<T>(arr: T[], n: number, rng: () => number): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp
+  }
+  arr.length = n
+}
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
   const result = await supabase.auth.getUser()
@@ -80,86 +108,31 @@ export async function GET(req: Request, { params }: Params) {
 
   const totalRows  = metaResult.data?.row_count || 0
 
-  // Check if flat table is populated (preferred path — SQL-level operations)
-  const flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', params.datasetId)
-  const hasFlat = (flatCheck.count || 0) > 0
-
-  // ── BULK MODE: return all rows (or a systematic sample) in one response ─
+  // ── BULK MODE: return all rows (or a sample) in one response ─
   if (allMode) {
     const doSample = sampleMax !== null && totalRows > sampleMax
-
-    // ── Fast path: use flat table with SQL-level sampling (no full-array accumulation)
-    if (hasFlat) {
-      const sampleStep = doSample ? Math.ceil(totalRows / sampleMax!) : 1
-      let query = service.from('dataset_rows_flat').select('data').eq('dataset_id', params.datasetId)
-      if (doSample) {
-        // Systematic sampling at SQL level: every N-th row by row_index
-        query = query.filter('row_index', 'eq.mod', sampleStep.toString() + '.0') as any
-        // Supabase JS doesn't support modulo, so use RPC or fetch with limit
-      }
-      // Fetch all rows then randomly sample to ensure all categories are represented
-      const FLAT_PAGE = 1000  // Supabase default max rows per request
-      const allRows: Record<string, unknown>[] = []
-      let offset = 0
-      let fetchMore = true
-      while (fetchMore) {
-        let q = service.from('dataset_rows_flat').select('data').eq('dataset_id', params.datasetId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
-        const { data: flatRows, error: flatErr } = await q
-        if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
-        if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
-        for (let i = 0; i < flatRows.length; i++) {
-          allRows.push(projectRow(flatRows[i].data, fieldSet))
-        }
-        if (flatRows.length < FLAT_PAGE) fetchMore = false
-        offset += FLAT_PAGE
-      }
-      // Random sampling: Fisher-Yates shuffle then take first sampleMax
-      if (doSample && allRows.length > sampleMax!) {
-        for (let i = allRows.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          var tmp = allRows[i]; allRows[i] = allRows[j]; allRows[j] = tmp
-        }
-        allRows.length = sampleMax!
-      }
-      return NextResponse.json({
-        rows: allRows, page: 1, pageSize: allRows.length, totalRows, totalPages: 1,
-        field: field || undefined, sampled: doSample,
-        sampleSize: doSample ? allRows.length : totalRows,
-        sampleRate: doSample ? parseFloat((allRows.length / Math.max(totalRows, 1)).toFixed(4)) : 1,
-      })
-    }
-
-    // ── Fallback: batched table (legacy path for datasets without flat rows)
+    const FLAT_PAGE = 1000
     const allRows: Record<string, unknown>[] = []
-    let bulkPage = 0
-    const BULK_FETCH = 200
-    let hasMore = true
-
-    while (hasMore) {
-      const bFrom = bulkPage * BULK_FETCH
-      const bTo   = bFrom + BULK_FETCH - 1
-      const batchResult = await service.from('dataset_rows').select('rows').eq('dataset_id', params.datasetId).order('batch_index', { ascending: true }).range(bFrom, bTo)
-      if (batchResult.error) return NextResponse.json({ error: batchResult.error.message }, { status: 500 })
-      const batches = batchResult.data
-      if (!batches || batches.length === 0) { hasMore = false; break }
-      for (let bi = 0; bi < batches.length; bi++) {
-        const batchRows = batches[bi].rows || []
-        for (let ri = 0; ri < batchRows.length; ri++) {
-          allRows.push(projectRow(batchRows[ri], fieldSet))
-        }
+    let offset = 0
+    let fetchMore = true
+    while (fetchMore) {
+      const { data: flatRows, error: flatErr } = await service
+        .from('dataset_rows_flat').select('data')
+        .eq('dataset_id', params.datasetId)
+        .order('row_index', { ascending: true })
+        .range(offset, offset + FLAT_PAGE - 1)
+      if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
+      if (!flatRows || flatRows.length === 0) break
+      for (let i = 0; i < flatRows.length; i++) {
+        allRows.push(projectRow(flatRows[i].data, fieldSet))
       }
-      if (batches.length < BULK_FETCH) hasMore = false
-      bulkPage++
+      if (flatRows.length < FLAT_PAGE) fetchMore = false
+      offset += FLAT_PAGE
     }
-    // Random sampling
+    // Seeded random sampling — same dataset always yields the same sample
     if (doSample && allRows.length > sampleMax!) {
-      for (let i = allRows.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        var tmp2 = allRows[i]; allRows[i] = allRows[j]; allRows[j] = tmp2
-      }
-      allRows.length = sampleMax!
+      sampleInPlace(allRows, sampleMax!, mulberry32(seedFromString(params.datasetId)))
     }
-
     return NextResponse.json({
       rows: allRows, page: 1, pageSize: allRows.length, totalRows, totalPages: 1,
       field: field || undefined, sampled: doSample,
@@ -172,52 +145,14 @@ export async function GET(req: Request, { params }: Params) {
   const totalPages = Math.ceil(totalRows / pageSize)
   const skip       = (page - 1) * pageSize
 
-  // Fast path: use flat table with SQL OFFSET/LIMIT
-  if (hasFlat) {
-    const { data: flatRows, error: flatErr } = await service
-      .from('dataset_rows_flat').select('data')
-      .eq('dataset_id', params.datasetId)
-      .order('row_index', { ascending: true })
-      .range(skip, skip + pageSize - 1)
-    if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
-    const collected = (flatRows || []).map(function(r) { return projectRow(r.data, fieldSet) })
-    return NextResponse.json({ rows: collected, page, pageSize, totalRows, totalPages, field: field || undefined })
-  }
-
-  // Fallback: batched table
-  const collected: Record<string, unknown>[] = []
-  let rowsSeen  = 0
-  let pageBatch = 0
-  const PAGE_FETCH = 50
-
-  outer: while (collected.length < pageSize) {
-    const pFrom = pageBatch * PAGE_FETCH
-    const pTo   = pFrom + PAGE_FETCH - 1
-    const pageResult = await service.from('dataset_rows').select('rows, row_count').eq('dataset_id', params.datasetId).order('batch_index', { ascending: true }).range(pFrom, pTo)
-    if (pageResult.error) return NextResponse.json({ error: pageResult.error.message }, { status: 500 })
-    const pageBatches = pageResult.data
-    if (!pageBatches || pageBatches.length === 0) break
-    for (let pbi = 0; pbi < pageBatches.length; pbi++) {
-      const pRows: Record<string, unknown>[] = pageBatches[pbi].rows || []
-      for (let pri = 0; pri < pRows.length; pri++) {
-        if (rowsSeen < skip) { rowsSeen++; continue }
-        if (collected.length >= pageSize) break outer
-        collected.push(projectRow(pRows[pri], fieldSet))
-        rowsSeen++
-      }
-    }
-    if (pageBatches.length < PAGE_FETCH) break
-    pageBatch++
-  }
-
-  return NextResponse.json({
-    rows:       collected,
-    page,
-    pageSize,
-    totalRows,
-    totalPages,
-    field:      field || undefined,
-  })
+  const { data: flatRows, error: flatErr } = await service
+    .from('dataset_rows_flat').select('data')
+    .eq('dataset_id', params.datasetId)
+    .order('row_index', { ascending: true })
+    .range(skip, skip + pageSize - 1)
+  if (flatErr) return NextResponse.json({ error: flatErr.message }, { status: 500 })
+  const collected = (flatRows || []).map(function(r) { return projectRow(r.data, fieldSet) })
+  return NextResponse.json({ rows: collected, page, pageSize, totalRows, totalPages, field: field || undefined })
 }
 
 // ── Collection rows: union member datasets with _collection_label ──────────
@@ -257,52 +192,23 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
     var offset   = 0
     var fetchMore = true
 
-    // Try flat table first
-    var flatCheck = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', memberId)
-    var hasFlat = (flatCheck.count || 0) > 0
-
-    if (hasFlat) {
-      while (fetchMore) {
-        var { data: flatRows } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', memberId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
-        if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
-        for (var fi = 0; fi < flatRows.length; fi++) {
-          allRows.push({ ...flatRows[fi].data, _collection_label: label })
-        }
-        if (flatRows.length < FLAT_PAGE) fetchMore = false
-        offset += FLAT_PAGE
+    while (fetchMore) {
+      var { data: flatRows } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', memberId).order('row_index', { ascending: true }).range(offset, offset + FLAT_PAGE - 1)
+      if (!flatRows || flatRows.length === 0) { fetchMore = false; break }
+      for (var fi = 0; fi < flatRows.length; fi++) {
+        allRows.push({ ...flatRows[fi].data, _collection_label: label })
       }
-    } else {
-      // Fallback: batched table
-      var batchPage = 0
-      var BULK_FETCH = 200
-      fetchMore = true
-      while (fetchMore) {
-        var bFrom = batchPage * BULK_FETCH
-        var bTo   = bFrom + BULK_FETCH - 1
-        var { data: batches } = await service.from('dataset_rows').select('rows').eq('dataset_id', memberId).order('batch_index', { ascending: true }).range(bFrom, bTo)
-        if (!batches || batches.length === 0) { fetchMore = false; break }
-        for (var bi = 0; bi < batches.length; bi++) {
-          var batchRows = batches[bi].rows || []
-          for (var ri = 0; ri < batchRows.length; ri++) {
-            allRows.push({ ...batchRows[ri], _collection_label: label })
-          }
-        }
-        if (batches.length < BULK_FETCH) fetchMore = false
-        batchPage++
-      }
+      if (flatRows.length < FLAT_PAGE) fetchMore = false
+      offset += FLAT_PAGE
     }
   }
 
   var totalRows = allRows.length
 
-  // Sample if needed
+  // Seeded random sampling — same dataset always yields the same sample
   var doSample = sampleMax !== null && totalRows > sampleMax
   if (doSample) {
-    for (var si = allRows.length - 1; si > 0; si--) {
-      var sj = Math.floor(Math.random() * (si + 1))
-      var tmp = allRows[si]; allRows[si] = allRows[sj]; allRows[sj] = tmp
-    }
-    allRows.length = sampleMax!
+    sampleInPlace(allRows, sampleMax!, mulberry32(seedFromString(datasetId)))
   }
 
   return NextResponse.json({
@@ -324,50 +230,37 @@ export async function POST(req: Request, { params }: Params) {
 
   const body = await req.json()
   const rows = body.rows
-  const source_ref = body.source_ref
   if (!Array.isArray(rows) || rows.length === 0) {
     return NextResponse.json({ error: 'rows must be a non-empty array' }, { status: 400 })
   }
 
   const service = createServiceRoleClient()
 
-  const existResult = await service
-    .from('dataset_rows')
-    .select('batch_index')
+  // Compute the next batch_index from flat rows. We still expose batch_index in
+  // the response/DELETE contract so clients can roll back their own appends.
+  // row_index = batch_index * ROWS_PER_BATCH + offset, so batch_index is
+  // floor(max_row_index / ROWS_PER_BATCH) + 1.
+  const maxRowResp = await service
+    .from('dataset_rows_flat')
+    .select('row_index')
     .eq('dataset_id', params.datasetId)
-    .order('batch_index', { ascending: false })
+    .order('row_index', { ascending: false })
     .limit(1)
 
-  const nextIndex = existResult.data && existResult.data.length > 0 ? existResult.data[0].batch_index + 1 : 0
+  const maxRowIndex = maxRowResp.data && maxRowResp.data.length > 0 ? maxRowResp.data[0].row_index : -1
+  const nextIndex = maxRowIndex < 0 ? 0 : Math.floor(maxRowIndex / ROWS_PER_BATCH) + 1
 
-  const insertResult = await service
-    .from('dataset_rows')
-    .insert({
-      dataset_id:  params.datasetId,
-      rows,
-      row_count:   rows.length,
-      batch_index: nextIndex,
-      source_ref:  source_ref || null,
-    })
-
-  if (insertResult.error) return NextResponse.json({ error: insertResult.error.message }, { status: 500 })
-
-  // Also insert into flat table for fast queries
   const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
     return { dataset_id: params.datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r }
   })
-  if (flatRows.length > 0) {
-    try { await service.from('dataset_rows_flat').insert(flatRows) } catch {}
-  }
+  const insertResult = await service.from('dataset_rows_flat').insert(flatRows)
+  if (insertResult.error) return NextResponse.json({ error: insertResult.error.message }, { status: 500 })
 
-  const countResult = await service
-    .from('dataset_rows')
-    .select('row_count')
+  const { count } = await service
+    .from('dataset_rows_flat')
+    .select('id', { count: 'exact', head: true })
     .eq('dataset_id', params.datasetId)
-
-  const total = (countResult.data || []).reduce(function(sum: number, b: { row_count: number }) {
-    return sum + (b.row_count || 0)
-  }, 0)
+  const total = count || 0
 
   await service
     .from('datasets')
@@ -395,12 +288,7 @@ export async function DELETE(req: Request, { params }: Params) {
 
   const service = createServiceRoleClient()
 
-  // Delete from batched table
-  await service.from('dataset_rows').delete()
-    .eq('dataset_id', params.datasetId)
-    .in('batch_index', batchIndexes)
-
-  // Delete from flat table (each batch used row_index = batchIndex * 200 + i)
+  // Delete from flat table (each batch used row_index = batchIndex * ROWS_PER_BATCH + i)
   for (var bi = 0; bi < batchIndexes.length; bi++) {
     var startIdx = batchIndexes[bi] * ROWS_PER_BATCH
     await service.from('dataset_rows_flat').delete()
@@ -409,9 +297,8 @@ export async function DELETE(req: Request, { params }: Params) {
       .lt('row_index', startIdx + ROWS_PER_BATCH)
   }
 
-  // Recalculate row count
-  const countResult = await service.from('dataset_rows').select('row_count').eq('dataset_id', params.datasetId)
-  const total = (countResult.data || []).reduce(function(sum: number, b: { row_count: number }) { return sum + (b.row_count || 0) }, 0)
+  const { count } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', params.datasetId)
+  const total = count || 0
   await service.from('datasets').update({ row_count: total, updated_at: new Date().toISOString() }).eq('id', params.datasetId)
 
   return NextResponse.json({ ok: true, deleted_batches: batchIndexes.length, total_rows: total })

@@ -92,19 +92,6 @@ export async function POST(req: Request, { params }: Params) {
       await service.from('dataset_rows_flat').insert(chunk)
     }
 
-    // Insert into batched table
-    const { data: lastBatch } = await service
-      .from('dataset_rows')
-      .select('batch_index')
-      .eq('dataset_id', dataset.id)
-      .order('batch_index', { ascending: false })
-      .limit(1)
-
-    const nextBatch = lastBatch && lastBatch.length > 0 ? lastBatch[0].batch_index + 1 : 0
-    await service
-      .from('dataset_rows')
-      .insert({ dataset_id: dataset.id, rows: newRows, row_count: newRows.length, batch_index: nextBatch, source_ref: 'sync:' + syncTimestamp })
-
     // Update dataset metadata — count actual flat table rows for accuracy
     const { count: flatCount } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dataset.id)
     const newTotal = flatCount || (existingIds.size + newRows.length)
