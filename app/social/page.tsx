@@ -3,7 +3,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import SocialClient from './SocialClient'
 
@@ -16,12 +16,13 @@ export default async function SocialPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, org_id, features, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
-  if (orgData?.features?.social === false) redirect('/dashboard')
+  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  if (!features.social) redirect('/dashboard')
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -31,7 +32,7 @@ export default async function SocialPage() {
         isAdmin={!!orgData?.is_admin_org}
         userEmail={user.email}
         fullName={userData?.full_name}
-        features={orgData?.features || {}}
+        features={features}
         currentPage="social"
       />
       <div style={{ paddingTop: 56 }} className="flex-1">

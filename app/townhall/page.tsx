@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TownHallListClient from './TownHallListClient'
 
 export const dynamic = 'force-dynamic'
@@ -12,14 +12,14 @@ export default async function TownHallPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, role, client_id, org_id, features, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
-  if (orgData?.features?.townhall === false) redirect('/dashboard')
+  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  if (!features.townhall) redirect('/dashboard')
   const isAdmin = !!orgData?.is_admin_org
-  const features = orgData?.features || {}
 
   return (
     <TownHallListClient

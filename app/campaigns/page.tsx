@@ -1,6 +1,6 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import CampaignDashboardClient from './CampaignDashboardClient'
 
 export const dynamic = 'force-dynamic'
@@ -12,15 +12,15 @@ export default async function CampaignsPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, role, client_id, org_id, features, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
   const isAdmin = !!orgData?.is_admin_org
+  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
 
-  // Check if campaigns feature is enabled
-  if (!orgData?.features?.campaigns && !isAdmin) {
+  if (!features.campaigns && !isAdmin) {
     redirect('/dashboard')
   }
 
@@ -67,9 +67,9 @@ export default async function CampaignsPage() {
     <CampaignDashboardClient
       logoUrl={orgData?.logo_url || ''}
       orgId={orgData?.id || ''}
-      analyzeEnabled={!!orgData?.features?.analyze}
-      campaignsEnabled={!!orgData?.features?.campaigns}
-      features={orgData?.features || {}}
+      analyzeEnabled={!!features.analyze}
+      campaignsEnabled={!!features.campaigns}
+      features={features}
       user={{
         email: user.email!,
         fullName: userData?.full_name ?? '',

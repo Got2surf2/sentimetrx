@@ -3,7 +3,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import AnalyzeClient from './AnalyzeClient'
 
@@ -16,13 +16,14 @@ export default async function AnalyzePage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, org_id, features, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
+  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
 
-  if (!orgData?.features?.analyze) redirect('/dashboard')
+  if (!features.analyze) redirect('/dashboard')
 
   const orgId = userData?.org_id
   const isAdmin = !!orgData?.is_admin_org
@@ -101,8 +102,8 @@ export default async function AnalyzePage() {
         userEmail={user.email         || ''}
         fullName={userData?.full_name  || ''}
         analyzeEnabled={true}
-        campaignsEnabled={!!orgData?.features?.campaigns}
-        features={orgData?.features || {}}
+        campaignsEnabled={!!features.campaigns}
+        features={features}
         currentPage="analyze"
       />
       <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">

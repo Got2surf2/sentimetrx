@@ -22,7 +22,7 @@ interface Props {
   logoUrl?: string; orgId?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
-  features?: Record<string, boolean>
+  features?: import('@/lib/types').ModuleFeatures
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   studies: Study[]; statsMap: Record<string, StudyStats>
 }

@@ -24,7 +24,7 @@ interface Props {
   logoUrl?: string
   analyzeEnabled?: boolean
   campaignsEnabled?: boolean
-  features?: Record<string, boolean>
+  features?: import('@/lib/types').ModuleFeatures
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean }
 }
 

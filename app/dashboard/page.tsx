@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import DashboardClient from './DashboardClient'
 
 export const dynamic = 'force-dynamic'
@@ -12,18 +12,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   const { data: userData } = await supabase
     .from('users')
-    .select('full_name, role, client_id, org_id, organizations(id, name, is_admin_org, logo_url, features)')
+    .select('full_name, role, client_id, org_id, features, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
   const orgData    = resolveOrg(userData?.organizations) as any
-  // If surveys disabled, redirect to first available module
-  if (orgData?.features?.surveys === false) {
-    const f = orgData.features
-    if (f.analyze) redirect('/analyze')
-    else if (f.townhall) redirect('/townhall')
-    else if (f.campaigns) redirect('/campaigns')
-    else if (f.bots) redirect('/bots')
+  // Effective features = org ∩ user. Per-user overrides apply on top of the
+  // org-level subscription. See lib/resolveOrg.ts:effectiveFeatures.
+  const features   = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  if (!features.surveys) {
+    if (features.analyze)        redirect('/analyze')
+    else if (features.townhall)  redirect('/townhall')
+    else if (features.campaigns) redirect('/campaigns')
+    else if (features.bots)      redirect('/bots')
+    else if (features.social)    redirect('/social')
     // If nothing else enabled, stay on dashboard (admin can still access settings)
   }
   const isAdmin    = !!orgData?.is_admin_org
@@ -131,9 +133,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     <DashboardClient
       logoUrl={orgData?.logo_url || ''}
       orgId={orgData?.id || ''}
-      analyzeEnabled={!!orgData?.features?.analyze}
-      campaignsEnabled={!!orgData?.features?.campaigns || isAdmin}
-      features={orgData?.features || {}}
+      analyzeEnabled={!!features.analyze}
+      campaignsEnabled={!!features.campaigns || isAdmin}
+      features={features}
       user={{
         email:      user.email!,
         fullName:   userData?.full_name ?? '',

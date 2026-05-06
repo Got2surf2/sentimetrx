@@ -14,7 +14,7 @@ interface CampaignRow {
 }
 interface Props {
   logoUrl?: string; orgId?: string
-  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
+  analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: import('@/lib/types').ModuleFeatures
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean; userId: string }
   campaigns: CampaignRow[]
   statsMap: Record<string, CampaignStats>
