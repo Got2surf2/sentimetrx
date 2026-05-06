@@ -14,6 +14,7 @@ const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
   townhall:      'PulseIQ — intelligent signal extraction from continuous conversation streams',
   campaigns:     'Email campaigns — distribute surveys to respondent lists',
   bots:          'Agents — create branded AI agents trained on custom content',
+  social:        'Social monitoring — Facebook & Instagram comment moderation and analytics',
 }
 
 interface Props {

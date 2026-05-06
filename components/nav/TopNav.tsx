@@ -97,14 +97,19 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
 }
 
 export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName, analyzeEnabled, campaignsEnabled, features, currentPage, datasetName }: Props) {
-  // Merge legacy props with features object — features takes precedence
+  // Merge legacy props with features object. When a feature flag is not
+  // explicitly set we default to *visible* so the nav stays consistent across
+  // pages that don't bother resolving features (legacy, mostly admin pages).
+  // Admins always see every nav item regardless of org-level flags so they
+  // can support / manage everything. Pages that want strict per-feature
+  // gating must pass the resolved `features` object.
   const f = {
-    surveys:  features?.surveys !== undefined ? features.surveys : true,
-    analyze:  features?.analyze !== undefined ? features.analyze : (analyzeEnabled ?? true),
-    townhall: features?.townhall !== undefined ? features.townhall : true,
-    campaigns: features?.campaigns !== undefined ? features.campaigns : (campaignsEnabled ?? false),
-    bots:     features?.bots ?? false,
-    social:   features?.social ?? true,
+    surveys:   (features?.surveys   !== undefined ? features.surveys   : true)                              || !!isAdmin,
+    analyze:   (features?.analyze   !== undefined ? features.analyze   : (analyzeEnabled   ?? true))        || !!isAdmin,
+    townhall:  (features?.townhall  !== undefined ? features.townhall  : true)                              || !!isAdmin,
+    campaigns: (features?.campaigns !== undefined ? features.campaigns : (campaignsEnabled ?? true))        || !!isAdmin,
+    bots:      (features?.bots      !== undefined ? features.bots      : true)                              || !!isAdmin,
+    social:    (features?.social    !== undefined ? features.social    : true)                              || !!isAdmin,
   }
 
   const surveyPages = new Set(['dashboard', 'new', 'edit', 'deploy', 'responses'])
@@ -171,12 +176,12 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
 
       {/* Right: nav links */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
-        {f.analyze && navLink('analyze', '/analyze', 'Analytics')}
-        {f.surveys && navLink('dashboard', '/dashboard', 'Surveys')}
-        {(f.campaigns || isAdmin) && navLink('campaigns', '/campaigns', 'Campaigns')}
-        {f.townhall && navLink('townhall', '/townhall', 'PulseIQ')}
-        {f.bots && navLink('bots', '/bots', 'Agents')}
-        {f.social && navLink('social', '/social', 'Social')}
+        {f.analyze   && navLink('analyze',   '/analyze',   'Analytics')}
+        {f.surveys   && navLink('dashboard', '/dashboard', 'Surveys')}
+        {f.campaigns && navLink('campaigns', '/campaigns', 'Campaigns')}
+        {f.townhall  && navLink('townhall',  '/townhall',  'PulseIQ')}
+        {f.bots      && navLink('bots',      '/bots',      'Agents')}
+        {f.social    && navLink('social',    '/social',    'Social')}
         {isAdmin && <CogMenu currentPage={currentPage} />}
         <div className="w-px h-5 bg-white/20 mx-2" />
         <form action="/api/auth/signout" method="POST">

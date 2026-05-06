@@ -4,7 +4,7 @@ import { useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-type Mode = 'login' | 'forgot'
+type Mode = 'login' | 'forgot' | 'magic'
 
 function LoginFormInner() {
   const [mode,     setMode]     = useState<Mode>('login')
@@ -13,6 +13,7 @@ function LoginFormInner() {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [sent,     setSent]     = useState(false)
+  const [magicSent, setMagicSent] = useState(false)
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -48,6 +49,81 @@ function LoginFormInner() {
     } else {
       setSent(true)
     }
+  }
+
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    // shouldCreateUser:false → only existing users can sign in via magic link.
+    // Signups go through invites. Supabase still returns success for unknown
+    // emails (to prevent enumeration) — UX is "check your email" either way.
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: `${window.location.origin}/auth/confirm`,
+      },
+    })
+    setLoading(false)
+    if (error) {
+      setError(error.message)
+    } else {
+      setMagicSent(true)
+    }
+  }
+
+  if (mode === 'magic' && magicSent) {
+    return (
+      <div className="text-center p-6 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+        <div className="text-3xl mb-3">✉️</div>
+        <p className="text-white font-medium mb-1">Check your email</p>
+        <p className="text-slate-400 text-sm leading-relaxed">
+          We sent a sign-in link to <span className="text-white">{email}</span>.
+          Click it to log in. The link is single-use and expires shortly.
+        </p>
+        <button
+          onClick={() => { setMode('login'); setMagicSent(false); setError(null) }}
+          className="mt-5 text-xs text-slate-500 hover:text-white transition-colors"
+        >
+          Back to login
+        </button>
+      </div>
+    )
+  }
+
+  if (mode === 'magic') {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-slate-400 text-sm text-center leading-relaxed">
+          Enter your email and we will send you a one-time sign-in link. No password needed.
+        </p>
+        <form onSubmit={handleMagicLink} className="flex flex-col gap-3">
+          <input
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            className={inputClass}
+          />
+          {error && <p className="text-red-400 text-xs px-1">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-semibold text-sm transition-all"
+          >
+            {loading ? 'Sending...' : 'Email me a sign-in link'}
+          </button>
+        </form>
+        <button
+          onClick={() => { setMode('login'); setError(null) }}
+          className="text-xs text-slate-500 hover:text-white transition-colors text-center"
+        >
+          Back to password sign-in
+        </button>
+      </div>
+    )
   }
 
   if (mode === 'forgot' && sent) {
@@ -134,13 +210,23 @@ function LoginFormInner() {
       >
         {loading ? 'Signing in...' : 'Sign in'}
       </button>
-      <button
-        type="button"
-        onClick={() => { setMode('forgot'); setError(null) }}
-        className="text-xs text-slate-500 hover:text-white transition-colors text-center mt-1"
-      >
-        Forgot your password?
-      </button>
+      <div className="flex items-center justify-center gap-3 mt-1 text-xs">
+        <button
+          type="button"
+          onClick={() => { setMode('magic'); setError(null) }}
+          className="text-cyan-400 hover:text-cyan-300 transition-colors"
+        >
+          Email me a sign-in link
+        </button>
+        <span className="text-slate-700">·</span>
+        <button
+          type="button"
+          onClick={() => { setMode('forgot'); setError(null) }}
+          className="text-slate-500 hover:text-white transition-colors"
+        >
+          Forgot your password?
+        </button>
+      </div>
     </form>
   )
 }

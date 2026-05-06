@@ -17,6 +17,7 @@ export interface ModuleFeatures {
   townhall?:      boolean   // Town Hall live discussions
   campaigns?:     boolean   // Email campaigns
   bots?:          boolean   // Branded chatbots
+  social?:        boolean   // Social monitoring (Facebook/Instagram)
 }
 
 export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
@@ -28,6 +29,7 @@ export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
   townhall:      'PulseIQ',
   campaigns:     'Campaigns',
   bots:          'Agents',
+  social:        'Social',
 }
 
 export const MODULE_KEYS = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]
