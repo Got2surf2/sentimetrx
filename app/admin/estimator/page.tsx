@@ -5,7 +5,7 @@
 // RATES are imported from lib/usageLog.ts so this page and /admin/usage stay in sync.
 
 import { useState } from 'react'
-import { RATES, TIER_DEFAULT_MODEL } from '@/lib/usageLog'
+import { RATES, TIER_DEFAULT_MODEL } from '@/lib/usageRates'
 
 var HERMES = '#E8632A'
 
