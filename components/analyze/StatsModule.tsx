@@ -1293,10 +1293,52 @@ function OutlierAnalysisPanel({ numFields, catFields, data, datasetId }: {
   var [threshold,  setThreshold]        = useState(_os?.threshold || 0.05)
   var [copied,     setCopied]           = useState(false)
   var [outlierDragOver, setOutlierDragOver] = useState(false)
+  var [apiKey, setApiKey] = useState('')
+  var [aiEnabled, setAiEnabled] = useState(false)
+  var [aiLoading, setAiLoading] = useState(false)
+  var [aiReport, setAiReport] = useState<string | null>(null)
 
   useEffect(function() { writeSession(_ok, { quantField: quantField, catField: catField, showAll: showAll, threshold: threshold }) }, [quantField, catField, showAll, threshold, _ok])
   useEffect(function() { if (!quantField && numFields.length) setQuantField(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catField   && catFields.length)  setCatField(catFields[0].field)   }, [catFields.length])
+
+  useEffect(function() {
+    try {
+      var k = localStorage.getItem('sentimetrx_tm_apikey') || ''
+      if (k) setApiKey(k)
+      setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1')
+    } catch {}
+    var iv = setInterval(function() {
+      try { setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1'); setApiKey(localStorage.getItem('sentimetrx_tm_apikey') || '') } catch {}
+    }, 2000)
+    return function() { clearInterval(iv) }
+  }, [])
+
+  // Reset stale AI report when the user changes which fields they're analyzing
+  useEffect(function() { setAiReport(null) }, [quantField, catField, threshold])
+
+  var generateOutlierNarrative = async function() {
+    if (!results || !apiKey || !aiEnabled) return
+    var snap = results
+    setAiLoading(true); setAiReport(null)
+    try {
+      var qLabel = numFields.find(function(f) { return f.field === quantField })?.label || quantField
+      var cLabel = catFields.find(function(f) { return f.field === catField })?.label || catField
+      var outliers = snap.rows.filter(function(r) { return r.isOutlier })
+      var topLines = outliers.slice(0, 15).map(function(r) {
+        var dir = r.direction === 'positive' ? 'HIGH' : 'LOW'
+        return '- ' + r.key + ' (n=' + r.n + '): ' + dir + ', mean=' + fmt2(r.grpMean) + ' vs overall ' + fmt2(snap.overallMean) + ' (Δ=' + (r.delta >= 0 ? '+' : '') + fmt2(r.delta) + ', ' + (r.pct >= 0 ? '+' : '') + r.pct.toFixed(1) + '%, ' + fmtP(r.p) + ')'
+      }).join('\n')
+      var prompt = 'You are a data analyst writing for a business audience. Below are groups whose ' + qLabel + ' is statistically above or below the overall mean (broken down by ' + cLabel + '). Threshold: p < ' + threshold + '. N = ' + snap.totalN.toLocaleString() + '.\n\nOutlier groups:\n' + topLines + '\n\nWrite a concise executive summary in 3-5 sentences. Lead with the most extreme outlier. Use plain English without jargon. End with one concrete recommendation.'
+      var res = await fetch('/api/datasets/insights', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: apiKey, prompt: prompt }),
+      })
+      var d = await res.json()
+      setAiReport(d.text || d.error || 'No response')
+    } catch (e: unknown) { setAiReport('Error: ' + (e instanceof Error ? e.message : String(e))) }
+    setAiLoading(false)
+  }
 
   var results = useMemo(function() {
     if (!quantField || !catField || !data.length) return null
@@ -1508,6 +1550,26 @@ function OutlierAnalysisPanel({ numFields, catFields, data, datasetId }: {
             )
           })}
         </Card>
+      )}
+
+      {/* AI Summary — only shown when there are real results to summarize */}
+      {results && results.outlierCount > 0 && (
+        <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 14 }}>
+          {!aiEnabled && (
+            <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span>{'⚠'}</span>{apiKey ? 'AI is turned off — enable it in the header to summarize outliers.' : 'Add an API key via the AI button in the header to enable summaries.'}
+            </div>
+          )}
+          <button onClick={generateOutlierNarrative} disabled={aiLoading || !aiEnabled || !apiKey}
+            style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: (!aiEnabled || !apiKey || aiLoading) ? T.bg : T.accent, color: (!aiEnabled || !apiKey || aiLoading) ? T.textFaint : 'white', border: 'none', borderRadius: 10, cursor: (!aiEnabled || !apiKey || aiLoading) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {aiLoading ? <><LottieLoader size={18} /> Summarizing&hellip;</> : '✦ Summarize Outliers'}
+          </button>
+          {aiReport && (
+            <div style={{ marginTop: 14, background: T.accentBg, border: '1px solid ' + T.accentMid, borderRadius: 12, padding: '18px 20px' }}>
+              <div style={{ fontSize: 13, color: T.textMid, lineHeight: 1.8, whiteSpace: 'pre-wrap' as const }}>{aiReport}</div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

@@ -5,6 +5,7 @@
 
 import { useState, useCallback } from 'react'
 import { T } from '@/lib/analyzeTheme'
+import LottieLoader from '@/components/ui/LottieLoader'
 
 interface SearchResult {
   id: number
@@ -165,10 +166,17 @@ export default function SearchPanel({ datasetId, openEndedField }: Props) {
         </div>
       )}
 
+      {/* Searching spinner */}
+      {searching && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
+          <LottieLoader size={80} message={aiMode ? 'AI is searching and re-ranking…' : 'Searching…'} />
+        </div>
+      )}
+
       {/* Results */}
-      {searched && (
+      {searched && !searching && (
         <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-          {results.length === 0 && !searching ? (
+          {results.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: T.textFaint, fontSize: 13 }}>
               No results found for &ldquo;{query}&rdquo;
             </div>
