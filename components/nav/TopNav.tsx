@@ -13,7 +13,7 @@ interface Props {
   analyzeEnabled?: boolean   // legacy — use features.analyze instead
   campaignsEnabled?: boolean // legacy — use features.campaigns instead
   features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator'
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator' | 'decks'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
@@ -89,6 +89,12 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83E\uDDEE'} Cost Estimator
+            </Link>
+            <Link href="/admin/decks" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'decks' ? 700 : 500, color: currentPage === 'decks' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83D\uDCCA'} Investor Decks
             </Link>
             <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
             <div style={{ padding: '8px 16px' }}>
@@ -252,6 +258,10 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
                 <Link href="/admin/usage" onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                   <span className="text-base w-5 text-center">{'💰'}</span><span>AI Usage</span>
+                </Link>
+                <Link href="/admin/decks" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <span className="text-base w-5 text-center">{'📊'}</span><span>Investor Decks</span>
                 </Link>
               </>
             )}

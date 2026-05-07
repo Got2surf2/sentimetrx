@@ -30,7 +30,7 @@ export default async function DecksPage() {
         userEmail={user.email}
         fullName={userData?.full_name}
         features={features}
-        currentPage="admin"
+        currentPage="decks"
       />
       <div style={{ paddingTop: 56 }} className="flex-1">
         <DecksClient />
