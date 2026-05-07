@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
+import { autoBucket, bucketKey, formatBucketLabel, type TimeBucket } from '@/lib/timeBucket'
 
 const HERMES = '#E8632A'
 
@@ -48,16 +49,20 @@ function detectDateField(rows: Record<string, unknown>[]): string | null {
   return null
 }
 
-// Compute count-per-week for rows whose text fields contain `word`. Bucket key
-// is the Monday of the week (ISO-style date string).
-function weeklyCounts(
+// Compute count-per-bucket for rows whose text fields contain `word`. Bucket
+// granularity (hour/day/week/month/quarter/year) is auto-chosen from the data
+// span via lib/timeBucket — short windows get fine buckets, multi-year ranges
+// get coarser ones so the chart stays readable.
+function frequencyBuckets(
   rows: Record<string, unknown>[],
   fieldArr: string[],
   word: string,
   dateField: string,
-): { week: string; count: number }[] {
+): { buckets: { key: string; count: number }[]; granularity: TimeBucket | null } {
   const target = word.toLowerCase()
-  const buckets = new Map<string, number>()
+  // First pass: collect dates of matching rows so we can pick granularity
+  // based on actual matched-data range (not whole dataset range — sparser).
+  const matched: Date[] = []
   for (const row of rows) {
     const dateStr = String(row[dateField] || '')
     if (!dateStr || isNaN(Date.parse(dateStr))) continue
@@ -67,55 +72,99 @@ function weeklyCounts(
       if (t.includes(target)) { hit = true; break }
     }
     if (!hit) continue
-    const d = new Date(dateStr)
-    const day = d.getUTCDay() || 7
-    d.setUTCDate(d.getUTCDate() - day + 1)
-    d.setUTCHours(0, 0, 0, 0)
-    const key = d.toISOString().slice(0, 10)
-    buckets.set(key, (buckets.get(key) || 0) + 1)
+    matched.push(new Date(dateStr))
   }
-  return Array.from(buckets.entries())
+  if (matched.length === 0) return { buckets: [], granularity: null }
+
+  let min = matched[0], max = matched[0]
+  for (const d of matched) { if (d < min) min = d; if (d > max) max = d }
+  const granularity = autoBucket(min, max)
+
+  const counts = new Map<string, number>()
+  for (const d of matched) {
+    const key = bucketKey(d, granularity)
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  const buckets = Array.from(counts.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([week, count]) => ({ week, count }))
+    .map(([key, count]) => ({ key, count }))
+  return { buckets, granularity }
 }
 
-function FrequencyChart({ buckets }: { buckets: { week: string; count: number }[] }) {
-  if (buckets.length < 2) return null
-  const W = 460, H = 64, P = 8
-  const innerW = W - 2 * P
-  const innerH = H - 2 * P
+function FrequencyChart({
+  buckets,
+  granularity,
+}: {
+  buckets: { key: string; count: number }[]
+  granularity: TimeBucket | null
+}) {
+  if (!granularity || buckets.length < 2) return null
+  // Layout: left gutter for y-axis labels, then plot area.
+  const W = 480, H = 80, PT = 8, PB = 14, PL = 30, PR = 8
+  const innerW = W - PL - PR
+  const innerH = H - PT - PB
   const maxCount = Math.max(...buckets.map(b => b.count), 1)
+  // Round y-axis max up to a "nice" number for cleaner labels.
+  const niceMax = niceCeiling(maxCount)
   const dx = innerW / Math.max(buckets.length - 1, 1)
   const points = buckets.map((b, i) => ({
-    x: P + i * dx,
-    y: P + innerH - (b.count / maxCount) * innerH,
-    week: b.week,
+    x: PL + i * dx,
+    y: PT + innerH - (b.count / niceMax) * innerH,
+    key: b.key,
     count: b.count,
   }))
   const path = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ')
-  const fillPath = path + ' L' + points[points.length - 1].x.toFixed(1) + ' ' + (P + innerH) + ' L' + points[0].x.toFixed(1) + ' ' + (P + innerH) + ' Z'
-  const first = buckets[0].week
-  const last = buckets[buckets.length - 1].week
+  const fillPath = path + ' L' + points[points.length - 1].x.toFixed(1) + ' ' + (PT + innerH) + ' L' + points[0].x.toFixed(1) + ' ' + (PT + innerH) + ' Z'
+  const headlineLabels: Record<TimeBucket, string> = {
+    hour: 'Hourly', day: 'Daily', week: 'Weekly', month: 'Monthly', quarter: 'Quarterly', year: 'Annual',
+  }
+  // Y-axis tick values: 0, mid, max (3 ticks).
+  const ticks = [0, niceMax / 2, niceMax]
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em', marginBottom: 4 }}>
-        Frequency by week
+        {headlineLabels[granularity]} frequency · {buckets.length} {granularity === 'hour' ? 'hours' : granularity + 's'}
       </div>
       <svg width="100%" height={H} viewBox={'0 0 ' + W + ' ' + H} preserveAspectRatio="none">
+        {/* Y-axis gridlines + labels */}
+        {ticks.map((t, i) => {
+          const y = PT + innerH - (t / niceMax) * innerH
+          return (
+            <g key={i}>
+              <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="#e5e7eb" strokeWidth={1} strokeDasharray={i === 0 ? undefined : '2 3'} />
+              <text x={PL - 4} y={y + 3} fontSize={9} fill="#9ca3af" textAnchor="end">{compactNum(t)}</text>
+            </g>
+          )
+        })}
         <path d={fillPath} fill={HERMES} fillOpacity={0.12} />
         <path d={path} fill="none" stroke={HERMES} strokeWidth={1.75} />
         {points.map((p, i) => (
           <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={HERMES}>
-            <title>{p.week}: {p.count}</title>
+            <title>{formatBucketLabel(p.key, granularity)}: {p.count}</title>
           </circle>
         ))}
+        {/* X-axis endpoints */}
+        <text x={PL} y={H - 2} fontSize={9} fill="#9ca3af">{formatBucketLabel(buckets[0].key, granularity)}</text>
+        <text x={W - PR} y={H - 2} fontSize={9} fill="#9ca3af" textAnchor="end">{formatBucketLabel(buckets[buckets.length - 1].key, granularity)}</text>
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#9ca3af', marginTop: 2 }}>
-        <span>{first}</span>
-        <span>{last}</span>
-      </div>
     </div>
   )
+}
+
+// Round n up to the nearest "nice" number for axis labels (1, 2, 5, 10 × 10^k).
+function niceCeiling(n: number): number {
+  if (n <= 0) return 1
+  const exp = Math.floor(Math.log10(n))
+  const f = n / Math.pow(10, exp)
+  const niceF = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10
+  return niceF * Math.pow(10, exp)
+}
+
+// Format a count compactly: 1234 → "1.2k", 1500000 → "1.5M".
+function compactNum(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, '') + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, '') + 'k'
+  return String(Math.round(n))
 }
 
 interface Props {
@@ -147,13 +196,28 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
     return extractOpinions(rows, fields, word)
   }, [rows, fields, word])
 
-  // Frequency-by-week sparkline (legacy Ana parity).
-  // Auto-detects a date field on the rows; renders nothing when no date is available.
+  // Frequency time-series sparkline (legacy Ana parity).
+  // Auto-detects a date field on the rows. Bucket granularity scales with the
+  // data span — daily for short windows, monthly/quarterly for multi-year data.
+  // Renders nothing when no date is available.
   const dateField = useMemo(() => detectDateField(rows), [rows])
-  const weekly = useMemo(() => {
-    if (!dateField) return []
-    return weeklyCounts(rows, fieldArr, word, dateField)
+  const freq = useMemo(() => {
+    if (!dateField) return { buckets: [] as { key: string; count: number }[], granularity: null as TimeBucket | null }
+    return frequencyBuckets(rows, fieldArr, word, dateField)
   }, [rows, fieldArr, word, dateField])
+
+  // Denominator for % share — number of rows with non-empty text in any
+  // analyzed field (matches what the user thinks of as "comments").
+  const totalCommentsWithText = useMemo(() => {
+    let n = 0
+    for (const row of rows) {
+      for (const f of fieldArr) {
+        const v = row[f]
+        if (typeof v === 'string' && v.trim()) { n++; break }
+      }
+    }
+    return n
+  }, [rows, fieldArr])
 
   // Pre-compute the matching comments for the comments view (only when needed)
   const matchingComments = useMemo(function() {
@@ -218,7 +282,14 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
         <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 16, color: '#6b7280' }}>
           <span><span style={{ color: '#059669', fontWeight: 700 }}>{posPct}%</span> positive</span>
           <span><span style={{ color: '#dc2626', fontWeight: 700 }}>{negPct}%</span> negative</span>
-          <span style={{ marginLeft: 'auto', color: '#9ca3af' }}>{result.totalMentions.toLocaleString()} mentions</span>
+          <span style={{ marginLeft: 'auto', color: '#9ca3af' }}>
+            {result.totalMentions.toLocaleString()} mentions
+            {totalCommentsWithText > 0 && (
+              <span style={{ marginLeft: 4, color: '#6b7280', fontWeight: 600 }}>
+                · {((result.totalMentions / totalCommentsWithText) * 100).toFixed(1)}% of comments
+              </span>
+            )}
+          </span>
         </div>
 
         {/* Opinion list */}
@@ -265,8 +336,8 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
 
         {/* Body */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          {/* Frequency-by-week sparkline at the very top — visible across both views */}
-          <FrequencyChart buckets={weekly} />
+          {/* Frequency time-series sparkline at the very top — visible across both views */}
+          <FrequencyChart buckets={freq.buckets} granularity={freq.granularity} />
           {content}
         </div>
 
