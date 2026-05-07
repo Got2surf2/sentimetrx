@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,9 @@ function bullet(text: string, opts?: any) {
 }
 
 export async function GET() {
+  const denied = await requireAdmin()
+  if (denied) return denied
+
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Datanautix'

@@ -6,6 +6,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -953,6 +954,9 @@ function buildLongDeck(pptx: any) {
 
 // ── Route handler ──────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const denied = await requireAdmin()
+  if (denied) return denied
+
   const url = new URL(req.url)
   const length = (url.searchParams.get('length') || 'short').toLowerCase()
   const isLong = length === 'long' || length === 'full'
