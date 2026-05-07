@@ -355,6 +355,26 @@ export function buildTownHallSchema(): SchemaConfig {
   return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }
 }
 
+export function buildBotSchema(): SchemaConfig {
+  // One row per (assistant question, user response) pair from
+  // bot_conversation_turns. session_id groups turns within a conversation.
+  // Mirrors buildTownHallSchema where it makes sense (sentiment, language,
+  // open-ended user_message as primary text) but drops the topic/topic_type
+  // fields since per-turn topics aren't tagged for bot conversations.
+  const fields: SchemaFieldConfig[] = [
+    { field: 'turn_id',          type: 'id' },
+    { field: 'session_id',       type: 'categorical', label: 'Conversation' },
+    { field: 'turn_number',      type: 'numeric',     label: 'Turn Number' },
+    { field: 'bot_message',      type: 'open-ended',  sqt: 'open-text', label: 'Bot Message' },
+    { field: 'user_message',     type: 'open-ended',  sqt: 'open-text', label: 'User Message' },
+    { field: 'language',         type: 'categorical', label: 'Language' },
+    { field: 'sentiment',        type: 'categorical', label: 'Sentiment' },
+    { field: 'sentiment_score',  type: 'numeric',     label: 'Sentiment Score', min: -1, max: 1 },
+    { field: 'responded_at',     type: 'date',        label: 'Date' },
+  ]
+  return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }
+}
+
 export function buildSubstackSchema(): SchemaConfig {
   const fields: SchemaFieldConfig[] = [
     { field: 'comment_id',      type: 'id' },

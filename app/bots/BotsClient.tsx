@@ -293,6 +293,9 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
                   </button>
                 </div>
 
+                {/* Analyze in Ana — full-width, mirrors TownHall card pattern */}
+                <AnalyzeInAnaButton botId={bot.id} />
+
                 {/* Delete — small, below pills */}
                 <div style={{ textAlign: 'right' }}>
                   <button
@@ -312,5 +315,37 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
         })}
       </div>
     </div>
+  )
+}
+
+// Inline component: Sync this bot's conversations into a Ana dataset and
+// jump straight into TextMine. Mirrors the TH-card "Analyze in Ana" pattern.
+function AnalyzeInAnaButton({ botId }: { botId: string }) {
+  const [loading, setLoading] = useState(false)
+  const [status,  setStatus]  = useState('')
+
+  async function handleClick() {
+    setLoading(true)
+    setStatus('Syncing...')
+    try {
+      const res = await fetch('/api/bots/' + botId + '/analyze', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setStatus(data.error || 'Failed'); setLoading(false); return }
+      window.location.href = '/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : '')
+    } catch {
+      setStatus('Error')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button onClick={handleClick} disabled={loading}
+      style={{
+        marginTop: 8, padding: '6px 0', borderRadius: 8, fontWeight: 600, fontSize: 11,
+        background: '#E8632A', color: 'white', border: 'none',
+        cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1, width: '100%',
+      }}>
+      {loading ? status : '📊 Analyze in Ana'}
+    </button>
   )
 }
