@@ -3,7 +3,8 @@
 // Renders a word cloud in two modes: frequency (interactive toggle) and grouped by theme.
 // Words sized by corpus frequency. Theme-keyword words colored by their theme.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useTransition } from 'react'
+import LottieLoader from '@/components/ui/LottieLoader'
 import { Theme, THEME_PALETTE, getRowText } from '@/lib/themeUtils'
 import { extractOpinions } from '@/lib/opinionMining'
 
@@ -104,73 +105,84 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   const [activeThemes, setActiveThemes] = useState<Set<number> | null>(null)
   const [hoveredTheme, setHoveredTheme] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
+  // useTransition lets the showAll click reflect immediately while the
+  // (cheap-after-memoization) re-render runs concurrently. isPending drives
+  // the Lottie spinner overlay so the user sees the click landed even on
+  // larger datasets where the React commit takes a beat.
+  const [isPending, startTransition] = useTransition()
 
-  const fields = activeFields && activeFields.length ? activeFields : (activeField ? [activeField] : [])
-  if (!themes || !themes.length || !fields.length) return null
+  // Stable `fields` array — without this, every render produces a new array
+  // reference and busts the memos below.
+  const fields = useMemo(
+    () => (activeFields && activeFields.length ? activeFields : (activeField ? [activeField] : [])),
+    [activeFields, activeField],
+  )
 
-  // Per-row lowercased text — used for row-based counts so a word that
-  // appears 3× in one comment counts as 1, not 3. Row counts match the
-  // intuitive meaning of "X% of comments mention food" and align with
-  // the percentage shown in OpinionPopover / ThemePopover.
-  const perRowText: string[] = parsedData.map(function(r) { return getRowText(r, fields).toLowerCase() })
-
-  // Build word-to-theme map from keywords
-  const wordThemeMap: Record<string, { themeIdx: number; freq: number }> = {}
-  themes.forEach(function(t, idx) {
-    ;(t.keywords || []).forEach(function(kw) {
-      if (!wordThemeMap[kw.toLowerCase()]) wordThemeMap[kw.toLowerCase()] = { themeIdx: idx, freq: 0 }
-    })
-  })
-
-  // Count keyword frequencies — number of ROWS (comments) where the keyword appears.
-  Object.keys(wordThemeMap).forEach(function(w) {
-    const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
-    var rows = 0
-    for (var i = 0; i < perRowText.length; i++) {
-      if (re.test(perRowText[i])) rows++
+  // ── Heavy frequency computation, memoized ──────────────────────────────
+  // 45K rows × 100+ keywords = several million substring tests. Was running
+  // on every render (so showAll toggle felt laggy on big datasets). Now
+  // recomputes only when parsedData / themes / fields change. showAll
+  // toggling no longer touches this — just re-runs the cheap filter below.
+  const cloudData = useMemo(function() {
+    if (!themes || !themes.length || !fields.length) {
+      return { perRowText: [] as string[], wordThemeMap: {} as Record<string, { themeIdx: number; freq: number }>, freqMap: {} as Record<string, number>, allWords: [] as WordEntry[], maxFreq: 1, total: 0 }
     }
-    wordThemeMap[w].freq = rows
-  })
+    const perRowText: string[] = parsedData.map(function(r) { return getRowText(r, fields).toLowerCase() })
 
-  // Build general word frequency for non-keyword words — also row-based so
-  // it's consistent with the keyword counts. Each word counts once per row.
-  const freqMap: Record<string, number> = {}
-  for (var i = 0; i < perRowText.length; i++) {
-    const seen = new Set<string>()
-    const tokens = perRowText[i].split(/\W+/)
-    for (var j = 0; j < tokens.length; j++) {
-      const w = tokens[j]
-      if (w.length > 3 && !STOP_WORDS.has(w) && !seen.has(w)) {
-        seen.add(w)
-        freqMap[w] = (freqMap[w] || 0) + 1
+    const wordThemeMap: Record<string, { themeIdx: number; freq: number }> = {}
+    themes.forEach(function(t, idx) {
+      ;(t.keywords || []).forEach(function(kw) {
+        if (!wordThemeMap[kw.toLowerCase()]) wordThemeMap[kw.toLowerCase()] = { themeIdx: idx, freq: 0 }
+      })
+    })
+    Object.keys(wordThemeMap).forEach(function(w) {
+      const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+      var rows = 0
+      for (var i = 0; i < perRowText.length; i++) if (re.test(perRowText[i])) rows++
+      wordThemeMap[w].freq = rows
+    })
+
+    const freqMap: Record<string, number> = {}
+    for (var i = 0; i < perRowText.length; i++) {
+      const seen = new Set<string>()
+      const tokens = perRowText[i].split(/\W+/)
+      for (var j = 0; j < tokens.length; j++) {
+        const w = tokens[j]
+        if (w.length > 3 && !STOP_WORDS.has(w) && !seen.has(w)) {
+          seen.add(w)
+          freqMap[w] = (freqMap[w] || 0) + 1
+        }
       }
     }
-  }
 
-  // Include all theme keywords that have matches, PLUS ensure every theme with count>0
-  // on the themes page has at least its top keyword represented (even if local freq is low)
-  const allWords: WordEntry[] = Object.entries(wordThemeMap)
-    .filter(function([, v]) { return v.freq > 0 })
-    .map(function([w, v]) { return { word: w, freq: v.freq, themeIdx: v.themeIdx } })
+    const allWords: WordEntry[] = Object.entries(wordThemeMap)
+      .filter(function([, v]) { return v.freq > 0 })
+      .map(function([w, v]) { return { word: w, freq: v.freq, themeIdx: v.themeIdx } })
+    const representedThemes = new Set(allWords.map(function(w) { return w.themeIdx }))
+    themes.forEach(function(t, idx) {
+      if (t.count > 0 && !representedThemes.has(idx)) {
+        var topKw = (t.keywords || [])[0]
+        if (topKw) allWords.push({ word: topKw.toLowerCase(), freq: Math.max(1, t.count), themeIdx: idx })
+      }
+    })
+    const covered = new Set(Object.keys(wordThemeMap))
+    Object.entries(freqMap).sort(function(a, b) { return b[1] - a[1] }).slice(0, 20).forEach(function([w, f]) {
+      if (!covered.has(w) && f > 0) allWords.push({ word: w, freq: f, themeIdx: -1 })
+    })
 
-  // Ensure every theme with count>0 on the themes page has at least one keyword in the cloud
-  const representedThemes = new Set(allWords.map(function(w) { return w.themeIdx }))
-  themes.forEach(function(t, idx) {
-    if (t.count > 0 && !representedThemes.has(idx)) {
-      // Pick the first keyword and give it the theme's count as frequency
-      var topKw = (t.keywords || [])[0]
-      if (topKw) allWords.push({ word: topKw.toLowerCase(), freq: Math.max(1, t.count), themeIdx: idx })
-    }
-  })
+    const maxFreq = Math.max.apply(Math, allWords.map(function(w) { return w.freq }).concat([1]))
+    const total = parsedData.filter(function(r) {
+      return fields.some(function(f) { return String(r[f] || '').trim().length > 0 })
+    }).length
 
-  const covered = new Set(Object.keys(wordThemeMap))
-  Object.entries(freqMap).sort(function(a, b) { return b[1] - a[1] }).slice(0, 20).forEach(function([w, f]) {
-    if (!covered.has(w) && f > 0) allWords.push({ word: w, freq: f, themeIdx: -1 })
-  })
+    return { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total }
+  }, [parsedData, themes, fields])
+
+  if (!themes || !themes.length || !fields.length) return null
+
+  const { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total } = cloudData
 
   if (!allWords.length) return null
-
-  const maxFreq = Math.max(...allWords.map(function(w) { return w.freq }), 1)
 
   // Compute per-word average score for signal strength sizing (Reddit only)
   var wordSignals = useMemo(function() {
@@ -246,12 +258,8 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     setActiveThemes(n.size === all.size ? null : n)
   }
 
-  // Canonical denominator across the analytics page: count rows where ANY
-  // analyzed text field has content. Matches themeUtils.computeThemeStats,
-  // OpinionPopover, and ThemePopover so theme/word percentages stay consistent.
-  const total = parsedData.filter(function(r) {
-    return fields.some(function(f) { return String(r[f] || '').trim().length > 0 })
-  }).length
+  // `total` is now memoized inside cloudData (canonical denominator: rows
+  // with text in any analyzed field). Same value, same purpose.
 
   // Filter themes by 3% threshold (same logic as Themes page) unless showAll
   var MIN_PCT = 3
@@ -286,13 +294,30 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   }
 
   return (
-    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '18px 20px' }}>
-      {/* Mode toggle + Show All */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+    <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '18px 20px', position: 'relative' as const }}>
+      {/* Mode toggle + Show All — sticky so the controls stay visible while
+          the user scrolls through long theme lists. Solid bg + extended
+          horizontal padding so scrolled words don't bleed through underneath. */}
+      <div style={{
+        position: 'sticky' as const, top: 0, zIndex: 5,
+        background: T.bgCard,
+        margin: '-18px -20px 16px',
+        padding: '14px 20px',
+        borderBottom: '1px solid ' + T.borderMid,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: 8,
+      }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>Theme Clouds</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
-            <input type="checkbox" checked={showAll} onChange={function() { setShowAll(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+            <input type="checkbox" checked={showAll}
+              onChange={function() {
+                // setShowAll runs inside a transition so React commits the
+                // checkbox state immediately and renders the heavier word
+                // grid concurrently. isPending drives the Lottie overlay.
+                startTransition(function() { setShowAll(function(v) { return !v }) })
+              }}
+              style={{ accentColor: T.accent }} />
             Show all
           </label>
           {!showAll && visibleThemeIdxs.size < themes.length && (
@@ -359,6 +384,20 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
         </div>
         </div>
       </div>
+
+      {/* Pending overlay — shown while React is busy committing a Show all
+          toggle (or any future transition). Sits above the body so the user
+          gets immediate visual confirmation that their click landed. */}
+      {isPending && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 4,
+          background: 'rgba(255,255,255,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 12,
+        }}>
+          <LottieLoader size={80} message={showAll ? 'Showing all themes…' : 'Filtering to top themes…'} />
+        </div>
+      )}
 
       {/* Frequency mode */}
       {cloudMode === 'frequency' && (
