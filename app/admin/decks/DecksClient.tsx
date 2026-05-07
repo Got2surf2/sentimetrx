@@ -19,8 +19,8 @@ type Deck = {
 const DECKS: Deck[] = [
   {
     href: '/api/pitch-deck',
-    filename: 'SentimetRx-Pitch-Deck.pptx',
-    title: 'SentimetRx Investor Pitch',
+    filename: 'Sentimetrx-Pitch-Deck.pptx',
+    title: 'Sentimetrx Investor Pitch',
     subtitle: 'The original product-company narrative — AI-native conversational feedback platform.',
     audience: 'Early-stage investors · seed / Series A',
     slides: '14 slides',

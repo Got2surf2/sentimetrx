@@ -216,8 +216,8 @@ function slideAILedVsAdded(pptx: any, pg: number) {
     ['Collection', 'Static form + AI summary', 'Conversational agent, real-time LLM adaptation'],
     ['Text analysis', 'Bolted-on 3rd-party (Clarabridge, Lexalytics)', 'Native theme / sentiment / persona / intent pipeline'],
     ['Multi-source ingest', 'Separate vendor stack', 'One LLM pipeline: surveys + reviews + social + regulatory'],
-    ['Bots', 'Separate vendor (Drift, Intercom)', 'Native RAG agents, same data model'],
-    ['Live group sessions', 'Human-only / none', 'AI-moderated town halls with topic detection + deflection'],
+    ['Agents', 'Separate vendor (Drift, Intercom)', 'Native RAG agents, same data model'],
+    ['Live group sessions', 'Human-only / none', 'AI-moderated PulseIQ sessions with topic detection + deflection'],
     ['Reporting', 'Human analyst writes the deck', 'AI-generated tiered PPTX (Exec / Stakeholder / Full Team)'],
   ]
   const rows = [head, ...data.map(r => r.map((c, i) => ({
@@ -244,8 +244,8 @@ function slideWhatWeBuilt(pptx: any, pg: number) {
   const modules = [
     { name: 'Sarina', desc: 'Conversational survey agent\n~10× response rate vs. email', color: DN.sarinaBlue },
     { name: 'Ana', desc: 'AI text analytics\n<5% of human-team time', color: DN.teal },
-    { name: 'Bots', desc: 'Public-facing RAG agents\nwith conversation analytics', color: DN.hermesOrange },
-    { name: 'Town Halls', desc: 'AI-moderated live group\nfeedback sessions', color: DN.gold },
+    { name: 'Agents', desc: 'Public-facing RAG agents\nwith conversation analytics', color: DN.hermesOrange },
+    { name: 'PulseIQ', desc: 'AI-moderated live group\nfeedback sessions', color: DN.gold },
     { name: 'Listening', desc: 'Multi-source ingest:\nGoogle, Reddit, social, Reg.gov', color: DN.navy },
     { name: 'Campaigns', desc: 'Multi-provider email/SMS\nwith AI personalization', color: DN.tealDark },
   ]
@@ -307,7 +307,7 @@ function slidePlaybook(pptx: any, pg: number) {
     { n: '1', title: 'Acquire', body: 'Services firm at 3–6× EBITDA — founder-owned, sticky contracts, labor-heavy, AI-vulnerable', color: DN.sarinaBlue },
     { n: '2', title: 'Migrate', body: 'Move delivery onto Sentimetrx within 90 days — same 90-day playbook every deal', color: DN.teal },
     { n: '3', title: 'Expand Margin', body: 'Replace analyst hours with Ana — target +1,000 to 1,500 bps EBITDA in Year 1', color: DN.hermesOrange },
-    { n: '4', title: 'Cross-Sell', body: 'Add modules they did not have — bots, town halls, multi-source listening', color: DN.gold },
+    { n: '4', title: 'Cross-Sell', body: 'Add modules they did not have — agents, PulseIQ, multi-source listening', color: DN.gold },
     { n: '5', title: 'Compound', body: 'Each deal deepens data moat, vertical IP, and benchmark value across the platform', color: DN.navy },
   ]
   steps.forEach((step, i) => {
@@ -411,7 +411,7 @@ function slideWhyUs(pptx: any, pg: number) {
   addFooter(s, pg)
   s.addText([
     bullet('AI-native platform live with named enterprise clients across 5 verticals — no R&D risk for the LP'),
-    bullet('Six revenue-bearing modules: Sarina, Ana, Bots, Town Halls, Listening, Campaigns'),
+    bullet('Six revenue-bearing modules: Sarina, Ana, Agents, PulseIQ, Listening, Campaigns'),
     bullet('Multi-tenant infrastructure built for white-label and feature-gated migration of acquired customers'),
     bullet('Founder/operator combining product, AI, and vertical expertise'),
     bullet('Hiring: VP M&A, Operating Partner, Board Chair (ex-Forsta / InMoment / Qualtrics target)'),
@@ -543,12 +543,12 @@ function slideIncumbentFragility(pptx: any, pg: number) {
 
 function slideAILedCollection(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'AI-Led Collection', 'Sarina + Bots + Town Halls — every channel is conversational')
+  addHeader(s, 'AI-Led Collection', 'Sarina + Agents + PulseIQ — every channel is conversational')
   addFooter(s, pg)
   const cols = [
     { name: 'Sarina', tag: 'Surveys', desc: 'LLM-driven clarifiers on vague responses\nSentiment-adaptive flow\nIn-conversation persona inference\n15 question types\nMulti-language auto-translation', color: DN.sarinaBlue },
-    { name: 'Bots', tag: 'Public Agents', desc: 'RAG-based public chat agents\nHybrid retrieval (semantic + lexical + fuzzy)\nPer-turn sentiment & intent capture\nConversation review & theme drift detection', color: DN.teal },
-    { name: 'Town Halls', tag: 'Live Sessions', desc: 'AI-moderated live group sessions\nOrganic topic detection\nDeflection routing\nTrending-phrase analysis\nProjectable live screens', color: DN.hermesOrange },
+    { name: 'Agents', tag: 'RAG / Public Chat', desc: 'RAG-based public chat agents\nHybrid retrieval (semantic + lexical + fuzzy)\nPer-turn sentiment & intent capture\nConversation review & theme drift detection', color: DN.teal },
+    { name: 'PulseIQ', tag: 'Live Sessions', desc: 'AI-moderated live group sessions\nOrganic topic detection\nDeflection routing\nTrending-phrase analysis\nProjectable live screens', color: DN.hermesOrange },
   ]
   cols.forEach((c, i) => {
     const x = 0.6 + i * 4.15
@@ -642,10 +642,10 @@ function slideAILedInfra(pptx: any, pg: number) {
   addFooter(s, pg)
   s.addText([
     bullet('Org-scoped row-level security; per-org and per-user feature gating'),
-    bullet('White-labeled survey, bot, and town hall surfaces'),
-    bullet('Feature flags per module (Analyze, Bots, Social, Google Reviews, Reddit, Substack)'),
+    bullet('White-labeled survey, agent, and PulseIQ surfaces'),
+    bullet('Feature flags per module (Analyze, Agents, Social, Google Reviews, Reddit, Substack)'),
     bullet('Usage accounting and cost attribution per org'),
-    bullet('Public endpoints for surveys, bots, town halls — no-auth, rate-limited'),
+    bullet('Public endpoints for surveys, agents, PulseIQ — no-auth, rate-limited'),
     bullet('Sentry monitoring; SOC 2 Type II posture in flight'),
   ], { x: 0.6, y: 1.4, w: 12.1, h: 4.0 })
   s.addShape('rect', { x: 0.6, y: 5.6, w: 12.1, h: 1.1, fill: { color: DN.navy }, rectRadius: 0.1 })
@@ -667,7 +667,7 @@ function slideProofPoints(pptx: any, pg: number) {
   const data = [
     ['Sports & Venues', 'Harlem Globetrotters, Orlando Magic', 'Sarina + Ana'],
     ['Hospitality', 'JW Marriott, Red Lobster, Orlando resorts', 'Sarina + Listening + Ana'],
-    ['Education', 'UCF Rosen College', 'Sarina + Town Hall'],
+    ['Education', 'UCF Rosen College', 'Sarina + PulseIQ'],
     ['Airports', 'MCO Airport', 'Sarina + Listening'],
     ['Political / Civic', 'Multiple voter research engagements', 'Sarina + Ana + Reg.gov'],
   ]
@@ -698,7 +698,7 @@ function slideTargetArchetypes(pptx: any, pg: number) {
   addFooter(s, pg)
   const types = [
     { n: '1', tag: 'PRIMARY', name: 'Boutique qualitative MR firms', desc: '$1–8M revenue · founder-owned · 60%+ services labor cost · the platform margin lever lands hardest here', color: DN.sarinaBlue },
-    { n: '2', tag: 'SECONDARY', name: 'Reputation / review monitoring agencies', desc: 'Manual reporting workflows ripe for automation · captive customer base · clean cross-sell of bots + listening', color: DN.teal },
+    { n: '2', tag: 'SECONDARY', name: 'Reputation / review monitoring agencies', desc: 'Manual reporting workflows ripe for automation · captive customer base · clean cross-sell of agents + listening', color: DN.teal },
     { n: '3', tag: 'TERTIARY', name: 'CX consultancies with retainer books', desc: 'Recurring revenue · captive customers · services-heavy delivery converts to platform pull-through', color: DN.hermesOrange },
     { n: '4', tag: 'PHASE 3 ONLY', name: 'SaaS tuck-ins', desc: 'Capability fill-in only (e.g., niche reputation tool) · NOT core thesis · do not lead the roll-up here', color: DN.slate },
   ]

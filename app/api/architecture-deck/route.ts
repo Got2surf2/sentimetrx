@@ -156,7 +156,7 @@ function slideStack(pptx: any, pg: number) {
     ['Language',          'TypeScript',                                  'strict mode · Supabase types auto-generated'],
     ['Hosting',           'Vercel Functions (Node.js)',                  '60s timeout · 45s code budget · 10MB body limit on uploads'],
     ['Database',          'Supabase Postgres',                            'RLS-everywhere · 35 SQL migrations · managed PgBouncer pooling'],
-    ['Vector store',      'pgvector',                                     '1536d cosine · HNSW index on bot knowledge chunks'],
+    ['Vector store',      'pgvector',                                     '1536d cosine · HNSW index on agent knowledge chunks'],
     ['Auth',              'Supabase Auth',                                'PKCE flow · /auth/callback · magic-link + password + invite'],
     ['Primary LLM',       'Anthropic Claude',                             'Haiku 4.5 (fast) · Sonnet 4 / 4.6 (standard, advanced) · prompt cache'],
     ['Embeddings',        'OpenAI text-embedding-3-small',                '1536 dim · indexed in pgvector with HNSW'],
@@ -219,7 +219,7 @@ function slideAICenter(pptx: any, pg: number) {
 
   type Spoke = { side: 'L' | 'R'; row: number; title: string; body: string; color: string }
   const spokes: Spoke[] = [
-    { side: 'L', row: 0, title: 'CONVERSATIONAL COLLECTION', body: 'Sarina · Bots · Town Halls.\nReal-time clarifiers, persona inference.', color: DN.sarinaBlue },
+    { side: 'L', row: 0, title: 'CONVERSATIONAL COLLECTION', body: 'Sarina · Agents · PulseIQ.\nReal-time clarifiers, persona inference.', color: DN.sarinaBlue },
     { side: 'L', row: 1, title: 'MULTI-SOURCE INGESTION',    body: 'Reviews · Reddit · Social · Reg.gov · Files.\nNormalized to one pipeline.',  color: DN.teal },
     { side: 'L', row: 2, title: 'HYBRID RETRIEVAL',           body: 'OpenAI 1536d + tsvector + pg_trgm.\nSub-10ms vector search.',               color: DN.hermesOrange },
     { side: 'L', row: 3, title: 'THEME & SENTIMENT',          body: 'Ana. 4–7 themes per dataset.\nNegation-aware. Significance labeled.',       color: DN.gold },
@@ -296,8 +296,8 @@ function slideDataLayer(pptx: any, pg: number) {
   const domains = [
     { name: 'Surveys',       count: '6 tables', tables: 'studies · responses · study_response_stats · study_designs · drafts · share_tokens', color: DN.sarinaBlue },
     { name: 'Datasets',      count: '4 tables', tables: 'datasets · dataset_rows_flat · dataset_state · archived_dataset_rows*', color: DN.teal },
-    { name: 'Bots / RAG',    count: '5 tables', tables: 'bots · bot_knowledge_chunks · bot_conversation_turns · bot_conversation_reviews · bot_session_personas', color: DN.hermesOrange },
-    { name: 'Town Halls',    count: '4 tables', tables: 'townhall_sessions · townhall_themes · townhall_turns · townhall_participant_responses', color: DN.gold },
+    { name: 'Agents / RAG',  count: '5 tables', tables: 'bots · bot_knowledge_chunks · bot_conversation_turns · bot_conversation_reviews · bot_session_personas', color: DN.hermesOrange },
+    { name: 'PulseIQ',       count: '4 tables', tables: 'townhall_sessions · townhall_themes · townhall_turns · townhall_participant_responses', color: DN.gold },
     { name: 'Campaigns',     count: '5 tables', tables: 'campaigns · campaign_respondents · campaign_emails · campaign_send_log · campaign_schedules', color: DN.purple },
     { name: 'Listening',     count: '8 tables', tables: 'review_sources · review_source_locations · reddit_sources · reddit_source_threads · social_connections · social_comments · social_moderation_log · social_alert_rules', color: DN.green },
     { name: 'Org / Audit',   count: '7 tables', tables: 'organizations · users · invites · org_transfers · usage_logs · user_logins · collections', color: DN.navy },
@@ -357,7 +357,7 @@ function slideAuthZ(pptx: any, pg: number) {
     ['Authenticated app reads',  'auth.uid() (JWT)',          'RLS: USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()))'],
     ['Authenticated mutations',  'auth.uid()',                'Service-role on server with explicit user/org check before write'],
     ['Public survey response',   'anon',                      'study_guid lookup + study.status=\'active\' + payload schema validation'],
-    ['Public bot chat',          'anon + IP rate limit',      'lib/rateLimit per IP + bot.id check + content moderation pre/post'],
+    ['Public agent chat',        'anon + IP rate limit',      'lib/rateLimit per IP + bot.id check + content moderation pre/post'],
     ['Shared analytics link',    'token in URL',              'shared_links table token validation; readonly snapshot only'],
     ['Cron jobs',                'CRON_SECRET bearer',        'Header check before any logic; service-role for writes'],
     ['Admin views',              'is_admin_org=true',         'Same RLS, but admins query across orgs via app-layer escalation'],
@@ -430,8 +430,8 @@ function slideAIFeatureMap(pptx: any, pg: number) {
     ['Intent detection',    'lib/opinionMining.ts',               'fast',     'donate / volunteer / event / custom intents'],
     ['Deflection',          'lib/deflect.ts · /api/deflect',      'fast',     'Off-topic and sensitive content routing'],
     ['Theme mining',        'lib/analyzeTheme.ts',                'standard', '4–7 themes, 8–15 keywords, AI-extracted'],
-    ['Town hall topic AI',  '/api/cron/townhall-theme-detection', 'standard', 'Live theme suggestion + organic detection'],
-    ['Bot review',          '/api/cron/bot-conversation-review',  'fast',     'Theme drift, knowledge gaps every 4 hr'],
+    ['PulseIQ topic AI',    '/api/cron/townhall-theme-detection', 'standard', 'Live theme suggestion + organic detection'],
+    ['Agent review',        '/api/cron/bot-conversation-review',  'fast',     'Theme drift, knowledge gaps every 4 hr'],
     ['Knowledge retrieval', 'search_knowledge_semantic() (SQL)',  'embed',    'Hybrid: cosine 4× + tsv 2× + trigram blend'],
     ['Moderation',          'lib/moderation.ts (OpenAI)',         'embed',    'Harassment / hate / violence / sexual / self-harm / identity'],
     ['Report generation',   'lib/reportPlan.ts',                  'advanced', 'Tiered PPTX deck (Exec / Stakeholder / Full Team)'],
@@ -461,7 +461,7 @@ function slideRetrieval(pptx: any, pg: number) {
     { label: 'Vector search',         detail: 'pgvector HNSW · cosine distance',                      color: DN.hermesOrange },
     { label: 'Full-text + trigram',   detail: 'tsvector + websearch_to_tsquery + pg_trgm similarity', color: DN.gold },
     { label: 'Blend & rank',          detail: 'cosine ×4 + tsv rank ×2 + trigram (top-K cutoff)',    color: DN.purple },
-    { label: 'Return chunks',         detail: 'Top results → bot system prompt or analytics surface', color: DN.navy },
+    { label: 'Return chunks',         detail: 'Top results → agent system prompt or analytics surface', color: DN.navy },
   ]
   stages.forEach((stage, i) => {
     const y = 1.3 + i * 0.85
@@ -529,7 +529,7 @@ function slideCron(pptx: any, pg: number) {
     ['campaign-scheduler',         '15 min',  'Bulk email send + scheduled reminders'],
     ['review-sync',                '6 hr',    'Google Reviews fetch (DataForSEO 2-phase task)'],
     ['townhall-theme-detection',   '15 min',  'Live theme mining and pivot suggestions'],
-    ['bot-conversation-review',    '4 hr',    'AI drift detection on bot sessions per bot.review_interval_hours'],
+    ['bot-conversation-review',    '4 hr',    'AI drift detection on agent sessions per bot.review_interval_hours'],
     ['social-sync',                '15 min',  'Facebook + Instagram comment ingestion + moderation'],
     ['social-token-refresh',       'Daily',   'Meta Graph long-lived OAuth token rotation'],
     ['cleanup-shared-links',       '03:00 UTC', 'Expire orphaned share tokens'],
@@ -547,7 +547,7 @@ function slideCron(pptx: any, pg: number) {
 
   s.addText([
     bullet('Every cron handler bails at TIME_BUDGET_MS=45000 — never lets Vercel kill mid-write', { fontSize: 12 }),
-    bullet('Per-invocation work limits (e.g., 5 bots per review pass, 3 concurrent review tasks) keep tail latency predictable', { fontSize: 12 }),
+    bullet('Per-invocation work limits (e.g., 5 agents per review pass, 3 concurrent review tasks) keep tail latency predictable', { fontSize: 12 }),
     bullet('Failures are logged to Sentry with cron job name; partial success is the default — next run picks up where this one stopped', { fontSize: 12 }),
   ], { x: 0.5, y: 5.4, w: 12.3, h: 1.7 })
 }
@@ -640,9 +640,9 @@ function slideAuditability(pptx: any, pg: number) {
       bullets: [
         'AI audits its own conversations every 4 hours (configurable)',
         'Detects theme drift (DRIFT: YES/NO), knowledge gaps, drop-off patterns',
-        'Stores summary + boolean flags per bot per review window',
+        'Stores summary + boolean flags per agent per review window',
         'Driven by /api/cron/bot-conversation-review',
-        'Surfaced in bot dashboard for human review',
+        'Surfaced in agent dashboard for human review',
       ],
     },
     {
@@ -698,7 +698,7 @@ function slideFailureDR(pptx: any, pg: number) {
     bullet('Idempotency keys on every ingest source — comment_id, document_id, response.guid, pending_task ID'),
     bullet('Retry semantics: 60-second backoff on 429s, exponential on transient failures, partial success on cron'),
     bullet('Transactional writes: Supabase RPC functions (search_dataset_rows, archive_dataset) wrap multi-table mutations'),
-    bullet('ON DELETE CASCADE on all foreign keys (users → responses, bots → conversations, datasets → rows) — no orphans'),
+    bullet('ON DELETE CASCADE on all foreign keys (users → responses, agents → conversations, datasets → rows) — no orphans'),
     bullet('Soft delete for datasets: archive_dataset() moves rows to archived_dataset_rows_flat (recoverable)'),
     bullet('Webhook + cron-backstop pattern: Meta sends a webhook AND we sweep every 15 min in case it failed'),
   ], { x: 0.6, y: 1.25, w: 12.1, h: 5.7 })
@@ -794,7 +794,7 @@ function slideTheBet(pptx: any, pg: number) {
     { n: '1', t: 'AI is the spine, not a feature.',         d: 'Every workflow has an LLM in the loop by design. Refactoring this in is a years-long replatform for incumbents.' },
     { n: '2', t: 'Multi-tenancy is a column, not a fork.',  d: 'org_id everywhere + RLS at the DB. Acquired customers move in with an INSERT, not an integration project.' },
     { n: '3', t: 'Cost is observable per org from day one.', d: 'usage_logs joins lib/usageRates.ts in real time. We defend gross margin on every acquired book.' },
-    { n: '4', t: 'Audit is built, not bolted.',              d: 'AI self-audit (bot reviews) + auth audit + usage audit. SOC 2 Type II is a closure, not an excavation.' },
+    { n: '4', t: 'Audit is built, not bolted.',              d: 'AI self-audit (agent reviews) + auth audit + usage audit. SOC 2 Type II is a closure, not an excavation.' },
   ]
   bets.forEach((b, i) => {
     const y = 2.6 + i * 1.05

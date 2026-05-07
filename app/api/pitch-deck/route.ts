@@ -1,4 +1,4 @@
-// GET /api/pitch-deck — generates and downloads a SentimetRx investor pitch deck PPTX
+// GET /api/pitch-deck — generates and downloads a Sentimetrx investor pitch deck PPTX
 
 import { NextResponse } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
@@ -49,7 +49,7 @@ export async function GET() {
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Datanautix'
-  pptx.title = 'SentimetRx — Investor Pitch Deck'
+  pptx.title = 'Sentimetrx — Investor Pitch Deck'
   let pg = 0
 
   // ═══════════════════════════════════════════════════════════════
@@ -58,7 +58,7 @@ export async function GET() {
   const s1 = pptx.addSlide()
   pg++
   s1.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
-  s1.addText('SentimetRx', { x: 0.8, y: 1.8, w: 11, h: 1.2, fontSize: 54, fontFace: 'Arial', color: DN.white, bold: true })
+  s1.addText('Sentimetrx', { x: 0.8, y: 1.8, w: 11, h: 1.2, fontSize: 54, fontFace: 'Arial', color: DN.white, bold: true })
   s1.addText('AI-Powered Conversational Feedback Intelligence', { x: 0.8, y: 3.0, w: 11, h: 0.8, fontSize: 22, fontFace: 'Arial', color: DN.sarinaBlue })
   s1.addText('The first platform that collects, understands, and acts on\ncustomer feedback — in one place, in any language.', { x: 0.8, y: 4.2, w: 10, h: 0.9, fontSize: 16, fontFace: 'Arial', color: DN.slate, lineSpacing: 24 })
   s1.addText('sentimetrx.ai', { x: 0.8, y: 6.2, w: 5, h: 0.4, fontSize: 14, fontFace: 'Arial', color: DN.gold, bold: true })
@@ -105,11 +105,11 @@ export async function GET() {
   pg++
   addHeader(s4, 'The Solution')
   addFooter(s4, pg)
-  s4.addText('SentimetRx replaces static surveys with AI-powered conversations that adapt in real-time.', {
+  s4.addText('Sentimetrx replaces static surveys with AI-powered conversations that adapt in real-time.', {
     x: 0.6, y: 1.3, w: 12, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.sarinaBlue, bold: true
   })
   s4.addText([
-    bullet('A branded AI bot greets respondents by name and asks questions conversationally'),
+    bullet('A branded AI agent greets respondents by name and asks questions conversationally'),
     bullet('AI detects vague answers and asks intelligent follow-ups to get the "why"'),
     bullet('Handles off-topic questions gracefully with smart deflection'),
     bullet('Works in 15 languages — one-click AI translation of the entire study'),
@@ -129,7 +129,7 @@ export async function GET() {
   addFooter(s5, pg)
   const cols = [
     { title: 'AI Study Wizard', desc: 'Select industry + goals.\nAI generates complete study.\n7 blueprints, 18 industries.', color: DN.sarinaBlue },
-    { title: 'Conversational Collection', desc: 'Respondents chat with your bot.\nAI clarifiers probe short answers.\n15 question types + skip logic.', color: DN.teal },
+    { title: 'Conversational Collection', desc: 'Respondents chat with your agent.\nAI clarifiers probe short answers.\n15 question types + skip logic.', color: DN.teal },
     { title: 'Built-in Campaigns', desc: 'Rich email templates.\nMerge tags, reminders, tracking.\nNo Mailchimp required.', color: DN.hermesOrange },
     { title: '15 Languages', desc: 'One-click AI translation.\nAuto-translate responses.\nNo translation vendors.', color: DN.gold },
     { title: 'AI Analytics', desc: 'Theme extraction at scale.\nStatistical significance.\nPPTX, HTML, CSV export.', color: DN.navy },
@@ -155,9 +155,9 @@ export async function GET() {
   s6.addText('Q: How was your experience? ★★★★ (4/5)\nAny comments? "It was good"\n\nInsight captured:\nPositive sentiment. That\'s it.', {
     x: 0.8, y: 2.2, w: 5.2, h: 3.5, fontSize: 13, fontFace: 'Arial', color: DN.ink, lineSpacing: 22
   })
-  // SentimetRx side
+  // Sentimetrx side
   s6.addShape('rect', { x: 7, y: 1.4, w: 5.8, h: 4.8, fill: { color: 'F0FDF4' }, rectRadius: 0.1 })
-  s6.addText('SentimetRx Conversation', { x: 7, y: 1.5, w: 5.8, h: 0.5, fontSize: 14, fontFace: 'Arial', color: '16A34A', bold: true, align: 'center' })
+  s6.addText('Sentimetrx Conversation', { x: 7, y: 1.5, w: 5.8, h: 0.5, fontSize: 14, fontFace: 'Arial', color: '16A34A', bold: true, align: 'center' })
   s6.addText('Bot: How was your experience? [emoji scale]\nUser: [taps Good — 4 stars]\nBot: What made it good?\nUser: Staff was friendly but we waited a long time\nBot: Could you tell me more about the wait?\nUser: 45 min for a table with a reservation\n\nInsight: staff driver + 45-min wait + reservation issue', {
     x: 7.3, y: 2.2, w: 5.2, h: 3.5, fontSize: 12, fontFace: 'Arial', color: DN.ink, lineSpacing: 20
   })
@@ -179,7 +179,7 @@ export async function GET() {
     { text: '', options: { fill: { color: DN.navy }, color: DN.white, bold: true, fontSize: 10 } },
     { text: 'Survey Tools', options: { fill: { color: DN.navy }, color: DN.white, bold: true, fontSize: 10 } },
     { text: 'Text Analytics', options: { fill: { color: DN.navy }, color: DN.white, bold: true, fontSize: 10 } },
-    { text: 'SentimetRx', options: { fill: { color: DN.sarinaBlue }, color: DN.white, bold: true, fontSize: 10 } },
+    { text: 'Sentimetrx', options: { fill: { color: DN.sarinaBlue }, color: DN.white, bold: true, fontSize: 10 } },
   ]
   const tRows = [
     ['Collection', 'Static forms', 'None (needs data)', 'AI conversation'],
@@ -376,7 +376,7 @@ export async function GET() {
   return new NextResponse(uint8, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': 'attachment; filename="SentimetRx-Pitch-Deck.pptx"',
+      'Content-Disposition': 'attachment; filename="Sentimetrx-Pitch-Deck.pptx"',
     },
   })
 }
