@@ -2,7 +2,7 @@
 // GET ?format=csv|xlsx — export all conversations for a bot
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
 
 export const dynamic = 'force-dynamic'
@@ -14,10 +14,21 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: bot } = await supabase.from('bots').select('id, name').eq('id', params.id).single()
-  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  const service = createServiceRoleClient()
+  const { data: userData } = await service
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
 
-  const { data: turns } = await supabase
+  const { data: bot } = await service.from('bots').select('id, name, org_id').eq('id', params.id).single()
+  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { data: turns } = await service
     .from('bot_conversation_turns')
     .select('session_id, turn_number, role, content, language, created_at')
     .eq('bot_id', params.id)

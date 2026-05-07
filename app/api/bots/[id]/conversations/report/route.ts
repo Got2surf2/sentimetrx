@@ -3,7 +3,7 @@
 // Analyzes: common questions, patterns, drop-off points, theme consistency
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 
@@ -17,20 +17,31 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Verify user owns this bot
-  const { data: bot } = await supabase
+  const service = createServiceRoleClient()
+  const { data: userData } = await service
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
+
+  const { data: bot } = await service
     .from('bots')
-    .select('id, name, system_prompt')
+    .select('id, name, system_prompt, org_id')
     .eq('id', params.id)
     .single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: any = {}
   try { body = await req.json() } catch {}
   const since = body.since || new Date(Date.now() - 7 * 86400000).toISOString() // default: last 7 days
 
-  // Fetch recent conversations
-  const { data: turns } = await supabase
+  // Fetch recent conversations via service role (RLS would block admin
+  // cross-org reads otherwise — Phase E parity).
+  const { data: turns } = await service
     .from('bot_conversation_turns')
     .select('session_id, turn_number, role, content, created_at')
     .eq('bot_id', params.id)

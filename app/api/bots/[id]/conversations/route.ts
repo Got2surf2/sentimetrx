@@ -1,9 +1,11 @@
 // app/api/bots/[id]/conversations/route.ts
-// GET — list conversation sessions for a bot (authenticated, org-scoped)
-// Returns session summaries: session_id, first message, turn count, timestamps
+// GET — list conversation sessions for a bot. Authenticated.
+// Org scope: same-org users go through RLS as usual; admins of an admin
+// org can read across orgs (Phase E parity — they can see other-org bot
+// cards, so they need to see their conversations too).
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -15,16 +17,24 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Verify user owns this bot via org
-  const { data: botCheck } = await supabase
-    .from('bots')
-    .select('id, org_id')
-    .eq('id', params.id)
-    .single()
-  if (!botCheck) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  const service = createServiceRoleClient()
 
-  // Get conversation sessions with summary stats
-  const { data: turns, error } = await supabase
+  const { data: userData } = await service
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
+
+  // Verify bot exists + access check
+  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Use service role for reads — RLS would otherwise block admin cross-org.
+  const { data: turns, error } = await service
     .from('bot_conversation_turns')
     .select('session_id, turn_number, role, content, content_flags, source, created_at')
     .eq('bot_id', params.id)
@@ -34,7 +44,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Get personas for this bot's sessions
-  const { data: personas } = await supabase
+  const { data: personas } = await service
     .from('bot_session_personas')
     .select('session_id, persona')
     .eq('bot_id', params.id)
