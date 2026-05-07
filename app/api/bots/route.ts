@@ -43,25 +43,16 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Compute live session counts from conversation turns
+  // Live session counts via RPC (count distinct session_id per bot in
+  // Postgres, served from idx_bot_turns_session). Replaces a fetch-all-turns
+  // + JS dedup that scaled with total turn count.
   const botIds = (data || []).map(function(b: any) { return b.id })
   const sessionCounts: Record<string, number> = {}
 
   if (botIds.length > 0) {
-    const { data: turns } = await service
-      .from('bot_conversation_turns')
-      .select('bot_id, session_id')
-      .in('bot_id', botIds)
-
-    if (turns) {
-      const seen: Record<string, Set<string>> = {}
-      for (const t of turns) {
-        if (!seen[t.bot_id]) seen[t.bot_id] = new Set()
-        seen[t.bot_id].add(t.session_id)
-      }
-      for (const [bid, sessions] of Object.entries(seen)) {
-        sessionCounts[bid] = sessions.size
-      }
+    const { data: rows } = await service.rpc('bot_session_counts_for_ids', { p_bot_ids: botIds })
+    for (const row of (rows || [])) {
+      sessionCounts[row.bot_id] = Number(row.session_count) || 0
     }
   }
 
