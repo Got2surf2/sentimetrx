@@ -120,21 +120,27 @@ export function computeFieldStats(
     }
   }
   if (detectedType === 'categorical' || detectedType === 'date') {
-    return { ...base, values: uniqueArr.sort() }
+    // Cap distinct-value list to keep schema JSON bounded. 500 matches the
+    // analytics CategoricalSummary cap. Categorical type detection already
+    // bounds at uniqueArr.length <= 30, so this cap only fires for date.
+    return { ...base, values: uniqueArr.sort().slice(0, 500) }
   }
   return base
 }
 
+// All scans below use the full passed-in `rows` array — not a head slice.
+// The previous 200-row cap caused the same bias as Insights: on data ordered
+// by region/group/member (e.g. collection rows concatenated by member), the
+// schema's f.values allowlist captured only the first member's values, which
+// then propagated into the Filter UI and any consumer reading f.values.
 export function autoDetectSchema(rows: Record<string, unknown>[]): SchemaConfig {
   if (rows.length === 0) {
     return { fields: [], autoDetected: true, version: 1 }
   }
-  const columns    = Object.keys(rows[0])
-  const sampleSize = Math.min(rows.length, 200)
-  const sample     = rows.slice(0, sampleSize)
+  const columns = Object.keys(rows[0])
 
   const fields: SchemaFieldConfig[] = columns.map(function(col) {
-    const colValues = sample.map(function(r) { return r[col] })
+    const colValues = rows.map(function(r) { return r[col] })
     const stats     = computeFieldStats(col, colValues)
     const colLower  = col.toLowerCase()
     // Override date by column name pattern
@@ -159,10 +165,8 @@ export function enrichSchemaWithStats(
   schema: SchemaConfig,
   rows: Record<string, unknown>[]
 ): SchemaConfig {
-  const sampleSize = Math.min(rows.length, 200)
-  const sample     = rows.slice(0, sampleSize)
-  const enriched   = schema.fields.map(function(f) {
-    const colValues = sample.map(function(r) { return r[f.field] })
+  const enriched = schema.fields.map(function(f) {
+    const colValues = rows.map(function(r) { return r[f.field] })
     const stats     = computeFieldStats(f.field, colValues)
     return { ...f, ...stats, type: f.type, sqt: f.sqt }
   })

@@ -31,8 +31,13 @@ export async function GET(_req: Request, { params }: Props) {
     return NextResponse.json({ error: 'No schema' }, { status: 404 })
   }
 
-  const schema = stateRow.schema_config as { fields: { field: string; type: string; label?: string }[] }
-  const fields = schema.fields || []
+  const schema = stateRow.schema_config as { fields: { field: string; type: string; label?: string; hidden?: boolean }[] }
+  // Honor schema-hidden fields. Charts/Stats already filter type='ignore'|'id'
+  // via the schema; the Filter UI now does the same. The boolean `hidden`
+  // flag is also respected for symmetry with SchemaFieldConfig's typed shape.
+  const fields = (schema.fields || []).filter(function(f) {
+    return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true
+  })
   const service = createServiceRoleClient()
 
   // Check if flat table has data for this dataset

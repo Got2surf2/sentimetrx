@@ -30,6 +30,9 @@ interface Props {
   color?: string
   /** Optional numeric field (rating / NPS / score) — used to color comment cards. */
   ratingField?: string | null
+  /** Field names hidden by the schema (type='ignore'|'id' or hidden=true).
+   *  Excluded from Insights candidate detection. */
+  hiddenFields?: string[]
   onClose: () => void
 }
 
@@ -47,8 +50,12 @@ function highlightKeywords(text: string, keywords: string[]): React.ReactNode[] 
   })
 }
 
-export default function ThemePopover({ theme, rows, fields, color, ratingField, onClose }: Props) {
+export default function ThemePopover({ theme, rows, fields, color, ratingField, hiddenFields, onClose }: Props) {
   const fieldArr = Array.isArray(fields) ? fields : [fields]
+  const insightsExclude = useMemo(
+    () => Array.from(new Set([...fieldArr, ...(hiddenFields || [])])),
+    [fieldArr, hiddenFields],
+  )
   const keywords = useMemo(() => (theme.keywords || []).filter(Boolean), [theme.keywords])
   const dateField = useMemo(() => detectDateField(rows), [rows])
   const [view, setView] = useState<'overview' | 'insights'>('overview')
@@ -194,7 +201,7 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
         {/* Body */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {view === 'insights' ? (
-            <TermInsights rows={rows} textFields={fieldArr} targets={keywords} termLabel={theme.name} onDrillDown={handleDrillDown} />
+            <TermInsights rows={rows} textFields={insightsExclude} targets={keywords} termLabel={theme.name} onDrillDown={handleDrillDown} />
           ) : (
             <>
           {insightFilter && (

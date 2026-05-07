@@ -1695,7 +1695,7 @@ function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; sc
       virtualFields.push({ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) })
     }
   })
-  var cols = schema.filter(function(f) { return f.type !== 'ignore' }).concat(virtualFields)
+  var cols = schema.filter(function(f) { return f.type !== 'ignore' && f.hidden !== true }).concat(virtualFields)
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -1753,7 +1753,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     writeSession(_displayKey, { barMode: barMode, barStack: barStack, barOrient: barOrient, smartAxes: smartAxes, activePalette: activePalette })
   }, [barMode, barStack, barOrient, smartAxes, activePalette, _displayKey])
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
-  var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
+  var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   var hasData = analytics && analytics.totalRows > 0
 
   // Inject virtual "Themes" field if theme model exists

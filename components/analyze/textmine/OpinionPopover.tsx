@@ -27,6 +27,9 @@ interface Props {
   fields: string | string[]
   /** Optional numeric field (rating / NPS / score) — used to color comment cards. */
   ratingField?: string | null
+  /** Field names hidden by the schema (type='ignore'|'id' or hidden=true).
+   *  Excluded from Insights candidate detection. */
+  hiddenFields?: string[]
   onClose: () => void
 }
 
@@ -43,11 +46,15 @@ function highlightWord(text: string, word: string): React.ReactNode[] {
   })
 }
 
-export default function OpinionPopover({ word, rows, fields, ratingField, onClose }: Props) {
+export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, onClose }: Props) {
   const [view, setView] = useState<'opinions' | 'comments' | 'insights'>('opinions')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
 
   const fieldArr = Array.isArray(fields) ? fields : [fields]
+  const insightsExclude = useMemo(
+    () => Array.from(new Set([...fieldArr, ...(hiddenFields || [])])),
+    [fieldArr, hiddenFields],
+  )
 
   const result = useMemo(function() {
     return extractOpinions(rows, fields, word)
@@ -109,7 +116,7 @@ export default function OpinionPopover({ word, rows, fields, ratingField, onClos
   let content: React.ReactNode
 
   if (view === 'insights') {
-    content = <TermInsights rows={rows} textFields={fieldArr} targets={[word]} termLabel={word} onDrillDown={handleDrillDown} />
+    content = <TermInsights rows={rows} textFields={insightsExclude} targets={[word]} termLabel={word} onDrillDown={handleDrillDown} />
   } else if (view === 'comments') {
     const filterChip = insightFilter && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>

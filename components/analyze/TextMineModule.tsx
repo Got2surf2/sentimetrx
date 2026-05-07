@@ -840,6 +840,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const totalRows = analytics?.totalRows ?? 0
   const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows } = useRows()
 
+  // Fields the user has hidden in the Schema editor. Honored across analysis
+  // surfaces — Insights here, the Filter UI server-side, and Charts/Stats
+  // already filter on f.type !== 'ignore' / 'id'. The hidden boolean is a
+  // separate flag in the schema config; we respect it here for symmetry.
+  const hiddenFields: string[] = useMemo(
+    () => (schema?.fields || [])
+      .filter(function(f: any) { return f.type === 'ignore' || f.type === 'id' || f.hidden === true })
+      .map(function(f: any) { return f.field as string }),
+    [schema?.fields],
+  )
+
   const [computing, setComputing] = useState(false)
   const [displayThemes, setDisplayThemes] = useState<ThemeModel | null>(null)
   const overallBoxRef = useRef<{ topBoxPct: number; bottomBoxPct: number } | null>(null)
@@ -1822,6 +1833,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       rows={filteredRows}
                                       fields={activeField || (themes ? themes.fieldName : '')}
                                       ratingField={ratingField}
+                                      hiddenFields={hiddenFields}
                                       onClose={function() { setOpinionWord(null) }}
                                     />
                                   </div>
@@ -1967,6 +1979,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         rows={filteredRows}
                         fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                         ratingField={ratingField}
+                        hiddenFields={hiddenFields}
                         onClose={function() { setOpinionWord(null) }}
                       />
                     </div>
@@ -1978,6 +1991,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                       color={themeColors[themePopoverIdx]?.text}
                       ratingField={ratingField}
+                      hiddenFields={hiddenFields}
                       onClose={function() { setThemePopoverIdx(null) }}
                     />
                   )}

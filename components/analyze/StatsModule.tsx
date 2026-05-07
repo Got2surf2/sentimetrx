@@ -1722,7 +1722,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var [mcRunning, setMcRunning] = useState(false)
 
   var allSchemaFields = useMemo(function() {
-    return schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
+    return schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   }, [schema.fields])
 
   var hasThemes = !!(themeModel && themeModel.themes && themeModel.themes.length > 0)
