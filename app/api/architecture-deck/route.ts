@@ -201,6 +201,91 @@ function slideSystemArch(pptx: any, pg: number) {
   })
 }
 
+// ── 3.5 AI at the Center (hub-and-spoke) ───────────────────────────────────
+function slideAICenter(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'AI at the Center', 'Every workflow touches the same AI layer — by design')
+  addFooter(s, pg)
+
+  // ── Hub geometry ──
+  const hubX = 4.4, hubY = 3.4, hubW = 4.55, hubH = 1.5
+
+  // ── Spoke cards: 4 left, 4 right ──
+  const cardW = 3.3, cardH = 1.05
+  const leftX = 0.5
+  const rightX = 9.5
+  const yPositions = [1.7, 2.95, 4.2, 5.45]
+
+  type Spoke = { side: 'L' | 'R'; row: number; title: string; body: string; color: string }
+  const spokes: Spoke[] = [
+    { side: 'L', row: 0, title: 'CONVERSATIONAL COLLECTION', body: 'Sarina · Bots · Town Halls.\nReal-time clarifiers, persona inference.', color: DN.sarinaBlue },
+    { side: 'L', row: 1, title: 'MULTI-SOURCE INGESTION',    body: 'Reviews · Reddit · Social · Reg.gov · Files.\nNormalized to one pipeline.',  color: DN.teal },
+    { side: 'L', row: 2, title: 'HYBRID RETRIEVAL',           body: 'OpenAI 1536d + tsvector + pg_trgm.\nSub-10ms vector search.',               color: DN.hermesOrange },
+    { side: 'L', row: 3, title: 'THEME & SENTIMENT',          body: 'Ana. 4–7 themes per dataset.\nNegation-aware. Significance labeled.',       color: DN.gold },
+    { side: 'R', row: 0, title: 'PERSONA & INTENT',           body: 'Mid-conversation extraction.\nDonate / volunteer / event / custom.',         color: DN.purple },
+    { side: 'R', row: 1, title: 'CONTENT SAFETY',             body: 'OpenAI Moderation API.\n14 input regex + AI refusal detection.',             color: DN.red },
+    { side: 'R', row: 2, title: 'AUTO REPORTING',             body: 'Tiered PPTX. AI quote selection.\npptxgenjs + Plotly.',                       color: DN.green },
+    { side: 'R', row: 3, title: 'SELF-AUDIT & FINOPS',        body: 'bot_conversation_reviews.\nusage_logs · per-org cost in real time.',         color: DN.navy },
+  ]
+
+  // ── Draw connector lines first (they sit behind the hub + cards) ──
+  spokes.forEach(sp => {
+    const cardMidY = yPositions[sp.row] + cardH / 2
+    if (sp.side === 'L') {
+      // horizontal connector from right edge of left card to hub left edge
+      s.addShape('rect', { x: leftX + cardW, y: cardMidY - 0.015, w: hubX - (leftX + cardW), h: 0.03, fill: { color: 'B7C4D1' }, line: { width: 0 } })
+      // gold dot at hub end
+      s.addShape('ellipse', { x: hubX - 0.07, y: cardMidY - 0.07, w: 0.14, h: 0.14, fill: { color: DN.gold }, line: { width: 0 } })
+    } else {
+      const startX = hubX + hubW
+      s.addShape('rect', { x: startX, y: cardMidY - 0.015, w: rightX - startX, h: 0.03, fill: { color: 'B7C4D1' }, line: { width: 0 } })
+      s.addShape('ellipse', { x: startX - 0.07, y: cardMidY - 0.07, w: 0.14, h: 0.14, fill: { color: DN.gold }, line: { width: 0 } })
+    }
+  })
+
+  // ── Hub (drawn after connectors so it covers their endpoints visually) ──
+  // outer halo
+  s.addShape('ellipse', { x: hubX - 0.45, y: hubY - 0.45, w: hubW + 0.9, h: hubH + 0.9, fill: { color: DN.sarinaBlue, transparency: 80 }, line: { width: 0 } })
+  // mid halo
+  s.addShape('ellipse', { x: hubX - 0.2, y: hubY - 0.2, w: hubW + 0.4, h: hubH + 0.4, fill: { color: DN.teal, transparency: 60 }, line: { width: 0 } })
+  // core ellipse
+  s.addShape('ellipse', { x: hubX, y: hubY, w: hubW, h: hubH, fill: { color: DN.navy }, line: { color: DN.gold, width: 2 } })
+  s.addText('AI LAYER', {
+    x: hubX, y: hubY + 0.15, w: hubW, h: 0.55,
+    fontSize: 26, fontFace: 'Arial', color: DN.gold, bold: true, align: 'center', valign: 'middle', charSpacing: 6,
+  })
+  s.addText('LLM router  ·  Embeddings  ·  Moderation  ·  Prompt cache  ·  Usage logging', {
+    x: hubX + 0.1, y: hubY + 0.78, w: hubW - 0.2, h: 0.5,
+    fontSize: 11, fontFace: 'Arial', color: DN.white, italic: true, align: 'center', valign: 'middle',
+  })
+
+  // ── Spoke cards (drawn last so they sit on top) ──
+  spokes.forEach(sp => {
+    const x = sp.side === 'L' ? leftX : rightX
+    const y = yPositions[sp.row]
+    s.addShape('rect', { x, y, w: cardW, h: cardH, fill: { color: DN.white }, rectRadius: 0.08, line: { color: DN.slateLight, width: 0.75 } })
+    // accent strip on hub-facing edge
+    if (sp.side === 'L') {
+      s.addShape('rect', { x: x + cardW - 0.1, y, w: 0.1, h: cardH, fill: { color: sp.color }, rectRadius: 0.04 })
+    } else {
+      s.addShape('rect', { x, y, w: 0.1, h: cardH, fill: { color: sp.color }, rectRadius: 0.04 })
+    }
+    s.addText(sp.title, {
+      x: x + (sp.side === 'L' ? 0.18 : 0.25), y: y + 0.08, w: cardW - 0.4, h: 0.32,
+      fontSize: 11, fontFace: 'Arial', color: sp.color, bold: true, charSpacing: 2, valign: 'middle',
+    })
+    s.addText(sp.body, {
+      x: x + (sp.side === 'L' ? 0.18 : 0.25), y: y + 0.42, w: cardW - 0.4, h: cardH - 0.5,
+      fontSize: 9.5, fontFace: 'Arial', color: DN.ink, valign: 'top', lineSpacing: 14,
+    })
+  })
+
+  // bottom kicker
+  s.addText('Refactoring this in is a years-long replatform for incumbents. We were born here.', {
+    x: 0.5, y: 6.85, w: 12.3, h: 0.3, fontSize: 11, fontFace: 'Arial', color: DN.navy, italic: true, bold: true, align: 'center',
+  })
+}
+
 // ── 4. Data layer (39 tables, six domains) ─────────────────────────────────
 function slideDataLayer(pptx: any, pg: number) {
   const s = pptx.addSlide()
@@ -732,6 +817,7 @@ function buildDeck(pptx: any) {
   slideTLDR(pptx, ++pg)
   slideStack(pptx, ++pg)
   slideSystemArch(pptx, ++pg)
+  slideAICenter(pptx, ++pg)
   slideDataLayer(pptx, ++pg)
   slideMultiTenancy(pptx, ++pg)
   slideAuthZ(pptx, ++pg)
