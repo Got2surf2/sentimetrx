@@ -1725,33 +1725,59 @@ interface SavedChart { id: string; name: string; chartType: string; config: Reco
 export default function ChartsModule({ datasetId, schema, analytics, themeModel, datasetSource }: Props) {
   var rawOpenFields = schema.fields.filter(function(f) { return f.type === 'open-ended' })
   var _themeKey = 'chartTheme_' + datasetId
-  var _savedTheme = readSession<any>(_themeKey)
-  var [themeSourceField, setThemeSourceField] = useState(function() { return _savedTheme?.themeSourceField || (themeModel && themeModel.fieldName) || rawOpenFields[0]?.field || '' })
-  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(function() { return _savedTheme?.activeThemeNames ? new Set(_savedTheme.activeThemeNames) : null })
+  var _displayKey = 'chartDisplay_' + datasetId
+  var _activeChartKey = 'activeChart_' + datasetId
+
+  // All session-persisted state initializes to its default to keep server
+  // and client first renders in sync. A single post-mount useEffect reads
+  // sessionStorage and restores via setters. The chartsRestored gate stops
+  // the writer-effects below from clobbering saved state with defaults.
+  var [themeSourceField, setThemeSourceField] = useState(function() { return (themeModel && themeModel.fieldName) || rawOpenFields[0]?.field || '' })
+  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(null)
   var [enrichKey, setEnrichKey] = useState(0)
+  var [activeChart, setActiveChart] = useState('bar')
+  var [hovered, setHovered] = useState<string | null>(null)
+  var [barMode, setBarMode] = useState<'count' | 'percent' | 'average'>('count')
+  var [barStack, setBarStack] = useState(false)
+  var [barOrient, setBarOrient] = useState<'v' | 'h'>('v')
+  var [smartAxes, setSmartAxes] = useState(true)
+  var [activePalette, setActivePalette] = useState('hermes')
+  var [showPalettePicker, setShowPalettePicker] = useState(false)
+  var [chartsRestored, setChartsRestored] = useState(false)
 
   useEffect(function() {
+    var savedTheme = readSession<any>(_themeKey)
+    if (savedTheme?.themeSourceField) setThemeSourceField(savedTheme.themeSourceField)
+    if (Array.isArray(savedTheme?.activeThemeNames)) setActiveThemeNames(new Set(savedTheme.activeThemeNames))
+
+    var savedChart = readSession<string>(_activeChartKey)
+    if (savedChart) setActiveChart(savedChart)
+
+    var savedDisplay = readSession<any>(_displayKey)
+    if (savedDisplay) {
+      if (savedDisplay.barMode) setBarMode(savedDisplay.barMode)
+      if (typeof savedDisplay.barStack === 'boolean') setBarStack(savedDisplay.barStack)
+      if (savedDisplay.barOrient) setBarOrient(savedDisplay.barOrient)
+      if (typeof savedDisplay.smartAxes === 'boolean') setSmartAxes(savedDisplay.smartAxes)
+      if (savedDisplay.activePalette) setActivePalette(savedDisplay.activePalette)
+    }
+    setChartsRestored(true)
+  }, [_themeKey, _displayKey, _activeChartKey])
+
+  useEffect(function() {
+    if (!chartsRestored) return
     writeSession(_themeKey, { themeSourceField: themeSourceField, activeThemeNames: activeThemeNames ? Array.from(activeThemeNames) : null })
-  }, [themeSourceField, activeThemeNames, _themeKey])
+  }, [chartsRestored, themeSourceField, activeThemeNames, _themeKey])
+
+  useEffect(function() { if (chartsRestored) writeSession(_activeChartKey, activeChart) }, [chartsRestored, activeChart, _activeChartKey])
+
+  useEffect(function() {
+    if (!chartsRestored) return
+    writeSession(_displayKey, { barMode: barMode, barStack: barStack, barOrient: barOrient, smartAxes: smartAxes, activePalette: activePalette })
+  }, [chartsRestored, barMode, barStack, barOrient, smartAxes, activePalette, _displayKey])
 
   // Set enrichment context for useRows — must be before any inner component renders
   _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource }
-
-  var [activeChart, setActiveChart] = useState(function() { return readSession<string>('activeChart_' + datasetId) || 'bar' })
-  useEffect(function() { writeSession('activeChart_' + datasetId, activeChart) }, [activeChart, datasetId])
-  var [hovered, setHovered] = useState<string | null>(null)
-  // Display options — restore from sessionStorage
-  var _displayKey = 'chartDisplay_' + datasetId
-  var _savedDisplay = readSession<any>(_displayKey)
-  var [barMode, setBarMode] = useState<'count' | 'percent' | 'average'>(_savedDisplay?.barMode || 'count')
-  var [barStack, setBarStack] = useState(_savedDisplay?.barStack || false)
-  var [barOrient, setBarOrient] = useState<'v' | 'h'>(_savedDisplay?.barOrient || 'v')
-  var [smartAxes, setSmartAxes] = useState(_savedDisplay?.smartAxes !== undefined ? _savedDisplay.smartAxes : true)
-  var [activePalette, setActivePalette] = useState(_savedDisplay?.activePalette || 'hermes')
-  var [showPalettePicker, setShowPalettePicker] = useState(false)
-  useEffect(function() {
-    writeSession(_displayKey, { barMode: barMode, barStack: barStack, barOrient: barOrient, smartAxes: smartAxes, activePalette: activePalette })
-  }, [barMode, barStack, barOrient, smartAxes, activePalette, _displayKey])
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   var hasData = analytics && analytics.totalRows > 0
@@ -1807,8 +1833,12 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
   // Chart config state — cached per chart type, persisted in sessionStorage across module switches
   var _configKey = 'chartConfigs_' + datasetId
-  var [chartConfigs, setChartConfigs] = useState<Record<string, Record<string, string>>>(function() { return readSession<Record<string, Record<string, string>>>(_configKey) || {} })
-  useEffect(function() { writeSession(_configKey, chartConfigs) }, [chartConfigs, _configKey])
+  var [chartConfigs, setChartConfigs] = useState<Record<string, Record<string, string>>>({})
+  useEffect(function() {
+    var saved = readSession<Record<string, Record<string, string>>>(_configKey)
+    if (saved) setChartConfigs(saved)
+  }, [_configKey])
+  useEffect(function() { if (chartsRestored) writeSession(_configKey, chartConfigs) }, [chartsRestored, chartConfigs, _configKey])
 
   // Update a specific slot in a chart config
   var updateSlot = function(slotKey: string, value: string) {

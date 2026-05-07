@@ -364,10 +364,22 @@ export default function CommentsPanel({
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
   const [colorField, setColorField] = useState('')
+  // sessionStorage default = 2; restore from session post-mount to avoid
+  // hydration mismatch (server has no sessionStorage). The restoredFromSession
+  // gate keeps the writer-effect from clobbering the saved value with the
+  // default before the restore runs.
   var _commKey = 'comments_' + datasetId
-  var _commSaved = readSession<any>(_commKey)
-  const [gridCols, setGridCols] = useState(_commSaved?.gridCols || 2)
-  useEffect(function() { writeSession(_commKey, { gridCols: gridCols }) }, [gridCols, _commKey])
+  const [gridCols, setGridCols] = useState(2)
+  const [commRestored, setCommRestored] = useState(false)
+  useEffect(function() {
+    const saved = readSession<any>(_commKey)
+    if (saved?.gridCols) setGridCols(saved.gridCols)
+    setCommRestored(true)
+  }, [_commKey])
+  useEffect(function() {
+    if (!commRestored) return
+    writeSession(_commKey, { gridCols: gridCols })
+  }, [commRestored, gridCols, _commKey])
 
   // Schema fields available for color-coding (numeric / rating types)
   const colorableFields = useMemo(function() {

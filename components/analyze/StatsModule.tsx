@@ -170,11 +170,18 @@ function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
 // ─── SUB-PANELS ───────────────────────────────────────────────────────────────
 
 function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLevel, datasetId }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; mcResults: Record<string, MCResult>; mcRunning: boolean; confidenceLevel: number; datasetId: string }) {
+  // Defaults-only init to keep server/client first render identical;
+  // sessionStorage restore happens in useEffect post-mount.
   var _dk = 'statsDesc_' + datasetId
-  var _ds = readSession<any>(_dk)
-  var [sel, setSel] = useState(_ds?.sel || numFields[0]?.field || '')
+  var [sel, setSel] = useState(numFields[0]?.field || '')
+  var [descRestored, setDescRestored] = useState(false)
+  useEffect(function() {
+    var saved = readSession<any>(_dk)
+    if (saved?.sel) setSel(saved.sel)
+    setDescRestored(true)
+  }, [_dk])
   useEffect(function() { if (!sel && numFields.length) setSel(numFields[0].field) }, [numFields.length])
-  useEffect(function() { writeSession(_dk, { sel: sel }) }, [sel, _dk])
+  useEffect(function() { if (descRestored) writeSession(_dk, { sel: sel }) }, [descRestored, sel, _dk])
   var selLabel = (function() { var f = numFields.find(function(nf) { return nf.field === sel }); return f && f.label ? f.label : sel })()
 
   var stats = useMemo(function() {
@@ -313,11 +320,20 @@ function DescriptivesPanel({ numFields, data, mcResults, mcRunning, confidenceLe
 
 function CorrelationsPanel({ numFields, data, aliases, datasetId }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string }) {
   var _ck = 'statsCorr_' + datasetId
-  var _cs = readSession<any>(_ck)
-  var [corrType, setCorrType] = useState(_cs?.corrType || 'pearson')
+  var [corrType, setCorrType] = useState('pearson')
   var [selCell, setSelCell] = useState<{ i: number; j: number; f1: string; f2: string; r: number; p: number; n: number } | null>(null)
-  var [excluded, setExcluded] = useState<Set<string>>(function() { return _cs?.excluded ? new Set(_cs.excluded) : new Set() })
-  useEffect(function() { writeSession(_ck, { corrType: corrType, excluded: Array.from(excluded) }) }, [corrType, excluded, _ck])
+  var [excluded, setExcluded] = useState<Set<string>>(function() { return new Set() })
+  var [corrRestored, setCorrRestored] = useState(false)
+  useEffect(function() {
+    var saved = readSession<any>(_ck)
+    if (saved?.corrType) setCorrType(saved.corrType)
+    if (Array.isArray(saved?.excluded)) setExcluded(new Set(saved.excluded))
+    setCorrRestored(true)
+  }, [_ck])
+  useEffect(function() {
+    if (!corrRestored) return
+    writeSession(_ck, { corrType: corrType, excluded: Array.from(excluded) })
+  }, [corrRestored, corrType, excluded, _ck])
 
   var activeFields = numFields.filter(function(f) { return !excluded.has(f.field) })
 
@@ -457,14 +473,25 @@ function CorrelationsPanel({ numFields, data, aliases, datasetId }: { numFields:
 
 function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string }) {
   var _gk = 'statsGroup_' + datasetId
-  var _gs = readSession<any>(_gk)
-  var [testType, setTestType] = useState(_gs?.testType || 'auto')
-  var [numF, setNumF] = useState(_gs?.numF || numFields[0]?.field || '')
-  var [catF, setCatF] = useState(_gs?.catF || catFields[0]?.field || '')
-  var [catF2, setCatF2] = useState(_gs?.catF2 || catFields[1]?.field || catFields[0]?.field || '')
+  var [testType, setTestType] = useState('auto')
+  var [numF, setNumF] = useState(numFields[0]?.field || '')
+  var [catF, setCatF] = useState(catFields[0]?.field || '')
+  var [catF2, setCatF2] = useState(catFields[1]?.field || catFields[0]?.field || '')
+  var [groupRestored, setGroupRestored] = useState(false)
+  useEffect(function() {
+    var saved = readSession<any>(_gk)
+    if (saved?.testType) setTestType(saved.testType)
+    if (saved?.numF) setNumF(saved.numF)
+    if (saved?.catF) setCatF(saved.catF)
+    if (saved?.catF2) setCatF2(saved.catF2)
+    setGroupRestored(true)
+  }, [_gk])
   var [panelDragOver, setPanelDragOver] = useState(false)
 
-  useEffect(function() { writeSession(_gk, { testType: testType, numF: numF, catF: catF, catF2: catF2 }) }, [testType, numF, catF, catF2, _gk])
+  useEffect(function() {
+    if (!groupRestored) return
+    writeSession(_gk, { testType: testType, numF: numF, catF: catF, catF2: catF2 })
+  }, [groupRestored, testType, numF, catF, catF2, _gk])
   useEffect(function() { if (!numF && numFields.length) setNumF(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catF && catFields.length) setCatF(catFields[0].field) }, [catFields.length])
 
@@ -645,12 +672,22 @@ var MAX_PREDICTORS = 12
 
 function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string }) {
   var _rk = 'statsReg_' + datasetId
-  var _rs = readSession<any>(_rk)
-  var [outcomes, setOutcomes] = useState<Set<string>>(function() { return _rs?.outcomes ? new Set(_rs.outcomes) : new Set() })
-  var [predictors, setPredictors] = useState<Set<string>>(function() { return _rs?.predictors ? new Set(_rs.predictors) : new Set() })
-  var [activeOutcome, setActiveOutcome] = useState<string>(_rs?.activeOutcome || '')
+  var [outcomes, setOutcomes] = useState<Set<string>>(function() { return new Set() })
+  var [predictors, setPredictors] = useState<Set<string>>(function() { return new Set() })
+  var [activeOutcome, setActiveOutcome] = useState<string>('')
   var [outcomesOpen, setOutcomesOpen] = useState(true)
-  useEffect(function() { writeSession(_rk, { outcomes: Array.from(outcomes), predictors: Array.from(predictors), activeOutcome: activeOutcome }) }, [outcomes, predictors, activeOutcome, _rk])
+  var [regRestored, setRegRestored] = useState(false)
+  useEffect(function() {
+    var saved = readSession<any>(_rk)
+    if (Array.isArray(saved?.outcomes)) setOutcomes(new Set(saved.outcomes))
+    if (Array.isArray(saved?.predictors)) setPredictors(new Set(saved.predictors))
+    if (saved?.activeOutcome) setActiveOutcome(saved.activeOutcome)
+    setRegRestored(true)
+  }, [_rk])
+  useEffect(function() {
+    if (!regRestored) return
+    writeSession(_rk, { outcomes: Array.from(outcomes), predictors: Array.from(predictors), activeOutcome: activeOutcome })
+  }, [regRestored, outcomes, predictors, activeOutcome, _rk])
 
   var fl2 = function(f: SchemaFieldConfig) { return aliases[f.field] || f.label || f.field }
 
@@ -1286,19 +1323,30 @@ function OutlierAnalysisPanel({ numFields, catFields, data, datasetId }: {
   numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; datasetId: string
 }) {
   var _ok = 'statsOutlier_' + datasetId
-  var _os = readSession<any>(_ok)
-  var [quantField, setQuantField]       = useState(_os?.quantField || numFields[0]?.field || '')
-  var [catField,   setCatField]         = useState(_os?.catField || catFields[0]?.field  || '')
-  var [showAll,    setShowAll]          = useState(_os?.showAll || false)
-  var [threshold,  setThreshold]        = useState(_os?.threshold || 0.05)
+  var [quantField, setQuantField]       = useState(numFields[0]?.field || '')
+  var [catField,   setCatField]         = useState(catFields[0]?.field  || '')
+  var [showAll,    setShowAll]          = useState(false)
+  var [threshold,  setThreshold]        = useState(0.05)
   var [copied,     setCopied]           = useState(false)
+  var [outlierRestored, setOutlierRestored] = useState(false)
+  useEffect(function() {
+    var saved = readSession<any>(_ok)
+    if (saved?.quantField) setQuantField(saved.quantField)
+    if (saved?.catField)   setCatField(saved.catField)
+    if (typeof saved?.showAll === 'boolean') setShowAll(saved.showAll)
+    if (typeof saved?.threshold === 'number') setThreshold(saved.threshold)
+    setOutlierRestored(true)
+  }, [_ok])
   var [outlierDragOver, setOutlierDragOver] = useState(false)
   var [apiKey, setApiKey] = useState('')
   var [aiEnabled, setAiEnabled] = useState(false)
   var [aiLoading, setAiLoading] = useState(false)
   var [aiReport, setAiReport] = useState<string | null>(null)
 
-  useEffect(function() { writeSession(_ok, { quantField: quantField, catField: catField, showAll: showAll, threshold: threshold }) }, [quantField, catField, showAll, threshold, _ok])
+  useEffect(function() {
+    if (!outlierRestored) return
+    writeSession(_ok, { quantField: quantField, catField: catField, showAll: showAll, threshold: threshold })
+  }, [outlierRestored, quantField, catField, showAll, threshold, _ok])
   useEffect(function() { if (!quantField && numFields.length) setQuantField(numFields[0].field) }, [numFields.length])
   useEffect(function() { if (!catField   && catFields.length)  setCatField(catFields[0].field)   }, [catFields.length])
 
@@ -1677,25 +1725,40 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
 }
 
 export default function StatsModule({ datasetId, schema, themeModel, datasetSource }: Props) {
-  // Restore UI state from sessionStorage
+  // Defaults-only init for SSR-safety; restore from sessionStorage post-mount.
   var _statKey = 'stats_' + datasetId
-  var _statSaved = readSession<any>(_statKey)
 
-  var [activePanel, setActivePanel] = useState(_statSaved?.activePanel || 'descriptives')
+  var [activePanel, setActivePanel] = useState('descriptives')
   var [hovered, setHovered] = useState<string | null>(null)
   var [validityOpen, setValidityOpen] = useState(false)
-  var [confidenceLevel, setConfidenceLevel] = useState(_statSaved?.confidenceLevel || 99.5)
-  var [pendingCap, setPendingCap] = useState(_statSaved?.sampleCap || 385)
-  var [pendingConfidence, setPendingConfidence] = useState(_statSaved?.confidenceLevel || 99.5)
+  var [confidenceLevel, setConfidenceLevel] = useState(99.5)
+  var [pendingCap, setPendingCap] = useState(385)
+  var [pendingConfidence, setPendingConfidence] = useState(99.5)
   var shared = useRows()
   var { effectiveFilters: filters } = useFilters()
 
   var STATS_HARD_CAP = 5000
-  var [sampleCap, setSampleCap] = useState(_statSaved?.sampleCap || 2000)
+  var [sampleCap, setSampleCap] = useState(2000)
+  var [statsRestored, setStatsRestored] = useState(false)
 
   useEffect(function() {
+    var saved = readSession<any>(_statKey)
+    if (saved?.activePanel) setActivePanel(saved.activePanel)
+    if (typeof saved?.confidenceLevel === 'number') {
+      setConfidenceLevel(saved.confidenceLevel)
+      setPendingConfidence(saved.confidenceLevel)
+    }
+    if (typeof saved?.sampleCap === 'number') {
+      setSampleCap(saved.sampleCap)
+      setPendingCap(saved.sampleCap)
+    }
+    setStatsRestored(true)
+  }, [_statKey])
+
+  useEffect(function() {
+    if (!statsRestored) return
     writeSession(_statKey, { activePanel: activePanel, confidenceLevel: confidenceLevel, sampleCap: sampleCap })
-  }, [activePanel, confidenceLevel, sampleCap, _statKey])
+  }, [statsRestored, activePanel, confidenceLevel, sampleCap, _statKey])
 
   // Trigger shared row fetch on mount
   useEffect(function() { shared.fetchRows() }, [])
@@ -1729,11 +1792,20 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
 
   var schemaOpenFields = useMemo(function() { return schema.fields.filter(function(f) { return f.type === 'open-ended' }) }, [schema.fields])
   var _stk = 'statsTheme_' + datasetId
-  var _sts = readSession<any>(_stk)
-  var [themeSourceField, setThemeSourceField] = useState(function() { return _sts?.themeSourceField || (themeModel && themeModel.fieldName) || schema.fields.find(function(f) { return f.type === 'open-ended' })?.field || '' })
-  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(function() { return _sts?.activeThemeNames ? new Set(_sts.activeThemeNames) : null })
+  var [themeSourceField, setThemeSourceField] = useState(function() { return (themeModel && themeModel.fieldName) || schema.fields.find(function(f) { return f.type === 'open-ended' })?.field || '' })
+  var [activeThemeNames, setActiveThemeNames] = useState<Set<string> | null>(null)
   var [themeEnrichKey, setThemeEnrichKey] = useState(0)
-  useEffect(function() { writeSession(_stk, { themeSourceField: themeSourceField, activeThemeNames: activeThemeNames ? Array.from(activeThemeNames) : null }) }, [themeSourceField, activeThemeNames, _stk])
+  var [statsThemeRestored, setStatsThemeRestored] = useState(false)
+  useEffect(function() {
+    var saved = readSession<any>(_stk)
+    if (saved?.themeSourceField) setThemeSourceField(saved.themeSourceField)
+    if (Array.isArray(saved?.activeThemeNames)) setActiveThemeNames(new Set(saved.activeThemeNames))
+    setStatsThemeRestored(true)
+  }, [_stk])
+  useEffect(function() {
+    if (!statsThemeRestored) return
+    writeSession(_stk, { themeSourceField: themeSourceField, activeThemeNames: activeThemeNames ? Array.from(activeThemeNames) : null })
+  }, [statsThemeRestored, themeSourceField, activeThemeNames, _stk])
 
   var filteredData = useMemo(function() {
     return applyFilters(rows, filters)
