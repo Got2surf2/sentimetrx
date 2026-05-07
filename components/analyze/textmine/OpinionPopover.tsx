@@ -12,10 +12,110 @@ import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
 
+const HERMES = '#E8632A'
+
 const SENT_COLORS = {
   positive: { text: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
   negative: { text: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
   neutral:  { text: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
+}
+
+// Pick the field most likely to hold a row's date by sniffing the first non-empty
+// value. Returns null if no field looks like a date.
+function detectDateField(rows: Record<string, unknown>[]): string | null {
+  if (rows.length === 0) return null
+  const preferred = ['created_at', 'date', 'published_at', 'reviewed_at', 'completed_at', 'submitted_at', 'timestamp', 'posted_at', 'time']
+  // First pass: known names
+  for (const c of preferred) {
+    for (const r of rows) {
+      const v = r[c]
+      if (typeof v === 'string' && v && !isNaN(Date.parse(v))) return c
+    }
+  }
+  // Second pass: any field whose first non-empty value parses as a plausible date
+  const sampled = rows.slice(0, 100)
+  for (const k of Object.keys(rows[0] || {})) {
+    for (const r of sampled) {
+      const v = r[k]
+      if (typeof v !== 'string' || !v) continue
+      const t = Date.parse(v)
+      if (isNaN(t)) break
+      const y = new Date(t).getUTCFullYear()
+      if (y > 2000 && y < 2100) return k
+      break
+    }
+  }
+  return null
+}
+
+// Compute count-per-week for rows whose text fields contain `word`. Bucket key
+// is the Monday of the week (ISO-style date string).
+function weeklyCounts(
+  rows: Record<string, unknown>[],
+  fieldArr: string[],
+  word: string,
+  dateField: string,
+): { week: string; count: number }[] {
+  const target = word.toLowerCase()
+  const buckets = new Map<string, number>()
+  for (const row of rows) {
+    const dateStr = String(row[dateField] || '')
+    if (!dateStr || isNaN(Date.parse(dateStr))) continue
+    let hit = false
+    for (const f of fieldArr) {
+      const t = String(row[f] || '').toLowerCase()
+      if (t.includes(target)) { hit = true; break }
+    }
+    if (!hit) continue
+    const d = new Date(dateStr)
+    const day = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() - day + 1)
+    d.setUTCHours(0, 0, 0, 0)
+    const key = d.toISOString().slice(0, 10)
+    buckets.set(key, (buckets.get(key) || 0) + 1)
+  }
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([week, count]) => ({ week, count }))
+}
+
+function FrequencyChart({ buckets }: { buckets: { week: string; count: number }[] }) {
+  if (buckets.length < 2) return null
+  const W = 460, H = 64, P = 8
+  const innerW = W - 2 * P
+  const innerH = H - 2 * P
+  const maxCount = Math.max(...buckets.map(b => b.count), 1)
+  const dx = innerW / Math.max(buckets.length - 1, 1)
+  const points = buckets.map((b, i) => ({
+    x: P + i * dx,
+    y: P + innerH - (b.count / maxCount) * innerH,
+    week: b.week,
+    count: b.count,
+  }))
+  const path = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ')
+  const fillPath = path + ' L' + points[points.length - 1].x.toFixed(1) + ' ' + (P + innerH) + ' L' + points[0].x.toFixed(1) + ' ' + (P + innerH) + ' Z'
+  const first = buckets[0].week
+  const last = buckets[buckets.length - 1].week
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em', marginBottom: 4 }}>
+        Frequency by week
+      </div>
+      <svg width="100%" height={H} viewBox={'0 0 ' + W + ' ' + H} preserveAspectRatio="none">
+        <path d={fillPath} fill={HERMES} fillOpacity={0.12} />
+        <path d={path} fill="none" stroke={HERMES} strokeWidth={1.75} />
+        {points.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={HERMES}>
+            <title>{p.week}: {p.count}</title>
+          </circle>
+        ))}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#9ca3af', marginTop: 2 }}>
+        <span>{first}</span>
+        <span>{last}</span>
+      </div>
+    </div>
+  )
 }
 
 interface Props {
@@ -46,6 +146,14 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
   const result = useMemo(function() {
     return extractOpinions(rows, fields, word)
   }, [rows, fields, word])
+
+  // Frequency-by-week sparkline (legacy Ana parity).
+  // Auto-detects a date field on the rows; renders nothing when no date is available.
+  const dateField = useMemo(() => detectDateField(rows), [rows])
+  const weekly = useMemo(() => {
+    if (!dateField) return []
+    return weeklyCounts(rows, fieldArr, word, dateField)
+  }, [rows, fieldArr, word, dateField])
 
   // Pre-compute the matching comments for the comments view (only when needed)
   const matchingComments = useMemo(function() {
@@ -157,6 +265,8 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
 
         {/* Body */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          {/* Frequency-by-week sparkline at the very top — visible across both views */}
+          <FrequencyChart buckets={weekly} />
           {content}
         </div>
 
