@@ -130,7 +130,8 @@ Public presenter display (no auth, aggregate data only):
   - **Seed vs Organic shading**: Seed cards (`source='guide'`) use `#1f2937` background and a blue "Seed" pill; organic cards (`source='auto_detected'`) use `#1e293b` and a green "Organic" pill. No "AI" branding shown — the moderator-facing distinction (planned vs. emerged) is what's surfaced to the audience.
   - Cards only appear once the moderator approves the topic (state → `active`); detected/parked/dismissed are hidden from the public view.
 - **Sentiment bar**: Stacked horizontal (positive/negative/mixed/neutral)
-- **Auto-refresh**: Every 10 seconds. Fetch is `cache: 'no-store'` with cache-busting timestamp; route response sets `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` so newly-approved topics appear immediately.
+- **Auto-refresh**: Every 10 seconds. Fetch is `cache: 'no-store'` with cache-busting timestamp; route response sets `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`.
+- **Direct PostgREST reads**: The live route (`app/api/townhall/live/[sessionId]/route.ts`) bypasses Supabase JS and calls PostgREST directly with `fetch({ cache: 'no-store' })`. Reason: Next.js's automatic `fetch` cache was caching Supabase JS's internal calls in some deployments, ignoring route-level `dynamic = 'force-dynamic'`, which caused the live screen to fall behind moderator approvals/closes. Route also exports `fetchCache = 'force-no-store'` and `revalidate = 0` for belt-and-suspenders.
 
 ---
 

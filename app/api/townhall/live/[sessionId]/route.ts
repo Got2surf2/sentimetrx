@@ -37,8 +37,7 @@ function classifySentiment(pos: number, neg: number): string {
   return 'mixed'
 }
 
-export async function GET(req: NextRequest, { params }: { params: { sessionId: string } }) {
-  const debug = req.nextUrl.searchParams.get('debug') === '1'
+export async function GET(_req: NextRequest, { params }: { params: { sessionId: string } }) {
   const sid = encodeURIComponent(params.sessionId)
 
   // Fetch session — raw PostgREST, no Supabase JS in the hot path
@@ -155,22 +154,6 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
 
   const visibleThemes = enrichedThemes.filter(t => t.state !== 'dismissed' && t.state !== 'detected')
 
-  // Diagnostic payload \u2014 request with ?debug=1 to inspect why a theme might not appear.
-  const debugPayload = debug ? {
-    resolved_session_id: session.id,
-    resolved_session_name: session.name,
-    request_param: params.sessionId,
-    raw_themes_count: (themes || []).length,
-    enriched_count: enrichedThemes.length,
-    visible_count: visibleThemes.length,
-    state_breakdown: (themes || []).reduce((acc: Record<string, number>, t: any) => {
-      acc[t.state || 'null'] = (acc[t.state || 'null'] || 0) + 1
-      return acc
-    }, {}),
-    active_themes: (themes || []).filter((t: any) => t.state === 'active').map((t: any) => ({ id: t.id, label: t.label, source: t.source })),
-    all_themes: (themes || []).map((t: any) => ({ label: t.label, state: t.state, source: t.source })),
-  } : undefined
-
   return NextResponse.json({
     session: {
       id: session.id,
@@ -191,7 +174,6 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     sentiment: sentimentCounts,
     themes: visibleThemes,
     timeline,
-    ...(debugPayload ? { _debug: debugPayload } : {}),
   }, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
   })

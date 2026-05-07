@@ -26,16 +26,6 @@ interface LiveData {
   sentiment: Record<string, number>
   themes: ThemeData[]
   timeline: { time: string; count: number }[]
-  _debug?: {
-    resolved_session_id?: string
-    resolved_session_name?: string
-    request_param?: string
-    raw_themes_count: number
-    state_breakdown: Record<string, number>
-    active_themes: { id: string; label: string; source: string }[]
-    all_themes: { label: string; state: string; source: string }[]
-    visible_count: number
-  }
 }
 
 function Donut({ current, target, size = 56 }: { current: number; target: number; size?: number }) {
@@ -63,22 +53,19 @@ export default function LivePresenter() {
   const [data, setData] = useState<LiveData | null>(null)
   const [error, setError] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  // Show diagnostic banner only when ?debug=1 is in the URL.
-  const debugMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1'
 
   const fetchData = useCallback(async () => {
     try {
-      // cache: no-store + cache-buster to bypass any browser/CDN caching
-      // (without this, newly-approved organic topics didn't appear on live screen)
-      const dbg = debugMode ? '&debug=1' : ''
-      const res = await fetch('/api/townhall/live/' + sessionId + '?t=' + Date.now() + dbg, { cache: 'no-store' })
+      // cache: 'no-store' + cache-busting timestamp so the polled fetch
+      // never gets a stale response from any caching layer.
+      const res = await fetch('/api/townhall/live/' + sessionId + '?t=' + Date.now(), { cache: 'no-store' })
       if (!res.ok) { setError(true); return }
       const d = await res.json()
       setData(d)
       setLastUpdate(new Date())
       setError(false)
     } catch { setError(true) }
-  }, [sessionId, debugMode])
+  }, [sessionId])
 
   useEffect(() => {
     fetchData()
@@ -152,36 +139,6 @@ export default function LivePresenter() {
         </div>
       </div>
 
-      {/* ── Diagnostic banner (only when ?debug=1 is in the URL) ── */}
-      {debugMode && data._debug && (
-        <div style={{ background: '#FEF3C7', color: '#78350F', padding: '12px 32px', fontSize: 13, lineHeight: 1.6, borderBottom: '2px solid #F59E0B' }}>
-          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 14 }}>🔍 Live debug — every topic in this session, straight from the database</div>
-          <div style={{ background: '#FEE9B0', padding: '4px 8px', borderRadius: 4, marginBottom: 6, fontSize: 12 }}>
-            <b>Session:</b> {data._debug.resolved_session_name} — <b>id:</b> <code>{data._debug.resolved_session_id}</code> — <b>fetched at:</b> {new Date().toLocaleTimeString()}
-          </div>
-          <div><b>Total topics:</b> {data._debug.raw_themes_count} — <b>by status:</b> {Object.entries(data._debug.state_breakdown).map(([k, v]) => `${k}=${v}`).join(', ')}</div>
-          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '4px 16px', fontSize: 12 }}>
-            {data._debug.all_themes
-              .slice()
-              .sort((a, b) => a.state.localeCompare(b.state) || a.label.localeCompare(b.label))
-              .map((t, i) => {
-                const stateColor: Record<string, string> = {
-                  active: '#15803D', completed: '#1D4ED8', detected: '#9CA3AF', parked: '#D97706', dismissed: '#6B7280', paused: '#A16207',
-                }
-                return (
-                  <div key={t.label + ':' + i} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                    <span style={{ display: 'inline-block', minWidth: 70, fontWeight: 700, color: stateColor[t.state] || '#374151', textTransform: 'uppercase', fontSize: 10 }}>{t.state}</span>
-                    <span style={{ flex: 1, color: '#374151' }}>{t.label}</span>
-                    <span style={{ fontSize: 10, color: '#9CA3AF' }}>{t.source === 'auto_detected' ? 'organic' : t.source}</span>
-                  </div>
-                )
-              })}
-          </div>
-          <div style={{ marginTop: 10, fontSize: 11, color: '#92400E' }}>
-            Find any topic by name above to see its actual database status. Only <b>active</b> topics appear as live cards on this screen; <b>completed</b> appears in the &ldquo;Closed&rdquo; section; everything else is hidden from the public.
-          </div>
-        </div>
-      )}
 
       {/* ── Main content ────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 0, minHeight: 'calc(100vh - 72px)' }}>
