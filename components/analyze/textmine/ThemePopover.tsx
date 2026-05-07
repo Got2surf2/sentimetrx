@@ -195,7 +195,7 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
                 color: insightFilter.direction === 'more' ? '#059669' : '#dc2626',
                 border: '1px solid ' + (insightFilter.direction === 'more' ? '#a7f3d0' : '#fecaca'),
               }}>
-                {insightFilter.field} = {insightFilter.value}
+                {insightFilter.field === '_collection_label' ? 'Collection' : insightFilter.field} = {insightFilter.value}
                 <button onClick={() => setInsightFilter(null)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}
                   title="Clear filter">×</button>

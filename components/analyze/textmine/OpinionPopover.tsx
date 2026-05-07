@@ -116,7 +116,7 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
           color: insightFilter.direction === 'more' ? '#059669' : '#dc2626',
           border: '1px solid ' + (insightFilter.direction === 'more' ? '#a7f3d0' : '#fecaca'),
         }}>
-          {insightFilter.field} = {insightFilter.value}
+          {insightFilter.field === '_collection_label' ? 'Collection' : insightFilter.field} = {insightFilter.value}
           <button onClick={() => setInsightFilter(null)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}
             title="Clear filter">×</button>
@@ -134,7 +134,7 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {filterChip}
         <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
-          {matchingComments.length.toLocaleString()} comment{matchingComments.length !== 1 ? 's' : ''} containing "{word}"{insightFilter ? ' · ' + insightFilter.field + '=' + insightFilter.value : ''}
+          {matchingComments.length.toLocaleString()} comment{matchingComments.length !== 1 ? 's' : ''} containing "{word}"{insightFilter ? ' · ' + (insightFilter.field === '_collection_label' ? 'Collection' : insightFilter.field) + '=' + insightFilter.value : ''}
         </div>
         {matchingComments.map(function(t, i) {
           return (

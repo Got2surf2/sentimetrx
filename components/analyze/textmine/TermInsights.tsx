@@ -10,6 +10,14 @@
 import { useMemo, useState } from 'react'
 import { computeAllInsightsDetailed, type FieldInsights, type ValueRow } from '@/lib/termInsights'
 
+// Pretty display name for a field key. Special-cases the synthetic columns
+// added by the rows API (e.g. `_collection_label` is the per-member brand
+// name added when unioning a collection).
+function displayFieldName(field: string): string {
+  if (field === '_collection_label') return 'Collection'
+  return field
+}
+
 export interface InsightFilter {
   field: string
   value: string
@@ -46,7 +54,7 @@ function ValueTable({ field, ins, onPick }: { field: string; ins: FieldInsights;
         textTransform: 'uppercase' as const, letterSpacing: '.06em',
         borderBottom: '1px solid #f3f4f6',
       }}>
-        <div>{field} <span style={{ fontWeight: 400, color: '#d1d5db', textTransform: 'none' as const, letterSpacing: 0 }}>· {ins.uniqueValues} values</span></div>
+        <div>{displayFieldName(field)} <span style={{ fontWeight: 400, color: '#d1d5db', textTransform: 'none' as const, letterSpacing: 0 }}>· {ins.uniqueValues} values</span></div>
         <div style={{ textAlign: 'right' as const }}>Matching</div>
         <div style={{ textAlign: 'right' as const }}>Total</div>
         <div style={{ textAlign: 'right' as const }}>Frequency <span style={{ fontWeight: 400, color: '#d1d5db', textTransform: 'none' as const, letterSpacing: 0 }}>({pct(ins.overallFrequency)} overall)</span></div>
@@ -156,7 +164,7 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
                   background: 'transparent', border: 'none', cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{ins.field}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{displayFieldName(ins.field)}</span>
                 <span style={{ fontSize: 11 }}>
                   {ins.moreFrequent ? (
                     <>
