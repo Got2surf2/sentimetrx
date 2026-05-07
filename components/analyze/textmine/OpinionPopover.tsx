@@ -181,6 +181,11 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
               {view === 'comments'
                 ? 'Comments mentioning "' + word + '"'
                 : (result.mode === 'nouns' ? 'What people call "' + word + '"' : 'Opinions about "' + word + '"')}
+              {totalCommentsWithText > 0 && result.totalMentions > 0 && (
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginLeft: 8 }}>
+                  ({((result.totalMentions / totalCommentsWithText) * 100).toFixed(1)}%)
+                </span>
+              )}
             </h3>
           </div>
           <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'×'}</button>

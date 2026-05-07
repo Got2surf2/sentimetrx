@@ -110,6 +110,11 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 style={{ fontSize: 18, fontWeight: 800, color: color || '#111827', margin: 0, lineHeight: 1.3 }}>
               {theme.name}
+              {totalCommentsWithText > 0 && total > 0 && (
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginLeft: 8 }}>
+                  ({pct.toFixed(1)}%)
+                </span>
+              )}
             </h3>
             {theme.description && (
               <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0', lineHeight: 1.45 }}>{theme.description}</p>

@@ -53,10 +53,16 @@ export function frequencyBuckets(
   const lowered = targets.map(t => t.toLowerCase()).filter(Boolean)
   if (lowered.length === 0) return { buckets: [], granularity: null }
 
+  // Drop rows dated in the future (almost certainly bad data — predicted
+  // timestamps, off-by-year typos, etc). A small grace window of one day
+  // catches recent rows whose timezone snaps the date forward.
+  const cutoff = Date.now() + 24 * 60 * 60 * 1000
   const matched: Date[] = []
   for (const row of rows) {
     const dateStr = String(row[dateField] || '')
     if (!dateStr || isNaN(Date.parse(dateStr))) continue
+    const ts = Date.parse(dateStr)
+    if (ts > cutoff) continue
     let hit = false
     for (const f of fieldArr) {
       const t = String(row[f] || '').toLowerCase()
