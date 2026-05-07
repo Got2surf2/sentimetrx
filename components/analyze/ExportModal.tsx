@@ -54,9 +54,9 @@ type Step   = 'mode' | 'quick' | 'builder' | 'generating' | 'done'
 type Format = 'pptx' | 'html'
 type ShareState = 'idle' | 'uploading' | 'done' | 'error'
 
-interface Props { datasetId: string; datasetName: string; datasetSource?: string; onClose: () => void }
+interface Props { datasetId: string; datasetName: string; datasetSource?: string; aiEnabled?: boolean; onClose: () => void }
 
-export default function ExportModal({ datasetId, datasetName, datasetSource, onClose }: Props) {
+export default function ExportModal({ datasetId, datasetName, datasetSource, aiEnabled = false, onClose }: Props) {
   const { effectiveFilters: filters } = useFilters()
   const activeFilterCount = filterCount(filters)
   const [step,         setStep]         = useState<Step>('mode')
@@ -80,21 +80,15 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, onC
   const [impactOEFields,     setImpactOEFields]     = useState<Set<string>>(new Set())
   const [impactScoreFields,  setImpactScoreFields]  = useState<Set<string>>(new Set())
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
-  const [aiEnabled,    setAiEnabled]    = useState(false)
+  // aiEnabled now flows in from DatasetHeader as a prop (the component that
+  // owns the toggle). Was previously a local state polled from localStorage
+  // every 2s — wasteful and a memory-leak risk if the modal closed without
+  // clearing the interval.
   const [shareState,   setShareState]   = useState<ShareState>('idle')
   const [shareUrl,     setShareUrl]     = useState('')
   const [shareExpiry,  setShareExpiry]  = useState('')
   const [shareError,   setShareError]   = useState('')
   const [shareCopied,  setShareCopied]  = useState(false)
-
-  // Read AI toggle from localStorage (syncs with DatasetHeader toggle)
-  useEffect(function() {
-    try { setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1') } catch {}
-    const interval = setInterval(function() {
-      try { setAiEnabled(localStorage.getItem('sentimetrx_ai_enabled') === '1') } catch {}
-    }, 2000)
-    return function() { clearInterval(interval) }
-  }, [])
 
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')

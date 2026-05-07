@@ -117,6 +117,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           datasetId={dataset.id}
           datasetName={dataset.name}
           datasetSource={dataset.source}
+          aiEnabled={aiEnabled}
           onClose={function() { setShowExport(false) }}
         />
       )}
