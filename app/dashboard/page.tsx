@@ -116,18 +116,30 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
         }
       }
     } else {
-      // Fallback: per-study count queries
-      const statPromises = studyIds.map(async (sid: string) => {
-        const { count } = await supabase.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', sid)
-        const { data: lastRow } = await supabase.from('responses').select('completed_at').eq('study_id', sid).order('completed_at', { ascending: false }).limit(1)
-        return { sid, total: count || 0, lastResponse: lastRow?.[0]?.completed_at || null }
-      })
-      const results = await Promise.all(statPromises)
-      for (const r of results) {
-        const study = studies.find((s: any) => s.id === r.sid) as any
-        const ratingLabel = study?.config?.experienceRatingLabel || 'Avg Rating'
-        statsMap[r.sid] = { total: r.total, completeCount: r.total, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel, lastResponse: r.lastResponse }
+      // Fallback: single grouped aggregate via study_stats_for_ids RPC.
+      // Pre-fill zeros so studies with zero responses (and any RPC failure)
+      // still get a stats row.
+      for (const sid of studyIds) {
+        const study = studies.find((s: any) => s.id === sid) as any
+        statsMap[sid] = { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: study?.config?.experienceRatingLabel || 'Avg Rating', lastResponse: null }
       }
+      try {
+        const { data: liveStats } = await supabase.rpc('study_stats_for_ids', { p_study_ids: studyIds })
+        for (const row of (liveStats || [])) {
+          const study = studies.find((s: any) => s.id === row.study_id) as any
+          const ratingLabel = study?.config?.experienceRatingLabel || 'Avg Rating'
+          statsMap[row.study_id] = {
+            total:         row.total_responses || 0,
+            completeCount: row.complete_count  || 0,
+            promoters:     row.promoters       || 0,
+            passives:      row.passives        || 0,
+            detractors:    row.detractors      || 0,
+            avgScore:      row.avg_experience ? Math.round(row.avg_experience * 10) / 10 : 0,
+            ratingLabel,
+            lastResponse:  row.last_response_at || null,
+          }
+        }
+      } catch {}
     }
   }
 
