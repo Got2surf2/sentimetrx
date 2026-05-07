@@ -53,26 +53,31 @@ export async function GET(req: NextRequest) {
     activeUsersByOrg[r.org_id].add(r.user_id)
   }
 
-  // Per-org counts using count queries (not fetching all rows)
-  const result = await Promise.all(orgs.map(async (org: any) => {
-    const [userResult, studyResult] = await Promise.all([
-      service.from('users').select('id', { count: 'exact', head: true }).eq('org_id', org.id),
-      service.from('studies').select('id').eq('org_id', org.id),
-    ])
-    const studyIds = (studyResult.data || []).map((s: any) => s.id)
-    let responseCount = 0
-    if (studyIds.length > 0) {
-      const { count } = await service.from('responses').select('id', { count: 'exact', head: true }).in('study_id', studyIds)
-      responseCount = count || 0
+  // Single RPC returns user_count / study_count / response_count for every
+  // org in one round trip (replaces N×3 per-org count queries).
+  const orgIds = orgs.map((o: any) => o.id)
+  const countsByOrg: Record<string, { user_count: number; study_count: number; response_count: number }> = {}
+  if (orgIds.length > 0) {
+    const { data: rows } = await service.rpc('org_stats_for_ids', { p_org_ids: orgIds })
+    for (const row of (rows || [])) {
+      countsByOrg[row.org_id] = {
+        user_count:     Number(row.user_count)     || 0,
+        study_count:    Number(row.study_count)    || 0,
+        response_count: Number(row.response_count) || 0,
+      }
     }
+  }
+
+  const result = orgs.map((org: any) => {
+    const c = countsByOrg[org.id] || { user_count: 0, study_count: 0, response_count: 0 }
     return {
       ...org,
-      user_count:        userResult.count || 0,
-      active_users_30d:  activeUsersByOrg[org.id]?.size || 0,
-      study_count:       studyIds.length,
-      response_count:    responseCount,
+      user_count:       c.user_count,
+      active_users_30d: activeUsersByOrg[org.id]?.size || 0,
+      study_count:      c.study_count,
+      response_count:   c.response_count,
     }
-  }))
+  })
 
   return NextResponse.json(result)
 }
