@@ -123,12 +123,48 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         var srcData = await srcRes.json()
         var source = (srcData.sources || []).find(function(s: any) { return s.dataset_id === dataset.id })
         if (!source) { setSyncToast('No review source found'); setSyncing(false); setTimeout(function() { setSyncToast('') }, 3000); return }
-        var res = await fetch('/api/review-sources/' + source.id + '/sync', { method: 'POST' })
-        var data = await res.json()
-        if ((data.synced || 0) === 0 && !data.pending_locations?.length) {
+
+        // Auto-poll the sync until the cycle is complete (locations_remaining === 0)
+        // or we've exhausted a sensible number of iterations. Each call processes
+        // one BATCH_SIZE of locations through Phase 1/2/3, and DataForSEO tasks
+        // submitted in one call are typically retrievable on the next, so a small
+        // loop here is enough to drain a full cycle for most sources without
+        // requiring the user to keep clicking. LocationManager has a richer
+        // version of this loop; this is the lightweight equivalent for the card.
+        var totalSynced = 0
+        var lastRemaining = -1
+        var iterations = 0
+        var MAX_ITERATIONS = 30
+        var lastError: string | null = null
+        while (iterations < MAX_ITERATIONS) {
+          iterations++
+          var res = await fetch('/api/review-sources/' + source.id + '/sync', { method: 'POST' })
+          var data = await res.json()
+          if (!res.ok) { lastError = data.error || 'Sync failed'; break }
+          totalSynced += (data.synced || 0)
+          var remaining = data.locations_remaining || 0
+          var submitted = data.locations_submitted || 0
+          var pendingLocs = data.pending_locations?.length || 0
+          var processing = data.processing_location || (pendingLocs > 0 ? data.pending_locations[0] : null)
+          if (processing) setSyncToast('Syncing ' + processing + (remaining > 0 ? ' (' + remaining + ' remaining)' : ''))
+          else if (submitted > 0) setSyncToast('Submitted ' + submitted + ' to DataForSEO… (' + remaining + ' remaining)')
+          else if (totalSynced > 0) setSyncToast(totalSynced + ' new review' + (totalSynced !== 1 ? 's' : '') + ' so far… (' + remaining + ' remaining)')
+          if (remaining === 0) break
+          // No-progress detection: same remaining count + nothing new + nothing submitted
+          if (remaining === lastRemaining && (data.synced || 0) === 0 && submitted === 0) break
+          lastRemaining = remaining
+          // Small delay so DataForSEO can finish processing tasks just submitted
+          await new Promise(function(r) { return setTimeout(r, 4000) })
+        }
+
+        if (lastError) {
+          setSyncing(false); setSyncToast('Sync error: ' + lastError); setTimeout(function() { setSyncToast('') }, 4000)
+        } else if (totalSynced === 0 && lastRemaining > 0) {
+          setSyncing(false); setSyncToast('Sync in progress — open the dataset to track ' + lastRemaining + ' remaining'); setTimeout(function() { setSyncToast('') }, 5000)
+        } else if (totalSynced === 0) {
           setSyncing(false); setSyncToast('Already up to date'); setTimeout(function() { setSyncToast('') }, 3000)
         } else {
-          setSyncToast((data.synced || 0) + ' review' + ((data.synced || 0) !== 1 ? 's' : '') + ' synced')
+          setSyncToast(totalSynced + ' new review' + (totalSynced !== 1 ? 's' : '') + ' synced')
           setTimeout(function() { setSyncing(false); setSyncToast(''); window.location.reload() }, 1200)
         }
       } else if (isTownHall && dataset.description?.startsWith('th:')) {

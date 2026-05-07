@@ -255,13 +255,18 @@ export async function syncReviewSource(
     await ensureSchemaAndRecompute(service, source.dataset_id, allNewRows)
   }
 
-  // Always stamp the dataset as synced — even on a no-op call. Without this
-  // the UI shows the original sync date forever once initial pulls finish,
-  // because insertReviewRows only updates last_synced_at when rows arrive.
-  await service.from('datasets').update({
-    last_synced_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq('id', source.dataset_id)
+  // Stamp the dataset only when the refresh cycle is genuinely complete —
+  // no pending, unsynced, or stale locations. An earlier version stamped on
+  // every call, but that misled the UI: Phase 3 submitting tasks and
+  // returning would update last_synced_at even though new reviews hadn't
+  // landed yet. With this gate, "Synced just now" means "everything is
+  // actually fresh".
+  if (result.locations_remaining === 0) {
+    await service.from('datasets').update({
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', source.dataset_id)
+  }
 
   return result
 }
