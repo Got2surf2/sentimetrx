@@ -29,6 +29,10 @@ const CHUNK_SIZE = 500
 const TIME_BUDGET_MS = 45000 // bail before Vercel's 60s timeout
 // Prefix for pending task refs stored in error_message column
 const TASK_PREFIX = 'pending_task:'
+// Skip refreshing a location that was synced more recently than this. Keeps a
+// single sync session from re-refreshing the same location twice; both cron
+// (6h) and the UI's manual button cycle past this comfortably.
+const REFRESH_STALE_MS = 60 * 60 * 1000  // 1 hour
 
 /**
  * Sync reviews — designed for repeated calls from the UI auto-sync loop.
@@ -169,6 +173,46 @@ export async function syncReviewSource(
     }
   }
 
+  // ── Phase 3: Incremental refresh for already-synced locations ─────────
+  // Picks BATCH_SIZE oldest-synced locations whose last_synced_at is older
+  // than REFRESH_STALE_MS, submits a depth-200 newest-first task. Phase 1
+  // retrieves the task on a subsequent call; filterNewReviews dedupes
+  // against last_review_id / last_review_date so only genuinely new
+  // reviews are inserted.
+  const refreshCutoff = new Date(Date.now() - REFRESH_STALE_MS).toISOString()
+  if (Date.now() - startTime < TIME_BUDGET_MS) {
+    const { data: staleLocs } = await service
+      .from('review_source_locations')
+      .select('*')
+      .eq('review_source_id', sourceId)
+      .eq('selected', true)
+      .not('last_synced_at', 'is', null)
+      .lt('last_synced_at', refreshCutoff)
+      .is('error_message', null)
+      .order('last_synced_at', { ascending: true })
+      .limit(BATCH_SIZE)
+
+    if (staleLocs && staleLocs.length > 0) {
+      for (const loc of staleLocs) {
+        if (Date.now() - startTime > TIME_BUDGET_MS) break
+        try {
+          result.processing_location = loc.name
+          const ref = await submitReviewTask(loc.place_id, 200, 'newest')
+          await service.from('review_source_locations').update({
+            error_message: serializeTaskRef(ref),
+          }).eq('id', loc.id)
+          result.locations_submitted++
+        } catch (err: any) {
+          result.locations_errored++
+          result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
+          await service.from('review_source_locations').update({
+            error_message: err.message?.slice(0, 500),
+          }).eq('id', loc.id)
+        }
+      }
+    }
+  }
+
   // ── Save results ──────────────────────────────────────────────────────
   if (allNewRows.length > 0) {
     await insertReviewRows(service, source.dataset_id, allNewRows)
@@ -179,7 +223,10 @@ export async function syncReviewSource(
     .from('datasets').select('row_count').eq('id', source.dataset_id).single()
   result.total = ds?.row_count || 0
 
-  // Remaining = pending tasks (in progress) + unsynced without errors
+  // Remaining = pending tasks (in progress) + unsynced without errors +
+  // already-synced-but-stale locations that Phase 3 will pick up next call.
+  // Including the stale count keeps the UI's auto-poll loop running until
+  // every selected location has been refreshed in the current cycle.
   const { count: pendingCount } = await service
     .from('review_source_locations')
     .select('id', { count: 'exact', head: true })
@@ -193,12 +240,28 @@ export async function syncReviewSource(
     .eq('selected', true)
     .is('last_synced_at', null)
     .is('error_message', null)
-  result.locations_remaining = (pendingCount || 0) + (unsyncedCount || 0)
+  const { count: staleCount } = await service
+    .from('review_source_locations')
+    .select('id', { count: 'exact', head: true })
+    .eq('review_source_id', sourceId)
+    .eq('selected', true)
+    .not('last_synced_at', 'is', null)
+    .lt('last_synced_at', refreshCutoff)
+    .is('error_message', null)
+  result.locations_remaining = (pendingCount || 0) + (unsyncedCount || 0) + (staleCount || 0)
 
   await updateSourceTimestamps(service, source)
   if (allNewRows.length > 0) {
     await ensureSchemaAndRecompute(service, source.dataset_id, allNewRows)
   }
+
+  // Always stamp the dataset as synced — even on a no-op call. Without this
+  // the UI shows the original sync date forever once initial pulls finish,
+  // because insertReviewRows only updates last_synced_at when rows arrive.
+  await service.from('datasets').update({
+    last_synced_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('id', source.dataset_id)
 
   return result
 }
