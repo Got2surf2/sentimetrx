@@ -348,6 +348,8 @@ export function buildTownHallSchema(): SchemaConfig {
     { field: 'topic_type',       type: 'categorical', label: 'Topic Type' },
     { field: 'source',           type: 'categorical', label: 'Turn Source' },
     { field: 'language',         type: 'categorical', label: 'Language' },
+    { field: 'sentiment',        type: 'categorical', label: 'Sentiment' },
+    { field: 'sentiment_score',  type: 'numeric',     label: 'Sentiment Score', min: -1, max: 1 },
     { field: 'responded_at',     type: 'date',        label: 'Date' },
   ]
   return { fields, primaryTextField: 'user_message', autoDetected: false, version: 1 }

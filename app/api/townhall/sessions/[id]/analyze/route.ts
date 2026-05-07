@@ -127,7 +127,7 @@ export async function POST(_req: Request, { params }: Params) {
   const lastSynced = existing?.last_synced_at || null
   let turnsQuery = service
     .from('townhall_turns')
-    .select('id, participant_id, turn_number, bot_message, user_message, user_message_en, language, theme_id, source, created_at')
+    .select('id, participant_id, turn_number, bot_message, user_message, user_message_en, language, theme_id, source, sentiment, sentiment_score, created_at')
     .eq('session_id', sessionId)
     .eq('skipped', false)
     .not('user_message', 'is', null)
@@ -158,16 +158,18 @@ export async function POST(_req: Request, { params }: Params) {
   // Format turns as dataset rows
   const rows = turns.map(function(t) {
     return {
-      turn_id:        t.id,
-      participant_id: t.participant_id,
-      turn_number:    t.turn_number,
-      bot_message:    t.bot_message,
-      user_message:   t.user_message_en || t.user_message,
-      topic:          t.theme_id ? (themeMap[t.theme_id]?.label || 'Unknown') : 'General',
-      topic_type:     t.theme_id ? (themeMap[t.theme_id]?.source === 'guide' ? 'Seed' : 'Organic') : 'General',
-      source:         t.source || 'guide',
-      language:       t.language || 'en',
-      responded_at:   t.created_at,
+      turn_id:         t.id,
+      participant_id:  t.participant_id,
+      turn_number:     t.turn_number,
+      bot_message:     t.bot_message,
+      user_message:    t.user_message_en || t.user_message,
+      topic:           t.theme_id ? (themeMap[t.theme_id]?.label || 'Unknown') : 'General',
+      topic_type:      t.theme_id ? (themeMap[t.theme_id]?.source === 'guide' ? 'Seed' : 'Organic') : 'General',
+      source:          t.source || 'guide',
+      language:        t.language || 'en',
+      sentiment:       t.sentiment ?? null,
+      sentiment_score: t.sentiment_score ?? null,
+      responded_at:    t.created_at,
     }
   })
 
