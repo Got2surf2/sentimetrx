@@ -47,7 +47,11 @@ function LoginFormInner() {
     setLoading(true)
     setError(null)
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback`,
+      // ?next= tells /auth/callback where to send the user after the PKCE
+      // code exchange. Without it, Supabase's verify endpoint strips the
+      // 'type=recovery' marker so the callback can't distinguish recovery
+      // from a normal sign-in and would dump them on /dashboard.
+      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
     })
     setLoading(false)
     if (error) {

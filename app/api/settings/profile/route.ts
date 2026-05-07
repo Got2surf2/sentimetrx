@@ -55,7 +55,10 @@ export async function POST(req: NextRequest) {
 
   var service = createServiceRoleClient()
   var { error } = await service.auth.resetPasswordForEmail(user.email!, {
-    redirectTo: (process.env.NEXT_PUBLIC_SITE_URL || 'https://sentimetrx.vercel.app') + '/auth/reset-password',
+    // Route through /auth/callback so the PKCE ?code= gets exchanged for a
+    // session before landing on the form. /auth/reset-password itself only
+    // renders inputs and calls updateUser — it can't establish the session.
+    redirectTo: (process.env.NEXT_PUBLIC_SITE_URL || 'https://sentimetrx.ai') + '/auth/callback?next=/auth/reset-password',
   })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, message: 'Password reset email sent' })
