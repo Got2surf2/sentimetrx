@@ -9,6 +9,30 @@ import { logUsage } from '@/lib/usageLog'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
 
+// Detects when the model returned a safety-style refusal instead of a
+// participant response. If a persona's bio/edge/flags ask for something the
+// model declines (harassment, sexualization, etc.), the raw refusal text
+// would otherwise land in the conversation as a "comment" — which is what
+// the user reported seeing on 2026-05-07. Patterns are distinctive enough
+// that legit community-meeting responses shouldn't false-positive.
+function looksLikeAIRefusal(text: string): boolean {
+  const t = text.toLowerCase()
+  const patterns = [
+    /\bi need to (respectfully )?decline\b/,
+    /\bthis roleplay request\b/,
+    /\bcan't play (a |this )?character\b/,
+    /\beven in a simulated\b/,
+    /\bi'd be happy to roleplay as\b/,
+    /\bi'm not able to (play|roleplay|continue|simulate)\b/,
+    /\bas an ai( language)? model\b/,
+    /\bi (can't|cannot) (in good conscience|generate|create|produce|engage with)\b/,
+    /\bi (don't|do not) feel comfortable\b/,
+    /\bdesigned to harass\b/,
+    /\bsexualize interactions\b/,
+  ]
+  return patterns.some(p => p.test(t))
+}
+
 export async function POST(req: Request) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -68,10 +92,16 @@ RULES:
       messages: [{ role: 'user', content: prompt }],
     })
     logUsage({ resource_type: 'townhall', event_type: 'simulate' }, result.usage)
-    return NextResponse.json({
-      message: result.text.trim().replace(/^["']|["']$/g, ''),
-      language: targetLang,
-    })
+    const cleaned = result.text.trim().replace(/^["']|["']$/g, '')
+    if (looksLikeAIRefusal(cleaned)) {
+      console.warn('[townhall/simulate] AI refusal detected for persona "' + persona.name + '"; substituting fallback. text=' + cleaned.slice(0, 200))
+      return NextResponse.json({
+        message: persona.flags?.includes('curt-detection') ? 'ok' : 'I think that\'s an important issue for our community.',
+        language: targetLang,
+        refused: true,
+      })
+    }
+    return NextResponse.json({ message: cleaned, language: targetLang })
   } catch {
     // Fallback: generic response
     return NextResponse.json({
