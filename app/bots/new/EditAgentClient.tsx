@@ -441,11 +441,15 @@ function BotCreatorInner() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f9fafb' }}>
-      {/* Sticky editor header — Cancel + Save always visible at top so the
+      {/* Fixed editor header — Cancel + Save always visible at top so the
          user doesn't have to scroll to either. Save is greyed until any
          persisted field changes (dirty=true), then becomes the primary
-         action. Sits below the global TopNav (top: 56px). */}
-      <div style={{ position: 'sticky', top: 56, zIndex: 30, background: 'white', borderBottom: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
+         action. Sits below the global TopNav (top: 56px). Position is
+         fixed (not sticky) because the page wrapper is a flex column
+         which interferes with sticky containment in some browsers. The
+         spacer div below this header reserves equivalent vertical space
+         so the form content isn't covered. */}
+      <div style={{ position: 'fixed', top: 56, left: 0, right: 0, zIndex: 30, background: 'white', borderBottom: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
         <div style={{ maxWidth: 720, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontSize: 18, fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{editId ? 'Edit Agent' : 'Create Agent'}{name ? ' — ' + name : ''}</h1>
@@ -486,6 +490,11 @@ function BotCreatorInner() {
           </div>
         </div>
       </div>
+
+      {/* Spacer to reserve the vertical space the now-fixed header occupies.
+          Header padding 14px top + 14px bottom + ~40px content row = ~68px.
+          Round to 72 for breathing room. */}
+      <div style={{ height: 72 }} aria-hidden="true" />
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 24px 32px' }}>
 
