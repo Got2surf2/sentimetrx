@@ -11,6 +11,27 @@ function genSessionId() {
   return 'bs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
 }
 
+// DATANAUTIX wordmark colors. Hermes orange against dark headers, Sarina
+// blue against light ones — same brand colors used elsewhere (lib/constants
+// HERMES, app/shared SARINA).
+const HERMES_ORANGE = '#E8632A'
+const SARINA_BLUE   = '#00B4D8'
+
+function pickWordmarkColor(headerBg: string): string {
+  // Pick the first hex color in the gradient/string and compute perceived
+  // luminance (Rec. 709). > ~140 = light, use Sarina blue; else Hermes.
+  const m = String(headerBg || '').match(/#([0-9a-fA-F]{3,8})/)
+  if (!m) return HERMES_ORANGE
+  let hex = m[1]
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('')
+  if (hex.length < 6) return HERMES_ORANGE
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return lum > 140 ? SARINA_BLUE : HERMES_ORANGE
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
@@ -317,16 +338,15 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               whiteSpace: 'nowrap',
             }}>New</button>
           )}
-          {config.websiteLabel && (
-            <a href={config.websiteUrl} target="_blank" rel="noopener noreferrer"
-              style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.5625rem', textDecoration: 'none', fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
-              {config.websiteLabel}
-            </a>
-          )}
-          {/* Mandatory: Powered by Datanautix — always shown on every bot */}
+          {/* Mandatory: Powered by Datanautix — always shown on every bot.
+              Stacked: tiny "powered by" caption above the wordmark.
+              Wordmark color picks Hermes orange on dark headers, Sarina
+              blue on light ones, by sampling the first hex color in the
+              header gradient string and computing perceived luminance. */}
           <a href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer"
-            style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.5625rem', textDecoration: 'none', fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
-            Powered by <span style={{ fontWeight: 700, letterSpacing: '0.05em' }}>DATANAUTIX</span>
+            style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1, fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.45)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>powered by</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.08em', color: pickWordmarkColor(config.headerGradient), marginTop: 2 }}>DATANAUTIX</span>
           </a>
         </div>
       </header>
