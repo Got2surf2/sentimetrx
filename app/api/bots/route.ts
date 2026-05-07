@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { validateOrgFilter } from '@/lib/orgValidate'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,9 +28,10 @@ export async function GET(req: NextRequest) {
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!ctx.isAdmin && !ctx.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const orgFilter = req.nextUrl.searchParams.get('org') || ''
+  const orgFilter = validateOrgFilter(req.nextUrl.searchParams.get('org'))
   // Admin: all orgs unless ?org=<id> narrows. Non-admin: locked to own org.
-  const scopeOrgId = ctx.isAdmin ? (orgFilter || null) : ctx.orgId
+  // Garbage UUIDs in the filter fall through to "all orgs" instead of 500ing.
+  const scopeOrgId = ctx.isAdmin ? orgFilter : ctx.orgId
 
   const service = createServiceRoleClient()
   let q = service

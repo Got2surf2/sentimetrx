@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
+import { validateOrgFilter } from '@/lib/orgValidate'
 
 // GET /api/townhall/sessions — list sessions.
 // Non-admin: scoped to user's org. Admin: all orgs by default, narrowed to
@@ -21,8 +22,8 @@ export async function GET(req: NextRequest) {
   const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
   const userOrgId = (userData as any)?.org_id as string | null
 
-  const orgFilter = req.nextUrl.searchParams.get('org') || ''
-  const scopeOrgId = isAdmin ? (orgFilter || null) : userOrgId
+  const orgFilter = validateOrgFilter(req.nextUrl.searchParams.get('org'))
+  const scopeOrgId = isAdmin ? orgFilter : userOrgId
 
   let q = db
     .from('townhall_sessions')

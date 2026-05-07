@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import { validateOrgFilter } from '@/lib/orgValidate'
 import DashboardClient from './DashboardClient'
 
 export const dynamic = 'force-dynamic'
@@ -36,8 +37,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     .select('id, guid, slug, name, bot_name, bot_emoji, status, visibility, created_by, created_at, config, org_id')
     .order('created_at', { ascending: false })
 
-  if (isAdmin && searchParams?.org) {
-    studiesQuery = studiesQuery.eq('org_id', searchParams.org)
+  const orgFilter = validateOrgFilter(searchParams?.org)
+  if (isAdmin && orgFilter) {
+    studiesQuery = studiesQuery.eq('org_id', orgFilter)
   }
   if (searchParams?.user) {
     studiesQuery = studiesQuery.eq('created_by', searchParams.user)

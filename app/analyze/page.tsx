@@ -4,6 +4,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import { validateOrgFilter } from '@/lib/orgValidate'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import AnalyzeClient from './AnalyzeClient'
@@ -28,9 +29,9 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
 
   const orgId = userData?.org_id
   const isAdmin = !!orgData?.is_admin_org
-  const orgFilter = isAdmin ? (searchParams?.org || '') : ''
+  const orgFilter = isAdmin ? validateOrgFilter(searchParams?.org) : null
   // Admin: all orgs unless ?org= narrows. Non-admin: locked to own org.
-  const scopeOrgId = isAdmin ? (orgFilter || null) : orgId
+  const scopeOrgId = isAdmin ? orgFilter : orgId
 
   // Fetch active/trial orgs for admin transfer
   let allOrgs: { id: string; name: string }[] = []

@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import { validateOrgFilter } from '@/lib/orgValidate'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import BotsClient from './BotsClient'
@@ -26,7 +27,7 @@ export default async function BotsPage({ searchParams }: { searchParams: { org?:
   if (!features.bots) redirect('/dashboard')
 
   const isAdmin = !!orgData?.is_admin_org
-  const orgFilter = isAdmin ? (searchParams?.org || '') : ''
+  const orgFilter = isAdmin ? (validateOrgFilter(searchParams?.org) || '') : ''
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
