@@ -372,7 +372,12 @@ function reviewToRow(rev: DfsReview, loc: any, label: string): Record<string, un
 
 async function updateSourceTimestamps(service: SupabaseClient, source: any): Promise<void> {
   const now = new Date().toISOString()
-  const nextSync = new Date(Date.now() + source.sync_frequency_hours * 3600 * 1000).toISOString()
+  // sync_frequency_hours = 0 means "manual mode" — don't schedule a future
+  // auto-sync. Park next_sync_at way in the future so the cron query
+  // (.lte('next_sync_at', now)) never matches it.
+  const nextSync = source.sync_frequency_hours > 0
+    ? new Date(Date.now() + source.sync_frequency_hours * 3600 * 1000).toISOString()
+    : new Date('2999-01-01').toISOString()
   await service.from('review_sources').update({
     last_synced_at: now, next_sync_at: nextSync, updated_at: now, status: 'active',
   }).eq('id', source.id)

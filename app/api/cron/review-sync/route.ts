@@ -22,11 +22,14 @@ export async function GET(req: NextRequest) {
   const service = createServiceRoleClient()
   const now = new Date().toISOString()
 
-  // Find active sources due for sync
+  // Find active sources due for sync. sync_frequency_hours = 0 means manual
+  // mode — don't pick those up automatically (their next_sync_at is also
+  // pushed far out, but the explicit filter is belt-and-suspenders).
   const { data: dueSources, error } = await service
     .from('review_sources')
     .select('id, brand_name')
     .eq('status', 'active')
+    .gt('sync_frequency_hours', 0)
     .lte('next_sync_at', now)
     .order('next_sync_at', { ascending: true })
     .limit(5) // Process up to 5 per run to stay within timeout

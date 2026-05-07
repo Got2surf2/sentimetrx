@@ -84,8 +84,19 @@ export async function PATCH(req: Request, { params }: Params) {
     const body = await req.json()
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (body.status && ['active', 'paused'].includes(body.status)) updates.status = body.status
-    if (body.sync_frequency_hours && typeof body.sync_frequency_hours === 'number') {
-      updates.sync_frequency_hours = body.sync_frequency_hours
+    // sync_frequency_hours: positive int = auto-sync every N hours.
+    // Zero = manual mode (no auto-sync); user must click Sync explicitly.
+    // Was previously gated on truthiness, which rejected 0 (manual).
+    if (typeof body.sync_frequency_hours === 'number' && body.sync_frequency_hours >= 0) {
+      updates.sync_frequency_hours = Math.floor(body.sync_frequency_hours)
+      // When switching to manual, push next_sync_at far out so the cron
+      // never picks the source up. When switching back to auto, reset to
+      // "now" so the next cron run re-engages.
+      if (body.sync_frequency_hours === 0) {
+        updates.next_sync_at = new Date('2999-01-01').toISOString()
+      } else {
+        updates.next_sync_at = new Date().toISOString()
+      }
     }
 
     const { error } = await service

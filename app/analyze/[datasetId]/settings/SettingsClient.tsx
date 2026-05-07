@@ -9,6 +9,7 @@ import TransferOrg from '@/components/ui/TransferOrg'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
 import LocationManager from '@/components/analyze/LocationManager'
 import UserLocationAssigner from '@/components/analyze/UserLocationAssigner'
+import SyncCadenceControl from '@/components/analyze/SyncCadenceControl'
 import RegulationsDownloadBanner from '@/components/analyze/RegulationsDownloadBanner'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
@@ -360,6 +361,11 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
             <p className={'text-xs ' + (trimResult.startsWith('Error') ? 'text-red-500' : 'text-green-600 font-semibold')}>{trimResult}</p>
           )}
         </div>
+      )}
+
+      {/* Google Reviews: Sync cadence (auto-refresh frequency / manual mode) */}
+      {dataset.source === 'google_reviews' && reviewSourceId && (
+        <SyncCadenceControl sourceId={reviewSourceId} />
       )}
 
       {/* Google Reviews: Location management */}
