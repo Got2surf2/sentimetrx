@@ -5,6 +5,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { buildKwRegex, lexiconScore } from '@/lib/themeUtils'
 import { bleepText } from '@/lib/contentGuard'
+import { trendingTerms } from '@/lib/trendingWords'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -154,6 +155,20 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
 
   const visibleThemes = enrichedThemes.filter(t => t.state !== 'dismissed' && t.state !== 'detected')
 
+  // ── Trending Now: recent (last 5 min) vs whole session ─────────────
+  // Surfaces emerging concerns on the live screen as the session unfolds.
+  const fiveMinAgo = Date.now() - 5 * 60 * 1000
+  const recentTexts: string[] = []
+  const baselineTexts: string[] = []
+  for (const t of answered) {
+    const text = (t.user_message_en || t.user_message || '').trim()
+    if (!text) continue
+    const ts = new Date(t.created_at).getTime()
+    if (ts >= fiveMinAgo) recentTexts.push(text)
+    else baselineTexts.push(text)
+  }
+  const trending = trendingTerms(recentTexts, baselineTexts, { n: 8, minRecentCount: 2 })
+
   return NextResponse.json({
     session: {
       id: session.id,
@@ -174,6 +189,7 @@ export async function GET(_req: NextRequest, { params }: { params: { sessionId: 
     sentiment: sentimentCounts,
     themes: visibleThemes,
     timeline,
+    trending,
   }, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
   })

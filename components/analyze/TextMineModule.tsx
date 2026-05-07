@@ -22,6 +22,7 @@ import { useFilters } from '@/components/analyze/FilterContext'
 import { useRows } from '@/components/analyze/RowsContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
+import TrendingWords from '@/components/analyze/textmine/TrendingWords'
 import SignalsView from '@/components/analyze/textmine/SignalsView'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
@@ -1940,6 +1941,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             {subTab === 'clouds' && (
               <div style={{ flex: 1, overflowY: 'auto', padding: 24 }} className="fadein">
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 16 }}>Theme Clouds</h2>
+                <div style={{ marginBottom: 16 }}>
+                  <TrendingWords datasetId={datasetId} />
+                </div>
                 {hasThemes && themes && rowsLoaded ? (
                   <>
                   <WordCloud

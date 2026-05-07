@@ -26,6 +26,7 @@ interface LiveData {
   sentiment: Record<string, number>
   themes: ThemeData[]
   timeline: { time: string; count: number }[]
+  trending?: { word: string; recentCount: number; baselineCount: number; ratio: number }[]
 }
 
 function Donut({ current, target, size = 56 }: { current: number; target: number; size?: number }) {
@@ -195,6 +196,28 @@ export default function LivePresenter() {
 
         {/* Right: Theme cards grid */}
         <div style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
+          {/* Trending Now strip — surfaces words gaining traction in the last 5 min */}
+          {isLive && data.trending && data.trending.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: HERMES, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                Trending Now ↑
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {data.trending.map(t => (
+                  <span key={t.word} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '4px 12px', borderRadius: 20,
+                    background: 'rgba(232,99,42,0.12)', border: '1px solid rgba(232,99,42,0.3)',
+                    fontSize: 13, fontWeight: 600, color: '#fed7aa',
+                  }}>
+                    <span>{t.word}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: HERMES, opacity: 0.85 }}>↑ {t.recentCount}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {(activeThemes.length > 0 || completedThemes.length > 0) ? (
             <div>
               {/* Active themes */}

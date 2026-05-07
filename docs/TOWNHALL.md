@@ -132,6 +132,7 @@ Public presenter display (no auth, aggregate data only):
 - **Sentiment bar**: Stacked horizontal (positive/negative/mixed/neutral)
 - **Auto-refresh**: Every 10 seconds. Fetch is `cache: 'no-store'` with cache-busting timestamp; route response sets `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`.
 - **Direct PostgREST reads**: The live route (`app/api/townhall/live/[sessionId]/route.ts`) bypasses Supabase JS and calls PostgREST directly with `fetch({ cache: 'no-store' })`. Reason: Next.js's automatic `fetch` cache was caching Supabase JS's internal calls in some deployments, ignoring route-level `dynamic = 'force-dynamic'`, which caused the live screen to fall behind moderator approvals/closes. Route also exports `fetchCache = 'force-no-store'` and `revalidate = 0` for belt-and-suspenders.
+- **Trending Now strip**: Top 8 phrases gaining traction in the last 5 minutes vs the rest of the session. Computed in the live route via `lib/trendingWords.ts:trendingTerms()` using a smoothed rate ratio (recent rate / baseline rate, with Laplace smoothing). Displayed as orange pills above the topic cards on the live screen.
 
 ---
 
