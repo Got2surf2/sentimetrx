@@ -9,6 +9,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import TransferOrg from '@/components/ui/TransferOrg'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
+import ContentSafetyEditor from '@/components/agent/ContentSafetyEditor'
 
 const HERMES = '#E8632A'
 
@@ -35,6 +36,7 @@ interface BotConfig {
   language: string
   languages: string[]
   askName: string
+  content_safety?: import('@/components/agent/ContentSafetyEditor').ContentSafetyConfigValue
 }
 
 const DEFAULT_CONFIG: BotConfig = {
@@ -935,6 +937,12 @@ function BotCreatorInner() {
             <textarea value={systemPrompt} onChange={function(e) { setSystemPrompt(e.target.value) }}
               placeholder={"Optional. Most agents don't need this.\n\nYou should:\n- Be friendly and concise\n- Only discuss topics related to [subject]"}
               rows={6} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5 }} />
+          </Section>
+
+          <Section title="Content Safety">
+            <ContentSafetyEditor value={config.content_safety} onChange={function(patch) {
+              setConfig(function(prev) { return { ...prev, content_safety: { ...(prev.content_safety || {}), ...patch } } })
+            }} />
           </Section>
         </Group>}
 

@@ -9,6 +9,7 @@ import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
+import ContentSafetyEditor from '@/components/agent/ContentSafetyEditor'
 
 interface Props {
   logoUrl?: string
@@ -578,7 +579,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
   const updateDisplay = (partial: Partial<TownHallConfig['display']>) => {
     setConfig(c => ({ ...c, display: { ...c.display, ...partial } }))
   }
-  const updateSafety = (partial: Record<string, boolean>) => {
+  const updateSafety = (partial: import('@/components/agent/ContentSafetyEditor').ContentSafetyConfigValue) => {
     setConfig(c => {
       const prev = c.content_safety || {}
       const cs = { profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true, ...prev, ...partial }
@@ -1012,58 +1013,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-gray-700">Content Safety</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Filter and bleep inappropriate content. Participants get warnings and may be shut down after repeated severe violations.</p>
-                  </div>
-                  <button type="button" onClick={() => {
-                    const on = config.content_safety?.enabled !== false
-                    updateSafety({ enabled: !on, profanity: !on, slurs: !on, threats: !on, sexual: !on, insults: !on, spam: !on })
-                  }}
-                    className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (config.content_safety?.enabled !== false ? 'bg-green-500' : 'bg-gray-200')}>
-                    <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (config.content_safety?.enabled !== false ? 'translate-x-5' : 'translate-x-0')} />
-                  </button>
-                </div>
-                {config.content_safety?.enabled !== false && (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-3 mb-2">
-                      <button type="button" onClick={() => updateSafety({ profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true })}
-                        className="text-[10px] font-semibold text-orange-600 hover:text-orange-800">Select All</button>
-                      <button type="button" onClick={() => updateSafety({ profanity: false, slurs: false, threats: false, sexual: false, insults: false, spam: false })}
-                        className="text-[10px] font-semibold text-gray-400 hover:text-gray-600">Select None</button>
-                    </div>
-                    {[
-                      { key: 'profanity', label: 'Profanity', desc: 'Block/bleep swear words' },
-                      { key: 'slurs', label: 'Slurs', desc: 'Block racial and identity slurs' },
-                      { key: 'threats', label: 'Threats & Violence', desc: 'Block violent language and threats' },
-                      { key: 'sexual', label: 'Sexual Content', desc: 'Block explicit sexual language' },
-                      { key: 'insults', label: 'Insults & Rudeness', desc: 'Gentle nudge when participants are rude' },
-                      { key: 'spam', label: 'URLs / Spam', desc: 'Block links and URLs' },
-                    ].map(opt => {
-                      const on = (config.content_safety as any)?.[opt.key] !== false
-                      return (
-                        <button key={opt.key} type="button" onClick={() => updateSafety({ [opt.key]: !on })}
-                          className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"
-                          style={{ background: on ? '#f0fdf4' : '#f9fafb', border: '1.5px solid ' + (on ? '#22c55e' : '#e5e7eb') }}>
-                          <span className="w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0"
-                            style={{ borderColor: on ? '#22c55e' : '#d1d5db', background: on ? '#22c55e' : 'white', color: on ? 'white' : 'transparent' }}>
-                            {on ? '\u2713' : ''}
-                          </span>
-                          <span className="flex-1">
-                            <span style={{ color: on ? '#166534' : '#6b7280', fontWeight: on ? 600 : 400 }}>{opt.label}</span>
-                            <span className="text-[10px] text-gray-400 ml-2">{opt.desc}</span>
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-                {config.content_safety?.enabled === false && (
-                  <p className="text-[10px] text-amber-600">All content filtering is OFF. Suitable for employee feedback or clinical research settings.</p>
-                )}
-              </div>
+              <ContentSafetyEditor value={config.content_safety as any} onChange={updateSafety} />
             </div>
           )}
 

@@ -473,8 +473,12 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           </div>
         )}
 
-        {/* Suggestion chips — only show at start */}
-        {messages.length <= 1 && !loading && (
+        {/* Suggestion chips — only show at start, AND only after the name
+           has been captured (or if askName is off). Showing them while the
+           bot is still asking "what's your name?" is confusing — the user
+           ends up clicking a topic question when the next expected input
+           is their name, and the chip click is interpreted as the name. */}
+        {messages.length <= 1 && !loading && userName !== null && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             {config.suggestions.map((s, i) => (
               <button key={i} onClick={() => sendMessage(s)}
