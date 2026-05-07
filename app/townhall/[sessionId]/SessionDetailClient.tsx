@@ -9,6 +9,7 @@ import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
 import TownHallAnalyticsPanel from '@/components/townhall/TownHallAnalyticsPanel'
 import ShareModal from '@/components/ui/ShareModal'
+import QRCode from '@/components/ui/QRCode'
 import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
 import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
@@ -1139,9 +1140,7 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
               <div className="flex items-center gap-4 flex-shrink-0">
                 {(isSetup || isActive) && (
                   <div className="text-center">
-                    <img
-                      src={'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(participantUrl) + '&margin=8'}
-                      alt="QR code" className="rounded-lg border border-gray-200" style={{ width: 160, height: 160 }} />
+                    <QRCode url={participantUrl} size={160} margin={1} className="rounded-lg border border-gray-200" />
                     <p className="text-[10px] text-gray-400 mt-1">Scan to join</p>
                   </div>
                 )}

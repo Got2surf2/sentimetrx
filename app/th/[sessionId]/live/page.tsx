@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
+import QRCode from '@/components/ui/QRCode'
 
 const HERMES = '#E8632A'
 const SENT_COLOR: Record<string, string> = { positive: '#16a34a', negative: '#dc2626', mixed: '#d97706', neutral: '#6b7280', insufficient: '#9ca3af' }
@@ -88,7 +89,6 @@ export default function LivePresenter() {
 
   const { session: s, stats, sentiment, themes } = data
   const participantUrl = typeof window !== 'undefined' ? window.location.origin + '/th/' + (s.slug || s.id) : ''
-  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(participantUrl) + '&margin=12&color=E8632A&bgcolor=ffffff'
 
   const isWaiting = s.status === 'setup'
   const isEnded = s.status === 'ended'
@@ -152,11 +152,14 @@ export default function LivePresenter() {
           borderRight: '1px solid #1f2937',
           transition: 'width 0.5s',
         }}>
-          <img src={qrUrl} alt="QR" style={{
-            width: isLive && activeThemes.length > 0 ? 180 : 260,
-            height: isLive && activeThemes.length > 0 ? 180 : 260,
-            borderRadius: 16, transition: 'all 0.5s',
-          }} />
+          <QRCode
+            url={participantUrl}
+            size={isLive && activeThemes.length > 0 ? 180 : 260}
+            color="#E8632A"
+            background="#ffffff"
+            margin={2}
+            className="rounded-2xl"
+          />
           <p style={{ fontSize: 13, color: '#9ca3af', marginTop: 16, textAlign: 'center' }}>Scan to join</p>
           <p style={{ fontSize: 14, fontWeight: 600, color: HERMES, marginTop: 4, wordBreak: 'break-all', textAlign: 'center' }}>
             {participantUrl.replace('https://', '').replace('http://', '')}
