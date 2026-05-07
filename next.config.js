@@ -24,13 +24,22 @@ const nextConfig = {
   },
 }
 
-// Sentry build-time wrapper. Uploads source maps if SENTRY_AUTH_TOKEN is set
-// (optional — without it, errors still report but stack traces are minified).
-module.exports = withSentryConfig(nextConfig, {
-  silent: true,
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  hideSourceMaps: true,
-  disableLogger: true,
-})
+// Sentry build-time wrapper. Skipped in local dev (when no DSN is set) so the
+// dev server starts fast — Sentry's webpack plugins add significant compile
+// time on first start. In production/preview the DSN is set and the wrapper
+// runs, enabling source-map upload (when SENTRY_AUTH_TOKEN is also set).
+const sentryDsnSet = !!process.env.NEXT_PUBLIC_SENTRY_DSN
+module.exports = sentryDsnSet
+  ? withSentryConfig(nextConfig, {
+      silent: true,
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      hideSourceMaps: true,
+      // disableLogger was deprecated in @sentry/nextjs v10; the replacement
+      // lives under webpack.treeshake.removeDebugLogging.
+      webpack: {
+        treeshake: { removeDebugLogging: true },
+      },
+    })
+  : nextConfig
