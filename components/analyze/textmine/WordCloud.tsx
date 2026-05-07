@@ -397,7 +397,15 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                 <div style={{ flexShrink: 0, width: 6, borderRadius: 3, background: pal.border, alignSelf: 'stretch', minHeight: 24, marginRight: 12 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: pal.text }}>{t.name}</span>
+                    {onWordClick ? (
+                      <button onClick={function() { onWordClick(null, idx, 'theme') }}
+                        style={{ fontSize: 11, fontWeight: 700, color: pal.text, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+                        title="Click to see frequency over time + sample comments">
+                        {t.name}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: pal.text }}>{t.name}</span>
+                    )}
                     {onWordClick && (
                       <button
                         onClick={function() { onWordClick(null, idx, 'theme') }}

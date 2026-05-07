@@ -22,6 +22,7 @@ import { useFilters } from '@/components/analyze/FilterContext'
 import { useRows } from '@/components/analyze/RowsContext'
 import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
 import WordCloud from '@/components/analyze/textmine/WordCloud'
+import ThemePopover from '@/components/analyze/textmine/ThemePopover'
 import SignalsView from '@/components/analyze/textmine/SignalsView'
 import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
@@ -867,6 +868,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [selectedThemes, setSelectedThemes] = useState<Theme[]>([])
   const [previousTab, setPreviousTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
   const [opinionWord, setOpinionWord] = useState<string | null>(null)
+  const [themePopoverIdx, setThemePopoverIdx] = useState<number | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
 
@@ -1948,9 +1950,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     parsedData={filteredRows}
                     activeField={activeField || themes!.fieldName}
                     isReddit={datasetSource === 'reddit' || datasetSource === 'substack'}
-                    onWordClick={function(word) {
-                      // Single click: show opinion popover (toggle)
-                      if (word) setOpinionWord(opinionWord === word ? null : word)
+                    onWordClick={function(word, themeIdx, type) {
+                      // Word click: opinion popover. Theme title click: theme popover.
+                      if (type === 'theme') {
+                        setThemePopoverIdx(themePopoverIdx === themeIdx ? null : themeIdx)
+                      } else if (word) {
+                        setOpinionWord(opinionWord === word ? null : word)
+                      }
                     }}
                   />
                   {opinionWord && (
@@ -1962,6 +1968,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         onClose={function() { setOpinionWord(null) }}
                       />
                     </div>
+                  )}
+                  {themePopoverIdx !== null && themes && (displayThemes || themes).themes[themePopoverIdx] && (
+                    <ThemePopover
+                      theme={(displayThemes || themes).themes[themePopoverIdx] as any}
+                      rows={filteredRows}
+                      fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
+                      color={themeColors[themePopoverIdx]?.text}
+                      onClose={function() { setThemePopoverIdx(null) }}
+                    />
                   )}
                   </>
                 ) : (

@@ -11,160 +11,12 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
-import { autoBucket, bucketKey, formatBucketLabel, type TimeBucket } from '@/lib/timeBucket'
-
-const HERMES = '#E8632A'
+import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
 
 const SENT_COLORS = {
   positive: { text: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
   negative: { text: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
   neutral:  { text: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
-}
-
-// Pick the field most likely to hold a row's date by sniffing the first non-empty
-// value. Returns null if no field looks like a date.
-function detectDateField(rows: Record<string, unknown>[]): string | null {
-  if (rows.length === 0) return null
-  const preferred = ['created_at', 'date', 'published_at', 'reviewed_at', 'completed_at', 'submitted_at', 'timestamp', 'posted_at', 'time']
-  // First pass: known names
-  for (const c of preferred) {
-    for (const r of rows) {
-      const v = r[c]
-      if (typeof v === 'string' && v && !isNaN(Date.parse(v))) return c
-    }
-  }
-  // Second pass: any field whose first non-empty value parses as a plausible date
-  const sampled = rows.slice(0, 100)
-  for (const k of Object.keys(rows[0] || {})) {
-    for (const r of sampled) {
-      const v = r[k]
-      if (typeof v !== 'string' || !v) continue
-      const t = Date.parse(v)
-      if (isNaN(t)) break
-      const y = new Date(t).getUTCFullYear()
-      if (y > 2000 && y < 2100) return k
-      break
-    }
-  }
-  return null
-}
-
-// Compute count-per-bucket for rows whose text fields contain `word`. Bucket
-// granularity (hour/day/week/month/quarter/year) is auto-chosen from the data
-// span via lib/timeBucket — short windows get fine buckets, multi-year ranges
-// get coarser ones so the chart stays readable.
-function frequencyBuckets(
-  rows: Record<string, unknown>[],
-  fieldArr: string[],
-  word: string,
-  dateField: string,
-): { buckets: { key: string; count: number }[]; granularity: TimeBucket | null } {
-  const target = word.toLowerCase()
-  // First pass: collect dates of matching rows so we can pick granularity
-  // based on actual matched-data range (not whole dataset range — sparser).
-  const matched: Date[] = []
-  for (const row of rows) {
-    const dateStr = String(row[dateField] || '')
-    if (!dateStr || isNaN(Date.parse(dateStr))) continue
-    let hit = false
-    for (const f of fieldArr) {
-      const t = String(row[f] || '').toLowerCase()
-      if (t.includes(target)) { hit = true; break }
-    }
-    if (!hit) continue
-    matched.push(new Date(dateStr))
-  }
-  if (matched.length === 0) return { buckets: [], granularity: null }
-
-  let min = matched[0], max = matched[0]
-  for (const d of matched) { if (d < min) min = d; if (d > max) max = d }
-  const granularity = autoBucket(min, max)
-
-  const counts = new Map<string, number>()
-  for (const d of matched) {
-    const key = bucketKey(d, granularity)
-    counts.set(key, (counts.get(key) || 0) + 1)
-  }
-  const buckets = Array.from(counts.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, count]) => ({ key, count }))
-  return { buckets, granularity }
-}
-
-function FrequencyChart({
-  buckets,
-  granularity,
-}: {
-  buckets: { key: string; count: number }[]
-  granularity: TimeBucket | null
-}) {
-  if (!granularity || buckets.length < 2) return null
-  // Layout: left gutter for y-axis labels, then plot area.
-  const W = 480, H = 80, PT = 8, PB = 14, PL = 30, PR = 8
-  const innerW = W - PL - PR
-  const innerH = H - PT - PB
-  const maxCount = Math.max(...buckets.map(b => b.count), 1)
-  // Round y-axis max up to a "nice" number for cleaner labels.
-  const niceMax = niceCeiling(maxCount)
-  const dx = innerW / Math.max(buckets.length - 1, 1)
-  const points = buckets.map((b, i) => ({
-    x: PL + i * dx,
-    y: PT + innerH - (b.count / niceMax) * innerH,
-    key: b.key,
-    count: b.count,
-  }))
-  const path = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ')
-  const fillPath = path + ' L' + points[points.length - 1].x.toFixed(1) + ' ' + (PT + innerH) + ' L' + points[0].x.toFixed(1) + ' ' + (PT + innerH) + ' Z'
-  const headlineLabels: Record<TimeBucket, string> = {
-    hour: 'Hourly', day: 'Daily', week: 'Weekly', month: 'Monthly', quarter: 'Quarterly', year: 'Annual',
-  }
-  // Y-axis tick values: 0, mid, max (3 ticks).
-  const ticks = [0, niceMax / 2, niceMax]
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em', marginBottom: 4 }}>
-        {headlineLabels[granularity]} frequency · {buckets.length} {granularity === 'hour' ? 'hours' : granularity + 's'}
-      </div>
-      <svg width="100%" height={H} viewBox={'0 0 ' + W + ' ' + H} preserveAspectRatio="none">
-        {/* Y-axis gridlines + labels */}
-        {ticks.map((t, i) => {
-          const y = PT + innerH - (t / niceMax) * innerH
-          return (
-            <g key={i}>
-              <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="#e5e7eb" strokeWidth={1} strokeDasharray={i === 0 ? undefined : '2 3'} />
-              <text x={PL - 4} y={y + 3} fontSize={9} fill="#9ca3af" textAnchor="end">{compactNum(t)}</text>
-            </g>
-          )
-        })}
-        <path d={fillPath} fill={HERMES} fillOpacity={0.12} />
-        <path d={path} fill="none" stroke={HERMES} strokeWidth={1.75} />
-        {points.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={HERMES}>
-            <title>{formatBucketLabel(p.key, granularity)}: {p.count}</title>
-          </circle>
-        ))}
-        {/* X-axis endpoints */}
-        <text x={PL} y={H - 2} fontSize={9} fill="#9ca3af">{formatBucketLabel(buckets[0].key, granularity)}</text>
-        <text x={W - PR} y={H - 2} fontSize={9} fill="#9ca3af" textAnchor="end">{formatBucketLabel(buckets[buckets.length - 1].key, granularity)}</text>
-      </svg>
-    </div>
-  )
-}
-
-// Round n up to the nearest "nice" number for axis labels (1, 2, 5, 10 × 10^k).
-function niceCeiling(n: number): number {
-  if (n <= 0) return 1
-  const exp = Math.floor(Math.log10(n))
-  const f = n / Math.pow(10, exp)
-  const niceF = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10
-  return niceF * Math.pow(10, exp)
-}
-
-// Format a count compactly: 1234 → "1.2k", 1500000 → "1.5M".
-function compactNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, '') + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, '') + 'k'
-  return String(Math.round(n))
 }
 
 interface Props {
@@ -202,8 +54,8 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
   // Renders nothing when no date is available.
   const dateField = useMemo(() => detectDateField(rows), [rows])
   const freq = useMemo(() => {
-    if (!dateField) return { buckets: [] as { key: string; count: number }[], granularity: null as TimeBucket | null }
-    return frequencyBuckets(rows, fieldArr, word, dateField)
+    if (!dateField) return { buckets: [], granularity: null }
+    return frequencyBuckets(rows, fieldArr, [word], dateField)
   }, [rows, fieldArr, word, dateField])
 
   // Denominator for % share — number of rows with non-empty text in any
