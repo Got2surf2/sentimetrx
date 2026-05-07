@@ -58,18 +58,19 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
     return frequencyBuckets(rows, fieldArr, [word], dateField)
   }, [rows, fieldArr, word, dateField])
 
-  // Denominator for % share — number of rows with non-empty text in any
-  // analyzed field (matches what the user thinks of as "comments").
+  // Denominator for % share — count rows with non-empty text in the FIRST
+  // analyzed field. Matches WordCloud's `total` calculation so the % in the
+  // modal header agrees with the % shown next to each theme/word in the cloud.
+  const denomField = fieldArr[0]
   const totalCommentsWithText = useMemo(() => {
+    if (!denomField) return 0
     let n = 0
     for (const row of rows) {
-      for (const f of fieldArr) {
-        const v = row[f]
-        if (typeof v === 'string' && v.trim()) { n++; break }
-      }
+      const v = row[denomField]
+      if (typeof v === 'string' && v.trim()) n++
     }
     return n
-  }, [rows, fieldArr])
+  }, [rows, denomField])
 
   // Pre-compute the matching comments for the comments view (only when needed)
   const matchingComments = useMemo(function() {
@@ -138,7 +139,7 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
             {result.totalMentions.toLocaleString()} mentions
             {totalCommentsWithText > 0 && (
               <span style={{ marginLeft: 4, color: '#6b7280', fontWeight: 600 }}>
-                · {((result.totalMentions / totalCommentsWithText) * 100).toFixed(1)}% of comments
+                · {Math.round((result.totalMentions / totalCommentsWithText) * 100)}% of comments
               </span>
             )}
           </span>
@@ -183,7 +184,7 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
                 : (result.mode === 'nouns' ? 'What people call "' + word + '"' : 'Opinions about "' + word + '"')}
               {totalCommentsWithText > 0 && result.totalMentions > 0 && (
                 <span style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginLeft: 8 }}>
-                  ({((result.totalMentions / totalCommentsWithText) * 100).toFixed(1)}%)
+                  ({Math.round((result.totalMentions / totalCommentsWithText) * 100)}%)
                 </span>
               )}
             </h3>

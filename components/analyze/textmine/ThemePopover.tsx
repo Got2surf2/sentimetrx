@@ -67,17 +67,19 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
     return out
   }, [rows, fieldArr, keywords])
 
-  // Same denominator as OpinionPopover: rows with non-empty text in any field.
+  // Denominator: rows with non-empty text in the FIRST analyzed field.
+  // Matches WordCloud's `total` calc so this modal's % agrees with the
+  // theme % shown in the cloud.
+  const denomField = fieldArr[0]
   const totalCommentsWithText = useMemo(() => {
+    if (!denomField) return 0
     let n = 0
     for (const row of rows) {
-      for (const f of fieldArr) {
-        const v = row[f]
-        if (typeof v === 'string' && v.trim()) { n++; break }
-      }
+      const v = row[denomField]
+      if (typeof v === 'string' && v.trim()) n++
     }
     return n
-  }, [rows, fieldArr])
+  }, [rows, denomField])
 
   const freq = useMemo(() => {
     if (!dateField || keywords.length === 0) return { buckets: [], granularity: null }
@@ -112,7 +114,7 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
               {theme.name}
               {totalCommentsWithText > 0 && total > 0 && (
                 <span style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginLeft: 8 }}>
-                  ({pct.toFixed(1)}%)
+                  ({Math.round(pct)}%)
                 </span>
               )}
             </h3>
@@ -127,7 +129,7 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
         <div style={{ display: 'flex', gap: 12, fontSize: 12, marginBottom: 14, color: '#6b7280', flexWrap: 'wrap' }}>
           <span style={{ color: '#111827', fontWeight: 700 }}>{total.toLocaleString()} mentions</span>
           {totalCommentsWithText > 0 && (
-            <span style={{ color: color || '#374151', fontWeight: 700 }}>· {pct.toFixed(1)}% of comments</span>
+            <span style={{ color: color || '#374151', fontWeight: 700 }}>· {Math.round(pct)}% of comments</span>
           )}
           {keywords.length > 0 && (
             <span style={{ marginLeft: 'auto', color: '#9ca3af' }}>{keywords.length} keyword{keywords.length === 1 ? '' : 's'}</span>

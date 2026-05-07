@@ -248,6 +248,12 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   }
   // Filter words to only those belonging to visible themes (or non-theme words)
   var filteredWords = allWords.filter(function(w) { return w.themeIdx < 0 || visibleThemeIdxs.has(w.themeIdx) })
+  // Apply same 3% threshold to individual words (extends the threshold from
+  // theme-level to word-level so the cloud isn't cluttered with rare terms).
+  // 'Show all' bypasses this filter — same checkbox controls both.
+  if (!showAll) {
+    filteredWords = filteredWords.filter(function(w) { return total > 0 && (w.freq / total * 100) >= MIN_PCT })
+  }
   if (!filteredWords.length && !showAll) filteredWords = allWords.slice(0, 10) // fallback: show top 10
 
   // Max signal score for sizing in signal strength mode
@@ -416,9 +422,17 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                     )}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', alignItems: 'baseline' }}>
-                    {tWords.map(function(w) {
+                    {(showAll
+                      ? tWords
+                      : tWords.filter(function(w) { return total > 0 && (w.freq / total * 100) >= MIN_PCT })
+                    ).map(function(w) {
                       return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} signalScore={wordSignals[w.word]?.avg} maxSignal={maxSignal} sizeBy={sizeBy} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
                     })}
+                    {!showAll && tWords.some(function(w) { return total > 0 && (w.freq / total * 100) < MIN_PCT }) && (
+                      <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 4 }}>
+                        +{tWords.filter(function(w) { return total > 0 && (w.freq / total * 100) < MIN_PCT }).length} below {MIN_PCT}% hidden
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
