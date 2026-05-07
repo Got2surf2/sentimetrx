@@ -859,39 +859,68 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
 
-  // Restore UI state from sessionStorage
+  // sessionStorage key for persisting UI state across reloads. Initial state
+  // is the default (NOT the saved value) so server-render and client-first-
+  // render produce identical HTML — otherwise a hydration mismatch fires on
+  // any element whose appearance depends on saved state (e.g. the ✓ on the
+  // active analyze-field buttons). The restore happens in a useEffect below.
   var _tmKey = 'textMine_' + datasetId
-  var _tmSaved = readSession<any>(_tmKey)
-
-  const [activeField, setActiveField] = useState<string | null>(_tmSaved?.activeField || null)
-  const [activeFields, setActiveFields] = useState<string[]>(_tmSaved?.activeFields || [])
-  const [subTab, setSubTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
-  const [themesView, setThemesView] = useState<'distribution' | 'cards' | 'signals'>(_tmSaved?.themesView || 'cards')
-  const [signalCutoffs, setSignalCutoffs] = useState<{ mainstream: number; noise: number }>(_tmSaved?.signalCutoffs || { mainstream: 70, noise: 30 })
-  const [showAllThemes, setShowAllThemes] = useState(_tmSaved?.showAllThemes || false)
-  const [compareViewMode, setCompareViewMode] = useState<'group' | 'theme'>(_tmSaved?.compareViewMode || 'group')
-  const [compareSmartAxes, setCompareSmartAxes] = useState(_tmSaved?.compareSmartAxes !== undefined ? _tmSaved.compareSmartAxes : true)
-  const [breakdownField, setBreakdownField] = useState<string | null>(_tmSaved?.breakdownField || null)
-  const [compareFields, setCompareFields] = useState<string[]>(_tmSaved?.compareFields || [])
-  const [selectedValues, setSelectedValues] = useState<Set<string>>(function() { return _tmSaved?.selectedValues ? new Set(_tmSaved.selectedValues) : new Set() })
-  const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
-  const [drillGroup, setDrillGroup] = useState<string | null>(null)
-  const [selectedThemes, setSelectedThemes] = useState<Theme[]>([])
-  const [previousTab, setPreviousTab] = useState<SubTab>(_tmSaved?.subTab || 'themes')
-  const [opinionWord, setOpinionWord] = useState<string | null>(null)
-  const [themePopoverIdx, setThemePopoverIdx] = useState<number | null>(null)
-  const [isDirty, setIsDirty] = useState(false)
-  const [showSearch, setShowSearch] = useState(false)
 
   // Rating field for avg rating display on theme cards / compare
   const ratingFields = schema.fields.filter(function(f) {
     return f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField)
   })
-  const [ratingField, setRatingField] = useState<string | null>(_tmSaved?.ratingField || (ratingFields.length > 0 ? ratingFields[0].field : null))
-  const [colorMode, setColorMode] = useState<'sentiment' | 'rating'>(_tmSaved?.colorMode || 'sentiment')
-  const [hideFlagged, setHideFlagged] = useState(_tmSaved?.hideFlagged || false)
+
+  const [activeField, setActiveField] = useState<string | null>(null)
+  const [activeFields, setActiveFields] = useState<string[]>([])
+  const [subTab, setSubTab] = useState<SubTab>('themes')
+  const [themesView, setThemesView] = useState<'distribution' | 'cards' | 'signals'>('cards')
+  const [signalCutoffs, setSignalCutoffs] = useState<{ mainstream: number; noise: number }>({ mainstream: 70, noise: 30 })
+  const [showAllThemes, setShowAllThemes] = useState(false)
+  const [compareViewMode, setCompareViewMode] = useState<'group' | 'theme'>('group')
+  const [compareSmartAxes, setCompareSmartAxes] = useState(true)
+  const [breakdownField, setBreakdownField] = useState<string | null>(null)
+  const [compareFields, setCompareFields] = useState<string[]>([])
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(function() { return new Set() })
+  const [drillTheme, setDrillTheme] = useState<Theme | null>(null)
+  const [drillGroup, setDrillGroup] = useState<string | null>(null)
+  const [selectedThemes, setSelectedThemes] = useState<Theme[]>([])
+  const [previousTab, setPreviousTab] = useState<SubTab>('themes')
+  const [opinionWord, setOpinionWord] = useState<string | null>(null)
+  const [themePopoverIdx, setThemePopoverIdx] = useState<number | null>(null)
+  const [isDirty, setIsDirty] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [ratingField, setRatingField] = useState<string | null>(ratingFields.length > 0 ? ratingFields[0].field : null)
+  const [colorMode, setColorMode] = useState<'sentiment' | 'rating'>('sentiment')
+  const [hideFlagged, setHideFlagged] = useState(false)
+  const [restoredFromSession, setRestoredFromSession] = useState(false)
+
+  // After mount, restore persisted UI state. Gating on restoredFromSession
+  // ensures the writer-effect below doesn't overwrite sessionStorage with
+  // defaults before this restore runs.
+  useEffect(function() {
+    const saved = readSession<any>(_tmKey)
+    if (saved) {
+      if (saved.activeField !== undefined) setActiveField(saved.activeField)
+      if (Array.isArray(saved.activeFields)) setActiveFields(saved.activeFields)
+      if (saved.subTab) { setSubTab(saved.subTab); setPreviousTab(saved.subTab) }
+      if (saved.themesView) setThemesView(saved.themesView)
+      if (saved.signalCutoffs) setSignalCutoffs(saved.signalCutoffs)
+      if (typeof saved.showAllThemes === 'boolean') setShowAllThemes(saved.showAllThemes)
+      if (saved.compareViewMode) setCompareViewMode(saved.compareViewMode)
+      if (typeof saved.compareSmartAxes === 'boolean') setCompareSmartAxes(saved.compareSmartAxes)
+      if (saved.breakdownField !== undefined) setBreakdownField(saved.breakdownField)
+      if (Array.isArray(saved.compareFields)) setCompareFields(saved.compareFields)
+      if (Array.isArray(saved.selectedValues)) setSelectedValues(new Set(saved.selectedValues))
+      if (saved.ratingField !== undefined) setRatingField(saved.ratingField)
+      if (saved.colorMode) setColorMode(saved.colorMode)
+      if (typeof saved.hideFlagged === 'boolean') setHideFlagged(saved.hideFlagged)
+    }
+    setRestoredFromSession(true)
+  }, [_tmKey])
 
   useEffect(function() {
+    if (!restoredFromSession) return
     writeSession(_tmKey, {
       activeField: activeField, activeFields: activeFields, subTab: subTab,
       themesView: themesView, showAllThemes: showAllThemes, signalCutoffs: signalCutoffs,
@@ -900,7 +929,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       compareViewMode: compareViewMode, compareSmartAxes: compareSmartAxes,
       ratingField: ratingField, colorMode: colorMode, hideFlagged: hideFlagged,
     })
-  }, [activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
+  }, [restoredFromSession, activeField, activeFields, subTab, themesView, showAllThemes, signalCutoffs, breakdownField, compareFields, selectedValues, compareViewMode, compareSmartAxes, ratingField, colorMode, hideFlagged, _tmKey])
 
   // Listen for Ana theme mutations and refetch theme model
   useEffect(function() {
