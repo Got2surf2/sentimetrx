@@ -7,7 +7,12 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import BotClient from './BotClient'
 
-export const dynamic = 'force-dynamic'
+// Public bot pages are read by share-link unfurls (iMessage / Slack / Twitter)
+// and SEO crawlers far more than by the bot owner. Revalidate every hour so
+// every fetch hits the CDN edge instead of regenerating server-side. The
+// chat itself is a client component that fetches fresh state on mount, so
+// stale page HTML doesn't affect runtime correctness.
+export const revalidate = 3600
 export const fetchCache = 'force-no-store'
 
 interface Props { params: { slug: string } }
