@@ -196,6 +196,12 @@ function BotCreatorInner() {
   // Load existing bot if editing
   useEffect(function() {
     if (!editId) return
+    // Re-arm the dirty watcher so the upcoming setter cascade in .then()
+    // gets swallowed. Without this, the watcher's mount-time swallow is
+    // already consumed by the time the async fetch resolves, and loading
+    // the bot's own values would falsely mark the form dirty — orange Save
+    // button before the user has typed anything.
+    dirtyInitRef.current = true
     fetch('/api/bots/' + editId).then(function(r) { return r.json() }).then(function(bot) {
       setName(bot.name || '')
       setSlug(bot.slug || '')
