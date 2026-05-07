@@ -20,6 +20,7 @@ interface Props {
 const HERMES = '#E8632A'
 type LabelMode = 'key' | 'prompt'
 type ExportFmt = 'standard' | 'datanautix'
+type FileFmt   = 'csv' | 'xlsx'
 type Section   = 'core' | 'openended' | 'psychographics' | 'demographics' | 'meta'
 
 const SECTIONS: { key: Section; label: string; desc: string }[] = [
@@ -33,6 +34,7 @@ const SECTIONS: { key: Section; label: string; desc: string }[] = [
 export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', sentiment='', total=0 }: Props) {
   const [labelMode,  setLabelMode]  = useState<LabelMode>('key')
   const [exportFmt,  setExportFmt]  = useState<ExportFmt>('standard')
+  const [fileFmt,    setFileFmt]    = useState<FileFmt>('csv')
   const [statusFilter, setStatusFilter] = useState<'all' | 'complete' | 'partial'>('all')
   const [sections,   setSections]   = useState<Set<Section>>(
     new Set(['core', 'openended', 'psychographics', 'demographics'] as Section[])
@@ -54,7 +56,7 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
     setError('')
     try {
       const params = new URLSearchParams()
-      params.set('export',    'csv')
+      params.set('export',    fileFmt)
       params.set('labelMode', labelMode)
       params.set('format',    exportFmt)
       if (exportFmt === 'standard') params.set('sections', Array.from(sections).join(','))
@@ -67,14 +69,17 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
       if (!res.ok) { setError('Export failed — please try again.'); return }
 
       const blob = await res.blob()
-      const text = await blob.slice(0, 50).text()
-      if (text.startsWith('No data')) { setError('No responses match the current filters.'); return }
+      // Only sniff the first bytes for CSV; XLSX is binary so this check is CSV-only.
+      if (fileFmt === 'csv') {
+        const text = await blob.slice(0, 50).text()
+        if (text.startsWith('No data')) { setError('No responses match the current filters.'); return }
+      }
 
       const url = URL.createObjectURL(blob)
       const a   = document.createElement('a')
       a.href    = url
       const cd  = res.headers.get('Content-Disposition') || ''
-      a.download = cd.match(/filename="([^"]+)"/)?.[1] || `export-${studyId}.csv`
+      a.download = cd.match(/filename="([^"]+)"/)?.[1] || ('export-' + studyId + '.' + fileFmt)
       a.click()
       URL.revokeObjectURL(url)
       onClose()
@@ -91,11 +96,35 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="font-bold text-gray-800">Export CSV</h2>
+          <h2 className="font-bold text-gray-800">Export responses</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
         <div className="px-6 py-5 flex flex-col gap-5 max-h-[70vh] overflow-y-auto">
+
+          {/* ── File format toggle ──────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">File format</p>
+            <div className="flex items-center bg-gray-100 rounded-xl p-1 w-fit">
+              <button onClick={() => setFileFmt('csv')}
+                className={'text-sm font-medium px-4 py-1.5 rounded-lg transition-all ' +
+                  (fileFmt === 'csv' ? 'text-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}
+                style={fileFmt === 'csv' ? { background: HERMES } : {}}>
+                CSV
+              </button>
+              <button onClick={() => setFileFmt('xlsx')}
+                className={'text-sm font-medium px-4 py-1.5 rounded-lg transition-all ' +
+                  (fileFmt === 'xlsx' ? 'text-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}
+                style={fileFmt === 'xlsx' ? { background: HERMES } : {}}>
+                Excel (.xlsx)
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">
+              {fileFmt === 'csv'
+                ? 'Plain CSV — opens in Excel, Google Sheets, R, Python, etc.'
+                : 'Excel workbook (.xlsx) — preserves data types and opens directly in Excel.'}
+            </p>
+          </div>
 
           {/* ── Column label toggle ─────────────────────────────────── */}
           <div>
@@ -218,7 +247,7 @@ export default function ExportModal({ studyId, onClose, dateFrom='', dateTo='', 
           <button onClick={handleExport} disabled={exporting}
             className="px-5 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-all"
             style={{ background: HERMES }}>
-            {exporting ? 'Exporting…' : '↓ Download CSV'}
+            {exporting ? 'Exporting…' : ('↓ Download ' + (fileFmt === 'xlsx' ? 'Excel' : 'CSV'))}
           </button>
         </div>
       </div>

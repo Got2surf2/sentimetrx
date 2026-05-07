@@ -94,11 +94,11 @@ export default function StudyPageHeader({
                 className="px-2.5 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-gray-700 text-xs outline-none focus:border-orange-400 transition-colors" />
             </div>
 
-            {/* Export CSV */}
+            {/* Export — opens modal with format choice */}
             <button onClick={() => setExportOpen(true)} disabled={total === 0}
               className="px-3 py-1.5 rounded-xl text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 transition-all whitespace-nowrap"
               style={{ background: HERMES }}>
-              ↓ Export CSV
+              ↓ Export
             </button>
           </div>
         </div>

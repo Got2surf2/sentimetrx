@@ -1,9 +1,11 @@
 // app/api/townhall/sessions/[id]/export/route.ts
-// GET ?format=csv — export Town Hall responses + themes + demo/psycho data
+// GET ?format=csv|xlsx|themes|json — export Town Hall responses + themes + demo/psycho data
+// XLSX bundles responses + themes into separate sheets; CSV emits one or the other.
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment } from '@/lib/themeUtils'
+import { dataResponse, type Sheet } from '@/lib/xlsxExport'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,12 +75,22 @@ export async function GET(req: NextRequest, { params }: Params) {
     return new NextResponse('No responses to export\n', { status: 200, headers: { 'Content-Type': 'text/csv' } })
   }
 
-  if (format === 'csv') {
-    return buildCsv(session, turns, themeMap, demoMap, psychoMap, demoKeyArr, psychoKeyArr)
+  if (format === 'csv' || format === 'xlsx') {
+    const safeName = (session.name || 'townhall').replace(/[^a-z0-9]/gi, '-').toLowerCase()
+    const date = new Date().toISOString().slice(0, 10)
+    const responses = buildResponsesSheet(turns, themeMap, demoMap, psychoMap, demoKeyArr, psychoKeyArr)
+    if (format === 'xlsx') {
+      // XLSX bundles both responses and theme summary into one workbook.
+      const themesSheet = buildThemesSheet(themes || [], turns)
+      return dataResponse('xlsx', safeName + '-export-' + date, [responses, themesSheet])
+    }
+    return dataResponse('csv', safeName + '-responses-' + date, [responses])
   }
 
   if (format === 'themes') {
-    return buildThemesCsv(session, themes || [], turns)
+    const safeName = (session.name || 'townhall').replace(/[^a-z0-9]/gi, '-').toLowerCase()
+    const date = new Date().toISOString().slice(0, 10)
+    return dataResponse('csv', safeName + '-themes-' + date, [buildThemesSheet(themes || [], turns)])
   }
 
   if (format === 'json') {
@@ -139,23 +151,17 @@ export async function GET(req: NextRequest, { params }: Params) {
     })
   }
 
-  return NextResponse.json({ error: 'Unsupported format. Use ?format=csv, ?format=themes, or ?format=json' }, { status: 400 })
+  return NextResponse.json({ error: 'Unsupported format. Use ?format=csv, ?format=xlsx, ?format=themes, or ?format=json' }, { status: 400 })
 }
 
-function esc(v: unknown): string {
-  const s = v == null ? '' : String(v).trim()
-  return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
-function buildCsv(
-  session: any,
+function buildResponsesSheet(
   turns: any[],
   themeMap: Record<string, string>,
   demoMap: Record<string, Record<string, unknown>>,
   psychoMap: Record<string, Record<string, unknown>>,
   demoKeyArr: string[],
   psychoKeyArr: string[],
-) {
+): Sheet {
   const headers = [
     'participant_id',
     'turn_number',
@@ -180,36 +186,26 @@ function buildCsv(
     const psycho = psychoMap[t.participant_id] || {}
 
     return [
-      esc(t.participant_id),
-      esc(t.turn_number),
-      esc(t.theme_label || (t.theme_id ? themeMap[t.theme_id] || '' : '')),
-      esc(t.source || ''),
-      esc(t.bot_message || ''),
-      esc(t.user_message || ''),
-      esc(t.user_message_en || ''),
-      esc(t.language || ''),
-      esc(sentiment),
-      esc(t.skipped ? 'yes' : 'no'),
-      esc(t.created_at || ''),
-      ...demoKeyArr.map(k => esc(demo[k] || '')),
-      ...psychoKeyArr.map(k => esc(psycho[k] || '')),
-    ].join(',')
+      t.participant_id,
+      t.turn_number,
+      t.theme_label || (t.theme_id ? themeMap[t.theme_id] || '' : ''),
+      t.source || '',
+      t.bot_message || '',
+      t.user_message || '',
+      t.user_message_en || '',
+      t.language || '',
+      sentiment,
+      t.skipped ? 'yes' : 'no',
+      t.created_at || '',
+      ...demoKeyArr.map(k => demo[k] || ''),
+      ...psychoKeyArr.map(k => psycho[k] || ''),
+    ]
   })
 
-  const csv = [headers.join(','), ...rows].join('\n')
-  const safeName = (session.name || 'townhall').replace(/[^a-z0-9]/gi, '-').toLowerCase()
-  const date = new Date().toISOString().slice(0, 10)
-
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${safeName}-responses-${date}.csv"`,
-    },
-  })
+  return { name: 'Responses', headers, rows }
 }
 
-function buildThemesCsv(session: any, themes: any[], turns: any[]) {
+function buildThemesSheet(themes: any[], turns: any[]): Sheet {
   // One row per theme with aggregated stats
   const themeTurnCounts: Record<string, number> = {}
   for (const t of turns) {
@@ -224,25 +220,15 @@ function buildThemesCsv(session: any, themes: any[], turns: any[]) {
     const count = themeTurnCounts[t.id] || 0
     const pct = totalResponses > 0 ? Math.round(count / totalResponses * 100) : 0
     return [
-      esc(t.label),
-      esc(t.source),
-      esc(t.state),
-      esc(t.sentiment || ''),
-      esc(count),
-      esc(pct + '%'),
-      esc((t.keywords || []).join('; ')),
-    ].join(',')
+      t.label,
+      t.source,
+      t.state,
+      t.sentiment || '',
+      count,
+      pct + '%',
+      (t.keywords || []).join('; '),
+    ]
   })
 
-  const csv = [headers.join(','), ...rows].join('\n')
-  const safeName = (session.name || 'townhall').replace(/[^a-z0-9]/gi, '-').toLowerCase()
-  const date = new Date().toISOString().slice(0, 10)
-
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${safeName}-themes-${date}.csv"`,
-    },
-  })
+  return { name: 'Themes', headers, rows }
 }

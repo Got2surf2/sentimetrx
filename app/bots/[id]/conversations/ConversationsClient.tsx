@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import DownloadButton from '@/components/ui/DownloadButton'
 
 var HERMES = '#E8632A'
 var IMSG_BLUE = '#007AFF'
@@ -297,10 +298,12 @@ export default function ConversationsClient() {
             style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             Knowledge
           </button>
-          <button onClick={function() { window.location.href = '/api/bots/' + botId + '/conversations/export' }} disabled={sessions.length === 0}
-            style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: sessions.length === 0 ? 'default' : 'pointer' }}>
-            CSV
-          </button>
+          <DownloadButton
+            label="Download"
+            disabled={sessions.length === 0}
+            hrefFor={fmt => '/api/bots/' + botId + '/conversations/export?format=' + fmt}
+            className="px-4 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-xs font-semibold disabled:opacity-50"
+          />
           <button onClick={generatePptx} disabled={pptxLoading || sessions.length === 0}
             style={{ padding: '8px 16px', borderRadius: 20, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: pptxLoading ? 0.6 : 1 }}>
             {pptxLoading ? '...' : 'Deck'}

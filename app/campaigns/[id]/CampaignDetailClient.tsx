@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import ShareModal from '@/components/ui/ShareModal'
+import DownloadButton from '@/components/ui/DownloadButton'
 import Link from 'next/link'
 import type { CampaignEmail, CampaignRespondent, CampaignStatus, EmailProviderType } from '@/lib/types'
 
@@ -1843,11 +1844,11 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
               {/* Export */}
               {respondents.length > 0 && (
                 <div className="flex justify-end">
-                  <a href={'/api/campaigns/' + campaign.id + '/export'} download
+                  <DownloadButton
+                    label="↓ Export"
+                    hrefFor={fmt => '/api/campaigns/' + campaign.id + '/export?format=' + fmt}
                     className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
-                    style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                    ↓ Export CSV
-                  </a>
+                  />
                 </div>
               )}
 

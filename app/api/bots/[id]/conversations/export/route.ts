@@ -1,8 +1,9 @@
 // app/api/bots/[id]/conversations/export/route.ts
-// GET — export all conversations as CSV
+// GET ?format=csv|xlsx — export all conversations for a bot
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,26 +29,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No conversations to export' }, { status: 404 })
   }
 
-  // Build CSV
-  const escape = (s: string) => '"' + (s || '').replace(/"/g, '""').replace(/\n/g, ' ') + '"'
-  const header = 'Session ID,Turn,Role,Content,Language,Timestamp'
-  const rows = turns.map(t =>
-    [escape(t.session_id), t.turn_number, t.role, escape(t.content), t.language, t.created_at].join(',')
-  )
-  const csv = header + '\n' + rows.join('\n')
+  const format = parseExportFormat(req.nextUrl.searchParams.get('format'))
+  const fileBase = bot.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Conversations'
 
-  const fileName = bot.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Conversations.csv'
-
-  // Write to ~/Downloads
-  const path = require('path')
-  const fs = require('fs')
-  const downloadPath = path.join(require('os').homedir(), 'Downloads', fileName)
-  fs.writeFileSync(downloadPath, csv)
-
-  return new NextResponse(csv, {
-    headers: {
-      'Content-Type': 'text/csv',
-      'Content-Disposition': 'attachment; filename="' + fileName + '"',
-    },
-  })
+  return dataResponse(format, fileBase, [{
+    name: 'Conversations',
+    headers: ['Session ID', 'Turn', 'Role', 'Content', 'Language', 'Timestamp'],
+    rows: turns.map(t => [t.session_id, t.turn_number, t.role, (t.content || '').replace(/\n/g, ' '), t.language, t.created_at]),
+  }])
 }

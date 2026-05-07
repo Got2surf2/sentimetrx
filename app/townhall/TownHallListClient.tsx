@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import DownloadButton from '@/components/ui/DownloadButton'
 
 interface Session {
   id: string
@@ -323,11 +324,11 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
                           Responses
                         </Link>
-                        <button onClick={() => handleExport(s.id, s.name)}
-                          className="text-xs py-1.5 rounded-lg font-medium transition-all text-center"
-                          style={{ background: '#fff4ef', color: HERMES, border: '1px solid #fbd5c2' }}>
-                          Export
-                        </button>
+                        <DownloadButton
+                          label="Export"
+                          onChoose={fmt => handleExport(s.id, s.name, fmt)}
+                          className="text-xs py-1.5 px-3 rounded-lg font-medium transition-all text-center bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100"
+                        />
 
                         {/* Row 2: Close/Reopen, Archive */}
                         <button

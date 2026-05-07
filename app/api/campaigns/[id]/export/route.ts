@@ -1,8 +1,9 @@
 // app/api/campaigns/[id]/export/route.ts
-// GET — export campaign respondent data as CSV
+// GET ?format=csv|xlsx — export campaign respondent data
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +16,6 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const service = createServiceRoleClient()
 
-  // Fetch campaign
   const { data: campaign } = await service
     .from('campaigns')
     .select('name')
@@ -24,7 +24,6 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
-  // Fetch all respondents
   const { data: respondents } = await service
     .from('campaign_respondents')
     .select('*')
@@ -36,19 +35,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     return new NextResponse('No data to export\n', { status: 200, headers: { 'Content-Type': 'text/csv' } })
   }
 
-  const esc = (v: unknown): string => {
-    const s = v == null ? '' : String(v).trim()
-    return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-
-  // Collect all unique field keys
+  // Collect all unique custom field keys across respondents.
   const fieldKeys = new Set<string>()
   for (const r of respondents) {
     if (r.fields) Object.keys(r.fields).forEach(k => fieldKeys.add(k))
   }
   const fieldKeyArr = Array.from(fieldKeys).sort()
 
-  // Build CSV
   const headers = [
     'email',
     'status',
@@ -62,26 +55,24 @@ export async function GET(req: NextRequest, { params }: Params) {
   ]
 
   const rows = respondents.map(r => [
-    esc(r.email),
-    esc(r.status),
-    ...fieldKeyArr.map(k => esc(r.fields?.[k] || '')),
-    esc(r.recipient_guid),
-    esc(r.sent_at || ''),
-    esc(r.opened_at || ''),
-    esc(r.clicked_at || ''),
-    esc(r.completed_at || ''),
-    esc(r.created_at || ''),
-  ].join(','))
+    r.email,
+    r.status,
+    ...fieldKeyArr.map(k => r.fields?.[k] ?? ''),
+    r.recipient_guid,
+    r.sent_at || '',
+    r.opened_at || '',
+    r.clicked_at || '',
+    r.completed_at || '',
+    r.created_at || '',
+  ])
 
-  const csv = [headers.join(','), ...rows].join('\n')
+  const format = parseExportFormat(req.nextUrl.searchParams.get('format'))
   const safeName = (campaign.name || 'campaign').replace(/[^a-z0-9]/gi, '-').toLowerCase()
   const date = new Date().toISOString().slice(0, 10)
 
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${safeName}-recipients-${date}.csv"`,
-    },
-  })
+  return dataResponse(format, safeName + '-recipients-' + date, [{
+    name: 'Recipients',
+    headers,
+    rows,
+  }])
 }
