@@ -131,6 +131,12 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   const [demoMode, setDemoMode] = useState(false)
   const [showVerboseAuth, setShowVerboseAuth] = useState(false)
   const [userName, setUserName] = useState<string | null>(askName ? null : '_skip')
+  // Tracks whether the user has sent their first "real" topic message
+  // (not the name-capture step). Used solely to gate the suggestion chips
+  // — chips show until the first real message, then disappear. The previous
+  // gate (`messages.length <= 1`) broke for askName=true bots because by the
+  // time userName was set the bot had already replied and length was 3.
+  const [hasFirstMessage, setHasFirstMessage] = useState(false)
   const sessionId = useMemo(() => genSessionId(), [])
 
   // When a non-English language is selected, fetch the greeting from the API in that language
@@ -161,6 +167,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setInput('')
     setLoading(false)
     setUserName(askName ? null : '_skip')
+    setHasFirstMessage(false)
     if (multiLang) setSelectedLang(null)
   }
   const rootRef = useRef<HTMLDivElement>(null)
@@ -246,6 +253,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     setMessages(newMessages)
     setInput('')
     setLoading(true)
+    setHasFirstMessage(true)
 
     try {
       // Filter out the name-ask exchange from API messages to keep context clean
@@ -473,12 +481,15 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           </div>
         )}
 
-        {/* Suggestion chips — only show at start, AND only after the name
-           has been captured (or if askName is off). Showing them while the
-           bot is still asking "what's your name?" is confusing — the user
-           ends up clicking a topic question when the next expected input
-           is their name, and the chip click is interpreted as the name. */}
-        {messages.length <= 1 && !loading && userName !== null && (
+        {/* Suggestion chips — show until the user sends their first real
+           topic message (NOT counting name capture). Gating on
+           hasFirstMessage instead of `messages.length <= 1` is what makes
+           chips appear after name capture for askName=true bots: by then
+           messages.length is already 3 (greeting + name + bot reply), so
+           the old length gate excluded them. userName !== null ensures we
+           don't show chips while still asking for the name (otherwise a
+           chip click would be interpreted as the user's name). */}
+        {!hasFirstMessage && !loading && userName !== null && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             {config.suggestions.map((s, i) => (
               <button key={i} onClick={() => sendMessage(s)}
