@@ -1659,7 +1659,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       <div style={{ marginTop: 36, textAlign: 'left', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto', padding: '20px 22px', background: 'white', border: '1px solid ' + T.border, borderRadius: 12 }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>How TextMine works</div>
                         <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: T.textMid, lineHeight: 1.7 }}>
-                          <li>Pick a theme source \u2014 let AI mine the patterns, or apply an industry library of pre-built themes.</li>
+                          <li>Pick a theme source {'\u2014'} let AI mine the patterns, or apply an industry library of pre-built themes.</li>
                           <li>Browse <b>Themes</b> for the cluster overview, or <b>Theme Clouds</b> to see the words inside each theme.</li>
                           <li>Use <b>Compare</b> to slice themes by segment (region, channel, age) and surface significant differences.</li>
                           <li>Drop into <b>Comments</b> any time to read the raw quotes behind a theme.</li>
