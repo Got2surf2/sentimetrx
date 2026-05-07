@@ -189,10 +189,14 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   const [editStep, setEditStep] = useState(0)
 
   // Topic detail popup — store ID, look up from live themes for fresh data
-  const [detailTopicId, setDetailTopicId] = useState<string | null>(null)
-  const detailTopic = detailTopicId ? themes.find(t => t.id === detailTopicId) || null : null
+  // Snapshot the topic at click time. The 4-second polling fetch returns a
+  // lightweight theme shape (no top_keywords / example_quotes / quote_matches)
+  // — if we re-derived detailTopic from the latest themes array, the modal
+  // would visibly "collapse" after each poll. Snapshotting keeps the rich
+  // analytics-mode data the user clicked into.
+  const [detailTopic, setDetailTopicState] = useState<TownHallTheme | null>(null)
   const setDetailTopic = (t: TownHallTheme | null) => {
-    setDetailTopicId(t?.id || null)
+    setDetailTopicState(t)
     // Fetch full analytics (quotes, match reasons) on-demand when opening detail popup
     if (t) fetchData(true)
   }
@@ -221,9 +225,23 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
       if (!res.ok) return
       const data = await res.json()
       setSession(data.session)
-      setThemes(data.themes || [])
+      const newThemes: TownHallTheme[] = data.themes || []
+      setThemes(newThemes)
       setStats(data.stats || null)
       if (data.participants) setParticipantList(data.participants)
+      // If a detail modal is open AND this fetch enriched the matching theme
+      // (analytics mode), upgrade the detailTopic snapshot to the richer
+      // version. Lightweight polling fetches don't carry top_keywords/quotes,
+      // so we only upgrade when the new row has those fields.
+      if (analytics) {
+        setDetailTopicState(prev => {
+          if (!prev) return prev
+          const fresh = newThemes.find(t => t.id === prev.id) as any
+          if (!fresh) return prev
+          if (fresh.top_keywords || fresh.example_quotes || fresh.quote_matches) return fresh
+          return prev
+        })
+      }
     } catch {}
     setLoading(false)
   }, [sessionId])
@@ -1199,16 +1217,18 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
                       )
                     })}
                   </div>
-                  {/* Scrollable cards */}
-                  <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
-                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
-                      {sorted.map(t => (
-                        <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
-                          onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
-                          defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} onDetailClick={() => setDetailTopic(t)} />
-                      ))}
+                  {/* Scrollable cards — hidden in Compact view (the pill nav above is the compact form) */}
+                  {!compactView && (
+                    <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
+                      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)' }}>
+                        {sorted.map(t => (
+                          <ThemeCard key={t.id} theme={t} isActive={isActive} variant="suggested"
+                            onAction={(action, extras) => handleThemeAction(t.id, action, extras)} loading={actionLoading === t.id}
+                            defaultResponseTarget={defaultResponseTarget} expectedAttendees={cfg?.expected_attendees} onDetailClick={() => setDetailTopic(t)} />
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
                 )
               })()}
