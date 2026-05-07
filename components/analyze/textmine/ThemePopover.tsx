@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
 import TermInsights, { type InsightFilter } from './TermInsights'
+import { ratingPalette, ratingRange } from './ratingColor'
 
 interface ThemeLike {
   id?: string
@@ -27,6 +28,8 @@ interface Props {
   fields: string | string[]
   /** Bar color (theme palette colour from the parent). */
   color?: string
+  /** Optional numeric field (rating / NPS / score) — used to color comment cards. */
+  ratingField?: string | null
   onClose: () => void
 }
 
@@ -44,7 +47,7 @@ function highlightKeywords(text: string, keywords: string[]): React.ReactNode[] 
   })
 }
 
-export default function ThemePopover({ theme, rows, fields, color, onClose }: Props) {
+export default function ThemePopover({ theme, rows, fields, color, ratingField, onClose }: Props) {
   const fieldArr = Array.isArray(fields) ? fields : [fields]
   const keywords = useMemo(() => (theme.keywords || []).filter(Boolean), [theme.keywords])
   const dateField = useMemo(() => detectDateField(rows), [rows])
@@ -110,17 +113,26 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
   const total = matchedRows.length
   const pct = totalCommentsWithText > 0 ? (total / totalCommentsWithText) * 100 : 0
 
-  // Sample 25 longest comments first (more informative than the shortest).
+  const ratingScale = useMemo(() => ratingRange(rows, ratingField || null), [rows, ratingField])
+
+  // 25 sample comments. Prefer mid-length sentences (40-200 chars) — fully
+  // long ones are unreadable, very short ones are useless. Pair each with its
+  // rating value so cards can be color-coded.
   const samples = useMemo(() => {
-    const texts: string[] = []
+    const out: { text: string; rating: unknown }[] = []
     for (const row of matchedRows) {
       for (const f of fieldArr) {
         const t = String(row[f] || '').trim()
-        if (t) { texts.push(t); break }
+        if (t) {
+          out.push({ text: t, rating: ratingField ? row[ratingField] : null })
+          break
+        }
       }
     }
-    return texts.sort((a, b) => b.length - a.length).slice(0, 25)
-  }, [matchedRows, fieldArr])
+    const inRange = out.filter(o => o.text.length >= 40 && o.text.length <= 200)
+    const outRange = out.filter(o => o.text.length < 40 || o.text.length > 200)
+    return inRange.concat(outRange).slice(0, 25)
+  }, [matchedRows, fieldArr, ratingField])
 
   const modal = (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
@@ -219,20 +231,27 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
             </div>
           )}
 
-          {/* Sample comments */}
+          {/* Sample comments — color-tinted by rating value */}
           {samples.length > 0 ? (
             <div>
               <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em', marginBottom: 6 }}>
                 Sample comments ({samples.length})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {samples.map((t, i) => (
-                  <div key={i} style={{ padding: '10px 12px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                    <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.55, whiteSpace: 'pre-wrap' as const }}>
-                      {highlightKeywords(t, keywords)}
+                {samples.map((s, i) => {
+                  const pal = ratingPalette(s.rating, ratingScale)
+                  const ratingDisplay = ratingScale && s.rating != null && !isNaN(parseFloat(String(s.rating))) ? String(s.rating) : null
+                  return (
+                    <div key={i} style={{ padding: '10px 12px', background: pal.bg, borderRadius: 8, border: '1px solid ' + pal.border }}>
+                      <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.55, whiteSpace: 'pre-wrap' as const }}>
+                        {highlightKeywords(s.text, keywords)}
+                      </div>
+                      {ratingDisplay && (
+                        <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, marginTop: 4 }}>★ {ratingDisplay}</div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ) : (

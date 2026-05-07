@@ -149,50 +149,45 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
           )}
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
         {insights.map(ins => {
           const expanded = expandedField === ins.field
+          // Layout matches legacy Ana: field name on left, More/Less columns
+          // centered with the value on a second line. Fields without outliers
+          // show only the field name (centred columns blank). Click to expand.
           return (
             <div key={ins.field}
-              style={{ background: '#f9fafb', borderRadius: 10, border: '1px solid ' + (expanded ? '#d1d5db' : '#e5e7eb'), overflow: 'hidden' }}>
+              style={{ borderTop: '1px solid #f3f4f6' }}>
               <button
                 onClick={() => setExpandedField(expanded ? null : ins.field)}
                 style={{
-                  width: '100%', textAlign: 'left' as const, padding: '10px 14px',
-                  display: 'grid', gridTemplateColumns: '1fr 1.4fr 1.4fr auto',
+                  width: '100%', textAlign: 'left' as const, padding: '12px 14px',
+                  display: 'grid', gridTemplateColumns: '1fr 1.6fr 1.6fr',
                   gap: 12, alignItems: 'center',
-                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  background: expanded ? '#f9fafb' : 'transparent',
+                  border: 'none', cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{displayFieldName(ins.field)}</span>
-                <span style={{ fontSize: 11 }}>
-                  {ins.moreFrequent ? (
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>{displayFieldName(ins.field)}</span>
+                <div style={{ textAlign: 'center' as const }}>
+                  {ins.moreFrequent && (
                     <>
-                      <span style={{ color: '#9ca3af' }}>More frequent in: </span>
-                      <span style={{ color: '#059669', fontWeight: 700 }}>
-                        {ins.moreFrequent.value} ({pct(ins.moreFrequent.frequency)})
-                      </span>
+                      <div style={{ fontSize: 10, color: '#9ca3af' }}>More frequent in:</div>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: '#059669', marginTop: 2 }}>{ins.moreFrequent.value}</div>
                     </>
-                  ) : (
-                    <span style={{ color: '#d1d5db' }}>—</span>
                   )}
-                </span>
-                <span style={{ fontSize: 11 }}>
-                  {ins.lessFrequent ? (
+                </div>
+                <div style={{ textAlign: 'center' as const }}>
+                  {ins.lessFrequent && (
                     <>
-                      <span style={{ color: '#9ca3af' }}>Less frequent in: </span>
-                      <span style={{ color: '#dc2626', fontWeight: 700 }}>
-                        {ins.lessFrequent.value} ({pct(ins.lessFrequent.frequency)})
-                      </span>
+                      <div style={{ fontSize: 10, color: '#9ca3af' }}>Less frequent in:</div>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: '#dc2626', marginTop: 2 }}>{ins.lessFrequent.value}</div>
                     </>
-                  ) : (
-                    <span style={{ color: '#d1d5db' }}>—</span>
                   )}
-                </span>
-                <span style={{ fontSize: 11, color: '#9ca3af' }}>{expanded ? '▾' : '▸'}</span>
+                </div>
               </button>
               {expanded && (
-                <div style={{ padding: '0 14px 14px' }}>
+                <div style={{ padding: '0 14px 14px', background: '#f9fafb' }}>
                   <ValueTable field={ins.field} ins={ins} onPick={onDrillDown ? (v) => handlePick(ins.field, v) : undefined} />
                 </div>
               )}

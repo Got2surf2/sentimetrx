@@ -1821,6 +1821,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       word={opinionWord}
                                       rows={filteredRows}
                                       fields={activeField || (themes ? themes.fieldName : '')}
+                                      ratingField={ratingField}
                                       onClose={function() { setOpinionWord(null) }}
                                     />
                                   </div>
@@ -1965,6 +1966,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         word={opinionWord}
                         rows={filteredRows}
                         fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
+                        ratingField={ratingField}
                         onClose={function() { setOpinionWord(null) }}
                       />
                     </div>
@@ -1975,6 +1977,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       rows={filteredRows}
                       fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                       color={themeColors[themePopoverIdx]?.text}
+                      ratingField={ratingField}
                       onClose={function() { setThemePopoverIdx(null) }}
                     />
                   )}

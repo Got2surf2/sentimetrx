@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
 import TermInsights, { type InsightFilter } from './TermInsights'
+import { ratingPalette, ratingRange } from './ratingColor'
 
 const SENT_COLORS = {
   positive: { text: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
@@ -24,6 +25,8 @@ interface Props {
   word: string
   rows: Record<string, unknown>[]
   fields: string | string[]
+  /** Optional numeric field (rating / NPS / score) — used to color comment cards. */
+  ratingField?: string | null
   onClose: () => void
 }
 
@@ -40,7 +43,7 @@ function highlightWord(text: string, word: string): React.ReactNode[] {
   })
 }
 
-export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
+export default function OpinionPopover({ word, rows, fields, ratingField, onClose }: Props) {
   const [view, setView] = useState<'opinions' | 'comments' | 'insights'>('opinions')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
 
@@ -74,13 +77,13 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
     return n
   }, [rows, fieldArr])
 
-  // Pre-compute the matching comments for the comments view (only when needed)
+  // Pre-compute the matching comments for the comments view (only when needed).
+  // Each entry carries the rating value so cards can be color-coded.
   const matchingComments = useMemo(function() {
-    if (view !== 'comments') return []
+    if (view !== 'comments') return [] as { text: string; rating: unknown }[]
     const target = word.toLowerCase()
-    const out: string[] = []
+    const out: { text: string; rating: unknown }[] = []
     for (const row of rows) {
-      // Drill-down filter: row must match insightFilter.field === insightFilter.value
       if (insightFilter) {
         const rv = row[insightFilter.field]
         if (rv == null || String(rv).trim() !== insightFilter.value) continue
@@ -88,13 +91,15 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
       for (const f of fieldArr) {
         const t = String(row[f] || '').trim()
         if (t && t.toLowerCase().includes(target)) {
-          out.push(t)
-          break // one entry per row max, even if multiple fields match
+          out.push({ text: t, rating: ratingField ? row[ratingField] : null })
+          break
         }
       }
     }
     return out
-  }, [view, rows, fieldArr, word, insightFilter])
+  }, [view, rows, fieldArr, word, insightFilter, ratingField])
+
+  const ratingScale = useMemo(() => ratingRange(rows, ratingField || null), [rows, ratingField])
 
   const handleDrillDown = (filter: InsightFilter) => {
     setInsightFilter(filter)
@@ -136,12 +141,17 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
         <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
           {matchingComments.length.toLocaleString()} comment{matchingComments.length !== 1 ? 's' : ''} containing "{word}"{insightFilter ? ' · ' + (insightFilter.field === '_collection_label' ? 'Collection' : insightFilter.field) + '=' + insightFilter.value : ''}
         </div>
-        {matchingComments.map(function(t, i) {
+        {matchingComments.map(function(c, i) {
+          const pal = ratingPalette(c.rating, ratingScale)
+          const ratingDisplay = ratingScale && c.rating != null && !isNaN(parseFloat(String(c.rating))) ? String(c.rating) : null
           return (
-            <div key={i} style={{ padding: '10px 12px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+            <div key={i} style={{ padding: '10px 12px', background: pal.bg, borderRadius: 8, border: '1px solid ' + pal.border }}>
               <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.55, whiteSpace: 'pre-wrap' as const }}>
-                {highlightWord(t, word)}
+                {highlightWord(c.text, word)}
               </div>
+              {ratingDisplay && (
+                <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, marginTop: 4 }}>★ {ratingDisplay}</div>
+              )}
             </div>
           )
         })}
