@@ -60,19 +60,19 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
     return frequencyBuckets(rows, fieldArr, [word], dateField)
   }, [rows, fieldArr, word, dateField])
 
-  // Denominator for % share — count rows with non-empty text in the FIRST
-  // analyzed field. Matches WordCloud's `total` calculation so the % in the
-  // modal header agrees with the % shown next to each theme/word in the cloud.
-  const denomField = fieldArr[0]
+  // CANONICAL denominator: rows with non-empty text in ANY analyzed field.
+  // Used identically in themeUtils.computeThemeStats, WordCloud, and
+  // ThemePopover so every percentage on the analytics page stays consistent.
   const totalCommentsWithText = useMemo(() => {
-    if (!denomField) return 0
     let n = 0
     for (const row of rows) {
-      const v = row[denomField]
-      if (typeof v === 'string' && v.trim()) n++
+      for (const f of fieldArr) {
+        const v = row[f]
+        if (typeof v === 'string' && v.trim()) { n++; break }
+      }
     }
     return n
-  }, [rows, denomField])
+  }, [rows, fieldArr])
 
   // Pre-compute the matching comments for the comments view (only when needed)
   const matchingComments = useMemo(function() {

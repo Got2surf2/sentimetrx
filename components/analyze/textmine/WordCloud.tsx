@@ -246,7 +246,12 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     setActiveThemes(n.size === all.size ? null : n)
   }
 
-  const total = parsedData.filter(function(r) { return String(r[activeField] || '').trim().length > 0 }).length
+  // Canonical denominator across the analytics page: count rows where ANY
+  // analyzed text field has content. Matches themeUtils.computeThemeStats,
+  // OpinionPopover, and ThemePopover so theme/word percentages stay consistent.
+  const total = parsedData.filter(function(r) {
+    return fields.some(function(f) { return String(r[f] || '').trim().length > 0 })
+  }).length
 
   // Filter themes by 3% threshold (same logic as Themes page) unless showAll
   var MIN_PCT = 3

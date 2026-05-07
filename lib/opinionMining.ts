@@ -95,13 +95,24 @@ export function extractOpinions(
   }> = {}
   let totalMentions = 0
 
+  // CANONICAL term-match regex: word-boundary, case-insensitive. Matches
+  // themeUtils.buildKwRegex behavior (\bfood\b not "foods" / "seafood").
+  // Using the same regex everywhere keeps theme % / cloud word % / modal %
+  // in lockstep — no more 47/46/52% drift across surfaces.
+  const targetRe = new RegExp('\\b' + target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+
   for (const row of rows) {
+    let rowMatched = false
     for (const field of fieldArr) {
       const text = String(row[field] || '').trim()
       if (!text) continue
       const lower = text.toLowerCase()
-      if (!lower.includes(target)) continue
-      totalMentions++
+      if (!targetRe.test(lower)) continue
+      // Count this row exactly once even if the term appears in multiple fields
+      if (!rowMatched) {
+        totalMentions++
+        rowMatched = true
+      }
 
       // Split into sentences, then into clauses (split on but/however/although/yet/though/comma)
       const sentences = text.split(/[.!?]+/).filter(function(s) { return s.toLowerCase().includes(target) })

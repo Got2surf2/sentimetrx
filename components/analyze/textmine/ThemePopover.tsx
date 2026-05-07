@@ -51,12 +51,19 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
   const [view, setView] = useState<'overview' | 'insights'>('overview')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
 
-  // Find rows that match ANY theme keyword in any of the analyzed text fields.
+  // CANONICAL keyword-match regexes: word-boundary, case-insensitive — same
+  // logic as themeUtils.buildKwRegex / WordCloud / OpinionPopover so the
+  // theme %  agrees across every surface on the page.
+  const keywordRegexes = useMemo(
+    () => keywords.map(k => new RegExp('\\b' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')),
+    [keywords],
+  )
+
+  // Find rows that match ANY theme keyword in ANY of the analyzed text fields.
   // When an insightFilter is active, additionally require the row's value for
   // that field to match — drives the per-value drill-down in the comments list.
   const matchedRows = useMemo(() => {
-    if (keywords.length === 0) return [] as Record<string, unknown>[]
-    const lowered = keywords.map(k => k.toLowerCase())
+    if (keywordRegexes.length === 0) return [] as Record<string, unknown>[]
     const out: Record<string, unknown>[] = []
     for (const row of rows) {
       if (insightFilter) {
@@ -66,34 +73,34 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
       let hit = false
       for (const f of fieldArr) {
         const t = String(row[f] || '').toLowerCase()
-        for (const target of lowered) {
-          if (t.includes(target)) { hit = true; break }
+        for (const re of keywordRegexes) {
+          if (re.test(t)) { hit = true; break }
         }
         if (hit) break
       }
       if (hit) out.push(row)
     }
     return out
-  }, [rows, fieldArr, keywords, insightFilter])
+  }, [rows, fieldArr, keywordRegexes, insightFilter])
 
   const handleDrillDown = (filter: InsightFilter) => {
     setInsightFilter(filter)
     setView('overview') // overview shows the comments list — that's where the filter shows
   }
 
-  // Denominator: rows with non-empty text in the FIRST analyzed field.
-  // Matches WordCloud's `total` calc so this modal's % agrees with the
-  // theme % shown in the cloud.
-  const denomField = fieldArr[0]
+  // CANONICAL denominator: rows with non-empty text in ANY analyzed field.
+  // Used identically in themeUtils.computeThemeStats, WordCloud, and
+  // OpinionPopover so every percentage on the analytics page stays consistent.
   const totalCommentsWithText = useMemo(() => {
-    if (!denomField) return 0
     let n = 0
     for (const row of rows) {
-      const v = row[denomField]
-      if (typeof v === 'string' && v.trim()) n++
+      for (const f of fieldArr) {
+        const v = row[f]
+        if (typeof v === 'string' && v.trim()) { n++; break }
+      }
     }
     return n
-  }, [rows, denomField])
+  }, [rows, fieldArr])
 
   const freq = useMemo(() => {
     if (!dateField || keywords.length === 0) return { buckets: [], granularity: null }
