@@ -250,10 +250,14 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
   sessionStatusRef.current = session?.status
   useEffect(() => {
     fetchData()
+    // Only 'active' sessions produce new data (turns, participants joining,
+    // theme detection). 'setup' has no participants yet, 'paused' is
+    // intentionally frozen, 'ended' is final. Admin actions (start/pause/
+    // resume/end) trigger an explicit fetchData() so we don't need polling
+    // to catch the transition.
     const interval = setInterval(() => {
-      if (document.hidden) return // tab not visible — skip polling
-      const s = sessionStatusRef.current
-      if (s && s !== 'active' && s !== 'paused' && s !== 'setup') return // ended — skip
+      if (document.hidden) return
+      if (sessionStatusRef.current !== 'active') return
       fetchData()
     }, 4000)
     return () => clearInterval(interval)
