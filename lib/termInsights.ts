@@ -19,14 +19,21 @@
 //   - skip the field if it's a date or has too many distinct values
 
 const Z_THRESHOLD = 1.64    // 95% one-sided significance (legacy Ana)
-const MIN_GROUP_SHARE = 0.10 // group must be ≥10% of the analyzed rows
-const MIN_VALUE_TOTAL = 5    // absolute floor — ignore tiny groups even if share passes
+// Absolute floor on group size for statistical validity. The two-proportion
+// z-test needs n>=30 to be reliable (rule of thumb). Below that the SE is too
+// large to draw conclusions. We do NOT additionally require a 10% share —
+// legacy Ana did, but on heavily skewed datasets (e.g. 80% 5★ reviews) that
+// rule masks the most extreme outlier (the small-but-statistically-robust 4★).
+const MIN_VALUE_TOTAL = 30
 // Cap on distinct values per field. Fields with more than this many distinct
 // values aren't useful as insight breakdowns (too granular — every value
 // becomes its own tiny group). 20 catches typical metadata fields (rating,
 // source, brand, daypart, day-of-week, age bucket, segment) without dragging
 // in noise like ZIP / City / individual user IDs.
 const MAX_CARDINALITY = 20
+// Headline shows up to this many outliers per direction. Beyond this, the
+// expanded per-value table is the place to see them.
+const HEADLINE_MAX_OUTLIERS = 3
 const MAX_DATE_YEAR = 2100
 const MIN_DATE_YEAR = 2000
 
@@ -47,8 +54,10 @@ export interface FieldInsights {
   overallTotal: number
   overallFrequency: number   // matching/total across all rows that have this field set
   values: ValueRow[]
-  moreFrequent: ValueRow | null   // highest z, capped at z >= Z_THRESHOLD
-  lessFrequent: ValueRow | null   // lowest z, capped at z <= -Z_THRESHOLD
+  /** All eligible values with z >= Z_THRESHOLD, sorted most-extreme-first. */
+  moreFrequent: ValueRow[]
+  /** All eligible values with z <= -Z_THRESHOLD, sorted most-extreme-first. */
+  lessFrequent: ValueRow[]
 }
 
 /** Why a field was skipped from the insights analysis. */
@@ -189,20 +198,17 @@ export function fieldInsights(
   }
   valueRows.sort((a, b) => b.zscore - a.zscore)
 
-  // Eligibility: at least MIN_GROUP_SHARE of the analyzed rows AND >= MIN_VALUE_TOTAL
-  // absolute. Matches legacy Ana's `size_percent > 0.1 && size_percent < 1` filter.
-  const minTotalForGroup = Math.max(MIN_VALUE_TOTAL, Math.ceil(overallTotal * MIN_GROUP_SHARE))
-  const eligible = (v: ValueRow) => v.total >= minTotalForGroup && v.total < overallTotal
+  // Eligibility: enough rows for the z-test to be reliable AND not the
+  // entire dataset (which would make "vs other" trivially zero).
+  const eligible = (v: ValueRow) => v.total >= MIN_VALUE_TOTAL && v.total < overallTotal
 
-  let moreFrequent: ValueRow | null = null
-  for (const v of valueRows) {
-    if (eligible(v) && v.zscore >= Z_THRESHOLD) { moreFrequent = v; break }
-  }
-  let lessFrequent: ValueRow | null = null
-  for (let i = valueRows.length - 1; i >= 0; i--) {
-    const v = valueRows[i]
-    if (eligible(v) && v.zscore <= -Z_THRESHOLD) { lessFrequent = v; break }
-  }
+  // All significant outliers per direction, most-extreme-first. Cap the
+  // headline display in the UI; the per-value table shows everything.
+  const moreFrequent = valueRows
+    .filter(v => eligible(v) && v.zscore >= Z_THRESHOLD)
+  const lessFrequent = valueRows
+    .filter(v => eligible(v) && v.zscore <= -Z_THRESHOLD)
+    .sort((a, b) => a.zscore - b.zscore) // most-negative first
 
   return {
     field,
@@ -251,8 +257,8 @@ export function computeAllInsightsDetailed(
     out.push(ins)
   }
   out.sort((a, b) => {
-    const aMax = Math.max(Math.abs(a.moreFrequent?.zscore || 0), Math.abs(a.lessFrequent?.zscore || 0))
-    const bMax = Math.max(Math.abs(b.moreFrequent?.zscore || 0), Math.abs(b.lessFrequent?.zscore || 0))
+    const aMax = Math.max(Math.abs(a.moreFrequent[0]?.zscore || 0), Math.abs(a.lessFrequent[0]?.zscore || 0))
+    const bMax = Math.max(Math.abs(b.moreFrequent[0]?.zscore || 0), Math.abs(b.lessFrequent[0]?.zscore || 0))
     return bMax - aMax
   })
   return { insights: out, detection }

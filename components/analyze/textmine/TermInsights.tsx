@@ -61,7 +61,13 @@ function ValueTable({ field, ins, onPick }: { field: string; ins: FieldInsights;
         <div style={{ textAlign: 'right' as const }}>↓ Outlier z</div>
       </div>
       {rows.map((v: ValueRow, i: number) => {
-        const pos = v.zscore >= 2 ? '#059669' : v.zscore <= -2 ? '#dc2626' : '#6b7280'
+        // Direction-only coloring: blue for "higher than expected", slate
+        // for "lower than expected". Neutral hues — outlier direction has
+        // no inherent good-or-bad meaning, so red/green would be misleading.
+        const sig = Math.abs(v.zscore) >= 2
+        const higher = v.zscore > 0
+        const arrow = !sig ? '' : higher ? '▲ ' : '▼ '
+        const accent = !sig ? '#6b7280' : higher ? '#1d4ed8' : '#475569'
         const clickable = !!onPick && v.matching > 0
         return (
           <div key={v.value + ':' + i}
@@ -72,16 +78,15 @@ function ValueTable({ field, ins, onPick }: { field: string; ins: FieldInsights;
               gap: 8, padding: '7px 12px',
               fontSize: 12, color: '#374151',
               borderBottom: i < rows.length - 1 ? '1px solid #f9fafb' : 'none',
-              background: Math.abs(v.zscore) >= 2 ? (v.zscore > 0 ? '#ecfdf520' : '#fef2f220') : 'transparent',
               cursor: clickable ? 'pointer' : 'default',
             }}>
-            <div style={{ fontWeight: 600, color: pos, textDecoration: clickable ? 'underline' : 'none', textDecorationStyle: 'dotted' as const, textDecorationColor: pos + '80' }}>
-              {clickable && '▾ '}{v.value}
+            <div style={{ fontWeight: 600, color: accent, textDecoration: clickable ? 'underline' : 'none', textDecorationStyle: 'dotted' as const, textDecorationColor: accent + '80' }}>
+              <span style={{ fontSize: 11, marginRight: 2 }}>{arrow}</span>{v.value}
             </div>
             <div style={{ textAlign: 'right' as const, fontWeight: 600 }}>{v.matching.toLocaleString()}</div>
             <div style={{ textAlign: 'right' as const, color: '#9ca3af' }}>{v.total.toLocaleString()}</div>
             <div style={{ textAlign: 'right' as const, fontWeight: 600 }}>{pct(v.frequency)}</div>
-            <div style={{ textAlign: 'right' as const, fontWeight: 700, color: pos }}>{v.zscore.toFixed(2)}</div>
+            <div style={{ textAlign: 'right' as const, fontWeight: 700, color: accent }}>{v.zscore.toFixed(2)}</div>
           </div>
         )
       })}
@@ -103,7 +108,7 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
     onDrillDown({ field, value: v.value, direction })
   }
 
-  const withOutliers = insights.filter(i => i.moreFrequent || i.lessFrequent).length
+  const withOutliers = insights.filter(i => i.moreFrequent.length > 0 || i.lessFrequent.length > 0).length
   const skippedHighCard = detection.skipped.filter(s => s.reason === 'too-many-values')
 
   if (insights.length === 0) {
@@ -124,8 +129,8 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
     <div>
       <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
         Where &ldquo;<span style={{ color: HERMES, fontWeight: 700 }}>{termLabel}</span>&rdquo; appears
-        <em style={{ color: '#059669', fontStyle: 'normal' }}> more</em>{' '}
-        and <em style={{ color: '#dc2626', fontStyle: 'normal' }}>less</em> than expected,
+        <em style={{ color: '#1d4ed8', fontStyle: 'normal' }}> ▲ more</em>{' '}
+        and <em style={{ color: '#475569', fontStyle: 'normal' }}>▼ less</em> than expected,
         across {insights.length} categorical field{insights.length === 1 ? '' : 's'}
         {withOutliers < insights.length && (
           <> ({withOutliers} with significant outliers)</>
@@ -170,18 +175,24 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
                 }}>
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>{displayFieldName(ins.field)}</span>
                 <div style={{ textAlign: 'center' as const }}>
-                  {ins.moreFrequent && (
+                  {ins.moreFrequent.length > 0 && (
                     <>
-                      <div style={{ fontSize: 10, color: '#9ca3af' }}>More frequent in:</div>
-                      <div style={{ fontSize: 14, fontWeight: 500, color: '#059669', marginTop: 2 }}>{ins.moreFrequent.value}</div>
+                      <div style={{ fontSize: 10, color: '#9ca3af' }}>▲ More frequent in:</div>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: '#1d4ed8', marginTop: 2 }}>
+                        {ins.moreFrequent.slice(0, 3).map(v => v.value).join(', ')}
+                        {ins.moreFrequent.length > 3 && <span style={{ color: '#9ca3af', fontSize: 11 }}> +{ins.moreFrequent.length - 3} more</span>}
+                      </div>
                     </>
                   )}
                 </div>
                 <div style={{ textAlign: 'center' as const }}>
-                  {ins.lessFrequent && (
+                  {ins.lessFrequent.length > 0 && (
                     <>
-                      <div style={{ fontSize: 10, color: '#9ca3af' }}>Less frequent in:</div>
-                      <div style={{ fontSize: 14, fontWeight: 500, color: '#dc2626', marginTop: 2 }}>{ins.lessFrequent.value}</div>
+                      <div style={{ fontSize: 10, color: '#9ca3af' }}>▼ Less frequent in:</div>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: '#475569', marginTop: 2 }}>
+                        {ins.lessFrequent.slice(0, 3).map(v => v.value).join(', ')}
+                        {ins.lessFrequent.length > 3 && <span style={{ color: '#9ca3af', fontSize: 11 }}> +{ins.lessFrequent.length - 3} more</span>}
+                      </div>
                     </>
                   )}
                 </div>
