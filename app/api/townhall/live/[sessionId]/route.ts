@@ -3,11 +3,32 @@
 // Returns ONLY aggregate data — no PII, no individual responses.
 
 import { NextResponse, NextRequest } from 'next/server'
-import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildKwRegex, lexiconScore } from '@/lib/themeUtils'
 import { bleepText } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+export const revalidate = 0
+
+// Direct PostgREST call with explicit cache: 'no-store' — bypasses any layer
+// Supabase JS or Next.js could be caching internally. Critical for the live
+// screen which polls and must reflect moderator changes within a single tick.
+async function pgrest<T = any>(path: string): Promise<T> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error('Missing Supabase env vars')
+  const res = await fetch(url + '/rest/v1/' + path, {
+    cache: 'no-store',
+    headers: {
+      apikey: key,
+      Authorization: 'Bearer ' + key,
+      Accept: 'application/json',
+      Prefer: 'count=exact',
+    },
+  })
+  if (!res.ok) throw new Error('PostgREST ' + res.status + ': ' + (await res.text()))
+  return res.json() as Promise<T>
+}
 
 function classifySentiment(pos: number, neg: number): string {
   if (pos === 0 && neg === 0) return 'neutral'
@@ -17,32 +38,31 @@ function classifySentiment(pos: number, neg: number): string {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { sessionId: string } }) {
-  const db = createServiceRoleClient()
   const debug = req.nextUrl.searchParams.get('debug') === '1'
+  const sid = encodeURIComponent(params.sessionId)
 
-  // Fetch session (only non-sensitive fields)
-  const { data: session } = await db
-    .from('townhall_sessions')
-    .select('id, name, slug, status, config, started_at, ended_at, response_counter')
-    .eq('id', params.sessionId)
-    .single()
-
+  // Fetch session — raw PostgREST, no Supabase JS in the hot path
+  const sessions = await pgrest<any[]>(
+    'townhall_sessions?id=eq.' + sid +
+    '&select=id,name,slug,status,config,started_at,ended_at,response_counter'
+  )
+  const session = sessions[0]
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const config = session.config as any
 
-  // Fetch themes
-  const { data: themes } = await db
-    .from('townhall_themes')
-    .select('id, label, description, state, source, response_target, response_count, mention_count, keywords, sentiment, example_quote, sort_order')
-    .eq('session_id', params.sessionId)
-    .order('sort_order', { ascending: true })
+  // Fetch themes — raw PostgREST
+  const themes = await pgrest<any[]>(
+    'townhall_themes?session_id=eq.' + sid +
+    '&select=id,label,description,state,source,response_target,response_count,mention_count,keywords,sentiment,example_quote,sort_order' +
+    '&order=sort_order.asc'
+  )
 
-  // Fetch turn stats (aggregate only)
-  const { data: turns } = await db
-    .from('townhall_turns')
-    .select('participant_id, skipped, user_message_en, user_message, created_at')
-    .eq('session_id', params.sessionId)
+  // Fetch turn stats (aggregate only) — raw PostgREST
+  const turns = await pgrest<any[]>(
+    'townhall_turns?session_id=eq.' + sid +
+    '&select=participant_id,skipped,user_message_en,user_message,created_at'
+  )
 
   const allTurns = turns || []
   const participants = new Set(allTurns.map(t => t.participant_id))
@@ -68,13 +88,11 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     }
   }
 
-  // Compute live response_count per theme from turns
-  const { data: turnCountRows } = await db
-    .from('townhall_turns')
-    .select('theme_id')
-    .eq('session_id', params.sessionId)
-    .not('user_message', 'is', null)
-    .eq('skipped', false)
+  // Compute live response_count per theme from turns — raw PostgREST
+  const turnCountRows = await pgrest<any[]>(
+    'townhall_turns?session_id=eq.' + sid +
+    '&select=theme_id&user_message=not.is.null&skipped=eq.false'
+  )
   const liveCounts: Record<string, number> = {}
   for (const r of turnCountRows || []) { if (r.theme_id) liveCounts[r.theme_id] = (liveCounts[r.theme_id] || 0) + 1 }
 
