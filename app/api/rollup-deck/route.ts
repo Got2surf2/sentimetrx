@@ -118,6 +118,82 @@ function slideOpportunity(pptx: any, pg: number) {
   return pg
 }
 
+function slideBeforeAfter(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  // Near-black backdrop
+  s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0E1A' } })
+
+  // Title row
+  s.addText([
+    { text: 'Before Sentimetrx', options: { color: DN.white, bold: true, fontSize: 30 } },
+    { text: '   vs.   ', options: { color: DN.slate, italic: true, fontSize: 22 } },
+    { text: 'After Sentimetrx', options: { color: DN.gold, bold: true, fontSize: 30 } },
+  ], { x: 0.6, y: 0.3, w: 12.1, h: 0.8, fontFace: 'Arial', align: 'center', valign: 'middle' })
+
+  s.addText('A researcher\'s day with legacy tools (Medallia, SurveyMonkey, Qualtrics, Forsta) vs. with Sentimetrx', {
+    x: 0.6, y: 1.05, w: 12.1, h: 0.3, fontFace: 'Arial', fontSize: 12, color: DN.slate, italic: true, align: 'center',
+  })
+
+  // Card backdrops
+  s.addShape('rect', { x: 0.5, y: 1.5, w: 6.15, h: 5.7, fill: { color: '15192A' }, rectRadius: 0.15 })
+  s.addShape('rect', { x: 6.85, y: 1.5, w: 6.0, h: 5.7, fill: { color: '2A1410' }, rectRadius: 0.15 })
+
+  const steps: { label: string; before: string; after: string }[] = [
+    { label: 'DESIGN',   before: 'Build a 30-question static form. Wire branching by hand.',                      after: 'Pick industry → AI writes the entire conversational study.' },
+    { label: 'DEPLOY',   before: 'Export contacts to Mailchimp. Build a separate email tool.',                    after: 'Built-in campaigns. Merge tags, reminders, tracking.' },
+    { label: 'COLLECT',  before: '5–15% response rate. "It was fine." "It was good."',                            after: '10× more responses. AI clarifiers turn "fine" into the real reason.' },
+    { label: 'ANALYZE',  before: 'Hand 1,000 verbatims to an analyst. Wait 3 weeks for themes.',                  after: 'Ana extracts themes + sentiment + segments in minutes.' },
+    { label: 'REPORT',   before: 'Junior analyst hand-builds a 50-slide deck. Two-week turn.',                    after: 'AI generates tiered PPTX in 2 hours, not 2 weeks.' },
+    { label: 'LISTEN',   before: 'Buy a 2nd tool for reviews. A 3rd for social. A 4th for regulatory.',           after: 'Reviews + social + Reddit + Reg.gov. One pipeline. One model.' },
+  ]
+
+  const rowH = 0.82
+  const startY = 1.65
+
+  steps.forEach((step, i) => {
+    const y = startY + i * (rowH + 0.05)
+
+    // ── Left side (Before): dim gray pill ──
+    s.addText(step.label, {
+      x: 0.65, y, w: 0.95, h: rowH,
+      fontFace: 'Arial', fontSize: 9, color: DN.slate, bold: true, charSpacing: 3, valign: 'middle',
+    })
+    s.addShape('rect', { x: 1.65, y: y + 0.08, w: 4.9, h: rowH - 0.16, fill: { color: '3A3F4F' }, rectRadius: 0.1 })
+    s.addText(step.before, {
+      x: 1.8, y: y + 0.08, w: 4.6, h: rowH - 0.16,
+      fontFace: 'Arial', fontSize: 11, color: 'C0C5D0', valign: 'middle', wrap: true,
+    })
+
+    // ── Right side (After): glowing orange/gold pill ──
+    s.addText(step.label, {
+      x: 7.0, y, w: 0.95, h: rowH,
+      fontFace: 'Arial', fontSize: 9, color: DN.gold, bold: true, charSpacing: 3, valign: 'middle',
+    })
+    const pillX = 8.0
+    const pillW = 4.7
+    const pillY = y + 0.08
+    const pillH = rowH - 0.16
+    // Base: deep orange/red
+    s.addShape('rect', { x: pillX, y: pillY, w: pillW, h: pillH, fill: { color: 'C8341A' }, rectRadius: 0.1 })
+    // Mid: brand orange band
+    s.addShape('rect', { x: pillX, y: pillY + pillH * 0.25, w: pillW, h: pillH * 0.55, fill: { color: 'E85A1A' }, rectRadius: 0.06 })
+    // Top highlight: gold glow
+    s.addShape('rect', { x: pillX, y: pillY, w: pillW, h: pillH * 0.45, fill: { color: 'F5A050', transparency: 35 }, rectRadius: 0.1 })
+    s.addText(step.after, {
+      x: pillX + 0.15, y: pillY, w: pillW - 0.3, h: pillH,
+      fontFace: 'Arial', fontSize: 11, color: DN.white, bold: true, valign: 'middle', wrap: true,
+    })
+  })
+
+  // Footer (light text on dark)
+  s.addText('datanautix.com  ·  AI-Native Roll-up of Customer Intelligence  ·  Confidential', {
+    x: 0.5, y: H - 0.4, w: 10, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate,
+  })
+  s.addText(`${pg}`, {
+    x: W - 1, y: H - 0.4, w: 0.5, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate, align: 'right',
+  })
+}
+
 function slideAILedVsAdded(pptx: any, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'AI-Led, Not AI-Added', 'The category is splitting in two — we are already on the right side')
@@ -823,6 +899,7 @@ function buildShortDeck(pptx: any) {
   )
   pg = 1
   slideOpportunity(pptx, ++pg)
+  slideBeforeAfter(pptx, ++pg)
   slideAILedVsAdded(pptx, ++pg)
   slideWhatWeBuilt(pptx, ++pg)
   slideWedge(pptx, ++pg)
@@ -844,6 +921,7 @@ function buildLongDeck(pptx: any) {
   slideExecSummary(pptx, ++pg)
   slideMarket(pptx, ++pg)
   slideWhyNow(pptx, ++pg)
+  slideBeforeAfter(pptx, ++pg)
   slideAILedVsAdded(pptx, ++pg)
   slideIncumbentFragility(pptx, ++pg)
   slideWhatWeBuilt(pptx, ++pg)
