@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
-import TermInsights from './TermInsights'
+import TermInsights, { type InsightFilter } from './TermInsights'
 
 interface ThemeLike {
   id?: string
@@ -49,13 +49,20 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
   const keywords = useMemo(() => (theme.keywords || []).filter(Boolean), [theme.keywords])
   const dateField = useMemo(() => detectDateField(rows), [rows])
   const [view, setView] = useState<'overview' | 'insights'>('overview')
+  const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
 
   // Find rows that match ANY theme keyword in any of the analyzed text fields.
+  // When an insightFilter is active, additionally require the row's value for
+  // that field to match — drives the per-value drill-down in the comments list.
   const matchedRows = useMemo(() => {
     if (keywords.length === 0) return [] as Record<string, unknown>[]
     const lowered = keywords.map(k => k.toLowerCase())
     const out: Record<string, unknown>[] = []
     for (const row of rows) {
+      if (insightFilter) {
+        const rv = row[insightFilter.field]
+        if (rv == null || String(rv).trim() !== insightFilter.value) continue
+      }
       let hit = false
       for (const f of fieldArr) {
         const t = String(row[f] || '').toLowerCase()
@@ -67,7 +74,12 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
       if (hit) out.push(row)
     }
     return out
-  }, [rows, fieldArr, keywords])
+  }, [rows, fieldArr, keywords, insightFilter])
+
+  const handleDrillDown = (filter: InsightFilter) => {
+    setInsightFilter(filter)
+    setView('overview') // overview shows the comments list — that's where the filter shows
+  }
 
   // Denominator: rows with non-empty text in the FIRST analyzed field.
   // Matches WordCloud's `total` calc so this modal's % agrees with the
@@ -141,9 +153,27 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
         {/* Body */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {view === 'insights' ? (
-            <TermInsights rows={rows} textFields={fieldArr} targets={keywords} termLabel={theme.name} />
+            <TermInsights rows={rows} textFields={fieldArr} targets={keywords} termLabel={theme.name} onDrillDown={handleDrillDown} />
           ) : (
             <>
+          {insightFilter && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Filter</span>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+                padding: '3px 8px', borderRadius: 12,
+                background: insightFilter.direction === 'more' ? '#ecfdf5' : '#fef2f2',
+                color: insightFilter.direction === 'more' ? '#059669' : '#dc2626',
+                border: '1px solid ' + (insightFilter.direction === 'more' ? '#a7f3d0' : '#fecaca'),
+              }}>
+                {insightFilter.field} = {insightFilter.value}
+                <button onClick={() => setInsightFilter(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}
+                  title="Clear filter">×</button>
+              </span>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>{matchedRows.length.toLocaleString()} matching</span>
+            </div>
+          )}
           <FrequencyChart buckets={freq.buckets} granularity={freq.granularity} color={color} />
 
           {/* Keywords */}

@@ -12,7 +12,7 @@ import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
-import TermInsights from './TermInsights'
+import TermInsights, { type InsightFilter } from './TermInsights'
 
 const SENT_COLORS = {
   positive: { text: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
@@ -42,6 +42,7 @@ function highlightWord(text: string, word: string): React.ReactNode[] {
 
 export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
   const [view, setView] = useState<'opinions' | 'comments' | 'insights'>('opinions')
+  const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
 
   const fieldArr = Array.isArray(fields) ? fields : [fields]
 
@@ -79,6 +80,11 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
     const target = word.toLowerCase()
     const out: string[] = []
     for (const row of rows) {
+      // Drill-down filter: row must match insightFilter.field === insightFilter.value
+      if (insightFilter) {
+        const rv = row[insightFilter.field]
+        if (rv == null || String(rv).trim() !== insightFilter.value) continue
+      }
       for (const f of fieldArr) {
         const t = String(row[f] || '').trim()
         if (t && t.toLowerCase().includes(target)) {
@@ -88,21 +94,47 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
       }
     }
     return out
-  }, [view, rows, fieldArr, word])
+  }, [view, rows, fieldArr, word, insightFilter])
+
+  const handleDrillDown = (filter: InsightFilter) => {
+    setInsightFilter(filter)
+    setView('comments')
+  }
 
   let content: React.ReactNode
 
   if (view === 'insights') {
-    content = <TermInsights rows={rows} textFields={fieldArr} targets={[word]} termLabel={word} />
+    content = <TermInsights rows={rows} textFields={fieldArr} targets={[word]} termLabel={word} onDrillDown={handleDrillDown} />
   } else if (view === 'comments') {
+    const filterChip = insightFilter && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Filter</span>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+          padding: '3px 8px', borderRadius: 12,
+          background: insightFilter.direction === 'more' ? '#ecfdf5' : '#fef2f2',
+          color: insightFilter.direction === 'more' ? '#059669' : '#dc2626',
+          border: '1px solid ' + (insightFilter.direction === 'more' ? '#a7f3d0' : '#fecaca'),
+        }}>
+          {insightFilter.field} = {insightFilter.value}
+          <button onClick={() => setInsightFilter(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}
+            title="Clear filter">×</button>
+        </span>
+      </div>
+    )
     content = matchingComments.length === 0 ? (
-      <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: '20px 0' }}>
-        No comments found containing "{word}".
-      </p>
+      <>
+        {filterChip}
+        <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: '20px 0' }}>
+          No comments {insightFilter ? 'match this filter' : 'found containing "' + word + '"'}.
+        </p>
+      </>
     ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {filterChip}
         <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
-          {matchingComments.length.toLocaleString()} comment{matchingComments.length !== 1 ? 's' : ''} containing "{word}"
+          {matchingComments.length.toLocaleString()} comment{matchingComments.length !== 1 ? 's' : ''} containing "{word}"{insightFilter ? ' · ' + insightFilter.field + '=' + insightFilter.value : ''}
         </div>
         {matchingComments.map(function(t, i) {
           return (

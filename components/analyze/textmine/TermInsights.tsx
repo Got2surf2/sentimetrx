@@ -10,11 +10,20 @@
 import { useMemo, useState } from 'react'
 import { computeAllInsights, type FieldInsights, type ValueRow } from '@/lib/termInsights'
 
+export interface InsightFilter {
+  field: string
+  value: string
+  /** "more frequent" / "less frequent" — for chip styling */
+  direction: 'more' | 'less'
+}
+
 interface Props {
   rows: Record<string, unknown>[]
   textFields: string[]
   targets: string[]
   termLabel: string
+  /** When provided, clicking a value row drills into filtered comments. */
+  onDrillDown?: (filter: InsightFilter) => void
 }
 
 const HERMES = '#E8632A'
@@ -23,7 +32,7 @@ function pct(v: number): string {
   return (v * 100).toFixed(1) + '%'
 }
 
-function ValueTable({ field, ins }: { field: string; ins: FieldInsights }) {
+function ValueTable({ field, ins, onPick }: { field: string; ins: FieldInsights; onPick?: (v: ValueRow) => void }) {
   // Sort by |z| descending so outliers float to the top
   const rows = useMemo(() => {
     return [...ins.values].sort((a, b) => Math.abs(b.zscore) - Math.abs(a.zscore))
@@ -45,15 +54,22 @@ function ValueTable({ field, ins }: { field: string; ins: FieldInsights }) {
       </div>
       {rows.map((v: ValueRow, i: number) => {
         const pos = v.zscore >= 2 ? '#059669' : v.zscore <= -2 ? '#dc2626' : '#6b7280'
+        const clickable = !!onPick && v.matching > 0
         return (
-          <div key={v.value + ':' + i} style={{
-            display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.8fr 1fr 0.8fr',
-            gap: 8, padding: '7px 12px',
-            fontSize: 12, color: '#374151',
-            borderBottom: i < rows.length - 1 ? '1px solid #f9fafb' : 'none',
-            background: Math.abs(v.zscore) >= 2 ? (v.zscore > 0 ? '#ecfdf520' : '#fef2f220') : 'transparent',
-          }}>
-            <div style={{ fontWeight: 600, color: pos }}>{v.value}</div>
+          <div key={v.value + ':' + i}
+            onClick={clickable ? () => onPick!(v) : undefined}
+            title={clickable ? 'Click to see comments matching ' + field + '=' + v.value : undefined}
+            style={{
+              display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.8fr 1fr 0.8fr',
+              gap: 8, padding: '7px 12px',
+              fontSize: 12, color: '#374151',
+              borderBottom: i < rows.length - 1 ? '1px solid #f9fafb' : 'none',
+              background: Math.abs(v.zscore) >= 2 ? (v.zscore > 0 ? '#ecfdf520' : '#fef2f220') : 'transparent',
+              cursor: clickable ? 'pointer' : 'default',
+            }}>
+            <div style={{ fontWeight: 600, color: pos, textDecoration: clickable ? 'underline' : 'none', textDecorationStyle: 'dotted' as const, textDecorationColor: pos + '80' }}>
+              {clickable && '▾ '}{v.value}
+            </div>
             <div style={{ textAlign: 'right' as const, fontWeight: 600 }}>{v.matching.toLocaleString()}</div>
             <div style={{ textAlign: 'right' as const, color: '#9ca3af' }}>{v.total.toLocaleString()}</div>
             <div style={{ textAlign: 'right' as const, fontWeight: 600 }}>{pct(v.frequency)}</div>
@@ -65,12 +81,18 @@ function ValueTable({ field, ins }: { field: string; ins: FieldInsights }) {
   )
 }
 
-export default function TermInsights({ rows, textFields, targets, termLabel }: Props) {
+export default function TermInsights({ rows, textFields, targets, termLabel, onDrillDown }: Props) {
   const insights = useMemo(
     () => computeAllInsights(rows, textFields, targets),
     [rows, textFields, targets],
   )
   const [expandedField, setExpandedField] = useState<string | null>(null)
+
+  const handlePick = (field: string, v: ValueRow) => {
+    if (!onDrillDown) return
+    const direction: 'more' | 'less' = v.zscore >= 0 ? 'more' : 'less'
+    onDrillDown({ field, value: v.value, direction })
+  }
 
   if (insights.length === 0) {
     return (
@@ -89,7 +111,7 @@ export default function TermInsights({ rows, textFields, targets, termLabel }: P
         Where &ldquo;<span style={{ color: HERMES, fontWeight: 700 }}>{termLabel}</span>&rdquo; appears
         <em style={{ color: '#059669', fontStyle: 'normal' }}> more</em>{' '}
         and <em style={{ color: '#dc2626', fontStyle: 'normal' }}>less</em> than expected.
-        Click a field to see the per-value table with outlier scores.
+        Click a field to see the per-value table{onDrillDown ? ' — click any value to drill into the matching comments.' : ' with outlier scores.'}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {insights.map(ins => {
@@ -135,7 +157,7 @@ export default function TermInsights({ rows, textFields, targets, termLabel }: P
               </button>
               {expanded && (
                 <div style={{ padding: '0 14px 14px' }}>
-                  <ValueTable field={ins.field} ins={ins} />
+                  <ValueTable field={ins.field} ins={ins} onPick={onDrillDown ? (v) => handlePick(ins.field, v) : undefined} />
                 </div>
               )}
             </div>
