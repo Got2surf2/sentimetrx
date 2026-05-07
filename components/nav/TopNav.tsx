@@ -143,7 +143,10 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
         className={'flex items-center gap-1.5 text-sm font-medium transition-all whitespace-nowrap px-2.5 py-1.5 rounded-full ' +
           (active ? 'bg-white/25 text-white' : 'text-orange-100 hover:bg-white/15 hover:text-white')}>
         <span className="text-base leading-none">{icon}</span>
-        <span className="hidden xl:inline">{label}</span>
+        {/* Active item always shows its label so the user can see which page
+            they're on at narrow widths. Non-active items stay icons-only
+            until the full xl breakpoint. */}
+        <span className={active ? 'inline' : 'hidden xl:inline'}>{label}</span>
       </Link>
     )
   }
