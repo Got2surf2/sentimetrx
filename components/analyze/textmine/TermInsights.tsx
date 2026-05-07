@@ -8,7 +8,7 @@
 // matching the legacy Ana drill-down.
 
 import { useMemo, useState } from 'react'
-import { computeAllInsights, type FieldInsights, type ValueRow } from '@/lib/termInsights'
+import { computeAllInsightsDetailed, type FieldInsights, type ValueRow } from '@/lib/termInsights'
 
 export interface InsightFilter {
   field: string
@@ -82,11 +82,12 @@ function ValueTable({ field, ins, onPick }: { field: string; ins: FieldInsights;
 }
 
 export default function TermInsights({ rows, textFields, targets, termLabel, onDrillDown }: Props) {
-  const insights = useMemo(
-    () => computeAllInsights(rows, textFields, targets),
+  const { insights, detection } = useMemo(
+    () => computeAllInsightsDetailed(rows, textFields, targets),
     [rows, textFields, targets],
   )
   const [expandedField, setExpandedField] = useState<string | null>(null)
+  const [showSkipped, setShowSkipped] = useState(false)
 
   const handlePick = (field: string, v: ValueRow) => {
     if (!onDrillDown) return
@@ -94,18 +95,22 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
     onDrillDown({ field, value: v.value, direction })
   }
 
+  const withOutliers = insights.filter(i => i.moreFrequent || i.lessFrequent).length
+  const skippedHighCard = detection.skipped.filter(s => s.reason === 'too-many-values')
+
   if (insights.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af' }}>
         <p style={{ fontSize: 13 }}>No metadata fields available for outlier analysis.</p>
         <p style={{ fontSize: 11, color: '#d1d5db', marginTop: 4 }}>
-          Insights look at categorical fields with at most 12 distinct values. None of this dataset&apos;s columns qualify (every column is text, a date, or has too many unique values).
+          Insights look at categorical fields with at most 20 distinct values. None of this dataset&apos;s columns qualify.
+          {skippedHighCard.length > 0 && (
+            <> {skippedHighCard.length} field(s) had too many distinct values: {skippedHighCard.slice(0, 5).map(s => s.field + ' (' + s.uniqueValues + ')').join(', ')}{skippedHighCard.length > 5 ? '…' : ''}</>
+          )}
         </p>
       </div>
     )
   }
-
-  const withOutliers = insights.filter(i => i.moreFrequent || i.lessFrequent).length
 
   return (
     <div>
@@ -119,6 +124,23 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
         )}.
         Click a field to see the per-value table{onDrillDown ? ' — click any value to drill into the matching comments.' : ' with outlier scores.'}
       </p>
+      {skippedHighCard.length > 0 && (
+        <div style={{ marginBottom: 10, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 11, color: '#92400e' }}>
+          <button onClick={() => setShowSkipped(s => !s)}
+            style={{ background: 'none', border: 'none', padding: 0, color: '#92400e', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
+            {showSkipped ? '▾' : '▸'} {skippedHighCard.length} field{skippedHighCard.length === 1 ? '' : 's'} skipped — too many distinct values
+          </button>
+          {showSkipped && (
+            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {skippedHighCard.map(s => (
+                <span key={s.field} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: '#fef3c7', color: '#92400e' }}>
+                  {s.field} <span style={{ opacity: 0.6 }}>{s.uniqueValues} values</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {insights.map(ins => {
           const expanded = expandedField === ins.field

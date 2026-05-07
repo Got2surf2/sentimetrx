@@ -1979,6 +1979,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     />
                   )}
                   </>
+                ) : hasThemes && themes && !rowsLoaded ? (
+                  // Theme model IS applied — we're just waiting for the row data
+                  // to load before we can compute the cloud. Don't tell the user
+                  // to run TextMine again, that's already done.
+                  <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>
+                    <div style={{ display: 'inline-block', width: 24, height: 24, border: '3px solid #e5e7eb', borderTopColor: T.accent, borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: 12 }} />
+                    <div>Loading theme clouds…</div>
+                    <style>{'@keyframes spin { to { transform: rotate(360deg) } }'}</style>
+                  </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>Run a TextMine analysis first to see theme clouds.</div>
                 )}

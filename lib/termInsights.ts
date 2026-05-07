@@ -23,9 +23,10 @@ const MIN_GROUP_SHARE = 0.10 // group must be ≥10% of the analyzed rows
 const MIN_VALUE_TOTAL = 5    // absolute floor — ignore tiny groups even if share passes
 // Cap on distinct values per field. Fields with more than this many distinct
 // values aren't useful as insight breakdowns (too granular — every value
-// becomes its own tiny group). Set tight per product spec so high-cardinality
-// columns like LocationName / City / State are skipped.
-const MAX_CARDINALITY = 12
+// becomes its own tiny group). 20 catches typical metadata fields (rating,
+// source, brand, daypart, day-of-week, age bucket, segment) without dragging
+// in noise like ZIP / City / individual user IDs.
+const MAX_CARDINALITY = 20
 const MAX_DATE_YEAR = 2100
 const MIN_DATE_YEAR = 2000
 
@@ -50,33 +51,47 @@ export interface FieldInsights {
   lessFrequent: ValueRow | null   // lowest z, capped at z <= -Z_THRESHOLD
 }
 
+/** Why a field was skipped from the insights analysis. */
+export type SkipReason = 'text-field' | 'no-data' | 'date-like' | 'single-value' | 'too-many-values'
+
+export interface FieldDetection {
+  accepted: string[]
+  skipped: { field: string; reason: SkipReason; uniqueValues?: number }[]
+}
+
 /**
  * Pick fields suitable for outlier analysis: not text fields, not dates,
  * with reasonable cardinality (2..MAX_CARDINALITY unique values).
+ * Returns both accepted candidates AND the rejected ones with reasons,
+ * so the UI can show why a field didn't appear.
  */
-export function detectInsightFields(
+export function detectInsightFieldsDetailed(
   rows: Record<string, unknown>[],
   excludeFields: string[],
-): string[] {
-  if (rows.length === 0) return []
+): FieldDetection {
+  if (rows.length === 0) return { accepted: [], skipped: [] }
   const exclude = new Set(excludeFields)
-  const candidates: string[] = []
+  const accepted: string[] = []
+  const skipped: { field: string; reason: SkipReason; uniqueValues?: number }[] = []
   const keys = new Set<string>()
-  // Sample 200 rows for key detection — datasets sometimes have sparse rows
-  // where the first row doesn't include all columns.
   for (const r of rows.slice(0, 200)) for (const k of Object.keys(r || {})) keys.add(k)
 
   for (const k of Array.from(keys)) {
-    if (exclude.has(k)) continue
+    if (exclude.has(k)) {
+      skipped.push({ field: k, reason: 'text-field' })
+      continue
+    }
     const sample: unknown[] = []
     for (const r of rows.slice(0, 500)) {
       const v = r[k]
       if (v != null && v !== '') sample.push(v)
       if (sample.length >= 100) break
     }
-    if (sample.length === 0) continue
+    if (sample.length === 0) {
+      skipped.push({ field: k, reason: 'no-data' })
+      continue
+    }
 
-    // Drop date-like fields — they're handled by the frequency chart.
     let dateLike = 0
     for (const v of sample) {
       if (typeof v !== 'string') break
@@ -85,15 +100,30 @@ export function detectInsightFields(
       const y = new Date(t).getUTCFullYear()
       if (y >= MIN_DATE_YEAR && y <= MAX_DATE_YEAR) dateLike++
     }
-    if (dateLike >= sample.length * 0.8) continue
+    if (dateLike >= sample.length * 0.8) {
+      skipped.push({ field: k, reason: 'date-like' })
+      continue
+    }
 
-    // Cardinality check
     const uniq = new Set(sample.map(v => String(v).trim()))
-    if (uniq.size < 2 || uniq.size > MAX_CARDINALITY) continue
-
-    candidates.push(k)
+    if (uniq.size < 2) {
+      skipped.push({ field: k, reason: 'single-value', uniqueValues: uniq.size })
+      continue
+    }
+    if (uniq.size > MAX_CARDINALITY) {
+      skipped.push({ field: k, reason: 'too-many-values', uniqueValues: uniq.size })
+      continue
+    }
+    accepted.push(k)
   }
-  return candidates
+  return { accepted, skipped }
+}
+
+export function detectInsightFields(
+  rows: Record<string, unknown>[],
+  excludeFields: string[],
+): string[] {
+  return detectInsightFieldsDetailed(rows, excludeFields).accepted
 }
 
 /** Does any of `targets` appear (substring) in any of the row's text fields? */
@@ -200,9 +230,22 @@ export function computeAllInsights(
   textFields: string[],
   targets: string[],
 ): FieldInsights[] {
-  const fields = detectInsightFields(rows, textFields)
+  return computeAllInsightsDetailed(rows, textFields, targets).insights
+}
+
+/**
+ * Same as computeAllInsights but also returns the field-detection diagnostic
+ * (which fields were considered, which were skipped and why). The popover
+ * uses this to show transparency about what was analyzed.
+ */
+export function computeAllInsightsDetailed(
+  rows: Record<string, unknown>[],
+  textFields: string[],
+  targets: string[],
+): { insights: FieldInsights[]; detection: FieldDetection } {
+  const detection = detectInsightFieldsDetailed(rows, textFields)
   const out: FieldInsights[] = []
-  for (const field of fields) {
+  for (const field of detection.accepted) {
     const ins = fieldInsights(rows, textFields, targets, field)
     if (!ins) continue
     out.push(ins)
@@ -212,5 +255,5 @@ export function computeAllInsights(
     const bMax = Math.max(Math.abs(b.moreFrequent?.zscore || 0), Math.abs(b.lessFrequent?.zscore || 0))
     return bMax - aMax
   })
-  return out
+  return { insights: out, detection }
 }

@@ -227,38 +227,36 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
           <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'×'}</button>
         </div>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          {/* Frequency time-series sparkline at the very top — visible across both views */}
-          <FrequencyChart buckets={freq.buckets} granularity={freq.granularity} />
-          {content}
-        </div>
-
-        {/* Footer — switch between Opinions / Comments / Insights views */}
+        {/* Tabs — top of body. Close X is in the header, not here. */}
         {result.opinions.length > 0 && (
-          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', marginBottom: 14 }}>
             {(['opinions', 'comments', 'insights'] as const).map(v => {
               const labels = { opinions: 'Opinions', comments: 'Comments', insights: '✨ Insights' } as const
               const active = view === v
               return (
                 <button key={v} onClick={() => setView(v)}
                   style={{
-                    flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 700,
+                    padding: '10px 18px', fontSize: 13, fontWeight: 700,
                     color: active ? '#2563eb' : '#6b7280',
-                    background: active ? '#eff6ff' : '#f9fafb',
-                    border: '1px solid ' + (active ? '#bfdbfe' : '#e5e7eb'),
-                    borderRadius: 8, cursor: 'pointer',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: '2px solid ' + (active ? '#2563eb' : 'transparent'),
+                    marginBottom: -1,
+                    cursor: 'pointer',
                   }}>
                   {labels[v]}
                 </button>
               )
             })}
-            <button onClick={onClose}
-              style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>
-              Close
-            </button>
           </div>
         )}
+
+        {/* Body */}
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          {/* Frequency time-series sparkline at the very top — visible across both views */}
+          <FrequencyChart buckets={freq.buckets} granularity={freq.granularity} />
+          {content}
+        </div>
       </div>
     </div>
   )

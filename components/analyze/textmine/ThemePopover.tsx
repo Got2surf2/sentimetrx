@@ -157,6 +157,28 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
           )}
         </div>
 
+        {/* Tabs — top of body. Close X is in the header, not here. */}
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', marginBottom: 14 }}>
+          {(['overview', 'insights'] as const).map(v => {
+            const labels = { overview: 'Overview', insights: '✨ Insights' } as const
+            const active = view === v
+            return (
+              <button key={v} onClick={() => setView(v)}
+                style={{
+                  padding: '10px 18px', fontSize: 13, fontWeight: 700,
+                  color: active ? '#2563eb' : '#6b7280',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: '2px solid ' + (active ? '#2563eb' : 'transparent'),
+                  marginBottom: -1,
+                  cursor: 'pointer',
+                }}>
+                {labels[v]}
+              </button>
+            )
+          })}
+        </div>
+
         {/* Body */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {view === 'insights' ? (
@@ -222,28 +244,6 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
           )}
         </div>
 
-        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {(['overview', 'insights'] as const).map(v => {
-            const labels = { overview: 'Overview', insights: '✨ Insights' } as const
-            const active = view === v
-            return (
-              <button key={v} onClick={() => setView(v)}
-                style={{
-                  flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 700,
-                  color: active ? '#2563eb' : '#6b7280',
-                  background: active ? '#eff6ff' : '#f9fafb',
-                  border: '1px solid ' + (active ? '#bfdbfe' : '#e5e7eb'),
-                  borderRadius: 8, cursor: 'pointer',
-                }}>
-                {labels[v]}
-              </button>
-            )
-          })}
-          <button onClick={onClose}
-            style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>
-            Close
-          </button>
-        </div>
       </div>
     </div>
   )
