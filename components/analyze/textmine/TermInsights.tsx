@@ -97,20 +97,26 @@ export default function TermInsights({ rows, textFields, targets, termLabel, onD
   if (insights.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af' }}>
-        <p style={{ fontSize: 13 }}>No statistical outliers found for &ldquo;{termLabel}&rdquo;.</p>
+        <p style={{ fontSize: 13 }}>No metadata fields available for outlier analysis.</p>
         <p style={{ fontSize: 11, color: '#d1d5db', marginTop: 4 }}>
-          The term appears at roughly the same rate across every categorical field in the dataset.
+          Insights look at categorical fields with at most 12 distinct values. None of this dataset&apos;s columns qualify (every column is text, a date, or has too many unique values).
         </p>
       </div>
     )
   }
+
+  const withOutliers = insights.filter(i => i.moreFrequent || i.lessFrequent).length
 
   return (
     <div>
       <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
         Where &ldquo;<span style={{ color: HERMES, fontWeight: 700 }}>{termLabel}</span>&rdquo; appears
         <em style={{ color: '#059669', fontStyle: 'normal' }}> more</em>{' '}
-        and <em style={{ color: '#dc2626', fontStyle: 'normal' }}>less</em> than expected.
+        and <em style={{ color: '#dc2626', fontStyle: 'normal' }}>less</em> than expected,
+        across {insights.length} categorical field{insights.length === 1 ? '' : 's'}
+        {withOutliers < insights.length && (
+          <> ({withOutliers} with significant outliers)</>
+        )}.
         Click a field to see the per-value table{onDrillDown ? ' — click any value to drill into the matching comments.' : ' with outlier scores.'}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

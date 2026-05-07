@@ -108,7 +108,11 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   const fields = activeFields && activeFields.length ? activeFields : (activeField ? [activeField] : [])
   if (!themes || !themes.length || !fields.length) return null
 
-  const allText = parsedData.map(function(r) { return getRowText(r, fields).toLowerCase() }).join(' ')
+  // Per-row lowercased text — used for row-based counts so a word that
+  // appears 3× in one comment counts as 1, not 3. Row counts match the
+  // intuitive meaning of "X% of comments mention food" and align with
+  // the percentage shown in OpinionPopover / ThemePopover.
+  const perRowText: string[] = parsedData.map(function(r) { return getRowText(r, fields).toLowerCase() })
 
   // Build word-to-theme map from keywords
   const wordThemeMap: Record<string, { themeIdx: number; freq: number }> = {}
@@ -118,16 +122,30 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     })
   })
 
-  // Count keyword frequencies in corpus
+  // Count keyword frequencies — number of ROWS (comments) where the keyword appears.
   Object.keys(wordThemeMap).forEach(function(w) {
-    const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi')
-    wordThemeMap[w].freq = (allText.match(re) || []).length
+    const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+    var rows = 0
+    for (var i = 0; i < perRowText.length; i++) {
+      if (re.test(perRowText[i])) rows++
+    }
+    wordThemeMap[w].freq = rows
   })
 
-  // Build general word frequency for non-keyword words
-  const rawWords = allText.split(/\W+/).filter(function(w) { return w.length > 3 && !STOP_WORDS.has(w) })
+  // Build general word frequency for non-keyword words — also row-based so
+  // it's consistent with the keyword counts. Each word counts once per row.
   const freqMap: Record<string, number> = {}
-  rawWords.forEach(function(w) { freqMap[w] = (freqMap[w] || 0) + 1 })
+  for (var i = 0; i < perRowText.length; i++) {
+    const seen = new Set<string>()
+    const tokens = perRowText[i].split(/\W+/)
+    for (var j = 0; j < tokens.length; j++) {
+      const w = tokens[j]
+      if (w.length > 3 && !STOP_WORDS.has(w) && !seen.has(w)) {
+        seen.add(w)
+        freqMap[w] = (freqMap[w] || 0) + 1
+      }
+    }
+  }
 
   // Include all theme keywords that have matches, PLUS ensure every theme with count>0
   // on the themes page has at least its top keyword represented (even if local freq is low)

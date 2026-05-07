@@ -21,7 +21,11 @@
 const Z_THRESHOLD = 1.64    // 95% one-sided significance (legacy Ana)
 const MIN_GROUP_SHARE = 0.10 // group must be ≥10% of the analyzed rows
 const MIN_VALUE_TOTAL = 5    // absolute floor — ignore tiny groups even if share passes
-const MAX_CARDINALITY = 50   // skip fields with too many distinct values
+// Cap on distinct values per field. Fields with more than this many distinct
+// values aren't useful as insight breakdowns (too granular — every value
+// becomes its own tiny group). Set tight per product spec so high-cardinality
+// columns like LocationName / City / State are skipped.
+const MAX_CARDINALITY = 12
 const MAX_DATE_YEAR = 2100
 const MIN_DATE_YEAR = 2000
 
@@ -183,9 +187,13 @@ export function fieldInsights(
 }
 
 /**
- * Compute insights across all auto-detected categorical fields.
- * Returns only fields with at least one detected outlier — silent fields
- * (everything is statistically uniform) are dropped from the summary.
+ * Compute insights across all auto-detected low-cardinality categorical fields.
+ * Returns every eligible field — including ones with no statistically significant
+ * outliers (those still show their per-value table when expanded, just with
+ * "—" in the headline; the user can verify the analysis ran).
+ *
+ * Sort: fields with the strongest outlier (highest |z|) float to the top.
+ * Fields without any outlier sort to the bottom but still appear.
  */
 export function computeAllInsights(
   rows: Record<string, unknown>[],
@@ -197,9 +205,8 @@ export function computeAllInsights(
   for (const field of fields) {
     const ins = fieldInsights(rows, textFields, targets, field)
     if (!ins) continue
-    if (ins.moreFrequent || ins.lessFrequent) out.push(ins)
+    out.push(ins)
   }
-  // Sort: most-extreme outlier first (highest |z|).
   out.sort((a, b) => {
     const aMax = Math.max(Math.abs(a.moreFrequent?.zscore || 0), Math.abs(a.lessFrequent?.zscore || 0))
     const bMax = Math.max(Math.abs(b.moreFrequent?.zscore || 0), Math.abs(b.lessFrequent?.zscore || 0))

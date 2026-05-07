@@ -148,9 +148,11 @@ export function extractOpinions(
               if (occSent === 'positive') opinionCounts[w].pos++
               else if (occSent === 'negative') opinionCounts[w].neg++
               else opinionCounts[w].neu++
-              if (opinionCounts[w].samples.length < 3) {
-                const trimmed = sentence.trim().slice(0, 120)
-                if (!opinionCounts[w].samples.includes(trimmed)) {
+              // Collect a pool of candidate samples (up to 20 distinct).
+              // We'll pick the 3 most readable ones at the end of mining.
+              if (opinionCounts[w].samples.length < 20) {
+                const trimmed = sentence.trim()
+                if (trimmed.length > 0 && !opinionCounts[w].samples.includes(trimmed)) {
                   opinionCounts[w].samples.push(trimmed)
                 }
               }
@@ -170,7 +172,15 @@ export function extractOpinions(
       let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral'
       if (c.pos > c.neg && c.pos > c.neu) sentiment = 'positive'
       else if (c.neg > c.pos && c.neg > c.neu) sentiment = 'negative'
-      return { opinion: e[0], count: c.count, sentiment, samples: c.samples }
+      // Pick 3 readable samples from the candidate pool. Prefer 30..120 chars
+      // (a comfortable readable range) sorted shortest-first; fall back to
+      // anything else if not enough sweet-spot candidates exist.
+      const inRange = c.samples.filter(function(s) { return s.length >= 30 && s.length <= 120 }).sort(function(a, b) { return a.length - b.length })
+      const outRange = c.samples.filter(function(s) { return s.length < 30 || s.length > 120 }).sort(function(a, b) { return a.length - b.length })
+      const picked = inRange.concat(outRange).slice(0, 3).map(function(s) {
+        return s.length > 120 ? s.slice(0, 117) + '…' : s
+      })
+      return { opinion: e[0], count: c.count, sentiment, samples: picked }
     })
     .sort(function(a, b) { return b.count - a.count })
     .slice(0, 30)
