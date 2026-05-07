@@ -956,7 +956,11 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
     var kLabel = resolveAlias(splitByField, k, schema)
     return { type: 'box' as const, y: groups[k], name: kLabel + ' (' + pct + '%)', marker: { color: pal[i % pal.length] }, boxpoints: 'outliers' as const }
   })
-  return <PlotlyChart traces={traces} layout={{ title: flByName(numField, schema) + ' by ' + flByName(splitByField, schema), yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'h' as const, y: -0.2, title: { text: flByName(splitByField, schema) } } }} />
+  // Vertical-right legend so it doesn't compete with the rotated x-axis
+  // labels for the strip below the plot. With long category names (20+
+  // locations) and an `orientation: 'h', y: -0.2` legend, the labels and
+  // legend pile on top of each other. Right-side keeps both readable.
+  return <PlotlyChart traces={traces} layout={{ title: flByName(numField, schema) + ' by ' + flByName(splitByField, schema), yaxis: { title: flByName(numField, schema), ...(intY ? { dtick: 1, tick0: numSum?.min } : {}) }, legend: { orientation: 'v' as const, x: 1.02, y: 1, xanchor: 'left' as const, yanchor: 'top' as const, title: { text: flByName(splitByField, schema) } }, margin: { t: 48, r: 220, b: 56, l: 56 } }} />
 }
 
 function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByField, smartAxes, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; measureField: string; splitByField: string; smartAxes?: boolean; colors?: string[] }) {
