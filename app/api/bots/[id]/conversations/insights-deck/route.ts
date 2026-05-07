@@ -102,6 +102,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 ${(bot as any).personality ? `Agent personality: ${(bot as any).personality}` : ''}
 ${bot.system_prompt ? `Agent purpose: ${(bot.system_prompt || '').slice(0, 300)}` : ''}
 
+The transcript labels every line with either "user:" (real human participant) or "assistant:" (the AI agent itself). When the spec says "user quote", it means a line prefixed with "user:". NEVER lift, paraphrase, or attribute an "assistant:" line as a user quote — those are the agent's own responses, not what users said.
+
 Analyze the conversations and return a JSON object with these exact keys:
 {
   "common_questions": ["top 5 most frequent questions or topics users ask about"],
@@ -111,7 +113,7 @@ Analyze the conversations and return a JSON object with these exact keys:
   "knowledge_gaps": ["3-5 topics users ask about that the agent struggles to answer well"],
   "personality_effectiveness": "2-3 sentences evaluating how well the agent's personality/tone lands with users",
   "recommendations": ["4-5 actionable recommendations to improve the agent"],
-  "top_quotes": ["pick the 6 most insightful user quotes from the conversations — use exact text, minimum 20 words each"]
+  "top_quotes": ["6 most insightful USER quotes — copy exact text from lines beginning with 'user:'. Minimum 20 words each. Do NOT include any line from 'assistant:'."]
 }
 
 Return ONLY valid JSON, no markdown.`,
@@ -197,7 +199,33 @@ Return ONLY valid JSON, no markdown.`,
   }
 
   // 5. User quotes
-  const quotes = (analysis.top_quotes || []).slice(0, 6)
+  // Defense against the AI accidentally lifting assistant lines as user quotes
+  // (Anna pptx bug: a bot persona line ended up on this slide). Only keep
+  // AI-returned quotes that match an actual user turn; backfill from the
+  // deterministic longest-user-turn pool when the AI under-delivers.
+  const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const userTurnNorms = userTurns.map(t => norm(t.content))
+  function matchesUserTurn(q: string): boolean {
+    const nq = norm(q)
+    if (nq.length < 20) return false
+    // Substring check both directions — catches quotes the AI may have
+    // truncated, plus quotes that exactly equal a turn.
+    return userTurnNorms.some(u => u.includes(nq) || nq.includes(u))
+  }
+  const aiQuotes: string[] = Array.isArray(analysis.top_quotes) ? analysis.top_quotes : []
+  const validatedQuotes = aiQuotes.filter(q => typeof q === 'string' && matchesUserTurn(q))
+  let quotes = validatedQuotes.slice(0, 6)
+  if (quotes.length < 3) {
+    const seen = new Set(quotes.map(norm))
+    for (const t of userQuotes) {
+      const candidate = t.content.length > 320 ? t.content.slice(0, 320).replace(/\s+\S*$/, '') + '…' : t.content
+      const key = norm(candidate)
+      if (seen.has(key)) continue
+      quotes.push(candidate)
+      seen.add(key)
+      if (quotes.length >= 6) break
+    }
+  }
   if (quotes.length > 0) {
     slides.push({
       type: 'quotes',
