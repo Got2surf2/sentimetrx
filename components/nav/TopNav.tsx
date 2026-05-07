@@ -13,7 +13,7 @@ interface Props {
   analyzeEnabled?: boolean   // legacy — use features.analyze instead
   campaignsEnabled?: boolean // legacy — use features.campaigns instead
   features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner'
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 
@@ -60,26 +60,32 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83E\uDDEA'} Testing Tools
             </Link>
+            <Link href="/admin/agent-tester" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'agent-tester' ? 700 : 500, color: currentPage === 'agent-tester' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83D\uDD0D'} Agent Tester
+            </Link>
             <Link href="/admin/simulator" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'simulator' ? 700 : 500, color: currentPage === 'simulator' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83C\uDFB2'} Simulators
             </Link>
             <Link href="/admin/content-guard" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'content-guard' ? 700 : 500, color: currentPage === 'content-guard' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83D\uDEE1'} Content Guard
             </Link>
             <Link href="/admin/usage" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'usage' ? 700 : 500, color: currentPage === 'usage' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83D\uDCB0'} AI Usage
             </Link>
             <Link href="/admin/estimator" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'estimator' ? 700 : 500, color: currentPage === 'estimator' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83E\uDDEE'} Cost Estimator

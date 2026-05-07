@@ -4,19 +4,27 @@ import { useEffect, useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
 
 interface BotOption { id: string; name: string; slug: string; status: string }
+interface SessionOption { id: string; name: string; status: string }
 interface RuleHit { name: string; pattern: string }
-interface IntentHit { label: string; matched_keywords: string[]; url?: string; message?: string }
+interface IntentHit { label: string; matched_keywords: string[]; url?: string; message?: string; source: 'bot_intent' | 'townhall_theme' }
+
+interface AgentSummary {
+  kind: 'bot' | 'session'
+  id: string
+  name: string
+  slug?: string
+  status: string
+  systemPromptPreview?: string
+  systemPromptLength?: number
+  knowledgeBaseLength?: number
+  intentCount: number
+  safetyConfig: Record<string, boolean | undefined>
+}
 
 interface TestResult {
   text: string
   length: number
-  bot: {
-    id: string; name: string; slug: string; status: string
-    systemPromptPreview: string; systemPromptLength: number
-    knowledgeBaseLength: number
-    intentCount: number
-    safetyConfig: Record<string, boolean | undefined>
-  } | null
+  agent: AgentSummary | null
   skipHits: RuleHit[]
   inputSafe: boolean
   outputSafeAsQuestion: boolean
@@ -49,7 +57,10 @@ const SAMPLES = [
 
 export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullName, features }: Props) {
   const [bots, setBots] = useState<BotOption[]>([])
-  const [botId, setBotId] = useState<string>('')
+  const [sessions, setSessions] = useState<SessionOption[]>([])
+  // target value is encoded as "<type>:<id>" so a single <select> can
+  // hold either a bot or a townhall session.
+  const [target, setTarget] = useState<string>('')
   const [text, setText] = useState<string>('')
   const [result, setResult] = useState<TestResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -58,17 +69,26 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
   useEffect(() => {
     fetch('/api/admin/agent-tester')
       .then(r => r.json())
-      .then(d => setBots(Array.isArray(d.bots) ? d.bots : []))
+      .then(d => {
+        setBots(Array.isArray(d.bots) ? d.bots : [])
+        setSessions(Array.isArray(d.sessions) ? d.sessions : [])
+      })
       .catch(() => {})
   }, [])
 
   async function runTest() {
     setLoading(true); setError(null); setResult(null)
     try {
+      let targetType: 'bot' | 'session' | null = null
+      let targetId: string | null = null
+      if (target) {
+        const [t, id] = target.split(':')
+        if (t === 'bot' || t === 'session') { targetType = t; targetId = id }
+      }
       const res = await fetch('/api/admin/agent-tester', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, botId: botId || null }),
+        body: JSON.stringify({ text, targetType, targetId }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed'); return }
@@ -79,7 +99,7 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
 
   return (
     <>
-      <TopNav logoUrl={logoUrl} orgName={orgName} userEmail={userEmail} fullName={fullName} features={features} isAdmin currentPage="admin" />
+      <TopNav logoUrl={logoUrl} orgName={orgName} userEmail={userEmail} fullName={fullName} features={features} isAdmin currentPage="agent-tester" />
       <main className="pt-14">
         <div className="max-w-4xl mx-auto px-5 py-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Agent Tester</h1>
@@ -87,13 +107,24 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
 
           {/* Inputs */}
           <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5 space-y-3">
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">Agent</label>
-            <select value={botId} onChange={e => setBotId(e.target.value)}
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">Agent or session</label>
+            <select value={target} onChange={e => setTarget(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-orange-300">
               <option value="">— No agent (default safety config, no intents) —</option>
-              {bots.map(b => (
-                <option key={b.id} value={b.id}>{b.name} ({b.status})</option>
-              ))}
+              {bots.length > 0 && (
+                <optgroup label="Agents (bots)">
+                  {bots.map(b => (
+                    <option key={'bot:' + b.id} value={'bot:' + b.id}>{b.name} ({b.status})</option>
+                  ))}
+                </optgroup>
+              )}
+              {sessions.length > 0 && (
+                <optgroup label="Town Hall sessions">
+                  {sessions.map(s => (
+                    <option key={'session:' + s.id} value={'session:' + s.id}>{s.name} ({s.status})</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
 
             <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 pt-2">Test message</label>
@@ -119,14 +150,19 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
           {/* Results */}
           {result && (
             <div className="space-y-4">
-              {/* Bot context */}
-              {result.bot && (
-                <Card title="Agent context" subtitle={result.bot.name + ' · ' + result.bot.status}>
-                  <Field label="Slug" value={result.bot.slug} />
-                  <Field label="System prompt" value={result.bot.systemPromptLength + ' chars: ' + (result.bot.systemPromptPreview || '(none)')} mono />
-                  <Field label="Knowledge base" value={result.bot.knowledgeBaseLength + ' chars'} />
-                  <Field label="Active intents" value={String(result.bot.intentCount)} />
-                  <Field label="Content safety" value={JSON.stringify(result.bot.safetyConfig)} mono />
+              {/* Agent / session context */}
+              {result.agent && (
+                <Card title={result.agent.kind === 'session' ? 'Town Hall session context' : 'Agent context'}
+                  subtitle={result.agent.name + ' · ' + result.agent.status}>
+                  {result.agent.kind === 'bot' && result.agent.slug && <Field label="Slug" value={result.agent.slug} />}
+                  {result.agent.kind === 'bot' && (
+                    <Field label="System prompt" value={(result.agent.systemPromptLength || 0) + ' chars: ' + (result.agent.systemPromptPreview || '(none)')} mono />
+                  )}
+                  {result.agent.kind === 'bot' && (
+                    <Field label="Knowledge base" value={(result.agent.knowledgeBaseLength || 0) + ' chars'} />
+                  )}
+                  <Field label={result.agent.kind === 'session' ? 'Active themes' : 'Active intents'} value={String(result.agent.intentCount)} />
+                  <Field label="Content safety" value={JSON.stringify(result.agent.safetyConfig)} mono />
                 </Card>
               )}
 
@@ -171,11 +207,12 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
                 <Field label="Score" value={result.sentiment.score.toFixed(3)} />
               </Card>
 
-              {/* Intents */}
-              {result.bot && (
-                <Card title="Intent matches" subtitle={result.intents.length + ' / ' + result.bot.intentCount + ' active intent(s) matched'}>
+              {/* Intents (bots) / Themes (townhall) */}
+              {result.agent && (
+                <Card title={result.agent.kind === 'session' ? 'Theme matches' : 'Intent matches'}
+                  subtitle={result.intents.length + ' / ' + result.agent.intentCount + (result.agent.kind === 'session' ? ' theme(s)' : ' intent(s)') + ' matched'}>
                   {result.intents.length === 0 ? (
-                    <Empty>No intent keywords matched the message.</Empty>
+                    <Empty>{result.agent.kind === 'session' ? 'No theme labels or follow-up angles matched the message. (Live sessions also use AI theme detection — this view is keyword-only.)' : 'No intent keywords matched the message.'}</Empty>
                   ) : (
                     <ul className="space-y-2">
                       {result.intents.map((it, i) => (
