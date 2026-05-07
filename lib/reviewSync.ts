@@ -34,6 +34,19 @@ const TASK_PREFIX = 'pending_task:'
 // (6h) and the UI's manual button cycle past this comfortably.
 const REFRESH_STALE_MS = 60 * 60 * 1000  // 1 hour
 
+// Errors we treat as "this will probably work next time, leave the location
+// alone so the cron retries it instead of permanently parking it."
+//   - DataforSEO 40601 (Task Handed) / 40401 (Task Not Found) / 40602 (Task
+//     In Queue): the task lifecycle had a transient issue. Re-submitting
+//     usually works.
+//   - Network / timeout / fetch failed: standard transient infra noise.
+//   - "All review API attempts failed": our own retry wrapper exhausted —
+//     usually a transient DataforSEO incident.
+function isTransientError(err: any): boolean {
+  const msg = String(err?.message || err || '')
+  return /timeout|FUNCTION_INVOCATION_TIMEOUT|network|ECONNRESET|fetch failed|40601|40401|40602|All review API attempts failed/i.test(msg)
+}
+
 /**
  * Sync reviews — designed for repeated calls from the UI auto-sync loop.
  *
@@ -125,15 +138,13 @@ export async function syncReviewSource(
       } catch (err: any) {
         result.locations_errored++
         result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
-        // Preserve the pending task ref on transient errors (timeouts, network failures)
-        // so the location can be retried on the next sync call instead of getting stuck
-        const isTransient = /timeout|FUNCTION_INVOCATION_TIMEOUT|network|ECONNRESET|fetch failed/i.test(err.message || '')
-        if (!isTransient) {
+        // Preserve the pending task ref on transient errors so the location
+        // gets retried next call instead of getting permanently parked.
+        if (!isTransientError(err)) {
           await service.from('review_source_locations').update({
             error_message: err.message?.slice(0, 500),
           }).eq('id', loc.id)
         }
-        // If transient, leave the pending_task: ref in place for retry
       }
     }
   }
@@ -166,9 +177,16 @@ export async function syncReviewSource(
       } catch (err: any) {
         result.locations_errored++
         result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
-        await service.from('review_source_locations').update({
-          error_message: err.message?.slice(0, 500),
-        }).eq('id', loc.id)
+        // Skip writing error_message for transient failures so the cron
+        // picks the location up again next cycle. Without this, a single
+        // DataforSEO timeout / network blip / "Task In Queue" / "Task
+        // Handed" / "Task Not Found" permanently parks the location and
+        // it never refreshes again until manually unstuck.
+        if (!isTransientError(err)) {
+          await service.from('review_source_locations').update({
+            error_message: err.message?.slice(0, 500),
+          }).eq('id', loc.id)
+        }
       }
     }
   }
@@ -205,9 +223,13 @@ export async function syncReviewSource(
         } catch (err: any) {
           result.locations_errored++
           result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
-          await service.from('review_source_locations').update({
-            error_message: err.message?.slice(0, 500),
-          }).eq('id', loc.id)
+          // Same transient-error guard as Phase 2 — don't poison
+          // last_synced'd locations on a flaky DataforSEO response.
+          if (!isTransientError(err)) {
+            await service.from('review_source_locations').update({
+              error_message: err.message?.slice(0, 500),
+            }).eq('id', loc.id)
+          }
         }
       }
     }

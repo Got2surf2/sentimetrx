@@ -57,14 +57,22 @@ export async function GET(req: NextRequest) {
       results.push({ brand: source.brand_name, synced: 0, errors: 1 })
       consecutiveErrors++
 
-      // Mark source as error after failure
+      // Stash the error message for visibility but DON'T flip status to
+      // 'error'. Previously a single transient failure permanently parked
+      // the source (cron query filters status='active', so it was never
+      // retried). Now the source stays active; next_sync_at advances
+      // naturally so the cron picks it up on the next cycle. Persistent
+      // failures will keep logging but not silently disappear from the
+      // refresh schedule.
       await service.from('review_sources').update({
-        error_message: err?.message || 'Cron sync failed',
-        status: 'error',
+        error_message: err?.message?.slice(0, 500) || 'Cron sync failed',
+        next_sync_at: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
         updated_at: now,
       }).eq('id', source.id)
 
-      // Stop if too many consecutive errors (likely a systemic issue)
+      // Stop if too many consecutive errors (likely a systemic issue —
+      // e.g. DataforSEO is down, our key is invalid). Other sources will
+      // be tried on the next cron run.
       if (consecutiveErrors >= 3) break
     }
   }
