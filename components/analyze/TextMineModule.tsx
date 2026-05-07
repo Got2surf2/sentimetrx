@@ -28,6 +28,7 @@ import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
+import HelpHint from '@/components/analyze/textmine/HelpHint'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
@@ -1426,11 +1427,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   var hasThemes = themes && themes.themes && themes.themes.length > 0
   var canMine = rowsLoaded && effectiveFields.length > 0 && rows.length > 0
-  const subTabs: { id: SubTab; label: string }[] = [
-    { id: 'themes', label: 'Themes' },
-    { id: 'clouds', label: 'Theme Clouds' },
-    { id: 'compare', label: 'Compare' },
-    { id: 'comments', label: 'Comments' },
+  const subTabs: { id: SubTab; label: string; help: string }[] = [
+    { id: 'themes',   label: 'Themes',       help: 'Each card is a theme — a cluster of comments that share a topic. The size shows how common the theme is. Click a card to see the actual quotes.' },
+    { id: 'clouds',   label: 'Theme Clouds', help: 'A word cloud per theme, showing the words that appear most often within that theme\'s comments. Useful for spotting the exact language people use.' },
+    { id: 'compare',  label: 'Compare',      help: 'Slice your themes by a categorical field — region, channel, age bracket — to see which segments care about which themes. Significance markers flag groups whose mix differs meaningfully from the baseline.' },
+    { id: 'comments', label: 'Comments',     help: 'The raw quotes underlying everything. Search the text, filter by theme, or jump here from any chart to see the source rows.' },
   ]
 
   return (
@@ -1446,7 +1447,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       {/* ─── Multi-field picker bar (Ana style with checkbox pills) ───── */}
       {openFields.length > 1 && hasThemes && (
         <div style={{ background: T.bgCard, borderBottom: '1px solid ' + T.border, padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0 }}>Analyze:</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}>
+            Analyze:
+            <HelpHint title="Multiple text fields" placement="bottom">
+              When your dataset has more than one open-ended column (e.g. NPS comment + experience comment), pick which one to analyze — or check several at once to combine them into a single theme model.
+            </HelpHint>
+          </span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
             {openFields.map(function(f) {
               var sel = activeFields.includes(f.field)
@@ -1496,11 +1502,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               var isActive = subTab === tab.id
               var isLocked = !hasThemes && tab.id !== 'themes'
               return (
-                <button key={tab.id} onClick={function() { if (!isLocked) handleSubTab(tab.id) }}
-                  style={{ padding: '0 18px', height: '100%', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : (isLocked ? T.textFaint : T.textMid), background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: isLocked ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: isLocked ? 0.4 : 1, transition: 'color .12s' }}
-                  title={isLocked ? 'Run a theme model first' : ''}>
-                  {tab.label}
-                </button>
+                <div key={tab.id} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  <button onClick={function() { if (!isLocked) handleSubTab(tab.id) }}
+                    style={{ padding: '0 8px 0 18px', height: '100%', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.accent : (isLocked ? T.textFaint : T.textMid), background: 'transparent', border: 'none', borderBottom: '2px solid ' + (isActive ? T.accent : 'transparent'), cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.4 : 1, transition: 'color .12s' }}
+                    title={isLocked ? 'Run a theme model first' : ''}>
+                    {tab.label}
+                  </button>
+                  <span style={{ paddingRight: 10, opacity: isLocked ? 0.4 : 1 }}>
+                    <HelpHint title={tab.label} placement="bottom">{tab.help}</HelpHint>
+                  </span>
+                </div>
               )
             })}
 
@@ -1638,6 +1649,24 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
                           {'\u2261'} {anaLibrary ? 'Apply ' + (INDUSTRY_LABELS[anaLibrary as Industry] || anaLibrary) + ' themes' : 'Choose theme library'}
                         </button>
+                      </div>
+                    )}
+
+                    {/* Concept explainer \u2014 visible on first run when no themes
+                        exist yet. Stays AI-independent so non-AI clients still
+                        get an accurate mental model. */}
+                    {rows.length > 0 && (
+                      <div style={{ marginTop: 36, textAlign: 'left', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto', padding: '20px 22px', background: 'white', border: '1px solid ' + T.border, borderRadius: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>How TextMine works</div>
+                        <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: T.textMid, lineHeight: 1.7 }}>
+                          <li>Pick a theme source \u2014 let AI mine the patterns, or apply an industry library of pre-built themes.</li>
+                          <li>Browse <b>Themes</b> for the cluster overview, or <b>Theme Clouds</b> to see the words inside each theme.</li>
+                          <li>Use <b>Compare</b> to slice themes by segment (region, channel, age) and surface significant differences.</li>
+                          <li>Drop into <b>Comments</b> any time to read the raw quotes behind a theme.</li>
+                        </ol>
+                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid ' + T.border, fontSize: 11, color: T.textMute }}>
+                          Look for the <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1px solid #d1d5db', color: '#9ca3af', fontSize: 9, fontWeight: 800, verticalAlign: 'middle' }}>?</span> icons next to any feature for a quick explanation.
+                        </div>
                       </div>
                     )}
                   </div>
