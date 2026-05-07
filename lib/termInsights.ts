@@ -73,6 +73,12 @@ export interface FieldDetection {
  * with reasonable cardinality (2..MAX_CARDINALITY unique values).
  * Returns both accepted candidates AND the rejected ones with reasons,
  * so the UI can show why a field didn't appear.
+ *
+ * Scans ALL rows — not a head slice. Collection rows are returned
+ * concatenated member-by-member, so a head-slice approach would only see
+ * the first member's values: a field that's single-valued per member
+ * (e.g. _collection_label, or a state field on a single-region dataset)
+ * would falsely look single-valued for the whole union and be skipped.
  */
 export function detectInsightFieldsDetailed(
   rows: Record<string, unknown>[],
@@ -80,47 +86,58 @@ export function detectInsightFieldsDetailed(
 ): FieldDetection {
   if (rows.length === 0) return { accepted: [], skipped: [] }
   const exclude = new Set(excludeFields)
+  const SAMPLE_FOR_DATE = 100
+
+  const allKeys = new Set<string>()
+  const fieldData = new Map<string, { uniq: Set<string>; sample: unknown[]; over: boolean }>()
+
+  for (const r of rows) {
+    if (!r) continue
+    for (const k of Object.keys(r)) {
+      allKeys.add(k)
+      if (exclude.has(k)) continue
+      const v = r[k]
+      if (v == null || v === '') continue
+      let fd = fieldData.get(k)
+      if (!fd) { fd = { uniq: new Set(), sample: [], over: false }; fieldData.set(k, fd) }
+      if (fd.sample.length < SAMPLE_FOR_DATE) fd.sample.push(v)
+      if (fd.over) continue
+      fd.uniq.add(String(v).trim())
+      if (fd.uniq.size > MAX_CARDINALITY) fd.over = true
+    }
+  }
+
   const accepted: string[] = []
   const skipped: { field: string; reason: SkipReason; uniqueValues?: number }[] = []
-  const keys = new Set<string>()
-  for (const r of rows.slice(0, 200)) for (const k of Object.keys(r || {})) keys.add(k)
 
-  for (const k of Array.from(keys)) {
+  for (const k of Array.from(allKeys)) {
     if (exclude.has(k)) {
       skipped.push({ field: k, reason: 'text-field' })
       continue
     }
-    const sample: unknown[] = []
-    for (const r of rows.slice(0, 500)) {
-      const v = r[k]
-      if (v != null && v !== '') sample.push(v)
-      if (sample.length >= 100) break
-    }
-    if (sample.length === 0) {
+    const fd = fieldData.get(k)
+    if (!fd || fd.sample.length === 0) {
       skipped.push({ field: k, reason: 'no-data' })
       continue
     }
-
     let dateLike = 0
-    for (const v of sample) {
+    for (const v of fd.sample) {
       if (typeof v !== 'string') break
       const t = Date.parse(v)
       if (isNaN(t)) break
       const y = new Date(t).getUTCFullYear()
       if (y >= MIN_DATE_YEAR && y <= MAX_DATE_YEAR) dateLike++
     }
-    if (dateLike >= sample.length * 0.8) {
+    if (dateLike >= fd.sample.length * 0.8) {
       skipped.push({ field: k, reason: 'date-like' })
       continue
     }
-
-    const uniq = new Set(sample.map(v => String(v).trim()))
-    if (uniq.size < 2) {
-      skipped.push({ field: k, reason: 'single-value', uniqueValues: uniq.size })
+    if (fd.over) {
+      skipped.push({ field: k, reason: 'too-many-values', uniqueValues: fd.uniq.size })
       continue
     }
-    if (uniq.size > MAX_CARDINALITY) {
-      skipped.push({ field: k, reason: 'too-many-values', uniqueValues: uniq.size })
+    if (fd.uniq.size < 2) {
+      skipped.push({ field: k, reason: 'single-value', uniqueValues: fd.uniq.size })
       continue
     }
     accepted.push(k)
