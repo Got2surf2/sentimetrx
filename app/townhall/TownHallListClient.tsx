@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DownloadButton from '@/components/ui/DownloadButton'
@@ -19,6 +20,8 @@ interface Session {
   started_at: string | null
   ended_at: string | null
   created_at: string
+  org_id?: string
+  org_name?: string | null
 }
 
 interface Props {
@@ -27,6 +30,8 @@ interface Props {
   campaignsEnabled?: boolean
   features?: import('@/lib/types').ModuleFeatures
   user: { email: string; fullName?: string; role?: string; clientName?: string; isAdmin?: boolean }
+  orgId?: string
+  orgFilter?: string
 }
 
 const HERMES = '#E8632A'
@@ -48,7 +53,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
-export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsEnabled, features, user }: Props) {
+export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsEnabled, features, user, orgId = '', orgFilter = '' }: Props) {
   const router = useRouter()
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,11 +67,12 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
   const [searching, setSearching] = useState(false)
 
   useEffect(() => {
-    fetch('/api/townhall/sessions')
+    const qs = orgFilter ? '?org=' + encodeURIComponent(orgFilter) : ''
+    fetch('/api/townhall/sessions' + qs)
       .then(r => r.json())
       .then(data => { setSessions(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [])
+  }, [orgFilter])
 
   const isArchived = (s: Session) => !!s.config?.archived
 
@@ -209,8 +215,9 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
         features={features}
         currentPage="townhall"
       />
+      <SubHeader crumbs={[{ label: 'PulseIQ' }]} isAdmin={user.isAdmin} orgId={orgId} showFilters />
 
-      <main className="pt-14">
+      <main className="pt-28">
         <div className="max-w-5xl mx-auto px-5 py-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -332,6 +339,11 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                         <span className="text-gray-400">{topicCount} topics</span>
                         {s.config?.bot_name && <span className="text-gray-400">Bot: {s.config.bot_name}</span>}
                       </div>
+
+                      {/* Org name — admin only, helps identify cross-org cards */}
+                      {user.isAdmin && s.org_name && (
+                        <div className="text-xs text-gray-400 truncate">{s.org_name}</div>
+                      )}
 
                       {/* Timing info */}
                       {s.started_at && (

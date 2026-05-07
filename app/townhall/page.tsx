@@ -5,7 +5,7 @@ import TownHallListClient from './TownHallListClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function TownHallPage() {
+export default async function TownHallPage({ searchParams }: { searchParams: { org?: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -20,6 +20,7 @@ export default async function TownHallPage() {
   const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
   if (!features.townhall) redirect('/dashboard')
   const isAdmin = !!orgData?.is_admin_org
+  const orgFilter = isAdmin ? (searchParams?.org || '') : ''
 
   return (
     <TownHallListClient
@@ -34,6 +35,8 @@ export default async function TownHallPage() {
         clientName: orgData?.name || '',
         isAdmin,
       }}
+      orgId={userData?.org_id || ''}
+      orgFilter={orgFilter}
     />
   )
 }

@@ -1,5 +1,6 @@
 // app/api/bots/route.ts
-// GET  — list bots for the authenticated user's org
+// GET  — list bots. Non-admin: scoped to user's org. Admin: all orgs by
+//        default, narrowed to ?org=<id> when supplied (Phase E filter UI).
 // POST — create a new bot
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -7,28 +8,40 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-async function getOrgId(supabase: ReturnType<typeof createClient>) {
+async function getUserContext(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  return { userId: user.id, orgId: data?.org_id as string | null }
+  const { data } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgRel = data?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
+  return { userId: user.id, orgId: (data as any)?.org_id as string | null, isAdmin: !!isAdmin }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const supabase = createClient()
-  const auth = await getOrgId(supabase)
-  if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await getUserContext(supabase)
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!ctx.isAdmin && !ctx.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
+  const orgFilter = req.nextUrl.searchParams.get('org') || ''
+  // Admin: all orgs unless ?org=<id> narrows. Non-admin: locked to own org.
+  const scopeOrgId = ctx.isAdmin ? (orgFilter || null) : ctx.orgId
+
+  const service = createServiceRoleClient()
+  let q = service
     .from('bots')
-    .select('id, name, slug, status, config, conversation_count, last_session_at, created_at, updated_at')
-    .eq('org_id', auth.orgId)
+    .select('id, org_id, name, slug, status, config, conversation_count, last_session_at, created_at, updated_at')
     .order('created_at', { ascending: false })
+  if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
 
+  const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Compute live session counts from conversation turns
-  const service = createServiceRoleClient()
   const botIds = (data || []).map(function(b: any) { return b.id })
   const sessionCounts: Record<string, number> = {}
 
@@ -50,8 +63,22 @@ export async function GET() {
     }
   }
 
+  // Resolve org names for admin per-card display.
+  let orgNameMap: Record<string, string> = {}
+  if (ctx.isAdmin) {
+    const orgIds = Array.from(new Set((data || []).map((b: any) => b.org_id).filter(Boolean)))
+    if (orgIds.length > 0) {
+      const { data: orgs } = await service.from('organizations').select('id, name').in('id', orgIds)
+      ;(orgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
+    }
+  }
+
   const enriched = (data || []).map(function(b: any) {
-    return { ...b, conversation_count: sessionCounts[b.id] || 0 }
+    return {
+      ...b,
+      conversation_count: sessionCounts[b.id] || 0,
+      org_name: ctx.isAdmin ? (orgNameMap[b.org_id] || null) : null,
+    }
   })
 
   return NextResponse.json({ bots: enriched })
@@ -59,8 +86,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
-  const auth = await getOrgId(supabase)
-  if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await getUserContext(supabase)
+  if (!ctx?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
   const { name, slug, config, system_prompt, knowledge_base, training_urls, personality, faq, facts, guardrails, subject, negative_content_mode, opponents, contrast_mode } = body
@@ -82,7 +109,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { data, error } = await service.from('bots').insert({
-    org_id: auth.orgId,
+    org_id: ctx.orgId,
     name,
     slug,
     config: config || {},
@@ -98,7 +125,7 @@ export async function POST(req: NextRequest) {
     opponents: opponents || [],
     contrast_mode: contrast_mode || 'user_triggered',
     status: 'draft',
-    created_by: auth.userId,
+    created_by: ctx.userId,
   }).select('id, name, slug, status').single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -5,11 +5,12 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import AnalyzeClient from './AnalyzeClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AnalyzePage() {
+export default async function AnalyzePage({ searchParams }: { searchParams: { org?: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -27,6 +28,9 @@ export default async function AnalyzePage() {
 
   const orgId = userData?.org_id
   const isAdmin = !!orgData?.is_admin_org
+  const orgFilter = isAdmin ? (searchParams?.org || '') : ''
+  // Admin: all orgs unless ?org= narrows. Non-admin: locked to own org.
+  const scopeOrgId = isAdmin ? (orgFilter || null) : orgId
 
   // Fetch active/trial orgs for admin transfer
   let allOrgs: { id: string; name: string }[] = []
@@ -40,11 +44,12 @@ export default async function AnalyzePage() {
     allOrgs = (orgs || []).filter((o: any) => o.id !== orgId).map((o: any) => ({ id: o.id, name: o.name }))
   }
 
-  const { data: rawDatasets, error: dsErr } = await supabase
+  let dsQuery = supabase
     .from('datasets')
-    .select('id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name), dataset_state(theme_model)')
-    .eq('org_id', orgId)
+    .select('id, org_id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name), dataset_state(theme_model)')
     .order('created_at', { ascending: false })
+  if (scopeOrgId) dsQuery = dsQuery.eq('org_id', scopeOrgId)
+  const { data: rawDatasets, error: dsErr } = await dsQuery
 
   if (dsErr) console.error('[AnalyzePage] datasets query error:', dsErr.message)
 
@@ -57,6 +62,17 @@ export default async function AnalyzePage() {
       .select('id, full_name, email')
       .in('id', creatorIds)
     ;(creators || []).forEach(function(c: any) { creatorMap[c.id] = c.full_name || c.email || 'Unknown' })
+  }
+
+  // Fetch org names — for admin cross-org view, each card needs its own org label.
+  const orgNameMap: Record<string, string> = {}
+  if (isAdmin) {
+    const orgIds = Array.from(new Set((rawDatasets || []).map((d: any) => d.org_id).filter(Boolean)))
+    if (orgIds.length > 0) {
+      const service = createServiceRoleClient()
+      const { data: orgs } = await service.from('organizations').select('id, name').in('id', orgIds)
+      ;(orgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
+    }
   }
 
   // Compute live row counts for collections
@@ -90,7 +106,8 @@ export default async function AnalyzePage() {
     const themeLibName = tm?.themeLibName || tm?.libName || d.ana_library || null
     const { studies: _s, dataset_state: _ds, ...rest } = d
     const rowCount = d.source === 'collection' && collectionRowCounts[d.id] != null ? collectionRowCounts[d.id] : d.row_count
-    return { ...rest, row_count: rowCount, study_name: studyName, creator_name: creatorName, org_name: orgData?.name || null, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName }
+    const cardOrgName = isAdmin ? (orgNameMap[d.org_id] || null) : (orgData?.name || null)
+    return { ...rest, row_count: rowCount, study_name: studyName, creator_name: creatorName, org_name: cardOrgName, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName }
   })
 
   return (
@@ -98,7 +115,7 @@ export default async function AnalyzePage() {
       <TopNav
         logoUrl={orgData?.logo_url    || ''}
         orgName={orgData?.name        || ''}
-        isAdmin={!!orgData?.is_admin_org}
+        isAdmin={isAdmin}
         userEmail={user.email         || ''}
         fullName={userData?.full_name  || ''}
         analyzeEnabled={true}
@@ -106,7 +123,8 @@ export default async function AnalyzePage() {
         features={features}
         currentPage="analyze"
       />
-      <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">
+      <SubHeader crumbs={[{ label: 'Analyze' }]} isAdmin={isAdmin} orgId={orgId || ''} showFilters />
+      <main className="pt-28 px-4 pb-12 max-w-6xl mx-auto">
         <AnalyzeClient initialDatasets={datasets} isAdmin={isAdmin} allOrgs={allOrgs} />
       </main>
     </div>

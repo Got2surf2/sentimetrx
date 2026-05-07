@@ -21,6 +21,8 @@ interface Bot {
   last_session_at: string | null
   created_at: string
   updated_at: string
+  org_id?: string
+  org_name?: string | null
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -29,7 +31,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; border: string; 
   paused: { bg: '#fef3c7', text: '#d97706', border: '#fcd34d', label: 'Paused' },
 }
 
-export default function BotsClient({ orgId }: { orgId: string }) {
+export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: { orgId: string; isAdmin?: boolean; orgFilter?: string }) {
   const router = useRouter()
   const [bots, setBots] = useState<Bot[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,14 +39,15 @@ export default function BotsClient({ orgId }: { orgId: string }) {
   const [gridCols, setGridCols] = useState(3)
 
   function fetchBots() {
-    fetch('/api/bots').then(function(r) { return r.json() }).then(function(d) {
+    var qs = orgFilter ? '?org=' + encodeURIComponent(orgFilter) : ''
+    fetch('/api/bots' + qs).then(function(r) { return r.json() }).then(function(d) {
       setBots(d.bots || [])
     }).catch(function() {
       setError('Failed to load bots')
     }).finally(function() { setLoading(false) })
   }
 
-  useEffect(function() { fetchBots() }, [])
+  useEffect(function() { fetchBots() }, [orgFilter])
 
   async function toggleStatus(bot: Bot) {
     var next: Bot['status'] = bot.status === 'active' ? 'paused' : 'active'
@@ -191,6 +194,13 @@ export default function BotsClient({ orgId }: { orgId: string }) {
                   <span>/b/{bot.slug}</span>
                   {websiteLabel && <span>{'\u2192'} {websiteLabel}</span>}
                 </div>
+
+                {/* Org name \u2014 admin only, helps identify cross-org cards */}
+                {isAdmin && bot.org_name && (
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: -6 }}>
+                    {bot.org_name}
+                  </div>
+                )}
 
                 {/* Stats row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>

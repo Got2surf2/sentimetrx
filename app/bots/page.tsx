@@ -5,11 +5,12 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import BotsClient from './BotsClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function BotsPage() {
+export default async function BotsPage({ searchParams }: { searchParams: { org?: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -24,19 +25,23 @@ export default async function BotsPage() {
   const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
   if (!features.bots) redirect('/dashboard')
 
+  const isAdmin = !!orgData?.is_admin_org
+  const orgFilter = isAdmin ? (searchParams?.org || '') : ''
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <TopNav
         logoUrl={orgData?.logo_url || ''}
         orgName={orgData?.name}
-        isAdmin={!!orgData?.is_admin_org}
+        isAdmin={isAdmin}
         userEmail={user.email}
         fullName={userData?.full_name}
         features={features}
         currentPage="bots"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
-        <BotsClient orgId={userData?.org_id || ''} />
+      <SubHeader crumbs={[{ label: 'Agents' }]} isAdmin={isAdmin} orgId={userData?.org_id || ''} showFilters />
+      <div style={{ paddingTop: 96 }} className="flex-1">
+        <BotsClient orgId={userData?.org_id || ''} isAdmin={isAdmin} orgFilter={orgFilter} />
       </div>
     </div>
   )

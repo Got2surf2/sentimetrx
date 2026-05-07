@@ -2,19 +2,35 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
 
-// GET /api/townhall/sessions — list sessions for current user's org
-export async function GET() {
+// GET /api/townhall/sessions — list sessions.
+// Non-admin: scoped to user's org. Admin: all orgs by default, narrowed to
+// ?org=<id> when supplied (Phase E filter UI).
+export async function GET(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const db = createServiceRoleClient()
 
-  const { data, error } = await db
-    .from('townhall_sessions')
-    .select('id, name, slug, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
-    .order('created_at', { ascending: false })
+  const { data: userData } = await db
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
 
+  const orgFilter = req.nextUrl.searchParams.get('org') || ''
+  const scopeOrgId = isAdmin ? (orgFilter || null) : userOrgId
+
+  let q = db
+    .from('townhall_sessions')
+    .select('id, org_id, name, slug, status, config, discussion_guide, response_counter, started_at, ended_at, created_at, created_by')
+    .order('created_at', { ascending: false })
+  if (scopeOrgId) q = q.eq('org_id', scopeOrgId)
+
+  const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Get participant + turn counts per session
@@ -34,10 +50,21 @@ export async function GET() {
     }
   }
 
+  // Resolve org names for admin per-card display.
+  let orgNameMap: Record<string, string> = {}
+  if (isAdmin) {
+    const orgIds = Array.from(new Set((data || []).map((s: any) => s.org_id).filter(Boolean)))
+    if (orgIds.length > 0) {
+      const { data: orgs } = await db.from('organizations').select('id, name').in('id', orgIds)
+      ;(orgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
+    }
+  }
+
   const enriched = (data || []).map(s => ({
     ...s,
     participants: stats[s.id]?.participants || 0,
     turns: stats[s.id]?.responses || 0,
+    org_name: isAdmin ? (orgNameMap[(s as any).org_id] || null) : null,
   }))
 
   return NextResponse.json(enriched)
