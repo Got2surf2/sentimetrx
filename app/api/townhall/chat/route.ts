@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { isOutputClean, cleanAiOutput, cleanDeflectResponse } from '@/lib/guardrails'
+import { isOutputClean, cleanAiOutput, cleanDeflectResponse, looksLikeAIRefusal } from '@/lib/guardrails'
 import { checkMessage, scoreSentimentFull } from '@/lib/contentGuard'
 import { callAI } from '@/lib/ai'
 import { logUsage, type UsageContext } from '@/lib/usageLog'
@@ -722,12 +722,23 @@ async function callClaude(system: string, user: string, timeoutMs = 3000, verbos
     })
     if (_usageCtx) logUsage(_usageCtx, result.usage)
     const raw = result.text?.trim() || ''
+    let outText: string
+    let thinking: string[] = []
     if (verbose && raw.includes('---RESPONSE---')) {
       const [thinkingPart, responsePart] = raw.split('---RESPONSE---')
-      const thinking = thinkingPart.trim().split('\n').filter(Boolean)
-      return { text: cleanAiOutput(responsePart.trim()), thinking }
+      thinking = thinkingPart.trim().split('\n').filter(Boolean)
+      outText = cleanAiOutput(responsePart.trim())
+    } else {
+      outText = cleanAiOutput(raw)
     }
-    return { text: cleanAiOutput(raw), thinking: [] }
+    // Drop safety-style refusals — without this they'd land in townhall_turns
+    // as a bot moderator message visible to participants. Empty text lets
+    // callers fall through to their existing fallback paths.
+    if (looksLikeAIRefusal(outText)) {
+      console.warn('[TH chat] AI refusal detected; dropping bot text. text=' + outText.slice(0, 200))
+      return { text: '', thinking }
+    }
+    return { text: outText, thinking }
   } catch {
     return { text: '', thinking: [] }
   }

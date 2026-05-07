@@ -38,6 +38,36 @@ export function isOutputClean(text: string): boolean {
   return true
 }
 
+// Detects safety-style refusal output from the underlying model. Used by
+// any AI route that pipes raw model text into a user-visible conversation
+// (simulate, chat). The original incident on 2026-05-07 had refusals
+// landing as participant comments because nothing checked. Patterns are
+// distinctive enough that legitimate community-meeting prose shouldn't
+// false-positive — they target phrasing that combines first-person
+// inability with a role-play / character / scenario / simulation
+// context, plus a few standalone signals ("as an AI model", "even in a
+// simulated", "racist dog-whistle", "violates my values").
+const REFUSAL_PATTERNS: RegExp[] = [
+  /\bi (appreciate|understand) [\s\S]{0,120}\bi (can't|cannot|won't|need to (respectfully )?decline|am not (going to|comfortable))\b/i,
+  /\b(can't|cannot|won't|refuse to|not going to) (role.?play|play (a |this )?character|portray|simulate this)\b/i,
+  /\bthis (role.?play|character|profile|exercise|scenario|request)\b[\s\S]{0,60}\b(violates|conflicts|isn't appropriate|won't (do|portray)|i can't|i cannot|i won't|i'm not (comfortable|able)|decline)\b/i,
+  /\beven in a (simulated|fictional|roleplay|role.?play|hypothetical|simulated community)\b/i,
+  /\bi (don't|do not) feel comfortable\b[\s\S]{0,60}\b(role.?play|portray|simulate|character|inappropriate)\b/i,
+  /\bi'd be happy to (roleplay|role.?play|act|play|portray) (as |a |another )?/i,
+  /\bas an ai( language)? model\b/i,
+  /\b(designed to|asks me to|specifically asks me to|profile (asks|instructs))\b[\s\S]{0,80}\b(harass|sexualize|make others uncomfortable|use racist|racist dog|discriminatory|inappropriate sexual|inappropriate personal)\b/i,
+  /\binappropriate (sexual|personal) (comments|content|behavior)\b/i,
+  /\bracist dog.?whistle/i,
+  /\bcoded discriminatory\b/i,
+  /\bviolates my (values|guidelines|principles)\b/i,
+  /\bnot able to (play|roleplay|portray|continue with|simulate)\b/i,
+  /\bi (can't|cannot) (in good conscience|generate|create|produce|engage with)\b/i,
+]
+export function looksLikeAIRefusal(text: string): boolean {
+  if (!text) return false
+  return REFUSAL_PATTERNS.some(p => p.test(text))
+}
+
 // ── AI output cleanup ─────────────────────────────────────────────────────
 // Strip leaked reasoning/preamble that models sometimes prefix responses with.
 export function cleanAiOutput(text: string): string {
