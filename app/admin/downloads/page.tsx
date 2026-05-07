@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import TopNav from '@/components/nav/TopNav'
 import DownloadsClient from './DownloadsClient'
 
 export const dynamic = 'force-dynamic'
@@ -12,12 +13,13 @@ export default async function DownloadsPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, full_name, organizations(is_admin_org, name)')
+    .select('org_id, full_name, features, organizations(is_admin_org, logo_url, name, features)')
     .eq('id', user.id)
     .single()
 
   const orgData = resolveOrg(userData?.organizations) as any
   if (!orgData?.is_admin_org) redirect('/dashboard')
+  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
 
   const service = createServiceRoleClient()
 
@@ -60,12 +62,25 @@ export default async function DownloadsPage() {
     .limit(50)
 
   return (
-    <DownloadsClient
-      redditSources={(redditSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
-      reviewSources={(reviewSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
-      pendingLocations={pendingLocations || []}
-      substackDatasets={(substackDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
-      regDatasets={(regDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
-    />
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <TopNav
+        logoUrl={orgData?.logo_url || ''}
+        orgName={orgData?.name}
+        isAdmin
+        userEmail={user.email}
+        fullName={userData?.full_name}
+        features={features}
+        currentPage="admin"
+      />
+      <div style={{ paddingTop: 56 }} className="flex-1">
+        <DownloadsClient
+          redditSources={(redditSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
+          reviewSources={(reviewSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
+          pendingLocations={pendingLocations || []}
+          substackDatasets={(substackDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
+          regDatasets={(regDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
+        />
+      </div>
+    </div>
   )
 }
