@@ -167,6 +167,72 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           setSyncToast(totalSynced + ' new review' + (totalSynced !== 1 ? 's' : '') + ' synced')
           setTimeout(function() { setSyncing(false); setSyncToast(''); window.location.reload() }, 1200)
         }
+      } else if (isCollection) {
+        // Sync each member that has a review source. Loops members in order,
+        // running the same auto-poll cycle per member as the single-source
+        // sync above. Progress toast shows "member X of Y" plus current
+        // location. Only review_sources members are synced — other source
+        // types (study/upload/etc) are skipped since they don't have an
+        // auto-sync notion.
+        var colRes = await fetch('/api/collections/' + dataset.id)
+        var colData = await colRes.json()
+        var members = (colData.members || []) as { dataset_id: string; label: string; name: string }[]
+        if (members.length === 0) { setSyncing(false); setSyncToast('No members in collection'); setTimeout(function() { setSyncToast('') }, 3000); return }
+
+        var allSrcRes = await fetch('/api/review-sources')
+        var allSrcData = await allSrcRes.json()
+        var sourceByDataset: Record<string, { id: string }> = {}
+        ;(allSrcData.sources || []).forEach(function(s: any) { sourceByDataset[s.dataset_id] = { id: s.id } })
+
+        var syncableMembers = members.filter(function(m) { return !!sourceByDataset[m.dataset_id] })
+        if (syncableMembers.length === 0) {
+          setSyncing(false); setSyncToast('No syncable review sources in this collection'); setTimeout(function() { setSyncToast('') }, 3000); return
+        }
+
+        var grandTotal = 0
+        var grandError: string | null = null
+        var stillPending = 0
+        for (var mi = 0; mi < syncableMembers.length; mi++) {
+          var memberLabel = syncableMembers[mi].name || syncableMembers[mi].label
+          var memberSrcId = sourceByDataset[syncableMembers[mi].dataset_id].id
+          setSyncToast('[' + (mi + 1) + '/' + syncableMembers.length + '] ' + memberLabel + '…')
+
+          var memberSynced = 0
+          var memberRemaining = -1
+          var memberIters = 0
+          var MAX_ITER = 30
+          while (memberIters < MAX_ITER) {
+            memberIters++
+            var mres = await fetch('/api/review-sources/' + memberSrcId + '/sync', { method: 'POST' })
+            var mdata = await mres.json()
+            if (!mres.ok) { grandError = (memberLabel + ': ' + (mdata.error || 'sync failed')); break }
+            memberSynced += (mdata.synced || 0)
+            var mrem = mdata.locations_remaining || 0
+            var msub = mdata.locations_submitted || 0
+            var proc = mdata.processing_location || (mdata.pending_locations?.[0] || null)
+            if (proc) setSyncToast('[' + (mi + 1) + '/' + syncableMembers.length + '] ' + memberLabel + ' — ' + proc + (mrem > 0 ? ' (' + mrem + ')' : ''))
+            else if (msub > 0) setSyncToast('[' + (mi + 1) + '/' + syncableMembers.length + '] ' + memberLabel + ' — submitted ' + msub + ' (' + mrem + ' remaining)')
+            else if (memberSynced > 0) setSyncToast('[' + (mi + 1) + '/' + syncableMembers.length + '] ' + memberLabel + ' — ' + memberSynced + ' new (' + mrem + ' remaining)')
+            if (mrem === 0) break
+            if (mrem === memberRemaining && (mdata.synced || 0) === 0 && msub === 0) break
+            memberRemaining = mrem
+            await new Promise(function(r) { return setTimeout(r, 4000) })
+          }
+          grandTotal += memberSynced
+          if (memberRemaining > 0 && memberSynced === 0 && memberIters >= MAX_ITER) stillPending += memberRemaining
+          if (grandError) break
+        }
+
+        if (grandError) {
+          setSyncing(false); setSyncToast('Sync error — ' + grandError); setTimeout(function() { setSyncToast('') }, 5000)
+        } else if (grandTotal === 0 && stillPending > 0) {
+          setSyncing(false); setSyncToast('Sync still in progress — ' + stillPending + ' locations queued across members'); setTimeout(function() { setSyncToast('') }, 5000)
+        } else if (grandTotal === 0) {
+          setSyncing(false); setSyncToast('All members already up to date'); setTimeout(function() { setSyncToast('') }, 3000)
+        } else {
+          setSyncToast(grandTotal + ' new review' + (grandTotal !== 1 ? 's' : '') + ' across ' + syncableMembers.length + ' member' + (syncableMembers.length !== 1 ? 's' : ''))
+          setTimeout(function() { setSyncing(false); setSyncToast(''); window.location.reload() }, 1500)
+        }
       } else if (isTownHall && dataset.description?.startsWith('th:')) {
         var sessionId = dataset.description.slice(3)
         var res2 = await fetch('/api/townhall/sessions/' + sessionId + '/analyze', { method: 'POST' })
@@ -299,6 +365,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
                 <button onClick={function() { handleSourceSync() }}
                   style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Sync {isReviews ? 'reviews' : 'responses'}
+                </button>
+              )}
+              {isCollection && (
+                <button onClick={function() { handleSourceSync() }}
+                  style={{ width: '100%', textAlign: 'left' as const, padding: '8px 14px', fontSize: 12, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Sync members
                 </button>
               )}
               {collectionInfo && (
