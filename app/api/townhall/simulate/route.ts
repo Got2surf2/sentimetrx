@@ -16,21 +16,26 @@ export const maxDuration = 15
 // the user reported seeing on 2026-05-07. Patterns are distinctive enough
 // that legit community-meeting responses shouldn't false-positive.
 function looksLikeAIRefusal(text: string): boolean {
-  const t = text.toLowerCase()
   const patterns = [
-    /\bi need to (respectfully )?decline\b/,
-    /\bthis roleplay request\b/,
-    /\bcan't play (a |this )?character\b/,
-    /\beven in a simulated\b/,
-    /\bi'd be happy to roleplay as\b/,
-    /\bi'm not able to (play|roleplay|continue|simulate)\b/,
-    /\bas an ai( language)? model\b/,
-    /\bi (can't|cannot) (in good conscience|generate|create|produce|engage with)\b/,
-    /\bi (don't|do not) feel comfortable\b/,
-    /\bdesigned to harass\b/,
-    /\bsexualize interactions\b/,
+    // "I appreciate/understand …, but I can't/cannot/won't/need to decline"
+    /\bi (appreciate|understand) [\s\S]{0,120}\bi (can't|cannot|won't|need to (respectfully )?decline|am not (going to|comfortable))\b/i,
+    // "(can't|won't) role-play / play (a/this) character / portray / simulate"
+    /\b(can't|cannot|won't|refuse to|not going to) (role.?play|play (a |this )?character|portray|simulate this)\b/i,
+    // "this {roleplay|character|profile|exercise|scenario|request}" near a refusal
+    /\bthis (role.?play|character|profile|exercise|scenario|request)\b[\s\S]{0,60}\b(violates|conflicts|isn't appropriate|won't (do|portray)|i can't|i cannot|i won't|i'm not (comfortable|able)|decline)\b/i,
+    /\beven in a (simulated|fictional|roleplay|role.?play|hypothetical|simulated community)\b/i,
+    /\bi (don't|do not) feel comfortable\b[\s\S]{0,60}\b(role.?play|portray|simulate|character|inappropriate)\b/i,
+    /\bi'd be happy to (roleplay|role.?play|act|play|portray) (as |a |another )?/i,
+    /\bas an ai( language)? model\b/i,
+    /\b(designed to|asks me to|specifically asks me to|profile (asks|instructs))\b[\s\S]{0,80}\b(harass|sexualize|make others uncomfortable|use racist|racist dog|discriminatory|inappropriate sexual|inappropriate personal)\b/i,
+    /\binappropriate (sexual|personal) (comments|content|behavior)\b/i,
+    /\bracist dog.?whistle/i,
+    /\bcoded discriminatory\b/i,
+    /\bviolates my (values|guidelines|principles)\b/i,
+    /\bnot able to (play|roleplay|portray|continue with|simulate)\b/i,
+    /\bi (can't|cannot) (in good conscience|generate|create|produce|engage with)\b/i,
   ]
-  return patterns.some(p => p.test(t))
+  return patterns.some(p => p.test(text))
 }
 
 export async function POST(req: Request) {
