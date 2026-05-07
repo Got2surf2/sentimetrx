@@ -8,9 +8,10 @@
 //   - Frequency-by-time sparkline (granularity auto-scales with data range)
 //   - Sample comments with the matching keywords highlighted
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
+import TermInsights from './TermInsights'
 
 interface ThemeLike {
   id?: string
@@ -47,6 +48,7 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
   const fieldArr = Array.isArray(fields) ? fields : [fields]
   const keywords = useMemo(() => (theme.keywords || []).filter(Boolean), [theme.keywords])
   const dateField = useMemo(() => detectDateField(rows), [rows])
+  const [view, setView] = useState<'overview' | 'insights'>('overview')
 
   // Find rows that match ANY theme keyword in any of the analyzed text fields.
   const matchedRows = useMemo(() => {
@@ -138,6 +140,10 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
 
         {/* Body */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          {view === 'insights' ? (
+            <TermInsights rows={rows} textFields={fieldArr} targets={keywords} termLabel={theme.name} />
+          ) : (
+            <>
           <FrequencyChart buckets={freq.buckets} granularity={freq.granularity} color={color} />
 
           {/* Keywords */}
@@ -175,9 +181,27 @@ export default function ThemePopover({ theme, rows, fields, color, onClose }: Pr
               No comments match this theme&apos;s keywords in the current view.
             </p>
           )}
+            </>
+          )}
         </div>
 
-        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {(['overview', 'insights'] as const).map(v => {
+            const labels = { overview: 'Overview', insights: '✨ Insights' } as const
+            const active = view === v
+            return (
+              <button key={v} onClick={() => setView(v)}
+                style={{
+                  flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 700,
+                  color: active ? '#2563eb' : '#6b7280',
+                  background: active ? '#eff6ff' : '#f9fafb',
+                  border: '1px solid ' + (active ? '#bfdbfe' : '#e5e7eb'),
+                  borderRadius: 8, cursor: 'pointer',
+                }}>
+                {labels[v]}
+              </button>
+            )
+          })}
           <button onClick={onClose}
             style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>
             Close

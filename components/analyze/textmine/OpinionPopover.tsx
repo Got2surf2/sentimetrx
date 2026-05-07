@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
+import TermInsights from './TermInsights'
 
 const SENT_COLORS = {
   positive: { text: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
@@ -40,7 +41,7 @@ function highlightWord(text: string, word: string): React.ReactNode[] {
 }
 
 export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
-  const [view, setView] = useState<'opinions' | 'comments'>('opinions')
+  const [view, setView] = useState<'opinions' | 'comments' | 'insights'>('opinions')
 
   const fieldArr = Array.isArray(fields) ? fields : [fields]
 
@@ -91,7 +92,9 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
 
   let content: React.ReactNode
 
-  if (view === 'comments') {
+  if (view === 'insights') {
+    content = <TermInsights rows={rows} textFields={fieldArr} targets={[word]} termLabel={word} />
+  } else if (view === 'comments') {
     content = matchingComments.length === 0 ? (
       <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: '20px 0' }}>
         No comments found containing "{word}".
@@ -199,13 +202,25 @@ export default function OpinionPopover({ word, rows, fields, onClose }: Props) {
           {content}
         </div>
 
-        {/* Footer — toggle between opinions and comments view */}
+        {/* Footer — switch between Opinions / Comments / Insights views */}
         {result.opinions.length > 0 && (
-          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12, display: 'flex', gap: 8 }}>
-            <button onClick={function() { setView(view === 'opinions' ? 'comments' : 'opinions') }}
-              style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 700, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer' }}>
-              {view === 'opinions' ? 'View all "' + word + '" comments' : '← Back to opinion clusters'}
-            </button>
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(['opinions', 'comments', 'insights'] as const).map(v => {
+              const labels = { opinions: 'Opinions', comments: 'Comments', insights: '✨ Insights' } as const
+              const active = view === v
+              return (
+                <button key={v} onClick={() => setView(v)}
+                  style={{
+                    flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 700,
+                    color: active ? '#2563eb' : '#6b7280',
+                    background: active ? '#eff6ff' : '#f9fafb',
+                    border: '1px solid ' + (active ? '#bfdbfe' : '#e5e7eb'),
+                    borderRadius: 8, cursor: 'pointer',
+                  }}>
+                  {labels[v]}
+                </button>
+              )
+            })}
             <button onClick={onClose}
               style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>
               Close
