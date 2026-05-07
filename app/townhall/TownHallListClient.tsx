@@ -57,6 +57,9 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [shareLoading, setShareLoading] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<{ session_id: string; session_name: string; hit_count: number; snippet: string }[] | null>(null)
+  const [searching, setSearching] = useState(false)
 
   useEffect(() => {
     fetch('/api/townhall/sessions')
@@ -67,7 +70,30 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
 
   const isArchived = (s: Session) => !!s.config?.archived
 
+  // Conversation-content search runs on the server (ILIKE over townhall_turns).
+  // Debounced to keep typing responsive.
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (!q) { setSearchResults(null); setSearching(false); return }
+    setSearching(true)
+    const handle = setTimeout(() => {
+      fetch('/api/townhall/sessions/search?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => { setSearchResults(Array.isArray(data.results) ? data.results : []) })
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [searchQuery])
+
+  const matchedSessionIds = searchResults ? new Set(searchResults.map(r => r.session_id)) : null
+  const matchHitMap: Record<string, { hits: number; snippet: string }> = {}
+  ;(searchResults || []).forEach(r => { matchHitMap[r.session_id] = { hits: r.hit_count, snippet: r.snippet } })
+
   const filtered = sessions.filter(s => {
+    // When a content search is active, restrict to matching sessions and
+    // ignore the status tab — searches should look across all states.
+    if (matchedSessionIds) return matchedSessionIds.has(s.id)
     if (filter === 'archived') return isArchived(s)
     if (isArchived(s)) return false // hide archived from non-archived tabs
     if (filter === 'all') return true
@@ -200,8 +226,31 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
             </Link>
           </div>
 
-          {/* Filter tabs */}
+          {/* Search across conversation content (turns). Server-side ILIKE
+             on user_message + bot_message. When non-empty, replaces the
+             status-tab filter and shows match counts on each card. */}
           {sessions.length > 0 && (
+            <div className="mb-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search conversations — find sessions where participants mentioned a topic…"
+                  className="w-full px-3 py-2 pr-24 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-200"
+                />
+                {searchQuery && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2 text-xs text-gray-500">
+                    {searching ? <span>Searching…</span> : searchResults != null ? <span>{searchResults.length} session{searchResults.length === 1 ? '' : 's'}</span> : null}
+                    <button onClick={() => setSearchQuery('')} className="px-1.5 text-gray-400 hover:text-gray-600">{'×'}</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Filter tabs */}
+          {sessions.length > 0 && !searchQuery && (
             <div className="flex gap-1 mb-5">
               {tabs.map(t => (
                 <button
@@ -240,6 +289,7 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                 const statusColor = s.status === 'active' ? 'bg-green-100 text-green-700 border-green-200'
                   : s.status === 'ended' ? 'bg-gray-100 text-gray-500 border-gray-200'
                   : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                const match = matchHitMap[s.id]
                 return (
                   <div key={s.id} className={'bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all flex flex-col overflow-hidden relative' + (archived ? ' opacity-60' : '')}>
 
@@ -267,6 +317,14 @@ export default function TownHallListClient({ logoUrl, analyzeEnabled, campaignsE
                           <div className="text-[7px] text-gray-400 font-semibold uppercase leading-tight">joined</div>
                         </div>
                       </div>
+
+                      {/* Match preview — only shown when a content search is active */}
+                      {match && (
+                        <div className="rounded-lg px-2.5 py-1.5 -mt-1 text-xs leading-snug" style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412' }}>
+                          <span className="font-semibold mr-1">{match.hits} match{match.hits === 1 ? '' : 'es'}</span>
+                          <span className="text-orange-900/80 italic">"{match.snippet}"</span>
+                        </div>
+                      )}
 
                       {/* Stats line — matches survey "42 responses (85%)" pattern */}
                       <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
