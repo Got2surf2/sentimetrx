@@ -1,13 +1,13 @@
 // POST — create a dataset from a regulations.gov docket
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildRegulationsSchema, emptyThemeModel } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()

@@ -4,7 +4,7 @@
 // Also returns R² (how much variance the themes collectively explain).
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { expandLemma } from '@/lib/lemmas'
 import { olsRegression } from '@/lib/statsUtils'
 
@@ -38,7 +38,7 @@ function matchesTheme(text: string, keywords: string[]): boolean {
 
 export async function POST(req: Request, { params }: Props) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: {

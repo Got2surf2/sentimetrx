@@ -2,7 +2,7 @@
 // AI Insights endpoint — proxies user's API key to Anthropic for statistical storytelling.
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: Request) {
   // Auth check — require logged-in user
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

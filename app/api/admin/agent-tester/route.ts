@@ -5,7 +5,7 @@
 // agent would flag, route, or sanitize for any given input.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { resolveOrg } from '@/lib/resolveOrg'
 import {
   SKIP_PATTERNS, isInputSafe, isOutputSafe, isOutputClean,
@@ -25,7 +25,7 @@ type TargetType = 'bot' | 'session'
 
 export async function POST(req: Request) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase
@@ -177,7 +177,7 @@ export async function POST(req: Request) {
 // can offer either as a target. Both are "agents" with the same config shape.
 export async function GET() {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data: userData } = await supabase
     .from('users')

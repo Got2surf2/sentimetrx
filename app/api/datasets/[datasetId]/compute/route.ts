@@ -8,7 +8,7 @@
 // dataset_state.analytics instead.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { computeAnalyticsSQL, computeAnalyticsFromRows } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
@@ -22,7 +22,7 @@ interface Params { params: { datasetId: string } }
 
 export async function POST(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()

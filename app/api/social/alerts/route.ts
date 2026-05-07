@@ -3,12 +3,12 @@
 // POST — create alert rule
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 async function getAuth(supabase: ReturnType<typeof createClient>) {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single()
   return { userId: user.id, orgId: data?.org_id as string | null }

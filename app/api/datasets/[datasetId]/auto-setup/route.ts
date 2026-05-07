@@ -4,7 +4,7 @@
 // applies question text as aliases, maps field types from study question types.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildStudySchema } from '@/lib/datasetUtils'
 import { type Industry } from '@/lib/industryDefaults'
 import { INDUSTRY_THEMES } from '@/lib/industryThemes'
@@ -15,7 +15,7 @@ interface Params { params: { datasetId: string } }
 
 export async function POST(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()

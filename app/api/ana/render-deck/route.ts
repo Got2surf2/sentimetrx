@@ -2,7 +2,7 @@
 // POST — render a deck from Ana's slide specs and return PPTX binary
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { renderDeck } from '@/lib/pptx/slideRenderer'
 import type { DeckSpec } from '@/lib/pptx/slideRenderer'
 
@@ -11,7 +11,7 @@ export const maxDuration = 30
 
 export async function POST(req: Request) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()

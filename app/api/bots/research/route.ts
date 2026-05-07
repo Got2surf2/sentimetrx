@@ -3,7 +3,7 @@
 // Returns full page content structured for RAG chunking (no AI compression)
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchGoogle } from '@/lib/dataforseo'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +23,7 @@ function extractText(html: string): string {
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()

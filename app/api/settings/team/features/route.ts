@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { ModuleFeatures } from '@/lib/types'
 
@@ -9,7 +9,7 @@ const MODULE_KEYS: (keyof ModuleFeatures)[] = [
 // PATCH /api/settings/team/features — update a user's feature flags
 export async function PATCH(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: any

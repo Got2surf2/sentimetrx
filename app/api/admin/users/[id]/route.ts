@@ -2,13 +2,13 @@
 // Admin-only single-user operations. Currently supports:
 //   PATCH { org_id } — transfer user to a different org
 
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface Params { params: { id: string } }
 
 async function requireAdmin(supabase: ReturnType<typeof createClient>): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return { ok: false, status: 401, error: 'Unauthorized' }
   const { data: userData } = await supabase
     .from('users')

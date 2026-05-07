@@ -4,7 +4,7 @@
 // Falls back to pre-computed analytics if flat table is empty.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 interface Props { params: { datasetId: string } }
 
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(_req: Request, { params }: Props) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Verify org membership

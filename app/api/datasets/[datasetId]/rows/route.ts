@@ -16,7 +16,7 @@
 //                                returned unchanged.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic     = 'force-dynamic'
@@ -50,8 +50,7 @@ function sampleInPlace<T>(arr: T[], n: number, rng: () => number): void {
 }
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
-  const result = await supabase.auth.getUser()
-  const user = result.data.user
+  const user = await getAuthUser(supabase)
   if (!user) return { user: null, orgId: null }
   const userData = await supabase
     .from('users').select('org_id').eq('id', user.id).single()

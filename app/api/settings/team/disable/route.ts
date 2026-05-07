@@ -4,14 +4,14 @@
 // Supabase auth to ban the user (banned_until far-future) so new login
 // attempts are blocked at the auth layer. Re-enabling clears both flags.
 
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 const FAR_FUTURE = '2099-12-31T23:59:59Z'
 
 export async function PATCH(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: any

@@ -1,15 +1,15 @@
 // app/api/org/settings/route.ts
 // Returns the current user's org features (including primaryIndustries)
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 
 export async function GET(request: Request) {
   try {
     const supabase = createClient()
 
     // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser(supabase)
+    if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

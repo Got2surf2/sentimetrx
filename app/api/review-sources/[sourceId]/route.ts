@@ -4,14 +4,14 @@
 // DELETE — delete source (dataset cascades via FK)
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: { sourceId: string } }
 
 async function resolveOrg(supabase: any) {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return { error: 'Unauthorized', status: 401, user: null, orgId: null }
   const { data: userData } = await supabase
     .from('users')

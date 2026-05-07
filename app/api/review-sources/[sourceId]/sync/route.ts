@@ -2,7 +2,7 @@
 // POST — manually trigger a review sync for a source
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { syncReviewSource } from '@/lib/reviewSync'
 
 export const dynamic = 'force-dynamic'
@@ -13,7 +13,7 @@ interface Params { params: { sourceId: string } }
 export async function POST(_req: Request, { params }: Params) {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { data: userData } = await supabase

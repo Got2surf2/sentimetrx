@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateStudyGuid } from '@/lib/guid'
 import { SLUG_REGEX } from '@/lib/constants'
@@ -7,7 +7,7 @@ import type { StudyConfig } from '@/lib/types'
 // GET /api/studies — list studies for the current user's client
 export async function GET() {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data, error } = await supabase
@@ -26,7 +26,7 @@ export async function GET() {
 // POST /api/studies — create a new study
 export async function POST(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Get the user's client_id

@@ -1,7 +1,7 @@
 // app/api/campaigns/[id]/export/route.ts
 // GET ?format=csv|xlsx — export campaign respondent data
 
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat } from '@/lib/xlsxExport'
 
@@ -11,7 +11,7 @@ interface Params { params: { id: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()

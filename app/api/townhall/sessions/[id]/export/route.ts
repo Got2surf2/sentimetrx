@@ -2,7 +2,7 @@
 // GET ?format=csv|xlsx|themes|json — export Town Hall responses + themes + demo/psycho data
 // XLSX bundles responses + themes into separate sheets; CSV emits one or the other.
 
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { dataResponse, type Sheet } from '@/lib/xlsxExport'
@@ -13,7 +13,7 @@ interface Params { params: { id: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const db = createServiceRoleClient()

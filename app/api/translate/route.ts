@@ -1,7 +1,7 @@
 // app/api/translate/route.ts
 // POST — translate study content to a target language using Claude
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { StudyTranslation } from '@/lib/types'
 import { callAI } from '@/lib/ai'
@@ -12,7 +12,7 @@ export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: any

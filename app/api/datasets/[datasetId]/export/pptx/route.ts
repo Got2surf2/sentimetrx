@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
@@ -2252,7 +2252,7 @@ function buildClosingSlide(pptx: any, datasetName: string, takeaways: string[]) 
 
 export async function POST(req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))

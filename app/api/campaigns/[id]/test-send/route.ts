@@ -1,7 +1,7 @@
 // app/api/campaigns/[id]/test-send/route.ts
 // POST — send a test email to the current user
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getEmailProvider, interpolateTemplate } from '@/lib/email/provider'
 import type { EmailProviderType } from '@/lib/types'
@@ -12,7 +12,7 @@ interface Params { params: { id: string } }
 
 export async function POST(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: campaign } = await supabase

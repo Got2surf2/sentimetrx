@@ -3,7 +3,7 @@
 // using AI to add synonyms, colloquial variants, and related phrases.
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 
@@ -11,7 +11,7 @@ interface Props { params: { datasetId: string } }
 
 export async function POST(request: Request, { params }: Props) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: { apiKey?: string; themeName?: string; keywords?: string[]; context?: string }

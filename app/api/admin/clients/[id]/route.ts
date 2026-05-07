@@ -1,4 +1,4 @@
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface Params { params: { id: string } }
@@ -21,7 +21,7 @@ async function requireAdmin(supabase: any, userId: string) {
 // GET /api/admin/clients/[id] - org detail with users, studies, invites
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const ok = await requireAdmin(supabase, user.id)
@@ -67,7 +67,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // PATCH /api/admin/clients/[id] - update org (plan, name, is_admin_org)
 export async function PATCH(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const ok = await requireAdmin(supabase, user.id)

@@ -4,7 +4,7 @@
 // DELETE — delete a bot
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 interface Params { params: { id: string } }
 
 async function getAuth(supabase: ReturnType<typeof createClient>) {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
   const orgData = Array.isArray(data?.organizations) ? (data.organizations as any)[0] : data?.organizations as any
@@ -88,7 +88,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   if (isTransfer) {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     await recordOrgTransfer({
       service, resourceType: 'bot', resourceId: params.id,
       resourceName: resourceSnapshot?.name ?? null,

@@ -3,7 +3,7 @@
 // POST — admin-only: create a custom demo or psychographic question
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import psychographicData from '@/QuestionBank/psychographic_profiling_mobile_v4-2.json'
 import industryQuestionsData from '@/lib/data/industryQuestions.json'
 import openEndedData from '@/QuestionBank/Question_Bank.json'
@@ -35,7 +35,7 @@ async function getOrgAndCustomQ(supabase: any, userId: string) {
 
 export async function GET(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const url = new URL(req.url)
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { orgId, customQ, features, isAdmin } = await getOrgAndCustomQ(supabase, user.id)

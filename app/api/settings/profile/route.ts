@@ -4,12 +4,12 @@
 // POST  — trigger password reset email
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 // GET /api/settings/profile
 export async function GET(_req: NextRequest) {
   var supabase = createClient()
-  var { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var { data: profile } = await supabase
@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest) {
 // PATCH /api/settings/profile — update display name
 export async function PATCH(req: NextRequest) {
   var supabase = createClient()
-  var { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var body: any
@@ -50,7 +50,7 @@ export async function PATCH(req: NextRequest) {
 // POST /api/settings/profile — trigger password reset email
 export async function POST(req: NextRequest) {
   var supabase = createClient()
-  var { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var service = createServiceRoleClient()

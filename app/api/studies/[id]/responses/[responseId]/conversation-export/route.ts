@@ -2,7 +2,7 @@
 // Render a single response's conversation as a branded PPTX slide
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import PptxGenJS from 'pptxgenjs'
 
 export const dynamic = 'force-dynamic'
@@ -73,7 +73,7 @@ function buildConversationFromPayload(payload: any, config: any, botName: string
 
 export async function GET(req: NextRequest, { params }: { params: { id: string; responseId: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const [{ data: study }, { data: response }] = await Promise.all([

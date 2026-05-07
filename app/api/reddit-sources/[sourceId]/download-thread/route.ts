@@ -2,7 +2,7 @@
 // POST — download comments for a single thread (called per-thread from UI for progress)
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchThreadComments, commentToRow, type RedditComment } from '@/lib/reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
@@ -17,7 +17,7 @@ const CHUNK_SIZE = 50
 export async function POST(req: Request, { params }: Params) {
   try {
     var supabase = createClient()
-    var { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     var { data: userData } = await supabase

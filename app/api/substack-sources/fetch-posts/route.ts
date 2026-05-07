@@ -2,7 +2,7 @@
 // POST — fetch posts from a Substack publication (for wizard step 1→2)
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { resolveBaseUrl, fetchPublication, fetchPosts } from '@/lib/substack'
 
 export const dynamic = 'force-dynamic'
@@ -10,7 +10,7 @@ export const maxDuration = 30
 
 export async function POST(req: Request) {
   var supabase = createClient()
-  var { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var body = await req.json()

@@ -2,7 +2,7 @@
 // POST — download comments for a single Substack post and insert into dataset rows
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchPostComments, commentToRow as substackCommentToRow } from '@/lib/substack'
 
 export const dynamic = 'force-dynamic'
@@ -13,7 +13,7 @@ const CHUNK_SIZE = 50
 export async function POST(req: Request) {
   try {
     var supabase = createClient()
-    var { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     var { data: userData } = await supabase

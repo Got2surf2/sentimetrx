@@ -3,7 +3,7 @@
 // DELETE — clear all demo comments
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { tagComment } from '@/lib/socialTagging'
@@ -11,7 +11,7 @@ import { tagComment } from '@/lib/socialTagging'
 export const dynamic = 'force-dynamic'
 
 async function getAuth(supabase: ReturnType<typeof createClient>) {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
   const org = Array.isArray(data?.organizations) ? data.organizations[0] : data?.organizations

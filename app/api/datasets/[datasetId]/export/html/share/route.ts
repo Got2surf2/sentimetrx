@@ -9,7 +9,7 @@
 //   AWS_S3_BUCKET       (your bucket name)
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { randomUUID } from 'crypto'
@@ -23,7 +23,7 @@ const EXPIRY_SECONDS = 7 * 24 * 60 * 60  // 7 days
 export async function POST(req: Request, { params }: Params) {
   // Auth check
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Validate env vars

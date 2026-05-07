@@ -2,7 +2,7 @@
 // POST — finalize a Reddit source after per-thread downloads: build schema + compute analytics
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
@@ -14,7 +14,7 @@ interface Params { params: { sourceId: string } }
 export async function POST(_req: Request, { params }: Params) {
   try {
     var supabase = createClient()
-    var { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     var { data: userData } = await supabase

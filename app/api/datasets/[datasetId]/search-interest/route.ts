@@ -4,7 +4,7 @@
 // Only available for Reddit and Substack datasets.
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { getSearchVolumes, classifySearchInterest } from '@/lib/dataforseo'
 import type { SearchInterestTier, SearchTrend } from '@/lib/themeUtils'
 
@@ -17,7 +17,7 @@ const TREND_RANK: Record<string, number> = { up: 2, steady: 1, down: 0 }
 
 export async function POST(request: Request, { params }: Props) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dataset } = await supabase

@@ -3,7 +3,7 @@
 // Falls back to batch streaming if flat table is empty.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 interface Props { params: { datasetId: string } }
 
@@ -12,7 +12,7 @@ export const maxDuration = 60
 
 export async function POST(req: Request, { params }: Props) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: {

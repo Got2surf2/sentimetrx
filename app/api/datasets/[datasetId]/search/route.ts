@@ -7,7 +7,7 @@
 //   ai       — if 'true', expand the query with AI synonyms then re-rank candidates by relevance
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 
 // Number of candidates to pull from full-text per target before AI re-ranking.
@@ -35,7 +35,7 @@ interface Params { params: { datasetId: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()

@@ -3,7 +3,7 @@
 // DELETE — delete a single knowledge chunk
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +11,7 @@ interface Params { params: { id: string; chunkId: string } }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   var supabase = createClient()
-  var { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var body = await req.json()
@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(req: NextRequest, { params }: Params) {
   var supabase = createClient()
-  var { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var service = createServiceRoleClient()

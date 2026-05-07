@@ -1,14 +1,14 @@
 // app/api/townhall/sessions/[id]/duplicate/route.ts
 // POST — duplicate a Town Hall session (copies config + discussion guide into new setup session)
 
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface Params { params: { id: string } }
 
 export async function POST(_req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const db = createServiceRoleClient()

@@ -4,7 +4,7 @@
 // subreddit listing (/r/{name}/{sort}.json) which still works.
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchSubredditPosts } from '@/lib/reddit'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   var subName = ''
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { data: userData } = await supabase

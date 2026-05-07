@@ -4,14 +4,14 @@
 // PATCH -- partial update: update only the fields provided
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: { datasetId: string } }
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return { user: null, orgId: null }
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
   return { user, orgId: (userData?.org_id as string | null) }

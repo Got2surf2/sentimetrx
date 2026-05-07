@@ -3,7 +3,7 @@
 // Returns per-sample flags, severity, sentiment, and actions
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { resolveOrg } from '@/lib/resolveOrg'
 import { auditContent } from '@/lib/contentGuard'
 import { tagComment } from '@/lib/socialTagging'
@@ -14,7 +14,7 @@ export const fetchCache = 'force-no-store'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase

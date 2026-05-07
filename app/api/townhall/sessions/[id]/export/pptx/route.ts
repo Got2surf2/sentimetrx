@@ -2,7 +2,7 @@
 // POST — generate a branded Town Hall summary deck (PPTX)
 // Returns the deck as a downloadable binary.
 
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment, buildKwRegex } from '@/lib/themeUtils'
 
@@ -53,7 +53,7 @@ function sentColor(s: string) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const db = createServiceRoleClient()

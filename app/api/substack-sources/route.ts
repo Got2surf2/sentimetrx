@@ -2,7 +2,7 @@
 // POST — create dataset + download comments from selected Substack posts
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildSubstackSchema, emptyThemeModel } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +11,7 @@ export const maxDuration = 60
 export async function POST(req: Request) {
   try {
     var supabase = createClient()
-    var { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     var { data: userData } = await supabase

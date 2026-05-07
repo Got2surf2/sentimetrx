@@ -4,7 +4,7 @@
 // DELETE -- delete dataset (cascades rows + state)
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 interface Params { params: { datasetId: string } }
 
 async function getOrgAndCheck(supabase: ReturnType<typeof createClient>) {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return { user: null, orgId: null, isAdmin: false, error: 'Unauthorized' }
 
   const { data: userData } = await supabase

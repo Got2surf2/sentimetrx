@@ -4,7 +4,7 @@
 // DELETE — clear all knowledge chunks for a bot
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { generateEmbeddings } from '@/lib/embeddings'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
@@ -16,7 +16,7 @@ interface Params { params: { id: string } }
 // ── GET: list chunks ──────────────────────────────────────────
 export async function GET(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
@@ -32,7 +32,7 @@ export async function GET(_req: Request, { params }: Params) {
 // ── POST: ingest text → chunks ────────────────────────────────
 export async function POST(req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
@@ -170,7 +170,7 @@ export async function POST(req: Request, { params }: Params) {
 // ── DELETE: clear chunks (all, or by source_type) ────────────
 export async function DELETE(req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const url = new URL(req.url)

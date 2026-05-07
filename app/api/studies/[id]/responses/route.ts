@@ -3,7 +3,7 @@
 // GET (with no `export` param)         → JSON list for the dashboard
 // GET ?export=csv|xlsx                 → file download
 // Other params: format=standard|datanautix, labelMode=key|prompt, sections=...
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxExport'
 
@@ -11,7 +11,7 @@ interface Params { params: { id: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const url       = new URL(req.url)

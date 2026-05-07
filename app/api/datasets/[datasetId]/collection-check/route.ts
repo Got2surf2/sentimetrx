@@ -3,7 +3,7 @@
 // Returns { collection_dataset_id, collection_name } or {}
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -12,7 +12,7 @@ interface Params { params: { datasetId: string } }
 
 export async function GET(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({})
 
   // Find collection_members rows for this dataset

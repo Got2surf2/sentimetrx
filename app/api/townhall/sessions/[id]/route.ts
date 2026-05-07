@@ -1,4 +1,4 @@
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 // GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Use service role to bypass RLS (auth already verified above)
@@ -392,7 +392,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 // PATCH /api/townhall/sessions/:id — update session config or status
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Use service role to bypass RLS (auth already verified above)
@@ -673,7 +673,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 // DELETE /api/townhall/sessions/:id — delete session and all related data
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const db = createServiceRoleClient()

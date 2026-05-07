@@ -3,7 +3,7 @@
 // Slides: KPIs, common questions, audience profile, conversation patterns, quotes, recommendations
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { renderDeck, type DeckSpec, type SlideSpec } from '@/lib/pptx/slideRenderer'
@@ -15,7 +15,7 @@ interface Params { params: { id: string } }
 
 export async function POST(req: NextRequest, { params }: Params) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()

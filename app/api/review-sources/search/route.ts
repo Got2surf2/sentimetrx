@@ -3,7 +3,7 @@
 // Returns location list without persisting anything (preview step)
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchLocations } from '@/lib/dataforseo'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,7 @@ export const maxDuration = 30
 export async function POST(req: Request) {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { data: userData } = await supabase

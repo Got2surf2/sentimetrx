@@ -3,13 +3,13 @@
 // Stored in organizations.features.social_auto_config
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
 async function getAuth(supabase: ReturnType<typeof createClient>) {
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id, organizations(features)').eq('id', user.id).single()
   const org = Array.isArray(data?.organizations) ? data.organizations[0] : data?.organizations

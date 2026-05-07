@@ -3,7 +3,7 @@
 // Deduplicates by response_id stored inside each flat row's data field.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
@@ -15,7 +15,7 @@ interface Params { params: { datasetId: string } }
 export async function POST(req: Request, { params }: Params) {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const service = createServiceRoleClient()

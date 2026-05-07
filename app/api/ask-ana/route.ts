@@ -7,7 +7,7 @@
 // which the client renders as confirmation cards before writing to dataset_state.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { checkMessage } from '@/lib/contentGuard'
 
@@ -183,7 +183,7 @@ function computeMemberBudgets(
 export async function POST(req: Request) {
   // Auth
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase
