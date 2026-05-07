@@ -1,33 +1,16 @@
-'use client'
+// /nora used to be a hardcoded page that wired up <ChatBot> with an inline
+// config and a dedicated /api/nora-chat endpoint. Nora now lives as a row
+// in the `bots` table, so /nora redirects to the dynamic /b/nora route
+// which goes through the standard bot pipeline (intent detection,
+// deflection, KB injection, content_safety from bot.config, etc.).
+//
+// The legacy /api/nora-chat route is kept alive for backward compatibility
+// with anything embedding the old endpoint directly.
 
-import ChatBot from '@/components/ui/ChatBot'
+import { redirect } from 'next/navigation'
+
+export const dynamic = 'force-static'
 
 export default function NoraPage() {
-  return (
-    <ChatBot config={{
-      apiEndpoint: '/api/nora-chat',
-      name: 'Nora',
-      subtitle: 'Tabla Cuisine Virtual Host',
-      avatarLetter: 'N',
-      headerGradient: 'linear-gradient(135deg, #8B1A1A, #5C1010)',
-      avatarGradient: 'linear-gradient(135deg, #D4A843, #B8922F)',
-      avatarTextColor: '#5C1010',
-      accentColor: '#D4A843',
-      pageBg: '#FDF8F3',
-      userBubbleBg: '#8B1A1A',
-      websiteUrl: 'https://www.tablacuisine.com',
-      websiteLabel: 'tablacuisine.com',
-      placeholder: 'Ask about Tabla...',
-      fontFamily: "'Georgia', 'Times New Roman', serif",
-      suggestions: [
-        'What kind of food do you serve?',
-        'Where are your locations?',
-        'How do I make a reservation?',
-        'Tell me about catering',
-        'Do you have vegetarian options?',
-        'What is the Masala Club?',
-      ],
-      initialMessage: "Welcome to Tabla! I'm Nora, your virtual host. I can help you find a location, explore the menu, make a reservation, or learn about catering and events. What can I help you with?",
-    }} />
-  )
+  redirect('/b/nora')
 }
