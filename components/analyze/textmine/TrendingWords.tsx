@@ -20,6 +20,8 @@ export default function TrendingWords({ datasetId }: Props) {
   const [terms, setTerms] = useState<Term[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [textFields, setTextFields] = useState<string[]>([])
+  const [sampleSize, setSampleSize] = useState(0)
   const [openTerm, setOpenTerm] = useState<string | null>(null)
 
   useEffect(() => {
@@ -27,20 +29,43 @@ export default function TrendingWords({ datasetId }: Props) {
     async function fetchData() {
       try {
         const res = await fetch('/api/datasets/' + datasetId + '/trending?limit=24', { cache: 'no-store' })
-        if (!res.ok) { if (!cancelled) { setError('Failed to load'); setLoading(false) } ; return }
+        if (!res.ok) { if (!cancelled) { setError('Failed to load (HTTP ' + res.status + ')'); setLoading(false) } ; return }
         const data = await res.json()
-        if (!cancelled) { setTerms(data.terms || []); setLoading(false) }
-      } catch {
-        if (!cancelled) { setError('Failed to load'); setLoading(false) }
+        if (!cancelled) {
+          setTerms(data.terms || [])
+          setTextFields(data.textFields || [])
+          setSampleSize(data.sampleSize || 0)
+          setLoading(false)
+        }
+      } catch (e: any) {
+        if (!cancelled) { setError('Failed to load: ' + (e?.message || 'unknown')); setLoading(false) }
       }
     }
     fetchData()
     return () => { cancelled = true }
   }, [datasetId])
 
-  if (loading) return <div className="text-xs text-gray-400 px-1 py-2">Loading top terms…</div>
-  if (error) return <div className="text-xs text-red-500 px-1 py-2">{error}</div>
-  if (terms.length === 0) return null
+  // Empty-state card — kept visible so the feature is discoverable even
+  // when the dataset has no open-ended text fields configured.
+  if (loading || error || terms.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-bold text-gray-800">Top words & phrases</h3>
+          <span className="text-[10px] text-gray-400">Click any term to drill in</span>
+        </div>
+        {loading && <p className="text-xs text-gray-400">Loading top terms…</p>}
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        {!loading && !error && terms.length === 0 && (
+          <p className="text-xs text-gray-400">
+            {textFields.length === 0
+              ? 'No open-ended text fields detected in this dataset\'s schema. Open Schema (top-right) and mark a column as "Open-ended" to enable trending words.'
+              : 'No frequent terms found across ' + sampleSize.toLocaleString() + ' sampled rows. (Searched fields: ' + textFields.join(', ') + ')'}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   const maxCount = terms[0].count
   return (
