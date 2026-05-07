@@ -5,6 +5,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import TransferOrg from '@/components/ui/TransferOrg'
 import SchemaEditor from '@/components/analyze/SchemaEditor'
 import LocationManager from '@/components/analyze/LocationManager'
 import UserLocationAssigner from '@/components/analyze/UserLocationAssigner'
@@ -371,54 +372,16 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         <UserLocationAssigner sourceId={reviewSourceId} />
       )}
 
-      {/* Admin: transfer to another org */}
-      {isAdmin && allOrgs.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4">
-          <div>
-            <h2 className="font-bold text-gray-800">Transfer Organization</h2>
-            <p className="text-sm text-gray-400 mt-0.5">Move this dataset to a different organization.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              disabled={transferring}
-              value={transferOrgId}
-              onChange={function(e) { setTransferOrgId(e.target.value) }}
-              className={inputCls + ' flex-1 disabled:opacity-50'}
-            >
-              <option value="" disabled>Select organization...</option>
-              {allOrgs.map(function(o) {
-                return <option key={o.id} value={o.id}>{o.name}</option>
-              })}
-            </select>
-            <button
-              disabled={transferring}
-              onClick={async function() {
-                if (!transferOrgId) return
-                const orgLabel = (allOrgs.find(function(o) { return o.id === transferOrgId }) || {}).name || transferOrgId
-                if (!confirm('Transfer "' + name + '" to ' + orgLabel + '?')) return
-                var newOrgId = transferOrgId
-                setTransferring(true)
-                setError('')
-                try {
-                  const res = await fetch('/api/datasets/' + dataset.id, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ org_id: newOrgId }),
-                  })
-                  if (!res.ok) throw new Error('Failed to transfer dataset')
-                  router.push('/analyze')
-                } catch {
-                  setError('Failed to transfer dataset')
-                  setTransferring(false)
-                }
-              }}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all hover:opacity-90"
-              style={{ background: HERMES }}
-            >
-              {transferring ? 'Transferring...' : 'Transfer'}
-            </button>
-          </div>
-        </div>
+      {/* Admin: transfer to another org — uses the shared TransferOrg
+          component (active-only org list, audit logging on the server). */}
+      {isAdmin && (
+        <TransferOrg
+          resourceName={name || 'Dataset'}
+          resourceLabel="dataset"
+          apiUrl={'/api/datasets/' + dataset.id}
+          currentOrgId={(dataset as any).org_id}
+          onTransferred={() => router.push('/analyze')}
+        />
       )}
 
       {/* Danger zone */}
