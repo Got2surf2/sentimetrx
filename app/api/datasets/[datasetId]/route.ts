@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,11 +66,19 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   // Admin-only: allow changing org_id (transfer dataset to another org)
+  let isTransfer = false
+  let transferResourceName: string | null = null
   if ('org_id' in body) {
     if (!isAdmin) {
       return NextResponse.json({ error: 'Only admins can transfer datasets' }, { status: 403 })
     }
+    const svc = createServiceRoleClient()
+    const { data: cur } = await svc.from('datasets').select('name').eq('id', params.datasetId).single()
+    transferResourceName = (cur as any)?.name ?? null
+    const check = await checkTransferTarget(svc, orgId, body.org_id)
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
     updates.org_id = body.org_id
+    isTransfer = true
   }
 
   if (Object.keys(updates).length === 0) {
@@ -108,6 +117,15 @@ export async function PATCH(req: Request, { params }: Params) {
     .eq('id', params.datasetId)
 
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+  if (isTransfer) {
+    await recordOrgTransfer({
+      service, resourceType: 'dataset', resourceId: params.datasetId,
+      resourceName: transferResourceName,
+      fromOrgId: orgId, toOrgId: updates.org_id as string,
+      initiatedBy: user.id, initiatedByEmail: user.email || null,
+    })
+  }
   return NextResponse.json({ ok: true })
 }
 

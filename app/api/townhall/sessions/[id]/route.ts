@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buildKwRegex, lexiconScore, classifySentiment } from '@/lib/themeUtils'
 import { autoBucket, bucketKey, TimeBucket } from '@/lib/timeBucket'
 import { bleepText } from '@/lib/contentGuard'
+import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 
 // Always serve fresh — moderator must see latest theme states, never a cache.
 export const dynamic = 'force-dynamic'
@@ -497,8 +498,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!oData?.is_admin_org) {
       return NextResponse.json({ error: 'Only admins can transfer sessions' }, { status: 403 })
     }
-    const { error: txErr } = await db.from('townhall_sessions').update({ org_id: body.org_id }).eq('id', params.id)
+    const svc = createServiceRoleClient()
+    const { data: cur } = await svc.from('townhall_sessions').select('org_id, name').eq('id', params.id).single()
+    const fromOrgId = (cur as any)?.org_id ?? null
+    const resourceName = (cur as any)?.name ?? null
+    const toOrgId = String(body.org_id || '')
+    const check = await checkTransferTarget(svc, fromOrgId, toOrgId)
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
+    const { error: txErr } = await db.from('townhall_sessions').update({ org_id: toOrgId }).eq('id', params.id)
     if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
+    await recordOrgTransfer({
+      service: svc, resourceType: 'townhall_session', resourceId: params.id,
+      resourceName, fromOrgId, toOrgId,
+      initiatedBy: user.id, initiatedByEmail: user.email || null,
+    })
     return NextResponse.json({ success: true, transferred: true })
   }
 

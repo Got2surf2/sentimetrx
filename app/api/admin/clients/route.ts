@@ -2,7 +2,10 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/admin/clients - list all organizations with user and study counts
-export async function GET() {
+// Supports ?activeOnly=true to restrict to status='active' orgs (used by
+// TransferOrg to gate which orgs can receive resource transfers — no point
+// surfacing suspended/archived orgs in that dropdown).
+export async function GET(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,12 +25,17 @@ export async function GET() {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
+  const url = new URL(req.url)
+  const activeOnly = url.searchParams.get('activeOnly') === 'true'
+
   const service = createServiceRoleClient()
 
-  const { data: orgs } = await service
+  let orgsQuery = service
     .from('organizations')
-    .select('id, name, slug, plan, is_admin_org, created_at')
+    .select('id, name, slug, plan, status, is_admin_org, created_at')
     .order('created_at', { ascending: false })
+  if (activeOnly) orgsQuery = orgsQuery.eq('status', 'active')
+  const { data: orgs } = await orgsQuery
 
   if (!orgs) return NextResponse.json([])
 

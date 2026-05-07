@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { SLUG_REGEX } from '@/lib/constants'
+import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 
 interface Params { params: { id: string } }
 
@@ -84,11 +85,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   // Admin-only: allow changing org_id (transfer study to another org)
+  // Validates active target + records to org_transfers via the shared helper.
+  let isTransfer = false
+  let prevOrgId: string | null = null
+  let resourceName: string | null = null
   if ('org_id' in body) {
     if (!isAdmin) {
       return NextResponse.json({ error: 'Only admins can transfer studies' }, { status: 403 })
     }
+    const svc = createServiceRoleClient()
+    const { data: cur } = await svc.from('studies').select('org_id, name').eq('id', params.id).single()
+    prevOrgId = (cur as any)?.org_id ?? null
+    resourceName = (cur as any)?.name ?? null
+    const check = await checkTransferTarget(svc, prevOrgId, body.org_id)
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
     updates.org_id = body.org_id
+    isTransfer = true
   }
 
   if (Object.keys(updates).length === 0) {
@@ -105,6 +117,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (isTransfer) {
+    const svc = createServiceRoleClient()
+    await recordOrgTransfer({
+      service: svc, resourceType: 'study', resourceId: params.id,
+      resourceName, fromOrgId: prevOrgId, toOrgId: updates.org_id as string,
+      initiatedBy: user.id, initiatedByEmail: user.email || null,
+    })
+  }
   return NextResponse.json(data)
 }
 

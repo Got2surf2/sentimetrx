@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,11 +48,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   // Admin-only: allow changing org_id (transfer agent to another org)
+  // Validates target is an active org, then logs to org_transfers.
+  let isTransfer = false
+  let resourceSnapshot: { name: string | null } | null = null
   if ('org_id' in body) {
     if (!auth.isAdmin) {
       return NextResponse.json({ error: 'Only admins can transfer agents' }, { status: 403 })
     }
+    const service = createServiceRoleClient()
+    const check = await checkTransferTarget(service, auth.orgId, body.org_id)
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
+    const { data: snap } = await service.from('bots').select('name').eq('id', params.id).single()
+    resourceSnapshot = { name: (snap as any)?.name ?? null }
     updates.org_id = body.org_id
+    isTransfer = true
   }
 
   // Validate slug if changing
@@ -67,7 +77,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   // Use service role when transferring (org_id change bypasses RLS)
-  const updateClient = updates.org_id ? createServiceRoleClient() : supabase
+  const service = createServiceRoleClient()
+  const updateClient = updates.org_id ? service : supabase
   const { error } = await updateClient
     .from('bots')
     .update(updates)
@@ -75,6 +86,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .eq('org_id', auth.orgId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (isTransfer) {
+    const { data: { user } } = await supabase.auth.getUser()
+    await recordOrgTransfer({
+      service, resourceType: 'bot', resourceId: params.id,
+      resourceName: resourceSnapshot?.name ?? null,
+      fromOrgId: auth.orgId, toOrgId: updates.org_id as string,
+      initiatedBy: auth.userId, initiatedByEmail: user?.email || null,
+    })
+  }
   return NextResponse.json({ success: true })
 }
 

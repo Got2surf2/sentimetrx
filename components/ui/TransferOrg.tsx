@@ -30,7 +30,9 @@ export default function TransferOrg({ resourceName, resourceLabel, apiUrl, allOr
 
   useEffect(function() {
     if (propOrgs) return
-    fetch('/api/admin/clients')
+    // activeOnly=true so suspended / archived orgs don't appear as transfer
+    // targets — caller would otherwise hand work to a frozen org.
+    fetch('/api/admin/clients?activeOnly=true')
       .then(function(r) { if (!r.ok) throw new Error(); return r.json() })
       .then(function(d) { setOrgs((d.orgs || d || []).map(function(o: any) { return { id: o.id, name: o.name } })); setIsAdmin(true) })
       .catch(function() { setIsAdmin(false) })
