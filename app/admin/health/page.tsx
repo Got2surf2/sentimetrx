@@ -79,6 +79,45 @@ export default async function HealthPage() {
   const { count: totalResponses24h } = await service.from('responses').select('id', { count: 'exact', head: true }).gte('completed_at', h24)
   const { count: totalComplete24h } = await service.from('responses').select('id', { count: 'exact', head: true }).eq('status', 'complete').gte('completed_at', h24)
 
+  // ── Sentry health (errors over last 24h) ────────────────────────────
+  // Optional: shows live error data when SENTRY_AUTH_TOKEN, SENTRY_ORG, and
+  // SENTRY_PROJECT are configured. Without them we still know if Sentry is
+  // configured (DSN set), just no live count.
+  const sentryDsnSet = !!process.env.NEXT_PUBLIC_SENTRY_DSN
+  const sentryToken  = process.env.SENTRY_AUTH_TOKEN
+  const sentryOrg    = process.env.SENTRY_ORG
+  const sentryProject = process.env.SENTRY_PROJECT
+
+  let sentryError: string | null = null
+  let sentryIssues: { id: string; title: string; lastSeen: string; count: number; permalink: string }[] = []
+  let sentryIssueCount24h = 0
+  let sentryEvents24h = 0
+
+  if (sentryDsnSet && sentryToken && sentryOrg && sentryProject) {
+    try {
+      const r = await fetch(
+        `https://sentry.io/api/0/projects/${sentryOrg}/${sentryProject}/issues/?statsPeriod=24h&query=is:unresolved&limit=5`,
+        { headers: { Authorization: `Bearer ${sentryToken}` }, cache: 'no-store' }
+      )
+      if (r.ok) {
+        const data = await r.json() as any[]
+        sentryIssues = data.map(d => ({
+          id: d.id,
+          title: d.title || d.metadata?.value || '(no title)',
+          lastSeen: d.lastSeen,
+          count: parseInt(d.count) || 0,
+          permalink: d.permalink || '',
+        }))
+        sentryIssueCount24h = sentryIssues.length
+        sentryEvents24h = sentryIssues.reduce((s, x) => s + x.count, 0)
+      } else {
+        sentryError = `Sentry API ${r.status}`
+      }
+    } catch (e: any) {
+      sentryError = e?.message || 'Sentry API unreachable'
+    }
+  }
+
   return (
     <HealthClient
       logoUrl={orgData?.logo_url || ''}
@@ -90,6 +129,16 @@ export default async function HealthPage() {
       studyHealth={studyHealth}
       totalResponses24h={totalResponses24h || 0}
       totalComplete24h={totalComplete24h || 0}
+      sentry={{
+        dsnSet: sentryDsnSet,
+        tokenSet: !!sentryToken,
+        orgSlug: sentryOrg || null,
+        projectSlug: sentryProject || null,
+        issueCount24h: sentryIssueCount24h,
+        events24h: sentryEvents24h,
+        topIssues: sentryIssues,
+        error: sentryError,
+      }}
     />
   )
 }

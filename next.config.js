@@ -1,5 +1,6 @@
 // next.config.js
 const { execSync } = require('child_process')
+const { withSentryConfig } = require('@sentry/nextjs')
 
 // Build info: injected at build time as NEXT_PUBLIC_ env vars
 const commitCount = (() => { try { return execSync('git rev-list --count HEAD').toString().trim() } catch { return '0' } })()
@@ -14,6 +15,8 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
+    // Required for Sentry's instrumentation.ts hook on Next.js 14.2.x.
+    instrumentationHook: true,
   },
   env: {
     NEXT_PUBLIC_BUILD_NUMBER: `${buildYear}.${commitCount}`,
@@ -21,4 +24,13 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+// Sentry build-time wrapper. Uploads source maps if SENTRY_AUTH_TOKEN is set
+// (optional — without it, errors still report but stack traces are minified).
+module.exports = withSentryConfig(nextConfig, {
+  silent: true,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  hideSourceMaps: true,
+  disableLogger: true,
+})
