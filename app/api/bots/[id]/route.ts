@@ -24,14 +24,20 @@ export async function GET(req: NextRequest, { params }: Params) {
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
+  // Admin-org users can view bots across orgs (Phase E parity — they can
+  // see other-org bot cards on /bots, so they need to read them too).
+  // Non-admins are scoped to their own org.
+  const service = createServiceRoleClient()
+  const { data, error } = await service
     .from('bots')
     .select('*')
     .eq('id', params.id)
-    .eq('org_id', auth.orgId)
     .single()
 
   if (error || !data) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!auth.isAdmin && data.org_id !== auth.orgId) {
+    return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  }
   return NextResponse.json(data)
 }
 
@@ -76,14 +82,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Use service role when transferring (org_id change bypasses RLS)
+  // Use service role for transfers (org_id change bypasses RLS) AND for
+  // admin cross-org edits (Phase E parity). Non-admins remain scoped to
+  // their own org.
   const service = createServiceRoleClient()
-  const updateClient = updates.org_id ? service : supabase
-  const { error } = await updateClient
-    .from('bots')
-    .update(updates)
-    .eq('id', params.id)
-    .eq('org_id', auth.orgId)
+  let updateQuery = service.from('bots').update(updates).eq('id', params.id)
+  if (!auth.isAdmin) updateQuery = updateQuery.eq('org_id', auth.orgId)
+  const { error } = await updateQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -104,11 +109,11 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { error } = await supabase
-    .from('bots')
-    .delete()
-    .eq('id', params.id)
-    .eq('org_id', auth.orgId)
+  // Same Phase E parity as GET/PATCH — admins can delete other-org bots.
+  const service = createServiceRoleClient()
+  let q = service.from('bots').delete().eq('id', params.id)
+  if (!auth.isAdmin) q = q.eq('org_id', auth.orgId)
+  const { error } = await q
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
