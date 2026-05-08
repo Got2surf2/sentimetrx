@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:rls": "RLS_TEST=1 vitest run rls-isolation",
     "loadtest:k6": "k6 run tests/loadtest/townhall.k6.js",
     "loadtest:browsers": "playwright test --config=tests/loadtest/playwright.config.ts"
   },
@@ -46,6 +47,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "^10.0.1",
+    "dotenv": "^17.4.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
     "jsdom": "^29.1.1",

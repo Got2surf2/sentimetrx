@@ -106,29 +106,31 @@ environment is configured:
 
 ### RLS isolation (`tests/integration/rls-isolation.test.ts`)
 
-Requires a separate Supabase project (NEVER point this at production):
+Self-contained: the test creates its own test orgs / users / study via the
+service role, runs the assertions, then deletes everything. All test rows
+are prefixed `_rlstest_<runId>_` so partial failures are easy to find and
+delete by hand.
+
+Run it:
 
 ```bash
-TEST_SUPABASE_URL=...
-TEST_SUPABASE_ANON_KEY=...
-TEST_SUPABASE_SERVICE_ROLE_KEY=...
-TEST_ORG_A_USER_EMAIL=...
-TEST_ORG_A_USER_PASSWORD=...
-TEST_ORG_B_USER_EMAIL=...
-TEST_ORG_B_USER_PASSWORD=...
-TEST_ORG_A_STUDY_ID=...   # a real study row owned by Org A in the test project
+npm run test:rls
 ```
 
-Setup steps:
+That sets `RLS_TEST=1` and points at whatever `NEXT_PUBLIC_SUPABASE_URL` +
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY` are in
+`.env.local`. Without `RLS_TEST=1` the suite calls `describe.skip` so it's
+visible-but-skipped in default test output.
 
-1. Create a fresh Supabase project.
-2. Apply the schema and RLS migrations from `sql/`.
-3. Create two organizations and one user per organization.
-4. Create one study row owned by Org A; set `TEST_ORG_A_STUDY_ID`.
-5. Run `npm test -- rls-isolation`.
+**Pre-launch (no real customers yet)**: pointing this at the production
+Supabase is acceptable. The test data is namespaced and cleaned up; the
+risk is one stale row if the test crashes mid-run, which is recoverable
+by hand via the `_rlstest_` prefix.
 
-When the env vars are not set, the suite calls `describe.skip` so it's
-visible-but-skipped in test output rather than silently passing.
+**Once customers exist**: stand up a dedicated Supabase test project and
+set `NEXT_PUBLIC_SUPABASE_URL`/keys in `.env.local` to that project before
+running. Real auth.users rows shouldn't share an instance with paying
+customers, regardless of how careful the cleanup is.
 
 ### Playwright e2e (`tests/e2e/deck-download.spec.ts`)
 
