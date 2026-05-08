@@ -1,4 +1,5 @@
 import LoginForm from './LoginForm'
+import DatanautixAttribution from '@/components/ui/DatanautixAttribution'
 
 // Brand-matched login. Soft warm-cream background, white card with the
 // concentric-rings wordmark + Sentimetrx mark on top, brand orange primary
@@ -45,8 +46,7 @@ export default function LoginPage() {
         <p className="text-center text-xs mt-5" style={{ color: '#9ca3af' }}>
           Trouble signing in? Email <a className="underline" style={{ color: '#0F7173' }} href="mailto:support@datanautix.com">support@datanautix.com</a>
         </p>
-        {/* Datanautix parent attribution lives in the global footer (root
-            layout) so we don't double up here. */}
+        <DatanautixAttribution variant="footer" className="mt-3" />
       </div>
     </main>
   )

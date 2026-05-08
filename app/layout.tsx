@@ -5,7 +5,6 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import SessionGuard from '@/components/SessionGuard'
-import DatanautixAttribution from '@/components/ui/DatanautixAttribution'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -30,15 +29,15 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <SessionGuard>{children}</SessionGuard>
-        {/* Global parent-company footer — appears on every page, including
-            public share surfaces. Small and unobtrusive so it doesn't
-            compete with page chrome. Login + share pages already include
-            their own in-card attribution; the slight redundancy is
-            intentional so the parent relationship is visible from every
-            entry point. */}
-        <footer className="py-2 text-center" style={{ background: '#fafafa', borderTop: '1px solid #f3f4f6' }}>
-          <DatanautixAttribution variant="footer" />
-        </footer>
+        {/* No global footer here. Adding one broke pages that lock the
+            layout to height: 100vh (the analyze tabs do this so the
+            module's two top bars stay fixed and the inner content
+            scrolls within itself). With a body-level footer, the body
+            became taller than the viewport, so the OUTER scroll moved
+            the whole page — including the supposedly-fixed bars.
+            Datanautix attribution lives in TopNav for authenticated
+            pages, on the login footer, and is added explicitly to the
+            public share surfaces. */}
       </body>
     </html>
   )
