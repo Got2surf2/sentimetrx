@@ -5,6 +5,7 @@
 // saves theme model back to dataset_state. Ana proprietary prompts stay server-side.
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import {
@@ -20,16 +21,59 @@ import { smartOrder } from '@/lib/scaleUtils'
 import { resolveAlias } from '@/lib/aliasUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { useRows } from '@/components/analyze/RowsContext'
-import ThemeEditor from '@/components/analyze/textmine/ThemeEditor'
-import WordCloud from '@/components/analyze/textmine/WordCloud'
 import ThemePopover from '@/components/analyze/textmine/ThemePopover'
 import SignalsView from '@/components/analyze/textmine/SignalsView'
-import CommentsPanel from '@/components/analyze/textmine/CommentsPanel'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
 import LottieLoader from '@/components/ui/LottieLoader'
+
+// Heaviest tab-specific and modal sub-components — split out of the
+// textmine route bundle so the Themes tab (default landing) ships less JS.
+// CommentsPanel only mounts when the user opens the Comments tab; WordCloud
+// only on the Theme Clouds tab; ThemeEditor only when the modal opens.
+const ThemeEditor = dynamic(
+  function() { return import('@/components/analyze/textmine/ThemeEditor') },
+  {
+    ssr: false,
+    loading: function() {
+      return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#ffffff', borderRadius: 16, padding: '40px 32px', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,.28)' }}>
+            <LottieLoader size={80} message="Loading theme editor..." />
+          </div>
+        </div>
+      )
+    },
+  }
+)
+const WordCloud = dynamic(
+  function() { return import('@/components/analyze/textmine/WordCloud') },
+  {
+    ssr: false,
+    loading: function() {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+          <LottieLoader size={120} message="Loading theme clouds..." />
+        </div>
+      )
+    },
+  }
+)
+const CommentsPanel = dynamic(
+  function() { return import('@/components/analyze/textmine/CommentsPanel') },
+  {
+    ssr: false,
+    loading: function() {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
+          <LottieLoader size={96} message="Loading comments..." />
+        </div>
+      )
+    },
+  }
+)
 import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 import { T } from '@/lib/analyzeTheme'
