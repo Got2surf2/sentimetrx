@@ -182,6 +182,31 @@ describeMaybe('RLS cross-org read isolation (env-gated)', () => {
     expect(error).toBeNull()
     expect(data?.id).toBe(studyId)
   })
+
+  it('every public table has RLS enabled', async () => {
+    // Auto-detects new tables added without RLS — the #1 multi-tenancy
+    // failure mode. See sql/041_rls_introspection.sql for the helper
+    // function (must be applied to the target Supabase project once).
+    //
+    // Add a table here ONLY if RLS is intentionally off (with a comment
+    // explaining why). Anything else off-list is a bug.
+    const ALLOWLIST = new Set<string>([
+      // (none today — every public table should have RLS)
+    ])
+
+    const { data, error } = await admin.rpc('public_tables_rls_status')
+    if (error) {
+      throw new Error(
+        'public_tables_rls_status() RPC failed: ' + error.message +
+        ' — apply sql/041_rls_introspection.sql to this Supabase project.',
+      )
+    }
+    const offenders = ((data as Array<{ table_name: string; rls_enabled: boolean }>) || [])
+      .filter(r => !r.rls_enabled && !ALLOWLIST.has(r.table_name))
+      .map(r => r.table_name)
+
+    expect(offenders, 'public tables without RLS: ' + offenders.join(', ')).toEqual([])
+  })
 })
 
 if (skip) {
