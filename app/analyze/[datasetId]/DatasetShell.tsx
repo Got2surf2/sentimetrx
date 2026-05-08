@@ -129,13 +129,23 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
 
   const fCount = filterCount(filters) + filterCount(lockedFilters)
 
-  // Compute filtered row count from RowsContext
-  var { rows: ctxRows, rowsLoaded: ctxLoaded } = useRows()
+  // Compute filtered row count from RowsContext.
+  // When the rows context is sampled (large datasets cap at 50k), we filter
+  // the sample but scale up by totalRows / sampledCount so the displayed
+  // numerator is comparable to dataset.row_count (the denominator). Without
+  // the scale-up, "X of Y" mixed units: a sample-subset count next to a
+  // full-dataset total, which made filter drops look ~10× more dramatic
+  // than they actually were on big datasets.
+  var { rows: ctxRows, rowsLoaded: ctxLoaded, sampled: ctxSampled, sampledCount: ctxSampledCount, totalRows: ctxTotalRows } = useRows()
   var filteredRowCount = useMemo(function() {
     if (!ctxLoaded || !ctxRows.length || fCount === 0) return null
     var allFilters = Object.assign({}, filters, lockedFilters)
-    return applyFilters(ctxRows, allFilters).length
-  }, [ctxRows, ctxLoaded, filters, lockedFilters, fCount])
+    var matched = applyFilters(ctxRows, allFilters).length
+    if (ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount) {
+      return Math.round(matched * (ctxTotalRows / ctxSampledCount))
+    }
+    return matched
+  }, [ctxRows, ctxLoaded, ctxSampled, ctxSampledCount, ctxTotalRows, filters, lockedFilters, fCount])
 
   // Save session handler
   const handleSaveSession = function() {
@@ -169,7 +179,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
   return (
     <>
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} filteredRowCount={filteredRowCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
+      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {

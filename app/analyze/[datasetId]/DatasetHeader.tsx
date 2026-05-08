@@ -24,6 +24,7 @@ interface Props {
   orgName?: string
   filterCount?: number
   filteredRowCount?: number | null
+  filteredRowCountIsEstimate?: boolean
   onFilterClick?: () => void
   onSaveSession?: () => void
   sessionSaving?: boolean
@@ -42,7 +43,7 @@ var TABS = [
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9
 
-export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, filteredRowCountIsEstimate, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen }: Props) {
   var router = useRouter()
   var pathname = usePathname()
 
@@ -277,7 +278,12 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
 
           {/* Row count + Sync + Last synced */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}>{filteredRowCount != null ? filteredRowCount.toLocaleString() + ' of ' + dataset.row_count.toLocaleString() : dataset.row_count.toLocaleString()} rows</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}
+              title={filteredRowCountIsEstimate ? 'Estimated from a 50K-row sample, scaled to the full dataset' : ''}>
+              {filteredRowCount != null
+                ? (filteredRowCountIsEstimate ? '≈' : '') + filteredRowCount.toLocaleString() + ' of ' + dataset.row_count.toLocaleString()
+                : dataset.row_count.toLocaleString()} rows
+            </span>
             {(dataset.source === 'study' || dataset.source === 'townhall') && (
               <button onClick={handleResync} disabled={syncing}
                 title={dataset.last_synced_at ? 'Last synced: ' + new Date(dataset.last_synced_at).toLocaleString() : 'Sync new data from source'}
