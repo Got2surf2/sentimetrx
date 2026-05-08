@@ -63,6 +63,17 @@ const DECKS: Deck[] = [
     badge: 'TECHNICAL',
     logKey: 'architecture-deck',
   },
+  {
+    href: '/api/engineering-reality-deck',
+    filename: 'Datanautix-Engineering-Reality.pptx',
+    title: 'Engineering Reality Check',
+    subtitle: 'Honest peer-review deck — what is built, what discipline exists, what is missing, risk register, hardening plan.',
+    audience: 'Senior engineers · YC alums · prospective technical advisors',
+    slides: '10 slides',
+    accent: '#6D28D9',
+    badge: 'PEER REVIEW',
+    logKey: 'engineering-reality-deck',
+  },
 ]
 
 function fmtDate(iso: string | null | undefined): string {

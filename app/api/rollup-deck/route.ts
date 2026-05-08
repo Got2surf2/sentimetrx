@@ -1076,12 +1076,13 @@ function slideUseOfFunds(pptx: any, pg: number) {
   s.addShape('rect', { x: 0.8, y: 1.95, w: 4.5, h: 0.04, fill: { color: DN.gold } })
 
   const uses: [string, string, number][] = [
-    ['Acquisition equity (3–4 deals at avg $1.5M)', '$5.0M', 50],
-    ['Sponsor team (VP M&A, Operating Partner)',   '$1.2M', 12],
-    ['Migration & integration costs',              '$0.8M', 8],
-    ['Sourcing, legal, diligence',                 '$0.8M', 8],
-    ['Platform infra (SOC 2, compliance)',         '$0.5M', 5],
-    ['Reserve',                                    '$1.7M', 17],
+    ['Acquisition equity (3–4 deals at avg $1.5M)',         '$5.0M', 50],
+    ['Sponsor team (VP M&A, Operating Partner)',            '$1.2M', 12],
+    ['Migration & integration costs',                        '$0.8M', 8],
+    ['Sourcing, legal, diligence',                           '$0.8M', 8],
+    ['SOC 2 Type II audit + third-party pen-test',           '$0.4M', 4],
+    ['Test suite + load / scalability testing battery',      '$0.3M', 3],
+    ['Reserve',                                              '$1.5M', 15],
   ]
   uses.forEach(([label, amount, pct], i) => {
     const y = 2.3 + i * 0.55
