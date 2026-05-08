@@ -405,6 +405,77 @@ function slidePhasing(pptx: any, pg: number, isAsk = true) {
   }
 }
 
+function slideOrigin(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, '12 Years in the Problem', 'Sentimetrx is what happens when an enterprise NLP/NLU shop finally gets the right tool for the job.')
+  addFooter(s, pg)
+
+  const stages = [
+    {
+      tag: 'BACKGROUND',
+      title: '12 years in enterprise NLP/NLU',
+      body: 'Helping enterprise clients make sense of open-ended comments at scale — surveys, online reviews, regulatory feedback. Always running into the same wall: short, ambiguous comments are nearly useless at analysis time.',
+      color: DN.slate,
+    },
+    {
+      tag: 'LLM INFLECTION',
+      title: 'Move the problem upstream',
+      body: 'LLMs let us intercept weak responses at capture time instead of trying to mine "it was fine" for meaning. We ask the follow-up. Sarina — the conversational survey — is born.',
+      color: DN.sarinaBlue,
+    },
+    {
+      tag: 'EXTENSION',
+      title: 'Agents · PulseIQ · Ana',
+      body: 'Then domain-trained Agents (political candidates, restaurant menus) with off-topic detection and 3-strike safety. Then PulseIQ — concurrent conversations with real-time theme mining and adaptive engagement. Then Ana, a text analytics suite deeper than what 15-year-old incumbents ship.',
+      color: DN.teal,
+    },
+    {
+      tag: 'NOW',
+      title: 'The economic flip',
+      body: 'For 12 years this platform would have required a 50-person engineering team and $20M+ of capital. AI is the leverage that lets experienced operators deliver enterprise-grade products on venture-light capital. We did not pivot to AI — we were waiting for it.',
+      color: DN.gold,
+    },
+  ]
+
+  const startY = 1.25
+  const cardH = 1.18
+  const gap = 0.06
+
+  stages.forEach((stage, i) => {
+    const y = startY + i * (cardH + gap)
+    // Tag column (left)
+    s.addShape('rect', { x: 0.5, y, w: 1.7, h: cardH, fill: { color: stage.color }, rectRadius: 0.08 })
+    s.addText(stage.tag, {
+      x: 0.5, y: y + 0.1, w: 1.7, h: 0.4,
+      fontFace: 'Arial', fontSize: 11, color: DN.white, bold: true, charSpacing: 4, align: 'center', valign: 'middle',
+    })
+    s.addText(`0${i + 1}`, {
+      x: 0.5, y: y + 0.5, w: 1.7, h: cardH - 0.55,
+      fontFace: 'Arial', fontSize: 28, color: DN.white, bold: true, italic: true, align: 'center', valign: 'middle',
+    })
+
+    // Body (right)
+    s.addShape('rect', { x: 2.3, y, w: 10.5, h: cardH, fill: { color: DN.slateCard }, rectRadius: 0.08 })
+    s.addText(stage.title, {
+      x: 2.5, y: y + 0.1, w: 10.1, h: 0.36,
+      fontFace: 'Arial', fontSize: 16, color: DN.navy, bold: true,
+    })
+    s.addText(stage.body, {
+      x: 2.5, y: y + 0.46, w: 10.1, h: cardH - 0.5,
+      fontFace: 'Arial', fontSize: 11, color: DN.ink, lineSpacing: 18, valign: 'top',
+    })
+  })
+
+  // Closing kicker
+  const kY = startY + stages.length * (cardH + gap) + 0.05
+  s.addShape('rect', { x: 0.5, y: kY, w: 12.3, h: H - kY - 0.5, fill: { color: DN.navy }, rectRadius: 0.08 })
+  s.addShape('rect', { x: 0.5, y: kY, w: 0.18, h: H - kY - 0.5, fill: { color: DN.gold } })
+  s.addText('"This is the age where wisdom + experience build transformational tools — and flip the economics of the business."', {
+    x: 0.85, y: kY + 0.05, w: 12.0, h: H - kY - 0.6,
+    fontFace: 'Arial', fontSize: 14, color: DN.gold, bold: true, italic: true, valign: 'middle',
+  })
+}
+
 function slideWhyUs(pptx: any, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Why Us', 'The platform is shipped. The customers are real. The window is now.')
@@ -907,6 +978,7 @@ function buildShortDeck(pptx: any) {
   )
   pg = 1
   slideOpportunity(pptx, ++pg)
+  slideOrigin(pptx, ++pg)
   slideBeforeAfter(pptx, ++pg)
   slideAILedVsAdded(pptx, ++pg)
   slideWhatWeBuilt(pptx, ++pg)
@@ -929,6 +1001,7 @@ function buildLongDeck(pptx: any) {
   slideExecSummary(pptx, ++pg)
   slideMarket(pptx, ++pg)
   slideWhyNow(pptx, ++pg)
+  slideOrigin(pptx, ++pg)
   slideBeforeAfter(pptx, ++pg)
   slideAILedVsAdded(pptx, ++pg)
   slideIncumbentFragility(pptx, ++pg)

@@ -140,6 +140,51 @@ function slideTLDR(pptx: any, pg: number) {
   })
 }
 
+// ── 1.5 Platform by the Numbers ────────────────────────────────────────────
+function slidePlatformByNumbers(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'Platform by the Numbers', 'The surface area of what is built and serving enterprise customers today.')
+  addFooter(s, pg)
+
+  const stats = [
+    { v: '6',    l: 'revenue-bearing modules',          sub: 'Sarina · Ana · Agents · PulseIQ · Listening · Campaigns', color: DN.sarinaBlue },
+    { v: '180+', l: 'specialized API endpoints',        sub: 'Auth · public · admin · webhook · cron',                  color: DN.teal },
+    { v: '40+',  l: 'domain tables in 7 schema groups', sub: 'pgvector · tsvector · pg_trgm hybrid retrieval',          color: DN.hermesOrange },
+    { v: '7',    l: 'multi-source ingestion paths',      sub: 'Reviews · Reddit · Substack · Reg.gov · Social · Files · Survey', color: DN.gold },
+    { v: '13',   l: 'chart types in the analytics suite', sub: 'with hypothesis testing & PPTX export',                color: DN.purple },
+    { v: '5',    l: 'verticals with named enterprise clients', sub: 'Sports · Hospitality · Education · Airports · Political', color: DN.navy },
+  ]
+
+  const cardW = 4.05
+  const cardH = 2.4
+  const startY = 1.3
+
+  stats.forEach((stat, i) => {
+    const col = i % 3, row = Math.floor(i / 3)
+    const x = 0.45 + col * (cardW + 0.1)
+    const y = startY + row * (cardH + 0.1)
+    s.addShape('rect', { x, y, w: cardW, h: cardH, fill: { color: DN.slateCard }, rectRadius: 0.1 })
+    s.addShape('rect', { x, y, w: cardW, h: 0.18, fill: { color: stat.color } })
+    s.addText(stat.v, {
+      x, y: y + 0.32, w: cardW, h: 1.0,
+      fontFace: 'Arial', fontSize: 56, color: stat.color, bold: true, align: 'center', valign: 'middle',
+    })
+    s.addText(stat.l, {
+      x: x + 0.2, y: y + 1.4, w: cardW - 0.4, h: 0.45,
+      fontFace: 'Arial', fontSize: 13, color: DN.navy, bold: true, align: 'center', valign: 'middle',
+    })
+    s.addText(stat.sub, {
+      x: x + 0.2, y: y + 1.85, w: cardW - 0.4, h: 0.45,
+      fontFace: 'Arial', fontSize: 10, color: DN.slate, italic: true, align: 'center', valign: 'middle', lineSpacing: 14,
+    })
+  })
+
+  s.addText('No prototype. No demoware. Production traffic across all six modules.', {
+    x: 0.5, y: 6.6, w: 12.3, h: 0.4,
+    fontFace: 'Arial', fontSize: 12, color: DN.navy, italic: true, bold: true, align: 'center',
+  })
+}
+
 // ── 2. Stack at a glance ───────────────────────────────────────────────────
 function slideStack(pptx: any, pg: number) {
   const s = pptx.addSlide()
@@ -816,6 +861,7 @@ function buildDeck(pptx: any) {
   addTitleSlide(pptx)
   pg = 1
   slideTLDR(pptx, ++pg)
+  slidePlatformByNumbers(pptx, ++pg)
   slideStack(pptx, ++pg)
   slideSystemArch(pptx, ++pg)
   slideAICenter(pptx, ++pg)
