@@ -11,6 +11,7 @@ import LocationManager from '@/components/analyze/LocationManager'
 import UserLocationAssigner from '@/components/analyze/UserLocationAssigner'
 import SyncCadenceControl from '@/components/analyze/SyncCadenceControl'
 import RegulationsDownloadBanner from '@/components/analyze/RegulationsDownloadBanner'
+import ReviewSyncStatus from '@/components/analyze/ReviewSyncStatus'
 import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
@@ -230,6 +231,12 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
       {/* Regulations.gov download progress */}
       {dataset.source === 'regulations' && dataset.description && (
         <RegulationsDownloadBanner datasetId={dataset.id} description={dataset.description} />
+      )}
+
+      {/* Google Reviews download status: pre-flight estimate, in-progress
+          counter, success/partial completion banner with errored locations. */}
+      {dataset.source === 'google_reviews' && reviewSourceId && (
+        <ReviewSyncStatus sourceId={reviewSourceId} />
       )}
 
       {/* Details */}
