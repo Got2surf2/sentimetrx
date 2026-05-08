@@ -45,9 +45,8 @@ export default function LoginPage() {
         <p className="text-center text-xs mt-5" style={{ color: '#9ca3af' }}>
           Trouble signing in? Email <a className="underline" style={{ color: '#0F7173' }} href="mailto:support@datanautix.com">support@datanautix.com</a>
         </p>
-        <p className="text-center text-[11px] mt-3" style={{ color: '#9ca3af' }}>
-          Sentimetrx is a <a className="font-semibold hover:underline" style={{ color: '#374151' }} href="https://www.datanautix.com" target="_blank" rel="noopener noreferrer">Datanautix</a> product.
-        </p>
+        {/* Datanautix parent attribution lives in the global footer (root
+            layout) so we don't double up here. */}
       </div>
     </main>
   )

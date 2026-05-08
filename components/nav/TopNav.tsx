@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import DatanautixAttribution from '@/components/ui/DatanautixAttribution'
 
 interface Props {
   logoUrl?:        string
@@ -189,6 +190,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
             </div>
           )}
         </Link>
+        <DatanautixAttribution variant="compact" className="hidden sm:inline-block" />
         {orgName && (
           <>
             <span className="text-orange-200/60 text-sm hidden sm:block">|</span>
