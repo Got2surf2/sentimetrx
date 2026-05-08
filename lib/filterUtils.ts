@@ -73,9 +73,14 @@ export function applyFilters(rows: Record<string, unknown>[], filters: Filters):
       const field = entry[0], f = entry[1]
       const val = r[field]
       if (f.type === 'cat') {
-        const str = (val == null || String(val).trim() === '') ? '(blank)' : String(val)
-        if (str === '(blank)' && f.excludeBlanks) return false
-        return f.values.has(str)
+        // Blank rows are governed solely by `excludeBlanks` so the modal's
+        // "Include blanks" checkbox actually means what it says. Falling
+        // through to `f.values.has('(blank)')` was the old bug — it dropped
+        // every blank row whenever the user touched the value list, even
+        // when "Include blanks" was checked.
+        const isBlank = val == null || String(val).trim() === ''
+        if (isBlank) return !f.excludeBlanks
+        return f.values.has(String(val))
       }
       if (f.type === 'range') {
         const n = parseFloat(String(val ?? ''))
