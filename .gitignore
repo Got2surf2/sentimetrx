@@ -8,3 +8,9 @@ node_modules/
 out/
 .vercel
 .env*.local
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+.playwright/
