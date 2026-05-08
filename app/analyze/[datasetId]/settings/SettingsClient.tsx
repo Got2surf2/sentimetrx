@@ -164,6 +164,37 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
     setSchema(updated)
   }
 
+  // Re-scan all rows to widen the schema's per-field value lists. Useful when
+  // a dataset's filter values look incomplete (e.g. only one location showing
+  // up after additional locations have synced — the schema was frozen on its
+  // first batch). Idempotent.
+  const [refreshingSchema, setRefreshingSchema] = useState(false)
+  const [schemaRefreshMsg, setSchemaRefreshMsg] = useState<string>('')
+  async function handleRefreshSchema() {
+    setRefreshingSchema(true); setSchemaRefreshMsg('')
+    try {
+      const res = await fetch('/api/datasets/' + dataset.id + '/refresh-schema', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setSchemaRefreshMsg('Refresh failed: ' + (data.error || 'unknown error'))
+        return
+      }
+      const grew: { field: string; before: number; after: number }[] = data.fieldsGrown || []
+      if (grew.length === 0) {
+        setSchemaRefreshMsg('Scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows. Schema already up to date.')
+      } else {
+        const summary = grew.slice(0, 4).map(function(g) { return g.field + ' (' + g.before + ' → ' + g.after + ')' }).join(', ')
+        const more = grew.length > 4 ? ', +' + (grew.length - 4) + ' more' : ''
+        setSchemaRefreshMsg('Scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows. Updated: ' + summary + more)
+        router.refresh()
+      }
+    } catch (e: any) {
+      setSchemaRefreshMsg('Refresh failed: ' + (e?.message || 'network error'))
+    } finally {
+      setRefreshingSchema(false)
+    }
+  }
+
   async function handleArchive() {
     const newStatus = dataset.status === 'active' ? 'archived' : 'active'
     await fetch('/api/datasets/' + dataset.id, {
@@ -250,14 +281,24 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
 
       {/* Schema editor */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4" style={{ opacity: downloadComplete ? 1 : 0.5, pointerEvents: downloadComplete ? 'auto' : 'none' }}>
-        <div>
-          <h2 className="font-bold text-gray-800">Schema</h2>
-          {!downloadComplete && <p className="text-xs text-amber-600 mt-1">Schema editing available after all reviews are downloaded.</p>}
-          <p className="text-sm text-gray-500 mt-0.5">
-            Assign field types to control how each column is used in analysis.
-            {dataset.row_count > 0 && (' ' + dataset.row_count.toLocaleString() + ' rows loaded.')}
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-bold text-gray-800">Schema</h2>
+            {!downloadComplete && <p className="text-xs text-amber-600 mt-1">Schema editing available after all reviews are downloaded.</p>}
+            <p className="text-sm text-gray-500 mt-0.5">
+              Assign field types to control how each column is used in analysis.
+              {dataset.row_count > 0 && (' ' + dataset.row_count.toLocaleString() + ' rows loaded.')}
+            </p>
+          </div>
+          <button onClick={handleRefreshSchema} disabled={refreshingSchema}
+            title="Re-scan all rows and widen the filter value lists. Use this if filter options look incomplete (e.g. only one city showing up)."
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap flex-shrink-0">
+            {refreshingSchema ? 'Refreshing…' : '↻ Refresh from data'}
+          </button>
         </div>
+        {schemaRefreshMsg && (
+          <p className={'text-xs ' + (schemaRefreshMsg.startsWith('Refresh failed') ? 'text-red-600' : 'text-gray-600')}>{schemaRefreshMsg}</p>
+        )}
         <SchemaEditor schema={schema} onChange={handleSaveSchema} onSave={function() { router.refresh() }} />
       </div>
 
