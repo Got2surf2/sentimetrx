@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { logDeckDownload } from '@/lib/auth/logDeckDownload'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +46,7 @@ function bullet(text: string, opts?: any) {
 export async function GET() {
   const denied = await requireAdmin()
   if (denied) return denied
+  await logDeckDownload('pitch-deck')
 
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'

@@ -7,6 +7,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { logDeckDownload } from '@/lib/auth/logDeckDownload'
 
 export const dynamic = 'force-dynamic'
 
@@ -1167,6 +1168,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const length = (url.searchParams.get('length') || 'short').toLowerCase()
   const isLong = length === 'long' || length === 'full'
+  await logDeckDownload('rollup-deck', isLong ? 'long' : 'short')
 
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'

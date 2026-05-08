@@ -14,6 +14,8 @@ type Deck = {
   slides: string
   accent: string
   badge: string
+  /** Key used to look up last-downloaded timestamp from the server-side map. */
+  logKey: string
 }
 
 const DECKS: Deck[] = [
@@ -26,6 +28,7 @@ const DECKS: Deck[] = [
     slides: '14 slides',
     accent: '#00B4D8',
     badge: 'PRODUCT',
+    logKey: 'pitch-deck',
   },
   {
     href: '/api/rollup-deck?length=short',
@@ -33,9 +36,10 @@ const DECKS: Deck[] = [
     title: 'Datanautix Roll-up — Short Pitch',
     subtitle: 'AI-native consolidation thesis. Hospitality wedge. The 30-min first conversation.',
     audience: 'Family offices · operator-LPs · independent-sponsor partners',
-    slides: '11 slides',
+    slides: '12 slides',
     accent: '#0F7173',
     badge: 'ROLL-UP · SHORT',
+    logKey: 'rollup-deck:short',
   },
   {
     href: '/api/rollup-deck?length=long',
@@ -43,9 +47,10 @@ const DECKS: Deck[] = [
     title: 'Datanautix Roll-up — Diligence Deck',
     subtitle: 'Full investor diligence — market, target archetypes, integration playbook, portfolio model.',
     audience: 'Institutional PE · 60–90 min diligence meetings',
-    slides: '25 slides',
+    slides: '27 slides',
     accent: '#E8B84B',
     badge: 'ROLL-UP · LONG',
+    logKey: 'rollup-deck:long',
   },
   {
     href: '/api/architecture-deck',
@@ -56,10 +61,35 @@ const DECKS: Deck[] = [
     slides: '22 slides',
     accent: '#0D2B45',
     badge: 'TECHNICAL',
+    logKey: 'architecture-deck',
   },
 ]
 
-export default function DecksClient() {
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 0) return ''
+  if (ms < 60_000)       return 'just now'
+  if (ms < 3_600_000)    return Math.floor(ms / 60_000) + 'm ago'
+  if (ms < 86_400_000)   return Math.floor(ms / 3_600_000) + 'h ago'
+  if (ms < 604_800_000)  return Math.floor(ms / 86_400_000) + 'd ago'
+  return Math.floor(ms / 604_800_000) + 'w ago'
+}
+
+export default function DecksClient({
+  lastDownloaded,
+  lastUpdated,
+}: {
+  lastDownloaded: Record<string, string>
+  lastUpdated: string | null
+}) {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
       <div style={{ marginBottom: 24 }}>
@@ -71,7 +101,12 @@ export default function DecksClient() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {DECKS.map(deck => (
-          <DeckCard key={deck.href} deck={deck} />
+          <DeckCard
+            key={deck.href}
+            deck={deck}
+            lastDownloaded={lastDownloaded[deck.logKey]}
+            lastUpdated={lastUpdated}
+          />
         ))}
       </div>
 
@@ -88,7 +123,15 @@ export default function DecksClient() {
   )
 }
 
-function DeckCard({ deck }: { deck: Deck }) {
+function DeckCard({
+  deck,
+  lastDownloaded,
+  lastUpdated,
+}: {
+  deck: Deck
+  lastDownloaded?: string
+  lastUpdated: string | null
+}) {
   return (
     <div style={{
       background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden',
@@ -110,6 +153,19 @@ function DeckCard({ deck }: { deck: Deck }) {
         <div style={{ fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontWeight: 600, color: '#374151' }}>Audience:</span>
           <span>{deck.audience}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 18, fontSize: 11, color: '#6b7280', borderTop: '1px solid #f3f4f6', paddingTop: 8, marginTop: 2, flexWrap: 'wrap' }}>
+          <div>
+            <span style={{ fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, fontSize: 9, marginRight: 6 }}>Last updated</span>
+            <span style={{ color: '#374151', fontWeight: 500 }}>{fmtDate(lastUpdated)}</span>
+          </div>
+          <div>
+            <span style={{ fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, fontSize: 9, marginRight: 6 }}>Last downloaded</span>
+            <span style={{ color: lastDownloaded ? '#374151' : '#9ca3af', fontWeight: 500 }}>{fmtDate(lastDownloaded)}</span>
+            {lastDownloaded && (
+              <span style={{ color: '#9ca3af', marginLeft: 6 }}>· {timeAgo(lastDownloaded)}</span>
+            )}
+          </div>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', padding: '0 18px' }}>

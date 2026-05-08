@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
@@ -21,6 +21,24 @@ export default async function DecksPage() {
   if (!orgData?.is_admin_org) redirect('/dashboard')
   const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
 
+  // Fetch the most recent download timestamp per (deck_name, deck_variant).
+  // We grab the last 200 rows and reduce in memory — simpler than a SQL view
+  // and the table is tiny.
+  const service = createServiceRoleClient()
+  const { data: logs } = await service
+    .from('deck_download_log')
+    .select('deck_name, deck_variant, downloaded_at')
+    .order('downloaded_at', { ascending: false })
+    .limit(200)
+
+  const lastDownloaded: Record<string, string> = {}
+  for (const row of (logs || []) as any[]) {
+    const key = row.deck_variant ? `${row.deck_name}:${row.deck_variant}` : row.deck_name
+    if (!lastDownloaded[key]) lastDownloaded[key] = row.downloaded_at
+  }
+
+  const lastUpdated = process.env.NEXT_PUBLIC_BUILD_DATE || null
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <TopNav
@@ -33,7 +51,7 @@ export default async function DecksPage() {
         currentPage="decks"
       />
       <div style={{ paddingTop: 56 }} className="flex-1">
-        <DecksClient />
+        <DecksClient lastDownloaded={lastDownloaded} lastUpdated={lastUpdated} />
       </div>
     </div>
   )
