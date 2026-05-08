@@ -133,28 +133,55 @@ function slideTheFrame(pptx: any, pg: number) {
 // ── 2. What Got Built ──────────────────────────────────────────────────────
 function slideWhatGotBuilt(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'What Got Built', '6 modules, 1 platform, 410 TS files, ~83K code lines')
+  addHeader(s, 'What Got Built', '12 modules across customer-facing + platform · 410 TS files · ~83K code lines (sums below)')
   addFooter(s, pg)
 
-  const modules = [
-    { name: 'Sarina',     tag: 'Surveys',           lines: '~11K',  desc: 'Conversational survey runtime · LLM clarifiers on weak responses · adaptive flow · 15 question types · multi-language' },
-    { name: 'Ana',        tag: 'Analytics',         lines: '~27K',  desc: 'Text analytics · 13 chart types · hypothesis testing · PPTX export · 500K-row dataset handling' },
-    { name: 'Agents',     tag: 'RAG',               lines: '~5.6K', desc: 'Public-facing RAG agents · hybrid retrieval (cosine + tsv + trigram) · per-turn sentiment + intent · drift review' },
-    { name: 'PulseIQ',    tag: 'Live sessions',     lines: '~8K',   desc: 'AI-moderated concurrent conversations · real-time topic detection · facilitator console · projectable live screen' },
-    { name: 'Listening',  tag: 'Multi-source',      lines: '~3.5K', desc: 'Meta Graph · Google Reviews · Reddit · Substack · Reg.gov · idempotent ingestion · 7 cron jobs' },
-    { name: 'Campaigns',  tag: 'Email orchestration', lines: '~3.4K', desc: 'Resend / SES / SendGrid / SMTP / SMS · merge tags · auto-reminders · webhook tracking' },
+  type Mod = { name: string; tag: string; lines: string; desc: string; layer: 'customer' | 'infra' }
+  const modules: Mod[] = [
+    // ── Customer-facing (6) ──
+    { name: 'Sarina',          tag: 'Surveys',         lines: '~11K',  desc: 'Conversational runtime · LLM clarifiers · adaptive flow · 15 question types', layer: 'customer' },
+    { name: 'Ana',             tag: 'Analytics',       lines: '~27K',  desc: 'Text analytics · 13 chart types · stats · PPTX export · 500K-row datasets',   layer: 'customer' },
+    { name: 'Agents',          tag: 'RAG',             lines: '~5.6K', desc: 'Public chat agents · hybrid retrieval · per-turn sentiment + intent',         layer: 'customer' },
+    { name: 'PulseIQ',         tag: 'Live sessions',   lines: '~8K',   desc: 'AI-moderated concurrent conversations · real-time topic detection',            layer: 'customer' },
+    { name: 'Listening',       tag: 'Multi-source',    lines: '~3.5K', desc: 'Meta · Google Reviews · Reddit · Substack · Reg.gov · idempotent ingest',     layer: 'customer' },
+    { name: 'Campaigns',       tag: 'Email orchestration', lines: '~3.4K', desc: 'Resend / SES / SendGrid / SMTP / SMS · merge tags · auto-reminders',     layer: 'customer' },
+    // ── Platform / infrastructure (6) ──
+    { name: 'Service layer',   tag: 'lib/',            lines: '~10K',  desc: 'AI router · embeddings · guardrails · usage logging · ingestion helpers',     layer: 'infra' },
+    { name: 'Admin tooling',   tag: 'Internal',        lines: '~6.7K', desc: 'Org mgmt · usage views · agent tester · simulator · cost estimator',          layer: 'infra' },
+    { name: 'UI / nav primitives', tag: 'Shared',      lines: '~1.9K', desc: 'Top nav · sub-header · Lottie loader · shared components',                    layer: 'infra' },
+    { name: 'Dashboard',       tag: 'Entry surface',   lines: '~1.5K', desc: 'Study cards · sentiment donut · industry filters · response trends',          layer: 'infra' },
+    { name: 'Auth + onboarding', tag: 'PKCE',          lines: '~0.7K', desc: '/auth/callback · invite tokens · login · password reset · magic link',       layer: 'infra' },
+    { name: 'Cron orchestration', tag: '7 jobs',        lines: '~0.6K', desc: '45s budgets · CRON_SECRET-gated · partial-success default',                 layer: 'infra' },
   ]
+
+  // 4 rows × 3 cols
+  const cols = 3, rows = 4
+  const cardW = (W - 0.5 * 2 - 0.12 * (cols - 1)) / cols   // ~4.09
+  const cardH = (5.85 - 0.12 * (rows - 1)) / rows           // ~1.37
+  const startX = 0.5
+  const startY = 1.2
+
   modules.forEach((m, i) => {
-    const col = i % 2, row = Math.floor(i / 2)
-    const x = 0.5 + col * 6.2
-    const y = 1.25 + row * 1.85
-    s.addShape('rect', { x, y, w: 6.05, h: 1.7, fill: { color: DN.slateCard }, rectRadius: 0.08 })
-    s.addShape('rect', { x, y, w: 0.15, h: 1.7, fill: { color: DN.sarinaBlue } })
-    s.addText(m.name, { x: x + 0.3, y: y + 0.1, w: 2.5, h: 0.4, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true })
-    s.addText(m.tag, { x: x + 2.8, y: y + 0.13, w: 2.0, h: 0.35, fontSize: 10, fontFace: 'Arial', color: DN.slate, italic: true, valign: 'middle' })
-    s.addText(m.lines, { x: x + 5.05, y: y + 0.13, w: 0.9, h: 0.35, fontSize: 11, fontFace: 'Arial', color: DN.hermesOrange, bold: true, align: 'right', valign: 'middle' })
-    s.addText(m.desc, { x: x + 0.3, y: y + 0.55, w: 5.6, h: 1.1, fontSize: 11, fontFace: 'Arial', color: DN.ink, lineSpacing: 16, autoFit: true })
+    const col = i % cols, row = Math.floor(i / cols)
+    const x = startX + col * (cardW + 0.12)
+    const y = startY + row * (cardH + 0.12)
+    const accent = m.layer === 'customer' ? DN.sarinaBlue : DN.slate
+    s.addShape('rect', { x, y, w: cardW, h: cardH, fill: { color: DN.slateCard }, rectRadius: 0.08 })
+    s.addShape('rect', { x, y, w: 0.13, h: cardH, fill: { color: accent } })
+    s.addText(m.name, { x: x + 0.25, y: y + 0.08, w: cardW - 1.05, h: 0.32, fontSize: 13, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle', autoFit: true })
+    s.addText(m.lines, { x: x + cardW - 0.85, y: y + 0.08, w: 0.7, h: 0.32, fontSize: 11, fontFace: 'Arial', color: DN.hermesOrange, bold: true, align: 'right', valign: 'middle' })
+    s.addText(m.tag, { x: x + 0.25, y: y + 0.4, w: cardW - 0.4, h: 0.22, fontSize: 9, fontFace: 'Arial', color: DN.slate, italic: true, valign: 'middle', autoFit: true })
+    s.addText(m.desc, { x: x + 0.25, y: y + 0.65, w: cardW - 0.4, h: cardH - 0.7, fontSize: 9.5, fontFace: 'Arial', color: DN.ink, lineSpacing: 14, valign: 'top', autoFit: true })
   })
+
+  // Layer legend (small, right side)
+  s.addText([
+    { text: '■ ', options: { color: DN.sarinaBlue, fontSize: 10 } },
+    { text: 'customer-facing  ~58.5K   ', options: { color: DN.ink, fontSize: 10 } },
+    { text: '■ ', options: { color: DN.slate, fontSize: 10 } },
+    { text: 'platform / infrastructure  ~21.4K   ', options: { color: DN.ink, fontSize: 10 } },
+    { text: '+ smaller (settings, public surfaces, decks) ~3K', options: { color: DN.slate, fontSize: 10, italic: true } },
+  ], { x: 0.5, y: 6.95, w: 12.3, h: 0.3, fontFace: 'Arial', align: 'center', valign: 'middle' })
 }
 
 // ── 3. Architectural Decisions ─────────────────────────────────────────────
