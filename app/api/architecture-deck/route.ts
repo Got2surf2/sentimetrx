@@ -794,8 +794,9 @@ function slideObservability(pptx: any, pg: number) {
     bullet('Sentry @sentry/nextjs 10.51 — server, client, and edge configs · sourcemap upload · 0.1 trace sample rate'),
     bullet('instrumentation.ts wires server-side tracing (Next 14 hook). VERCEL_ENV tags errors by env'),
     bullet('Vercel build injects commit count + ISO timestamp into next.config.js → visible in errors and admin UI'),
-    bullet('AI FinOps: usage_logs joined with lib/usageRates.ts → real-time cost per org / per resource / per tier'),
+    bullet('AI FinOps today: usage_logs joined with lib/usageRates.ts → real-time cost per org / per resource / per tier'),
     bullet('Prompt caching cuts costs ~40–80% on repeated system prompts; cache_read_tokens vs cache_creation_tokens split visible in logs'),
+    bullet('Phase 1: LangSmith for traces + LLM-as-judge evals + dataset-backed regression scoring — wraps callAI() at the lib/ai.ts seam'),
     bullet('No third-party RUM beyond Sentry — no Datadog / Honeycomb today (roadmap: optional)'),
   ], { x: 0.6, y: 1.25, w: 12.1, h: 4.7 })
 

@@ -336,19 +336,22 @@ function slideHardening(pptx: any, pg: number) {
   addFooter(s, pg)
 
   const items = [
-    { area: 'Tests',        what: 'Vitest + Playwright + GitHub Actions CI · ~15 critical-path tests (auth, RLS, admin gating, public endpoints, guardrails) · merge bar = green CI', color: DN.sarinaBlue },
-    { area: 'Rate limit',   what: 'Vercel KV-backed token bucket replacing in-memory · per-IP and per-org · survives cold starts',                                                color: DN.teal },
-    { area: 'Compliance',   what: 'SOC 2 Type II audit + third-party pen-test · GDPR export/delete endpoints · CORS policy formalized',                                            color: DN.hermesOrange },
-    { area: 'Audit trail',  what: 'Postgres triggers → audit_log table on critical mutations (studies, bots, datasets, org membership)',                                          color: DN.gold },
-    { area: 'Scalability',  what: 'k6 / Artillery load suite · documented baselines per scenario · per-org LLM cost cap enforcement',                                            color: DN.purple },
-    { area: 'Operations',   what: 'Vercel Workflows for durable ingestion (replacing budget-aware cron) · ADRs in docs/adr/ · SAST (Semgrep / Snyk) · Storybook for components',  color: DN.navy },
+    { area: 'Tests',           what: 'Vitest + Playwright + GitHub Actions CI · ~15 critical-path tests (auth, RLS, admin gating, public endpoints, guardrails) · merge bar = green CI', color: DN.sarinaBlue },
+    { area: 'Rate limit',      what: 'Vercel KV-backed token bucket replacing in-memory · per-IP and per-org · survives cold starts',                                                color: DN.teal },
+    { area: 'Compliance',      what: 'SOC 2 Type II audit + third-party pen-test · GDPR export/delete endpoints · CORS policy formalized',                                            color: DN.hermesOrange },
+    { area: 'Audit trail',     what: 'Postgres triggers → audit_log table on critical mutations (studies, bots, datasets, org membership)',                                          color: DN.gold },
+    { area: 'AI observability', what: 'LangSmith traces + LLM-as-judge evals + user-feedback loop wired into bot, survey, and PulseIQ outputs · regression eval datasets curated',  color: '6D28D9' },
+    { area: 'Scalability',     what: 'k6 / Artillery load suite · documented baselines per scenario · per-org LLM cost cap enforcement',                                            color: DN.green },
+    { area: 'Operations',      what: 'Vercel Workflows for durable ingestion (replacing budget-aware cron) · ADRs in docs/adr/ · SAST (Semgrep / Snyk) · Storybook for components',  color: DN.navy },
   ]
+  const rowH = 0.72
+  const rowGap = 0.08
   items.forEach((it, i) => {
-    const y = 1.25 + i * 0.92
-    s.addShape('rect', { x: 0.5, y, w: 1.85, h: 0.82, fill: { color: it.color }, rectRadius: 0.08 })
-    s.addText(it.area, { x: 0.5, y, w: 1.85, h: 0.82, fontFace: 'Arial', fontSize: 14, color: DN.white, bold: true, align: 'center', valign: 'middle' })
-    s.addShape('rect', { x: 2.45, y, w: 10.35, h: 0.82, fill: { color: DN.slateCard }, rectRadius: 0.08 })
-    s.addText(it.what, { x: 2.6, y, w: 10.1, h: 0.82, fontFace: 'Arial', fontSize: 11, color: DN.ink, valign: 'middle', autoFit: true })
+    const y = 1.25 + i * (rowH + rowGap)
+    s.addShape('rect', { x: 0.5, y, w: 1.85, h: rowH, fill: { color: it.color }, rectRadius: 0.08 })
+    s.addText(it.area, { x: 0.5, y, w: 1.85, h: rowH, fontFace: 'Arial', fontSize: 13, color: DN.white, bold: true, align: 'center', valign: 'middle', autoFit: true })
+    s.addShape('rect', { x: 2.45, y, w: 10.35, h: rowH, fill: { color: DN.slateCard }, rectRadius: 0.08 })
+    s.addText(it.what, { x: 2.6, y, w: 10.1, h: rowH, fontFace: 'Arial', fontSize: 10.5, color: DN.ink, valign: 'middle', autoFit: true })
   })
 }
 

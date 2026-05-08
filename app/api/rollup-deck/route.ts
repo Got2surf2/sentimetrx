@@ -1082,23 +1082,26 @@ function slideUseOfFunds(pptx: any, pg: number) {
     ['Sourcing, legal, diligence',                           '$0.8M', 8],
     ['SOC 2 Type II audit + third-party pen-test',           '$0.4M', 4],
     ['Test suite + load / scalability testing battery',      '$0.3M', 3],
-    ['Reserve',                                              '$1.5M', 15],
+    ['AI observability (LangSmith integration + evals)',     '$0.1M', 1],
+    ['Reserve',                                              '$1.4M', 14],
   ]
+  const rowGap = 0.48
   uses.forEach(([label, amount, pct], i) => {
-    const y = 2.3 + i * 0.55
-    s.addText(label, { x: 0.8, y, w: 7.0, h: 0.45, fontSize: 13, fontFace: 'Arial', color: DN.white, valign: 'middle' })
+    const y = 2.3 + i * rowGap
+    s.addText(label, { x: 0.8, y, w: 7.0, h: 0.42, fontSize: 12.5, fontFace: 'Arial', color: DN.white, valign: 'middle', autoFit: true })
     // bar
-    s.addShape('rect', { x: 7.9, y: y + 0.1, w: 3.0, h: 0.25, fill: { color: DN.navyMid } })
-    s.addShape('rect', { x: 7.9, y: y + 0.1, w: 3.0 * (pct / 50), h: 0.25, fill: { color: DN.sarinaBlue } })
-    s.addText(amount, { x: 11.1, y, w: 1.5, h: 0.45, fontSize: 14, fontFace: 'Arial', color: DN.gold, bold: true, valign: 'middle', align: 'right' })
+    s.addShape('rect', { x: 7.9, y: y + 0.09, w: 3.0, h: 0.24, fill: { color: DN.navyMid } })
+    s.addShape('rect', { x: 7.9, y: y + 0.09, w: 3.0 * (pct / 50), h: 0.24, fill: { color: DN.sarinaBlue } })
+    s.addText(amount, { x: 11.1, y, w: 1.5, h: 0.42, fontSize: 13, fontFace: 'Arial', color: DN.gold, bold: true, valign: 'middle', align: 'right' })
   })
   // total
-  s.addShape('rect', { x: 0.8, y: 5.85, w: 11.5, h: 0.04, fill: { color: DN.gold } })
-  s.addText('TOTAL', { x: 0.8, y: 5.95, w: 7, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 3 })
-  s.addText('$10.0M', { x: 11.1, y: 5.95, w: 1.5, h: 0.5, fontSize: 22, fontFace: 'Arial', color: DN.white, bold: true, align: 'right' })
+  const totalY = 2.3 + uses.length * rowGap + 0.05
+  s.addShape('rect', { x: 0.8, y: totalY, w: 11.5, h: 0.04, fill: { color: DN.gold } })
+  s.addText('TOTAL', { x: 0.8, y: totalY + 0.1, w: 7, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 3 })
+  s.addText('$10.0M', { x: 11.1, y: totalY + 0.1, w: 1.5, h: 0.5, fontSize: 22, fontFace: 'Arial', color: DN.white, bold: true, align: 'right' })
 
   s.addText('LP economics: Co-investment rights · 8% pref + 80/20 split · 4–6× MOIC over 5–7 years', {
-    x: 0.8, y: 6.6, w: 11.5, h: 0.4, fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true,
+    x: 0.8, y: totalY + 0.75, w: 11.5, h: 0.4, fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true,
   })
 }
 
