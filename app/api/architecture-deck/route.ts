@@ -85,7 +85,7 @@ function tag(slide: any, x: number, y: number, w: number, label: string, color: 
   slide.addShape('rect', { x, y, w, h: 0.3, fill: { color }, rectRadius: 0.05 })
   slide.addText(label, {
     x, y, w, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.white, bold: true,
-    align: 'center', valign: 'middle', charSpacing: 4,
+    align: 'center', valign: 'middle', charSpacing: 1, autoFit: true,
   })
 }
 
@@ -184,11 +184,11 @@ function slidePlatformByNumbers(pptx: any, pg: number) {
     })
     s.addText(stat.l, {
       x: x + 0.2, y: y + 1.4, w: cardW - 0.4, h: 0.45,
-      fontFace: 'Arial', fontSize: 13, color: DN.navy, bold: true, align: 'center', valign: 'middle',
+      fontFace: 'Arial', fontSize: 13, color: DN.navy, bold: true, align: 'center', valign: 'middle', autoFit: true,
     })
     s.addText(stat.sub, {
       x: x + 0.2, y: y + 1.85, w: cardW - 0.4, h: 0.45,
-      fontFace: 'Arial', fontSize: 10, color: DN.slate, italic: true, align: 'center', valign: 'middle', lineSpacing: 14,
+      fontFace: 'Arial', fontSize: 10, color: DN.slate, italic: true, align: 'center', valign: 'middle', lineSpacing: 14, autoFit: true,
     })
   })
 
@@ -331,7 +331,7 @@ function slideAICenter(pptx: any, pg: number) {
     }
     s.addText(sp.title, {
       x: x + (sp.side === 'L' ? 0.18 : 0.25), y: y + 0.08, w: cardW - 0.4, h: 0.32,
-      fontSize: 11, fontFace: 'Arial', color: sp.color, bold: true, charSpacing: 2, valign: 'middle',
+      fontSize: 10, fontFace: 'Arial', color: sp.color, bold: true, charSpacing: 1, valign: 'middle', autoFit: true,
     })
     s.addText(sp.body, {
       x: x + (sp.side === 'L' ? 0.18 : 0.25), y: y + 0.42, w: cardW - 0.4, h: cardH - 0.5,

@@ -149,8 +149,8 @@ export async function GET() {
     const x = 0.4 + i * 2.55
     s5.addShape('rect', { x, y: 1.4, w: 2.35, h: 5.2, fill: { color: DN.slateLight }, rectRadius: 0.1 })
     s5.addShape('rect', { x, y: 1.4, w: 2.35, h: 0.5, fill: { color: col.color }, rectRadius: 0.1 })
-    s5.addText(col.title, { x, y: 1.45, w: 2.35, h: 0.45, fontSize: 12, fontFace: 'Arial', color: DN.white, bold: true, align: 'center' })
-    s5.addText(col.desc, { x: x + 0.15, y: 2.1, w: 2.05, h: 4.2, fontSize: 11, fontFace: 'Arial', color: DN.ink, lineSpacing: 18 })
+    s5.addText(col.title, { x, y: 1.45, w: 2.35, h: 0.45, fontSize: 12, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', autoFit: true })
+    s5.addText(col.desc, { x: x + 0.15, y: 2.1, w: 2.05, h: 4.2, fontSize: 11, fontFace: 'Arial', color: DN.ink, lineSpacing: 18, autoFit: true })
   })
 
   // ═══════════════════════════════════════════════════════════════

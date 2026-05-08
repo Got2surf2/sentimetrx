@@ -161,12 +161,19 @@ function slideBeforeAfter(pptx: any, pg: number) {
   const rightX = 6.85
   const cardW = 5.98
 
-  // ── Left card (Before / Legacy) — soft red tint ──
-  s.addShape('rect', { x: leftX, y: cardY, w: cardW, h: cardH, fill: { color: 'FEF2F2' }, rectRadius: 0.12 })
-  s.addShape('rect', { x: leftX, y: cardY, w: cardW, h: 0.55, fill: { color: DN.red }, rectRadius: 0.12 })
+  // Drab "before color TV" palette for the legacy side
+  const greyHeader = '4A4A4A'   // dark charcoal (header strip)
+  const greyBg     = 'F2F2F2'   // light cool grey (card background)
+  const greyAccent = '6B7280'   // medium grey (left-edge accent + label color)
+  const greyBorder = 'D1D5DB'   // pill border on legacy side
+  const greyText   = '4B5563'   // muted body text on legacy side
+
+  // ── Left card (Before / Legacy) — drab grey ──
+  s.addShape('rect', { x: leftX, y: cardY, w: cardW, h: cardH, fill: { color: greyBg }, rectRadius: 0.12 })
+  s.addShape('rect', { x: leftX, y: cardY, w: cardW, h: 0.55, fill: { color: greyHeader }, rectRadius: 0.12 })
   s.addText('WITH LEGACY TOOLS', {
     x: leftX, y: cardY, w: cardW, h: 0.55,
-    fontFace: 'Arial', fontSize: 13, color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 4,
+    fontFace: 'Arial', fontSize: 13, color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 2,
   })
 
   // ── Right card (After / Sentimetrx) — branded teal-pale tint ──
@@ -174,7 +181,7 @@ function slideBeforeAfter(pptx: any, pg: number) {
   s.addShape('rect', { x: rightX, y: cardY, w: cardW, h: 0.55, fill: { color: DN.teal }, rectRadius: 0.12 })
   s.addText('WITH SENTIMETRX', {
     x: rightX, y: cardY, w: cardW, h: 0.55,
-    fontFace: 'Arial', fontSize: 13, color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 4,
+    fontFace: 'Arial', fontSize: 13, color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 2,
   })
 
   // ── Rows ──
@@ -182,42 +189,47 @@ function slideBeforeAfter(pptx: any, pg: number) {
   const rowsH = cardH - 0.85
   const rowH = (rowsH - 0.05 * (steps.length - 1)) / steps.length
 
+  // Layout: label column wide enough for "ANALYZE" with no wrap; pill takes the rest
+  const labelW = 1.2
+  const pillX = 1.45      // relative offset inside card
+  const pillW = cardW - pillX - 0.15
+
   steps.forEach((step, i) => {
     const y = rowsY + i * (rowH + 0.05)
 
     // BEFORE row
     s.addText(step.label, {
-      x: leftX + 0.18, y, w: 0.95, h: rowH,
-      fontFace: 'Arial', fontSize: 9, color: DN.slate, bold: true, charSpacing: 3, valign: 'middle',
+      x: leftX + 0.15, y, w: labelW, h: rowH,
+      fontFace: 'Arial', fontSize: 9, color: greyAccent, bold: true, charSpacing: 1, valign: 'middle', autoFit: true,
     })
     s.addShape('rect', {
-      x: leftX + 1.15, y, w: cardW - 1.3, h: rowH,
-      fill: { color: DN.white }, rectRadius: 0.08, line: { color: 'F8D7D7', width: 0.75 },
+      x: leftX + pillX, y, w: pillW, h: rowH,
+      fill: { color: DN.white }, rectRadius: 0.08, line: { color: greyBorder, width: 0.75 },
     })
     s.addShape('rect', {
-      x: leftX + 1.15, y, w: 0.08, h: rowH,
-      fill: { color: DN.red }, rectRadius: 0.04,
+      x: leftX + pillX, y, w: 0.08, h: rowH,
+      fill: { color: greyAccent }, rectRadius: 0.04,
     })
     s.addText(step.before, {
-      x: leftX + 1.32, y, w: cardW - 1.5, h: rowH,
-      fontFace: 'Arial', fontSize: 11, color: DN.ink, valign: 'middle', wrap: true,
+      x: leftX + pillX + 0.17, y, w: pillW - 0.3, h: rowH,
+      fontFace: 'Arial', fontSize: 11, color: greyText, valign: 'middle', wrap: true,
     })
 
     // AFTER row
     s.addText(step.label, {
-      x: rightX + 0.18, y, w: 0.95, h: rowH,
-      fontFace: 'Arial', fontSize: 9, color: DN.tealDark, bold: true, charSpacing: 3, valign: 'middle',
+      x: rightX + 0.15, y, w: labelW, h: rowH,
+      fontFace: 'Arial', fontSize: 9, color: DN.tealDark, bold: true, charSpacing: 1, valign: 'middle', autoFit: true,
     })
     s.addShape('rect', {
-      x: rightX + 1.15, y, w: cardW - 1.3, h: rowH,
+      x: rightX + pillX, y, w: pillW, h: rowH,
       fill: { color: DN.white }, rectRadius: 0.08, line: { color: 'B7E4E5', width: 0.75 },
     })
     s.addShape('rect', {
-      x: rightX + 1.15, y, w: 0.08, h: rowH,
+      x: rightX + pillX, y, w: 0.08, h: rowH,
       fill: { color: DN.teal }, rectRadius: 0.04,
     })
     s.addText(step.after, {
-      x: rightX + 1.32, y, w: cardW - 1.5, h: rowH,
+      x: rightX + pillX + 0.17, y, w: pillW - 0.3, h: rowH,
       fontFace: 'Arial', fontSize: 11, color: DN.navy, bold: true, valign: 'middle', wrap: true,
     })
   })
@@ -564,7 +576,7 @@ function slideOrigin(pptx: any, pg: number) {
     s.addShape('rect', { x: 0.5, y, w: 1.7, h: cardH, fill: { color: stage.color }, rectRadius: 0.08 })
     s.addText(stage.tag, {
       x: 0.5, y: y + 0.1, w: 1.7, h: 0.4,
-      fontFace: 'Arial', fontSize: 11, color: DN.white, bold: true, charSpacing: 4, align: 'center', valign: 'middle',
+      fontFace: 'Arial', fontSize: 10, color: DN.white, bold: true, charSpacing: 1, align: 'center', valign: 'middle', autoFit: true,
     })
     s.addText(`0${i + 1}`, {
       x: 0.5, y: y + 0.5, w: 1.7, h: cardH - 0.55,
@@ -579,7 +591,7 @@ function slideOrigin(pptx: any, pg: number) {
     })
     s.addText(stage.body, {
       x: 2.5, y: y + 0.46, w: 10.1, h: cardH - 0.5,
-      fontFace: 'Arial', fontSize: 11, color: DN.ink, lineSpacing: 18, valign: 'top',
+      fontFace: 'Arial', fontSize: 11, color: DN.ink, lineSpacing: 18, valign: 'top', autoFit: true,
     })
   })
 
