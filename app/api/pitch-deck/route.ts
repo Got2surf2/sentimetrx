@@ -61,6 +61,17 @@ export async function GET() {
   s1.addText('Sentimetrx', { x: 0.8, y: 1.8, w: 11, h: 1.2, fontSize: 54, fontFace: 'Arial', color: DN.white, bold: true })
   s1.addText('AI-Powered Conversational Feedback Intelligence', { x: 0.8, y: 3.0, w: 11, h: 0.8, fontSize: 22, fontFace: 'Arial', color: DN.sarinaBlue })
   s1.addText('The first platform that collects, understands, and acts on\ncustomer feedback — in one place, in any language.', { x: 0.8, y: 4.2, w: 10, h: 0.9, fontSize: 16, fontFace: 'Arial', color: DN.slate, lineSpacing: 24 })
+  // Date strip
+  {
+    const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE
+    const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    const lastUpdated = buildDate ? fmt(new Date(buildDate)) : fmt(new Date())
+    const downloaded = fmt(new Date())
+    s1.addText(`Last updated  ${lastUpdated}     ·     Downloaded  ${downloaded}`, {
+      x: 0.8, y: 5.5, w: 11, h: 0.35,
+      fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true,
+    })
+  }
   s1.addText('sentimetrx.ai', { x: 0.8, y: 6.2, w: 5, h: 0.4, fontSize: 14, fontFace: 'Arial', color: DN.gold, bold: true })
   s1.addShape('rect', { x: 0, y: H - 0.06, w: W, h: 0.06, fill: { color: DN.sarinaBlue } })
 
@@ -71,13 +82,13 @@ export async function GET() {
   pg++
   addHeader(s2, 'The Problem')
   addFooter(s2, pg)
-  s2.addText('$5.8B is spent annually on survey tools — and response quality is declining.', { x: 0.6, y: 1.3, w: 12, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.hermesOrange, bold: true })
+  s2.addText('Survey response quality has been declining for years — and the analysis is getting harder, not easier.', { x: 0.6, y: 1.3, w: 12, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.hermesOrange, bold: true })
   s2.addText([
-    bullet('Average survey response rate has dropped to 5-15%'),
-    bullet('80% of open-ended responses are too vague to act on — "it was fine," "good," "OK"'),
-    bullet('Companies use 3-5 separate tools for surveys, email outreach, text analytics, translation, and reporting'),
-    bullet('Enterprise text analytics platforms cost $50K-500K/year and require data science teams'),
-    bullet('68% of consumers prefer to give feedback in their native language but most surveys are English-only'),
+    bullet('Average survey response rates are in the single digits to low teens, and falling'),
+    bullet('The majority of open-ended responses are too vague to act on — "it was fine," "good," "OK"'),
+    bullet('Companies stitch together 3–5 separate tools for surveys, email outreach, text analytics, translation, and reporting'),
+    bullet('Enterprise text analytics platforms run into six figures annually and require data science teams to operate'),
+    bullet('Most surveys are English-only, missing the richer feedback consumers give in their native language'),
   ], { x: 0.6, y: 2.2, w: 11.5, h: 4.5 })
 
   // ═══════════════════════════════════════════════════════════════
@@ -228,32 +239,35 @@ export async function GET() {
   addHeader(s9, 'Market Opportunity')
   addFooter(s9, pg)
   const markets = [
-    { label: 'Survey Software', size: '$5.8B', cagr: '14.2%' },
-    { label: 'Text Analytics', size: '$8.1B', cagr: '17.8%' },
-    { label: 'CX Management', size: '$14.5B', cagr: '15.3%' },
+    { label: 'Survey Software',    color: DN.sarinaBlue },
+    { label: 'Text Analytics',     color: DN.teal },
+    { label: 'CX Management',      color: DN.navy },
   ]
   markets.forEach((m, i) => {
     const x = 0.8 + i * 4.2
-    s9.addShape('rect', { x, y: 1.5, w: 3.8, h: 2.0, fill: { color: DN.slateLight }, rectRadius: 0.1 })
-    s9.addText(m.label, { x, y: 1.6, w: 3.8, h: 0.5, fontSize: 13, fontFace: 'Arial', color: DN.slate, align: 'center' })
-    s9.addText(m.size, { x, y: 2.1, w: 3.8, h: 0.7, fontSize: 32, fontFace: 'Arial', color: DN.navy, bold: true, align: 'center' })
-    s9.addText(`${m.cagr} CAGR`, { x, y: 2.8, w: 3.8, h: 0.4, fontSize: 12, fontFace: 'Arial', color: DN.sarinaBlue, bold: true, align: 'center' })
+    s9.addShape('rect', { x, y: 1.5, w: 3.8, h: 2.0, fill: { color: m.color }, rectRadius: 0.1 })
+    s9.addText(m.label, { x: x + 0.2, y: 1.5, w: 3.4, h: 2.0, fontSize: 18, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle' })
   })
-  s9.addText('Our wedge: Mid-market organizations ($10M-$500M revenue) spending $20K-$100K/year\nacross 3-5 tools. Too small for Qualtrics/Medallia, too sophisticated for SurveyMonkey.', {
-    x: 0.6, y: 4.0, w: 12, h: 0.8, fontSize: 14, fontFace: 'Arial', color: DN.ink, lineSpacing: 22
+  s9.addText('Three large, growing, adjacent markets — combined size and CAGR figures available from MarketsandMarkets, Grand View Research, Forrester, or Gartner (cite specific source before external use).', {
+    x: 0.6, y: 3.7, w: 12, h: 0.6, fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true
   })
-  // TAM/SAM/SOM
+  s9.addText('Our wedge: Mid-market organizations spending across 3–5 separate tools today.\nToo small for Qualtrics/Medallia, too sophisticated for SurveyMonkey.', {
+    x: 0.6, y: 4.4, w: 12, h: 0.8, fontSize: 14, fontFace: 'Arial', color: DN.ink, bold: true, lineSpacing: 22
+  })
+  // TAM/SAM/SOM placeholder cards — figures pending citation
   const tam = [
-    { label: 'TAM', val: '$3.2B', desc: 'Mid-market survey + analytics' },
-    { label: 'SAM', val: '$800M', desc: 'English + multilingual mid-market' },
-    { label: 'SOM', val: '$40M', desc: 'Initial verticals' },
+    { label: 'TAM', desc: 'Mid-market survey + analytics' },
+    { label: 'SAM', desc: 'English + multilingual mid-market' },
+    { label: 'SOM', desc: 'Initial verticals' },
   ]
   tam.forEach((t, i) => {
     const x = 0.8 + i * 4.2
-    s9.addShape('rect', { x, y: 5.2, w: 3.8, h: 1.6, fill: { color: i === 2 ? DN.sarinaBlue : i === 1 ? DN.teal : DN.navy }, rectRadius: 0.1 })
-    s9.addText(t.label, { x, y: 5.3, w: 3.8, h: 0.4, fontSize: 12, fontFace: 'Arial', color: DN.white, align: 'center' })
-    s9.addText(t.val, { x, y: 5.7, w: 3.8, h: 0.6, fontSize: 28, fontFace: 'Arial', color: DN.white, bold: true, align: 'center' })
-    s9.addText(t.desc, { x, y: 6.3, w: 3.8, h: 0.4, fontSize: 10, fontFace: 'Arial', color: DN.slate, align: 'center' })
+    s9.addShape('rect', { x, y: 5.4, w: 3.8, h: 1.4, fill: { color: i === 2 ? DN.sarinaBlue : i === 1 ? DN.teal : DN.navy }, rectRadius: 0.1 })
+    s9.addText(t.label, { x, y: 5.5, w: 3.8, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.white, bold: true, align: 'center' })
+    s9.addText(t.desc, { x: x + 0.2, y: 6.0, w: 3.4, h: 0.7, fontSize: 11, fontFace: 'Arial', color: DN.white, align: 'center', valign: 'top', lineSpacing: 16 })
+  })
+  s9.addText('Specific TAM / SAM / SOM dollar figures pending — to be sourced before external use.', {
+    x: 0.6, y: 6.95, w: 12, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate, italic: true, align: 'center',
   })
 
   // ═══════════════════════════════════════════════════════════════

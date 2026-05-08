@@ -90,8 +90,16 @@ function tag(slide: any, x: number, y: number, w: number, label: string, color: 
 }
 
 // ── Title slide ────────────────────────────────────────────────────────────
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 function addTitleSlide(pptx: any) {
   const s = pptx.addSlide()
+  const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE
+  const lastUpdated = buildDate ? fmtDate(new Date(buildDate)) : fmtDate(new Date())
+  const downloaded = fmtDate(new Date())
+
   s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
   s.addShape('ellipse', { x: W - 4.5, y: -1.5, w: 5.5, h: 5.5, fill: { color: DN.teal, transparency: 88 }, line: { width: 0 } })
   s.addShape('ellipse', { x: W - 3.0, y: 0.5, w: 3.5, h: 3.5, fill: { color: DN.sarinaBlue, transparency: 92 }, line: { width: 0 } })
@@ -105,6 +113,11 @@ function addTitleSlide(pptx: any) {
   })
   s.addText('Built AI-native. Multi-tenant from day one. Audit-grade by design.', {
     x: 0.8, y: 4.3, w: 11, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.white,
+  })
+  // Date strip
+  s.addText(`Last updated  ${lastUpdated}     ·     Downloaded  ${downloaded}`, {
+    x: 0.8, y: 5.0, w: 11, h: 0.35,
+    fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true,
   })
 
   s.addShape('rect', { x: 0, y: H - 0.5, w: W, h: 0.5, fill: { color: DN.navyMid } })

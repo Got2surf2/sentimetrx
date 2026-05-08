@@ -79,8 +79,20 @@ function bullet(text: string, opts: any = {}) {
   }
 }
 
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function getDeckDates() {
+  const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE
+  const lastUpdated = buildDate ? fmtDate(new Date(buildDate)) : fmtDate(new Date())
+  const downloaded = fmtDate(new Date())
+  return { lastUpdated, downloaded }
+}
+
 function addTitleSlide(pptx: any, title: string, subtitle: string, tagline: string) {
   const s = pptx.addSlide()
+  const { lastUpdated, downloaded } = getDeckDates()
   s.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: DN.navy } })
   // decorative ellipses
   s.addShape('ellipse', { x: W - 4.2, y: -1.5, w: 5.5, h: 5.5, fill: { color: DN.teal, transparency: 88 }, line: { width: 0 } })
@@ -93,6 +105,12 @@ function addTitleSlide(pptx: any, title: string, subtitle: string, tagline: stri
   s.addText(subtitle, { x: 0.8, y: 3.9, w: 11, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.sarinaBlue, italic: true })
   s.addText(tagline, { x: 0.8, y: 4.7, w: 11, h: 0.6, fontSize: 22, fontFace: 'Arial', color: DN.white, bold: true })
 
+  // Date strip — small, low-emphasis, just below tagline
+  s.addText(`Last updated  ${lastUpdated}     ·     Downloaded  ${downloaded}`, {
+    x: 0.8, y: 5.5, w: 11, h: 0.35,
+    fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true,
+  })
+
   s.addShape('rect', { x: 0, y: H - 0.5, w: W, h: 0.5, fill: { color: DN.navyMid } })
   s.addText([
     { text: 'data', options: { color: DN.hermesOrange, bold: true, italic: true } },
@@ -104,18 +122,21 @@ function addTitleSlide(pptx: any, title: string, subtitle: string, tagline: stri
 // ── Slide builders ─────────────────────────────────────────────────────────
 function slideOpportunity(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'The Opportunity', 'A $50B+ fragmented market is about to be rebuilt')
+  addHeader(s, 'The Opportunity', 'A multi-billion-dollar fragmented market is about to be rebuilt')
   addFooter(s, pg)
-  s.addText('Voice-of-Customer · Qualitative Research · Reputation · Social Listening', {
+  s.addText('Voice-of-Customer · Qualitative Research · Reputation · Social Listening · Conversational AI', {
     x: 0.6, y: 1.3, w: 12, h: 0.4, fontSize: 14, fontFace: 'Arial', color: DN.hermesOrange, bold: true,
   })
   s.addText([
-    bullet('$50B+ global spend on Voice-of-Customer, qualitative research, reputation, and social listening — dominated by labor-heavy services and legacy software'),
+    bullet('Multi-billion-dollar global market spanning Voice-of-Customer, qualitative research, reputation, and social listening — dominated by labor-heavy services and legacy software'),
     bullet('Hundreds of $1–10M revenue services firms are founder-owned and aging out of the market'),
-    bullet('Incumbents (Qualtrics, Medallia, Forsta, InMoton) are bolting AI onto 15-year-old codebases'),
+    bullet('Incumbents (Qualtrics, Medallia, Forsta, InMoment) are bolting AI onto 15-year-old codebases'),
     bullet('LLMs collapse 80% of analyst labor — but only for platforms designed around them from day one'),
-    bullet('Top 5 incumbents hold <40% market share. The long tail is ripe for AI-led consolidation.'),
-  ], { x: 0.6, y: 2.0, w: 12.0, h: 4.5 })
+    bullet('Long tail of vendors and boutique research firms is ripe for AI-led consolidation'),
+  ], { x: 0.6, y: 2.0, w: 12.0, h: 4.0 })
+  s.addText('Specific TAM / segment-size figures: pending citation from MarketsandMarkets, Grand View Research, Forrester, or your preferred source before external use.', {
+    x: 0.6, y: 6.4, w: 12.1, h: 0.4, fontSize: 9, fontFace: 'Arial', color: DN.slate, italic: true,
+  })
   return pg
 }
 
@@ -647,25 +668,28 @@ function slideExecSummary(pptx: any, pg: number) {
 
 function slideMarket(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'The Market', '$50B+ globally. Fragmented at the edges.')
+  addHeader(s, 'The Market', 'Five adjacent segments. Fragmented at the edges.')
   addFooter(s, pg)
   const segs = [
-    { label: 'CX / VoC platforms', val: '$15B', color: DN.sarinaBlue },
-    { label: 'Market research services\n(qual-heavy)', val: '$25B', color: DN.teal },
-    { label: 'Online reputation &\nreview intelligence', val: '$5B', color: DN.hermesOrange },
-    { label: 'Social listening /\ncommunity intelligence', val: '$3B', color: DN.gold },
-    { label: 'Conversational AI for\ncustomer-facing use', val: '$10B', color: DN.navy },
+    { label: 'CX / VoC\nPlatforms',                  color: DN.sarinaBlue },
+    { label: 'Market Research\nServices',            color: DN.teal },
+    { label: 'Online Reputation\n& Review Intel.',   color: DN.hermesOrange },
+    { label: 'Social Listening /\nCommunity Intel.', color: DN.gold },
+    { label: 'Conversational AI /\nCustomer Agents', color: DN.navy },
   ]
   segs.forEach((seg, i) => {
     const x = 0.6 + i * 2.5
-    s.addShape('rect', { x, y: 1.5, w: 2.3, h: 3.2, fill: { color: seg.color }, rectRadius: 0.1 })
-    s.addText(seg.val, { x, y: 1.7, w: 2.3, h: 1.0, fontSize: 32, fontFace: 'Arial', color: DN.white, bold: true, align: 'center' })
-    s.addText(seg.label, { x: x + 0.15, y: 2.9, w: 2.0, h: 1.6, fontSize: 11, fontFace: 'Arial', color: DN.white, align: 'center', valign: 'top', lineSpacing: 16 })
+    s.addShape('rect', { x, y: 1.5, w: 2.3, h: 2.8, fill: { color: seg.color }, rectRadius: 0.1 })
+    s.addText(seg.label, { x: x + 0.1, y: 1.6, w: 2.1, h: 2.6, fontSize: 14, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', lineSpacing: 22 })
   })
-  s.addShape('rect', { x: 0.6, y: 5.1, w: 12.1, h: 1.5, fill: { color: DN.slateLight }, rectRadius: 0.1 })
-  s.addText('Top 5 incumbents hold <40% share', { x: 0.85, y: 5.2, w: 12, h: 0.5, fontSize: 18, fontFace: 'Arial', color: DN.navy, bold: true })
+  s.addShape('rect', { x: 0.6, y: 4.6, w: 12.1, h: 1.7, fill: { color: DN.slateLight }, rectRadius: 0.1 })
+  s.addText('Top 5 incumbents hold a minority of the combined market', { x: 0.85, y: 4.7, w: 12, h: 0.5, fontSize: 17, fontFace: 'Arial', color: DN.navy, bold: true })
   s.addText('The long tail: hundreds of $1–20M revenue founder-owned firms — labor-heavy, AI-vulnerable, ripe for consolidation. This is where the roll-up happens.', {
-    x: 0.85, y: 5.7, w: 12, h: 0.9, fontSize: 12, fontFace: 'Arial', color: DN.ink, lineSpacing: 18,
+    x: 0.85, y: 5.2, w: 12, h: 0.9, fontSize: 12, fontFace: 'Arial', color: DN.ink, lineSpacing: 18,
+  })
+  s.addShape('rect', { x: 0.6, y: 6.4, w: 12.1, h: 0.5, fill: { color: 'FEF3C7' }, rectRadius: 0.06, line: { color: DN.amber, width: 0.75 } })
+  s.addText('Specific segment $ figures and incumbent share % to be sourced from MarketsandMarkets, Grand View Research, Forrester, or Gartner before external use.', {
+    x: 0.75, y: 6.4, w: 12.0, h: 0.5, fontSize: 10, fontFace: 'Arial', color: '7C2D12', italic: true, valign: 'middle',
   })
 }
 
