@@ -23,7 +23,7 @@ interface ChatRequest {
 // POST /api/townhall/chat — participant sends a message, gets next bot message
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-  const rl = checkRateLimit('townhall-chat:' + ip, 20, 60000)
+  const rl = await checkRateLimit('townhall-chat:' + ip, 20, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
 
   let body: ChatRequest

@@ -16,7 +16,7 @@ import { auditContent, auditConversationLog, type ContentFlag } from '@/lib/cont
 export async function POST(req: NextRequest) {
   // Rate limit: 120 requests per minute per IP (partial saves + final submit; multiple users may share an IP)
   var ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  var rl = checkRateLimit('respond:' + ip, 120, 60000)
+  var rl = await checkRateLimit('respond:' + ip, 120, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   let body: SubmitResponseBody
 

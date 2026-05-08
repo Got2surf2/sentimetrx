@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   // Rate limit: 10 requests per minute per IP (prevents abuse of paid AI endpoint)
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  const rl = checkRateLimit('translate-resp:' + ip, 10, 60000)
+  const rl = await checkRateLimit('translate-resp:' + ip, 10, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
 
   let body: any

@@ -23,7 +23,7 @@ interface DeflectRequest {
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  const rl = checkRateLimit('deflect:' + ip, 10, 60000)
+  const rl = await checkRateLimit('deflect:' + ip, 10, 60000)
   if (rl.limited) return NextResponse.json({ deflection: null }, { status: 429 })
 
   let body: DeflectRequest

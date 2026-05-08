@@ -30,7 +30,7 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest, { params }: Params) {
   // Rate limit by IP
   var ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-  var rl = checkRateLimit('bot_chat:' + ip, 30, 60000)
+  var rl = await checkRateLimit('bot_chat:' + ip, 30, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })
 
   let body: any

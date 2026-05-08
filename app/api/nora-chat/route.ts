@@ -291,7 +291,7 @@ export async function POST(req: NextRequest) {
   const cors = corsHeaders(origin)
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  const rl = checkRateLimit('nora-chat:' + ip, 30, 60000)
+  const rl = await checkRateLimit('nora-chat:' + ip, 30, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })
 
   let body: any

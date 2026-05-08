@@ -26,7 +26,7 @@ interface ClarifyRequest {
 export async function POST(req: NextRequest) {
   // Rate limit: 10 AI clarification requests per minute per IP
   var ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  var rl = checkRateLimit('clarify:' + ip, 10, 60000)
+  var rl = await checkRateLimit('clarify:' + ip, 10, 60000)
   if (rl.limited) return NextResponse.json({ question: null }, { status: 429 })
 
   let body: ClarifyRequest
