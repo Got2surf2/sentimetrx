@@ -84,18 +84,24 @@ export default function ReviewSyncStatus({ sourceId }: Props) {
   let label = ''
   let tone: 'progress' | 'success' | 'warning' | 'idle' = 'idle'
 
+  // Note on the "up to" framing: `expected` is the Google-reported review
+  // count summed across selected locations, capped at the DataForSEO depth
+  // limit of 4490 per location. In practice DataForSEO rarely returns the
+  // full count Google reports — typical capture is 10-30% of the headline
+  // number, with the rest unavailable via their API. So we frame the number
+  // as the upper bound, not a "this is what you'll get" estimate.
   if (stillRunning) {
     tone = 'progress'
-    label = 'Downloading reviews — ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations done · ' + data.datasetRowCount.toLocaleString() + ' of ≈' + expected.toLocaleString() + ' reviews ingested so far'
+    label = 'Downloading reviews — ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations done · ' + data.datasetRowCount.toLocaleString() + ' reviews ingested so far (up to ≈' + expected.toLocaleString() + ' available)'
   } else if (allSynced && noErrors) {
     tone = 'success'
-    label = '✓ Download complete — ' + data.datasetRowCount.toLocaleString() + ' reviews from ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations (expected ≈ ' + expected.toLocaleString() + ')'
+    label = '✓ Download complete — ' + data.datasetRowCount.toLocaleString() + ' reviews from ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations'
   } else if (errored.length > 0) {
     tone = 'warning'
     label = 'Download finished with errors — ' + data.datasetRowCount.toLocaleString() + ' reviews from ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations · ' + errored.length.toLocaleString() + ' location' + (errored.length === 1 ? '' : 's') + ' failed'
   } else if (selected.length > 0 && synced.length === 0) {
     tone = 'idle'
-    label = 'Ready to download ≈ ' + expected.toLocaleString() + ' reviews across ' + selected.length.toLocaleString() + ' locations'
+    label = 'Ready to download — up to ≈' + expected.toLocaleString() + ' reviews across ' + selected.length.toLocaleString() + ' locations (Google’s reported counts; actual capture is typically lower)'
   } else {
     return null
   }
