@@ -991,7 +991,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }
 
   // Effective fields for analysis — multi-field support
-  var effectiveFields = activeFields.length > 0 ? activeFields : (activeField ? [activeField] : [])
+  var effectiveFields = useMemo(function() {
+    return activeFields.length > 0 ? activeFields : (activeField ? [activeField] : [])
+  }, [activeFields, activeField])
 
   // Set initial active field(s)
   useEffect(function() {
@@ -1127,19 +1129,30 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [rowsLoaded])
 
   // Theme colors
-  const themeColors: Record<number, typeof THEME_PALETTE[0]> = {}
-  if (themes) {
-    themes.themes.forEach(function(_, i) {
-      themeColors[i] = THEME_PALETTE[i % THEME_PALETTE.length]
-    })
-  }
+  const themeColors = useMemo<Record<number, typeof THEME_PALETTE[0]>>(function() {
+    var out: Record<number, typeof THEME_PALETTE[0]> = {}
+    if (themes) {
+      themes.themes.forEach(function(_, i) {
+        out[i] = THEME_PALETTE[i % THEME_PALETTE.length]
+      })
+    }
+    return out
+  }, [themes])
 
-  // Apply global filters to rows
-  var _filteredBase0 = applyFilters(rows, effectiveFilters)
-  var _filteredBase = hideFlagged
-    ? _filteredBase0.filter(function(r) { return !r.content_flags || (Array.isArray(r.content_flags) && r.content_flags.length === 0) })
-    : _filteredBase0
-  var activeFilterCount = filterCount(effectiveFilters)
+  // Apply global filters to rows. Memoized so identity is stable across
+  // unrelated re-renders — keeps the downstream `filteredRows` memo (and
+  // every child that takes filteredRows as a prop) from invalidating.
+  var _filteredBase0 = useMemo(function() {
+    return applyFilters(rows, effectiveFilters)
+  }, [rows, effectiveFilters])
+  var _filteredBase = useMemo(function() {
+    return hideFlagged
+      ? _filteredBase0.filter(function(r) { return !r.content_flags || (Array.isArray(r.content_flags) && r.content_flags.length === 0) })
+      : _filteredBase0
+  }, [_filteredBase0, hideFlagged])
+  var activeFilterCount = useMemo(function() {
+    return filterCount(effectiveFilters)
+  }, [effectiveFilters])
 
   // Inject signal_tier for Reddit/Substack datasets (dynamic, respects filter + threshold changes)
   var filteredRows: Record<string, unknown>[] = useMemo(function(): Record<string, unknown>[] {
@@ -1177,9 +1190,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [themes, filteredRows.length, _recountFields.join(','), activeFilterCount, ratingField])
 
   // Stats for active fields (on filtered data)
-  var activeFieldRows = filteredRows.filter(function(r) {
-    return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 })
-  })
+  var activeFieldRows = useMemo(function() {
+    return filteredRows.filter(function(r) {
+      return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 })
+    })
+  }, [filteredRows, effectiveFields])
   var activeFieldCount = activeFieldRows.length
 
   // Prepare corpus sample for mining (combines all active fields)
