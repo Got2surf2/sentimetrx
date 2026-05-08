@@ -180,13 +180,25 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         setSchemaRefreshMsg('Refresh failed: ' + (data.error || 'unknown error'))
         return
       }
-      const grew: { field: string; before: number; after: number }[] = data.fieldsGrown || []
-      if (grew.length === 0) {
-        setSchemaRefreshMsg('Scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows. Schema already up to date.')
-      } else {
+      const fmtGrew = function(grew: { field: string; before: number; after: number }[]): string {
+        if (grew.length === 0) return 'no changes'
         const summary = grew.slice(0, 4).map(function(g) { return g.field + ' (' + g.before + ' → ' + g.after + ')' }).join(', ')
         const more = grew.length > 4 ? ', +' + (grew.length - 4) + ' more' : ''
-        setSchemaRefreshMsg('Scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows. Updated: ' + summary + more)
+        return summary + more
+      }
+      const grew = data.fieldsGrown || []
+      let msg = ''
+      if (data.isCollection) {
+        // Collection: report the collection-level result PLUS per-member.
+        const memberLines: string[] = (data.members || []).map(function(m: any) {
+          return '  · ' + (m.name || m.datasetId) + ': scanned ' + (m.rowsScanned || 0).toLocaleString() + ' rows — ' + fmtGrew(m.fieldsGrown || [])
+        })
+        msg = 'Collection scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows total. Collection schema: ' + fmtGrew(grew) + (memberLines.length ? '\n' + memberLines.join('\n') : '')
+      } else {
+        msg = 'Scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows. ' + (grew.length === 0 ? 'Schema already up to date.' : 'Updated: ' + fmtGrew(grew))
+      }
+      setSchemaRefreshMsg(msg)
+      if (grew.length > 0 || (data.members && data.members.some(function(m: any) { return (m.fieldsGrown || []).length > 0 }))) {
         router.refresh()
       }
     } catch (e: any) {
@@ -304,7 +316,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
           </button>
         </div>
         {schemaRefreshMsg && (
-          <p className={'text-xs ' + (schemaRefreshMsg.startsWith('Refresh failed') ? 'text-red-600' : 'text-gray-600')}>{schemaRefreshMsg}</p>
+          <pre className={'text-xs whitespace-pre-wrap font-sans m-0 ' + (schemaRefreshMsg.startsWith('Refresh failed') ? 'text-red-600' : 'text-gray-600')}>{schemaRefreshMsg}</pre>
         )}
         <SchemaEditor schema={schema} onChange={handleSaveSchema} onSave={function() { router.refresh() }} />
       </div>
