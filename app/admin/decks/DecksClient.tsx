@@ -103,7 +103,7 @@ export default function DecksClient({
   tableStatus,
 }: {
   lastDownloaded: Record<string, string>
-  lastUpdated: string | null
+  lastUpdated: Record<string, string | null>
   totalDownloads: number
   tableStatus: 'ok' | 'missing' | 'error'
 }) {
@@ -131,7 +131,7 @@ export default function DecksClient({
             key={deck.href}
             deck={deck}
             lastDownloaded={lastDownloaded[deck.logKey]}
-            lastUpdated={lastUpdated}
+            lastUpdated={lastUpdated[deck.logKey] ?? null}
             onDownload={onDownload}
           />
         ))}

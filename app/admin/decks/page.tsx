@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import { deckLastModified } from '@/lib/deckLastModified'
 import TopNav from '@/components/nav/TopNav'
 import DecksClient from './DecksClient'
 
@@ -47,7 +48,16 @@ export default async function DecksPage() {
     ? (logsError.code === '42P01' ? 'missing' : 'error')
     : 'ok'
 
-  const lastUpdated = process.env.NEXT_PUBLIC_BUILD_DATE || null
+  // Per-deck "last modified" — looks up each route file's last commit time
+  // (or mtime fallback). This way each deck card shows when its own content
+  // was last touched, not just the latest deploy time.
+  const lastUpdated: Record<string, string | null> = {
+    'pitch-deck':                deckLastModified('app/api/pitch-deck/route.ts'),
+    'rollup-deck:short':         deckLastModified('app/api/rollup-deck/route.ts'),
+    'rollup-deck:long':          deckLastModified('app/api/rollup-deck/route.ts'),
+    'architecture-deck':         deckLastModified('app/api/architecture-deck/route.ts'),
+    'engineering-reality-deck':  deckLastModified('app/api/engineering-reality-deck/route.ts'),
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
