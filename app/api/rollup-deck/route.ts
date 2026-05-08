@@ -236,6 +236,102 @@ function slideAILedVsAdded(pptx: any, pg: number) {
   })
 }
 
+function slideCompetitive(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'Competitive Landscape', 'Fragmented across six vendor categories. None does the whole stack.')
+  addFooter(s, pg)
+
+  const cats = [
+    {
+      name: 'Legacy VoC / CX',
+      players: 'Qualtrics · Medallia · Forsta · InMoment',
+      gap: 'AI bolted onto 15-year stacks; services revenue cannibalization risk',
+      color: DN.red,
+    },
+    {
+      name: 'Survey & form tools',
+      players: 'SurveyMonkey · Typeform · Alchemer · Jotform',
+      gap: 'Form-based collection; no analytics depth; no conversational layer',
+      color: DN.amber,
+    },
+    {
+      name: 'Text analytics',
+      players: 'Stratifyd · Relative Insight · Lexalytics',
+      gap: 'Analysis only; no collection layer; no multi-source ingest',
+      color: DN.amber,
+    },
+    {
+      name: 'Reputation & reviews',
+      players: 'Birdeye · Podium · Reputation.com · ReviewTrackers',
+      gap: 'Single-channel; no research, agent, or live-event formats',
+      color: DN.amber,
+    },
+    {
+      name: 'Conversational AI / chatbots',
+      players: 'Drift · Intercom Fin · Ada · Botpress',
+      gap: 'Support-focused; no survey, analytics, or research integration',
+      color: DN.sarinaBlue,
+    },
+    {
+      name: 'Social listening',
+      players: 'Brandwatch · Sprout Social · Talkwalker · Meltwater',
+      gap: 'Listen-only; no collection or agent loop; no first-party synthesis',
+      color: DN.sarinaBlue,
+    },
+  ]
+
+  // 3×2 grid
+  const cardW = 4.05
+  const cardH = 2.25
+  const startX = 0.45
+  const startY = 1.25
+  const gapX = 0.1
+  const gapY = 0.1
+
+  cats.forEach((c, i) => {
+    const col = i % 3, row = Math.floor(i / 3)
+    const x = startX + col * (cardW + gapX)
+    const y = startY + row * (cardH + gapY)
+
+    s.addShape('rect', { x, y, w: cardW, h: cardH, fill: { color: DN.slateCard }, rectRadius: 0.1 })
+    s.addShape('rect', { x, y, w: cardW, h: 0.5, fill: { color: c.color }, rectRadius: 0.1 })
+    s.addText(c.name, {
+      x: x + 0.15, y: y + 0.05, w: cardW - 0.3, h: 0.4,
+      fontFace: 'Arial', fontSize: 13, color: DN.white, bold: true, valign: 'middle',
+    })
+    s.addText('PLAYERS', {
+      x: x + 0.2, y: y + 0.6, w: cardW - 0.4, h: 0.22,
+      fontFace: 'Arial', fontSize: 8, color: DN.slate, bold: true, charSpacing: 3,
+    })
+    s.addText(c.players, {
+      x: x + 0.2, y: y + 0.82, w: cardW - 0.4, h: 0.55,
+      fontFace: 'Arial', fontSize: 11, color: DN.navy, bold: true, valign: 'top', lineSpacing: 16,
+    })
+    s.addShape('rect', { x: x + 0.2, y: y + 1.4, w: cardW - 0.4, h: 0.02, fill: { color: 'D4DDE2' } })
+    s.addText('THEIR GAP', {
+      x: x + 0.2, y: y + 1.45, w: cardW - 0.4, h: 0.22,
+      fontFace: 'Arial', fontSize: 8, color: DN.hermesOrange, bold: true, charSpacing: 3,
+    })
+    s.addText(c.gap, {
+      x: x + 0.2, y: y + 1.65, w: cardW - 0.4, h: cardH - 1.7,
+      fontFace: 'Arial', fontSize: 10, color: DN.ink, italic: true, valign: 'top', lineSpacing: 14,
+    })
+  })
+
+  // Bottom kicker — acquisition target callout
+  const kY = startY + 2 * (cardH + gapY) + 0.05
+  s.addShape('rect', { x: 0.5, y: kY, w: 12.3, h: H - kY - 0.5, fill: { color: DN.navy }, rectRadius: 0.08 })
+  s.addShape('rect', { x: 0.5, y: kY, w: 0.18, h: H - kY - 0.5, fill: { color: DN.green } })
+  s.addText('Boutique MR / CX firms (Kantar · NielsenIQ · hundreds of small):', {
+    x: 0.85, y: kY + 0.08, w: 12.0, h: 0.32,
+    fontFace: 'Arial', fontSize: 12, color: DN.gold, bold: true, italic: true,
+  })
+  s.addText('Not a competitor — our acquisition target. The roll-up consolidates this layer onto the AI-native platform above.', {
+    x: 0.85, y: kY + 0.42, w: 12.0, h: H - kY - 1.0,
+    fontFace: 'Arial', fontSize: 12, color: DN.white, valign: 'top', lineSpacing: 18,
+  })
+}
+
 function slideWhatWeBuilt(pptx: any, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'What We\'ve Built', 'A complete AI-native customer intelligence platform — already serving enterprise clients')
@@ -981,6 +1077,7 @@ function buildShortDeck(pptx: any) {
   slideOrigin(pptx, ++pg)
   slideBeforeAfter(pptx, ++pg)
   slideAILedVsAdded(pptx, ++pg)
+  slideCompetitive(pptx, ++pg)
   slideWhatWeBuilt(pptx, ++pg)
   slideWedge(pptx, ++pg)
   slidePlaybook(pptx, ++pg)
@@ -1005,6 +1102,7 @@ function buildLongDeck(pptx: any) {
   slideBeforeAfter(pptx, ++pg)
   slideAILedVsAdded(pptx, ++pg)
   slideIncumbentFragility(pptx, ++pg)
+  slideCompetitive(pptx, ++pg)
   slideWhatWeBuilt(pptx, ++pg)
   slideAILedCollection(pptx, ++pg)
   slideAILedAnalysis(pptx, ++pg)
