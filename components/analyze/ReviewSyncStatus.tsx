@@ -2,17 +2,16 @@
 
 // components/analyze/ReviewSyncStatus.tsx
 // Banner that shows the Google Reviews download state for a dataset:
-//   - Before sync: expected total review count across selected locations.
-//   - During sync: pending / completed / errored breakdown + how many reviews
-//     have been ingested so far.
-//   - After sync: success or partial-completion confirmation, with the list of
-//     errored locations on demand.
+//   - Before sync: calibrated estimate of reviews we'll actually ingest.
+//   - During sync: pending / completed / errored breakdown + ingested count.
+//   - After sync: success or partial-completion confirmation, with errors.
 //
 // Reads from the existing /api/review-sources/[sourceId] endpoint which
 // already returns the source + every location's last_synced_at, error_message,
-// and Google-reported review_count. DataForSEO caps each location's review
-// fetch at 4490 (lib/dataforseo.ts:160) so we cap the per-location estimate
-// there too.
+// and Google-reported review_count. We never display Google's raw review_count
+// to the user — it's misleadingly high (DataForSEO can only retrieve a
+// fraction of what Google reports). All headline numbers in this banner are
+// either the calibrated estimate or the actual ingested count.
 
 import { useEffect, useState } from 'react'
 
@@ -32,6 +31,18 @@ interface SourceResp {
 }
 
 const DFS_DEPTH_CAP = 4490
+// DataForSEO returns roughly 10–30% of the review_count Google reports for a
+// location — the rest sits behind Google's API gating. We use 20% as a
+// honest middle-of-road estimate so the banner numbers match what users
+// actually see ingested. This is the only place the raw Google count enters
+// any user-facing number; downstream we display only this calibrated estimate
+// and the actual ingested count.
+const TYPICAL_CAPTURE_RATE = 0.20
+
+function estimatedReviewsForLocation(reviewCount: number | null): number {
+  const total = reviewCount || 0
+  return Math.min(Math.round(total * TYPICAL_CAPTURE_RATE), DFS_DEPTH_CAP)
+}
 
 // error_message is also used to stash the in-flight DataForSEO task ref while
 // waiting for results. Those serialized refs start with 'pending_task:' so the
@@ -73,8 +84,10 @@ export default function ReviewSyncStatus({ sourceId }: Props) {
   const inFlight = selected.filter(isInFlight)
   const pending = selected.filter(function(l) { return !l.last_synced_at && !l.error_message })
 
+  // Calibrated estimate of how many reviews we expect to actually ingest,
+  // not Google's headline count. See estimatedReviewsForLocation above.
   const expected = selected.reduce(function(sum, l) {
-    return sum + Math.min(l.review_count || 0, DFS_DEPTH_CAP)
+    return sum + estimatedReviewsForLocation(l.review_count)
   }, 0)
 
   const allSynced  = synced.length === selected.length
@@ -84,24 +97,23 @@ export default function ReviewSyncStatus({ sourceId }: Props) {
   let label = ''
   let tone: 'progress' | 'success' | 'warning' | 'idle' = 'idle'
 
-  // Note on the "up to" framing: `expected` is the Google-reported review
-  // count summed across selected locations, capped at the DataForSEO depth
-  // limit of 4490 per location. In practice DataForSEO rarely returns the
-  // full count Google reports — typical capture is 10-30% of the headline
-  // number, with the rest unavailable via their API. So we frame the number
-  // as the upper bound, not a "this is what you'll get" estimate.
+  // Numbers shown to the user: only `expected` (calibrated estimate) and
+  // `data.datasetRowCount` (actual ingested). Google's raw review_count is
+  // intentionally hidden — it's misleading because DataForSEO can only
+  // retrieve a fraction of what Google reports (typically 10–30%).
   if (stillRunning) {
     tone = 'progress'
-    label = 'Downloading reviews — ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations done · ' + data.datasetRowCount.toLocaleString() + ' reviews ingested so far (up to ≈' + expected.toLocaleString() + ' available)'
+    label = 'Downloading reviews — ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations done · ' + data.datasetRowCount.toLocaleString() + ' reviews ingested so far (estimated ≈ ' + expected.toLocaleString() + ' total)'
   } else if (allSynced && noErrors) {
     tone = 'success'
-    label = '✓ Download complete — ' + data.datasetRowCount.toLocaleString() + ' reviews from ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations'
+    const pct = expected > 0 ? Math.round(data.datasetRowCount / expected * 100) : 100
+    label = '✓ Download complete — ' + data.datasetRowCount.toLocaleString() + ' reviews from ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations (' + pct + '% of estimated ' + expected.toLocaleString() + ')'
   } else if (errored.length > 0) {
     tone = 'warning'
     label = 'Download finished with errors — ' + data.datasetRowCount.toLocaleString() + ' reviews from ' + synced.length.toLocaleString() + ' of ' + selected.length.toLocaleString() + ' locations · ' + errored.length.toLocaleString() + ' location' + (errored.length === 1 ? '' : 's') + ' failed'
   } else if (selected.length > 0 && synced.length === 0) {
     tone = 'idle'
-    label = 'Ready to download — up to ≈' + expected.toLocaleString() + ' reviews across ' + selected.length.toLocaleString() + ' locations (Google’s reported counts; actual capture is typically lower)'
+    label = 'Ready to download — estimated ≈ ' + expected.toLocaleString() + ' reviews across ' + selected.length.toLocaleString() + ' locations'
   } else {
     return null
   }
