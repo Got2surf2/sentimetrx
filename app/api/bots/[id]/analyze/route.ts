@@ -10,7 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { buildBotSchema } from '@/lib/datasetUtils'
+import { buildBotSchema, mergeSchemaStats } from '@/lib/datasetUtils'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -203,6 +203,22 @@ export async function POST(_req: Request, { params }: Params) {
     .from('datasets')
     .update({ row_count: newTotal, last_synced_at: syncTimestamp, updated_at: syncTimestamp })
     .eq('id', datasetId)
+
+  // Merge this batch's distinct values (language, sentiment, session_id, ...)
+  // into the schema so categorical filter options grow as more turns sync.
+  // buildBotSchema() ships with empty f.values, and there was no enrichment
+  // step here before — so without this, the filter modal had to fall back to
+  // filter-options' top-200 list every time, masking long-tail values.
+  try {
+    const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', datasetId).single()
+    const schema = stateRow?.schema_config
+    if (schema?.fields?.length) {
+      const merged = mergeSchemaStats(schema, rows)
+      await service.from('dataset_state').update({ schema_config: merged, updated_at: syncTimestamp }).eq('dataset_id', datasetId)
+    }
+  } catch (err) {
+    console.error('[bots/analyze] schema merge failed:', err)
+  }
 
   return NextResponse.json({ dataset_id: datasetId, synced: rows.length, total: newTotal, created })
 }
