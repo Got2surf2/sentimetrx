@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { listComments, fetchCommentsBatch, commentToRow } from '@/lib/regulations'
-import { enrichSchemaWithStats } from '@/lib/datasetUtils'
+import { mergeSchemaStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
@@ -22,20 +22,34 @@ export async function POST(req: NextRequest) {
 
   const service = createServiceRoleClient()
 
-  // If finalizing (last step), compute analytics and mark complete
+  // If finalizing (last step), compute analytics and mark complete. We also
+  // do a full-dataset schema scan here as a safety net — per-batch merges
+  // (below) keep the schema current during the download, but a final pass
+  // guarantees nothing was missed if a batch insert raced with a schema read.
   if (finalize) {
     try {
       const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', dataset_id).single()
       const schema = stateRow?.schema_config
       if (schema?.fields?.length) {
-        const { data: sampleFlat } = await service.from('dataset_rows_flat')
-          .select('data').eq('dataset_id', dataset_id).limit(100)
-        if (sampleFlat?.length) {
-          const sampleRows = sampleFlat.map(function(r: { data: Record<string, unknown> }) { return r.data })
-          const enriched = enrichSchemaWithStats(schema, sampleRows)
-          await service.from('dataset_state').update({ schema_config: enriched, updated_at: new Date().toISOString() }).eq('dataset_id', dataset_id)
+        // Full scan of dataset_rows_flat — page through all rows, merge each
+        // page's distinct values into the schema. Replaces the previous
+        // 100-row sample which froze the schema at whichever 100 rows the
+        // database returned first.
+        let merged = schema
+        let off = 0
+        const PAGE = 1000
+        while (true) {
+          const { data: page } = await service.from('dataset_rows_flat')
+            .select('data').eq('dataset_id', dataset_id)
+            .order('row_index', { ascending: true }).range(off, off + PAGE - 1)
+          if (!page || page.length === 0) break
+          const rows = page.map(function(r: { data: Record<string, unknown> }) { return r.data })
+          merged = mergeSchemaStats(merged, rows)
+          if (page.length < PAGE) break
+          off += PAGE
         }
-        const analytics = await computeAnalyticsSQL(service, dataset_id, schema)
+        await service.from('dataset_state').update({ schema_config: merged, updated_at: new Date().toISOString() }).eq('dataset_id', dataset_id)
+        const analytics = await computeAnalyticsSQL(service, dataset_id, merged)
         await service.from('dataset_state').update({ analytics, updated_at: new Date().toISOString() }).eq('dataset_id', dataset_id)
       }
     } catch (err) {
@@ -91,6 +105,22 @@ export async function POST(req: NextRequest) {
     await service.from('datasets').update({
       row_count: currentTotal, updated_at: syncTimestamp,
     }).eq('id', dataset_id)
+
+    // Merge this batch's distinct values into the schema so categorical fields
+    // (agency, docket_id, country, state, title, ...) grow as comments come
+    // in — the user can filter on real values mid-download instead of waiting
+    // for finalize. Ignored if there's no schema yet (regulations-sources
+    // creates one upfront, but be defensive).
+    try {
+      const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', dataset_id).single()
+      const schema = stateRow?.schema_config
+      if (schema?.fields?.length) {
+        const merged = mergeSchemaStats(schema, rows)
+        await service.from('dataset_state').update({ schema_config: merged, updated_at: syncTimestamp }).eq('dataset_id', dataset_id)
+      }
+    } catch (err) {
+      console.error('[regulations] per-batch schema merge failed:', err)
+    }
   }
 
   // Update download progress in description
