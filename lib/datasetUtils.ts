@@ -173,6 +173,50 @@ export function enrichSchemaWithStats(
   return { ...schema, fields: enriched }
 }
 
+// Merge new-batch row stats INTO an existing schema instead of replacing it.
+// Use this on incremental syncs (Google Reviews, Reddit, etc.) so categorical
+// `values` lists for per-batch fields (location, author, subreddit, ...) grow
+// as new batches arrive, instead of being frozen at whatever the first batch
+// contained. Numeric min/max widen to cover the new batch; user-set type/sqt/
+// label/etc. are preserved.
+export function mergeSchemaStats(
+  schema: SchemaConfig,
+  newRows: Record<string, unknown>[]
+): SchemaConfig {
+  if (!schema?.fields?.length || newRows.length === 0) return schema
+  const merged = schema.fields.map(function(f) {
+    const colValues = newRows.map(function(r) { return r[f.field] })
+    const newStats  = computeFieldStats(f.field, colValues)
+    const out: SchemaFieldConfig = { ...f }
+
+    // Union new distinct values with existing; cap at 500 to bound JSON size.
+    if ((f.type === 'categorical' || f.type === 'date') && Array.isArray(newStats.values) && newStats.values.length > 0) {
+      const existing = Array.isArray(f.values) ? f.values : []
+      const union    = Array.from(new Set([...existing, ...newStats.values])).sort().slice(0, 500)
+      out.values = union
+    }
+
+    // Widen numeric range to cover the new batch.
+    if (f.type === 'numeric') {
+      if (typeof newStats.min === 'number') {
+        out.min = (typeof f.min === 'number') ? Math.min(f.min, newStats.min) : newStats.min
+      }
+      if (typeof newStats.max === 'number') {
+        out.max = (typeof f.max === 'number') ? Math.max(f.max, newStats.max) : newStats.max
+      }
+    }
+
+    // Bump nonNullCount so schema diagnostics reflect cumulative rows.
+    if (typeof newStats.nonNullCount === 'number' && newStats.nonNullCount > 0) {
+      const prev = (typeof f.nonNullCount === 'number') ? f.nonNullCount : 0
+      out.nonNullCount = prev + newStats.nonNullCount
+    }
+
+    return out
+  })
+  return { ...schema, fields: merged }
+}
+
 export function flattenCustomQuestions(
   payload: SurveyPayload | null | undefined,
   config: StudyConfig | null | undefined

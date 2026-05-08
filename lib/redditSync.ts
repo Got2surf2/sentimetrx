@@ -3,7 +3,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchThreadComments, commentToRow, type RedditComment } from './reddit'
-import { buildRedditSchema, enrichSchemaWithStats } from './datasetUtils'
+import { buildRedditSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
 import { computeAnalyticsSQL } from './analyticsCompute'
 
 export interface RedditSyncResult {
@@ -139,7 +139,7 @@ export async function syncRedditSource(
   // Insert all rows into dataset
   if (allRows.length > 0) {
     await insertRedditRows(service, source.dataset_id, allRows)
-    await ensureSchemaAndRecompute(service, source.dataset_id, allRows.slice(0, 100))
+    await ensureSchemaAndRecompute(service, source.dataset_id, allRows)
   }
 
   // Update source totals
@@ -189,11 +189,16 @@ async function ensureSchemaAndRecompute(service: SupabaseClient, datasetId: stri
   if (!schema?.fields?.length) {
     schema = buildRedditSchema()
     schema = enrichSchemaWithStats(schema, sampleRows)
+  } else if (sampleRows.length > 0) {
+    // Merge new-batch distinct values into existing f.values so per-thread
+    // fields (subreddit, author, ...) grow across syncs instead of staying
+    // frozen at the first batch.
+    schema = mergeSchemaStats(schema, sampleRows)
+  }
+  if (schema?.fields?.length) {
     await service.from('dataset_state').update({
       schema_config: schema, updated_at: new Date().toISOString(),
     }).eq('dataset_id', datasetId)
-  }
-  if (schema?.fields?.length) {
     try {
       const analytics = await computeAnalyticsSQL(service, datasetId, schema)
       await service.from('dataset_state').update({

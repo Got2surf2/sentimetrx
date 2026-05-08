@@ -4,7 +4,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { submitReviewTask, checkReviewTask, type ReviewTaskRef, type DfsReview } from './dataforseo'
-import { buildGoogleReviewsSchema, enrichSchemaWithStats } from './datasetUtils'
+import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
 import { computeAnalyticsSQL } from './analyticsCompute'
 
 export interface SyncResult {
@@ -415,11 +415,16 @@ async function ensureSchemaAndRecompute(service: SupabaseClient, datasetId: stri
   if (!schema?.fields?.length) {
     schema = buildGoogleReviewsSchema()
     schema = enrichSchemaWithStats(schema, sampleRows)
+  } else if (sampleRows.length > 0) {
+    // Merge new-batch distinct values into existing f.values so per-location
+    // fields (location, location_city, location_state, author, ...) grow as
+    // additional locations sync — instead of being frozen at the first batch.
+    schema = mergeSchemaStats(schema, sampleRows)
+  }
+  if (schema?.fields?.length) {
     await service.from('dataset_state').update({
       schema_config: schema, updated_at: new Date().toISOString(),
     }).eq('dataset_id', datasetId)
-  }
-  if (schema?.fields?.length) {
     try {
       const analytics = await computeAnalyticsSQL(service, datasetId, schema)
       await service.from('dataset_state').update({
