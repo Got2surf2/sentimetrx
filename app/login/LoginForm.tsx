@@ -4,6 +4,13 @@ import { useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+// Brand palette — matches email-wordmark.svg and the rich Supabase email
+// templates so users move between sign-in, magic link, and password reset
+// without a visual gear-shift.
+const HERMES = '#E8632A'
+const HERMES_DEEP = '#c84e1d'
+const TEAL = '#0F7173'
+
 type Mode = 'login' | 'forgot' | 'magic'
 
 function LoginFormInner() {
@@ -20,7 +27,12 @@ function LoginFormInner() {
   const urlError     = searchParams.get('error')
   const supabase     = createClient()
 
-  const inputClass = 'w-full px-4 py-3 rounded-xl text-sm text-white placeholder-slate-500 bg-slate-800 border border-slate-700 outline-none focus:border-cyan-500 transition-colors'
+  const inputClass = 'w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all'
+
+  const primaryBtn: React.CSSProperties = {
+    background: HERMES,
+    color: 'white',
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -83,30 +95,35 @@ function LoginFormInner() {
     }
   }
 
+  const sentCard = (icon: string, title: string, body: React.ReactNode) => (
+    <div
+      className="text-center p-6 rounded-xl border"
+      style={{ background: '#fff7f0', borderColor: '#fcd5c0' }}
+    >
+      <div className="text-3xl mb-3">{icon}</div>
+      <p className="font-semibold mb-1" style={{ color: '#1f2937' }}>{title}</p>
+      <p className="text-sm leading-relaxed" style={{ color: '#6b7280' }}>{body}</p>
+      <button
+        onClick={() => { setMode('login'); setSent(false); setMagicSent(false); setError(null) }}
+        className="mt-5 text-xs transition-colors"
+        style={{ color: TEAL }}
+      >
+        Back to sign in
+      </button>
+    </div>
+  )
+
   if (mode === 'magic' && magicSent) {
-    return (
-      <div className="text-center p-6 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-        <div className="text-3xl mb-3">✉️</div>
-        <p className="text-white font-medium mb-1">Check your email</p>
-        <p className="text-slate-400 text-sm leading-relaxed">
-          We sent a sign-in link to <span className="text-white">{email}</span>.
-          Click it to log in. The link is single-use and expires shortly.
-        </p>
-        <button
-          onClick={() => { setMode('login'); setMagicSent(false); setError(null) }}
-          className="mt-5 text-xs text-slate-500 hover:text-white transition-colors"
-        >
-          Back to login
-        </button>
-      </div>
-    )
+    return sentCard('✉️', 'Check your email', (
+      <>We sent a sign-in link to <span style={{ color: '#1f2937', fontWeight: 600 }}>{email}</span>. Click it to log in. The link is single-use and expires shortly.</>
+    ))
   }
 
   if (mode === 'magic') {
     return (
       <div className="flex flex-col gap-4">
-        <p className="text-slate-400 text-sm text-center leading-relaxed">
-          Enter your email and we will send you a one-time sign-in link. No password needed.
+        <p className="text-sm text-center leading-relaxed" style={{ color: '#6b7280' }}>
+          Enter your email and we’ll send you a one-time sign-in link. No password needed.
         </p>
         <form onSubmit={handleMagicLink} className="flex flex-col gap-3">
           <input
@@ -117,18 +134,20 @@ function LoginFormInner() {
             required
             className={inputClass}
           />
-          {error && <p className="text-red-400 text-xs px-1">{error}</p>}
+          {error && <p className="text-xs px-1" style={{ color: '#dc2626' }}>{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-semibold text-sm transition-all"
+            style={loading ? { background: '#d1d5db', color: '#6b7280' } : primaryBtn}
+            className="w-full py-3 rounded-xl font-semibold text-sm transition-all"
           >
             {loading ? 'Sending...' : 'Email me a sign-in link'}
           </button>
         </form>
         <button
           onClick={() => { setMode('login'); setError(null) }}
-          className="text-xs text-slate-500 hover:text-white transition-colors text-center"
+          className="text-xs text-center transition-colors"
+          style={{ color: TEAL }}
         >
           Back to password sign-in
         </button>
@@ -137,29 +156,16 @@ function LoginFormInner() {
   }
 
   if (mode === 'forgot' && sent) {
-    return (
-      <div className="text-center p-6 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-        <div className="text-3xl mb-3">📬</div>
-        <p className="text-white font-medium mb-1">Check your email</p>
-        <p className="text-slate-400 text-sm leading-relaxed">
-          We sent a reset link to <span className="text-white">{email}</span>.
-          Click it to set a new password.
-        </p>
-        <button
-          onClick={() => { setMode('login'); setSent(false); setError(null) }}
-          className="mt-5 text-xs text-slate-500 hover:text-white transition-colors"
-        >
-          Back to login
-        </button>
-      </div>
-    )
+    return sentCard('📬', 'Check your email', (
+      <>We sent a reset link to <span style={{ color: '#1f2937', fontWeight: 600 }}>{email}</span>. Click it to set a new password.</>
+    ))
   }
 
   if (mode === 'forgot') {
     return (
       <div className="flex flex-col gap-4">
-        <p className="text-slate-400 text-sm text-center leading-relaxed">
-          Enter your email and we will send you a link to reset your password.
+        <p className="text-sm text-center leading-relaxed" style={{ color: '#6b7280' }}>
+          Enter your email and we’ll send you a link to reset your password.
         </p>
         <form onSubmit={handleForgot} className="flex flex-col gap-3">
           <input
@@ -170,20 +176,22 @@ function LoginFormInner() {
             required
             className={inputClass}
           />
-          {error && <p className="text-red-400 text-xs px-1">{error}</p>}
+          {error && <p className="text-xs px-1" style={{ color: '#dc2626' }}>{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-semibold text-sm transition-all"
+            style={loading ? { background: '#d1d5db', color: '#6b7280' } : primaryBtn}
+            className="w-full py-3 rounded-xl font-semibold text-sm transition-all"
           >
             {loading ? 'Sending...' : 'Send reset link'}
           </button>
         </form>
         <button
           onClick={() => { setMode('login'); setError(null) }}
-          className="text-xs text-slate-500 hover:text-white transition-colors text-center"
+          className="text-xs text-center transition-colors"
+          style={{ color: TEAL }}
         >
-          Back to login
+          Back to sign in
         </button>
       </div>
     )
@@ -192,7 +200,10 @@ function LoginFormInner() {
   return (
     <form onSubmit={handleLogin} className="flex flex-col gap-3">
       {urlError && (
-        <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs leading-relaxed">
+        <div
+          className="px-4 py-3 rounded-xl text-xs leading-relaxed"
+          style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }}
+        >
           {urlError}
         </div>
       )}
@@ -212,27 +223,33 @@ function LoginFormInner() {
         required
         className={inputClass}
       />
-      {error && <p className="text-red-400 text-xs px-1">{error}</p>}
+      {error && <p className="text-xs px-1" style={{ color: '#dc2626' }}>{error}</p>}
       <button
         type="submit"
         disabled={loading}
-        className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-semibold text-sm transition-all mt-1"
+        style={loading ? { background: '#d1d5db', color: '#6b7280' } : primaryBtn}
+        className="w-full py-3 rounded-xl font-semibold text-sm transition-all mt-1 hover:opacity-95"
+        onMouseDown={e => { if (!loading) (e.currentTarget.style.background = HERMES_DEEP) }}
+        onMouseUp={e => { if (!loading) (e.currentTarget.style.background = HERMES) }}
+        onMouseLeave={e => { if (!loading) (e.currentTarget.style.background = HERMES) }}
       >
         {loading ? 'Signing in...' : 'Sign in'}
       </button>
-      <div className="flex items-center justify-center gap-3 mt-1 text-xs">
+      <div className="flex items-center justify-center gap-3 mt-2 text-xs">
         <button
           type="button"
           onClick={() => { setMode('magic'); setError(null) }}
-          className="text-cyan-400 hover:text-cyan-300 transition-colors"
+          className="transition-colors hover:underline"
+          style={{ color: HERMES, fontWeight: 600 }}
         >
           Email me a sign-in link
         </button>
-        <span className="text-slate-700">·</span>
+        <span style={{ color: '#d1d5db' }}>·</span>
         <button
           type="button"
           onClick={() => { setMode('forgot'); setError(null) }}
-          className="text-slate-500 hover:text-white transition-colors"
+          className="transition-colors hover:underline"
+          style={{ color: '#6b7280' }}
         >
           Forgot your password?
         </button>
