@@ -42,6 +42,9 @@ export default function LoginPage() {
           </div>
           <LoginForm />
         </div>
+        <p className="text-center text-xs mt-5" style={{ color: '#9ca3af' }}>
+          Trouble signing in? Email <a className="underline" style={{ color: '#0F7173' }} href="mailto:support@datanautix.com">support@datanautix.com</a>
+        </p>
       </div>
     </main>
   )
