@@ -719,16 +719,38 @@ function wrapUp(config: any) {
   })
 }
 
-async function callClaude(system: string, user: string, timeoutMs = 3000, verbose = false): Promise<{ text: string; thinking: string[] }> {
-  const verboseSystem = verbose
-    ? system + '\n\nDEBUG MODE — Think step by step. Before your response, write your reasoning process (what you noticed, what you considered, why you chose this response). Then write a line containing exactly "---RESPONSE---" and your actual message after it.'
-    : system
+// system can be a plain string OR { base, suffix? } where `base` is marked
+// for prompt caching (static across calls — e.g. baseSystemPrompt + topic
+// list) and `suffix` is the per-call dynamic tail (e.g. conversation history).
+// Caching the base block is the difference between paying the full
+// input-tokens-per-minute rate every call and getting most of the prompt
+// served as cache reads (which don't count against the rate limit).
+async function callClaude(
+  system: string | { base: string; suffix?: string },
+  user: string,
+  timeoutMs = 3000,
+  verbose = false,
+): Promise<{ text: string; thinking: string[] }> {
+  const debugTail = '\n\nDEBUG MODE — Think step by step. Before your response, write your reasoning process (what you noticed, what you considered, why you chose this response). Then write a line containing exactly "---RESPONSE---" and your actual message after it.'
+
+  let systemPayload: string | Array<{ type: 'text'; text: string; cache?: boolean }>
+  if (typeof system === 'string') {
+    // Verbose appends per-call instructions, so don't cache that variant.
+    systemPayload = verbose ? system + debugTail : system
+  } else {
+    const baseText = system.base + (verbose ? debugTail : '')
+    systemPayload = [
+      { type: 'text', text: baseText, cache: true },
+      ...(system.suffix ? [{ type: 'text' as const, text: system.suffix }] : []),
+    ]
+  }
+
   try {
     const result = await callAI({
       tier: 'fast',
       maxTokens: verbose ? 500 : 200,
       timeoutMs: verbose ? Math.max(timeoutMs, 5000) : timeoutMs,
-      system: verboseSystem,
+      system: systemPayload,
       messages: [{ role: 'user', content: user }],
     })
     if (_usageCtx) logUsage(_usageCtx, result.usage)
@@ -947,6 +969,9 @@ async function matchResponseToTopic(
 
   const topicList = topics.map((t, i) => `${i + 1}. "${t.label}" — ${t.description || t.question}`).join('\n')
 
+  // Whole system is static per (session, language, nudge=false): cache it.
+  // Calls 2+ in the session reuse the cache, so the topic list + JSON
+  // instructions don't get charged against the input-tokens-per-minute rate.
   const system = withNudge(baseSystemPrompt(config, language) + `
 
 DISCUSSION TOPICS:
@@ -959,7 +984,7 @@ Return ONLY a JSON object (no other text):
 
   const user = `The participant was asked a broad opening question and responded:\n\n"${response}"\n\nMatch to a topic and follow up.`
 
-  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
+  const result = await callClaude({ base: system }, user, config?.engine?.ai_timeout_ms || 3000, verbose)
   const raw = result.text
 
   try {
@@ -1007,11 +1032,15 @@ Return ONLY a JSON object (no other text):
 // ── Generate clarifier for short responses ───────────────────────────────
 
 async function generateClarifier(config: any, message: string, turns: any[], language?: string, verbose = false, nudge = false): Promise<{ text: string; thinking: string[] }> {
-  const system = withNudge(baseSystemPrompt(config, language) + `\n\n${buildConversationContext(turns) ? `CONVERSATION SO FAR:\n${buildConversationContext(turns)}` : ''}`, nudge)
+  // baseSystemPrompt is static per session — cache it. Convo history grows
+  // per turn (per participant), so it lives in the dynamic suffix.
+  const base = baseSystemPrompt(config, language)
+  const convo = buildConversationContext(turns)
+  const suffix = withNudge(convo ? `CONVERSATION SO FAR:\n${convo}` : '', nudge)
 
   const user = `The participant just said: "${message}"\n\nThis was a short response. Ask a warm, natural follow-up to draw out more detail. Maximum 30 words. Just the question.`
 
-  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
+  const result = await callClaude({ base, suffix }, user, config?.engine?.ai_timeout_ms || 3000, verbose)
   return { text: (result.text && isOutputClean(result.text)) ? result.text : 'Could you tell me a bit more about that?', thinking: result.thinking }
 }
 
@@ -1029,7 +1058,9 @@ async function generateTransition(
 ): Promise<{ text: string; thinking: string[] }> {
   const convo = buildConversationContext(turns)
 
-  const system = withNudge(baseSystemPrompt(config, language) + `\n\n${convo ? `CONVERSATION SO FAR:\n${convo}` : ''}`, nudge)
+  // Cache baseSystemPrompt; convo history is the dynamic suffix.
+  const base = baseSystemPrompt(config, language)
+  const suffix = withNudge(convo ? `CONVERSATION SO FAR:\n${convo}` : '', nudge)
 
   const isOrganic = nextTopic.source === 'auto_detected'
   const audience = getAudienceLabels(config)
@@ -1049,6 +1080,6 @@ ${nextTopic.follow_up_angles?.length ? 'Angles to consider: ' + nextTopic.follow
 
 ${skipInstruction} Maximum 40 words. Just the message.`
 
-  const result = await callClaude(system, user, config?.engine?.ai_timeout_ms || 3000, verbose)
+  const result = await callClaude({ base, suffix }, user, config?.engine?.ai_timeout_ms || 3000, verbose)
   return { text: (result.text && isOutputClean(result.text)) ? result.text : (isOrganic ? 'After listening to what other ' + audience.participants + ' are saying, ' + nextTopic.label + ' seems important — ' + nextTopic.question : 'Let me ask you about something else — ' + nextTopic.question), thinking: result.thinking }
 }

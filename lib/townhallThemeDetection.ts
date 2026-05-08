@@ -69,13 +69,17 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
   const contextNote = config?.context?.event_description ? '\nEvent: ' + config.context.event_description : ''
   const industryNote = config?.industry ? '\nIndustry: ' + config.industry.replace(/_/g, ' ') : ''
 
-  const prompt = 'You are a qualitative research expert analyzing a live town hall discussion.' + contextNote + industryNote +
-    '\n\n' + allTexts.length + ' total responses (' + sampled.length + ' sampled below).' +
-    existingList +
-    '\n\nRESPONSES:\n' + corpus +
+  // Static framing (system prompt) — identical across every detection call in a
+  // session, so cache it. The dynamic corpus + existing themes go in the user
+  // message and are charged normally.
+  const systemFraming = 'You are a qualitative research expert analyzing a live town hall discussion.' + contextNote + industryNote +
     '\n\nIdentify 2-5 NEW emerging themes NOT covered by existing themes. Prioritize topics that participants are raising but that are NOT yet captured as themes — look for under-represented perspectives and less-discussed issues that deserve attention. For each theme provide 8-15 keywords including core terms, synonyms, and informal variants.\n\n' +
-    'Return ONLY valid JSON:\n' +
+    'Return ONLY valid JSON (no markdown, no backticks):\n' +
     '{"themes":[{"name":"Theme Name","description":"One sentence.","keywords":["word1","word2"],"question":"A probing question to ask participants about this theme.","follow_up_angles":["angle1","angle2"],"example_quote":"Best representative quote from the responses."}]}'
+
+  const userPrompt = allTexts.length + ' total responses (' + sampled.length + ' sampled below).' +
+    existingList +
+    '\n\nRESPONSES:\n' + corpus
 
   // 6. Call AI for theme detection
   let aiThemes: any[] = []
@@ -84,8 +88,8 @@ export async function detectThemesForSession(sessionId: string): Promise<{ inser
       tier: 'standard',
       maxTokens: 4000,
       timeoutMs: 20000,
-      system: 'You are a qualitative research expert. Return ONLY raw JSON — no markdown, no backticks.',
-      messages: [{ role: 'user', content: prompt }],
+      system: [{ type: 'text', text: systemFraming, cache: true }],
+      messages: [{ role: 'user', content: userPrompt }],
     })
     logUsage({ resource_type: 'townhall', resource_id: sessionId, event_type: 'theme_detect' }, result.usage)
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')

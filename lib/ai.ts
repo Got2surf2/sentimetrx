@@ -23,9 +23,16 @@ export interface AIUsageContext {
   event_type: string
 }
 
+// A system prompt may be a plain string or split into blocks. Marking a block
+// `cache: true` enables Anthropic prompt caching (cache_control: ephemeral) so
+// repeated prefixes don't count against the input-tokens-per-minute rate limit
+// or the per-call cost. Non-Anthropic providers receive the blocks joined into
+// a single string (no caching there).
+export type SystemBlock = { type: 'text'; text: string; cache?: boolean }
+
 export interface AIRequestOptions {
   tier: ModelTier
-  system?: string
+  system?: string | SystemBlock[]
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
   maxTokens?: number
   timeoutMs?: number
@@ -124,7 +131,24 @@ function resolveProvider(opts: AIRequestOptions): ResolvedProvider {
 
 // ── Request builders ─────────────────────────────────────────────────────────
 
+// Render a string-or-blocks system prompt for Anthropic (preserves cache markers)
+function anthropicSystem(system: string | SystemBlock[] | undefined) {
+  if (!system) return undefined
+  if (typeof system === 'string') return system
+  return system.map(b => b.cache
+    ? { type: 'text', text: b.text, cache_control: { type: 'ephemeral' } }
+    : { type: 'text', text: b.text })
+}
+
+// Flatten string-or-blocks to a single string for providers without prompt caching
+function flattenSystem(system: string | SystemBlock[] | undefined): string | undefined {
+  if (!system) return undefined
+  if (typeof system === 'string') return system
+  return system.map(b => b.text).join('\n\n')
+}
+
 function buildAnthropicRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {
+  const sys = anthropicSystem(opts.system)
   return {
     url: 'https://api.anthropic.com/v1/messages',
     headers: {
@@ -135,15 +159,16 @@ function buildAnthropicRequest(resolved: ResolvedProvider, opts: AIRequestOption
     body: {
       model: resolved.model,
       max_tokens: opts.maxTokens || DEFAULT_MAX_TOKENS[opts.tier],
-      ...(opts.system ? { system: opts.system } : {}),
+      ...(sys ? { system: sys } : {}),
       messages: opts.messages,
     },
   }
 }
 
 function buildOpenAIRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {
+  const sys = flattenSystem(opts.system)
   const messages: Array<{ role: string; content: string }> = []
-  if (opts.system) messages.push({ role: 'system', content: opts.system })
+  if (sys) messages.push({ role: 'system', content: sys })
   messages.push(...opts.messages)
 
   return {
@@ -164,8 +189,9 @@ function buildAzureRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {
   const endpoint = resolved.azureEndpoint
   if (!endpoint) throw new Error('AZURE_OPENAI_ENDPOINT is required for azure-openai provider')
 
+  const sys = flattenSystem(opts.system)
   const messages: Array<{ role: string; content: string }> = []
-  if (opts.system) messages.push({ role: 'system', content: opts.system })
+  if (sys) messages.push({ role: 'system', content: sys })
   messages.push(...opts.messages)
 
   const base = endpoint.replace(/\/$/, '')
