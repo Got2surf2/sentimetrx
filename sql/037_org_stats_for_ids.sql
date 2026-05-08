@@ -8,7 +8,7 @@
 -- Restricted to service_role: the only caller is /api/admin/clients
 -- which uses createServiceRoleClient() after gating on is_admin_org.
 --
--- Apply via Supabase SQL Editor (staging + prod).
+-- Apply via the production Supabase SQL Editor.
 
 CREATE OR REPLACE FUNCTION org_stats_for_ids(p_org_ids uuid[])
 RETURNS TABLE(

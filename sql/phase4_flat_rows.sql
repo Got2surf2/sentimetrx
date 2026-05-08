@@ -1,6 +1,6 @@
 -- Phase 4: Flat row table + materialized view
--- Run this in your STAGING Supabase SQL Editor
--- https://supabase.com/dashboard → your staging project → SQL Editor → New query → Paste → Run
+-- Apply via the production Supabase SQL Editor:
+-- https://supabase.com/dashboard → SQL Editor → New query → Paste → Run
 
 -- ============================================================
 -- 1. Create flat row table

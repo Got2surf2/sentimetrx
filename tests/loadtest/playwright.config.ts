@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test'
 // the k6 script to load-test the participant flow with real browser rendering.
 //
 // Run:
-//   SESSION_ID=<uuid-or-slug> TARGET_BASE_URL=https://staging.example.com \
+//   SESSION_ID=<uuid-or-slug> TARGET_BASE_URL=http://localhost:3000 \
 //     BROWSERS=5 npx playwright test --config=tests/loadtest/playwright.config.ts
 
 const baseURL = process.env.TARGET_BASE_URL || 'http://localhost:3000'

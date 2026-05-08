@@ -6,7 +6,7 @@
 //   3. Copy the session UUID or slug.
 //
 // Run:
-//   SESSION_ID=<uuid-or-slug> TARGET=https://staging.example.com \
+//   SESSION_ID=<uuid-or-slug> TARGET=http://localhost:3000 \
 //     k6 run tests/loadtest/townhall.k6.js
 //
 // Or with overrides:
@@ -26,7 +26,8 @@
 //     run after Tier 2 is live to see real headroom)
 //
 // IMPORTANT: Pointing TARGET at production hits real DB writes, real Anthropic
-// spend, and real rate limits. Prefer staging or a throwaway prod session.
+// spend, and real rate limits. Use a clearly-named throwaway "Load Test"
+// session and ideally run outside business hours.
 
 import http from 'k6/http'
 import { check, sleep } from 'k6'

@@ -1,7 +1,7 @@
 # SentimetrX Platform Specification
 
-**Version**: 2026-04-14
-**Status**: Production (staging + production repos)
+**Version**: 2026-05-10
+**Status**: Production
 
 ---
 
@@ -9,9 +9,7 @@
 
 SentimetrX is a SaaS platform for conversational surveys and AI-powered text analytics. It combines a chatbot-style survey engine with deep text mining, theme extraction, and visual analytics. The platform serves market researchers, CX teams, and brand managers who need to collect and analyze qualitative feedback at scale.
 
-**Repos**:
-- Staging: `sentimetrx-staging` (testing before deploy)
-- Production: `sentimetrx` (pushes trigger Vercel builds)
+**Repo**: `sentimetrx` — single repo. Pushes to `main` trigger Vercel production builds.
 
 **Stack**: Next.js 14, React, TypeScript, Supabase (PostgreSQL + Auth + Storage), Anthropic Claude API, Vercel serverless, Resend email, DataForSEO.
 
@@ -373,7 +371,5 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 
 ## Deployment
 
-- **Staging**: `sentimetrx-staging` repo → Vercel project (manual push)
-- **Production**: `sentimetrx` repo → Vercel project (manual push)
-- **Promotion**: rsync staging → production, then push
-- **DB Migrations**: SQL files in `sql/` directory, applied manually to Supabase
+- **Production**: push to `main` → Vercel auto-deploys.
+- **DB Migrations**: SQL files in `sql/` directory, applied manually to Supabase via the dashboard SQL Editor.

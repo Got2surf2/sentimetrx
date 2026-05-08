@@ -11,7 +11,7 @@
  * Examples:
  *   npx tsx prototype/simulate-responses.ts abc123              # 10 responses to localhost
  *   npx tsx prototype/simulate-responses.ts abc123 50           # 50 responses
- *   npx tsx prototype/simulate-responses.ts abc123 20 --base-url=https://staging.example.com
+ *   npx tsx prototype/simulate-responses.ts abc123 20 --base-url=https://www.sentimetrx.ai
  */
 
 // ── Config ──────────────────────────────────────────────────────────────────

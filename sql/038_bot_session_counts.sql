@@ -9,7 +9,7 @@
 -- using idx_bot_turns_session(bot_id, session_id, turn_number)
 -- for an index-only scan.
 --
--- Apply via Supabase SQL Editor (staging + prod).
+-- Apply via the production Supabase SQL Editor.
 
 CREATE OR REPLACE FUNCTION bot_session_counts_for_ids(p_bot_ids uuid[])
 RETURNS TABLE(

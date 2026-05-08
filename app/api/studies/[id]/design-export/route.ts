@@ -20,7 +20,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   if (!study) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
 
-  const surveyUrl = `https://sentimetrx-staging.vercel.app/s/${study.slug || study.guid}`
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+  const surveyUrl = `${baseUrl}/s/${study.slug || study.guid}`
 
   const pptx = generateStudyDesignPptx({
     studyName: study.name,

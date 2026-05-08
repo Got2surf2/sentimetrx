@@ -11,7 +11,7 @@
 -- concurrent requests cannot both observe an expired bucket and reset
 -- the counter.
 --
--- Apply via Supabase SQL Editor (staging + prod). The TS client falls
+-- Apply via the production Supabase SQL Editor. The TS client falls
 -- back to in-memory if the RPC is unreachable, so the deploy + migration
 -- can land in either order.
 

@@ -5,7 +5,7 @@
 -- study_response_stats materialized view is empty/stale for
 -- the requested ids). Single grouped aggregate, one round trip.
 --
--- Apply via Supabase SQL Editor (staging + prod).
+-- Apply via the production Supabase SQL Editor.
 
 CREATE OR REPLACE FUNCTION study_stats_for_ids(p_study_ids uuid[])
 RETURNS TABLE(

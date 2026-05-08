@@ -1,6 +1,6 @@
-# Campaign Manager — Promotion Checklist (Staging → Production)
+# Campaign Manager — Promotion Checklist
 
-**Built:** 2026-04-09 on `sentimetrx-staging`  
+**Built:** 2026-04-09  (historical — staging environment has since been retired; single repo on `main` now)
 **Phase:** 1 (core CRUD, respondent upload, email templates, manual send)
 
 ---

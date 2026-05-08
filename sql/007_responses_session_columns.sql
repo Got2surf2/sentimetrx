@@ -4,7 +4,7 @@
 --   - Final submit (status='complete')
 --   - Device fingerprint dedup (fp_hash)
 --
--- Run this on BOTH staging and production Supabase.
+-- Apply via the production Supabase SQL Editor.
 
 -- 1. status: tracks whether a response is partial or complete
 ALTER TABLE responses ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'complete';
