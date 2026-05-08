@@ -4,6 +4,14 @@
 
 export interface CatFilter {
   type: 'cat'
+  // 'include' = allowlist (keep rows whose value is in `values`).
+  // 'exclude' = denylist (drop rows whose value is in `values`).
+  // The modal picks 'exclude' when the user starts from "All" and unchecks
+  // a few values, so long-tail values not visible in the top-N list still
+  // pass. 'include' is used when the user clicks "None" then re-selects.
+  // Old saved filters (no mode field) deserialize as 'include' for back-
+  // compat, matching pre-refactor behavior.
+  mode: 'include' | 'exclude'
   values: Set<string>
   excludeBlanks: boolean
 }
@@ -25,7 +33,7 @@ export type FieldFilter = CatFilter | RangeFilter | DateRangeFilter
 export type Filters = Record<string, FieldFilter>
 
 // Serializable versions (for JSON storage — Sets become arrays)
-export interface SerializedCatFilter { type: 'cat'; values: string[]; excludeBlanks: boolean }
+export interface SerializedCatFilter { type: 'cat'; mode?: 'include' | 'exclude'; values: string[]; excludeBlanks: boolean }
 export interface SerializedRangeFilter { type: 'range'; values: [number, number]; includeBlanks: boolean }
 export interface SerializedDateRangeFilter { type: 'daterange'; values: [number, number]; includeBlanks: boolean }
 export type SerializedFilter = SerializedCatFilter | SerializedRangeFilter | SerializedDateRangeFilter
@@ -36,7 +44,7 @@ export function serializeFilters(filters: Filters): SerializedFilters {
   Object.entries(filters).forEach(function(entry) {
     const field = entry[0], f = entry[1]
     if (f.type === 'cat') {
-      out[field] = { type: 'cat', values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
+      out[field] = { type: 'cat', mode: f.mode, values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
     } else if (f.type === 'range') {
       out[field] = { type: 'range', values: f.values, includeBlanks: f.includeBlanks }
     } else if (f.type === 'daterange') {
@@ -51,7 +59,10 @@ export function deserializeFilters(raw: SerializedFilters): Filters {
   Object.entries(raw).forEach(function(entry) {
     const field = entry[0], f = entry[1]
     if (f.type === 'cat') {
-      out[field] = { type: 'cat', values: new Set(f.values), excludeBlanks: f.excludeBlanks }
+      // Default to 'include' for filters serialized before mode existed —
+      // matches their old applyFilters behavior so saved sessions don't
+      // suddenly invert.
+      out[field] = { type: 'cat', mode: f.mode || 'include', values: new Set(f.values), excludeBlanks: f.excludeBlanks }
     } else if (f.type === 'range') {
       out[field] = f as RangeFilter
     } else if (f.type === 'daterange') {
@@ -73,13 +84,16 @@ export function applyFilters(rows: Record<string, unknown>[], filters: Filters):
       const field = entry[0], f = entry[1]
       const val = r[field]
       if (f.type === 'cat') {
-        // Blank rows are governed solely by `excludeBlanks` so the modal's
-        // "Include blanks" checkbox actually means what it says. Falling
-        // through to `f.values.has('(blank)')` was the old bug — it dropped
-        // every blank row whenever the user touched the value list, even
-        // when "Include blanks" was checked.
+        // Blank rows are governed solely by `excludeBlanks` (regardless of
+        // mode) so the modal's "Include blanks" checkbox actually means what
+        // it says.
         const isBlank = val == null || String(val).trim() === ''
         if (isBlank) return !f.excludeBlanks
+        // mode='exclude': drop rows whose value is in the denylist (long-tail
+        // values never present in the modal's top-N list still pass).
+        // mode='include': keep only rows whose value is in the allowlist (so
+        // "None" → pick a few" still works as expected).
+        if (f.mode === 'exclude') return !f.values.has(String(val))
         return f.values.has(String(val))
       }
       if (f.type === 'range') {
@@ -110,8 +124,9 @@ export function filterSummary(filters: Filters, aliases: Record<string, string>)
     const label = aliases[field] || field
     if (f.type === 'cat') {
       const vals = Array.from(f.values)
-      if (vals.length <= 2) return label + ': ' + vals.join(', ')
-      return label + ': ' + vals.length + ' values'
+      const prefix = f.mode === 'exclude' ? 'not ' : ''
+      if (vals.length <= 2) return label + ': ' + prefix + vals.join(', ')
+      return label + ': ' + prefix + vals.length + ' values'
     }
     if (f.type === 'range') return label + ': ' + f.values[0] + '\u2013' + f.values[1]
     if (f.type === 'daterange') {

@@ -13,7 +13,7 @@ const MIN_BENCHMARK_N = 10
 const MIN_OUTLIER_N = 10
 const MIN_THEME_COUNT = 5
 
-interface SerializedCatFilter { type: 'cat'; values: string[]; excludeBlanks: boolean }
+interface SerializedCatFilter { type: 'cat'; mode?: 'include' | 'exclude'; values: string[]; excludeBlanks: boolean }
 interface SerializedRangeFilter { type: 'range'; values: [number, number]; includeBlanks: boolean }
 interface SerializedDateRangeFilter { type: 'daterange'; values: [number, number]; includeBlanks: boolean }
 type SerializedFilter = SerializedCatFilter | SerializedRangeFilter | SerializedDateRangeFilter
@@ -23,8 +23,12 @@ function rowMatchesFilter(data: Record<string, any>, filters: SerializedFilters)
   return Object.entries(filters).every(([field, f]) => {
     const val = data[field]
     if (f.type === 'cat') {
-      const str = (val == null || String(val).trim() === '') ? '(blank)' : String(val)
-      if (str === '(blank)' && f.excludeBlanks) return false
+      // Match lib/filterUtils.ts applyFilters semantics: blanks governed by
+      // excludeBlanks, then mode-specific allow/deny on non-blanks.
+      const isBlank = val == null || String(val).trim() === ''
+      if (isBlank) return !f.excludeBlanks
+      const str = String(val)
+      if (f.mode === 'exclude') return !f.values.includes(str)
       return f.values.includes(str)
     }
     if (f.type === 'range') {
@@ -301,7 +305,7 @@ export async function GET(req: NextRequest) {
   // Build summaries for the shared page
   var filterFieldSummary: Record<string, string> = {}
   for (const [field, f] of Object.entries(filters)) {
-    if (f.type === 'cat') filterFieldSummary[fieldLabels[field] || field] = f.values.join(', ')
+    if (f.type === 'cat') filterFieldSummary[fieldLabels[field] || field] = (f.mode === 'exclude' ? 'not ' : '') + f.values.join(', ')
     else if (f.type === 'range') filterFieldSummary[fieldLabels[field] || field] = f.values[0] + ' - ' + f.values[1]
   }
 

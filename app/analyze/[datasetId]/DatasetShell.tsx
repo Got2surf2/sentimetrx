@@ -52,7 +52,9 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
           Object.entries(d.session_state.filters).forEach(function(entry) {
             const field = entry[0], f = entry[1] as any
             if (f.type === 'cat') {
-              restored[field] = { type: 'cat', values: new Set(f.values || []), excludeBlanks: f.excludeBlanks || false }
+              // Old saved sessions (pre-mode) default to 'include' to preserve
+              // their original behavior; new ones round-trip whatever was saved.
+              restored[field] = { type: 'cat', mode: f.mode || 'include', values: new Set(f.values || []), excludeBlanks: f.excludeBlanks || false }
             } else {
               restored[field] = f
             }
@@ -71,7 +73,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
       .then(function(data: { locations: string[] | null }) {
         if (data.locations && data.locations.length > 0) {
           setLockedFilters({
-            location: { type: 'cat', values: new Set(data.locations), excludeBlanks: true }
+            location: { type: 'cat', mode: 'include', values: new Set(data.locations), excludeBlanks: true }
           })
         }
       })
@@ -143,7 +145,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
     Object.entries(filters).forEach(function(entry) {
       const field = entry[0], f = entry[1]
       if (f.type === 'cat') {
-        serializedFilters[field] = { type: 'cat', values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
+        serializedFilters[field] = { type: 'cat', mode: f.mode, values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
       } else {
         serializedFilters[field] = f
       }
@@ -182,7 +184,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
             const field = entry[0], f = entry[1]
             const label = aliases[field] || field
             let desc = ''
-            if (f.type === 'cat') { const vals = Array.from(f.values); desc = vals.length <= 2 ? vals.join(', ') : vals.length + ' values' }
+            if (f.type === 'cat') { const vals = Array.from(f.values); const pre = f.mode === 'exclude' ? 'not ' : ''; desc = vals.length <= 2 ? pre + vals.join(', ') : pre + vals.length + ' values' }
             else if (f.type === 'range') desc = f.values[0] + '\u2013' + f.values[1]
             else if (f.type === 'daterange') { const fmt = function(ts: number) { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() }; desc = fmt(f.values[0]) + '\u2013' + fmt(f.values[1]) }
             return (

@@ -20,7 +20,7 @@ interface Props {
 }
 
 // Internal pending filter format (serializable — values as arrays not Sets)
-interface PendingCat { type: 'cat'; values: string[]; excludeBlanks: boolean }
+interface PendingCat { type: 'cat'; mode: 'include' | 'exclude'; values: string[]; excludeBlanks: boolean }
 interface PendingRange { type: 'range'; values: [number, number]; includeBlanks: boolean }
 interface PendingDate { type: 'daterange'; values: [number, number]; includeBlanks: boolean }
 type PendingFilter = PendingCat | PendingRange | PendingDate
@@ -30,7 +30,7 @@ function toPending(filters: Filters): PendingFilters {
   var out: PendingFilters = {}
   Object.entries(filters).forEach(function(e) {
     var field = e[0], f = e[1]
-    if (f.type === 'cat') out[field] = { type: 'cat', values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
+    if (f.type === 'cat') out[field] = { type: 'cat', mode: f.mode, values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
     else if (f.type === 'range') out[field] = { type: 'range', values: [...f.values], includeBlanks: f.includeBlanks }
     else if (f.type === 'daterange') out[field] = { type: 'daterange', values: [...f.values], includeBlanks: f.includeBlanks }
   })
@@ -41,7 +41,7 @@ function toReal(pending: PendingFilters): Filters {
   var out: Filters = {}
   Object.entries(pending).forEach(function(e) {
     var field = e[0], f = e[1]
-    if (f.type === 'cat') out[field] = { type: 'cat', values: new Set(f.values), excludeBlanks: f.excludeBlanks }
+    if (f.type === 'cat') out[field] = { type: 'cat', mode: f.mode, values: new Set(f.values), excludeBlanks: f.excludeBlanks }
     else if (f.type === 'range') out[field] = f as any
     else if (f.type === 'daterange') out[field] = f as any
   })
@@ -156,8 +156,9 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                 var field = e[0], f = e[1]
                 var lbl = fieldLabel(field)
                 var fmtChipDate = function(ts: number) { var d = new Date(ts); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+                var catPrefix = f.type === 'cat' && f.mode === 'exclude' ? 'not ' : ''
                 var desc = f.type === 'cat'
-                  ? Array.from(f.values).slice(0, 2).map(function(v) { return resolveAlias(field, v, schema) }).join(', ') + (f.values.size > 2 ? ' +' + (f.values.size - 2) : '')
+                  ? catPrefix + Array.from(f.values).slice(0, 2).map(function(v) { return resolveAlias(field, v, schema) }).join(', ') + (f.values.size > 2 ? ' +' + (f.values.size - 2) : '')
                   : f.type === 'daterange'
                     ? fmtChipDate(f.values[0]) + ' \u2013 ' + fmtChipDate(f.values[1])
                     : f.values[0] + ' \u2013 ' + f.values[1]
@@ -201,19 +202,59 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
               // ── Categorical ──────────────────────────────────────────
               if (f.type === 'categorical') {
                 var allVals = f.values || Array.from(new Set(rows.map(function(r) { return String(r[f.field] ?? '') }).filter(Boolean))).sort()
-                var selectedVals = pf && pf.type === 'cat' ? new Set(pf.values) : null
-                var allSelected = !selectedVals || selectedVals.size === allVals.length
-                var excludeBlanks = pf && (pf as PendingCat).excludeBlanks === true
+                var pfCat = pf && pf.type === 'cat' ? (pf as PendingCat) : null
+                // Default to 'exclude' mode for new toggles — that way unchecking
+                // one value from "All" creates a denylist, and long-tail values
+                // not present in the modal's top-N list still pass the filter.
+                var mode: 'include' | 'exclude' = pfCat ? pfCat.mode : 'exclude'
+                var pfVals: Set<string> = pfCat ? new Set(pfCat.values) : new Set()
+                var excludeBlanks = !!(pfCat && pfCat.excludeBlanks)
 
-                var toggleVal = function(v: string) {
-                  var cur = selectedVals ? new Set(selectedVals) : new Set(allVals)
-                  if (cur.has(v)) cur.delete(v); else cur.add(v)
-                  if (cur.size === allVals.length && !excludeBlanks) { removePending(f.field) }
-                  else { updatePending(f.field, { type: 'cat', values: Array.from(cur), excludeBlanks: excludeBlanks }) }
+                // "I want this in my data" highlight rule:
+                //   no filter → all highlighted
+                //   exclude mode → highlighted iff NOT in denylist
+                //   include mode → highlighted iff in allowlist
+                var isHighlighted = function(v: string): boolean {
+                  if (!pfCat) return true
+                  if (mode === 'exclude') return !pfVals.has(v)
+                  return pfVals.has(v)
                 }
 
+                // "All" effective state — used to highlight the All button.
+                var allSelected = !pfCat
+                  || (mode === 'exclude' && pfVals.size === 0)
+                  || (mode === 'include' && pfVals.size >= allVals.length)
+
+                var toggleVal = function(v: string) {
+                  var willHighlight = !isHighlighted(v)
+                  var nextVals = new Set(pfVals)
+                  if (mode === 'exclude') {
+                    if (willHighlight) nextVals.delete(v); else nextVals.add(v)
+                  } else {
+                    if (willHighlight) nextVals.add(v); else nextVals.delete(v)
+                  }
+                  var nowAll = (mode === 'exclude' && nextVals.size === 0)
+                            || (mode === 'include' && nextVals.size >= allVals.length)
+                  if (nowAll && !excludeBlanks) {
+                    removePending(f.field)
+                  } else {
+                    updatePending(f.field, { type: 'cat', mode: mode, values: Array.from(nextVals), excludeBlanks: excludeBlanks })
+                  }
+                }
+
+                // "All" — clear the filter entirely (everything passes).
                 var selectAllCat = function() { removePending(f.field) }
-                var excludeAllCat = function() { updatePending(f.field, { type: 'cat', values: [], excludeBlanks: excludeBlanks }) }
+                // "None" — flip into include mode with empty allowlist (= nothing
+                // passes). User then clicks values to add to the allowlist.
+                var excludeAllCat = function() {
+                  updatePending(f.field, { type: 'cat', mode: 'include', values: [], excludeBlanks: excludeBlanks })
+                }
+
+                var modeLabel = pfCat
+                  ? (mode === 'exclude'
+                      ? 'Excluding ' + pfVals.size + ' value' + (pfVals.size === 1 ? '' : 's')
+                      : 'Including only ' + pfVals.size + ' value' + (pfVals.size === 1 ? '' : 's'))
+                  : ''
 
                 return (
                   <div key={f.field} style={{ background: T.bgCard, border: (isActive ? '2px solid ' + T.accent : '1px solid ' + T.border), borderRadius: 10, padding: '14px 16px' }}>
@@ -224,9 +265,12 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                         <button onClick={excludeAllCat} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: 'transparent', border: '1px solid ' + T.borderMid, color: T.textMid, cursor: 'pointer' }}>None</button>
                       </div>
                     </div>
+                    {modeLabel && (
+                      <div style={{ fontSize: 10, fontWeight: 600, color: T.accent, marginBottom: 6 }}>{modeLabel}</div>
+                    )}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, maxHeight: 130, overflowY: 'auto' }}>
                       {allVals.map(function(v) {
-                        var sel = allSelected || (selectedVals != null && selectedVals.has(v))
+                        var sel = isHighlighted(v)
                         return (
                           <button key={v} onClick={function() { toggleVal(v) }}
                             style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: sel ? T.accentBg : 'transparent', border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, cursor: 'pointer', fontWeight: sel ? 600 : 400, transition: 'all .1s' }}>
@@ -241,8 +285,23 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                           <input type="checkbox" checked={!excludeBlanks}
                             onChange={function() {
                               var newExclude = !excludeBlanks
-                              if (!selectedVals && !newExclude) { removePending(f.field) }
-                              else { updatePending(f.field, { type: 'cat', values: selectedVals ? Array.from(selectedVals) : [...allVals], excludeBlanks: newExclude }) }
+                              if (!pfCat) {
+                                // No filter yet — only need to act if user wants
+                                // to drop blanks. Use exclude mode so non-blank
+                                // long-tail values still pass.
+                                if (newExclude) {
+                                  updatePending(f.field, { type: 'cat', mode: 'exclude', values: [], excludeBlanks: true })
+                                }
+                              } else {
+                                updatePending(f.field, { type: 'cat', mode: mode, values: Array.from(pfVals), excludeBlanks: newExclude })
+                                // If toggling blanks back on collapses to the
+                                // identity filter, clear it.
+                                if (!newExclude) {
+                                  var collapses = (mode === 'exclude' && pfVals.size === 0)
+                                              || (mode === 'include' && pfVals.size >= allVals.length)
+                                  if (collapses) removePending(f.field)
+                                }
+                              }
                             }}
                             style={{ width: 12, height: 12, accentColor: T.accent, cursor: 'pointer' }} />
                           Include blanks <span style={{ color: T.textFaint }}>({blankCount})</span>
