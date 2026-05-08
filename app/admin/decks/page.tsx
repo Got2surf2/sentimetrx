@@ -25,7 +25,7 @@ export default async function DecksPage() {
   // We grab the last 200 rows and reduce in memory — simpler than a SQL view
   // and the table is tiny.
   const service = createServiceRoleClient()
-  const { data: logs } = await service
+  const { data: logs, error: logsError } = await service
     .from('deck_download_log')
     .select('deck_name, deck_variant, downloaded_at')
     .order('downloaded_at', { ascending: false })
@@ -36,6 +36,16 @@ export default async function DecksPage() {
     const key = row.deck_variant ? `${row.deck_name}:${row.deck_variant}` : row.deck_name
     if (!lastDownloaded[key]) lastDownloaded[key] = row.downloaded_at
   }
+
+  // Diagnostic: total rows in the log table. If 0 even after a download,
+  // the table probably is not in place / the helper is failing silently.
+  const { count: totalDownloads } = await service
+    .from('deck_download_log')
+    .select('*', { count: 'exact', head: true })
+
+  const tableStatus: 'ok' | 'missing' | 'error' = logsError
+    ? (logsError.code === '42P01' ? 'missing' : 'error')
+    : 'ok'
 
   const lastUpdated = process.env.NEXT_PUBLIC_BUILD_DATE || null
 
@@ -51,7 +61,12 @@ export default async function DecksPage() {
         currentPage="decks"
       />
       <div style={{ paddingTop: 56 }} className="flex-1">
-        <DecksClient lastDownloaded={lastDownloaded} lastUpdated={lastUpdated} />
+        <DecksClient
+          lastDownloaded={lastDownloaded}
+          lastUpdated={lastUpdated}
+          totalDownloads={totalDownloads ?? 0}
+          tableStatus={tableStatus}
+        />
       </div>
     </div>
   )

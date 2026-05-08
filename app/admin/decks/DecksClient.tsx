@@ -3,6 +3,8 @@
 // app/admin/decks/DecksClient.tsx
 // Investor & strategy deck downloads — one-click PPTX generation.
 
+import { useRouter } from 'next/navigation'
+
 const HERMES = '#E8632A'
 
 type Deck = {
@@ -97,10 +99,21 @@ function timeAgo(iso: string | null | undefined): string {
 export default function DecksClient({
   lastDownloaded,
   lastUpdated,
+  totalDownloads,
+  tableStatus,
 }: {
   lastDownloaded: Record<string, string>
   lastUpdated: string | null
+  totalDownloads: number
+  tableStatus: 'ok' | 'missing' | 'error'
 }) {
+  const router = useRouter()
+  // After a download click, give the file a moment to start, then re-query
+  // the server component so the "Last downloaded" timestamp updates.
+  const onDownload = () => {
+    setTimeout(() => router.refresh(), 1800)
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
       <div style={{ marginBottom: 24 }}>
@@ -110,6 +123,8 @@ export default function DecksClient({
         </p>
       </div>
 
+      <ActivityStrip totalDownloads={totalDownloads} tableStatus={tableStatus} />
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {DECKS.map(deck => (
           <DeckCard
@@ -117,6 +132,7 @@ export default function DecksClient({
             deck={deck}
             lastDownloaded={lastDownloaded[deck.logKey]}
             lastUpdated={lastUpdated}
+            onDownload={onDownload}
           />
         ))}
       </div>
@@ -134,14 +150,42 @@ export default function DecksClient({
   )
 }
 
+function ActivityStrip({ totalDownloads, tableStatus }: { totalDownloads: number; tableStatus: 'ok' | 'missing' | 'error' }) {
+  if (tableStatus === 'missing') {
+    return (
+      <div style={{ marginBottom: 18, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 12, color: '#991b1b' }}>
+        <span style={{ fontWeight: 700 }}>Heads up:</span>{' '}
+        the <code style={{ background: 'white', padding: '1px 5px', borderRadius: 3 }}>deck_download_log</code> table is not in this database. Run <code style={{ background: 'white', padding: '1px 5px', borderRadius: 3 }}>sql/040_deck_download_log.sql</code> in Supabase. Until then, "Last downloaded" cannot populate.
+      </div>
+    )
+  }
+  if (tableStatus === 'error') {
+    return (
+      <div style={{ marginBottom: 18, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 12, color: '#991b1b' }}>
+        Could not query the download log. Check Supabase service role key + RLS posture on <code style={{ background: 'white', padding: '1px 5px', borderRadius: 3 }}>deck_download_log</code>.
+      </div>
+    )
+  }
+  return (
+    <div style={{ marginBottom: 18, padding: '8px 14px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, color: '#4b5563', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', letterSpacing: 1.5, textTransform: 'uppercase' }}>Activity</span>
+      <span style={{ color: '#9ca3af' }}>·</span>
+      <span><b style={{ color: '#111827' }}>{totalDownloads.toLocaleString()}</b> {totalDownloads === 1 ? 'download' : 'downloads'} logged</span>
+      <span style={{ color: '#9ca3af', marginLeft: 'auto', fontSize: 11, fontStyle: 'italic' }}>auto-refreshes after each download</span>
+    </div>
+  )
+}
+
 function DeckCard({
   deck,
   lastDownloaded,
   lastUpdated,
+  onDownload,
 }: {
   deck: Deck
   lastDownloaded?: string
   lastUpdated: string | null
+  onDownload: () => void
 }) {
   return (
     <div style={{
@@ -183,6 +227,7 @@ function DeckCard({
         <a
           href={deck.href}
           download={deck.filename}
+          onClick={onDownload}
           style={{
             background: deck.accent, color: 'white', padding: '10px 18px', borderRadius: 8,
             fontSize: 13, fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap',
