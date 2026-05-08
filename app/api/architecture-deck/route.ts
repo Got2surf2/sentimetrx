@@ -656,6 +656,64 @@ function slideScalability(pptx: any, pg: number) {
   })
 }
 
+// ── 13.5 Bottlenecks & Bound Profile ──────────────────────────────────────
+function slideBottlenecks(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'Bottlenecks & Bound Profile', 'Where the limits live — per subsystem, plus where it would break first')
+  addFooter(s, pg)
+
+  const head = [
+    { text: 'Subsystem',           options: { fill: { color: DN.navy }, color: DN.white, bold: true, fontSize: 10 } },
+    { text: 'Bound',               options: { fill: { color: DN.navy }, color: DN.white, bold: true, fontSize: 10, align: 'center' } },
+    { text: 'Dominant cost',       options: { fill: { color: DN.navy }, color: DN.white, bold: true, fontSize: 10 } },
+    { text: 'Degradation starts at', options: { fill: { color: DN.navy }, color: DN.white, bold: true, fontSize: 10 } },
+  ]
+  // bound type → color tag
+  const bColor = (b: string) => b === 'IO' ? DN.sarinaBlue : b === 'CPU' ? DN.hermesOrange : DN.purple
+  const bBg    = (b: string) => b === 'IO' ? 'E0F7FA'      : b === 'CPU' ? 'FEE7DC'        : 'EDE9FE'
+
+  const data: [string, string, string, string][] = [
+    ['Survey collection (Sarina)',    'IO',    'Anthropic Haiku round-trip (200–800 ms)',   'Provider rate limit · backoff to 503'],
+    ['Agent chat (RAG)',              'IO',    'LLM + pgvector + Postgres lookup',          'Concurrent sessions > Postgres pool size'],
+    ['PulseIQ live sessions',         'IO',    'Per-turn moderation + topic detection',     'Concurrent participants > ~50 (unverified)'],
+    ['Theme mining (Ana)',            'IO',    'Sonnet inference over sampled rows',         'Token cost > per-org budget (logged, not enforced)'],
+    ['Statistical engine',            'CPU',   'Bootstrap CIs · ANOVA · regression',        '60s function timeout on > ~50K rows'],
+    ['PPTX generation (Ana export)',  'CPU',   'pptxgenjs in-memory assembly',              '60s timeout on Full-Team decks with 50+ slides'],
+    ['Hybrid retrieval',              'IO',    'pgvector HNSW + tsvector GIN',              'Index size > Postgres shared_buffers'],
+    ['Multi-source ingestion',        'IO',    'External API rate limits + paging',         '45s cron budget exhaustion'],
+    ['File upload (CSV / XLSX)',      'Mixed', 'xlsx parse (CPU) + 500-row insert (IO)',    '10 MB body limit · 60s timeout on > ~500K rows'],
+    ['Cold start',                    'IO',    'Vercel function spin-up + connection',      'First request after idle period (~100–300 ms)'],
+  ]
+  const rows = [head, ...data.map((r, ri) => [
+    { text: r[0], options: { fontSize: 9.5, fontFace: 'Arial', color: DN.navy, bold: true, fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white } } },
+    { text: r[1], options: { fontSize: 9.5, fontFace: 'Arial', color: bColor(r[1]), bold: true, fill: { color: bBg(r[1]) }, align: 'center' } },
+    { text: r[2], options: { fontSize: 9.5, fontFace: 'Arial', color: DN.ink, fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white } } },
+    { text: r[3], options: { fontSize: 9.5, fontFace: 'Arial', color: DN.ink, fill: { color: ri % 2 === 0 ? DN.slateCard : DN.white } } },
+  ])]
+  s.addTable(rows as any, { x: 0.5, y: 1.2, w: 12.3, colW: [3.3, 1.0, 4.0, 4.0], border: { pt: 0.5, color: DN.slateLight }, rowH: 0.34 })
+
+  // System-level constraints
+  s.addShape('rect', { x: 0.5, y: 5.4, w: 6.0, h: 1.7, fill: { color: DN.slateCard }, rectRadius: 0.08 })
+  s.addText('SYSTEM-LEVEL CONSTRAINTS', { x: 0.7, y: 5.45, w: 5.7, h: 0.25, fontFace: 'Arial', fontSize: 9, color: DN.slate, bold: true, charSpacing: 1 })
+  s.addText([
+    bullet('Vercel function: 60s timeout · 45s code budget · 1024 MB default', { fontSize: 10 }),
+    bullet('Supabase PgBouncer pool · bounded concurrent connections', { fontSize: 10 }),
+    bullet('No Redis / KV layer · rate limit is per-instance in-memory', { fontSize: 10 }),
+    bullet('LLM rate limits enforced per API key · backoff at provider', { fontSize: 10 }),
+  ], { x: 0.7, y: 5.7, w: 5.7, h: 1.4 })
+
+  // Where it would break first
+  s.addShape('rect', { x: 6.8, y: 5.4, w: 6.0, h: 1.7, fill: { color: DN.navy }, rectRadius: 0.08 })
+  s.addShape('rect', { x: 6.8, y: 5.4, w: 0.18, h: 1.7, fill: { color: DN.amber } })
+  s.addText('WHERE IT WOULD BREAK FIRST', { x: 7.05, y: 5.45, w: 5.5, h: 0.25, fontFace: 'Arial', fontSize: 9, color: DN.amber, bold: true, charSpacing: 1 })
+  s.addText([
+    bullet('In-memory rate limiter under sustained attack (cold-start reset)', { fontSize: 10, color: DN.white }),
+    bullet('Concurrent PulseIQ sessions above ~50 — untested', { fontSize: 10, color: DN.white }),
+    bullet('Single PPTX export over 50K analytics rows', { fontSize: 10, color: DN.white }),
+    bullet('Coincident cron + heavy upload on the same warm instance', { fontSize: 10, color: DN.white }),
+  ], { x: 7.05, y: 5.7, w: 5.55, h: 1.4 })
+}
+
 // ── 14. Security ───────────────────────────────────────────────────────────
 function slideSecurity(pptx: any, pg: number) {
   const s = pptx.addSlide()
@@ -889,6 +947,7 @@ function buildDeck(pptx: any) {
   slideCron(pptx, ++pg)
   slideReporting(pptx, ++pg)
   slideScalability(pptx, ++pg)
+  slideBottlenecks(pptx, ++pg)
   slideSecurity(pptx, ++pg)
   slideAuditability(pptx, ++pg)
   slideObservability(pptx, ++pg)
