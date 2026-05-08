@@ -1,5 +1,7 @@
 // app/api/cron/townhall-theme-detection/route.ts
-// Vercel cron — runs every 5 min, detects themes for active auto-detection sessions
+// Vercel cron — runs every 15 min (see vercel.json), safety net for active
+// auto-detection sessions. Primary trigger is response-count-based, in the
+// chat route (config.engine.theme_detection_every_n_responses, default 20).
 
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'

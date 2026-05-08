@@ -22,10 +22,9 @@ interface ChatRequest {
 
 // POST /api/townhall/chat — participant sends a message, gets next bot message
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-  const rl = await checkRateLimit('townhall-chat:' + ip, 20, 60000)
-  if (rl.limited) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
-
+  // Parse body before rate-limiting so we can throttle per-participant.
+  // Why: at a real venue all 200 attendees share the same NAT'd wifi IP,
+  // so an IP-only limit would throttle the entire room after 20 messages.
   let body: ChatRequest
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -34,6 +33,18 @@ export async function POST(req: NextRequest) {
   if (!session_id || !participant_id) {
     return NextResponse.json({ error: 'Missing session_id or participant_id' }, { status: 400 })
   }
+
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+
+  // Primary cap: per-participant. 20/min is generous for a single human.
+  const rlPart = await checkRateLimit('townhall-chat:p:' + participant_id, 20, 60000)
+  if (rlPart.limited) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
+
+  // Backstop: per-IP ceiling for a venue. Sized for ~200 participants at peak
+  // (everyone responding to the same prompt within a minute), and bounds the
+  // damage if someone spoofs participant_id to evade the per-participant cap.
+  const rlIp = await checkRateLimit('townhall-chat:ip:' + ip, 600, 60000)
+  if (rlIp.limited) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
 
   const supabase = createServiceRoleClient()
 
