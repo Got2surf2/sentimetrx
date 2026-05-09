@@ -1,3 +1,5 @@
+import 'server-only'
+
 // lib/email/provider.ts
 // Strategy-pattern email provider abstraction for Campaign Manager
 

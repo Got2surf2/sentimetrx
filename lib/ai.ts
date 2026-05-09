@@ -1,3 +1,5 @@
+import 'server-only'
+
 // lib/ai.ts
 // Provider-agnostic AI abstraction layer.
 // Supports Anthropic (default), OpenAI, and Azure OpenAI.

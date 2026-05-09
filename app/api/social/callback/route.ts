@@ -7,20 +7,42 @@ import { verifyOauthState } from '@/lib/oauthState'
 
 export const dynamic = 'force-dynamic'
 
+// Both token-exchange calls send META_APP_SECRET as POST form data instead of
+// query string. Anything in the URL (including secrets) lands in upstream
+// proxy logs, NEL reports, and any CDN trail along the way; bodies don't.
 async function exchangeCodeForToken(code: string, redirectUri: string): Promise<{ access_token: string; expires_in?: number }> {
   console.log('[social/callback] exchanging code with redirect_uri:', redirectUri)
-  const url = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`
-  const res = await fetch(url)
+  const body = new URLSearchParams({
+    client_id: process.env.META_APP_ID || '',
+    client_secret: process.env.META_APP_SECRET || '',
+    redirect_uri: redirectUri,
+    code,
+  })
+  const res = await fetch('https://graph.facebook.com/v19.0/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
   if (!res.ok) {
-    const body = await res.text()
-    console.error('[social/callback] token exchange failed:', res.status, body)
-    throw new Error('Failed to exchange code: ' + body)
+    const errBody = await res.text()
+    console.error('[social/callback] token exchange failed:', res.status, errBody)
+    throw new Error('Failed to exchange code: ' + errBody)
   }
   return res.json()
 }
 
 async function getLongLivedToken(shortToken: string): Promise<{ access_token: string; expires_in: number }> {
-  const res = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&fb_exchange_token=${shortToken}`)
+  const body = new URLSearchParams({
+    grant_type: 'fb_exchange_token',
+    client_id: process.env.META_APP_ID || '',
+    client_secret: process.env.META_APP_SECRET || '',
+    fb_exchange_token: shortToken,
+  })
+  const res = await fetch('https://graph.facebook.com/v19.0/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
   if (!res.ok) throw new Error('Failed to get long-lived token: ' + (await res.text()))
   return res.json()
 }
@@ -45,9 +67,15 @@ export async function GET(req: NextRequest) {
   const stateRaw = searchParams.get('state')
   const error = searchParams.get('error')
 
-  const origin = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'www.sentimetrx.ai'
-  const proto = req.headers.get('x-forwarded-proto') || 'https'
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${origin}`
+  // Pin to the configured site URL. Building it from `x-forwarded-host`
+  // when env is unset lets an attacker spoof the header (Host, X-Forwarded-
+  // Host) and redirect victims through a domain they control. The env var
+  // is set in every deployed environment; refuse to redirect if it isn't.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  if (!siteUrl) {
+    console.error('[social/callback] NEXT_PUBLIC_SITE_URL not configured')
+    return NextResponse.json({ error: 'Site URL not configured' }, { status: 503 })
+  }
 
   if (error || !code || !stateRaw) {
     return NextResponse.redirect(`${siteUrl}/social?error=oauth_denied`)

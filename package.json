@@ -33,6 +33,7 @@
     "react": "^18",
     "react-dom": "^18",
     "sentiment": "^5.0.2",
+    "server-only": "^0.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

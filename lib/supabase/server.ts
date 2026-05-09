@@ -1,3 +1,4 @@
+import 'server-only'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createClient as createServiceClient, type User } from '@supabase/supabase-js'

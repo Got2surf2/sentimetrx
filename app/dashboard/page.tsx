@@ -85,10 +85,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const statsMap: Record<string, { total: number; completeCount: number; promoters: number; passives: number; detractors: number; avgScore: number; ratingLabel: string; lastResponse: string | null }> = {}
 
   if (studyIds.length > 0) {
-    // Try materialized view first (instant)
+    // Try materialized view first (instant). The MV is locked down to
+    // service role only — the RPC is a SECURITY DEFINER wrapper that
+    // filters rows to the caller's org, so it can't leak other orgs'
+    // stats even though the underlying MV is org-agnostic.
     let mvStats: any[] | null = null
     try {
-      const { data } = await supabase.from('study_response_stats').select('*').in('study_id', studyIds)
+      const { data } = await supabase.rpc('get_study_response_stats_for_user', { p_study_ids: studyIds })
       mvStats = data
     } catch {}
 

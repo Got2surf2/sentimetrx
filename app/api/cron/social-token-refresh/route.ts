@@ -38,9 +38,19 @@ export async function GET(req: NextRequest) {
 
   for (const conn of expiring) {
     try {
-      const res = await fetch(
-        `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&fb_exchange_token=${conn.access_token}`
-      )
+      // POST body keeps META_APP_SECRET out of upstream proxy/CDN logs;
+      // a query-string secret would survive in NEL reports etc.
+      const body = new URLSearchParams({
+        grant_type: 'fb_exchange_token',
+        client_id: process.env.META_APP_ID || '',
+        client_secret: process.env.META_APP_SECRET || '',
+        fb_exchange_token: conn.access_token,
+      })
+      const res = await fetch('https://graph.facebook.com/v19.0/oauth/access_token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      })
 
       if (!res.ok) {
         console.error('[social-token-refresh] refresh failed for', conn.account_name, ':', await res.text())

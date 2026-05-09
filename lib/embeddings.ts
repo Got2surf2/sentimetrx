@@ -1,3 +1,5 @@
+import 'server-only'
+
 // lib/embeddings.ts
 // OpenAI text-embedding-3-small wrapper for vector search
 // Falls back gracefully when no OPENAI_API_KEY is set

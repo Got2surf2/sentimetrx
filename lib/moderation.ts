@@ -1,3 +1,5 @@
+import 'server-only'
+
 // lib/moderation.ts
 // OpenAI Moderation API wrapper for social comment toxicity scoring.
 // Free endpoint, no rate-limit concerns at our volume.

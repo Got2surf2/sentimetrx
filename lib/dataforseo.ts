@@ -1,3 +1,5 @@
+import 'server-only'
+
 // lib/dataforseo.ts
 // DataForSEO API client for Google Maps business search and Google Reviews
 

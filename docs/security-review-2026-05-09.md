@@ -95,14 +95,14 @@ Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source
 
 ## 🟡 MEDIUM
 
-- **`META_APP_SECRET` passed in URL query string** to Facebook (`social/callback`, `cron/social-token-refresh`) — lands in proxy/CDN logs. Move to POST body.
-- **No `import 'server-only'`** on `lib/supabase/server.ts`, `lib/ai.ts`, `lib/embeddings.ts`, `lib/moderation.ts`, `lib/dataforseo.ts`, `lib/email/provider.ts`. Cheap belt-and-suspenders.
-- **Path traversal / content-type spoofing** on org logo upload (`app/api/org/logo/route.ts:32`) — admin can upload `logo.html` with `content-type: text/html` to a public bucket → stored XSS.
-- **Open redirect** in `app/api/social/callback/route.ts:47-49` — `siteUrl` built from `x-forwarded-host` when env unset.
-- **No zod validation** on any of the 113 routes that read `req.json()` — every route ad-hoc-checks shape.
-- **`study_response_stats` materialized view** — `authenticated` can SELECT all rows (cross-org enumeration relies on UUID secrecy).
-- **No rate limiting** on share-link creation, log-login, magic-link triggers.
-- **Townhall public GET** discloses session config for any status (should require `status === 'active'`).
+- ✅ **`META_APP_SECRET` passed in URL query string** to Facebook (`social/callback`, `cron/social-token-refresh`) — lands in proxy/CDN logs. Move to POST body. — Both call sites now POST application/x-www-form-urlencoded; secret no longer appears in any URL.
+- ✅ **No `import 'server-only'`** on `lib/supabase/server.ts`, `lib/ai.ts`, `lib/embeddings.ts`, `lib/moderation.ts`, `lib/dataforseo.ts`, `lib/email/provider.ts`. Cheap belt-and-suspenders. — All six modules now have it; accidental client import will fail at compile time.
+- ✅ **Path traversal / content-type spoofing** on org logo upload (`app/api/org/logo/route.ts:32`) — admin can upload `logo.html` with `content-type: text/html` to a public bucket → stored XSS. — Whitelist of `{png,jpeg,webp,svg}` mime + matching extension; uploads with mismatched content-type/extension rejected.
+- ✅ **Open redirect** in `app/api/social/callback/route.ts:47-49` — `siteUrl` built from `x-forwarded-host` when env unset. — Pinned to `NEXT_PUBLIC_SITE_URL`; callback returns 503 if env unset rather than trusting headers.
+- ⏸ **No zod validation** on any of the 113 routes that read `req.json()` — every route ad-hoc-checks shape. — Deferred (separate refactor project; not pre-customer-blocking).
+- ✅ **`study_response_stats` materialized view** — `authenticated` can SELECT all rows (cross-org enumeration relies on UUID secrecy). — Migration 043 wraps access in a SECURITY DEFINER RPC `get_study_response_stats_for_user(uuid[])` that filters to the caller's org; revoked direct authenticated SELECT on the MV.
+- ⏸ **No rate limiting** on share-link creation, log-login, magic-link triggers. — Deferred (needs storage backend decision: Upstash, Vercel KV, or Supabase row).
+- ✅ **Townhall public GET** discloses session config for any status (should require `status === 'active'`). — `/api/townhall/status/[sessionId]` now returns 404 for `setup` sessions; participants can still see `paused`/`ended` states.
 - ✅ **No security headers** (no CSP, X-Frame-Options, HSTS, Referrer-Policy, X-Content-Type-Options). — `next.config.js` headers() now applies HSTS (preload-eligible), X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, and a permissive Permissions-Policy across every response. Authed paths (admin/dashboard/analyze/etc.) additionally get X-Frame-Options DENY + CSP frame-ancestors 'none' for clickjacking protection. Public embeddable pages (/s, /b, /th, /shared, /clara, /nora, /bot) deliberately omit the frame restrictions so customer sites can iframe them.
 
 ---

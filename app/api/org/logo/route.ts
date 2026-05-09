@@ -13,6 +13,21 @@ export async function POST(req: NextRequest) {
   if (!file || !org_id) return NextResponse.json({ error: 'Missing file or org_id' }, { status: 400 })
   if (file.size > 2 * 1024 * 1024) return NextResponse.json({ error: 'File too large (max 2MB)' }, { status: 400 })
 
+  // Whitelist image-only uploads. Without this, an admin could upload
+  // logo.html with content-type: text/html to a public bucket and serve
+  // arbitrary HTML/JS from the sentimetrx.ai-adjacent storage domain.
+  const ALLOWED_MIME = new Map<string, string[]>([
+    ['image/png', ['png']],
+    ['image/jpeg', ['jpg', 'jpeg']],
+    ['image/webp', ['webp']],
+    ['image/svg+xml', ['svg']],
+  ])
+  const incomingExt = (file.name.split('.').pop() || '').toLowerCase()
+  const allowedExts = ALLOWED_MIME.get(file.type)
+  if (!allowedExts || !allowedExts.includes(incomingExt)) {
+    return NextResponse.json({ error: 'Logo must be PNG, JPEG, WebP, or SVG' }, { status: 400 })
+  }
+
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
@@ -29,8 +44,8 @@ export async function POST(req: NextRequest) {
 
   const bytes  = await file.arrayBuffer()
   const buffer = Buffer.from(bytes)
-  const ext    = file.name.split('.').pop() || 'png'
-  const path   = `${org_id}/logo.${ext}`
+  // Use the validated extension; ignore anything weird in the original filename.
+  const path   = `${org_id}/logo.${incomingExt}`
 
   const service = createServiceRoleClient()
 
