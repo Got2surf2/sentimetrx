@@ -133,7 +133,21 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       const params = new URLSearchParams(window.location.search)
       // Capture campaign recipient tracking ID
       const rid = params.get('rid')
-      if (rid) recipientGuid.current = rid
+      if (rid) {
+        recipientGuid.current = rid
+        // Resend Free plan doesn't fire `email.clicked` webhooks, so we
+        // self-track click as soon as a ?rid= survey URL is opened.
+        // Fire-and-forget; the endpoint always 200s and only upgrades
+        // status from pending/sent (never overwrites completed).
+        try {
+          fetch('/api/campaigns/click', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rid }),
+            keepalive: true,
+          }).catch(() => {})
+        } catch {}
+      }
       // Populate hidden field values from URL params
       const hiddenQuestions = (config.questions ?? []).filter(q => q.type === 'hidden')
       const hiddenKeys = new Set<string>()

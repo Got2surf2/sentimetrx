@@ -291,9 +291,21 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   }
 
   const formatHtml = (content: string) => {
-    // Step 1: Convert markdown links [text](url) first — replace with placeholder tokens
+    // Step 0: HTML-escape first. Without this the function inserts the
+    // raw user/agent string into innerHTML — a literal `"` in a URL or
+    // body lets an attacker break out of the href="..." attribute and
+    // inject script handlers.
+    const escapeHtml = (s: string) => s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+    // Step 1: Convert markdown links [text](url) first — replace with placeholder tokens.
+    // We escape both the visible text and the URL so neither can break out
+    // of the surrounding markup.
     const mdLinks: string[] = []
-    let out = content.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, text, url) => {
+    let out = escapeHtml(content).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, text, url) => {
       mdLinks.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#00b4d8;text-decoration:underline">' + text + '</a>')
       return '\x00ML' + (mdLinks.length - 1) + '\x00'
     })

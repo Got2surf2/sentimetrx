@@ -9,17 +9,14 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getEmailProvider, interpolateTemplate, buildSurveyUrl } from '@/lib/email/provider'
 import type { EmailProviderType } from '@/lib/types'
+import { checkCronAuth } from '@/lib/cronAuth'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Allow up to 60s for batch sends
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret (optional but recommended)
-  const authHeader = req.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = checkCronAuth(req.headers.get('authorization'))
+  if (denied) return denied
 
   const service = createServiceRoleClient()
   const now = new Date()

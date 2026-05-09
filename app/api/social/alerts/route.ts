@@ -60,8 +60,21 @@ export async function PATCH(req: NextRequest) {
   const auth = await getAuth(supabase)
   if (!auth?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, ...updates } = await req.json()
+  const body = await req.json()
+  const id = body?.id
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  // Whitelist updatable fields. Spreading `...updates` from the request
+  // body let callers set org_id/created_by/etc., trivially escaping the
+  // org filter on the query below.
+  const ALLOWED = ['rule_type', 'config', 'channels', 'enabled'] as const
+  const updates: Record<string, unknown> = {}
+  for (const key of ALLOWED) {
+    if (key in body) updates[key] = (body as any)[key]
+  }
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+  }
 
   const service = createServiceRoleClient()
   const { error } = await service

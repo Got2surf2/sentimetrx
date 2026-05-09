@@ -71,17 +71,17 @@ Fixed by adding `sandbox="allow-popups allow-popups-to-escape-sandbox"` — disa
 
 ## 🟠 HIGH — fix this month
 
-- **Cron auth fails open if `CRON_SECRET` env var is empty/unset** (6 cron routes). Pattern is `if (cronSecret && authHeader !== ...)`. Should be `if (!cronSecret) return 503; if (authHeader !== ...) return 401;` with `crypto.timingSafeEqual`. Especially `cron/campaign-scheduler` (sends real emails).
+- ✅ **Cron auth fails open if `CRON_SECRET` env var is empty/unset** (6 cron routes). Pattern is `if (cronSecret && authHeader !== ...)`. Should be `if (!cronSecret) return 503; if (authHeader !== ...) return 401;` with `crypto.timingSafeEqual`. Especially `cron/campaign-scheduler` (sends real emails). — Fixed via `lib/cronAuth.ts` shared helper across all 7 cron routes.
 - **SSRF in `fetch-url`, `deep-crawl`, `research`** — authed users can submit any URL; server fetches it and returns body. No block on `169.254.169.254` (AWS IMDS), `127.0.0.1`, RFC1918. Add IP-resolution + private-range blocklist; re-validate after redirects.
 - **CSRF on every cookie-auth mutating route** — Next.js App Router route handlers have no built-in CSRF protection. All POST/PATCH/DELETE that read JSON bodies are exposable from a malicious origin via `fetch(..., {credentials:'include'})`. Add an Origin/Referer same-origin check in `middleware.ts` (which doesn't exist yet — see below).
 - **No `middleware.ts`** — auth is enforced per-route. The next route someone forgets is the next hole. Combine this with the CSRF fix.
-- **DOM XSS via agent-generated content** — `linkify()` and `formatHtml()` regex-extract URLs but don't escape `"` inside them, allowing attribute breakout. (`ConversationsClient.tsx:563`, `ChatBot.tsx:442`)
+- ✅ **DOM XSS via agent-generated content** — `linkify()` and `formatHtml()` regex-extract URLs but don't escape `"` inside them, allowing attribute breakout. (`ConversationsClient.tsx:563`, `ChatBot.tsx:442`) — `formatHtml` now HTML-escapes input before matching; `linkify` already pre-escaped.
 - **PostgREST `.or()` injection** in townhall search, study responses/analytics — user-controlled `from`/`to`/`q` interpolated into PostgREST mini-grammar. Not classic SQLi but allows breaking out of the OR expression to return unintended rows.
-- **Mass-assignment** on `app/api/social/alerts/route.ts:63` PATCH — caller can set arbitrary columns (`org_id`, `created_by`, etc.).
+- ✅ **Mass-assignment** on `app/api/social/alerts/route.ts:63` PATCH — caller can set arbitrary columns (`org_id`, `created_by`, etc.). — Now whitelists `{rule_type, config, channels, enabled}`.
 - **`current_client_id()` legacy mismatch** in `sql/011_townhall.sql:98,101,104` — INSERT/UPDATE policies still use the legacy `clients.id` column instead of `org_id`.
 - **`WITH CHECK (true)` on several INSERT policies** — `bot_turns_service_insert`, `bot_reviews_service_insert`, `townhall_themes_insert`, `org_transfers_service_insert`, `send_log_insert`. Anon can theoretically insert. Should restrict to service role or drop (service role bypasses RLS anyway).
 - **Admin routes use inline `is_admin_org` check** instead of canonical `requireAdmin` helper — works today but every copy-paste is a chance to forget. Two duplicate `requireAdmin` helpers exist (`lib/auth/requireAdmin.ts` vs `lib/requireAuth.ts`); pick one.
-- **Predictable `participant_id`** — `Math.random()` in `townhall/join`. Use `crypto.randomUUID()`.
+- ✅ **Predictable `participant_id`** — `Math.random()` in `townhall/join`. Use `crypto.randomUUID()`. — Switched to `randomUUID()`.
 
 ### npm audit (1 critical, 8 high, 3 moderate, 2 low)
 - ✅ **CRITICAL: `next@14.2.5`** → bumped to `^14.2.35`.

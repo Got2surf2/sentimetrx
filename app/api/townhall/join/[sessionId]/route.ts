@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { randomUUID } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,7 +106,10 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
 
   const config = session.config as any
   const language = body.language || 'en'
-  const participantId = 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+  // crypto.randomUUID() — unguessable. Math.random() is predictable
+  // enough that a moderator with a few participant IDs could enumerate
+  // others.
+  const participantId = 'p_' + randomUUID()
 
   // Use opening_message (new) or fall back to legacy welcome + opening_question
   const openingEn = config?.opening_message
