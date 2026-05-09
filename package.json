@@ -2,6 +2,9 @@
   "name": "sentimetrx",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -22,7 +25,6 @@
     "@sentry/nextjs": "^10.51.0",
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.44.4",
-    "@types/sentiment": "^5.0.4",
     "emoji-picker-element": "^1.29.1",
     "html-to-image": "^1.11.13",
     "lottie-web": "^5.13.0",
@@ -45,6 +47,7 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/sentiment": "^5.0.4",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "^10.0.1",

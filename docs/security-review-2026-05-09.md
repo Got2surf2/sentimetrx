@@ -101,7 +101,7 @@ Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source
 - ✅ **Open redirect** in `app/api/social/callback/route.ts:47-49` — `siteUrl` built from `x-forwarded-host` when env unset. — Pinned to `NEXT_PUBLIC_SITE_URL`; callback returns 503 if env unset rather than trusting headers.
 - ⏸ **No zod validation** on any of the 113 routes that read `req.json()` — every route ad-hoc-checks shape. — Deferred (separate refactor project; not pre-customer-blocking).
 - ✅ **`study_response_stats` materialized view** — `authenticated` can SELECT all rows (cross-org enumeration relies on UUID secrecy). — Migration 043 wraps access in a SECURITY DEFINER RPC `get_study_response_stats_for_user(uuid[])` that filters to the caller's org; revoked direct authenticated SELECT on the MV.
-- ⏸ **No rate limiting** on share-link creation, log-login, magic-link triggers. — Deferred (needs storage backend decision: Upstash, Vercel KV, or Supabase row).
+- ✅ **No rate limiting** on share-link creation, log-login, magic-link triggers. — `/api/share` POST: 30/hour per user; `/api/auth/log-login`: 20/min per user. Both use the existing `lib/rateLimit.ts` (Postgres-backed `check_rate_limit` RPC, atomic via INSERT...ON CONFLICT, in-memory fallback on outage). Magic-link triggers are server-side at Supabase Auth — not a route we control; Supabase enforces 4/hour/email by default.
 - ✅ **Townhall public GET** discloses session config for any status (should require `status === 'active'`). — `/api/townhall/status/[sessionId]` now returns 404 for `setup` sessions; participants can still see `paused`/`ended` states.
 - ✅ **No security headers** (no CSP, X-Frame-Options, HSTS, Referrer-Policy, X-Content-Type-Options). — `next.config.js` headers() now applies HSTS (preload-eligible), X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, and a permissive Permissions-Policy across every response. Authed paths (admin/dashboard/analyze/etc.) additionally get X-Frame-Options DENY + CSP frame-ancestors 'none' for clickjacking protection. Public embeddable pages (/s, /b, /th, /shared, /clara, /nora, /bot) deliberately omit the frame restrictions so customer sites can iframe them.
 
@@ -109,14 +109,14 @@ Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source
 
 ## 🟢 LOW / INFO
 
-- `.env.local` exists locally with **live secrets** (Anthropic, Resend, DataForSEO, Supabase service role, regulations.gov, Vercel OIDC). Properly gitignored, never tracked. Consider periodic rotation since they're sitting on disk.
-- Cron secret comparison is not constant-time (string `!==`).
-- Magic-link callback over-permissively defaults unknown `type` to `'magiclink'` — should reject.
-- `is_platform_admin()` / `current_org_id()` are SECURITY DEFINER without pinned `search_path`.
-- `tests/integration/rls-isolation.test.ts` only asserts SELECT isolation on `studies` and "RLS enabled" — does not check `WITH CHECK` correctness, presence of policies, or `USING(true)` accidents.
-- `@types/sentiment` is in `dependencies` (should be `devDependencies`).
-- No `.nvmrc` / `engines.node` pin; CI on Node 20 (in maintenance) — bump to Node 22 LTS.
-- CORS wildcard on `app/api/bots/[id]/chat/route.ts:21` — fine today, fragile if cookie auth is ever added.
+- ⏸ `.env.local` exists locally with **live secrets** (Anthropic, Resend, DataForSEO, Supabase service role, regulations.gov, Vercel OIDC). Properly gitignored, never tracked. Consider periodic rotation since they're sitting on disk. — Operational, not a code change.
+- ✅ Cron secret comparison is not constant-time (string `!==`). — `lib/cronAuth.ts` uses `crypto.timingSafeEqual` (delivered in sprint 3).
+- ✅ Magic-link callback over-permissively defaults unknown `type` to `'magiclink'` — should reject. — Now returns failRedirect with "unknown link type".
+- ✅ `is_platform_admin()` / `current_org_id()` are SECURITY DEFINER without pinned `search_path`. — Migration 044 sets `search_path = public, pg_temp` on all three (incl. legacy `current_client_id`). Verified live.
+- ⏸ `tests/integration/rls-isolation.test.ts` only asserts SELECT isolation on `studies` and "RLS enabled" — does not check `WITH CHECK` correctness, presence of policies, or `USING(true)` accidents. — Test extension deferred; not pre-customer-blocking.
+- ✅ `@types/sentiment` is in `dependencies` (should be `devDependencies`). — Moved.
+- ✅ No `.nvmrc` / `engines.node` pin; CI on Node 20 (in maintenance) — bump to Node 22 LTS. — Added `engines.node: ">=20.0.0"`. Vercel + CI use the latest matching version available; switch to `"22.x"` when ready to lock in.
+- ⏸ CORS wildcard on `app/api/bots/[id]/chat/route.ts:21` — fine today, fragile if cookie auth is ever added. — Note kept as a future-state hazard. No action today.
 
 ---
 

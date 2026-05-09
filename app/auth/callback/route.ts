@@ -53,7 +53,13 @@ export async function GET(request: NextRequest) {
   // built as {{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=...).
   if (tokenHash && typeRaw) {
     const allowed: OtpType[] = ['magiclink', 'recovery', 'invite', 'signup', 'email_change']
-    const type = (allowed.includes(typeRaw as OtpType) ? typeRaw : 'magiclink') as OtpType
+    if (!allowed.includes(typeRaw as OtpType)) {
+      // Reject unknown type strictly. Defaulting to 'magiclink' was
+      // overly permissive — a malformed link should surface a clear
+      // error, not be coerced into a different verification flow.
+      return failRedirect(request, typeRaw, 'unknown link type')
+    }
+    const type = typeRaw as OtpType
     const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
     if (error) return failRedirect(request, typeRaw, error.message)
     return NextResponse.redirect(new URL(destFor(typeRaw, next), request.url))

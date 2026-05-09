@@ -5,6 +5,7 @@
 
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,6 +72,12 @@ export async function POST(req: NextRequest) {
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // 30 share links per hour per user. Anyone clicking around will never
+  // hit this; an attacker who steals a session and tries to flood public
+  // share URLs gets stopped quickly.
+  const rl = await checkRateLimit('share:create:' + user.id, 30, 60 * 60 * 1000)
+  if (rl.limited) return NextResponse.json({ error: 'Too many share links — try again later' }, { status: 429 })
 
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
