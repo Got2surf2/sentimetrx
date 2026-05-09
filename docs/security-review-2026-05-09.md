@@ -5,6 +5,8 @@
 **Scope:** authn/authz, RLS policy correctness, input validation/injection, secrets/env handling, external integrations/webhooks, dependency CVEs
 **Stats:** 440+ TS/TSX files, 171 API routes, all SQL migrations, dependency tree
 
+**Status update (2026-05-09):** Pre-customer sprint items 1, 2, 5, 7 completed — see ✅ markers below. Items #1–6, #11–12, #17 patched; `next` bumped to 14.2.35.
+
 ## Headline
 
 The codebase is in good shape on **secrets handling** (no committed keys, NEXT_PUBLIC vars are clean, service-role key is server-only) and **RLS enablement** (every table has RLS turned on). But there are **~17 critical / high authorization gaps** at the API layer where service-role bypasses RLS without paired `org_id` checks. Multi-tenant isolation is leaking through these gaps.
@@ -18,12 +20,12 @@ The pattern: service-role client filters by id only, missing the paired `org_id`
 
 | # | Route | What leaks/breaks |
 |---|---|---|
-| 1 | `app/api/share/route.ts` POST/DELETE/GET | Any user can publish a public share link to **any org's** study, campaign, PulseIQ, or conversation; can also revoke any token |
-| 2 | `app/api/datasets/[datasetId]/route.ts` PATCH (line 114) | Cross-org rename / archive / visibility change of any dataset |
-| 3 | `app/api/bots/[id]/knowledge/route.ts` GET | Cross-org read of agent training corpora |
-| 4 | `app/api/bots/[id]/knowledge/[chunkId]/route.ts` PATCH/DELETE | Cross-org tamper / delete of training chunks |
-| 5 | `app/api/townhall/sessions/[id]/route.ts` GET/PATCH/DELETE | Cross-org read/edit/delete of PulseIQ sessions, themes, turns |
-| 6 | `app/api/bots/[id]/conversations/insights-deck/route.ts` | Generates a downloadable PPTX of any agent's private conversations |
+| 1 ✅ | `app/api/share/route.ts` POST/DELETE/GET | Any user can publish a public share link to **any org's** study, campaign, PulseIQ, or conversation; can also revoke any token |
+| 2 ✅ | `app/api/datasets/[datasetId]/route.ts` PATCH (line 114) | Cross-org rename / archive / visibility change of any dataset |
+| 3 ✅ | `app/api/bots/[id]/knowledge/route.ts` GET | Cross-org read of agent training corpora |
+| 4 ✅ | `app/api/bots/[id]/knowledge/[chunkId]/route.ts` PATCH/DELETE | Cross-org tamper / delete of training chunks |
+| 5 ✅ | `app/api/townhall/sessions/[id]/route.ts` GET/PATCH/DELETE | Cross-org read/edit/delete of PulseIQ sessions, themes, turns |
+| 6 ✅ | `app/api/bots/[id]/conversations/insights-deck/route.ts` | Generates a downloadable PPTX of any agent's private conversations |
 
 **Fix shape:** introduce `gateBotAccess` / `gateDatasetAccess` / `gateSessionAccess` helpers (pattern at `app/api/bots/[id]/conversations/[sessionId]/route.ts` is the model). Treat any `service.from(t).eq('id', x)` without a paired `.eq('org_id', orgId)` as a lint failure.
 
@@ -39,8 +41,8 @@ The pattern: service-role client filters by id only, missing the paired `org_id`
 Existing rule: *"Wrap deck/strategy/internal-export API routes with requireAdmin from day one; URL obscurity is not a defense."* Two routes ship with **no auth at all**:
 | # | Route |
 |---|---|
-| 11 | `app/api/agent-capabilities-deck/route.ts` |
-| 12 | `app/api/signal-tiers-deck/route.ts` |
+| 11 ✅ | `app/api/agent-capabilities-deck/route.ts` |
+| 12 ✅ | `app/api/signal-tiers-deck/route.ts` |
 
 ### Unsigned webhooks (anyone can spoof events)
 | # | Route | Impact |
@@ -61,7 +63,7 @@ Existing rule: *"Wrap deck/strategy/internal-export API routes with requireAdmin
 ### Auth foundation defect
 | # | Location | Issue |
 |---|---|---|
-| 17 | `lib/supabase/server.ts:39-42` | `getAuthUser()` uses `supabase.auth.getSession()` which only **decodes** the cookie JWT — it doesn't verify with Supabase. A revoked/forged cookie is accepted. The fix is `getUser()` (one extra network call per request, but it's the security-correct call) |
+| 17 ✅ | `lib/supabase/server.ts:39-42` | `getAuthUser()` uses `supabase.auth.getSession()` which only **decodes** the cookie JWT — it doesn't verify with Supabase. A revoked/forged cookie is accepted. The fix is `getUser()` (one extra network call per request, but it's the security-correct call) |
 
 ---
 
@@ -80,7 +82,7 @@ Existing rule: *"Wrap deck/strategy/internal-export API routes with requireAdmin
 - **Predictable `participant_id`** — `Math.random()` in `townhall/join`. Use `crypto.randomUUID()`.
 
 ### npm audit (1 critical, 8 high, 3 moderate, 2 low)
-- **CRITICAL: `next@14.2.5`** → fix is `next@14.2.35` (no major version bump).
+- ✅ **CRITICAL: `next@14.2.5`** → bumped to `^14.2.35`.
 - **HIGH: `xlsx@0.18.5`** — SheetJS-on-npm is abandoned, prototype-pollution + ReDoS unfixed. Switch to SheetJS CDN tarball or `exceljs`. **High value if users can upload .xlsx files.**
 - **HIGH: `eslint-config-next`** → requires major bump to 16.2.6 (devDependency, lower urgency).
 - **LOW: `@supabase/ssr`** — cookie-related, requires major bump.
@@ -119,13 +121,13 @@ Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source
 ## Suggested order of operations
 
 **Pre-customer hardening sprint (1 week):**
-1. Add `gate*Access` helpers and patch the 6 service-role-without-org-check routes (#1–6). Highest cross-tenant blast radius.
-2. Add `requireAdmin` to the two public deck routes (#11, #12). Trivial fix, explicit memory-rule violation.
+1. ✅ Add `gate*Access` helpers and patch the 6 service-role-without-org-check routes (#1–6). Highest cross-tenant blast radius.
+2. ✅ Add `requireAdmin` to the two public deck routes (#11, #12). Trivial fix, explicit memory-rule violation.
 3. Patch the 4 account-takeover paths (#7–10). The invite-token-not-bound-to-email and the password-oracle are the most exploitable.
 4. Verify Resend + Meta webhooks (#13, #14). Standard svix / x-hub-signature-256 pattern.
-5. `npm install next@14.2.35` (#critical).
+5. ✅ `npm install next@14.2.35` (#critical).
 6. Sanitize the share-page iframe (#16) or move to server-rendered structured turns.
-7. Replace `getSession()` with `getUser()` in `lib/supabase/server.ts` (#17).
+7. ✅ Replace `getSession()` with `getUser()` in `lib/supabase/server.ts` (#17).
 
 **Structural sprint (2–4 weeks):**
 8. Add `middleware.ts` with auth refresh + Origin/Referer same-origin gate for all `/api/*` mutating verbs.

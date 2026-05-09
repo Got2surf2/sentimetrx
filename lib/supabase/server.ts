@@ -26,19 +26,14 @@ export function createClient() {
   )
 }
 
-// Cookie-only auth check. Reads the user from the JWT in the cookie via
-// getSession() — NO network call to Supabase's /auth/v1/user. ~1ms vs
-// ~50-200ms for getUser(), and avoids tripping Supabase's per-IP auth
-// rate limit when a single page load fans out to many API routes.
-//
-// Use for routes where authorization is enforced downstream by RLS or
-// explicit org_id checks (i.e. the vast majority of API routes). Keep
-// supabase.auth.getUser() for the rare cases that genuinely need to
-// revalidate the JWT — auth callbacks, password change, account
-// deletion — where stale credentials must be rejected immediately.
+// Verifies the user's JWT against Supabase. Costs an extra ~50-200ms
+// network call vs. cookie-decode-only, but rejects revoked or forged
+// tokens — required for any route that gates access to org-scoped data.
+// Previously used getSession() which only decodes the cookie locally;
+// that left revoked sessions accepted until the cookie expired.
 export async function getAuthUser(supabase: ReturnType<typeof createClient>): Promise<User | null> {
-  const { data: { session } } = await supabase.auth.getSession()
-  return session?.user ?? null
+  const { data: { user } } = await supabase.auth.getUser()
+  return user ?? null
 }
 
 // Service-role client — BYPASSES RLS

@@ -9,6 +9,22 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: { id: string; chunkId: string } }
 
+async function gateBotAccess(supabase: ReturnType<typeof createClient>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', userId)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
+
+  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', botId).single()
+  if (!bot) return { ok: false, status: 404, error: 'Bot not found' }
+  if (!isAdmin && (bot as any).org_id !== userOrgId) return { ok: false, status: 404, error: 'Bot not found' }
+  return { ok: true }
+}
+
 export async function PATCH(req: NextRequest, { params }: Params) {
   var supabase = createClient()
   const user = await getAuthUser(supabase)
@@ -24,6 +40,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   var service = createServiceRoleClient()
+
+  const gate = await gateBotAccess(supabase, service, user.id, params.id)
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // Verify chunk belongs to this bot
   var { data: chunk } = await service
@@ -50,6 +69,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var service = createServiceRoleClient()
+
+  const gate = await gateBotAccess(supabase, service, user.id, params.id)
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   var { error } = await service
     .from('bot_knowledge_chunks')

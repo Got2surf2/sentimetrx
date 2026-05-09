@@ -8,6 +8,65 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
+type ShareType = 'study' | 'campaign' | 'townhall' | 'conversation' | 'analytics'
+
+async function getUserOrg(service: ReturnType<typeof createServiceRoleClient>, userId: string) {
+  const { data: userData } = await service
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', userId)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const orgId = (userData as any)?.org_id as string | null
+  return { orgId, isAdmin }
+}
+
+// Returns the org_id that owns the share target, or null if the target is unknown.
+// For `conversation`, target_id is either a bot id (bot conversations page) or a
+// response id (study response sharing); we try both.
+async function resolveTargetOrgId(service: ReturnType<typeof createServiceRoleClient>, type: ShareType, targetId: string): Promise<string | null> {
+  if (type === 'study') {
+    const { data } = await service.from('studies').select('org_id').eq('id', targetId).single()
+    return (data as any)?.org_id ?? null
+  }
+  if (type === 'campaign') {
+    const { data } = await service.from('campaigns').select('org_id').eq('id', targetId).single()
+    return (data as any)?.org_id ?? null
+  }
+  if (type === 'townhall') {
+    const { data } = await service.from('townhall_sessions').select('org_id').eq('id', targetId).single()
+    return (data as any)?.org_id ?? null
+  }
+  if (type === 'analytics') {
+    const { data } = await service.from('datasets').select('org_id').eq('id', targetId).single()
+    return (data as any)?.org_id ?? null
+  }
+  if (type === 'conversation') {
+    const { data: bot } = await service.from('bots').select('org_id').eq('id', targetId).maybeSingle()
+    if ((bot as any)?.org_id) return (bot as any).org_id as string
+    const { data: resp } = await service
+      .from('responses')
+      .select('studies(org_id)')
+      .eq('id', targetId)
+      .maybeSingle()
+    const s = (resp as any)?.studies
+    const orgId = Array.isArray(s) ? s[0]?.org_id : s?.org_id
+    return orgId ?? null
+  }
+  return null
+}
+
+async function gateShareTarget(service: ReturnType<typeof createServiceRoleClient>, userId: string, type: ShareType, targetId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const { orgId, isAdmin } = await getUserOrg(service, userId)
+  if (!orgId) return { ok: false, status: 401, error: 'Unauthorized' }
+  if (isAdmin) return { ok: true }
+  const targetOrg = await resolveTargetOrgId(service, type, targetId)
+  if (!targetOrg) return { ok: false, status: 404, error: 'Target not found' }
+  if (targetOrg !== orgId) return { ok: false, status: 403, error: 'Forbidden' }
+  return { ok: true }
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const user = await getAuthUser(supabase)
@@ -21,6 +80,9 @@ export async function POST(req: NextRequest) {
   if (!['study', 'campaign', 'townhall', 'conversation', 'analytics'].includes(type)) return NextResponse.json({ error: 'type must be study, campaign, townhall, conversation, or analytics' }, { status: 400 })
 
   const service = createServiceRoleClient()
+
+  const gate = await gateShareTarget(service, user.id, type as ShareType, String(target_id))
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // For conversation shares, store the rendered HTML in metadata
   if (type === 'conversation' && body.html) {
@@ -81,13 +143,20 @@ export async function GET(req: NextRequest) {
   const listType = req.nextUrl.searchParams.get('list_type')
   const listTargetId = req.nextUrl.searchParams.get('list_target_id')
 
-  // List active links for a target (requires auth)
+  // List active links for a target (requires auth + access to the target)
   if (listType && listTargetId) {
     const supabase = createClient()
     const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const service = createServiceRoleClient()
+
+    if (!['study', 'campaign', 'townhall', 'conversation', 'analytics'].includes(listType)) {
+      return NextResponse.json({ error: 'invalid list_type' }, { status: 400 })
+    }
+    const gate = await gateShareTarget(service, user.id, listType as ShareType, listTargetId)
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
 
     const { data: links } = await service
@@ -272,20 +341,34 @@ export async function DELETE(req: NextRequest) {
 
   const service = createServiceRoleClient()
 
-  // Delete and return the deleted row to confirm it was found
-  const { data, error } = await service
+  // Look up the share before deleting so we can authorize the revoke.
+  const { data: existing } = await service
+    .from('shared_links')
+    .select('id, type, target_id, created_by')
+    .eq('token', token)
+    .single()
+
+  if (!existing) return NextResponse.json({ error: 'Link not found' }, { status: 404 })
+
+  // Allow revoke if the user created the share, or if they have access to the
+  // underlying target (org match or admin). Without this, any authed user
+  // could enumerate tokens and revoke any other org's links.
+  const { orgId, isAdmin } = await getUserOrg(service, user.id)
+  let allowed = isAdmin || existing.created_by === user.id
+  if (!allowed && orgId) {
+    const targetOrg = await resolveTargetOrgId(service, existing.type as ShareType, existing.target_id as string)
+    if (targetOrg && targetOrg === orgId) allowed = true
+  }
+  if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { error } = await service
     .from('shared_links')
     .delete()
     .eq('token', token)
-    .select('id')
 
   if (error) {
     console.error('[share] delete error:', error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  if (!data || data.length === 0) {
-    return NextResponse.json({ error: 'Link not found' }, { status: 404 })
   }
 
   return NextResponse.json({ deleted: true })

@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
 import { DN as DN_SHARED, W, H } from '@/lib/pptx/shared'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,9 @@ function card(slide: any, x: number, y: number, w: number, h: number, title: str
 }
 
 export async function GET() {
+  const denied = await requireAdmin()
+  if (denied) return denied
+
   var pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Datanautix'

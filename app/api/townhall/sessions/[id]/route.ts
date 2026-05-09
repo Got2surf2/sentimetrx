@@ -8,6 +8,26 @@ import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 // Always serve fresh — moderator must see latest theme states, never a cache.
 export const dynamic = 'force-dynamic'
 
+// Verifies the caller's org owns the session (or the caller is an admin-org member).
+// Without this, any authed user can read/edit/delete any org's PulseIQ session via service role.
+async function gateSessionAccess(supabase: ReturnType<typeof createClient>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null } | { ok: false; status: number; error: string }> {
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', userId)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
+
+  const { data: session } = await db.from('townhall_sessions').select('org_id').eq('id', sessionId).single()
+  if (!session) return { ok: false, status: 404, error: 'Session not found' }
+  if (!isAdmin && (session as any).org_id !== userOrgId) {
+    return { ok: false, status: 404, error: 'Session not found' }
+  }
+  return { ok: true, isAdmin, userOrgId }
+}
+
 // GET /api/townhall/sessions/:id — get session with themes + stats (+ analytics if ?analytics=true)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
@@ -16,6 +36,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   // Use service role to bypass RLS (auth already verified above)
   const db = createServiceRoleClient()
+
+  const gate = await gateSessionAccess(supabase, db, user.id, params.id)
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   const { data: session, error } = await db
     .from('townhall_sessions')
@@ -398,6 +421,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // Use service role to bypass RLS (auth already verified above)
   const db = createServiceRoleClient()
 
+  const gate = await gateSessionAccess(supabase, db, user.id, params.id)
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -677,6 +703,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const db = createServiceRoleClient()
+
+  const gate = await gateSessionAccess(supabase, db, user.id, params.id)
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // Delete in order: turns → themes → participant responses → session
   await db.from('townhall_turns').delete().eq('session_id', params.id)

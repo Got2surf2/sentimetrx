@@ -58,6 +58,18 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
   }
 
+  const service = createServiceRoleClient()
+
+  // Confirm the dataset is in the caller's org before any service-role write.
+  // Without this, a service-role .update().eq('id', x) lets any authed user
+  // mutate (or transfer) any org's dataset.
+  const { data: ownerRow } = await service.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!ownerRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const datasetOrgId = (ownerRow as any).org_id as string | null
+  if (!isAdmin && datasetOrgId !== orgId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const body = await req.json()
   const allowed = ['name', 'description', 'visibility', 'status']
   const updates: Record<string, unknown> = {}
@@ -72,10 +84,9 @@ export async function PATCH(req: Request, { params }: Params) {
     if (!isAdmin) {
       return NextResponse.json({ error: 'Only admins can transfer datasets' }, { status: 403 })
     }
-    const svc = createServiceRoleClient()
-    const { data: cur } = await svc.from('datasets').select('name').eq('id', params.datasetId).single()
+    const { data: cur } = await service.from('datasets').select('name').eq('id', params.datasetId).single()
     transferResourceName = (cur as any)?.name ?? null
-    const check = await checkTransferTarget(svc, orgId, body.org_id)
+    const check = await checkTransferTarget(service, datasetOrgId, body.org_id)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
     updates.org_id = body.org_id
     isTransfer = true
@@ -86,8 +97,6 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   updates.updated_at = new Date().toISOString()
-
-  const service = createServiceRoleClient()
 
   // Archive/restore: move rows to/from archive tables via SQL functions
   if (updates.status === 'archived') {
@@ -122,7 +131,7 @@ export async function PATCH(req: Request, { params }: Params) {
     await recordOrgTransfer({
       service, resourceType: 'dataset', resourceId: params.datasetId,
       resourceName: transferResourceName,
-      fromOrgId: orgId, toOrgId: updates.org_id as string,
+      fromOrgId: datasetOrgId, toOrgId: updates.org_id as string,
       initiatedBy: user.id, initiatedByEmail: user.email || null,
     })
   }

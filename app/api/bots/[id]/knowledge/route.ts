@@ -19,7 +19,22 @@ export async function GET(_req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
+
   const service = createServiceRoleClient()
+  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!isAdmin && (bot as any).org_id !== userOrgId) {
+    return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  }
+
   const { data: chunks } = await service
     .from('bot_knowledge_chunks')
     .select('id, title, content, metadata, created_at')
@@ -173,10 +188,25 @@ export async function DELETE(req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const userOrgId = (userData as any)?.org_id as string | null
+
+  const service = createServiceRoleClient()
+  const { data: bot } = await service.from('bots').select('id, org_id').eq('id', params.id).single()
+  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!isAdmin && (bot as any).org_id !== userOrgId) {
+    return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  }
+
   const url = new URL(req.url)
   const sourceType = url.searchParams.get('source_type')
 
-  const service = createServiceRoleClient()
   let query = service.from('bot_knowledge_chunks').delete().eq('bot_id', params.id)
 
   if (sourceType) {
