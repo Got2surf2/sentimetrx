@@ -2,28 +2,15 @@
 // Admin-only single-user operations. Currently supports:
 //   PATCH { org_id } — transfer user to a different org
 
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 interface Params { params: { id: string } }
 
-async function requireAdmin(supabase: ReturnType<typeof createClient>): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const user = await getAuthUser(supabase)
-  if (!user) return { ok: false, status: 401, error: 'Unauthorized' }
-  const { data: userData } = await supabase
-    .from('users')
-    .select('organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-  const orgData = Array.isArray((userData as any)?.organizations) ? (userData as any).organizations[0] : (userData as any)?.organizations
-  if (!orgData?.is_admin_org) return { ok: false, status: 403, error: 'Forbidden' }
-  return { ok: true }
-}
-
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const supabase = createClient()
-  const auth = await requireAdmin(supabase)
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }

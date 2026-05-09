@@ -1,31 +1,13 @@
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 interface Params { params: { id: string } }
 
-async function requireAdmin(supabase: any, userId: string) {
-  const { data } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', userId)
-    .single()
-
-  const orgData = data?.organizations
-  const isAdmin = Array.isArray(orgData)
-    ? orgData[0]?.is_admin_org
-    : (orgData as any)?.is_admin_org
-
-  return !!isAdmin
-}
-
 // GET /api/admin/clients/[id] - org detail with users, studies, invites
 export async function GET(_req: NextRequest, { params }: Params) {
-  const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const ok = await requireAdmin(supabase, user.id)
-  if (!ok) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   const service = createServiceRoleClient()
 

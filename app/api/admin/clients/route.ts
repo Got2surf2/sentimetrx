@@ -1,29 +1,14 @@
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 // GET /api/admin/clients - list all organizations with user and study counts
 // Supports ?activeOnly=true to restrict to status='active' orgs (used by
 // TransferOrg to gate which orgs can receive resource transfers — no point
 // surfacing suspended/archived orgs in that dropdown).
 export async function GET(req: NextRequest) {
-  const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-
-  const orgData = userData?.organizations
-  const isAdmin = Array.isArray(orgData)
-    ? orgData[0]?.is_admin_org
-    : (orgData as any)?.is_admin_org
-
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-  }
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   const url = new URL(req.url)
   const activeOnly = url.searchParams.get('activeOnly') === 'true'

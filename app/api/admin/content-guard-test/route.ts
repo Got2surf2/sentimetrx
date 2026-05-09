@@ -3,28 +3,17 @@
 // Returns per-sample flags, severity, sentiment, and actions
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, getAuthUser } from '@/lib/supabase/server'
-import { resolveOrg } from '@/lib/resolveOrg'
 import { auditContent } from '@/lib/contentGuard'
 import { tagComment } from '@/lib/socialTagging'
 import { moderateTexts } from '@/lib/moderation'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-
-  const orgData = resolveOrg(userData?.organizations) as any
-  if (!orgData?.is_admin_org) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   const { texts, labels, useModeration } = await req.json() as {
     texts: string[]

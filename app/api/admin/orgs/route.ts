@@ -6,24 +6,14 @@
 // /api/admin/clients?activeOnly=true uses for the transfer dropdown.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-
-  const orgRel = userData?.organizations
-  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
-  if (!isAdmin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   const activeOnly = req.nextUrl.searchParams.get('active') === 'true'
 
