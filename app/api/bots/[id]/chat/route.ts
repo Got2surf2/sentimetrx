@@ -16,7 +16,16 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: { id: string } }
 
-// CORS headers for cross-origin embedding
+// CORS headers for cross-origin embedding.
+//
+// SECURITY NOTE: this route is intentionally unauthenticated and the
+// wildcard origin is required so customer sites can embed it. If anyone
+// adds session-cookie auth here in the future, the wildcard must be
+// replaced with an explicit allowlist (or removed entirely) — sending
+// `Access-Control-Allow-Origin: *` alongside `credentials: 'include'`
+// would let any site trigger requests as the logged-in user. The CSRF
+// middleware also exempts this path; tightening cookie auth means
+// removing the bypass in middleware.ts.
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',

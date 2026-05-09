@@ -207,6 +207,58 @@ describeMaybe('RLS cross-org read isolation (env-gated)', () => {
 
     expect(offenders, 'public tables without RLS: ' + offenders.join(', ')).toEqual([])
   })
+
+  it('no policy uses USING(true) or WITH CHECK(true) outside the allowlist', async () => {
+    // Catches the next regression of the kind migration 042 cleaned up.
+    // A `true` qualifier on USING means "anyone in the role this policy
+    // applies to can read everything"; a `true` WITH CHECK means
+    // "anyone can insert anything." Both have legitimate uses (public
+    // anon-insert endpoints), so we allowlist the intentional ones —
+    // any *new* `true` policy must either earn its way onto the list or
+    // be tightened.
+    const ALLOWLIST: ReadonlyArray<{ table: string; policy: string; reason: string }> = [
+      {
+        table: 'invites',
+        policy: 'invites_public_read',
+        reason:
+          'Server-rendered /settings/team and similar pages read invites via the auth client; ' +
+          'route-level org filtering scopes the result. (Long-term: tighten to org-scoped USING.)',
+      },
+      {
+        table: 'responses',
+        policy: 'responses_insert_public',
+        reason:
+          'Anonymous survey submissions hit /api/respond which inserts via the anon role. ' +
+          'API validates study_guid before inserting; see app/api/respond/route.ts.',
+      },
+      {
+        table: 'townhall_participant_responses',
+        policy: 'th_responses_anon_insert',
+        reason:
+          'Anonymous townhall post-session response submissions; same pattern as responses_insert_public.',
+      },
+    ]
+    const allowKey = (t: string, p: string) => t + ':' + p
+    const allow = new Set(ALLOWLIST.map(a => allowKey(a.table, a.policy)))
+
+    const { data: policies, error: polErr } = await admin.rpc('public_policy_qualifiers')
+    if (polErr) {
+      throw new Error(
+        'public_policy_qualifiers() RPC failed: ' + polErr.message +
+        ' — apply sql/045_policy_introspection.sql to this Supabase project.',
+      )
+    }
+
+    type PolRow = { tablename: string; policyname: string; qual: string | null; with_check: string | null }
+    const offenders = ((policies as PolRow[]) || [])
+      .filter(r => (r.qual === 'true' || r.with_check === 'true') && !allow.has(allowKey(r.tablename, r.policyname)))
+      .map(r => r.tablename + '/' + r.policyname + (r.qual === 'true' ? ' [USING(true)]' : ' [WITH CHECK(true)]'))
+
+    expect(
+      offenders,
+      'unconditional true policies (allowlist if intentional): ' + offenders.join(', '),
+    ).toEqual([])
+  })
 })
 
 if (skip) {

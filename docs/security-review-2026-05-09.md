@@ -87,9 +87,9 @@ Fixed by adding `sandbox="allow-popups allow-popups-to-escape-sandbox"` — disa
 
 ### npm audit (1 critical, 8 high, 3 moderate, 2 low)
 - ✅ **CRITICAL: `next@14.2.5`** → bumped to `^14.2.35`.
-- **HIGH: `xlsx@0.18.5`** — SheetJS-on-npm is abandoned, prototype-pollution + ReDoS unfixed. Switch to SheetJS CDN tarball or `exceljs`. **High value if users can upload .xlsx files.**
-- **HIGH: `eslint-config-next`** → requires major bump to 16.2.6 (devDependency, lower urgency).
-- **LOW: `@supabase/ssr`** — cookie-related, requires major bump.
+- ✅ **HIGH: `xlsx@0.18.5`** — SheetJS-on-npm is abandoned, prototype-pollution + ReDoS unfixed. Switch to SheetJS CDN tarball or `exceljs`. — Replaced with SheetJS-maintained 0.20.3 from `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`. Same `xlsx` package name + same import surface; npm audit no longer flags it. (Real risk surface here was small — server-side use is export-only, client-side parses files the same admin just selected. Hygiene fix more than security fix.)
+- ⏸ **HIGH: `eslint-config-next`** → requires major bump to 16.2.6 (devDependency, lower urgency). — Deferred. The 16.x bump requires eslint 9 (flat-config migration); not worth the multi-file refactor for a lint-time-only dep with no runtime impact.
+- ✅ **LOW: `@supabase/ssr`** — cookie-related, requires major bump. — Bumped 0.4 → 0.10.3. `lib/supabase/server.ts` migrated to the new `getAll`/`setAll` cookie shape (replaces deprecated `get/set/remove`).
 
 Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source. `.gitignore` correct.
 
@@ -115,10 +115,10 @@ Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source
 - ✅ Cron secret comparison is not constant-time (string `!==`). — `lib/cronAuth.ts` uses `crypto.timingSafeEqual` (delivered in sprint 3).
 - ✅ Magic-link callback over-permissively defaults unknown `type` to `'magiclink'` — should reject. — Now returns failRedirect with "unknown link type".
 - ✅ `is_platform_admin()` / `current_org_id()` are SECURITY DEFINER without pinned `search_path`. — Migration 044 sets `search_path = public, pg_temp` on all three (incl. legacy `current_client_id`). Verified live.
-- ⏸ `tests/integration/rls-isolation.test.ts` only asserts SELECT isolation on `studies` and "RLS enabled" — does not check `WITH CHECK` correctness, presence of policies, or `USING(true)` accidents. — Test extension deferred; not pre-customer-blocking.
+- ✅ `tests/integration/rls-isolation.test.ts` only asserts SELECT isolation on `studies` and "RLS enabled" — does not check `WITH CHECK` correctness, presence of policies, or `USING(true)` accidents. — Added a 4th test (`no policy uses USING(true) or WITH CHECK(true) outside the allowlist`) that fails on any new unconditional `true` qualifier. Backed by `public_policy_qualifiers()` SECURITY DEFINER RPC (migration 045). Three intentional public-insert/read policies are allowlisted with comments explaining why; new ones must earn the allowlist or be tightened. `npm run test:rls` covers all 4 tests.
 - ✅ `@types/sentiment` is in `dependencies` (should be `devDependencies`). — Moved.
 - ✅ No `.nvmrc` / `engines.node` pin; CI on Node 20 (in maintenance) — bump to Node 22 LTS. — Added `engines.node: ">=20.0.0"`. Vercel + CI use the latest matching version available; switch to `"22.x"` when ready to lock in.
-- ⏸ CORS wildcard on `app/api/bots/[id]/chat/route.ts:21` — fine today, fragile if cookie auth is ever added. — Note kept as a future-state hazard. No action today.
+- ✅ CORS wildcard on `app/api/bots/[id]/chat/route.ts:21` — fine today, fragile if cookie auth is ever added. — In-code SECURITY NOTE comment added. Anyone adding cookie auth here will see the warning before shipping; the comment also references the middleware bypass that would need updating.
 
 ---
 
