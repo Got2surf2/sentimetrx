@@ -27,10 +27,19 @@ export async function GET(req: NextRequest, { params }: Params) {
   const sentiment = url.searchParams.get('sentiment')
   const minNps    = url.searchParams.get('min_nps')
   const maxNps    = url.searchParams.get('max_nps')
-  const from      = url.searchParams.get('from')
-  const to        = url.searchParams.get('to')
+  const fromRaw   = url.searchParams.get('from')
+  const toRaw     = url.searchParams.get('to')
   const limit     = parseInt(url.searchParams.get('limit')  || '50')
   const offset    = parseInt(url.searchParams.get('offset') || '0')
+
+  // Hard-validate date inputs to YYYY-MM-DD before any PostgREST .or()
+  // interpolation. Without this a comma or paren in `from` would let a
+  // caller append arbitrary extra filter clauses to the OR expression.
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+  if (fromRaw && !ISO_DATE.test(fromRaw)) return NextResponse.json({ error: 'Invalid from date (expected YYYY-MM-DD)' }, { status: 400 })
+  if (toRaw && !ISO_DATE.test(toRaw)) return NextResponse.json({ error: 'Invalid to date (expected YYYY-MM-DD)' }, { status: 400 })
+  const from = fromRaw
+  const to = toRaw
 
   // Fetch study config — user's Supabase client enforces RLS (org membership)
   const { data: study } = await supabase

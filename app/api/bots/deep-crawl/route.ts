@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { safeFetch, SafeFetchError } from '@/lib/safeFetch'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120   // 2 min — crawling multiple pages
@@ -117,13 +118,17 @@ export async function POST(req: NextRequest) {
       visited.add(currentUrl)
 
       try {
-        var res = await fetch(currentUrl, {
+        // safeFetch handles its own redirects with re-validation per hop,
+        // so we can drop the explicit `redirect: 'follow'`. Each crawled
+        // URL (initial + every internal link below) gets the same SSRF
+        // gate so an attacker can't seed a public page that links to
+        // 169.254.169.254 to read metadata.
+        var res = await safeFetch(currentUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; Datanautix Deep Crawler/1.0)',
             'Accept': 'text/html,application/xhtml+xml,text/plain',
           },
           signal: AbortSignal.timeout(CRAWL_TIMEOUT),
-          redirect: 'follow',
         })
 
         if (!res.ok) continue

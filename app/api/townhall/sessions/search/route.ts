@@ -50,8 +50,14 @@ export async function GET(req: Request) {
   for (const s of orgSessions as any[]) sessionMap[s.id] = s.name
   const sessionIds = Object.keys(sessionMap)
 
-  // ILIKE escape for the user's query
-  const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%'
+  // Two layers of escaping:
+  //  1. SQL ILIKE pattern metas (\, %, _) — so the user can't use them as wildcards.
+  //  2. PostgREST or() value-quote — wrap the value in "..." so a comma or
+  //     paren in the query can't break out of the OR expression and
+  //     inject an extra filter clause.
+  const sqlEscaped = q.replace(/[\\%_]/g, '\\$&')
+  const orQuoted = sqlEscaped.replace(/[\\"]/g, '\\$&')
+  const like = '"%' + orQuoted + '%"'
 
   // Pull matching turns. We OR across user_message, user_message_en, bot_message.
   const { data: turns, error } = await service

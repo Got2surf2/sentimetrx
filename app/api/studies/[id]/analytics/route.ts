@@ -12,6 +12,13 @@ export async function GET(req: NextRequest, { params }: Params) {
   const from = url.searchParams.get('from')
   const to   = url.searchParams.get('to')
 
+  // Hard-validate dates to YYYY-MM-DD before any PostgREST .or() interpolation.
+  // A comma or paren in the input would otherwise let a caller append
+  // arbitrary extra filter clauses to the OR expression.
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+  if (from && !ISO_DATE.test(from)) return NextResponse.json({ error: 'Invalid from date (expected YYYY-MM-DD)' }, { status: 400 })
+  if (to && !ISO_DATE.test(to)) return NextResponse.json({ error: 'Invalid to date (expected YYYY-MM-DD)' }, { status: 400 })
+
   // Verify study exists and user can access it
   const studyResult = await supabase
     .from('studies')

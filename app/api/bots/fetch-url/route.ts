@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { safeFetch, SafeFetchError } from '@/lib/safeFetch'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -20,13 +21,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 })
   }
 
-  // Basic URL validation
-  try { new URL(url) } catch {
-    return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
-  }
-
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Datanautix Bot Trainer/1.0)',
         'Accept': 'text/html,application/xhtml+xml,text/plain',
@@ -60,6 +56,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ text, length: text.length, url })
   } catch (err: any) {
+    if (err instanceof SafeFetchError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
     return NextResponse.json({ error: 'Failed to fetch URL: ' + (err.message || 'timeout') }, { status: 502 })
   }
 }

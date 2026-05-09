@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchGoogle } from '@/lib/dataforseo'
+import { safeFetch } from '@/lib/safeFetch'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -45,7 +46,10 @@ export async function POST(req: NextRequest) {
 
     await Promise.all(pagesToFetch.map(async (r) => {
       try {
-        const res = await fetch(r.url, {
+        // safeFetch — SERP results are external by definition, but a
+        // poisoned result pointing at an internal address would let an
+        // attacker exfil metadata via this endpoint.
+        const res = await safeFetch(r.url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; Datanautix Bot Trainer/1.0)',
             'Accept': 'text/html,application/xhtml+xml,text/plain',
