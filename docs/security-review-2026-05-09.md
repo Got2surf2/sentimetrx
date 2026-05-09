@@ -103,7 +103,7 @@ Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source
 - **`study_response_stats` materialized view** — `authenticated` can SELECT all rows (cross-org enumeration relies on UUID secrecy).
 - **No rate limiting** on share-link creation, log-login, magic-link triggers.
 - **Townhall public GET** discloses session config for any status (should require `status === 'active'`).
-- **No security headers** (no CSP, X-Frame-Options, HSTS, Referrer-Policy, X-Content-Type-Options).
+- ✅ **No security headers** (no CSP, X-Frame-Options, HSTS, Referrer-Policy, X-Content-Type-Options). — `next.config.js` headers() now applies HSTS (preload-eligible), X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, and a permissive Permissions-Policy across every response. Authed paths (admin/dashboard/analyze/etc.) additionally get X-Frame-Options DENY + CSP frame-ancestors 'none' for clickjacking protection. Public embeddable pages (/s, /b, /th, /shared, /clara, /nora, /bot) deliberately omit the frame restrictions so customer sites can iframe them.
 
 ---
 

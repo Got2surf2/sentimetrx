@@ -48,12 +48,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // PATCH /api/admin/clients/[id] - update org (plan, name, is_admin_org)
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const ok = await requireAdmin(supabase, user.id)
-  if (!ok) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   const service = createServiceRoleClient()
   const body = await req.json()

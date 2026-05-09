@@ -7,6 +7,44 @@ const commitCount = (() => { try { return execSync('git rev-list --count HEAD').
 const buildDate = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
 const buildYear = new Date().getFullYear().toString().slice(-2)
 
+// Security headers applied to every response. Baseline defense-in-depth that
+// the 2026-05-09 review flagged as missing. Two layers:
+//   1. baseline — applies everywhere (HSTS, MIME sniffing block, referrer,
+//      permissions). These don't break anything.
+//   2. authed-only — adds clickjacking protection (X-Frame-Options DENY +
+//      CSP frame-ancestors 'none') to dashboard/admin paths but NOT to the
+//      public embeddable pages (/s, /b, /th, /shared, /clara, /nora, /bot)
+//      which by design get iframed onto customer sites.
+const baselineSecurityHeaders = [
+  // 2 years, includeSubDomains, preload-eligible. Once browsers see this and
+  // remember it, http:// downgrade attacks for sentimetrx.ai are off the table.
+  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+  // Stops a browser from MIME-sniffing a response into something executable
+  // (e.g. treating an uploaded "image" with HTML content as text/html).
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  // On cross-origin navigations, send only the origin (no path/query) so
+  // share/auth tokens don't leak to third parties via the Referer header.
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  // Disable browser features we don't use; keeps malicious embedded content
+  // from prompting the user for camera/mic/location.
+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
+]
+
+const noFrameHeaders = [
+  ...baselineSecurityHeaders,
+  // X-Frame-Options is the legacy clickjacking gate; CSP frame-ancestors is
+  // the modern equivalent and covers older edge cases. Both, for belt-and-suspenders.
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+]
+
+// Routes whose pages users hit while authenticated; these never need to be
+// iframed by anyone. Adding clickjacking protection costs nothing here.
+const AUTHED_PATH_PREFIXES = [
+  'admin', 'analyze', 'auth', 'bots', 'campaigns', 'dashboard',
+  'invite', 'login', 'settings', 'social', 'studies', 'townhall',
+]
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Raise the body size limit for API routes from the default 4 MB.
@@ -21,6 +59,23 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_NUMBER: `${buildYear}.${commitCount}`,
     NEXT_PUBLIC_BUILD_DATE: buildDate,
+  },
+  async headers() {
+    return [
+      // Layer 1: baseline headers everywhere.
+      { source: '/:path*', headers: baselineSecurityHeaders },
+      // Layer 2: clickjacking protection only on authed dashboard/admin paths.
+      // The root `/` is the marketing page — also no-frame.
+      { source: '/', headers: noFrameHeaders },
+      ...AUTHED_PATH_PREFIXES.map((prefix) => ({
+        source: `/${prefix}/:path*`,
+        headers: noFrameHeaders,
+      })),
+      ...AUTHED_PATH_PREFIXES.map((prefix) => ({
+        source: `/${prefix}`,
+        headers: noFrameHeaders,
+      })),
+    ]
   },
 }
 

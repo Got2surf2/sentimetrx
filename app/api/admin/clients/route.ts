@@ -69,24 +69,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/admin/clients - create a new organization
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-
-  const orgData = userData?.organizations
-  const isAdmin = Array.isArray(orgData)
-    ? orgData[0]?.is_admin_org
-    : (orgData as any)?.is_admin_org
-
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-  }
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   const { name, slug, plan, is_admin_org, primaryIndustries } = await req.json()
 
