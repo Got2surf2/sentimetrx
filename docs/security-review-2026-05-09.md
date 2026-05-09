@@ -53,7 +53,9 @@ Existing rule: *"Wrap deck/strategy/internal-export API routes with requireAdmin
 ### Open phishing relay
 | # | Route | Issue |
 |---|---|---|
-| 15 | `app/api/notify/closed-study/route.ts` (note: literal space in path → served at `/api/%20notify/`) | Unauthenticated; caller picks `creatorEmail`, `creatorName`, `studyName`, all interpolated into HTML and sent through Resend from your verified domain |
+| 15 ✅ | `app/api/notify/closed-study/route.ts` (note: literal space in path → served at `/api/%20notify/`) | Unauthenticated; caller picks `creatorEmail`, `creatorName`, `studyName`, all interpolated into HTML and sent through Resend from your verified domain |
+
+The route was orphaned (zero callers in the codebase) — deleted the entire ` notify/` directory.
 
 ### Stored XSS in public share page
 | # | Location | Issue |
