@@ -5,7 +5,7 @@
 **Scope:** authn/authz, RLS policy correctness, input validation/injection, secrets/env handling, external integrations/webhooks, dependency CVEs
 **Stats:** 440+ TS/TSX files, 171 API routes, all SQL migrations, dependency tree
 
-**Status update (2026-05-09):** Pre-customer sprint items 1, 2, 5, 7 completed — see ✅ markers below. Items #1–6, #11–12, #17 patched; `next` bumped to 14.2.35.
+**Status update (2026-05-09):** Pre-customer sprint items 1, 2, 3, 4, 5, 6, 7 completed — see ✅ markers below. Items #1–14, #16, #17 patched; `next` bumped to 14.2.35; `verify-auth` password oracle removed; ~/Downloads writeFileSync removed from insights-deck.
 
 ## Headline
 
@@ -32,10 +32,10 @@ The pattern: service-role client filters by id only, missing the paired `org_id`
 ### Account-takeover paths
 | # | Route | Issue |
 |---|---|---|
-| 7 | `app/api/invite/register/route.ts` | Invite token is **not bound to email** — leaked invite = account takeover into inviter's org with inviter-chosen role |
-| 8 | `app/api/invite/route.ts` | Admin-org users can issue themselves `owner` invites to **any** org |
-| 9 | `app/api/social/callback/route.ts` | OAuth `state` is unsigned plaintext base64 — attacker can attach their FB pages/tokens to a victim org_id |
-| 10 | `app/api/verify-auth/route.ts` | Unauthenticated, unrate-limited password oracle. Online brute-force endpoint. Likely safe to delete entirely |
+| 7 ✅ | `app/api/invite/register/route.ts` | Invite token is **not bound to email** — leaked invite = account takeover into inviter's org with inviter-chosen role |
+| 8 ✅ | `app/api/invite/route.ts` | Admin-org users can issue themselves `owner` invites to **any** org |
+| 9 ✅ | `app/api/social/callback/route.ts` | OAuth `state` is unsigned plaintext base64 — attacker can attach their FB pages/tokens to a victim org_id |
+| 10 ✅ | `app/api/verify-auth/route.ts` | Unauthenticated, unrate-limited password oracle. Online brute-force endpoint. Likely safe to delete entirely |
 
 ### Public deck routes (memory-rule violation)
 Existing rule: *"Wrap deck/strategy/internal-export API routes with requireAdmin from day one; URL obscurity is not a defense."* Two routes ship with **no auth at all**:
@@ -47,8 +47,8 @@ Existing rule: *"Wrap deck/strategy/internal-export API routes with requireAdmin
 ### Unsigned webhooks (anyone can spoof events)
 | # | Route | Impact |
 |---|---|---|
-| 13 | `app/api/campaigns/webhooks/resend/route.ts` | Anyone can mark any respondent as opened/clicked/bounced/unsubscribed |
-| 14 | `app/api/social/webhook/route.ts` | Anyone can inject fake comments tied to victim's social pages, triggering Graph API calls with their tokens |
+| 13 ✅ | `app/api/campaigns/webhooks/resend/route.ts` | Anyone can mark any respondent as opened/clicked/bounced/unsubscribed |
+| 14 ✅ | `app/api/social/webhook/route.ts` | Anyone can inject fake comments tied to victim's social pages, triggering Graph API calls with their tokens |
 
 ### Open phishing relay
 | # | Route | Issue |
@@ -58,7 +58,9 @@ Existing rule: *"Wrap deck/strategy/internal-export API routes with requireAdmin
 ### Stored XSS in public share page
 | # | Location | Issue |
 |---|---|---|
-| 16 | `app/shared/conversation/[token]/page.tsx:53` | `link.metadata.html` injected into `<iframe srcDoc={html}>` without sanitization. `srcDoc` inherits same origin, so this runs as sentimetrx.ai with cookies |
+| 16 ✅ | `app/shared/conversation/[token]/page.tsx:53` | `link.metadata.html` injected into `<iframe srcDoc={html}>` without sanitization. `srcDoc` inherits same origin, so this runs as sentimetrx.ai with cookies |
+
+Fixed by adding `sandbox="allow-popups allow-popups-to-escape-sandbox"` — disables JS execution and same-origin context for the rendered HTML, while keeping `target="_blank"` links functional.
 
 ### Auth foundation defect
 | # | Location | Issue |
@@ -123,10 +125,10 @@ Lockfile is clean (zero non-npmjs resolved URLs). No hardcoded secrets in source
 **Pre-customer hardening sprint (1 week):**
 1. ✅ Add `gate*Access` helpers and patch the 6 service-role-without-org-check routes (#1–6). Highest cross-tenant blast radius.
 2. ✅ Add `requireAdmin` to the two public deck routes (#11, #12). Trivial fix, explicit memory-rule violation.
-3. Patch the 4 account-takeover paths (#7–10). The invite-token-not-bound-to-email and the password-oracle are the most exploitable.
-4. Verify Resend + Meta webhooks (#13, #14). Standard svix / x-hub-signature-256 pattern.
+3. ✅ Patch the 4 account-takeover paths (#7–10). The invite-token-not-bound-to-email and the password-oracle are the most exploitable.
+4. ✅ Verify Resend + Meta webhooks (#13, #14). Standard svix / x-hub-signature-256 pattern.
 5. ✅ `npm install next@14.2.35` (#critical).
-6. Sanitize the share-page iframe (#16) or move to server-rendered structured turns.
+6. ✅ Sanitize the share-page iframe (#16) or move to server-rendered structured turns.
 7. ✅ Replace `getSession()` with `getUser()` in `lib/supabase/server.ts` (#17).
 
 **Structural sprint (2–4 weeks):**

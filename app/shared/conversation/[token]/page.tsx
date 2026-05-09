@@ -49,6 +49,11 @@ export default async function SharedConversationPage({ params }: { params: { tok
     )
   }
 
-  // Serve the self-contained HTML
-  return <iframe srcDoc={html} className="w-full min-h-screen border-0" title="Shared Conversation" />
+  // Serve the self-contained HTML inside a sandboxed iframe.
+  // The HTML is user-supplied (renderer template + escaped chat text), so
+  // without `sandbox` an attacker who controls the rendered text could
+  // smuggle markup into a `srcDoc` that runs as same-origin sentimetrx.ai.
+  // `allow-popups allow-popups-to-escape-sandbox` keeps `target="_blank"`
+  // links clickable; scripts and same-origin access stay disabled.
+  return <iframe srcDoc={html} sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full min-h-screen border-0" title="Shared Conversation" />
 }

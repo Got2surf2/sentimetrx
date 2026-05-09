@@ -5,9 +5,14 @@
 // Configure in Resend dashboard: https://resend.com/webhooks
 // Endpoint URL: https://your-domain/api/campaigns/webhooks/resend
 // Events: email.delivered, email.opened, email.clicked, email.bounced, email.complained
+//
+// Auth: Resend signs every webhook via Svix. We verify the signature
+// against RESEND_WEBHOOK_SECRET before trusting any field on the payload.
+// Without this check anyone could mark any respondent as opened/bounced.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { createHmac, timingSafeEqual } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,10 +48,63 @@ const STATUS_RANK: Record<string, number> = {
   pending: 0, sent: 1, opened: 2, clicked: 3, completed: 4, bounced: 5, unsubscribed: 6,
 }
 
+// Reject events older than 5 minutes — protects against replay of
+// old captured webhooks even if the secret leaked briefly.
+const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000
+
+// Validates a Svix-style signed webhook (used by Resend). The secret in the
+// dashboard is `whsec_<base64>`; we strip the prefix and decode. Returns
+// true only when at least one of the v1 signatures matches in constant time.
+function verifySvixSignature(secret: string, id: string, timestamp: string, body: string, signatureHeader: string): boolean {
+  const cleaned = secret.startsWith('whsec_') ? secret.slice(6) : secret
+  let secretBytes: Buffer
+  try { secretBytes = Buffer.from(cleaned, 'base64') } catch { return false }
+  if (secretBytes.length === 0) return false
+
+  const expected = createHmac('sha256', secretBytes).update(`${id}.${timestamp}.${body}`).digest()
+
+  // Header looks like "v1,abc123 v1,def456" — any matching v1 sig wins.
+  const parts = signatureHeader.split(' ')
+  for (const part of parts) {
+    const [version, sig] = part.split(',')
+    if (version !== 'v1' || !sig) continue
+    let provided: Buffer
+    try { provided = Buffer.from(sig, 'base64') } catch { continue }
+    if (provided.length !== expected.length) continue
+    if (timingSafeEqual(provided, expected)) return true
+  }
+  return false
+}
+
 export async function POST(req: NextRequest) {
+  const secret = process.env.RESEND_WEBHOOK_SECRET
+  if (!secret) {
+    console.error('[resend/webhook] RESEND_WEBHOOK_SECRET not configured')
+    return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 503 })
+  }
+
+  const svixId = req.headers.get('svix-id')
+  const svixTimestamp = req.headers.get('svix-timestamp')
+  const svixSignature = req.headers.get('svix-signature')
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    return NextResponse.json({ error: 'Missing signature headers' }, { status: 401 })
+  }
+
+  // Reject events whose timestamp is too far from now (replay protection).
+  const tsMs = Number(svixTimestamp) * 1000
+  if (!Number.isFinite(tsMs) || Math.abs(Date.now() - tsMs) > MAX_TIMESTAMP_SKEW_MS) {
+    return NextResponse.json({ error: 'Timestamp skew too large' }, { status: 401 })
+  }
+
+  // Read the raw body once; we need it for signature verification before parsing.
+  const rawBody = await req.text()
+  if (!verifySvixSignature(secret, svixId, svixTimestamp, rawBody, svixSignature)) {
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+  }
+
   let body: ResendWebhookPayload
   try {
-    body = await req.json()
+    body = JSON.parse(rawBody)
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }

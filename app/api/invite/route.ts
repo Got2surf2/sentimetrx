@@ -27,10 +27,24 @@ export async function POST(req: NextRequest) {
   const { org_id, email, role } = body
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (email && !emailRegex.test(email)) return NextResponse.json({ error: 'Invalid email format' }, { status: 400 })
+  // Email is required: invite tokens are bound to a specific recipient on
+  // /api/invite/register. Without an email the token would be a bearer
+  // credential — anyone who got the link could claim membership.
+  if (!email || !emailRegex.test(email)) {
+    return NextResponse.json({ error: 'Valid email is required' }, { status: 400 })
+  }
 
   if (!org_id) {
     return NextResponse.json({ error: 'org_id is required' }, { status: 400 })
+  }
+
+  // Whitelist roles so a copy-paste from the dashboard can't escalate to a
+  // role the schema later grants new powers to. Stays in sync with the
+  // values our org-management UI actually offers.
+  const ALLOWED_ROLES = new Set(['owner', 'admin', 'member', 'viewer'])
+  const requestedRole = role || 'owner'
+  if (!ALLOWED_ROLES.has(requestedRole)) {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
   }
 
   const token     = randomBytes(32).toString('hex')
@@ -43,8 +57,8 @@ export async function POST(req: NextRequest) {
     .insert({
       token,
       org_id,
-      email:      email || null,
-      role:       role  || 'owner',
+      email:      String(email).trim().toLowerCase(),
+      role:       requestedRole,
       created_by: user.id,
       expires_at: expiresAt,
     })

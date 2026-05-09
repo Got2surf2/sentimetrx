@@ -6,8 +6,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { auditContent, scoreSentimentFull } from '@/lib/contentGuard'
+import { createHmac, timingSafeEqual } from 'crypto'
 
 export const dynamic = 'force-dynamic'
+
+// Verifies Meta's `x-hub-signature-256` header (`sha256=<hex>`) against the
+// raw request body. Without this an attacker can POST forged comment events
+// that get inserted into social_comments and trigger Graph API calls with
+// the victim org's stored access tokens.
+function verifyMetaSignature(secret: string, rawBody: string, header: string | null): boolean {
+  if (!header || !header.startsWith('sha256=')) return false
+  const provided = header.slice('sha256='.length)
+  let providedBuf: Buffer
+  try { providedBuf = Buffer.from(provided, 'hex') } catch { return false }
+  const expected = createHmac('sha256', secret).update(rawBody).digest()
+  if (providedBuf.length !== expected.length) return false
+  return timingSafeEqual(providedBuf, expected)
+}
 
 // ── GET: Meta verification handshake ─────────────────────────────
 export async function GET(req: NextRequest) {
@@ -32,7 +47,22 @@ export async function GET(req: NextRequest) {
 
 // ── POST: incoming webhook events ────────────────────────────────
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const appSecret = process.env.META_APP_SECRET
+  if (!appSecret) {
+    console.error('[social/webhook] META_APP_SECRET not configured')
+    return NextResponse.json({ error: 'App secret not configured' }, { status: 503 })
+  }
+
+  // Read the raw body so we can verify the HMAC before trusting any field.
+  const rawBody = await req.text()
+  if (!verifyMetaSignature(appSecret, rawBody, req.headers.get('x-hub-signature-256'))) {
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+  }
+
+  let body: any
+  try { body = JSON.parse(rawBody) } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
 
   // Meta sends { object: 'page', entry: [...] }
   if (body.object !== 'page' && body.object !== 'instagram') {

@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   // Validate invite token
   const { data: invite, error: inviteError } = await service
     .from('invites')
-    .select('id, org_id, role, used_at, expires_at')
+    .select('id, org_id, role, email, used_at, expires_at')
     .eq('token', token)
     .single()
 
@@ -30,6 +30,14 @@ export async function POST(req: NextRequest) {
   }
   if (new Date(invite.expires_at) < new Date()) {
     return NextResponse.json({ error: 'Invite expired' }, { status: 410 })
+  }
+  // Bind invite to the originally addressed email. A leaked link must not
+  // grant access to whoever clicks it — only to the intended recipient.
+  if (!invite.email) {
+    return NextResponse.json({ error: 'Invite is missing a bound email; ask the inviter to issue a new one' }, { status: 400 })
+  }
+  if (String(email).trim().toLowerCase() !== String(invite.email).trim().toLowerCase()) {
+    return NextResponse.json({ error: 'This invite was issued to a different email address' }, { status: 403 })
   }
 
   // Create auth user

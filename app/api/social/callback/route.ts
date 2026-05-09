@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { verifyOauthState } from '@/lib/oauthState'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,13 +53,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${siteUrl}/social?error=oauth_denied`)
   }
 
-  let userId: string
-  try {
-    const state = JSON.parse(Buffer.from(stateRaw, 'base64').toString())
-    userId = state.userId
-  } catch {
+  // verifyOauthState rejects forged or expired states; without this an
+  // attacker could attach their own FB pages/tokens to any other user's org.
+  const state = verifyOauthState<{ userId?: string }>(stateRaw)
+  if (!state || typeof state.userId !== 'string' || !state.userId) {
     return NextResponse.redirect(`${siteUrl}/social?error=invalid_state`)
   }
+  const userId = state.userId
 
   const service = createServiceRoleClient()
   const redirectUri = process.env.META_REDIRECT_URI || `${siteUrl}/api/social/callback`

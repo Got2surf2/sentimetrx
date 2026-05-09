@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { signOauthState } from '@/lib/oauthState'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,9 +23,15 @@ export async function GET(req: NextRequest) {
     'pages_manage_posts',
   ].join(',')
 
-  const state = Buffer.from(JSON.stringify({ userId: user.id })).toString('base64')
+  let state: string
+  try {
+    state = signOauthState({ userId: user.id })
+  } catch (e: any) {
+    console.error('[social/connect]', e?.message)
+    return NextResponse.json({ error: 'OAuth not configured' }, { status: 500 })
+  }
 
-  const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&response_type=code`
+  const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${encodeURIComponent(state)}&response_type=code`
 
   return NextResponse.redirect(url)
 }

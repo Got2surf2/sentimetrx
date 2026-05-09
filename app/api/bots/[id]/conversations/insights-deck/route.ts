@@ -291,10 +291,7 @@ Return ONLY valid JSON, no markdown.`,
 
   const buffer = await renderDeck(deck, bot.name)
 
-  // Write to ~/Downloads
   const fileName = bot.name.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') + '_Insights.pptx'
-  const downloadPath = require('path').join(require('os').homedir(), 'Downloads', fileName)
-  require('fs').writeFileSync(downloadPath, buffer)
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
