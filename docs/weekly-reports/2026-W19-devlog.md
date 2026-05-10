@@ -2,6 +2,10 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-10 (Sun, later) — Campaign route-handler egress test
+
+- **`tests/integration/campaign-routes-egress.test.ts` (env-gated, `npm run test:campaign-egress`).** Why: `cross-org-egress` covers RLS — but the just-fixed campaign routes use the service-role client, which bypasses RLS, so RLS-layer tests can't see whether the handler-level `org_id` gates are present. This suite mocks `@/lib/supabase/server` to inject a real signed-in Org B client + real service-role client, then invokes `GET /api/campaigns/[id]/{export,respondents}` against an Org A campaign and asserts 404. A control test invokes the same `/export` handler signed in as Org A's user and asserts 200, so the negative results are anchored to the gate firing rather than an unrelated seed bug. POST/DELETE handlers share the same gate code; intentionally not exercising destructive cross-tenant writes against the prod-linked DB.
+
 ## 2026-05-10 (Sun, later) — Cross-tenant fixes on 4 campaign routes
 
 - **Closed 6 cross-tenant leaks across 4 campaign routes** (`/api/campaigns/[id]/{export,respondents,send,clone}`). Why: each handler used the service-role client and looked up the campaign by `id` only, with no `org_id` check — exact same pattern as the six May-2026 CRITICAL findings. `respondents` POST/DELETE and `send` POST were destructive write leaks (a logged-in user from any org could insert/delete respondents or trigger a send on another org's campaign). `export` GET and `respondents` GET were read leaks. `clone` POST was a read-leak via clone (clone lands in original org, but exposes config). All fixed by adding `users.org_id` resolution + `campaign.org_id !== userData.org_id` → 404. The Explore agent originally flagged 2 of these routes; audit found the other 2.

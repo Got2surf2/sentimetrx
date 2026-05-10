@@ -15,6 +15,7 @@ npm run test:e2e          # Playwright (requires running app + admin creds)
 npm run test:rls          # env-gated: cross-org RLS isolation (real Supabase)
 npm run test:egress       # env-gated: cross-org data egress per table (real Supabase)
 npm run test:auth-flows   # env-gated: real Supabase auth round-trips
+npm run test:campaign-egress # env-gated: campaign-by-id route handlers
 ```
 
 CI runs the first two on every push and PR.
@@ -36,7 +37,8 @@ tests/
 │   ├── high-traffic-routes.test.ts  # clara/nora/bot/townhall chat + study/[guid]
 │   ├── rls-isolation.test.ts        # env-gated, real Supabase — RLS coverage
 │   ├── cross-org-egress.test.ts     # env-gated, real Supabase — per-table egress
-│   └── auth-flows.test.ts           # env-gated, real Supabase — auth round-trips
+│   ├── auth-flows.test.ts           # env-gated, real Supabase — auth round-trips
+│   └── campaign-routes-egress.test.ts # env-gated — service-role route handler gates
 └── e2e/
     └── deck-download.spec.ts  # Playwright, env-gated
 ```
@@ -60,6 +62,7 @@ makes the suite easy to reason about as a unit.
 | High-traffic chat + study routes | clara/nora/bot/townhall chat (validation + rate-limit) + study/[guid] (404, 403, happy) | These are the most-trafficked public endpoints — validation must reject bad input fast |
 | RLS isolation | Cross-org read returns null + every public table has RLS + no `USING(true)` policy outside allowlist (env-gated) | The single biggest multi-tenancy risk |
 | Cross-org data egress | Per org-scoped table: Org B cannot read Org A row by id or list scan (env-gated) | Proves policies actually filter, not just that they exist — extends rls-isolation |
+| Campaign route egress | Service-role-client campaign-by-id routes (`/export`, `/respondents`) 404 cross-tenant + control 200 owning-org (env-gated) | RLS doesn't apply to service-role queries — this is the safety net for handler-level org_id gates |
 | Auth flows | Real Supabase signInWithPassword + OTP + reset + admin-createUser invite shape + signOut (env-gated) | Mocking the auth client only proves wrapper code; this proves the round-trip |
 | E2E download | Login → /api/pitch-deck → pptx (env-gated) | Catches cookie/session breakage that unit tests can't see |
 
