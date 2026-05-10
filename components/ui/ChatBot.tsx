@@ -391,7 +391,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: 8 }}>{config.avatarLetter}</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>Choose your language</div>
-            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Select the language you'd like to chat in</div>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Select the language you&apos;d like to chat in</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 320 }}>
             {(config.languages || []).map(function(code) {

@@ -180,7 +180,7 @@ export default function StudyStartModal({ onApply, onSkip }: Props) {
           </div>
           <div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: '#111827', margin: 0 }}>Start with AI suggestions</h2>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>Describe what you want to learn — we'll fill in a starting point.</p>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>Describe what you want to learn — we&apos;ll fill in a starting point.</p>
           </div>
         </div>
 

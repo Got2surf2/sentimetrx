@@ -15,19 +15,18 @@ interface Props {
 
 export default function RegulationsDownloadBanner({ datasetId, description }: Props) {
   var meta: any = null
-  try { meta = JSON.parse(description) } catch { return null }
-  if (!meta?.docket_id || meta.download_status === 'complete') return null
+  try { meta = JSON.parse(description) } catch {}
 
-  var [status, setStatus] = useState(meta.download_status || 'downloading')
+  var [status, setStatus] = useState((meta?.download_status) || 'downloading')
   var [comments, setComments] = useState(0)
-  var [page, setPage] = useState(meta.next_page || 1)
+  var [page, setPage] = useState(meta?.next_page || 1)
   var [error, setError] = useState('')
-  var [totalPages, setTotalPages] = useState(Math.max(Math.ceil((meta.comment_count || 100) / 10), 1))
-  var [useSearch, setUseSearch] = useState(meta.use_search || false)
+  var [totalPages, setTotalPages] = useState(Math.max(Math.ceil((meta?.comment_count || 100) / 10), 1))
+  var [useSearch, setUseSearch] = useState(meta?.use_search || false)
   var running = useRef(false)
 
   useEffect(function() {
-    if (status !== 'downloading' || running.current) return
+    if (!meta?.docket_id || status !== 'downloading' || running.current) return
     running.current = true
 
     async function downloadLoop() {
@@ -82,6 +81,8 @@ export default function RegulationsDownloadBanner({ datasetId, description }: Pr
 
     downloadLoop()
   }, [status])
+
+  if (!meta?.docket_id || meta.download_status === 'complete') return null
 
   if (status === 'complete') {
     return (

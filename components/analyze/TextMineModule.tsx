@@ -393,6 +393,11 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 }) {
   var [showSummary, setShowSummary] = useState(false)
   var [copied, setCopied] = useState(false)
+  var [pinnedSig, setPinnedSig] = useState<string | null>(null)
+  var [pinnedSigData, setPinnedSigData] = useState<{ dir: string; text: string; color: string } | null>(null)
+  var [copiedSig, setCopiedSig] = useState(false)
+  var sigLeaveTimer = useRef<any>(null)
+  var [sigPopRect, setSigPopRect] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
 
   if (!themes) {
     return (
@@ -529,12 +534,6 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   })()
 
   // ── Compare bar component ────────────────────────────────────────────────
-  var [pinnedSig, setPinnedSig] = useState<string | null>(null)
-  var [pinnedSigData, setPinnedSigData] = useState<{ dir: string; text: string; color: string } | null>(null)
-  var [copiedSig, setCopiedSig] = useState(false)
-  var sigLeaveTimer = useRef<any>(null)
-  var [sigPopRect, setSigPopRect] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
-
   var CompareBar = function(props: { label: string; pct: number; count: number; maxPct: number; color: string; labelColor: string; sig: { dir: string; z: number; p1: number; p2: number } | null; isUnclassified?: boolean; onClick?: () => void; barId?: string; groupName?: string; themeName?: string; avgRating?: number | null; overallRatAvg?: number; ratingSig?: { dir: 'higher' | 'lower' | 'ns'; p: number } | null; byTheme?: boolean }) {
     var sigColor = props.sig && props.sig.dir === 'over' ? '#16a34a' : props.sig && props.sig.dir === 'under' ? '#dc2626' : null
     var sigId = (props.groupName || '') + '::' + (props.themeName || '') + '::' + props.label

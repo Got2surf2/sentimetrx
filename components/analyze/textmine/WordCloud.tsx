@@ -178,17 +178,11 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     return { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total }
   }, [parsedData, themes, fields])
 
-  if (!themes || !themes.length || !fields.length) return null
-
-  const { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total } = cloudData
-
-  if (!allWords.length) return null
-
   // Compute per-word average score for signal strength sizing (Reddit only)
   var wordSignals = useMemo(function() {
     if (!isReddit) return {} as Record<string, { totalScore: number; count: number; avg: number }>
     var map: Record<string, { totalScore: number; count: number; avg: number }> = {}
-    var wordSet = new Set(allWords.map(function(w) { return w.word }))
+    var wordSet = new Set(cloudData.allWords.map(function(w) { return w.word }))
     parsedData.forEach(function(row) {
       var text = getRowText(row, fields).toLowerCase()
       if (!text) return
@@ -206,11 +200,11 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     })
     Object.values(map).forEach(function(v) { v.avg = v.count > 0 ? v.totalScore / v.count : 0 })
     return map
-  }, [parsedData.length, allWords.length, isReddit])
+  }, [parsedData, cloudData.allWords, fields, isReddit])
 
   // Compute per-word sentiment in a single pass (much faster than per-word extraction)
   var wordSentiments = useMemo(function() {
-    var wordSet = new Set(allWords.map(function(w) { return w.word }))
+    var wordSet = new Set(cloudData.allWords.map(function(w) { return w.word }))
     var map: Record<string, { positive: number; negative: number; neutral: number }> = {}
     wordSet.forEach(function(w) { map[w] = { positive: 0, negative: 0, neutral: 0 } })
 
@@ -243,7 +237,13 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
       }) // end clauses
     })
     return map
-  }, [parsedData.length, allWords.length])
+  }, [parsedData, cloudData.allWords, fields])
+
+  if (!themes || !themes.length || !fields.length) return null
+
+  const { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total } = cloudData
+
+  if (!allWords.length) return null
 
   function toggleTheme(idx: number) {
     const all = new Set(themes.map(function(_, i) { return i }))

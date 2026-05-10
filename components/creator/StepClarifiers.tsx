@@ -120,7 +120,7 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
           {keywordEntries.map(([kw, response]) => (
             <div key={kw} className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-orange-600 mb-0.5">if response contains "{kw}"</div>
+                <div className="text-xs font-semibold text-orange-600 mb-0.5">if response contains &quot;{kw}&quot;</div>
                 <div className="text-sm text-gray-700">{response}</div>
               </div>
               <button

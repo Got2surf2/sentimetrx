@@ -78,7 +78,7 @@ export default function StudyPreview({ draft }: Props) {
             className="px-3.5 py-2 rounded-2xl rounded-br-sm text-xs font-medium text-white max-w-[80%]"
             style={{ background: theme.primaryColor }}
           >
-            Yes, let's go! 👍
+            Yes, let&apos;s go! 👍
           </div>
         </div>
 
