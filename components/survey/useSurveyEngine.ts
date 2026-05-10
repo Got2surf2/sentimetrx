@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
+import DOMPurify from 'isomorphic-dompurify'
 import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey } from '@/lib/types'
 import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
 import { pickBrandColor } from '@/components/survey/SurveyWidget'
@@ -244,7 +245,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       bub.style.cssText = 'background:' + C.bubbleBg + ';color:#000;white-space:pre-wrap;'
       // Use innerHTML if text contains links, textContent otherwise (safer)
       if (text.includes('<a ')) {
-        bub.innerHTML = text
+        bub.innerHTML = DOMPurify.sanitize(text)
         // Style links to match theme
         bub.querySelectorAll('a').forEach(a => {
           a.style.color = '#00b4d8'
@@ -472,7 +473,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         bub.className = 'px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed'
         bub.style.cssText = 'background:' + C.bubbleBg + ';color:#000;'
         // Style the link within the AI-generated response
-        bub.innerHTML = data.deflection.replace(/<a /g, '<a style="color:#00b4d8;text-decoration:underline;font-weight:600" ')
+        bub.innerHTML = DOMPurify.sanitize(data.deflection.replace(/<a /g, '<a style="color:#00b4d8;text-decoration:underline;font-weight:600" '))
         wrap.append(av, bub)
         chatRef.current.appendChild(wrap)
         scrollBottom()
@@ -703,11 +704,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const cardSubtitle = closingCardTranslated === closingCardFallback && activeLang.current !== 'en'
       ? tUI('closingCardDefault', closingCardFallback)
       : closingCardTranslated
-    card.innerHTML = `
+    card.innerHTML = DOMPurify.sanitize(`
       <div class="text-4xl mb-2">${study.bot_emoji}</div>
       <div class="text-white font-semibold text-lg mb-1">${tUI('allDone', 'All done!')}</div>
       <div class="text-white/75 text-sm leading-snug" style="white-space:pre-wrap">${cardSubtitle}</div>
-    `
+    `)
     // Style links in the card to be visible and clickable
     card.querySelectorAll('a').forEach(a => {
       a.style.color = '#00b4d8'
@@ -1484,7 +1485,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             sb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
             var emojiSize = scale.length > 1 ? (0.9 + (s.score - 1) / (scale.length - 1) * 0.6) : 1.125
-            sb.innerHTML = '<span style="font-size:' + emojiSize.toFixed(2) + 'rem">' + (s.emoji || '⭐') + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>'
+            sb.innerHTML = DOMPurify.sanitize('<span style="font-size:' + emojiSize.toFixed(2) + 'rem">' + (s.emoji || '⭐') + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>')
             sb.onmouseenter = () => { if (!likertConfirm || selectedScore !== s) { sb.style.borderColor = config.theme.primaryColor; sb.style.background = C.btnHoverBg } }
             sb.onmouseleave = () => { if (!likertConfirm || selectedScore !== s) { sb.style.borderColor = C.inputBdr; sb.style.background = C.btnBg } }
             sb.onclick = async () => {
@@ -2376,7 +2377,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             const rb = document.createElement('button')
             rb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             rb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
-            rb.innerHTML = '<span style="font-size:1.25rem">' + r.emoji + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>'
+            rb.innerHTML = DOMPurify.sanitize('<span style="font-size:1.25rem">' + r.emoji + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>')
             rb.onmouseenter = () => { if (!confirmMode || expSel !== r) { rb.style.borderColor = config.theme.primaryColor; rb.style.background = C.btnHoverBg } }
             rb.onmouseleave = () => { if (!confirmMode || expSel !== r) { rb.style.borderColor = C.inputBdr; rb.style.background = C.btnBg } }
             rb.onclick = async () => {
@@ -2445,7 +2446,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             const sb = document.createElement('button')
             sb.className = 'flex flex-col items-center gap-1 rounded-xl px-1 py-2 flex-1 min-w-0 transition-all'
             sb.style.cssText = 'background:' + C.btnBg + ';border:2px solid ' + C.inputBdr + ';cursor:pointer;font-family:inherit;'
-            sb.innerHTML = '<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>'
+            sb.innerHTML = DOMPurify.sanitize('<span style="font-size:0.8125rem">' + s.stars + '</span><span style="font-size:0.5rem;font-weight:600;color:' + C.textMute + ';text-align:center;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word">' + tLabel + '</span>')
             sb.onmouseenter = () => { if (!confirmMode || npsSel !== s) { sb.style.borderColor = config.theme.primaryColor; sb.style.background = C.btnHoverBg } }
             sb.onmouseleave = () => { if (!confirmMode || npsSel !== s) { sb.style.borderColor = C.inputBdr; sb.style.background = C.btnBg } }
             sb.onclick = async () => {
