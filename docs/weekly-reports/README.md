@@ -15,11 +15,17 @@ The Sentimetrx codebase is developed primarily with [Claude Code](https://claude
 A scheduled remote agent (Claude Code routine) runs every Monday at 4am Eastern. It:
 
 1. Clones the repo and runs the audit defined in [`.claude/commands/audit-codebase.md`](../../.claude/commands/audit-codebase.md)
-2. Analyzes the past week's git history
-3. Synthesizes both into a single Markdown report named `YYYY-WXX.md` (ISO week)
-4. Opens a pull request with the report
+2. Reads the editorial dev log for the past week (`YYYY-WXX-devlog.md`) — falls back to `git log` if no devlog exists
+3. Correlates audit findings against the dev log (did this week's work address open findings?)
+4. Synthesizes everything into a single Markdown report named `YYYY-WXX.md` (ISO week)
+5. Opens a pull request with the report
 
 A human (the project owner) reviews and merges the PR. **The merge itself is the governance signal**: AI generated the report, a human verified it, the resulting commit is in the audit trail.
+
+## Two file types
+
+- **`YYYY-WXX-devlog.md`** — editorial dev log appended-to throughout the week. Captures the **why** behind each work session (intent, deferred items, surprises). Written by Claude Code sessions as work happens; can also be edited manually. **Source of the WHY.**
+- **`YYYY-WXX.md`** — the Monday governance report itself. Created by the routine; combines the dev log narrative + the 7-category audit + correlation + trend. **The merged audit artifact.**
 
 ## Why Git, Not a Database
 
