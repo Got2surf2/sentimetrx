@@ -16,6 +16,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase
+    .from('users').select('org_id').eq('id', user.id).single()
+  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   // Use service role for all campaign data reads (bypasses RLS)
   const service = createServiceRoleClient()
 
@@ -26,7 +30,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('id', params.id)
     .single()
 
-  if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  if (!campaign || campaign.org_id !== userData.org_id) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  }
   if (campaign.status === 'completed') {
     return NextResponse.json({ error: 'Campaign is already completed' }, { status: 400 })
   }

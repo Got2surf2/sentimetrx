@@ -13,16 +13,22 @@ export async function POST(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase
+    .from('users').select('org_id').eq('id', user.id).single()
+  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const service = createServiceRoleClient()
 
-  // Fetch original campaign
+  // Fetch original campaign and verify it belongs to the caller's org.
   const { data: original } = await service
     .from('campaigns')
     .select('*')
     .eq('id', params.id)
     .single()
 
-  if (!original) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  if (!original || original.org_id !== userData.org_id) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  }
 
   let body: any = {}
   try { body = await req.json() } catch {}

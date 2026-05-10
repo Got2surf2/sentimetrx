@@ -14,8 +14,22 @@ export async function GET(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase
+    .from('users').select('org_id').eq('id', user.id).single()
+  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   // Use service role to bypass campaign_respondents RLS
   const service = createServiceRoleClient()
+
+  // Verify the campaign belongs to the caller's org before reading respondents.
+  const { data: campaign } = await service
+    .from('campaigns')
+    .select('org_id')
+    .eq('id', params.id)
+    .single()
+  if (!campaign || campaign.org_id !== userData.org_id) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  }
 
   const status = req.nextUrl.searchParams.get('status')
   const limit = parseInt(req.nextUrl.searchParams.get('limit') || '500')
@@ -45,16 +59,22 @@ export async function POST(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase
+    .from('users').select('org_id').eq('id', user.id).single()
+  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const service = createServiceRoleClient()
 
-  // Verify campaign exists
+  // Verify campaign exists AND belongs to the caller's org.
   const { data: campaign } = await service
     .from('campaigns')
     .select('id, org_id')
     .eq('id', params.id)
     .single()
 
-  if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  if (!campaign || campaign.org_id !== userData.org_id) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  }
 
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
@@ -128,12 +148,26 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: userData } = await supabase
+    .from('users').select('org_id').eq('id', user.id).single()
+  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   let body: { respondent_ids: string[] }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   if (!body.respondent_ids?.length) return NextResponse.json({ error: 'respondent_ids required' }, { status: 400 })
 
   const service = createServiceRoleClient()
+
+  // Verify the campaign belongs to the caller's org before deleting respondents.
+  const { data: campaign } = await service
+    .from('campaigns')
+    .select('org_id')
+    .eq('id', params.id)
+    .single()
+  if (!campaign || campaign.org_id !== userData.org_id) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  }
 
   // Only delete respondents that are still pending (haven't been sent yet)
   const { data: deleted, error } = await service

@@ -2,6 +2,10 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-10 (Sun, later) — Cross-tenant fixes on 4 campaign routes
+
+- **Closed 6 cross-tenant leaks across 4 campaign routes** (`/api/campaigns/[id]/{export,respondents,send,clone}`). Why: each handler used the service-role client and looked up the campaign by `id` only, with no `org_id` check — exact same pattern as the six May-2026 CRITICAL findings. `respondents` POST/DELETE and `send` POST were destructive write leaks (a logged-in user from any org could insert/delete respondents or trigger a send on another org's campaign). `export` GET and `respondents` GET were read leaks. `clone` POST was a read-leak via clone (clone lands in original org, but exposes config). All fixed by adding `users.org_id` resolution + `campaign.org_id !== userData.org_id` → 404. The Explore agent originally flagged 2 of these routes; audit found the other 2.
+
 ## 2026-05-10 (Sun, later) — Repo-root CLAUDE.md
 
 - **Added `CLAUDE.md` at repo root.** Why: closes the last documentation gap from the W19 audit's progression list. Project-specific guidance for Claude Code — naming conventions (Sentimetrx / agents / PulseIQ), multi-tenancy invariants (every public table needs RLS, service-role queries must pair `id` with `org_id`), data model anchors (`dataset_rows_flat` sole source, 50K sampling threshold), test commands, and content rules (no fabricated market data / addresses). Excludes personal interaction style — that lives in user memory.
