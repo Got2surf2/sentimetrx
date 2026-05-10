@@ -23,10 +23,15 @@
  * To run:
  *   npm run test:auth-flows
  *
- * Pre-launch this hits the production Supabase project. The seeded users
- * have a randomised email (`_authflowtest_<8-hex>_a@authflowtest.local`)
- * and are deleted in afterAll. If a run crashes mid-setup, find leftovers
- * by the `_authflowtest_` email prefix.
+ * Pre-launch this hits the production Supabase project. Test emails use
+ * Gmail `+suffix` aliasing on a real mailbox the project owner controls
+ * (`got2surf2+authflowtest_<8-hex>_a@gmail.com`). Two of the test cases
+ * (resetPasswordForEmail, signInWithOtp) cause Supabase to actually send
+ * mail; with a non-existent domain this produced NXDOMAIN bounces back to
+ * the project's configured sender. With `+suffix` aliasing the mail
+ * delivers to a real inbox the owner can filter and discard. Seeded users
+ * are deleted in afterAll. If a run crashes mid-setup, find leftovers by
+ * the `+authflowtest_` local-part substring.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
@@ -53,14 +58,23 @@ const describeMaybe = skip ? describe.skip : describe
 const RUN_ID = randomBytes(4).toString('hex')
 const PREFIX = '_authflowtest_' + RUN_ID + '_'
 
+// Test emails use Gmail `+suffix` aliasing on a mailbox the project owner
+// controls. Mail still delivers (so resetPasswordForEmail / signInWithOtp
+// don't bounce); the owner filters by the `+authflowtest_` local-part and
+// discards the noise.
+const TEST_INBOX_USER = 'got2surf2'
+const TEST_INBOX_DOMAIN = 'gmail.com'
+const aliasFor = (slot: string) =>
+  TEST_INBOX_USER + '+authflowtest_' + RUN_ID + '_' + slot + '@' + TEST_INBOX_DOMAIN
+
 // Two pre-seeded user identities. PRIMARY is created in beforeAll for the
 // success-path tests. CREATED_LATER is created inside its own test — that
 // test verifies the invite-flow shape (admin.createUser → matching
 // public.users insert).
-const PRIMARY_EMAIL = PREFIX + 'a@authflowtest.local'
+const PRIMARY_EMAIL = aliasFor('a')
 const PRIMARY_PASSWORD = randomBytes(16).toString('hex')
 
-const CREATED_LATER_EMAIL = PREFIX + 'b@authflowtest.local'
+const CREATED_LATER_EMAIL = aliasFor('b')
 const CREATED_LATER_PASSWORD = randomBytes(16).toString('hex')
 
 let admin: SupabaseClient
@@ -175,7 +189,7 @@ describeMaybe('Auth flows (env-gated)', () => {
       'unexpected error: ' + realUser.error?.message).toBe(true)
 
     const unknownUser = await client.auth.resetPasswordForEmail(
-      PREFIX + 'never-existed@authflowtest.local',
+      aliasFor('never-existed'),
     )
     expect(unknownUser.error === null || isRateLimit(unknownUser.error),
       'unexpected error: ' + unknownUser.error?.message).toBe(true)

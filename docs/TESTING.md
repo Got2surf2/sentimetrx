@@ -177,7 +177,11 @@ npm run test:auth-flows
 ```
 
 Sets `AUTH_FLOWS_TEST=1`. Test users prefixed `_authflowtest_<runId>_`
-and deleted in afterAll.
+and deleted in afterAll. Test emails use Gmail `+suffix` aliasing on a
+mailbox the owner controls (`got2surf2+authflowtest_<runId>_*@gmail.com`)
+so that the two paths which actually send mail (`resetPasswordForEmail`,
+`signInWithOtp`) deliver instead of NXDOMAIN-bouncing back to the
+project's configured sender.
 
 ### Playwright e2e (`tests/e2e/deck-download.spec.ts`)
 
