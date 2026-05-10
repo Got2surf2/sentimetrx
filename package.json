@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:rls": "RLS_TEST=1 vitest run rls-isolation",
+    "test:egress": "EGRESS_TEST=1 vitest run cross-org-egress",
     "loadtest:k6": "k6 run tests/loadtest/townhall.k6.js",
     "loadtest:browsers": "playwright test --config=tests/loadtest/playwright.config.ts"
   },
