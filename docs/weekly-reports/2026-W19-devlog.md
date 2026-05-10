@@ -2,6 +2,10 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-10 (Sun, later) — Repo-root CLAUDE.md
+
+- **Added `CLAUDE.md` at repo root.** Why: closes the last documentation gap from the W19 audit's progression list. Project-specific guidance for Claude Code — naming conventions (Sentimetrx / agents / PulseIQ), multi-tenancy invariants (every public table needs RLS, service-role queries must pair `id` with `org_id`), data model anchors (`dataset_rows_flat` sole source, 50K sampling threshold), test commands, and content rules (no fabricated market data / addresses). Excludes personal interaction style — that lives in user memory.
+
 ## 2026-05-10 (Sun, late) — Pushed everything
 
 - **Pushed all 13 unpushed commits + a 14th** (`9159b86` "Some basic changes" — committed `.claude/hooks/session-start-load-queue.sh`, `.claude/hooks/stop-queue-prompt.sh`, and `.claude/settings.json` so the hook scripts are now shared in the repo). HEAD == origin/main. Why: until pushed, the Monday governance routine clones origin/main and re-flags every fixed finding; after push, W20's run will be the first to reflect the full week's work. SessionStart hook to auto-load `project_open_work_queue.md` is wired locally in `.claude/settings.local.json` (untracked).
