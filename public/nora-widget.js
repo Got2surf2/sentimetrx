@@ -78,8 +78,10 @@
   }
 
   function fmt(text) {
+    // Escape " and ' too — otherwise attacker-controlled URLs can break out
+    // of the href="..." attribute injected by the auto-linker below.
     return text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br>')
       .replace(/- /g, '&bull; ')
