@@ -77,22 +77,26 @@ function LoginFormInner() {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    // shouldCreateUser:false → only existing users can sign in via magic link.
-    // Signups go through invites. Supabase still returns success for unknown
-    // emails (to prevent enumeration) — UX is "check your email" either way.
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: `${window.location.origin}/auth/confirm`,
-      },
-    })
-    setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
-      setMagicSent(true)
+    // Routed through /api/auth/magic-link rather than calling
+    // supabase.auth.signInWithOtp directly: the server-side wrapper
+    // swallows the 422 "Signups not allowed for otp" that Supabase
+    // returns for unknown emails, so the network response is uniform
+    // regardless of whether the email is known. Signups still go
+    // through invites — this endpoint only sends links to existing users.
+    try {
+      await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          redirectTo: `${window.location.origin}/auth/confirm`,
+        }),
+      })
+    } catch {
+      /* uniform UX — show the success card either way */
     }
+    setLoading(false)
+    setMagicSent(true)
   }
 
   const sentCard = (icon: string, title: string, body: React.ReactNode) => (

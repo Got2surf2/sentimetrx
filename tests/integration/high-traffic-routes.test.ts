@@ -57,6 +57,26 @@ vi.mock('@/lib/townhallThemeDetection', () => ({
   detectThemesForSession: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Direct @supabase/supabase-js mock for the magic-link route, which
+// constructs its own anon client rather than going through @/lib/supabase.
+// `otpBehavior` controls the next signInWithOtp outcome.
+const otpBehavior: { mode: 'success' | 'error' | 'throw' } = { mode: 'success' }
+const otpCalls: Array<{ email: string }> = []
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      signInWithOtp: vi.fn(async (args: { email: string }) => {
+        otpCalls.push({ email: args.email })
+        if (otpBehavior.mode === 'throw') throw new Error('boom')
+        if (otpBehavior.mode === 'error') {
+          return { data: null, error: { message: 'Signups not allowed for otp', status: 422, code: 'otp_disabled' } }
+        }
+        return { data: { user: null, session: null }, error: null }
+      }),
+    },
+  }),
+}))
+
 // Supabase — used by study/[guid] (lookup) and townhall/chat (session lookup).
 // Each test installs the row it needs via the `behavior` map.
 type SupabaseBehavior = {
@@ -142,6 +162,8 @@ beforeEach(() => {
   contentGuardNext.nudge = false
   supaBehavior.studyByGuid = undefined
   supaBehavior.townhallSession = undefined
+  otpBehavior.mode = 'success'
+  otpCalls.length = 0
 })
 
 for (const route of chatRoutes) {
@@ -290,5 +312,77 @@ describe('GET /api/study/[guid]', () => {
     expect(body.guid).toBe('g1')
     expect(body.bot_name).toBe('Bot')
     expect(body.config?.greeting).toBe('hi')
+  })
+})
+
+// ── /api/auth/magic-link ───────────────────────────────────────────────────
+//
+// The whole point of this route is the uniform response: every code path —
+// success, Supabase 422, throw, missing email, invalid JSON, rate-limited —
+// must produce status 200 with `{ ok: true }`. Anything else leaks
+// information an attacker could use to enumerate accounts.
+
+describe('POST /api/auth/magic-link', () => {
+  async function loadHandler() {
+    return (await import('@/app/api/auth/magic-link/route')).POST
+  }
+
+  function magicReq(body: unknown): NextRequest {
+    return new NextRequest('http://localhost/api/auth/magic-link', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '127.0.0.1' },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    })
+  }
+
+  async function assertUniform(res: Response) {
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ ok: true })
+  }
+
+  it('returns 200 ok when signInWithOtp succeeds (known user)', async () => {
+    otpBehavior.mode = 'success'
+    const POST = await loadHandler()
+    const res = await POST(magicReq({ email: 'real@example.com' }))
+    await assertUniform(res)
+    expect(otpCalls).toHaveLength(1)
+  })
+
+  it('returns 200 ok when signInWithOtp returns the 422 enumeration error (unknown user)', async () => {
+    otpBehavior.mode = 'error'
+    const POST = await loadHandler()
+    const res = await POST(magicReq({ email: 'unknown@example.com' }))
+    await assertUniform(res)
+    expect(otpCalls).toHaveLength(1)
+  })
+
+  it('returns 200 ok when signInWithOtp throws unexpectedly', async () => {
+    otpBehavior.mode = 'throw'
+    const POST = await loadHandler()
+    const res = await POST(magicReq({ email: 'real@example.com' }))
+    await assertUniform(res)
+  })
+
+  it('returns 200 ok when the body is missing email', async () => {
+    const POST = await loadHandler()
+    const res = await POST(magicReq({ redirectTo: 'https://example.com' }))
+    await assertUniform(res)
+    expect(otpCalls).toHaveLength(0)
+  })
+
+  it('returns 200 ok when the body is invalid JSON', async () => {
+    const POST = await loadHandler()
+    const res = await POST(magicReq('not json'))
+    await assertUniform(res)
+    expect(otpCalls).toHaveLength(0)
+  })
+
+  it('returns 200 ok when the IP is rate-limited (no 429 leak)', async () => {
+    rateLimitResults.push({ limited: true, remaining: 0 })
+    const POST = await loadHandler()
+    const res = await POST(magicReq({ email: 'real@example.com' }))
+    await assertUniform(res)
+    expect(otpCalls).toHaveLength(0)
   })
 })
