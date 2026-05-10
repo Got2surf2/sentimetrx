@@ -2,6 +2,10 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-10 (Sun, late) — Pushed everything
+
+- **Pushed all 13 unpushed commits + a 14th** (`9159b86` "Some basic changes" — committed `.claude/hooks/session-start-load-queue.sh`, `.claude/hooks/stop-queue-prompt.sh`, and `.claude/settings.json` so the hook scripts are now shared in the repo). HEAD == origin/main. Why: until pushed, the Monday governance routine clones origin/main and re-flags every fixed finding; after push, W20's run will be the first to reflect the full week's work. SessionStart hook to auto-load `project_open_work_queue.md` is wired locally in `.claude/settings.local.json` (untracked).
+
 ## 2026-05-10 (Sun) — Findings from the new tests + 3 fixes
 
 The new test suites surfaced four real findings; three got fixed in the same session.
