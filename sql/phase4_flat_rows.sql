@@ -18,14 +18,14 @@ CREATE INDEX IF NOT EXISTS idx_drf_dataset ON dataset_rows_flat(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_drf_dataset_idx ON dataset_rows_flat(dataset_id, row_index);
 CREATE INDEX IF NOT EXISTS idx_drf_data_gin ON dataset_rows_flat USING gin(data);
 
--- RLS: same policy as dataset_rows
+-- RLS: org-scoped SELECT policy lives in sql/032_enable_rls_everywhere.sql
+-- ("org members read dataset_rows_flat"). All write paths in the app use
+-- the service-role client (which bypasses RLS), so no INSERT/UPDATE/DELETE
+-- policy is required. An earlier draft of this file shipped a permissive
+-- USING(true) FOR ALL policy that would have let any authed user read every
+-- row; it was dropped from production but keeping it out of the source
+-- prevents reintroduction on a fresh re-apply.
 ALTER TABLE dataset_rows_flat ENABLE ROW LEVEL SECURITY;
-
--- Allow service role full access (API routes use service role for data operations)
-CREATE POLICY "Service role full access on dataset_rows_flat"
-  ON dataset_rows_flat FOR ALL
-  USING (true)
-  WITH CHECK (true);
 
 -- ============================================================
 -- 2. Populate flat table from existing batched data
