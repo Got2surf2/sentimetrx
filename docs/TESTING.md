@@ -7,11 +7,14 @@ care about — without the upkeep cost of comprehensive coverage.
 ## How to run
 
 ```bash
-npm run typecheck      # tsc --noEmit (strict)
-npm test               # unit + integration via Vitest
-npm run test:watch     # local TDD loop
-npm run test:coverage  # v8 coverage report
-npm run test:e2e       # Playwright (requires running app + admin creds)
+npm run typecheck         # tsc --noEmit (strict)
+npm test                  # unit + integration via Vitest
+npm run test:watch        # local TDD loop
+npm run test:coverage     # v8 coverage report
+npm run test:e2e          # Playwright (requires running app + admin creds)
+npm run test:rls          # env-gated: cross-org RLS isolation (real Supabase)
+npm run test:egress       # env-gated: cross-org data egress per table (real Supabase)
+npm run test:auth-flows   # env-gated: real Supabase auth round-trips
 ```
 
 CI runs the first two on every push and PR.
@@ -28,9 +31,12 @@ tests/
 │   ├── rateLimit.test.ts
 │   └── usageLog.test.ts
 ├── integration/          # route handlers with mocked Supabase
-│   ├── decks.test.ts     # 4 admin-only deck routes × {anon, admin}
-│   ├── respond.test.ts   # public survey-response endpoint
-│   └── rls-isolation.test.ts  # env-gated, real Supabase
+│   ├── decks.test.ts                # 4 admin-only deck routes × {anon, admin}
+│   ├── respond.test.ts              # public survey-response endpoint
+│   ├── high-traffic-routes.test.ts  # clara/nora/bot/townhall chat + study/[guid]
+│   ├── rls-isolation.test.ts        # env-gated, real Supabase — RLS coverage
+│   ├── cross-org-egress.test.ts     # env-gated, real Supabase — per-table egress
+│   └── auth-flows.test.ts           # env-gated, real Supabase — auth round-trips
 └── e2e/
     └── deck-download.spec.ts  # Playwright, env-gated
 ```
@@ -51,7 +57,10 @@ makes the suite easy to reason about as a unit.
 | Usage logging | `usageLog` non-blocking | Usage logging must never crash a paid AI call |
 | Deck routes | `/api/{pitch,architecture,engineering-reality,rollup}-deck` × {anon, admin} | Confirms each route both calls `requireAdmin` AND emits a real PPTX |
 | Public survey endpoint | `/api/respond` happy + missing-field + invalid-JSON + inactive-study + 404 | This endpoint accepts traffic from anywhere — its validation is load-bearing |
-| RLS isolation | Cross-org read returns null (env-gated) | The single biggest multi-tenancy risk |
+| High-traffic chat + study routes | clara/nora/bot/townhall chat (validation + rate-limit) + study/[guid] (404, 403, happy) | These are the most-trafficked public endpoints — validation must reject bad input fast |
+| RLS isolation | Cross-org read returns null + every public table has RLS + no `USING(true)` policy outside allowlist (env-gated) | The single biggest multi-tenancy risk |
+| Cross-org data egress | Per org-scoped table: Org B cannot read Org A row by id or list scan (env-gated) | Proves policies actually filter, not just that they exist — extends rls-isolation |
+| Auth flows | Real Supabase signInWithPassword + OTP + reset + admin-createUser invite shape + signOut (env-gated) | Mocking the auth client only proves wrapper code; this proves the round-trip |
 | E2E download | Login → /api/pitch-deck → pptx (env-gated) | Catches cookie/session breakage that unit tests can't see |
 
 ## What we deliberately skip
@@ -101,8 +110,11 @@ factory is mocked before any module that calls it is imported.
 
 ## Env-gated tests
 
-Two suites need real infrastructure and are **skipped** unless the
-environment is configured:
+Four suites need real infrastructure and are **skipped** unless the
+environment is configured. All four follow the same prefix/cleanup pattern:
+test rows carry a unique `_<name>test_<runId>_` marker so partial failures
+are findable and deletable by hand. None run in CI — service-role keys do
+not belong in GitHub Actions.
 
 ### RLS isolation (`tests/integration/rls-isolation.test.ts`)
 
@@ -131,6 +143,38 @@ by hand via the `_rlstest_` prefix.
 set `NEXT_PUBLIC_SUPABASE_URL`/keys in `.env.local` to that project before
 running. Real auth.users rows shouldn't share an instance with paying
 customers, regardless of how careful the cleanup is.
+
+### Cross-org data egress (`tests/integration/cross-org-egress.test.ts`)
+
+Where rls-isolation proves "every table has RLS turned on and no policy
+is unconditionally `true`," this suite proves the next layer: for each
+org-scoped table, the policy actually filters cross-org reads. Seeds one
+row per table in Org A; signs in as Org B's anon-key client; asserts no
+row leak via either get-by-id or list-by-id scan.
+
+```bash
+npm run test:egress
+```
+
+Sets `EGRESS_TEST=1`. Same .env.local + pre-launch caveats as RLS. Test
+data is prefixed `_egresstest_<runId>_`.
+
+### Auth flows (`tests/integration/auth-flows.test.ts`)
+
+Real Supabase auth round-trips — covers what mocking can't: that
+`signInWithPassword` actually mints a JWT that decodes back to the same
+user, that `admin.createUser` (the invite-flow path) produces a user who
+can immediately sign in, and that `resetPasswordForEmail` / `signInWithOtp`
+/ `signOut` wire through. Email-sending paths tolerate
+`over_email_send_rate_limit` since the throttler firing isn't a wiring
+failure.
+
+```bash
+npm run test:auth-flows
+```
+
+Sets `AUTH_FLOWS_TEST=1`. Test users prefixed `_authflowtest_<runId>_`
+and deleted in afterAll.
 
 ### Playwright e2e (`tests/e2e/deck-download.spec.ts`)
 

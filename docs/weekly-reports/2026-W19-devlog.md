@@ -2,6 +2,13 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-10 (Sun) — Test-suite expansion (3 new integration suites)
+
+- **Cross-org data egress test** (`tests/integration/cross-org-egress.test.ts`, env-gated). Why: the existing rls-isolation test proves "policies exist on every public table"; this proves they actually filter. Seeds one row per org-scoped table in Org A (studies, responses, datasets, dataset_rows_flat, dataset_state, campaigns, campaign_respondents, bots, collections, collection_members, townhall_sessions, townhall_themes, townhall_turns), signs in as Org B, asserts no read leak via either get-by-id or list-by-id. Run with `npm run test:egress`. 27 tests, all green against linked Supabase.
+- **Auth flows test** (`tests/integration/auth-flows.test.ts`, env-gated). Why: previously only `requireAdmin` (the gate) was tested, not the flows themselves. Real Supabase auth round-trips for signInWithPassword (success + wrong password + JWT round-trip via getUser), the invite-flow shape (admin.createUser + matching public.users insert + immediate sign-in), resetPasswordForEmail, signInWithOtp, and signOut. Email-sending paths tolerate `over_email_send_rate_limit`. Run with `npm run test:auth-flows`.
+- **High-traffic API routes test** (`tests/integration/high-traffic-routes.test.ts`, always-on, mocked). Why: the most-trafficked public endpoints (clara/nora/bot chat, townhall/chat, study/[guid]) had no validation/rate-limit coverage. Mocks at the module boundary (rateLimit, ai, contentGuard, supabase/server) following the respond.test.ts pattern. 22 new tests run in `npm test`.
+- **Decision: hybrid Supabase strategy.** Reconsidered the four test-infra options from scratch. Picked D (prod-linked + prefix-namespaced cleanup) for the real-Supabase work, A (mocks) for pure validation paths. Zero new infra; deferred B (paid dedicated test project) and C (local Supabase via Docker) until paying customers exist or we want PR-gating CI for these tests.
+
 ## 2026-05-09 (Sat) — AI governance controls + audit-driven fixes
 
 - **Stood up the weekly governance audit routine.** Why: Sentimetrx is developed primarily with Claude — we need recurring evidence of AI-generated code being reviewed. Built around `/audit-codebase`, `/security-check`, `/security-audit` slash commands installed at `.claude/commands/`. Routine runs Monday 4am ET, opens a PR for human review (the merge is the governance signal). First test-run scored **55.0 / 100** — baseline established.
