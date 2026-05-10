@@ -28,7 +28,7 @@ CREATE TABLE clients (
 -- client_id = NULL means Sentimetrx platform admin.
 -- ============================================================
 CREATE TABLE users (
-  id           UUID PRIMARY KEY,            -- MUST match auth.users.id exactly
+  id           UUID PRIMARY KEY,            -- FK to auth.users.id (added in sql/046_users_auth_fk.sql)
   client_id    UUID REFERENCES clients(id) ON DELETE SET NULL,
   email        TEXT NOT NULL UNIQUE,
   full_name    TEXT,
