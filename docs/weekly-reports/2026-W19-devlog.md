@@ -2,6 +2,15 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-10 (Sun) — Findings from the new tests + 3 fixes
+
+The new test suites surfaced four real findings; three got fixed in the same session.
+
+- **Drift fix: `dataset_rows_flat` policy.** Why: the live policy state (verified via `supabase db query --linked`) showed only the org-scoped SELECT policy from sql/032; the `Service role full access ... USING(true)` policy declared in `sql/phase4_flat_rows.sql` never made it to prod. Source was more permissive than reality. Removed it from source so a fresh re-apply can't reintroduce an unconditional anon-readable policy. All write paths use service-role anyway, which bypasses RLS.
+- **Schema fix: `public.users.id → auth.users.id` FK with ON DELETE CASCADE.** Why: the "MUST match" comment was documentation-only; no FK existed, so a `public.users` insert with a fabricated UUID succeeded (the auth-flows test caught it). Migration `sql/046_users_auth_fk.sql` gates itself with an orphan pre-flight raise. One orphan was found (own test data from the dropped FK assertion), cleaned by hand, then migration applied to linked Supabase.
+- **Auth surface fix: magic-link enumeration vector.** Why: the browser-side `signInWithOtp` call returned 200 for known emails and 422 "Signups not allowed for otp" for unknown ones — visible in the network tab. New `/api/auth/magic-link` route calls Supabase server-side and always returns `{ ok: true }` regardless of outcome (rate-limited, throw, missing email, 422 — all 200). LoginForm uses the wrapper. Six new uniform-response tests lock the contract.
+- **Punted (not auto-fixed): the recipient_guid NOT NULL surprise from the egress test seed.** Already corrected in the test itself; no schema action needed.
+
 ## 2026-05-10 (Sun) — Test-suite expansion (3 new integration suites)
 
 - **Cross-org data egress test** (`tests/integration/cross-org-egress.test.ts`, env-gated). Why: the existing rls-isolation test proves "policies exist on every public table"; this proves they actually filter. Seeds one row per org-scoped table in Org A (studies, responses, datasets, dataset_rows_flat, dataset_state, campaigns, campaign_respondents, bots, collections, collection_members, townhall_sessions, townhall_themes, townhall_turns), signs in as Org B, asserts no read leak via either get-by-id or list-by-id. Run with `npm run test:egress`. 27 tests, all green against linked Supabase.
