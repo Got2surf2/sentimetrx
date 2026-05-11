@@ -2,6 +2,12 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, downloads) — Surface Download Monitor + add Uploads tab
+
+- **Added Download Monitor link to gear menu** (desktop CogMenu + mobile drawer). Why: `/admin/downloads` already existed with KPI tiles, status pills, frequency, last/next sync, and error messages for Reddit / Google Reviews / Substack / Regulations.gov — but nothing in the navigation pointed at it, so it was effectively dead code. Trigger: user asked "where's the download status?" One-line each location.
+- **Added Uploads tab to the monitor.** Why: same user note — "downloads or even upload status should be visible." The monitor only covered auto-syncing sources; uploaded CSVs (`datasets.source = 'upload'`, currently 4 rows in prod) had no admin-side visibility into row counts / processing state. New `uploadDatasets` query in `app/admin/downloads/page.tsx` plus a new tab in `DownloadsClient.tsx` showing dataset, org, status, rows, created, updated. KPI tile rolled up to "Substack + Regulations + Uploads".
+- **Queued (memory):** reorganize the gear menu — 11 flat entries today, user wants grouping/sub-structure. Filed in `project_open_work_queue.md` under "Open follow-ups".
+
 ## 2026-05-11 (Mon, late) — Handle existing auth.users on invite-register
 
 - **Patched `/api/invite/register` to handle the "auth user exists, public.users doesn't" case.** Why: testing the new invite flow surfaced an orphan auth user (`sanjay@datanautix.com`, created 2026-03-03, last sign-in 2026-05-07) that had no public.users row. Old register endpoint called `auth.admin.createUser` unconditionally → 422 "already registered" → invite was unusable for any email that had ever signed up before. New behavior: look up `auth.users.id` by email via a new `get_auth_user_id_by_email` SECURITY DEFINER function (sql/047, applied to prod via `supabase db query --linked`); if found, verify the typed password by attempting a server-side `signInWithPassword` on a bare anon client (anyone with the invite link could otherwise overwrite the existing password); if password is correct AND no public.users row exists for that auth id, insert the public.users row linking them to the invite's org. If they already have a public.users row in another org, return 409 (single-org-per-user is current schema; cross-org moves are a separate concern). The createUser path is unchanged for genuinely new emails.

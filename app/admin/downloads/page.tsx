@@ -61,6 +61,14 @@ export default async function DownloadsPage() {
     .order('created_at', { ascending: false })
     .limit(50)
 
+  // Uploaded CSV datasets
+  const { data: uploadDatasets } = await service
+    .from('datasets')
+    .select('id, name, source, status, row_count, created_at, updated_at, org_id, organizations(name)')
+    .eq('source', 'upload')
+    .order('created_at', { ascending: false })
+    .limit(50)
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <TopNav
@@ -79,6 +87,7 @@ export default async function DownloadsPage() {
           pendingLocations={pendingLocations || []}
           substackDatasets={(substackDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
           regDatasets={(regDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
+          uploadDatasets={(uploadDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
         />
       </div>
     </div>

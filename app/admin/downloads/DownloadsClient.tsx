@@ -48,11 +48,12 @@ interface Props {
   pendingLocations: any[]
   substackDatasets: any[]
   regDatasets: any[]
+  uploadDatasets: any[]
 }
 
-type Tab = 'all' | 'reddit' | 'reviews' | 'substack' | 'regulations'
+type Tab = 'all' | 'reddit' | 'reviews' | 'substack' | 'regulations' | 'uploads'
 
-export default function DownloadsClient({ redditSources, reviewSources, pendingLocations, substackDatasets, regDatasets }: Props) {
+export default function DownloadsClient({ redditSources, reviewSources, pendingLocations, substackDatasets, regDatasets, uploadDatasets }: Props) {
   const [tab, setTab] = useState<Tab>('all')
 
   const errorCount = redditSources.filter(s => s.status === 'error').length +
@@ -67,6 +68,7 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
     { key: 'reviews', label: 'Google Reviews', count: reviewSources.length },
     { key: 'substack', label: 'Substack', count: substackDatasets.length },
     { key: 'regulations', label: 'Regulations.gov', count: regDatasets.length },
+    { key: 'uploads', label: 'Uploads', count: uploadDatasets.length },
   ]
 
   return (
@@ -91,8 +93,8 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
           <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Reddit + Reviews Sources</div>
         </div>
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', padding: '16px 20px' }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: HERMES }}>{substackDatasets.length + regDatasets.length}</div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Substack + Regulations</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: HERMES }}>{substackDatasets.length + regDatasets.length + uploadDatasets.length}</div>
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Substack + Regulations + Uploads</div>
         </div>
       </div>
 
@@ -208,7 +210,31 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
         </Section>
       )}
 
-      {redditSources.length === 0 && reviewSources.length === 0 && substackDatasets.length === 0 && regDatasets.length === 0 && (
+      {(tab === 'all' || tab === 'uploads') && uploadDatasets.length > 0 && (
+        <Section title="Uploaded Datasets" icon="📤">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                <th style={th}>Dataset</th><th style={th}>Org</th><th style={th}>Status</th><th style={th}>Rows</th><th style={th}>Created</th><th style={th}>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {uploadDatasets.map((d: any) => (
+                <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ ...td, fontWeight: 600 }}>{d.name}</td>
+                  <td style={td}>{d.orgName}</td>
+                  <td style={td}><StatusPill status={d.status || 'done'} /></td>
+                  <td style={td}>{(d.row_count || 0).toLocaleString()}</td>
+                  <td style={td}>{fmtDate(d.created_at)}</td>
+                  <td style={td}>{timeAgo(d.updated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
+
+      {redditSources.length === 0 && reviewSources.length === 0 && substackDatasets.length === 0 && regDatasets.length === 0 && uploadDatasets.length === 0 && (
         <div style={{ textAlign: 'center', padding: 64, color: '#9ca3af' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📥</div>
           <p style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>No downloads found</p>

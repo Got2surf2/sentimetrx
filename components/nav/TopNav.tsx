@@ -49,6 +49,12 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83D\uDD27'} Admin Panel
             </Link>
+            <Link href="/admin/downloads" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'downloads' ? 700 : 500, color: currentPage === 'downloads' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\uD83D\uDCE5'} Download Monitor
+            </Link>
             <Link href="/admin/questions" onClick={function() { setOpen(false) }}
               style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'questions' ? 700 : 500, color: currentPage === 'questions' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
@@ -262,6 +268,10 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
                 <Link href="/admin" onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                   <span className="text-base w-5 text-center">{'🔧'}</span><span>Admin Panel</span>
+                </Link>
+                <Link href="/admin/downloads" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <span className="text-base w-5 text-center">{'📥'}</span><span>Download Monitor</span>
                 </Link>
                 <Link href="/admin/usage" onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
