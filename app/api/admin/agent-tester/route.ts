@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 import {
   SKIP_PATTERNS, isInputSafe, isOutputSafe, isOutputClean,
   cleanAiOutput, looksLikeAIRefusal,
@@ -24,17 +24,13 @@ const SKIP_PATTERN_LABELS = ['profanity', 'violence', 'sexual', 'slurs', 'urls']
 type TargetType = 'bot' | 'session'
 
 export async function POST(req: Request) {
+  const denied = await requireAdmin()
+  if (denied) return denied
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-  const orgData = resolveOrg((userData as any)?.organizations) as any
-  if (!orgData?.is_admin_org) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
   const orgId = (userData as any)?.org_id
 
   let body: any
@@ -176,16 +172,12 @@ export async function POST(req: Request) {
 // GET — list the caller's org's bots AND townhall sessions so the UI picker
 // can offer either as a target. Both are "agents" with the same config shape.
 export async function GET() {
+  const denied = await requireAdmin()
+  if (denied) return denied
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-  const orgData = resolveOrg((userData as any)?.organizations) as any
-  if (!orgData?.is_admin_org) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
   const orgId = (userData as any)?.org_id
 
   const service = createServiceRoleClient()

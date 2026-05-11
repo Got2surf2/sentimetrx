@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,21 +12,22 @@ async function getOrgAndCustomQ(supabase: any, userId: string) {
   const { data: userData } = await supabase
     .from('users').select('org_id').eq('id', userId).single()
   const orgId = userData?.org_id
-  if (!orgId) return { orgId: null, customQ: { demo: [], psycho: [] }, features: {}, isAdmin: false }
+  if (!orgId) return { orgId: null, customQ: { demo: [], psycho: [] }, features: {} }
   const { data: orgData } = await supabase
-    .from('organizations').select('id, features, is_admin_org').eq('id', orgId).single()
+    .from('organizations').select('id, features').eq('id', orgId).single()
   const features = orgData?.features || {}
   const customQ = features.custom_questions || { demo: [], psycho: [] }
-  return { orgId, customQ, features, isAdmin: !!orgData?.is_admin_org }
+  return { orgId, customQ, features }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = await requireAdmin()
+  if (denied) return denied
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { orgId, customQ, features, isAdmin } = await getOrgAndCustomQ(supabase, user.id)
-  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { orgId, customQ, features } = await getOrgAndCustomQ(supabase, user.id)
   if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 400 })
 
   const body = await req.json()
@@ -53,12 +55,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = await requireAdmin()
+  if (denied) return denied
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { orgId, customQ, features, isAdmin } = await getOrgAndCustomQ(supabase, user.id)
-  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { orgId, customQ, features } = await getOrgAndCustomQ(supabase, user.id)
   if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 400 })
 
   const url = new URL(req.url)

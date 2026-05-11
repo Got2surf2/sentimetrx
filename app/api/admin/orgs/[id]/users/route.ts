@@ -18,7 +18,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   const isAdmin = orgData?.is_admin_org === true
   const sameOrg = userData?.org_id === params.id
 
-  if (!isAdmin && !sameOrg) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // 404 instead of 403 so the route doesn't leak its existence to callers
+  // who aren't super-admin and aren't a member of the target org.
+  if (!isAdmin && !sameOrg) return new NextResponse('Not Found', { status: 404 })
 
   const { data, error } = await supabase
     .from('users')

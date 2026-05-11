@@ -2,6 +2,14 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, hardening pass) — 404-after-transfer + admin-route gates + main-reply scrubber + gitignore
+
+- **Critical UX fix: admin 404 after transferring a dataset.** Symptom: super-admin transfers a dataset/collection from Org A → Org B, then clicks it from /analyze → spurious 404. Root cause: `app/analyze/[datasetId]/layout.tsx:38` hard-coded `.eq('org_id', userData?.org_id)` on every dataset read, overriding the RLS policy that explicitly allows cross-org reads when `is_platform_admin()`. Removed the redundant filter — RLS is the single source of truth on access. Non-admins are still scoped to their own org because the policy reads `(org_id = current_org_id() OR is_platform_admin())`.
+- **Main-reply meta-prompt scrubber.** Defense-in-depth from this morning's TGL deflection leak. New `sanitizeBotReply` + `looksLikeMetaPromptLeak` in `lib/guardrails.ts` — applied to `result.text` right before it returns from `/api/bots/[id]/chat`. Detected leaks become a generic fallback ("I'm not sure how to help with that — could you try rephrasing?") instead of internal pipeline scaffolding. 9 new unit tests in `tests/unit/guardrails.test.ts`.
+- **`requireAdmin` migration on 5 admin routes** (W19 governance progression #2). `/api/admin/orgs/[id]` PATCH, `/api/admin/questions/[id]` PATCH+DELETE, and `/api/admin/agent-tester` POST+GET now use the shared helper — returns **404** instead of 401/403 so route existence isn't leaked to non-admins. `/api/admin/orgs/[id]/users` (dual-access: admin OR same-org) and `/api/admin/questions` POST kept their dual-access logic but the not-authorized branches now return 404.
+- **`*.pem`, `*.key`, `*.p12`, `*.pfx` in `.gitignore`** (W19 governance #3). No such files in the repo today; the gap was flagged by the audit so close it preemptively.
+- **Audit work for the broader "38 bare service-role id lookups" finding deferred.** Initial Explore pass flagged 10 candidates but several were false positives (auth-cookied `supabase` queries that ALREADY have RLS gating). Need a tighter run that filters strictly to `service.from(...).eq('id', ...)` chains with no paired `org_id`. Queued for next session.
+
 ## 2026-05-11 (Mon, late, SECURITY) — Stop meta-prompt leakage in bot deflection
 
 - **Incident:** TGL bot replied to "what type of viewer does this attract" with `"I'm ready to help. Please provide the user's message that needs evaluation."` — internal evaluator-prompt scaffolding leaked verbatim into a user-facing chat. This is the kind of prompt-internals exposure that erodes trust and reveals pipeline structure.

@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 import psychographicData from '@/QuestionBank/psychographic_profiling_mobile_v4-2.json'
 import industryQuestionsData from '@/lib/data/industryQuestions.json'
 import openEndedData from '@/QuestionBank/Question_Bank.json'
@@ -86,12 +87,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAdmin()
+  if (denied) return denied
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { orgId, customQ, features, isAdmin } = await getOrgAndCustomQ(supabase, user.id)
-  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { orgId, customQ, features } = await getOrgAndCustomQ(supabase, user.id)
   if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 400 })
 
   const body = await req.json()

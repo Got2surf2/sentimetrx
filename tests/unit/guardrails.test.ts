@@ -5,6 +5,8 @@ import {
   isOutputClean,
   looksLikeAIRefusal,
   cleanDeflectResponse,
+  sanitizeBotReply,
+  looksLikeMetaPromptLeak,
 } from '@/lib/guardrails'
 
 describe('guardrails — input', () => {
@@ -122,6 +124,49 @@ describe('cleanDeflectResponse — meta-prompt leakage prevention', () => {
     ]
     for (const p of phrases) {
       expect(cleanDeflectResponse(p).deflection, p).toBeNull()
+    }
+  })
+})
+
+// Defense-in-depth: the main bot reply (not just the deflection path) gets
+// scrubbed too. Anything that smells like evaluator scaffolding is replaced
+// with a safe fallback so internal pipeline text never reaches users.
+describe('sanitizeBotReply — main-reply meta-prompt scrubber', () => {
+  it('passes legitimate bot replies through unchanged', () => {
+    const replies = [
+      'The format mixes virtual long shots with real short-game skill on the green.',
+      "Yeah, I know you're Tiger Woods. What's on your mind today?",
+      "I don't have specific info on betting options for TGL matches in my knowledge base.",
+    ]
+    for (const r of replies) {
+      const out = sanitizeBotReply(r)
+      expect(out.leaked, r).toBe(false)
+      expect(out.reply).toBe(r)
+    }
+  })
+
+  it("replaces the 2026-05-11 TGL incident phrase with a safe fallback", () => {
+    const out = sanitizeBotReply(
+      "I'm ready to help. Please provide the user's message that needs evaluation."
+    )
+    expect(out.leaked).toBe(true)
+    expect(out.reply).not.toContain('evaluation')
+    expect(out.reply.length).toBeGreaterThan(10)
+  })
+
+  it('detects common evaluator scaffolding variants', () => {
+    const leaks = [
+      "I'm ready to help. Please provide the user's message that needs evaluation.",
+      'I am ready to analyze the input.',
+      'Awaiting your message.',
+      'DECISION: redirect needed.',
+      'NONE',
+      'Here is the message you want classified.',
+      'Share the message you want me to evaluate.',
+      'Paste the text below.',
+    ]
+    for (const l of leaks) {
+      expect(looksLikeMetaPromptLeak(l), l).toBe(true)
     }
   })
 })

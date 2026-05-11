@@ -30,13 +30,19 @@ export default async function DatasetLayout({ children, params }: Props) {
 
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
+  // Don't add an explicit `.eq('org_id', userData?.org_id)` here. The RLS
+  // policy on datasets is `(org_id = current_org_id() OR is_platform_admin())`,
+  // which already gates non-admins to their own org AND lets platform admins
+  // read across orgs. The explicit filter was breaking the admin path after a
+  // dataset transfer (admin's org_id no longer matches the dataset's org_id),
+  // producing a spurious 404 even though the admin has policy-level access.
+  const datasetQuery = supabase
+    .from('datasets')
+    .select('id, name, source, study_id, description, visibility, status, row_count, last_synced_at, updated_at, org_id, studies(name)')
+    .eq('id', params.datasetId)
+
   const [{ data: dataset }, { data: stateRow }] = await Promise.all([
-    supabase
-      .from('datasets')
-      .select('id, name, source, study_id, description, visibility, status, row_count, last_synced_at, updated_at, studies(name)')
-      .eq('id', params.datasetId)
-      .eq('org_id', userData?.org_id)
-      .single(),
+    datasetQuery.single(),
     supabase
       .from('dataset_state')
       .select('schema_config')

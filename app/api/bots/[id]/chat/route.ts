@@ -7,7 +7,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull } from '@/lib/contentGuard'
-import { cleanDeflectResponse } from '@/lib/guardrails'
+import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
 import { generateEmbedding } from '@/lib/embeddings'
 import { extractPersona, mergePersona, personaToPromptContext, extractDemographics, mergeDemographics, demographicsToPromptContext, setPersonaUsageCtx, type Persona, type Demographics } from '@/lib/personaExtractor'
 import { logUsage } from '@/lib/usageLog'
@@ -657,7 +657,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       // Add knowledge source signal
       if (knowledgeInjected && !intentHasAction) _signals.push({ label: 'Knowledge Base', type: 'rag', color: '#0369A1' })
     }
-    return NextResponse.json({ reply: result.text, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }, { headers: cors })
+    // Final scrub — if the model leaked evaluator/meta-prompt scaffolding
+    // into the reply, replace with a safe fallback. The deflection path is
+    // already covered by cleanDeflectResponse; this is the same defense for
+    // the main AI response. 2026-05-11 TGL incident motivated this layer.
+    const scrubbed = sanitizeBotReply(result.text)
+    if (scrubbed.leaked) {
+      _debug.push('Meta-prompt leak detected — fallback reply served')
+      console.warn('[bot-chat] meta-prompt leak detected', { bot_id: bot.id, session_id, raw: result.text.slice(0, 200) })
+    }
+    return NextResponse.json({ reply: scrubbed.reply, _debug: debugMode ? _debug : undefined, _signals: demoMode ? _signals : undefined }, { headers: cors })
   } catch (err: any) {
     return NextResponse.json({ reply: "I'm having trouble right now. Please try again in a moment.", _debug: debugMode ? [..._debug, 'ERROR: ' + (err?.message || 'unknown')] : undefined, _signals: demoMode ? _signals : undefined }, { headers: cors })
   }

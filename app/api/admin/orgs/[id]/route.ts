@@ -3,29 +3,16 @@
 // Used by AdminClientDetail.tsx to toggle analyze module per org
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: { id: string } }
 
 export async function PATCH(req: Request, { params }: Params) {
-  const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  // Super-admin check
-  const { data: userData } = await supabase
-    .from('users')
-    .select('organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
-  if (!orgData?.is_admin_org) {
-    return NextResponse.json({ error: 'Super-admin only' }, { status: 403 })
-  }
+  const denied = await requireAdmin()
+  if (denied) return denied
 
   const body = await req.json()
   const { features } = body

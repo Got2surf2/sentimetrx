@@ -149,6 +149,42 @@ export function cleanDeflectResponse(raw: string, testing = false): { deflection
   return { deflection: text, thinking }
 }
 
+// Final scrubber for the primary bot reply. Detects meta-prompt scaffolding
+// (the same evaluator-style leak class as 2026-05-11) and returns a generic
+// fallback rather than letting internal pipeline text reach the end user.
+// The deflection path already has cleanDeflectResponse; this is the
+// defense-in-depth equivalent for the main AI response.
+//
+// Returns the original text if it looks like a legitimate reply; returns a
+// safe fallback string if it looks like scaffolding leaked through.
+const META_LEAK_PATTERNS = [
+  /I.?m ready to (help|evaluate|analyze|assist)/i,
+  /Please provide.*(message|input|text)/i,
+  /needs evaluation/i,
+  /(user.?s|your) message that needs/i,
+  /awaiting (your |the )?(message|input|response)/i,
+  /^(NONE|DECISION|REASONING|DEFLECT|REDIRECT|DEBUG)\b/,
+  /^(Here is|Here.?s) the message/i,
+  /^(Share|Paste) the (message|text|content)/i,
+  /^I am ready to/i,
+]
+
+export function looksLikeMetaPromptLeak(text: string): boolean {
+  if (!text) return false
+  const t = text.trim()
+  if (!t) return false
+  return META_LEAK_PATTERNS.some(p => p.test(t))
+}
+
+const SAFE_FALLBACK_REPLY = "I'm not sure how to help with that — could you try rephrasing your question?"
+
+export function sanitizeBotReply(text: string): { reply: string; leaked: boolean } {
+  if (looksLikeMetaPromptLeak(text)) {
+    return { reply: SAFE_FALLBACK_REPLY, leaked: true }
+  }
+  return { reply: text, leaked: false }
+}
+
 // For clarifier: extract the question from multi-sentence leaked output
 export function extractQuestion(text: string): string {
   let clean = cleanAiOutput(text)
