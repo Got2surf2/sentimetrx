@@ -52,11 +52,12 @@ export default async function DecksPage() {
   // (or mtime fallback). This way each deck card shows when its own content
   // was last touched, not just the latest deploy time.
   const lastUpdated: Record<string, string | null> = {
-    'pitch-deck':                deckLastModified('app/api/pitch-deck/route.ts'),
-    'rollup-deck:short':         deckLastModified('app/api/rollup-deck/route.ts'),
-    'rollup-deck:long':          deckLastModified('app/api/rollup-deck/route.ts'),
-    'architecture-deck':         deckLastModified('app/api/architecture-deck/route.ts'),
-    'engineering-reality-deck':  deckLastModified('app/api/engineering-reality-deck/route.ts'),
+    'pitch-deck':                  deckLastModified('app/api/pitch-deck/route.ts'),
+    'rollup-deck:short':           deckLastModified('app/api/rollup-deck/route.ts'),
+    'rollup-deck:long':            deckLastModified('app/api/rollup-deck/route.ts'),
+    'architecture-deck':           deckLastModified('app/api/architecture-deck/route.ts'),
+    'engineering-reality-deck':    deckLastModified('app/api/engineering-reality-deck/route.ts'),
+    'restaurant-expansion-deck':   deckLastModified('app/api/restaurant-expansion-deck/route.ts'),
   }
 
   return (

@@ -76,6 +76,17 @@ const DECKS: Deck[] = [
     badge: 'PEER REVIEW',
     logKey: 'engineering-reality-deck',
   },
+  {
+    href: '/api/restaurant-expansion-deck',
+    filename: 'Datanautix-Restaurant-Expansion.pptx',
+    title: 'Restaurant Expansion — for current Ana clients',
+    subtitle: 'Beyond text analytics — Sarina + Agents + PulseIQ + Listening + Campaigns, framed for restaurant guest-feedback teams.',
+    audience: 'Existing Ana customers (restaurant industry · COO / VP CX / Marketing)',
+    slides: '11 slides',
+    accent: '#E8632A',
+    badge: 'CUSTOMER EXPANSION',
+    logKey: 'restaurant-expansion-deck',
+  },
 ]
 
 function fmtDate(iso: string | null | undefined): string {
