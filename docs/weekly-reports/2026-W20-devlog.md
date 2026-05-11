@@ -2,6 +2,11 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, cadence) — Dedup sync cadence + add monthly/quarterly/custom
+
+- **Removed duplicate "Auto-sync every" dropdown from `LocationManager`.** Why: settings page rendered TWO sync-cadence controls — the newer `SyncCadenceControl` card with preset buttons, AND an old dropdown inside `LocationManager` that was never removed when the new card shipped. User flagged: "we have two places to set sync cadence — why?" Stripped the dropdown + its `handleFrequencyChange` handler. `LocationManager` keeps its Pause Sync / Sync Now buttons (different concepts: status=paused vs frequency=0/manual).
+- **Added Monthly (720h), Quarterly (2160h), and Custom… options** to `SyncCadenceControl`. Custom opens an inline input — number + unit (hours / days / weeks) — and PATCHes the resulting hours value (the API already accepts any positive int). When the current value doesn't match a preset, the Custom button shows in active orange with a "Every N days/weeks/hours" sub-label so the user knows their custom interval is in effect.
+
 ## 2026-05-11 (Mon, late, downloads) — Surface Download Monitor + add Uploads tab
 
 - **Added Download Monitor link to gear menu** (desktop CogMenu + mobile drawer). Why: `/admin/downloads` already existed with KPI tiles, status pills, frequency, last/next sync, and error messages for Reddit / Google Reviews / Substack / Regulations.gov — but nothing in the navigation pointed at it, so it was effectively dead code. Trigger: user asked "where's the download status?" One-line each location.

@@ -226,15 +226,6 @@ export default function LocationManager({ sourceId }: Props) {
     setSource(function(prev) { return prev ? { ...prev, status: newStatus } : prev })
   }
 
-  async function handleFrequencyChange(hours: number) {
-    await fetch('/api/review-sources/' + sourceId, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sync_frequency_hours: hours }),
-    })
-    setSource(function(prev) { return prev ? { ...prev, sync_frequency_hours: hours } : prev })
-  }
-
   if (loading) return <div className="bg-white border border-gray-200 rounded-2xl p-6 text-sm text-gray-400">Loading locations...</div>
   if (!source) return null
 
@@ -285,24 +276,6 @@ export default function LocationManager({ sourceId }: Props) {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Sync frequency */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-gray-500">Auto-sync every</span>
-        <select
-          value={source.sync_frequency_hours}
-          onChange={function(e) { handleFrequencyChange(Number(e.target.value)) }}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-orange-400">
-          <option value={24}>Day</option>
-          <option value={72}>3 Days</option>
-          <option value={168}>Week</option>
-          <option value={336}>2 Weeks</option>
-          <option value={720}>Month</option>
-        </select>
-        {source.next_sync_at && (
-          <span className="text-xs text-gray-400">Next: {new Date(source.next_sync_at).toLocaleDateString()}</span>
-        )}
       </div>
 
       {/* Location status bar */}
