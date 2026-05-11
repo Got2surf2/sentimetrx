@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildTownHallSchema } from '@/lib/datasetUtils'
 import { THEME_PALETTE } from '@/lib/themeUtils'
 
@@ -19,9 +20,8 @@ export async function POST(_req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
-  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
   const sessionId = params.id
@@ -34,7 +34,7 @@ export async function POST(_req: Request, { params }: Params) {
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-  if (session.org_id !== userData.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdmin && session.org_id !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   // Check for existing dataset linked to this TH session
   // TH datasets use description to store the session link (study_id FK references studies table)
@@ -42,7 +42,7 @@ export async function POST(_req: Request, { params }: Params) {
     .from('datasets')
     .select('id, row_count, last_synced_at')
     .eq('source', 'townhall')
-    .eq('org_id', userData.org_id)
+    .eq('org_id', session.org_id)
     .like('description', 'th:' + sessionId + '%')
     .limit(1)
   const existing = existingArr && existingArr.length > 0 ? existingArr[0] : null
@@ -61,7 +61,7 @@ export async function POST(_req: Request, { params }: Params) {
         description: 'th:' + sessionId,  // link to TH session (not study_id FK)
         source: 'townhall',
         study_id: null,
-        org_id: userData.org_id,
+        org_id: session.org_id,
         created_by: user.id,
         visibility: 'private',
         status: 'active',

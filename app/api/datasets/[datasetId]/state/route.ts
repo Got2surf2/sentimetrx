@@ -4,27 +4,26 @@
 // PATCH -- partial update: update only the fields provided
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: { datasetId: string } }
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
-  const user = await getAuthUser(supabase)
-  if (!user) return { user: null, orgId: null }
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  return { user, orgId: (userData?.org_id as string | null) }
+  const ctx = await getCallerOrgContext(supabase)
+  return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
 export async function GET(_req: Request, { params }: Params) {
   const supabase = createClient()
-  const { user, orgId } = await authCheck(supabase)
+  const { user, orgId, isAdmin } = await authCheck(supabase)
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dataset.org_id !== orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { data, error } = await supabase
     .from('dataset_state')
@@ -38,12 +37,12 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PUT(req: Request, { params }: Params) {
   const supabase = createClient()
-  const { user, orgId } = await authCheck(supabase)
+  const { user, orgId, isAdmin } = await authCheck(supabase)
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dsCheck.org_id !== orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdmin && dsCheck.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const body = await req.json()
   const { schema_config, theme_model, saved_charts, saved_stats, filter_state, session_state } = body
@@ -69,12 +68,12 @@ export async function PUT(req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   const supabase = createClient()
-  const { user, orgId } = await authCheck(supabase)
+  const { user, orgId, isAdmin } = await authCheck(supabase)
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dsCheck2 } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!dsCheck2) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dsCheck2.org_id !== orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdmin && dsCheck2.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   let body: Record<string, unknown>
   try {

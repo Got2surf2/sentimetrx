@@ -2,6 +2,24 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, cross-org sweep) — Admin Phase E rollout to 10+ dataset/study/townhall gates
+
+- **Symptom:** after transferring a dataset to another org, admin's `/analyze/[datasetId]` page loaded the header but every inner module returned "Failed to load dataset rows" (403 Forbidden). The earlier-today fix to `app/analyze/[datasetId]/layout.tsx` removed an explicit `.eq('org_id', userData.org_id)` over-filter — but the API ENDPOINTS the modules call were still doing the same over-check inline.
+- **Root cause class:** ~10 route handlers had a hardcoded `if (resource.org_id !== userData.org_id) return 403`. The RLS policy on these tables already permits `is_platform_admin()` cross-org reads — the explicit check was overriding the policy.
+- **Fix:** new `lib/auth/orgAccess.ts::getCallerOrgContext` helper returns `{ userId, orgId, isAdmin }` in one query. Each gate now reads `if (!isAdmin && resource.org_id !== orgId) return 404`. Returns **404 not 403** so a non-admin doesn't learn whether a resource exists.
+- **Routes patched:**
+  - `/api/datasets/[datasetId]/rows` GET / POST / DELETE (3 gates)
+  - `/api/datasets/[datasetId]/state` GET / PUT / PATCH (3 gates)
+  - `/api/datasets/[datasetId]/compute` POST
+  - `/api/datasets/[datasetId]/aggregate` POST
+  - `/api/datasets/[datasetId]/filter-options` GET
+  - `/api/datasets/[datasetId]/search` GET
+  - `/api/datasets/[datasetId]/trim` POST
+  - `/api/datasets/[datasetId]/refresh-schema` POST
+  - `/api/studies/[id]/analyze` POST
+  - `/api/townhall/sessions/[id]/analyze` POST
+- **Subtle correctness fix in the analyze endpoints:** the study and townhall analyze handlers created a new linked dataset with `org_id: userData.org_id`. For an admin running them cross-org that would orphan the dataset in the admin org. Changed to `org_id: study.org_id` / `session.org_id` so the dataset stays in the source org.
+
 ## 2026-05-11 (Mon, late, egress lock-in) — Egress test suite for the two new dataset/regulations gates
 
 - **New `tests/integration/dataset-routes-egress.test.ts` (env-gated, `npm run test:dataset-egress`).** Locks the gates added earlier today. Mirrors the `campaign-routes-egress` pattern: mocks `@/lib/supabase/server`, seeds Org A + Org B with their own users + Org A's `study` + `study_dataset` + `regulations dataset`, signs in as Org B, hits Org A resources, asserts 404. Three negative tests (sync POST, regulations batch POST, regulations finalize POST) + two control tests (owning-org calls assert NOT 404 to prove the gate is what fires for cross-org, not a missing-resource bug).

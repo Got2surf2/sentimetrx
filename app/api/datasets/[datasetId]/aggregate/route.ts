@@ -3,15 +3,14 @@
 // Uses SQL functions on dataset_rows_flat for O(1) chart rendering at any scale.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 type Params = { params: { datasetId: string } }
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
-  const user = await getAuthUser(supabase)
-  if (!user) return { user: null, orgId: null }
-  var { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  return { user: user, orgId: profile?.org_id || null }
+  const ctx = await getCallerOrgContext(supabase)
+  return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
 export async function POST(req: Request, { params }: Params) {
@@ -21,7 +20,7 @@ export async function POST(req: Request, { params }: Params) {
 
   var { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   var body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }

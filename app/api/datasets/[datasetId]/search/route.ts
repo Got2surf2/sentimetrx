@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 
 // Number of candidates to pull from full-text per target before AI re-ranking.
@@ -35,15 +36,13 @@ interface Params { params: { datasetId: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  // Verify dataset ownership
+  // Verify dataset access (admin Phase E: super-admins cross-org)
   const { data: dataset } = await supabase.from('datasets').select('org_id, source').eq('id', params.datasetId).single()
-  if (!dataset || dataset.org_id !== userData.org_id) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const url = req.nextUrl
   var rawQuery = (url.searchParams.get('q') || '').trim()
@@ -74,7 +73,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           'Return ONLY the search terms, space-separated. No explanation.\n' +
           'Example: "find comments from parents worried about school safety" → "parent parents school safety worried concern unsafe"',
         messages: [{ role: 'user', content: rawQuery }],
-        usage: { org_id: userData.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search' },
+        usage: { org_id: dataset.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search' },
       })
       var expanded = (result.text || '').trim()
       if (expanded && expanded.length > 2) {
@@ -193,7 +192,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           '- Treat paraphrases as full matches ("staff hurried us" = "rushed service").\n\n' +
           'Return ONLY one line per candidate in the form "INDEX|SCORE". No explanation. No header. No extra text.',
         messages: [{ role: 'user', content: 'Query: ' + rawQuery + '\n\nCandidates:\n' + numbered }],
-        usage: { org_id: userData.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search_rerank' },
+        usage: { org_id: dataset.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search_rerank' },
       })
 
       const scores = new Map<number, number>()

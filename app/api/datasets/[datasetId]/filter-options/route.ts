@@ -4,7 +4,8 @@
 // Falls back to pre-computed analytics if flat table is empty.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 
 interface Props { params: { datasetId: string } }
 
@@ -12,14 +13,13 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(_req: Request, { params }: Props) {
   const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Verify org membership
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  // Verify access (admin Phase E: super-admins cross-org)
   const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dataset.org_id !== userData?.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { data: stateRow } = await supabase
     .from('dataset_state')

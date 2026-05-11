@@ -16,7 +16,8 @@
 //                                returned unchanged.
 
 import { NextResponse } from 'next/server'
-import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { ROWS_PER_BATCH } from '@/lib/constants'
 
 export const dynamic     = 'force-dynamic'
@@ -50,11 +51,8 @@ function sampleInPlace<T>(arr: T[], n: number, rng: () => number): void {
 }
 
 async function authCheck(supabase: ReturnType<typeof createClient>) {
-  const user = await getAuthUser(supabase)
-  if (!user) return { user: null, orgId: null }
-  const userData = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
-  return { user, orgId: (userData.data?.org_id as string | null) }
+  const ctx = await getCallerOrgContext(supabase)
+  return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
 // Project a row down to only the requested fields
@@ -72,7 +70,7 @@ export async function GET(req: Request, { params }: Params) {
 
   const { data: dataset } = await supabase.from('datasets').select('org_id, source').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dataset.org_id !== auth.orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!auth.isAdmin && dataset.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // ── COLLECTION: union rows from all member datasets ─────────────────────
   if ((dataset as any).source === 'collection') {
@@ -225,7 +223,7 @@ export async function POST(req: Request, { params }: Params) {
 
   const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const body = await req.json()
   const rows = body.rows
@@ -277,7 +275,7 @@ export async function DELETE(req: Request, { params }: Params) {
 
   const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const body = await req.json().catch(function() { return {} })
   const batchIndexes: number[] = body.batch_indexes

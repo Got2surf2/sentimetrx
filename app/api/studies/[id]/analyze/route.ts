@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildStudySchema, formatResponsesAsRows } from '@/lib/datasetUtils'
 
 export const dynamic = 'force-dynamic'
@@ -18,14 +19,13 @@ export async function POST(_req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
-  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
   const studyId = params.id
 
-  // Verify study exists and belongs to this org
+  // Verify study exists; admin Phase E lets super-admins cross-org.
   const { data: study } = await service
     .from('studies')
     .select('id, name, config, org_id')
@@ -33,7 +33,7 @@ export async function POST(_req: Request, { params }: Params) {
     .single()
 
   if (!study) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
-  if (study.org_id !== userData.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdmin && study.org_id !== orgId) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
 
   // Check for existing dataset linked to this study
   const { data: existing } = await service
@@ -49,14 +49,17 @@ export async function POST(_req: Request, { params }: Params) {
   if (existing && existing.length > 0) {
     datasetId = existing[0].id
   } else {
-    // Create new dataset
+    // Create new dataset. For admins running this cross-org, the dataset
+    // should belong to the STUDY's org, not the admin's \u2014 otherwise it
+    // ends up orphaned in the admin org. For non-admins study.org_id
+    // matches orgId by the gate above, so no behavior change.
     const { data: newDs, error: createErr } = await service
       .from('datasets')
       .insert({
         name: study.name + ' \u2014 Analytics',
         source: 'study',
         study_id: studyId,
-        org_id: userData.org_id,
+        org_id: study.org_id,
         created_by: user.id,
         visibility: 'private',
         status: 'active',

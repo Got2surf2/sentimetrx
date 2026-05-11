@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { mergeSchemaStats } from '@/lib/datasetUtils'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 
@@ -84,10 +85,10 @@ export async function POST(_req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
   const { data: dataset } = await supabase.from('datasets').select('org_id, source, name').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (dataset.org_id !== userData?.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const service = createServiceRoleClient()
 

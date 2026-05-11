@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
@@ -18,16 +19,15 @@ export async function POST(req: Request, { params }: Params) {
     const user = await getAuthUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: userData } = await supabase
-      .from('users').select('org_id').eq('id', user.id).single()
-    if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+    const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+    if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
     const service = createServiceRoleClient()
 
-    // Verify dataset ownership
+    // Verify dataset access (admin Phase E: super-admins cross-org)
     const { data: dataset } = await service
       .from('datasets').select('id, org_id, row_count').eq('id', params.datasetId).single()
-    if (!dataset || dataset.org_id !== userData.org_id) {
+    if (!dataset || (!isAdmin && dataset.org_id !== orgId)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
