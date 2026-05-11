@@ -123,7 +123,7 @@ function addTitleSlide(pptx: any, title: string, subtitle: string, tagline: stri
 // ── Slide builders ─────────────────────────────────────────────────────────
 function slideOpportunity(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'The Opportunity', 'A multi-billion-dollar fragmented market is about to be rebuilt')
+  addHeader(s, 'A fragmented market about to be rebuilt.')
   addFooter(s, pg)
   s.addText('Voice-of-Customer · Qualitative Research · Reputation · Social Listening · Conversational AI', {
     x: 0.6, y: 1.3, w: 12, h: 0.4, fontSize: 14, fontFace: 'Arial', color: DN.hermesOrange, bold: true,
@@ -138,6 +138,22 @@ function slideOpportunity(pptx: any, pg: number) {
   s.addText('Specific TAM / segment-size figures: pending citation from MarketsandMarkets, Grand View Research, Forrester, or your preferred source before external use.', {
     x: 0.6, y: 6.4, w: 12.1, h: 0.4, fontSize: 9, fontFace: 'Arial', color: DN.slate, italic: true,
   })
+
+  s.addNotes(
+`Set up the thesis. Walk the five bullets but keep moving.
+
+THE FRAME: A multi-billion-dollar market spanning Voice-of-Customer, qualitative research, reputation, social listening, and conversational AI. Dominated by labor-heavy services firms and legacy software.
+
+KEY POINTS:
+- Hundreds of $1-10M revenue services firms — founder-owned, aging out of the market. That's the buy-side opportunity.
+- The incumbents — Qualtrics, Medallia, Forsta, InMoment — are bolting AI onto 15-year-old codebases. They can't catch us without a rewrite.
+- LLMs collapse 80% of analyst labor — but only for platforms designed around them from day one. We are. They aren't.
+- Long tail of vendors and boutique research firms is ripe for AI-led consolidation.
+
+NOTE FOR LP: the TAM figures footnote is intentional. Specific dollar figures get cited from MarketsandMarkets / Grand View / Forrester before external use. Don't quote a number you cannot back up.
+
+Next slide is the credibility story — why us.`
+  )
   return pg
 }
 
@@ -272,7 +288,7 @@ function slideAILedVsAdded(pptx: any, pg: number) {
 
 function slideCompetitive(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'Competitive Landscape', 'Fragmented across six vendor categories. None does the whole stack.')
+  addHeader(s, 'Fragmented across six categories. None does the whole stack.')
   addFooter(s, pg)
 
   const cats = [
@@ -356,52 +372,86 @@ function slideCompetitive(pptx: any, pg: number) {
   const kY = startY + 2 * (cardH + gapY) + 0.05
   s.addShape('rect', { x: 0.5, y: kY, w: 12.3, h: H - kY - 0.5, fill: { color: DN.navy }, rectRadius: 0.08 })
   s.addShape('rect', { x: 0.5, y: kY, w: 0.18, h: H - kY - 0.5, fill: { color: DN.green } })
-  s.addText('Boutique MR / CX firms (Kantar · NielsenIQ · hundreds of small):', {
-    x: 0.85, y: kY + 0.08, w: 12.0, h: 0.32,
-    fontFace: 'Arial', fontSize: 12, color: DN.gold, bold: true, italic: true,
+  s.addText('Boutique MR / CX firms = acquisition target, not competitor.', {
+    x: 0.85, y: kY, w: 12.0, h: H - kY - 0.5,
+    fontFace: 'Arial', fontSize: 16, color: DN.gold, bold: true, italic: true, valign: 'middle',
   })
-  s.addText('Not a competitor — our acquisition target. The roll-up consolidates this layer onto the AI-native platform above.', {
-    x: 0.85, y: kY + 0.42, w: 12.0, h: H - kY - 1.0,
-    fontFace: 'Arial', fontSize: 12, color: DN.white, valign: 'top', lineSpacing: 18,
-  })
+
+  s.addNotes(
+`The competitive landscape. Six categories of vendor. Each does pieces. Nobody does the whole stack AI-native.
+
+WALK THE 6 CATEGORIES (the audience reads color-coded threat tier):
+
+RED (incumbent platforms — biggest shadows, but also our likely exit buyers):
+- Legacy VoC / CX: Qualtrics, Medallia, Forsta, InMoment.
+- The gap: AI bolted onto 15-year stacks. Services-revenue cannibalization risk.
+
+AMBER (point-tool vendors — the long tail we replace with the platform):
+- Survey & form tools: SurveyMonkey, Typeform, Alchemer.
+- Text analytics: Stratifyd, Relative Insight.
+- Reputation & reviews: Birdeye, Podium, Reputation.com.
+
+SARINA BLUE (adjacent markets — not direct, but worth flagging):
+- Conversational AI / chatbots: Drift, Intercom Fin, Ada.
+- Social listening: Brandwatch, Sprout, Talkwalker, Meltwater.
+
+THE PUNCHLINE (the bottom strap): "Boutique MR / CX firms — Kantar, NielsenIQ, hundreds of small — are not a competitor. They are our acquisition target. The roll-up consolidates that layer onto the AI-native platform above."
+
+This slide answers two questions at once: "who else is doing this?" (lots, but in pieces) and "what's your moat?" (the integrated platform, plus the consolidation play).`
+  )
 }
 
 function slideWhatWeBuilt(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'What We\'ve Built', 'A complete AI-native customer intelligence platform — already serving enterprise clients')
+  addHeader(s, 'Six modules. Already serving enterprise.')
   addFooter(s, pg)
 
   const modules = [
-    { name: 'Sarina', desc: 'Conversational survey agent\n~10× response rate vs. email', color: DN.sarinaBlue },
-    { name: 'Ana', desc: 'AI text analytics\n<5% of human-team time', color: DN.teal },
-    { name: 'Agents', desc: 'Public-facing RAG agents\nwith conversation analytics', color: DN.hermesOrange },
-    { name: 'PulseIQ', desc: 'AI-moderated live group\nfeedback sessions', color: DN.gold },
-    { name: 'Listening', desc: 'Multi-source ingest:\nGoogle, Reddit, social, Reg.gov', color: DN.navy },
-    { name: 'Campaigns', desc: 'Multi-provider email/SMS\nwith AI personalization', color: DN.tealDark },
+    { name: 'Sarina',     tag: 'Surveys',       color: DN.sarinaBlue },
+    { name: 'Ana',        tag: 'Analytics',     color: DN.teal },
+    { name: 'Agents',     tag: 'RAG',           color: DN.hermesOrange },
+    { name: 'PulseIQ',    tag: 'Live sessions', color: DN.gold },
+    { name: 'Listening',  tag: 'Multi-source',  color: DN.navy },
+    { name: 'Campaigns',  tag: 'Email + SMS',   color: DN.tealDark },
   ]
   modules.forEach((m, i) => {
     const col = i % 3, row = Math.floor(i / 3)
     const x = 0.6 + col * 4.15
-    const y = 1.5 + row * 1.6
-    s.addShape('rect', { x, y, w: 3.85, h: 1.4, fill: { color: DN.slateLight }, rectRadius: 0.1 })
-    s.addShape('rect', { x, y, w: 3.85, h: 0.45, fill: { color: m.color }, rectRadius: 0.1 })
-    s.addText(m.name, { x, y, w: 3.85, h: 0.45, fontSize: 14, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle' })
-    s.addText(m.desc, { x: x + 0.2, y: y + 0.55, w: 3.45, h: 0.8, fontSize: 11, fontFace: 'Arial', color: DN.ink, lineSpacing: 18 })
+    const y = 1.4 + row * 1.7
+    s.addShape('rect', { x, y, w: 3.85, h: 1.5, fill: { color: DN.slateCard }, rectRadius: 0.1 })
+    s.addShape('rect', { x, y, w: 3.85, h: 0.55, fill: { color: m.color }, rectRadius: 0.1 })
+    s.addText(m.name, { x, y, w: 3.85, h: 0.55, fontSize: 22, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle' })
+    s.addText(m.tag, { x, y: y + 0.7, w: 3.85, h: 0.7, fontSize: 14, fontFace: 'Arial', color: DN.slate, italic: true, align: 'center', valign: 'middle' })
   })
 
   s.addShape('rect', { x: 0.6, y: 4.95, w: 12.1, h: 1.7, fill: { color: DN.navy }, rectRadius: 0.1 })
   s.addText('PROOF', { x: 0.8, y: 5.05, w: 4, h: 0.35, fontSize: 11, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 3 })
-  s.addText('Harlem Globetrotters  ·  Orlando Magic  ·  JW Marriott  ·  Red Lobster  ·  UCF Rosen College  ·  MCO Airport', {
-    x: 0.8, y: 5.4, w: 11.7, h: 0.5, fontSize: 14, fontFace: 'Arial', color: DN.white, bold: true,
+  s.addText('Globetrotters · Orlando Magic · JW Marriott · Red Lobster · UCF Rosen · MCO Airport', {
+    x: 0.8, y: 5.4, w: 11.7, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.white, bold: true,
   })
-  s.addText('5 verticals · 6 revenue-bearing modules · multi-tenant · white-labeled · feature-gated', {
-    x: 0.8, y: 5.95, w: 11.7, h: 0.4, fontSize: 12, fontFace: 'Arial', color: DN.sarinaBlue, italic: true,
+  s.addText('5 verticals · multi-tenant · white-labeled', {
+    x: 0.8, y: 5.95, w: 11.7, h: 0.4, fontSize: 13, fontFace: 'Arial', color: DN.sarinaBlue, italic: true,
   })
+
+  s.addNotes(
+`Six revenue-bearing modules. Walk them in one breath each — the audience does not need depth here, that's what the architecture deck is for.
+
+- SARINA (conversational surveys) — ~10× the response rate of email surveys.
+- ANA (AI text analytics) — analysis in <5% of human-team time.
+- AGENTS (public RAG chat agents) — hybrid retrieval, drift review.
+- PULSEIQ (live group feedback) — concurrent AI-moderated conversations with real-time theme mining.
+- LISTENING — Google Reviews, Reddit, Substack, Reg.gov, Meta. One pipeline.
+- CAMPAIGNS — multi-provider email + SMS with AI personalization.
+
+THE PROOF BAR: Globetrotters, Orlando Magic, JW Marriott, Red Lobster, UCF Rosen, MCO Airport. Five verticals. Real customers. Not prototype.
+
+Don't dwell. The point is "we've shipped this, customers use it, this is not a deck."`
+  )
 }
 
 function slideWedge(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'The Wedge: Hospitality', 'Hospitality first. Sports & political in parallel.')
+  addHeader(s, 'Hospitality first.')
   addFooter(s, pg)
   s.addText('Why hospitality leads', { x: 0.6, y: 1.3, w: 6, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true })
   s.addShape('rect', { x: 0.6, y: 1.75, w: 1.2, h: 0.04, fill: { color: DN.gold } })
@@ -427,32 +477,64 @@ function slideWedge(pptx: any, pg: number) {
   s.addText('Opportunistic only.\nDo not let them distract from\nhospitality momentum.', {
     x: 8.6, y: 5.4, w: 4, h: 1.0, fontSize: 11, fontFace: 'Arial', color: DN.navy, italic: true, lineSpacing: 18,
   })
+
+  s.addNotes(
+`The wedge slide. Five reasons hospitality leads.
+
+1. DATANAUTIX ALREADY SERVES the names — JW Marriott, Red Lobster, multiple Orlando resorts. Reference customers are already in the bag.
+
+2. HIGHLY FRAGMENTED VENDOR LANDSCAPE: review monitoring tools, MR boutiques, CX agencies. Lots of acquisition targets.
+
+3. RECURRING NEED + measurable ROI. Cross-sell room with every customer.
+
+4. BENCHMARK DATA FLYWHEEL. Every acquired customer contributes to a proprietary dataset no incumbent can build.
+
+5. 30+ HOSPITALITY-FOCUSED firms identified, $1-10M revenue range.
+
+SIDEBAR (parallel channels): sports & venues (Globetrotters, Magic) and political/public opinion already have proof points. Run them as opportunistic channels — don't let them distract from hospitality momentum.`
+  )
 }
 
 function slidePlaybook(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'The Playbook', 'Buy services. Migrate to platform. Expand margin. Cross-sell. Compound.')
+  addHeader(s, 'Buy. Migrate. Expand. Cross-sell. Compound.')
   addFooter(s, pg)
   const steps = [
-    { n: '1', title: 'Acquire', body: 'Services firm at 3–6× EBITDA — founder-owned, sticky contracts, labor-heavy, AI-vulnerable', color: DN.sarinaBlue },
-    { n: '2', title: 'Migrate', body: 'Move delivery onto Sentimetrx within 90 days — same 90-day playbook every deal', color: DN.teal },
-    { n: '3', title: 'Expand Margin', body: 'Replace analyst hours with Ana — target +1,000 to 1,500 bps EBITDA in Year 1', color: DN.hermesOrange },
-    { n: '4', title: 'Cross-Sell', body: 'Add modules they did not have — agents, PulseIQ, multi-source listening', color: DN.gold },
-    { n: '5', title: 'Compound', body: 'Each deal deepens data moat, vertical IP, and benchmark value across the platform', color: DN.navy },
+    { n: '1', title: 'Acquire',       color: DN.sarinaBlue },
+    { n: '2', title: 'Migrate',       color: DN.teal },
+    { n: '3', title: 'Expand margin', color: DN.hermesOrange },
+    { n: '4', title: 'Cross-sell',    color: DN.gold },
+    { n: '5', title: 'Compound',      color: DN.navy },
   ]
   steps.forEach((step, i) => {
-    const y = 1.4 + i * 1.05
-    s.addShape('ellipse', { x: 0.6, y, w: 0.8, h: 0.8, fill: { color: step.color } })
-    s.addText(step.n, { x: 0.6, y, w: 0.8, h: 0.8, fontSize: 28, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle' })
-    s.addShape('rect', { x: 1.6, y: y + 0.05, w: 11.2, h: 0.7, fill: { color: DN.slateLight }, rectRadius: 0.08 })
-    s.addText(step.title, { x: 1.85, y: y + 0.05, w: 2.5, h: 0.7, fontSize: 16, fontFace: 'Arial', color: step.color, bold: true, valign: 'middle' })
-    s.addText(step.body, { x: 4.4, y: y + 0.05, w: 8.3, h: 0.7, fontSize: 12, fontFace: 'Arial', color: DN.ink, valign: 'middle' })
+    const y = 1.5 + i * 1.05
+    s.addShape('ellipse', { x: 0.7, y, w: 0.9, h: 0.9, fill: { color: step.color } })
+    s.addText(step.n, { x: 0.7, y, w: 0.9, h: 0.9, fontSize: 36, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle' })
+    s.addShape('rect', { x: 1.8, y: y + 0.05, w: 11.0, h: 0.8, fill: { color: DN.slateCard }, rectRadius: 0.08 })
+    s.addShape('rect', { x: 1.8, y: y + 0.05, w: 0.15, h: 0.8, fill: { color: step.color } })
+    s.addText(step.title, { x: 2.1, y: y + 0.05, w: 10.6, h: 0.8, fontSize: 22, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle' })
   })
+
+  s.addNotes(
+`Five steps. Walk them quickly — the audience knows the playbook arc. The detail is in your delivery.
+
+1. ACQUIRE. Services firms at 3-6× EBITDA. Founder-owned, sticky contracts, labor-heavy, AI-vulnerable. The boutique MR / CX firms we covered on the competitive slide.
+
+2. MIGRATE. Move delivery onto Sentimetrx within 90 days. Same playbook every deal — that's how this scales.
+
+3. EXPAND MARGIN. Replace analyst hours with Ana. Target +1,000 to 1,500 basis points of EBITDA in Year 1. That's the AI margin lever.
+
+4. CROSS-SELL. Add the modules they didn't have — agents, PulseIQ, multi-source listening. New revenue from the existing customer base at zero CAC.
+
+5. COMPOUND. Each deal deepens the data moat, the vertical IP, and the benchmark value across the platform. Year 5 deals are more valuable than Year 1 deals.
+
+This is the slide where the math becomes inevitable. The next slide shows the numbers.`
+  )
 }
 
 function slideMath(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'The Math', 'Multiple arbitrage in one deal — sample $3M services firm')
+  addHeader(s, 'Every $1 of acquired EBITDA → ~5× richer on exit.')
   addFooter(s, pg)
 
   const head = [
@@ -489,14 +571,39 @@ function slideMath(pptx: any, pg: number) {
   s.addText('Year 2 effective multiple paid: 1.3×   →   Platform exit multiple at scale: 10–12× EBITDA', {
     x: 0.8, y: 5.85, w: 11.7, h: 0.4, fontSize: 14, fontFace: 'Arial', color: DN.gold, bold: true,
   })
-  s.addText('Every $1 of acquired EBITDA becomes ~5× richer on exit. Five deals = $5M EBITDA from ~$12M deployed.', {
-    x: 0.8, y: 6.25, w: 11.7, h: 0.4, fontSize: 11, fontFace: 'Arial', color: DN.sarinaBlue, italic: true,
+  s.addText('Five deals = $5M EBITDA from ~$12M deployed.', {
+    x: 0.8, y: 6.25, w: 11.7, h: 0.4, fontSize: 13, fontFace: 'Arial', color: DN.sarinaBlue, italic: true, bold: true,
   })
+
+  s.addNotes(
+`This is the math slide. The table tells the story — walk it slowly.
+
+PRE-DEAL: $3M revenue · 20% margin · $0.6M EBITDA. Typical boutique MR firm.
+
+ACQUIRE at 4× pre-deal EBITDA = $2.4M purchase price. Structure: 60% cash / 30% seller note / 10% rollover.
+
+POST-MIGRATION (Year 1):
+- Analyst labor compression via Ana: +$300K to EBITDA.
+- Module cross-sell at 20% revenue uplift: +$200K to EBITDA.
+- Run-rate EBITDA goes to $1.3M.
+
+Year 2: even better — $1.8M EBITDA at 42% margin.
+
+THE PUNCH LINE:
+- We paid $2.4M for what's now generating $1.3M EBITDA in Year 1.
+- Effective multiple paid on run-rate: 1.3-2.2×.
+- Platform exit multiple at scale: 10-12× EBITDA.
+- Every $1 of acquired EBITDA becomes ~5× richer on exit.
+
+Repeat across 5 deals = $5M of consolidated EBITDA from ~$12M of capital deployed.
+
+This is the slide where LPs do the math in their heads. Give them 30 seconds of silence.`
+  )
 }
 
 function slidePhasing(pptx: any, pg: number, isAsk = true) {
   const s = pptx.addSlide()
-  addHeader(s, 'Phasing & The Ask', 'Capital ladders with proof — lower risk than typical PE')
+  addHeader(s, 'Capital matched to proof.')
   addFooter(s, pg)
 
   const head = [
@@ -533,82 +640,83 @@ function slidePhasing(pptx: any, pg: number, isAsk = true) {
       x: 0.85, y: 6.25, w: 12, h: 0.4, fontSize: 11, fontFace: 'Arial', color: DN.slate, italic: true,
     })
   }
+
+  s.addNotes(
+`The phasing slide. Walk it as a sequence of proof points, not a fundraising calendar.
+
+PHASE 0 (now-6 months, $1-3M): close the first services acquisition with founder capital + angels. Document the migration. This is what we are doing this quarter.
+
+PHASE 1 (6-18 months, $5-10M — TODAY'S ASK if isAsk=true): independent sponsor / family offices fund 2-3 more tuck-ins. Combined revenue ~$15-25M. This is the platform that institutional PE will then fund.
+
+PHASE 2 (18-36 months, $25-75M): institutional PE. 5+ more deals. First SaaS tuck-in.
+
+PHASE 3 (3-7 yr): equity + debt for larger platform deals, exit prep.
+
+THE ASK (if isAsk=true, gold accent at bottom): "$5-10M independent-sponsor vehicle. Funds Phase 0 + Phase 1 — 3-4 services acquisitions, platform migration, sponsor team. Co-investment rights at deal level, 8% pref + 80/20 split, 4-6× MOIC over 5-7 years."
+
+The reason this structure works: PE typically wants to fund a proven playbook. By Phase 2 we've demonstrated 3-4 deals worth of integration mechanics. That's exactly what institutional capital will buy.`
+  )
 }
 
 function slideOrigin(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, '12 Years in the Problem', 'Sentimetrx is what happens when an enterprise NLP/NLU shop finally gets the right tool for the job.')
+  addHeader(s, 'We did not pivot to AI. We were waiting for it.')
   addFooter(s, pg)
 
+  // Four stages — just tag + headline, no body
   const stages = [
-    {
-      tag: 'BACKGROUND',
-      title: '12 years in enterprise NLP/NLU',
-      body: 'Helping enterprise clients make sense of open-ended comments at scale — surveys, online reviews, regulatory feedback. Always running into the same wall: short, ambiguous comments are nearly useless at analysis time.',
-      color: DN.slate,
-    },
-    {
-      tag: 'LLM INFLECTION',
-      title: 'Move the problem upstream',
-      body: 'LLMs let us intercept weak responses at capture time instead of trying to mine "it was fine" for meaning. We ask the follow-up. Sarina — the conversational survey — is born.',
-      color: DN.sarinaBlue,
-    },
-    {
-      tag: 'EXTENSION',
-      title: 'Agents · PulseIQ · Ana',
-      body: 'Then domain-trained Agents (political candidates, restaurant menus) with off-topic detection and 3-strike safety. Then PulseIQ — concurrent conversations with real-time theme mining and adaptive engagement. Then Ana, a text analytics suite deeper than what 15-year-old incumbents ship.',
-      color: DN.teal,
-    },
-    {
-      tag: 'NOW',
-      title: 'The economic flip',
-      body: 'For 12 years this platform would have required a 50-person engineering team and $20M+ of capital. AI is the leverage that lets experienced operators deliver enterprise-grade products on venture-light capital. We did not pivot to AI — we were waiting for it.',
-      color: DN.gold,
-    },
+    { tag: 'BACKGROUND', title: '12 years in enterprise NLP / NLU',  color: DN.slate },
+    { tag: 'LLM',        title: 'Move the problem upstream',          color: DN.sarinaBlue },
+    { tag: 'EXTENSION',  title: 'Agents · PulseIQ · Ana',              color: DN.teal },
+    { tag: 'NOW',        title: 'The economic flip',                   color: DN.gold },
   ]
-
-  const startY = 1.25
-  const cardH = 1.18
-  const gap = 0.06
-
+  const startY = 1.3
+  const cardH = 0.95
+  const gap = 0.12
   stages.forEach((stage, i) => {
     const y = startY + i * (cardH + gap)
-    // Tag column (left)
     s.addShape('rect', { x: 0.5, y, w: 1.7, h: cardH, fill: { color: stage.color }, rectRadius: 0.08 })
     s.addText(stage.tag, {
-      x: 0.5, y: y + 0.1, w: 1.7, h: 0.4,
-      fontFace: 'Arial', fontSize: 10, color: DN.white, bold: true, charSpacing: 1, align: 'center', valign: 'middle', autoFit: true,
+      x: 0.5, y, w: 1.7, h: cardH,
+      fontFace: 'Arial', fontSize: 11, color: DN.white, bold: true, charSpacing: 2, align: 'center', valign: 'middle', autoFit: true,
     })
-    s.addText(`0${i + 1}`, {
-      x: 0.5, y: y + 0.5, w: 1.7, h: cardH - 0.55,
-      fontFace: 'Arial', fontSize: 28, color: DN.white, bold: true, italic: true, align: 'center', valign: 'middle',
-    })
-
-    // Body (right)
     s.addShape('rect', { x: 2.3, y, w: 10.5, h: cardH, fill: { color: DN.slateCard }, rectRadius: 0.08 })
     s.addText(stage.title, {
-      x: 2.5, y: y + 0.1, w: 10.1, h: 0.36,
-      fontFace: 'Arial', fontSize: 16, color: DN.navy, bold: true,
-    })
-    s.addText(stage.body, {
-      x: 2.5, y: y + 0.46, w: 10.1, h: cardH - 0.5,
-      fontFace: 'Arial', fontSize: 11, color: DN.ink, lineSpacing: 18, valign: 'top', autoFit: true,
+      x: 2.5, y, w: 10.1, h: cardH,
+      fontFace: 'Arial', fontSize: 22, color: DN.navy, bold: true, valign: 'middle', autoFit: true,
     })
   })
 
-  // Closing kicker
+  // Closing kicker (the user's exact line)
   const kY = startY + stages.length * (cardH + gap) + 0.05
   s.addShape('rect', { x: 0.5, y: kY, w: 12.3, h: H - kY - 0.5, fill: { color: DN.navy }, rectRadius: 0.08 })
   s.addShape('rect', { x: 0.5, y: kY, w: 0.18, h: H - kY - 0.5, fill: { color: DN.gold } })
-  s.addText('"This is the age where wisdom + experience build transformational tools — and flip the economics of the business."', {
-    x: 0.85, y: kY + 0.05, w: 12.0, h: H - kY - 0.6,
-    fontFace: 'Arial', fontSize: 14, color: DN.gold, bold: true, italic: true, valign: 'middle',
+  s.addText('Wisdom + experience build transformational tools — and flip the economics.', {
+    x: 0.85, y: kY, w: 12.0, h: H - kY - 0.5,
+    fontFace: 'Arial', fontSize: 17, color: DN.gold, bold: true, italic: true, valign: 'middle', autoFit: true,
   })
+
+  s.addNotes(
+`The credibility slide. Walk the four stages.
+
+BACKGROUND. 12 years running an enterprise NLP/NLU practice. Helping large clients make sense of open-ended comments at scale — surveys, online reviews, regulatory feedback. Always running into the same wall: short, ambiguous comments are nearly useless at analysis time.
+
+LLM. LLMs let us move the problem upstream. Instead of trying to mine "it was fine" for meaning in a report a month later, we intercept weak responses at capture time and ask the follow-up. Sarina, the conversational survey, is born.
+
+EXTENSION. Then domain-trained Agents — political candidates, restaurant menus — with off-topic detection and 3-strike safety. Then PulseIQ — concurrent conversations with real-time theme mining. Then Ana, the text analytics suite, deeper than what 15-year-old incumbents ship.
+
+NOW. The economic flip. For 12 years this platform would have required a 50-person engineering team and $20M+ of capital. AI is the leverage that lets experienced operators deliver enterprise-grade products on venture-light capital.
+
+LAND THE CLOSE on the user's exact phrasing:
+"This is the age where wisdom + experience build transformational tools — and flip the economics of the business."
+
+That sentence is the entire pitch. Stop and let it sit.`
+  )
 }
 
 function slideWhyUs(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'Why Us', 'The platform is shipped. The customers are real. The window is now.')
+  addHeader(s, 'The platform is shipped. The customers are real.')
   addFooter(s, pg)
   s.addText([
     bullet('AI-native platform live with named enterprise clients across 5 verticals — no R&D risk for the LP'),
@@ -631,11 +739,30 @@ function slideWhyUs(pptx: any, pg: number) {
     s.addText(m.v, { x, y: 5.1, w: 2.85, h: 0.85, fontSize: 38, fontFace: 'Arial', color: DN.sarinaBlue, bold: true, align: 'center', valign: 'middle' })
     s.addText(m.l, { x: x + 0.15, y: 5.95, w: 2.55, h: 0.55, fontSize: 11, fontFace: 'Arial', color: DN.slate, align: 'center', valign: 'middle' })
   })
+
+  s.addNotes(
+`Why us. Five bullets across the top, four metric tiles across the bottom.
+
+THE FIVE THEMES (don't read; cover):
+1. AI-native platform LIVE with named enterprise clients across 5 verticals. No R&D risk for the LP — the product exists.
+2. SIX REVENUE-BEARING MODULES: Sarina, Ana, Agents, PulseIQ, Listening, Campaigns.
+3. MULTI-TENANT INFRASTRUCTURE built for white-label and feature-gated migration of acquired customers. That's how we absorb a boutique MR firm's customers in 90 days, not 18 months.
+4. FOUNDER / OPERATOR combining product, AI, and vertical expertise. (Personalize as needed.)
+5. HIRING (Phase 1 investment): VP M&A, Operating Partner, Board Chair (ex-Forsta / InMoment / Qualtrics target).
+
+THE FOUR HEADLINE NUMBERS:
+- 5 verticals served.
+- 6 revenue modules.
+- 10× response lift over email surveys (validated at multiple hospitality clients).
+- <5% of human-team analysis time (validated at UCF Rosen College).
+
+Close: "Already serving enterprise. No R&D risk for the LP. The risk is execution speed on the M&A side, not platform readiness."`
+  )
 }
 
 function slideExit(pptx: any, pg: number) {
   const s = pptx.addSlide()
-  addHeader(s, 'Path to Exit', 'Multiple credible buyers. Multiple credible paths.')
+  addHeader(s, 'Multiple buyers. Multiple paths.')
   addFooter(s, pg)
 
   const cols = [
@@ -655,6 +782,26 @@ function slideExit(pptx: any, pg: number) {
   s.addText('Target return: 4–6× MOIC over 5–7 years   ·   First-deal IRR demonstrable within 18 months', {
     x: 0.8, y: 6.0, w: 11.7, h: 0.7, fontSize: 14, fontFace: 'Arial', color: DN.gold, bold: true, valign: 'middle', align: 'center',
   })
+
+  s.addNotes(
+`The exit slide. Three credible paths.
+
+STRATEGIC ACQUIRERS (most likely):
+Qualtrics, Medallia, Sprinklr, ServiceNow, Salesforce, NICE, Adobe, large CX / contact-center platforms.
+These are the firms that need an AI-native acquisition to refresh their stack. We are the acquisition.
+
+PE PLATFORMS:
+Vista Equity, Thoma Bravo, Hg, Silver Lake. Large-cap roll-up sponsors. Two paths: (1) sell the consolidated platform; (2) take a recap.
+
+IPO:
+At $100M+ revenue, 25%+ growth, profitable. 5-7 year hold from Phase 1.
+
+THE NUMBERS:
+- Target return: 4-6× MOIC over 5-7 years.
+- First-deal IRR demonstrable within 18 months — that's what unlocks Phase 2 capital.
+
+Close the meeting on the exit. Then ask for the meeting.`
+  )
 }
 
 // ── Long-deck-only slides ──────────────────────────────────────────────────
