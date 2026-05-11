@@ -288,7 +288,10 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       transition:    'box-shadow .15s, opacity .15s',
       position:      'relative' as const,
       minHeight:     220,
-      overflow:      'hidden' as const,
+      // Was overflow:hidden — clipped the three-dot menu when it expanded
+      // past the card bottom, hiding the Delete option entirely. The card
+      // has nothing inside that bleeds past the rounded corners.
+      overflow:      'visible' as const,
     }}
     onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isCollection ? '0 4px 16px rgba(14,165,233,.12)' : isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isSubstack ? '0 4px 16px rgba(225,29,72,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
     onMouseLeave={function(e) { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.05)' }}>
