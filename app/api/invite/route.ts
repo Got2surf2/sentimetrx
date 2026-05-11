@@ -1,6 +1,10 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
+import { getEmailProvider } from '@/lib/email/provider'
+import { buildInviteEmail } from '@/lib/email/inviteTemplate'
+
+const INVITE_FROM = 'Datanautix <invites@datanautix.com>'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -52,12 +56,14 @@ export async function POST(req: NextRequest) {
 
   const service = createServiceRoleClient()
 
+  const normalizedEmail = String(email).trim().toLowerCase()
+
   const { data, error } = await service
     .from('invites')
     .insert({
       token,
       org_id,
-      email:      String(email).trim().toLowerCase(),
+      email:      normalizedEmail,
       role:       requestedRole,
       created_by: user.id,
       expires_at: expiresAt,
@@ -66,7 +72,47 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data, { status: 201 })
+
+  // Send the branded invite email via Resend. If sending fails the invite row
+  // still exists so the admin can fall back to copying the link.
+  let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
+  let emailError: string | undefined
+  try {
+    const [orgRes, inviterRes] = await Promise.all([
+      service.from('organizations').select('name').eq('id', org_id).single(),
+      service.from('users').select('full_name, email').eq('id', user.id).single(),
+    ])
+
+    const baseUrl   = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    const inviteUrl = `${baseUrl.replace(/\/$/, '')}/invite/${token}`
+    const orgName   = orgRes.data?.name || 'their organization'
+
+    const { subject, html, text } = buildInviteEmail({
+      orgName,
+      inviterName:  inviterRes.data?.full_name || undefined,
+      inviterEmail: inviterRes.data?.email || user.email || undefined,
+      role:         requestedRole,
+      inviteUrl,
+      expiresAt,
+    })
+
+    const provider = getEmailProvider('resend')
+    await provider.send({
+      to:      normalizedEmail,
+      from:    INVITE_FROM,
+      replyTo: inviterRes.data?.email || user.email || undefined,
+      subject,
+      html,
+      text,
+    })
+    emailStatus = 'sent'
+  } catch (e: any) {
+    emailStatus = 'failed'
+    emailError = e?.message || String(e)
+    console.error('invite: email send failed', { invite_id: data.id, error: emailError })
+  }
+
+  return NextResponse.json({ ...data, email_status: emailStatus, email_error: emailError }, { status: 201 })
 }
 
 export async function GET(req: NextRequest) {

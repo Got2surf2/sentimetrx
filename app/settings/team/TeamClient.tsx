@@ -104,8 +104,14 @@ export default function TeamClient({ org, members: initialMembers, invites: init
     if (data.error) { flash('Error: ' + data.error); return }
     const link = `${BASE}/invite/${data.token}`
     setNewLink(link)
+    const sentTo = inviteEmail
     setInviteEmail('')
     setInvites(prev => [{ ...data, created_at: new Date().toISOString() }, ...prev])
+    if (data.email_status === 'sent') {
+      flash(`Invite emailed to ${sentTo}`)
+    } else if (data.email_status === 'failed') {
+      flash(`Invite created but email failed — copy the link below and send it manually`)
+    }
   }
 
   function copyLink(token: string) {
@@ -313,7 +319,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
         {isOwner && (
           <section>
             <h2 className="text-lg font-semibold mb-1">Invite Member</h2>
-            <p className="text-gray-400 text-sm mb-4">Generate an invite link to share with a new team member.</p>
+            <p className="text-gray-400 text-sm mb-4">Enter an email to send a branded invitation. The link is also shown below as a backup.</p>
             <div className="flex gap-2 flex-wrap">
               <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
                 placeholder="Email (optional)"
