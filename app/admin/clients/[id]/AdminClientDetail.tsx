@@ -142,8 +142,12 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
       const data = await res.json()
       const inviteUrl = baseUrl + '/invite/' + data.token
       setInvites(prev => [{ ...data, invite_url: inviteUrl }, ...prev])
+      const sentTo = inviteEmail
       setInviteEmail('')
       setShowInvForm(false)
+      if (data.email_status === 'sent')        setError(`✓ Invite emailed to ${sentTo}`)
+      else if (data.email_status === 'failed') setError(`Invite created but email failed (${data.email_error || 'unknown'}) — copy the link manually`)
+      setTimeout(() => setError(null), 5000)
     } catch {
       setError('Failed to generate invite link.')
     } finally {
@@ -155,6 +159,28 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
     await navigator.clipboard.writeText(url)
     setCopiedInvite(id)
     setTimeout(() => setCopiedInvite(null), 2000)
+  }
+
+  const handleResendInvite = async (id: string, email: string | null) => {
+    const res = await fetch(`/api/invite/${id}/resend`, { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    if (data.email_status === 'sent')        setError(`✓ Invite re-emailed to ${email || 'invitee'}`)
+    else if (data.email_status === 'failed') setError(`Resend failed: ${data.email_error || 'unknown error'}`)
+    else                                     setError(`Error: ${data.error || 'Could not resend'}`)
+    setTimeout(() => setError(null), 5000)
+  }
+
+  const handleRevokeInvite = async (id: string, email: string | null) => {
+    if (!confirm(`Revoke the invite for ${email || 'this user'}?`)) return
+    const res = await fetch(`/api/invite/${id}`, { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) {
+      setInvites(prev => prev.filter(i => i.id !== id))
+      setError('✓ Invite revoked')
+    } else {
+      setError(`Error: ${data.error || 'Could not revoke'}`)
+    }
+    setTimeout(() => setError(null), 5000)
   }
 
   const inviteStatus = (inv: Invite) => {
@@ -426,12 +452,26 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                       </div>
                     </div>
                     {!inv.used_at && new Date(inv.expires_at) > new Date() && (
-                      <button
-                        onClick={() => handleCopyInvite(inv.invite_url, inv.id)}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors flex-shrink-0"
-                      >
-                        {copiedInvite === inv.id ? 'Copied!' : 'Copy Link'}
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => handleResendInvite(inv.id, inv.email)}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors"
+                        >
+                          Resend
+                        </button>
+                        <button
+                          onClick={() => handleCopyInvite(inv.invite_url, inv.id)}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors"
+                        >
+                          {copiedInvite === inv.id ? 'Copied!' : 'Copy Link'}
+                        </button>
+                        <button
+                          onClick={() => handleRevokeInvite(inv.id, inv.email)}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-600 hover:text-white text-red-600 transition-colors"
+                        >
+                          Revoke
+                        </button>
+                      </div>
                     )}
                   </div>
                 )
