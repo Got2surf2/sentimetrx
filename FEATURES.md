@@ -346,7 +346,7 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 
 ### Team Management
 - Invite members via token link (7-day expiry)
-- Branded HTML invite email auto-sent via Resend from `invites@datanautix.com`; copy-link fallback if send fails
+- Branded HTML invite email auto-sent via Resend from `invites@sentimetrx.ai`; copy-link fallback if send fails
 - Role assignment (owner/member)
 - Track invite usage
 - Revoke unused invites

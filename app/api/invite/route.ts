@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto'
 import { getEmailProvider } from '@/lib/email/provider'
 import { buildInviteEmail } from '@/lib/email/inviteTemplate'
 
-const INVITE_FROM = 'Datanautix <invites@datanautix.com>'
+const INVITE_FROM = 'Sentimetrx <invites@sentimetrx.ai>'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
