@@ -14,7 +14,7 @@ interface Props {
   analyzeEnabled?: boolean   // legacy — use features.analyze instead
   campaignsEnabled?: boolean // legacy — use features.campaigns instead
   features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }
-  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator' | 'decks'
+  currentPage?:    'dashboard' | 'team' | 'admin' | 'questions' | 'responses' | 'analytics' | 'edit' | 'deploy' | 'new' | 'analyze' | 'campaigns' | 'townhall' | 'bots' | 'social' | 'test-spinner' | 'agent-tester' | 'simulator' | 'content-guard' | 'usage' | 'estimator' | 'decks' | 'downloads'
   datasetName?:    string    // shown as centered pill when inside a dataset
 }
 

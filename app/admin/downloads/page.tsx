@@ -2,7 +2,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
-import DownloadsClient from './DownloadsClient'
+import DownloadMonitor from '@/components/downloads/DownloadMonitor'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,13 +81,15 @@ export default async function DownloadsPage() {
         currentPage="admin"
       />
       <div style={{ paddingTop: 56 }} className="flex-1">
-        <DownloadsClient
+        <DownloadMonitor
           redditSources={(redditSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
           reviewSources={(reviewSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
           pendingLocations={pendingLocations || []}
           substackDatasets={(substackDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
           regDatasets={(regDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
           uploadDatasets={(uploadDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
+          showOrgColumn={true}
+          subtitle="Active, queued, and failed downloads across all orgs"
         />
       </div>
     </div>

@@ -1,7 +1,11 @@
 'use client'
 
-// app/admin/downloads/DownloadsClient.tsx
-// Admin download monitor: shows all active/queued/failed downloads across sources
+// components/downloads/DownloadMonitor.tsx
+// Shared download/upload monitor used by:
+//   - /admin/downloads (cross-org, super-admin view) — showOrgColumn=true
+//   - /downloads       (single-org, owner view)     — showOrgColumn=false
+// Google Reviews rows support inline cadence edit + multi-select bulk
+// actions (set frequency / pause / resume) via PATCH /api/review-sources.
 
 import { useState } from 'react'
 
@@ -18,6 +22,17 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }
   draft:       { bg: '#f3f4f6', text: '#6b7280', border: '#e5e7eb' },
 }
 
+const FREQUENCY_OPTIONS: { value: number; label: string }[] = [
+  { value:    0, label: 'Manual'    },
+  { value:    6, label: 'Every 6h'  },
+  { value:   12, label: 'Every 12h' },
+  { value:   24, label: 'Daily'     },
+  { value:   72, label: 'Every 3 days' },
+  { value:  168, label: 'Weekly'    },
+  { value:  720, label: 'Monthly'   },
+  { value: 2160, label: 'Quarterly' },
+]
+
 function StatusPill({ status }: { status: string }) {
   const s = STATUS_COLORS[status] || STATUS_COLORS.draft
   return (
@@ -30,8 +45,6 @@ function StatusPill({ status }: { status: string }) {
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   const d = new Date(iso)
-  // 2999-01-01 is the "never auto-sync" sentinel for manual-mode sources;
-  // show it as "—" instead of a confusing far-future date.
   if (d.getFullYear() > 2100) return '—'
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
@@ -58,18 +71,108 @@ function timeAgo(iso: string | null) {
 }
 
 interface Props {
-  redditSources: any[]
-  reviewSources: any[]
+  redditSources:    any[]
+  reviewSources:    any[]
   pendingLocations: any[]
   substackDatasets: any[]
-  regDatasets: any[]
-  uploadDatasets: any[]
+  regDatasets:      any[]
+  uploadDatasets:   any[]
+  showOrgColumn?:   boolean   // false for single-org user view
+  title?:           string
+  subtitle?:        string
 }
 
 type Tab = 'all' | 'reddit' | 'reviews' | 'substack' | 'regulations' | 'uploads'
 
-export default function DownloadsClient({ redditSources, reviewSources, pendingLocations, substackDatasets, regDatasets, uploadDatasets }: Props) {
+export default function DownloadMonitor({
+  redditSources,
+  reviewSources: initialReviewSources,
+  pendingLocations,
+  substackDatasets,
+  regDatasets,
+  uploadDatasets,
+  showOrgColumn = true,
+  title = 'Download Monitor',
+  subtitle = 'Active, queued, and failed downloads',
+}: Props) {
   const [tab, setTab] = useState<Tab>('all')
+  const [reviewSources, setReviewSources] = useState<any[]>(initialReviewSources)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [flash, setFlash] = useState<string | null>(null)
+
+  const flashMsg = (m: string) => { setFlash(m); setTimeout(() => setFlash(null), 3000) }
+
+  async function patchSource(id: string, payload: Record<string, any>) {
+    const res = await fetch('/api/review-sources/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      throw new Error(d.error || 'Failed to update')
+    }
+    return res.json().catch(() => ({}))
+  }
+
+  async function changeFrequency(id: string, hours: number) {
+    setSavingIds(prev => new Set(prev).add(id))
+    try {
+      await patchSource(id, { sync_frequency_hours: hours })
+      setReviewSources(prev => prev.map(s => s.id === id ? { ...s, sync_frequency_hours: hours } : s))
+    } catch (e: any) {
+      flashMsg('Update failed: ' + e.message)
+    } finally {
+      setSavingIds(prev => { const n = new Set(prev); n.delete(id); return n })
+    }
+  }
+
+  async function bulkSetFrequency(hours: number) {
+    if (selected.size === 0 || bulkBusy) return
+    setBulkBusy(true)
+    const ids = Array.from(selected)
+    try {
+      await Promise.all(ids.map(id => patchSource(id, { sync_frequency_hours: hours })))
+      setReviewSources(prev => prev.map(s => selected.has(s.id) ? { ...s, sync_frequency_hours: hours } : s))
+      flashMsg(`Updated ${ids.length} sources`)
+      setSelected(new Set())
+    } catch (e: any) {
+      flashMsg('Bulk update failed: ' + e.message)
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function bulkSetStatus(status: 'active' | 'paused') {
+    if (selected.size === 0 || bulkBusy) return
+    setBulkBusy(true)
+    const ids = Array.from(selected)
+    try {
+      await Promise.all(ids.map(id => patchSource(id, { status })))
+      setReviewSources(prev => prev.map(s => selected.has(s.id) ? { ...s, status } : s))
+      flashMsg(`${status === 'paused' ? 'Paused' : 'Resumed'} ${ids.length} sources`)
+      setSelected(new Set())
+    } catch (e: any) {
+      flashMsg('Bulk update failed: ' + e.message)
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === reviewSources.length) setSelected(new Set())
+    else setSelected(new Set(reviewSources.map(s => s.id)))
+  }
 
   const errorCount = redditSources.filter(s => s.status === 'error').length +
     reviewSources.filter(s => s.status === 'error').length
@@ -78,19 +181,19 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
     pendingLocations.length
 
   const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: 'all', label: 'Overview', count: 0 },
-    { key: 'reddit', label: 'Reddit', count: redditSources.length },
-    { key: 'reviews', label: 'Google Reviews', count: reviewSources.length },
-    { key: 'substack', label: 'Substack', count: substackDatasets.length },
+    { key: 'all',         label: 'Overview',        count: 0 },
+    { key: 'reddit',      label: 'Reddit',          count: redditSources.length },
+    { key: 'reviews',     label: 'Google Reviews',  count: reviewSources.length },
+    { key: 'substack',    label: 'Substack',        count: substackDatasets.length },
     { key: 'regulations', label: 'Regulations.gov', count: regDatasets.length },
-    { key: 'uploads', label: 'Uploads', count: uploadDatasets.length },
+    { key: 'uploads',     label: 'Uploads',         count: uploadDatasets.length },
   ]
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>Download Monitor</h1>
-        <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Active, queued, and failed downloads across all sources</p>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{title}</h1>
+        <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{subtitle}</p>
       </div>
 
       {/* KPI row */}
@@ -127,19 +230,56 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
         ))}
       </div>
 
-      {/* Content */}
+      {/* Bulk action toolbar — appears when any review source is selected */}
+      {selected.size > 0 && (
+        <div style={{ background: '#fff7f0', border: '1px solid ' + HERMES + '40', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: HERMES }}>
+            {selected.size} selected
+          </span>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>·</span>
+          <span style={{ fontSize: 12, color: '#374151' }}>Set frequency:</span>
+          <select
+            disabled={bulkBusy}
+            onChange={e => { const v = Number(e.target.value); if (!Number.isNaN(v)) bulkSetFrequency(v); e.target.value = '' }}
+            style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: 'white', cursor: bulkBusy ? 'wait' : 'pointer' }}>
+            <option value="">Choose…</option>
+            {FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <button onClick={() => bulkSetStatus('paused')} disabled={bulkBusy}
+            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #fcd34d', background: '#fef3c7', color: '#92400e', cursor: bulkBusy ? 'wait' : 'pointer' }}>
+            Pause
+          </button>
+          <button onClick={() => bulkSetStatus('active')} disabled={bulkBusy}
+            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #a7f3d0', background: '#d1fae5', color: '#065f46', cursor: bulkBusy ? 'wait' : 'pointer' }}>
+            Resume
+          </button>
+          <button onClick={() => setSelected(new Set())} disabled={bulkBusy}
+            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', marginLeft: 'auto' }}>
+            Clear
+          </button>
+        </div>
+      )}
+
+      {flash && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 16 }}>
+          {flash}
+        </div>
+      )}
+
+      {/* Reddit */}
       {(tab === 'all' || tab === 'reddit') && redditSources.length > 0 && (
         <Section title="Reddit Downloads" icon="🔴">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                <th style={th}>Org</th><th style={th}>Status</th><th style={th}>Posts</th><th style={th}>Comments</th><th style={th}>Updated</th><th style={th}>Error</th>
+                {showOrgColumn && <th style={th}>Org</th>}
+                <th style={th}>Status</th><th style={th}>Posts</th><th style={th}>Comments</th><th style={th}>Updated</th><th style={th}>Error</th>
               </tr>
             </thead>
             <tbody>
               {redditSources.map((s: any) => (
                 <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={td}>{s.orgName}</td>
+                  {showOrgColumn && <td style={td}>{s.orgName}</td>}
                   <td style={td}><StatusPill status={s.status} /></td>
                   <td style={td}>{s.total_posts || 0}</td>
                   <td style={td}>{s.total_comments || 0}</td>
@@ -152,23 +292,55 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
         </Section>
       )}
 
+      {/* Google Reviews — inline-editable frequency + multi-select */}
       {(tab === 'all' || tab === 'reviews') && reviewSources.length > 0 && (
         <Section title="Google Reviews" icon="⭐">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                <th style={th}>Brand</th><th style={th}>Org</th><th style={th}>Status</th><th style={th}>Frequency</th><th style={th}>Last Sync</th><th style={th}>Next Sync</th><th style={th}>Pending Tasks</th><th style={th}>Error</th>
+                <th style={{ ...th, width: 28 }}>
+                  <input
+                    type="checkbox"
+                    checked={reviewSources.length > 0 && selected.size === reviewSources.length}
+                    onChange={toggleSelectAll}
+                    aria-label="Select all"
+                  />
+                </th>
+                <th style={th}>Brand</th>
+                {showOrgColumn && <th style={th}>Org</th>}
+                <th style={th}>Status</th><th style={th}>Frequency</th><th style={th}>Last Sync</th><th style={th}>Next Sync</th><th style={th}>Pending</th><th style={th}>Error</th>
               </tr>
             </thead>
             <tbody>
               {reviewSources.map((s: any) => {
                 const pending = pendingLocations.filter(l => l.review_source_id === s.id).length
+                const isSel = selected.has(s.id)
+                const isSaving = savingIds.has(s.id)
                 return (
-                  <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6', background: isSel ? '#fff7f0' : undefined }}>
+                    <td style={td}>
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onChange={() => toggleSelect(s.id)}
+                        aria-label={'Select ' + s.brand_name}
+                      />
+                    </td>
                     <td style={{ ...td, fontWeight: 600 }}>{s.brand_name}</td>
-                    <td style={td}>{s.orgName}</td>
+                    {showOrgColumn && <td style={td}>{s.orgName}</td>}
                     <td style={td}><StatusPill status={s.status} /></td>
-                    <td style={td}>{fmtFrequency(s.sync_frequency_hours)}</td>
+                    <td style={td}>
+                      <select
+                        value={FREQUENCY_OPTIONS.some(o => o.value === s.sync_frequency_hours) ? s.sync_frequency_hours : ''}
+                        disabled={isSaving}
+                        onChange={e => changeFrequency(s.id, Number(e.target.value))}
+                        style={{ fontSize: 11, padding: '2px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: 'white', cursor: isSaving ? 'wait' : 'pointer' }}>
+                        {!FREQUENCY_OPTIONS.some(o => o.value === s.sync_frequency_hours) && (
+                          <option value="">{fmtFrequency(s.sync_frequency_hours)} (custom)</option>
+                        )}
+                        {FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </td>
                     <td style={td}>{timeAgo(s.last_synced_at)}</td>
                     <td style={td}>{s.next_sync_at ? fmtDate(s.next_sync_at) : '—'}</td>
                     <td style={td}>{pending > 0 ? <span style={{ color: '#d97706', fontWeight: 600 }}>{pending}</span> : '0'}</td>
@@ -181,19 +353,20 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
         </Section>
       )}
 
+      {/* Substack */}
       {(tab === 'all' || tab === 'substack') && substackDatasets.length > 0 && (
         <Section title="Substack" icon="📰">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                <th style={th}>Dataset</th><th style={th}>Org</th><th style={th}>Rows</th><th style={th}>Created</th>
+                <th style={th}>Dataset</th>{showOrgColumn && <th style={th}>Org</th>}<th style={th}>Rows</th><th style={th}>Created</th>
               </tr>
             </thead>
             <tbody>
               {substackDatasets.map((d: any) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{d.name}</td>
-                  <td style={td}>{d.orgName}</td>
+                  {showOrgColumn && <td style={td}>{d.orgName}</td>}
                   <td style={td}>{(d.row_count || 0).toLocaleString()}</td>
                   <td style={td}>{fmtDate(d.created_at)}</td>
                 </tr>
@@ -203,19 +376,20 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
         </Section>
       )}
 
+      {/* Regulations */}
       {(tab === 'all' || tab === 'regulations') && regDatasets.length > 0 && (
         <Section title="Regulations.gov" icon="🏛️">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                <th style={th}>Dataset</th><th style={th}>Org</th><th style={th}>Comments</th><th style={th}>Created</th>
+                <th style={th}>Dataset</th>{showOrgColumn && <th style={th}>Org</th>}<th style={th}>Comments</th><th style={th}>Created</th>
               </tr>
             </thead>
             <tbody>
               {regDatasets.map((d: any) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{d.name}</td>
-                  <td style={td}>{d.orgName}</td>
+                  {showOrgColumn && <td style={td}>{d.orgName}</td>}
                   <td style={td}>{(d.row_count || 0).toLocaleString()}</td>
                   <td style={td}>{fmtDate(d.created_at)}</td>
                 </tr>
@@ -225,19 +399,20 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
         </Section>
       )}
 
+      {/* Uploads */}
       {(tab === 'all' || tab === 'uploads') && uploadDatasets.length > 0 && (
         <Section title="Uploaded Datasets" icon="📤">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                <th style={th}>Dataset</th><th style={th}>Org</th><th style={th}>Status</th><th style={th}>Rows</th><th style={th}>Created</th><th style={th}>Updated</th>
+                <th style={th}>Dataset</th>{showOrgColumn && <th style={th}>Org</th>}<th style={th}>Status</th><th style={th}>Rows</th><th style={th}>Created</th><th style={th}>Updated</th>
               </tr>
             </thead>
             <tbody>
               {uploadDatasets.map((d: any) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{d.name}</td>
-                  <td style={td}>{d.orgName}</td>
+                  {showOrgColumn && <td style={td}>{d.orgName}</td>}
                   <td style={td}><StatusPill status={d.status || 'done'} /></td>
                   <td style={td}>{(d.row_count || 0).toLocaleString()}</td>
                   <td style={td}>{fmtDate(d.created_at)}</td>

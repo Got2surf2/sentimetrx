@@ -6,7 +6,69 @@
 
 import Sentiment from 'sentiment'
 
+// Modern slang + Gen-Z terms that AFINN-165 (2011) doesn't cover. The
+// `sentiment` package's `extras` option augments the base lexicon; the
+// negation valence-shifter in scoreWithNegation() automatically flips
+// these too ("not lit" → -3, "no cap" stays 0, "didn't slay" → -3).
+// Scale: ±1 mild, ±2 moderate, ±3 strong, ±4 very strong, ±5 extreme.
+const SLANG_EXTRAS: Record<string, number> = {
+  // Positive
+  lit:        3,
+  slay:       3,
+  slaying:    3,
+  slayed:     3,
+  slays:      3,
+  bussin:     3,
+  bussing:    3,
+  goat:       3,    // greatest of all time
+  iconic:     3,
+  snatched:   2,
+  stan:       2,
+  based:      2,
+  valid:      2,
+  vibe:       2,
+  vibes:      2,
+  vibing:     2,
+  highkey:    2,
+  periodt:    2,
+  ate:        3,    // "she ate that" — did amazingly
+  fire:       3,    // slang use — base AFINN scores it 0
+  banger:     3,
+  hits:       2,    // "this hits" — slang
+  bet:        1,
+  lowkey:     1,
+  // Negative
+  mid:       -2,    // mediocre
+  cringe:    -3,
+  cringey:   -3,
+  cringy:    -3,
+  salty:     -2,
+  yikes:     -2,
+  sus:       -2,    // suspicious
+  flop:      -3,
+  flopped:   -3,
+  ick:       -2,
+  basic:     -1,
+  cope:      -1,
+  coping:    -1,
+  ratio:     -1,    // "got ratio'd" — bad reception
+  ratiod:    -1,
+  yuck:      -2,
+  bleh:     -1,
+  meh:      -1,
+  ass:      -2,     // "is ass" / "ass game" — slang for bad
+  trashy:   -3,
+  // Neutral but common — explicit 0 so they don't get accidentally
+  // scored by AFINN's word-overlap heuristics
+  tbh:       0,
+  imo:       0,
+  ngl:       0,     // "not gonna lie" — intensifier, not negation
+  fr:        0,
+  rn:        0,
+}
+
 const analyzer = new Sentiment()
+const analyzerExtras = { extras: SLANG_EXTRAS }
 
 // ── Sentiment scoring (AFINN-165: 3,382 words, -5 to +5 intensity) ──────────
 //
@@ -45,8 +107,9 @@ function scoreWithNegation(text: string): { score: number; comparative: number; 
   let total = 0
   for (let i = 0; i < tokens.length; i++) {
     // Look up AFINN via the analyzer (single-token analyze is the simplest
-    // way to access the dictionary the package ships with).
-    const baseScore = analyzer.analyze(tokens[i]).score
+    // way to access the dictionary the package ships with). Pass extras
+    // so modern slang from SLANG_EXTRAS gets matched on the same pass.
+    const baseScore = analyzer.analyze(tokens[i], analyzerExtras).score
     if (baseScore === 0) continue
     // Is there a negation token in the preceding window?
     let negated = false
