@@ -25,6 +25,12 @@ export interface SyncResult {
 }
 
 const BATCH_SIZE = 3
+// Phase 1 drains pending DataForSEO tasks via task_get (a cheap single GET
+// per location, ~200-500ms each). Use a larger batch than Phase 2 so a
+// queue of N pending tasks clears in N/PHASE1_BATCH_SIZE cron ticks rather
+// than N/BATCH_SIZE — at 3-per-tick a 29-task backlog took 10 cron cycles
+// (≈10 weeks at 168h sync cadence, see Flemings 2026-05-11 incident).
+const PHASE1_BATCH_SIZE = 10
 const CHUNK_SIZE = 500
 const TIME_BUDGET_MS = 45000 // bail before Vercel's 60s timeout
 // Prefix for pending task refs stored in error_message column
@@ -92,7 +98,7 @@ export async function syncReviewSource(
     .eq('review_source_id', sourceId)
     .eq('selected', true)
     .like('error_message', TASK_PREFIX + '%')
-    .limit(BATCH_SIZE)
+    .limit(PHASE1_BATCH_SIZE)
 
   if (pendingLocs && pendingLocs.length > 0) {
     result.pending_locations = pendingLocs.map(function(l) { return l.name })
@@ -272,7 +278,7 @@ export async function syncReviewSource(
     .is('error_message', null)
   result.locations_remaining = (pendingCount || 0) + (unsyncedCount || 0) + (staleCount || 0)
 
-  await updateSourceTimestamps(service, source)
+  await updateSourceTimestamps(service, source, (pendingCount || 0) > 0)
   if (allNewRows.length > 0) {
     await ensureSchemaAndRecompute(service, source.dataset_id, allNewRows)
   }
@@ -370,14 +376,28 @@ function reviewToRow(rev: DfsReview, loc: any, label: string): Record<string, un
   }
 }
 
-async function updateSourceTimestamps(service: SupabaseClient, source: any): Promise<void> {
+async function updateSourceTimestamps(service: SupabaseClient, source: any, hasPending: boolean): Promise<void> {
   const now = new Date().toISOString()
   // sync_frequency_hours = 0 means "manual mode" — don't schedule a future
   // auto-sync. Park next_sync_at way in the future so the cron query
   // (.lte('next_sync_at', now)) never matches it.
-  const nextSync = source.sync_frequency_hours > 0
-    ? new Date(Date.now() + source.sync_frequency_hours * 3600 * 1000).toISOString()
-    : new Date('2999-01-01').toISOString()
+  //
+  // If pending DataForSEO tasks remain after this run (Phase 1 couldn't
+  // drain all of them in one call), short-circuit next_sync_at to ~5min
+  // from now so the next cron tick (top of the next 6h window) picks the
+  // source back up to drain more. Without this, a source with a long
+  // sync_frequency_hours (e.g. 168h weekly) would sit on pending tasks
+  // for the whole interval — see 2026-05-11 Flemings: 29 tasks queued,
+  // next_sync_at pushed 168h out, tasks would have taken ~10 weeks to
+  // drain at the old BATCH_SIZE=3 / 1-call-per-week cadence.
+  let nextSync: string
+  if (source.sync_frequency_hours <= 0) {
+    nextSync = new Date('2999-01-01').toISOString()
+  } else if (hasPending) {
+    nextSync = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+  } else {
+    nextSync = new Date(Date.now() + source.sync_frequency_hours * 3600 * 1000).toISOString()
+  }
   await service.from('review_sources').update({
     last_synced_at: now, next_sync_at: nextSync, updated_at: now, status: 'active',
   }).eq('id', source.id)

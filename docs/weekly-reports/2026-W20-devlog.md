@@ -2,6 +2,12 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, review-cron) — Drain pending DataForSEO tasks without waiting a full sync_frequency_hours cycle
+
+- **Fixed `updateSourceTimestamps` to re-queue sources with pending tasks at 5-min instead of full sync_frequency_hours.** Why: 2026-05-11 Flemings had 29 pending DataForSEO tasks queued during a sync; `updateSourceTimestamps` then pushed `next_sync_at` 168h forward (the source's weekly cadence). Cron query (`.lte(next_sync_at, now())`) wouldn't have touched the source again until May 18 — and only 3 tasks per call (PHASE1 used to share `BATCH_SIZE = 3`). At that rate the 29 pending tasks would have drained in 10 cron ticks → ~10 weeks. New behavior: after each sync, if pending tasks remain, `next_sync_at = now + 5min` so the next 6h cron tick picks the source back up to drain more. Once pending is empty, the user's chosen `sync_frequency_hours` schedule resumes normally. Manual mode (`sync_frequency_hours = 0`) is unchanged — those sources are owner-controlled and won't be auto-revisited via cron.
+- **Split `PHASE1_BATCH_SIZE = 10` from `BATCH_SIZE = 3`.** Why: Phase 1 (drain pending) is cheap — single GET to DataForSEO's `task_get` per location, ~200-500ms each. Phase 2 (submit new) is more expensive task_post calls. Treating them with the same batch size was leaving Phase 1 capacity on the table. The 45s per-call time budget still guards against runaway runs.
+- **Net effect:** the same 29-task backlog now clears in ~3 cron ticks (≈18h max) instead of 10 cron ticks (≈10 weeks). Manually re-queued Flemings (`next_sync_at = now()`) so the next 6h tick picks up the existing backlog under the new code.
+
 ## 2026-05-11 (Mon, late, cadence) — Dedup sync cadence + add monthly/quarterly/custom
 
 - **Removed duplicate "Auto-sync every" dropdown from `LocationManager`.** Why: settings page rendered TWO sync-cadence controls — the newer `SyncCadenceControl` card with preset buttons, AND an old dropdown inside `LocationManager` that was never removed when the new card shipped. User flagged: "we have two places to set sync cadence — why?" Stripped the dropdown + its `handleFrequencyChange` handler. `LocationManager` keeps its Pause Sync / Sync Now buttons (different concepts: status=paused vs frequency=0/manual).
