@@ -22,93 +22,38 @@ const HERMES = '#E8632A'
 
 function CogMenu({ currentPage }: { currentPage?: string }) {
   var [open, setOpen] = useState(false)
-  var isActive = currentPage === 'team' || currentPage === 'admin' || currentPage === 'questions'
+  // Active when on any hub-linked page (covers team, all /admin/* pages,
+  // downloads, etc.). Keeps the gear visually anchored on those pages.
+  var isActive = currentPage === 'team' || currentPage === 'admin' || currentPage === 'questions' || currentPage === 'downloads'
   return (
     <div style={{ position: 'relative' }}>
       <button
         onClick={function() { setOpen(function(v) { return !v }) }}
         className={'text-sm font-medium transition-all whitespace-nowrap px-2.5 py-1.5 rounded-full ' +
           (isActive ? 'bg-white/25 text-white' : 'text-orange-100 hover:bg-white/15 hover:text-white')}
-        title="Settings"
+        title="Settings & Admin"
         style={{ fontSize: 16, lineHeight: 1 }}>
         {'\u2699'}
       </button>
       {open && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={function() { setOpen(false) }} />
-          <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'white', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 100, minWidth: 180, padding: '4px 0', overflow: 'hidden' }}>
-            <Link href="/settings/team" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'team' ? 700 : 500, color: currentPage === 'team' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
+          <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'white', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 100, minWidth: 200, padding: '4px 0', overflow: 'hidden' }}>
+            <Link href="/admin/hub" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 600, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
               onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDC65'} Team Management
+              {'\u2699'} Settings & Admin
             </Link>
-            <Link href="/admin" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'admin' ? 700 : 500, color: currentPage === 'admin' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDD27'} Admin Panel
-            </Link>
-            <Link href="/admin/downloads" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'downloads' ? 700 : 500, color: currentPage === 'downloads' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDCE5'} Download Monitor
-            </Link>
-            <Link href="/admin/questions" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'questions' ? 700 : 500, color: currentPage === 'questions' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDCCB'} Question Library
-            </Link>
-            <Link href="/admin/testing" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'test-spinner' ? 700 : 500, color: currentPage === 'test-spinner' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83E\uDDEA'} Testing Tools
-            </Link>
-            <Link href="/admin/agent-tester" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'agent-tester' ? 700 : 500, color: currentPage === 'agent-tester' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDD0D'} Agent Tester
-            </Link>
-            <Link href="/admin/simulator" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'simulator' ? 700 : 500, color: currentPage === 'simulator' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83C\uDFB2'} Simulators
-            </Link>
-            <Link href="/admin/content-guard" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'content-guard' ? 700 : 500, color: currentPage === 'content-guard' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDEE1'} Content Guard
-            </Link>
-            <Link href="/admin/usage" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'usage' ? 700 : 500, color: currentPage === 'usage' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDCB0'} AI Usage
-            </Link>
-            <Link href="/admin/estimator" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'estimator' ? 700 : 500, color: currentPage === 'estimator' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83E\uDDEE'} Cost Estimator
-            </Link>
-            <Link href="/admin/decks" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: currentPage === 'decks' ? 700 : 500, color: currentPage === 'decks' ? HERMES : '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\uD83D\uDCCA'} Investor Decks
-            </Link>
-            <a href="https://github.com/Got2surf2/sentimetrx/pulls" target="_blank" rel="noopener noreferrer" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\u2696'} Governance Reports
-            </a>
+            <form action="/api/auth/signout" method="POST">
+              <button type="submit"
+                onClick={function() { setOpen(false) }}
+                style={{ display: 'block', width: '100%', textAlign: 'left' as const, padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', transition: 'background .1s' }}
+                onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+                onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+                {'\u21A6'} Sign out
+              </button>
+            </form>
             <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
             <div style={{ padding: '8px 16px' }}>
               <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Build {process.env.NEXT_PUBLIC_BUILD_NUMBER}</div>

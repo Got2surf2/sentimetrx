@@ -2,6 +2,12 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, gear-menu) — Replace 11-item gear dropdown with /admin/hub (tabbed cards)
+
+- **New `/admin/hub` page** with four tabs (Team & Org, Operations, Quality & Testing, Reports) and 12 small cards (icon + title + description + Open link) covering every admin tool that used to live in the gear dropdown. Adding a new admin tool = one entry in the `CARDS` array.
+- **Gear dropdown trimmed to 3 items**: ⚙ Settings & Admin → /admin/hub · ↦ Sign out · build number/date footer. Was 11 flat entries growing every time a new admin page shipped.
+- **Mobile drawer left alone** — its admin links are direct and tappable; the hub experience is desktop-friendlier.
+
 ## 2026-05-11 (Mon, late, sentiment + downloads) — Gen-Z slang in AFINN + bulk-edit + user-facing Download Monitor
 
 - **Added ~30 Gen-Z slang terms to AFINN-165 via the `sentiment` package's `extras` option.** Why: AFINN-165 is from 2011 and doesn't cover modern slang — `lit`, `slay`, `bussin`, `mid`, `cringe`, `sus`, `ick`, `flop`, `vibes`, `goat`, `ate`, `iconic`, etc. The existing negation valence-shifter in `scoreWithNegation` automatically inherits these too, so "not lit" → negative, "not mid" → positive without per-term rules. Six new unit tests in `tests/unit/sentiment-slang.test.ts` lock the behavior.
