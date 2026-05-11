@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
 export const dynamic = 'force-dynamic'
@@ -53,6 +54,20 @@ export async function POST(req: Request, { params }: Params) {
     if (deleteCount === 0) {
       return NextResponse.json({ deleted: 0, remaining: dataset.row_count })
     }
+
+    // Audit cross-org admin destructive trim — SOC 2 evidence trail.
+    // Same-org calls are not logged (the helper no-ops in that case).
+    await recordAdminCrossOrgAction({
+      service,
+      actionType:       'dataset.trim',
+      resourceType:     'dataset',
+      resourceId:       params.datasetId,
+      targetOrgId:      dataset.org_id,
+      actorOrgId:       orgId,
+      initiatedBy:      user.id,
+      initiatedByEmail: user.email ?? null,
+      metadata:         { date_field, before_date, deleteCount },
+    })
 
     // Delete from flat table
     const deleteIds = rowsToDelete!.map(function(r: any) { return r.id })

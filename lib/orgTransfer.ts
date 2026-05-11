@@ -73,6 +73,54 @@ export async function checkTransferTarget(
 }
 
 /**
+ * Record a destructive or state-changing operation that a platform admin
+ * ran against another tenant's resource. Separate from recordOrgTransfer
+ * (which captures ownership moves) — this is for admin cross-org actions
+ * like full re-syncs, row trims, and deletes. SOC 2 evidence.
+ *
+ * No-op for same-org actions (only logged when actorOrgId differs from
+ * targetOrgId) so the table doesn't fill with routine same-org work.
+ */
+export interface AdminActionContext {
+  service:           SupabaseClient   // service-role client
+  actionType:        string           // 'dataset.sync_full' | 'dataset.trim' | 'dataset.delete' | ...
+  resourceType:      TransferableResource
+  resourceId:        string
+  resourceName?:     string | null
+  targetOrgId:       string | null
+  actorOrgId:        string | null    // caller's own org_id
+  initiatedBy:       string | null
+  initiatedByEmail?: string | null
+  metadata?:         Record<string, unknown>
+}
+
+export async function recordAdminCrossOrgAction(ctx: AdminActionContext): Promise<void> {
+  // Same-org actions don't need a row — they're just regular user activity.
+  if (!ctx.targetOrgId || ctx.targetOrgId === ctx.actorOrgId) return
+  try {
+    let targetOrgName: string | null = null
+    const { data: orgRow } = await ctx.service
+      .from('organizations').select('name').eq('id', ctx.targetOrgId).single()
+    targetOrgName = (orgRow as any)?.name || null
+
+    const { error } = await ctx.service.from('admin_action_log').insert({
+      action_type:        ctx.actionType,
+      resource_type:      ctx.resourceType,
+      resource_id:        ctx.resourceId,
+      resource_name:      ctx.resourceName || null,
+      target_org_id:      ctx.targetOrgId,
+      target_org_name:    targetOrgName,
+      initiated_by:       ctx.initiatedBy,
+      initiated_by_email: ctx.initiatedByEmail || null,
+      metadata:           ctx.metadata || {},
+    })
+    if (error) console.warn('[adminAction] failed to record audit row: ' + error.message)
+  } catch (e: any) {
+    console.warn('[adminAction] audit log threw: ' + (e?.message || e))
+  }
+}
+
+/**
  * Insert one row into org_transfers. Snapshot org names + actor email so
  * the log stays readable even if those rows get renamed later.
  */

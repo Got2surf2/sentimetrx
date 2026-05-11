@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 
@@ -50,6 +51,20 @@ export async function POST(req: Request, { params }: Params) {
     const fullSync = url.searchParams.get('full') === 'true'
 
     if (fullSync) {
+      // Audit cross-org admin destructive sync — SOC 2 evidence trail.
+      // Same-org calls are not logged (the helper no-ops in that case).
+      await recordAdminCrossOrgAction({
+        service,
+        actionType:        'dataset.sync_full',
+        resourceType:      'dataset',
+        resourceId:        params.datasetId,
+        resourceName:      dataset.name as string | undefined,
+        targetOrgId:       dataset.org_id,
+        actorOrgId:        userData?.org_id ?? null,
+        initiatedBy:       user.id,
+        initiatedByEmail:  user.email ?? null,
+        metadata:          { full: true },
+      })
       await service.from('dataset_rows_flat').delete().eq('dataset_id', params.datasetId)
       await service.from('dataset_rows').delete().eq('dataset_id', params.datasetId)
     }

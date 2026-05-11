@@ -2,6 +2,17 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, admin-bypass audit) — Security review of the Phase E escape valve + fixes
+
+- **Audit dispatched** (Explore agent, scope: every read AND write path for `is_admin_org`, the SQL function `is_platform_admin()`, every new route the bypass was added to, plus adjacent gates). Findings:
+  - **VERIFIED SAFE — no privilege escalation.** `is_admin_org` has zero user-writable paths; only `/api/admin/clients/[id]` PATCH (super-admin-gated via `requireAdmin()`) can flip it, and it uses an allow-list. The `is_platform_admin()` SQL function (`sql/044_pin_definer_search_path.sql`) does the correct join `users.id = auth.uid() AND organizations.is_admin_org`, SECURITY DEFINER with pinned `search_path`.
+  - **Inconsistency: `/api/bots/[id]/analyze` returned 403** instead of 404 on cross-org. Leaks existence. Migrated to `getCallerOrgContext` + 404-with-friendly-message.
+  - **No audit log on destructive cross-org admin actions.** `/api/datasets/[datasetId]/sync?full=true` wipes all rows; `/api/datasets/[datasetId]/trim` deletes rows by date. Both allowed cross-org under Phase E but with NO record of the admin doing it — SOC 2 problem.
+- **Fix #1: new `admin_action_log` table** (`sql/048_admin_action_log.sql`, applied to prod). Append-only, RLS-enabled, read-only to platform admins, write-only via service-role. Columns: action_type, resource_type, resource_id, resource_name (snapshot), target_org_id, target_org_name (snapshot), initiated_by, initiated_by_email (snapshot), metadata jsonb.
+- **Fix #2: `recordAdminCrossOrgAction` helper** in `lib/orgTransfer.ts`. No-ops when actor.org_id === target.org_id so the table only captures cross-org actions; full inserts otherwise.
+- **Fix #3: wired into `/api/datasets/[datasetId]/sync` (full-wipe path)** with metadata `{ full: true }` and `/api/datasets/[datasetId]/trim` with metadata `{ date_field, before_date, deleteCount }`. Same-org calls remain unlogged (helper no-ops) so the table doesn't fill with routine activity.
+- All 90 unit/integration tests pass; env-gated `test:dataset-egress` 5/5 and `test:campaign-egress` 3/3 still green.
+
 ## 2026-05-11 (Mon, late, error UX) — Soften 404 message body across cross-org gates
 
 - The cross-org gates from the Phase E sweep returned `{ error: 'Not found' }`. That's accurate but confusing for a legitimate user who lands on a deeplink they don't have access to — it reads like a broken page.

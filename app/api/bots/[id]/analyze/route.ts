@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildBotSchema, mergeSchemaStats } from '@/lib/datasetUtils'
 
 export const dynamic     = 'force-dynamic'
@@ -22,33 +23,21 @@ export async function POST(_req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
-  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceRoleClient()
   const botId = params.id
 
-  // Verify bot exists and belongs to this org (or admin org)
+  // Verify bot exists; admin Phase E allows cross-org. Both branches
+  // return the same 404 + message so existence isn't leaked.
   const { data: bot } = await service
     .from('bots')
     .select('id, name, org_id')
     .eq('id', botId)
     .single()
-
-  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-
-  // Allow access if same org OR admin
-  if (bot.org_id !== userData.org_id) {
-    const { data: adminCheck } = await service
-      .from('users')
-      .select('organizations(is_admin_org)')
-      .eq('id', user.id)
-      .single()
-    const orgRel = (adminCheck as any)?.organizations
-    const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : orgRel?.is_admin_org
-    if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  if (!bot) return NextResponse.json({ error: "This bot isn't available to your account." }, { status: 404 })
+  if (!isAdmin && bot.org_id !== orgId) return NextResponse.json({ error: "This bot isn't available to your account." }, { status: 404 })
 
   // Existing bot dataset?
   const { data: existingArr } = await service
