@@ -347,10 +347,12 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 ### Team Management
 - Invite members via token link (7-day expiry)
 - Branded HTML invite email auto-sent via Resend from `invites@sentimetrx.ai`; copy-link fallback if send fails
+- Resend or revoke pending invites from the team page
+- Invitee accepts via warm-themed `/invite/[token]` showing org name + role; email field is locked to the invited address; auto-signed-in on accept (no second login)
 - Role assignment (owner/member)
 - Track invite usage
-- Revoke unused invites
 - Remove members from org
+- Org owners (not just super-admins) can invite into their own org
 
 ---
 

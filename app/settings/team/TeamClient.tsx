@@ -119,6 +119,26 @@ export default function TeamClient({ org, members: initialMembers, invites: init
     flash('Link copied to clipboard')
   }
 
+  async function resendInvite(id: string, email?: string | null) {
+    const res = await fetch(`/api/invite/${id}/resend`, { method: 'POST' })
+    const data = await res.json()
+    if (data.email_status === 'sent')      flash(`Invite re-emailed to ${email || 'invitee'}`)
+    else if (data.email_status === 'failed') flash(`Resend failed: ${data.email_error || 'unknown error'}`)
+    else                                     flash(`Error: ${data.error || 'Could not resend'}`)
+  }
+
+  async function revokeInvite(id: string, email?: string | null) {
+    if (!confirm(`Revoke the invite for ${email || 'this user'}?`)) return
+    const res = await fetch(`/api/invite/${id}`, { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) {
+      setInvites(prev => prev.filter(i => i.id !== id))
+      flash('Invite revoked')
+    } else {
+      flash(`Error: ${data.error || 'Could not revoke'}`)
+    }
+  }
+
   async function changeRole(memberId: string, newRole: string) {
     const res = await fetch('/api/settings/team', {
       method: 'PATCH',
@@ -356,10 +376,20 @@ export default function TeamClient({ org, members: initialMembers, invites: init
                         <span className="text-xs text-gray-400">{inv.email || 'Open invite'}</span>
                         <span className="text-xs text-gray-600 ml-2">expires {new Date(inv.expires_at).toLocaleDateString()}</span>
                       </div>
-                      <button onClick={() => copyLink(inv.token)}
-                        className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-slate-700 transition-colors">
-                        Copy Link
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => resendInvite(inv.id, inv.email)}
+                          className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-slate-700 transition-colors">
+                          Resend
+                        </button>
+                        <button onClick={() => copyLink(inv.token)}
+                          className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-slate-700 transition-colors">
+                          Copy Link
+                        </button>
+                        <button onClick={() => revokeInvite(inv.id, inv.email)}
+                          className="text-xs text-red-400 hover:text-white px-2 py-1 rounded hover:bg-red-600 transition-colors">
+                          Revoke
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

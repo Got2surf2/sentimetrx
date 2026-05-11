@@ -1,50 +1,45 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
-import { getEmailProvider } from '@/lib/email/provider'
-import { buildInviteEmail } from '@/lib/email/inviteTemplate'
-
-const INVITE_FROM = 'Sentimetrx <invites@sentimetrx.ai>'
+import { sendInviteEmail } from '@/lib/email/sendInvite'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-
-  const orgData = userData?.organizations
-  const isAdmin = Array.isArray(orgData)
-    ? orgData[0]?.is_admin_org
-    : (orgData as any)?.is_admin_org
-
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-  }
-
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { org_id, email, role } = body
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  // Email is required: invite tokens are bound to a specific recipient on
-  // /api/invite/register. Without an email the token would be a bearer
-  // credential — anyone who got the link could claim membership.
   if (!email || !emailRegex.test(email)) {
     return NextResponse.json({ error: 'Valid email is required' }, { status: 400 })
   }
-
   if (!org_id) {
     return NextResponse.json({ error: 'org_id is required' }, { status: 400 })
   }
 
-  // Whitelist roles so a copy-paste from the dashboard can't escalate to a
-  // role the schema later grants new powers to. Stays in sync with the
-  // values our org-management UI actually offers.
+  // Auth: caller must be a super-admin (any is_admin_org member) OR an
+  // owner of the target org. The previous check only allowed super-admins
+  // — regular org owners got a 403 even though the team-invite UI is
+  // shown to them.
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, role, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+
+  const orgData    = userData?.organizations
+  const isSuperAdmin = Array.isArray(orgData)
+    ? orgData[0]?.is_admin_org === true
+    : (orgData as any)?.is_admin_org === true
+  const isOrgOwner = userData?.role === 'owner' && userData?.org_id === org_id
+
+  if (!isSuperAdmin && !isOrgOwner) {
+    return NextResponse.json({ error: 'You must be an owner of this organization to invite members' }, { status: 403 })
+  }
+
   const ALLOWED_ROLES = new Set(['owner', 'admin', 'member', 'viewer'])
   const requestedRole = role || 'owner'
   if (!ALLOWED_ROLES.has(requestedRole)) {
@@ -53,9 +48,7 @@ export async function POST(req: NextRequest) {
 
   const token     = randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-
-  const service = createServiceRoleClient()
-
+  const service   = createServiceRoleClient()
   const normalizedEmail = String(email).trim().toLowerCase()
 
   const { data, error } = await service
@@ -68,51 +61,18 @@ export async function POST(req: NextRequest) {
       created_by: user.id,
       expires_at: expiresAt,
     })
-    .select('id, token, email, role, expires_at')
+    .select('id, token, email, role, org_id, expires_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Send the branded invite email via Resend. If sending fails the invite row
-  // still exists so the admin can fall back to copying the link.
-  let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
-  let emailError: string | undefined
-  try {
-    const [orgRes, inviterRes] = await Promise.all([
-      service.from('organizations').select('name').eq('id', org_id).single(),
-      service.from('users').select('full_name, email').eq('id', user.id).single(),
-    ])
+  const sendResult = await sendInviteEmail(service, data, user.id)
 
-    const baseUrl   = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
-    const inviteUrl = `${baseUrl.replace(/\/$/, '')}/invite/${token}`
-    const orgName   = orgRes.data?.name || 'their organization'
-
-    const { subject, html, text } = buildInviteEmail({
-      orgName,
-      inviterName:  inviterRes.data?.full_name || undefined,
-      inviterEmail: inviterRes.data?.email || user.email || undefined,
-      role:         requestedRole,
-      inviteUrl,
-      expiresAt,
-    })
-
-    const provider = getEmailProvider('resend')
-    await provider.send({
-      to:      normalizedEmail,
-      from:    INVITE_FROM,
-      replyTo: inviterRes.data?.email || user.email || undefined,
-      subject,
-      html,
-      text,
-    })
-    emailStatus = 'sent'
-  } catch (e: any) {
-    emailStatus = 'failed'
-    emailError = e?.message || String(e)
-    console.error('invite: email send failed', { invite_id: data.id, error: emailError })
-  }
-
-  return NextResponse.json({ ...data, email_status: emailStatus, email_error: emailError }, { status: 201 })
+  return NextResponse.json({
+    ...data,
+    email_status: sendResult.status,
+    email_error:  sendResult.error,
+  }, { status: 201 })
 }
 
 export async function GET(req: NextRequest) {
@@ -124,7 +84,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await service
     .from('invites')
-    .select('id, token, email, role, org_id, used_at, expires_at')
+    .select('id, token, email, role, org_id, used_at, expires_at, organizations(name)')
     .eq('token', token)
     .single()
 
@@ -132,5 +92,17 @@ export async function GET(req: NextRequest) {
   if (data.used_at) return NextResponse.json({ error: 'Invite already used' }, { status: 410 })
   if (new Date(data.expires_at) < new Date()) return NextResponse.json({ error: 'Invite expired' }, { status: 410 })
 
-  return NextResponse.json(data)
+  const orgRel = (data as any).organizations
+  const orgName = Array.isArray(orgRel) ? orgRel[0]?.name : orgRel?.name
+
+  return NextResponse.json({
+    id:         data.id,
+    token:      data.token,
+    email:      data.email,
+    role:       data.role,
+    org_id:     data.org_id,
+    org_name:   orgName || null,
+    expires_at: data.expires_at,
+    used_at:    data.used_at,
+  })
 }
