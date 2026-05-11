@@ -18,8 +18,8 @@ export async function GET(_req: Request, { params }: Props) {
 
   // Verify access (admin Phase E: super-admins cross-org)
   const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
-  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dataset) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   const { data: stateRow } = await supabase
     .from('dataset_state')

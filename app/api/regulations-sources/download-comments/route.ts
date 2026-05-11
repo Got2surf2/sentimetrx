@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
   const { data: dsCheck } = await service.from('datasets').select('org_id').eq('id', dataset_id).single()
   if (!dsCheck || (!isAdmin && dsCheck.org_id !== userData?.org_id)) {
-    return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+    return NextResponse.json({ error: "This dataset isn't available to your account." }, { status: 404 })
   }
 
   // If finalizing (last step), compute analytics and mark complete. We also

@@ -87,8 +87,8 @@ export async function POST(_req: Request, { params }: Params) {
 
   const { orgId, isAdmin } = await getCallerOrgContext(supabase)
   const { data: dataset } = await supabase.from('datasets').select('org_id, source, name').eq('id', params.datasetId).single()
-  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dataset) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   const service = createServiceRoleClient()
 

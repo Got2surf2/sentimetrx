@@ -22,8 +22,8 @@ export async function GET(_req: Request, { params }: Params) {
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
-  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dataset) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   const { data, error } = await supabase
     .from('dataset_state')
@@ -41,8 +41,8 @@ export async function PUT(req: Request, { params }: Params) {
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
-  if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!isAdmin && dsCheck.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dsCheck) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!isAdmin && dsCheck.org_id !== orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   const body = await req.json()
   const { schema_config, theme_model, saved_charts, saved_stats, filter_state, session_state } = body
@@ -72,8 +72,8 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!user || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dsCheck2 } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
-  if (!dsCheck2) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!isAdmin && dsCheck2.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dsCheck2) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!isAdmin && dsCheck2.org_id !== orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   let body: Record<string, unknown>
   try {

@@ -28,7 +28,7 @@ export async function POST(req: Request, { params }: Params) {
     const { data: dataset } = await service
       .from('datasets').select('id, org_id, row_count').eq('id', params.datasetId).single()
     if (!dataset || (!isAdmin && dataset.org_id !== orgId)) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
     }
 
     const body = await req.json()

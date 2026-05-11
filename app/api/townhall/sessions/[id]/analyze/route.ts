@@ -33,8 +33,8 @@ export async function POST(_req: Request, { params }: Params) {
     .eq('id', sessionId)
     .single()
 
-  if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-  if (!isAdmin && session.org_id !== orgId) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  if (!session) return NextResponse.json({ error: "This session isn't available to your account." }, { status: 404 })
+  if (!isAdmin && session.org_id !== orgId) return NextResponse.json({ error: "This session isn't available to your account." }, { status: 404 })
 
   // Check for existing dataset linked to this TH session
   // TH datasets use description to store the session link (study_id FK references studies table)

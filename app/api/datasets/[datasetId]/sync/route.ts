@@ -32,9 +32,9 @@ export async function POST(req: Request, { params }: Params) {
     const { data: dataset, error: dsErr } = await service
       .from('datasets').select('*').eq('id', params.datasetId).single()
 
-    if (dsErr || !dataset) return NextResponse.json({ error: 'Dataset not found', detail: dsErr?.message }, { status: 404 })
+    if (dsErr || !dataset) return NextResponse.json({ error: "This resource isn't available to your account.", detail: dsErr?.message }, { status: 404 })
     if (!isAdmin && dataset.org_id !== userData?.org_id) {
-      return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+      return NextResponse.json({ error: "This dataset isn't available to your account." }, { status: 404 })
     }
     if (dataset.source !== 'study' || !dataset.study_id) {
       return NextResponse.json({ error: 'Dataset is not linked to a study' }, { status: 400 })

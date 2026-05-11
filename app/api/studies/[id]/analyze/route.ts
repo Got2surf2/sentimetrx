@@ -32,8 +32,8 @@ export async function POST(_req: Request, { params }: Params) {
     .eq('id', studyId)
     .single()
 
-  if (!study) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
-  if (!isAdmin && study.org_id !== orgId) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+  if (!study) return NextResponse.json({ error: "This study isn't available to your account." }, { status: 404 })
+  if (!isAdmin && study.org_id !== orgId) return NextResponse.json({ error: "This study isn't available to your account." }, { status: 404 })
 
   // Check for existing dataset linked to this study
   const { data: existing } = await service

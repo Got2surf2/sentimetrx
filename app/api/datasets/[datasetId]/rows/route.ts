@@ -69,8 +69,8 @@ export async function GET(req: Request, { params }: Params) {
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dataset } = await supabase.from('datasets').select('org_id, source').eq('id', params.datasetId).single()
-  if (!dataset) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!auth.isAdmin && dataset.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dataset) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!auth.isAdmin && dataset.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   // ── COLLECTION: union rows from all member datasets ─────────────────────
   if ((dataset as any).source === 'collection') {
@@ -222,8 +222,8 @@ export async function POST(req: Request, { params }: Params) {
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
-  if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dsCheck) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   const body = await req.json()
   const rows = body.rows
@@ -274,8 +274,8 @@ export async function DELETE(req: Request, { params }: Params) {
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
-  if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dsCheck) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   const body = await req.json().catch(function() { return {} })
   const batchIndexes: number[] = body.batch_indexes

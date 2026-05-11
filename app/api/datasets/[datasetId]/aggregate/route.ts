@@ -19,8 +19,8 @@ export async function POST(req: Request, { params }: Params) {
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   var { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
-  if (!dsCheck) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!dsCheck) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
   var body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }

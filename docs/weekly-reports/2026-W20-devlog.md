@@ -2,6 +2,12 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, error UX) — Soften 404 message body across cross-org gates
+
+- The cross-org gates from the Phase E sweep returned `{ error: 'Not found' }`. That's accurate but confusing for a legitimate user who lands on a deeplink they don't have access to — it reads like a broken page.
+- **Kept the 404 status** (so an attacker can't enumerate cross-tenant resources by comparing 403-for-exists vs 404-for-fake) but changed the error body to `"This resource isn't available to your account."` (or `'…dataset…'`/`'…study…'`/`'…session…'` for type-specific places). Both the "row doesn't exist" branch and the "not your org" branch now return the same string so they remain indistinguishable.
+- 29 swaps across 12 files (the 10 from the Phase E rollout + sync + regulations download-comments from earlier today). HTTP behavior unchanged → env-gated egress tests still pass: `test:dataset-egress` 5/5, `test:campaign-egress` 3/3.
+
 ## 2026-05-11 (Mon, late, cross-org sweep) — Admin Phase E rollout to 10+ dataset/study/townhall gates
 
 - **Symptom:** after transferring a dataset to another org, admin's `/analyze/[datasetId]` page loaded the header but every inner module returned "Failed to load dataset rows" (403 Forbidden). The earlier-today fix to `app/analyze/[datasetId]/layout.tsx` removed an explicit `.eq('org_id', userData.org_id)` over-filter — but the API ENDPOINTS the modules call were still doing the same over-check inline.
