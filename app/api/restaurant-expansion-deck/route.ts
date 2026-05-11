@@ -3,12 +3,18 @@
 // specific examples, leads with what they already trust and walks them
 // through Sarina / Agents / PulseIQ / Listening / Campaigns.
 
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import PptxGenJS from 'pptxgenjs'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { logDeckDownload } from '@/lib/auth/logDeckDownload'
 
 export const dynamic = 'force-dynamic'
+
+// Recognised ?client= values → display name + safe filename suffix.
+const CLIENTS: Record<string, { name: string; slug: string }> = {
+  darden:  { name: 'Darden',           slug: 'Darden' },
+  bloomin: { name: "Bloomin' Brands",  slug: 'BlominBrands' },
+}
 
 const DN = {
   teal:         '0F7173',
@@ -79,7 +85,7 @@ function bullet(text: string, opts: any = {}) {
 }
 
 // ── Cover ──────────────────────────────────────────────────────────────────
-function addTitleSlide(pptx: any) {
+function addTitleSlide(pptx: any, clientName: string) {
   const s = pptx.addSlide()
   const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE
   const lastUpdated = buildDate ? fmtDate(new Date(buildDate)) : fmtDate(new Date())
@@ -92,7 +98,7 @@ function addTitleSlide(pptx: any) {
 
   s.addText('DATANAUTIX', { x: 0.8, y: 1.4, w: 11, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 2 })
   s.addText('Beyond Text Analytics', { x: 0.8, y: 2.1, w: 11, h: 0.9, fontSize: 42, fontFace: 'Arial', color: DN.white, bold: true })
-  s.addText('Closing the loop on guest feedback — for [CLIENT NAME]', { x: 0.8, y: 3.05, w: 11, h: 0.7, fontSize: 24, fontFace: 'Arial', color: DN.sarinaBlue, italic: true })
+  s.addText(`Closing the loop on guest feedback — for ${clientName}`, { x: 0.8, y: 3.05, w: 11, h: 0.7, fontSize: 24, fontFace: 'Arial', color: DN.sarinaBlue, italic: true })
   s.addShape('rect', { x: 0.8, y: 3.85, w: 4.5, h: 0.04, fill: { color: DN.gold } })
   s.addText('The Ana analytics you already trust — now connected to conversational collection, public-facing agents, live event feedback, and multi-source listening.', {
     x: 0.8, y: 4.05, w: 11, h: 1.1, fontSize: 15, fontFace: 'Arial', color: DN.white, lineSpacing: 24,
@@ -106,7 +112,7 @@ function addTitleSlide(pptx: any) {
   s.addText([
     { text: 'data', options: { color: DN.hermesOrange, bold: true, italic: true } },
     { text: 'nautix', options: { color: DN.sarinaBlue, bold: true, italic: true } },
-    { text: '   ·   datanautix.com   ·   Prepared for [CLIENT NAME]   ·   Confidential', options: { color: DN.slate } },
+    { text: `   ·   datanautix.com   ·   Prepared for ${clientName}   ·   Confidential`, options: { color: DN.slate } },
   ], { x: 0.6, y: H - 0.45, w: 12, h: 0.4, fontSize: 12, fontFace: 'Arial', valign: 'middle' })
 }
 
@@ -391,9 +397,9 @@ function slidePilot(pptx: any, pg: number) {
 }
 
 // ── Deck assembler ─────────────────────────────────────────────────────────
-function buildDeck(pptx: any) {
+function buildDeck(pptx: any, clientName: string) {
   let pg = 0
-  addTitleSlide(pptx)
+  addTitleSlide(pptx, clientName)
   pg = 1
   slideWhereWeStarted(pptx, ++pg)
   slidePlatformToday(pptx, ++pg)
@@ -408,18 +414,22 @@ function buildDeck(pptx: any) {
 }
 
 // ── Route handler ──────────────────────────────────────────────────────────
-export async function GET() {
+export async function GET(req: NextRequest) {
   const denied = await requireAdmin()
   if (denied) return denied
-  await logDeckDownload('restaurant-expansion-deck')
+
+  const url = new URL(req.url)
+  const clientParam = (url.searchParams.get('client') || '').toLowerCase()
+  const client = CLIENTS[clientParam] ?? { name: '[CLIENT NAME]', slug: 'Generic' }
+  await logDeckDownload('restaurant-expansion-deck', clientParam || 'generic')
 
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Datanautix'
   pptx.company = 'Datanautix'
-  pptx.title = 'Datanautix — Restaurant Expansion'
+  pptx.title = `Datanautix — Restaurant Expansion · ${client.name}`
 
-  buildDeck(pptx)
+  buildDeck(pptx, client.name)
 
   const buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
   const uint8 = new Uint8Array(buffer)
@@ -427,7 +437,7 @@ export async function GET() {
   return new NextResponse(uint8, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': 'attachment; filename="Datanautix-Restaurant-Expansion.pptx"',
+      'Content-Disposition': `attachment; filename="Datanautix-Restaurant-Expansion-${client.slug}.pptx"`,
     },
   })
 }

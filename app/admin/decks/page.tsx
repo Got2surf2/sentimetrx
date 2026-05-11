@@ -57,7 +57,8 @@ export default async function DecksPage() {
     'rollup-deck:long':            deckLastModified('app/api/rollup-deck/route.ts'),
     'architecture-deck':           deckLastModified('app/api/architecture-deck/route.ts'),
     'engineering-reality-deck':    deckLastModified('app/api/engineering-reality-deck/route.ts'),
-    'restaurant-expansion-deck':   deckLastModified('app/api/restaurant-expansion-deck/route.ts'),
+    'restaurant-expansion-deck:darden':  deckLastModified('app/api/restaurant-expansion-deck/route.ts'),
+    'restaurant-expansion-deck:bloomin': deckLastModified('app/api/restaurant-expansion-deck/route.ts'),
   }
 
   return (
