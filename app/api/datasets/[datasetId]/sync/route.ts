@@ -20,10 +20,22 @@ export async function POST(req: Request, { params }: Params) {
 
     const service = createServiceRoleClient()
 
+    // Cross-org gate: service-role bypasses RLS, so we must explicitly verify
+    // the caller's org owns this dataset before any sync operations. Without
+    // this, an authenticated user could POST /api/datasets/<other-org-id>/sync
+    // and wipe / re-import another tenant's data.
+    const { data: userData } = await supabase
+      .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
+    const orgRel = (userData as any)?.organizations
+    const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
+
     const { data: dataset, error: dsErr } = await service
       .from('datasets').select('*').eq('id', params.datasetId).single()
 
     if (dsErr || !dataset) return NextResponse.json({ error: 'Dataset not found', detail: dsErr?.message }, { status: 404 })
+    if (!isAdmin && dataset.org_id !== userData?.org_id) {
+      return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+    }
     if (dataset.source !== 'study' || !dataset.study_id) {
       return NextResponse.json({ error: 'Dataset is not linked to a study' }, { status: 400 })
     }

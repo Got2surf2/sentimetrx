@@ -22,6 +22,19 @@ export async function POST(req: NextRequest) {
 
   const service = createServiceRoleClient()
 
+  // Cross-org gate: service-role bypasses RLS, so we must explicitly confirm
+  // the caller's org owns this dataset. Without this, an authed user from any
+  // org could POST { dataset_id: <other-org>, finalize: true } and trigger
+  // analytics-compute / metadata writes on another tenant's dataset.
+  const { data: userData } = await supabase
+    .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
+  const { data: dsCheck } = await service.from('datasets').select('org_id').eq('id', dataset_id).single()
+  if (!dsCheck || (!isAdmin && dsCheck.org_id !== userData?.org_id)) {
+    return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  }
+
   // If finalizing (last step), compute analytics and mark complete. We also
   // do a full-dataset schema scan here as a safety net — per-batch merges
   // (below) keep the schema current during the download, but a final pass

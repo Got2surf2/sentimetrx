@@ -2,6 +2,13 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, cross-org audit) — Close the 2 confirmed bare-id service-role leaks
+
+- **Strict re-audit of W19's "38 bare service-role id lookups."** Wrote a tighter candidate finder (`/tmp/audit_service_id.sh`) that matches multi-line chains in `app/api/**/route.ts` where `service.from(...).eq('id', ...)` appears without a paired `.eq('org_id', ...)`. Surfaced 67 raw chains across 37 files. Then dispatched an Explore agent to classify each into ALREADY_GATED_BY_SIBLING_CHECK / ADMIN_GATED / CRON_GATED / PRIMARY_KEY_IS_TENANT_ID / TOKEN_AUTHENTICATED_PUBLIC / NEEDS_GATE / UNCERTAIN. After the classification: **65 chains were intentional or already gated by a sibling org_id check; 2 were real bugs**.
+- **Fix #1: `/api/datasets/[datasetId]/sync` POST.** Loaded the dataset via service-role with no org_id verification. An authed user from any org could POST `/api/datasets/<other-org-dataset-id>/sync?full=true` and wipe / re-import another tenant's data. Added: resolve caller's `org_id` and `is_admin_org`, fetch dataset, return 404 if `!isAdmin && dataset.org_id !== userData.org_id`. Admins still cross-org sync (Phase E parity).
+- **Fix #2: `/api/regulations-sources/download-comments` POST.** Both the per-batch download path AND the finalize path used `service.from('datasets').eq('id', dataset_id)` with no ownership check. An authed user could trigger downloads into / analytics-compute on another org's regulations dataset. Same fix shape: explicit `org_id` check at the top of the handler before any service-role read or write.
+- **Verification.** Both env-gated suites still green: `test:egress` 27/27, `test:campaign-egress` 3/3. The campaign-routes-egress test pattern (mocks `@/lib/supabase/server`, signs in as Org B, hits an Org A resource, asserts 404) is the right scaffold for locking these two fixes too — filed in queue for next session.
+
 ## 2026-05-11 (Mon, late, hardening pass) — 404-after-transfer + admin-route gates + main-reply scrubber + gitignore
 
 - **Critical UX fix: admin 404 after transferring a dataset.** Symptom: super-admin transfers a dataset/collection from Org A → Org B, then clicks it from /analyze → spurious 404. Root cause: `app/analyze/[datasetId]/layout.tsx:38` hard-coded `.eq('org_id', userData?.org_id)` on every dataset read, overriding the RLS policy that explicitly allows cross-org reads when `is_platform_admin()`. Removed the redundant filter — RLS is the single source of truth on access. Non-admins are still scoped to their own org because the policy reads `(org_id = current_org_id() OR is_platform_admin())`.
