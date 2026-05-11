@@ -30,7 +30,22 @@ function StatusPill({ status }: { status: string }) {
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   const d = new Date(iso)
+  // 2999-01-01 is the "never auto-sync" sentinel for manual-mode sources;
+  // show it as "—" instead of a confusing far-future date.
+  if (d.getFullYear() > 2100) return '—'
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtFrequency(hours: number | null | undefined): string {
+  if (hours == null || hours === 0) return 'Manual'
+  if (hours < 24 && 24 % hours === 0)              return `Every ${hours}h`
+  if (hours === 24)                                return 'Daily'
+  if (hours % 168 === 0 && hours / 168 === 1)      return 'Weekly'
+  if (hours % 168 === 0)                           return `Every ${hours / 168} weeks`
+  if (hours === 720)                               return 'Monthly'
+  if (hours === 2160)                              return 'Quarterly'
+  if (hours % 24 === 0)                            return `Every ${hours / 24} days`
+  return `${hours}h`
 }
 
 function timeAgo(iso: string | null) {
@@ -153,7 +168,7 @@ export default function DownloadsClient({ redditSources, reviewSources, pendingL
                     <td style={{ ...td, fontWeight: 600 }}>{s.brand_name}</td>
                     <td style={td}>{s.orgName}</td>
                     <td style={td}><StatusPill status={s.status} /></td>
-                    <td style={td}>{s.sync_frequency_hours}h</td>
+                    <td style={td}>{fmtFrequency(s.sync_frequency_hours)}</td>
                     <td style={td}>{timeAgo(s.last_synced_at)}</td>
                     <td style={td}>{s.next_sync_at ? fmtDate(s.next_sync_at) : '—'}</td>
                     <td style={td}>{pending > 0 ? <span style={{ color: '#d97706', fontWeight: 600 }}>{pending}</span> : '0'}</td>
