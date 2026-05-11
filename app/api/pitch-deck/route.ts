@@ -84,14 +84,38 @@ export async function GET() {
   pg++
   addHeader(s2, 'The Problem')
   addFooter(s2, pg)
-  s2.addText('Survey response quality has been declining for years — and the analysis is getting harder, not easier.', { x: 0.6, y: 1.3, w: 12, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.hermesOrange, bold: true })
-  s2.addText([
-    bullet('Average survey response rates are in the single digits to low teens, and falling'),
-    bullet('The majority of open-ended responses are too vague to act on — "it was fine," "good," "OK"'),
-    bullet('Companies stitch together 3–5 separate tools for surveys, email outreach, text analytics, translation, and reporting'),
-    bullet('Enterprise text analytics platforms run into six figures annually and require data science teams to operate'),
-    bullet('Most surveys are English-only, missing the richer feedback consumers give in their native language'),
-  ], { x: 0.6, y: 2.2, w: 11.5, h: 4.5 })
+  s2.addText('Response quality is falling. Analysis is getting harder.', { x: 0.6, y: 1.3, w: 12, h: 0.7, fontSize: 24, fontFace: 'Arial', color: DN.hermesOrange, bold: true })
+
+  // Four big problem chips
+  const problems = [
+    { t: 'Single-digit response rates', c: DN.hermesOrange },
+    { t: '"It was fine." "Good." "OK."', c: DN.navy },
+    { t: '3–5 separate vendors stitched together', c: DN.teal },
+    { t: 'English-only misses the real signal', c: DN.sarinaBlue },
+  ]
+  problems.forEach((p, i) => {
+    const col = i % 2, row = Math.floor(i / 2)
+    const x = 0.6 + col * 6.0
+    const y = 2.4 + row * 1.7
+    s2.addShape('rect', { x, y, w: 5.8, h: 1.4, fill: { color: DN.slateLight }, rectRadius: 0.1 })
+    s2.addShape('rect', { x, y, w: 0.18, h: 1.4, fill: { color: p.c } })
+    s2.addText(p.t, { x: x + 0.3, y, w: 5.4, h: 1.4, fontSize: 18, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle', autoFit: true })
+  })
+  s2.addText('Enterprise text analytics costs six figures and needs a data science team to operate.', {
+    x: 0.6, y: 6.0, w: 12, h: 0.4, fontSize: 13, fontFace: 'Arial', color: DN.slate, italic: true, align: 'center',
+  })
+  s2.addNotes(
+`Frame the problem. Don't pile on — pick two or three pains the audience already feels.
+
+POINTS to weave:
+- Survey response rates are in the single digits to low teens, and falling. Guests / customers / employees won't fill out forms anymore.
+- The MAJORITY of open-ended responses are too vague to act on. "It was fine." "Good." "OK." Useless at analysis time.
+- Companies stitch together 3-5 vendors: SurveyMonkey for collection, Mailchimp for outreach, Clarabridge for text, separate translation vendor, manual reporting.
+- Enterprise text analytics platforms (Qualtrics, Medallia, Forsta) cost six figures annually and require a data science team to operate. Mid-market can't afford it; small companies can't operate it.
+- Most surveys are English-only — missing the richer feedback non-native speakers give in their own language.
+
+The next slide is the insight that changes the picture.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 3: THE INSIGHT
@@ -110,6 +134,19 @@ export async function GET() {
   s3.addText('That follow-up is where the insight lives. And until now, it required a human.', {
     x: 0.6, y: 4.4, w: 12, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.hermesOrange, bold: true
   })
+  s3.addNotes(
+`This is the insight slide. Land it slowly.
+
+Say it: "The problem isn't that people don't want to give feedback. It's that surveys are a monologue pretending to be a conversation."
+
+Then the example: "When a respondent says 'the wait was too long,' a traditional survey moves to the next checkbox. A human interviewer would say 'tell me more about that — how long did you wait?'"
+
+Pause.
+
+"That follow-up is where the insight lives. And until now, it required a human."
+
+The whole company is one product application of that insight.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 4: THE SOLUTION
@@ -118,20 +155,41 @@ export async function GET() {
   pg++
   addHeader(s4, 'The Solution')
   addFooter(s4, pg)
-  s4.addText('Sentimetrx replaces static surveys with AI-powered conversations that adapt in real-time.', {
-    x: 0.6, y: 1.3, w: 12, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.sarinaBlue, bold: true
+  s4.addText('AI-powered conversations that adapt in real time.', {
+    x: 0.6, y: 1.4, w: 12, h: 0.7, fontSize: 26, fontFace: 'Arial', color: DN.sarinaBlue, bold: true, align: 'center',
   })
-  s4.addText([
-    bullet('A branded AI agent greets respondents by name and asks questions conversationally'),
-    bullet('AI detects vague answers and asks intelligent follow-ups to get the "why"'),
-    bullet('Handles off-topic questions gracefully with smart deflection'),
-    bullet('Works in 15 languages — one-click AI translation of the entire study'),
-    bullet('Built-in email campaigns — no separate Mailchimp required'),
-    bullet('AI text analytics with statistical significance testing — no data scientist required'),
-  ], { x: 0.6, y: 2.2, w: 11.5, h: 4.5 })
+
+  // Four big "what we do" chips
+  const caps = [
+    { t: 'Conversational collection', c: DN.sarinaBlue },
+    { t: 'AI clarifiers + deflection', c: DN.teal },
+    { t: '15 languages, one click',    c: DN.hermesOrange },
+    { t: 'Built-in campaigns',         c: DN.gold },
+  ]
+  caps.forEach((p, i) => {
+    const col = i % 2, row = Math.floor(i / 2)
+    const x = 0.6 + col * 6.0
+    const y = 2.4 + row * 1.6
+    s4.addShape('rect', { x, y, w: 5.8, h: 1.3, fill: { color: p.c }, rectRadius: 0.1 })
+    s4.addText(p.t, { x: x + 0.2, y, w: 5.5, h: 1.3, fontSize: 22, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', autoFit: true })
+  })
+
   s4.addText('One platform. Survey + outreach + analytics + reporting.', {
-    x: 0.6, y: 6.0, w: 12, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true
+    x: 0.6, y: 6.0, w: 12, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.navy, bold: true, italic: true, align: 'center',
   })
+  s4.addNotes(
+`The solution. Four capabilities, walked in 60 seconds total.
+
+CONVERSATIONAL COLLECTION: A branded AI agent greets respondents by name and asks questions conversationally. Not a form — a chat.
+
+AI CLARIFIERS + DEFLECTION: The AI detects vague answers and asks intelligent follow-ups to get the WHY. Off-topic questions handled gracefully with smart deflection — stays in your brand voice.
+
+15 LANGUAGES, ONE CLICK: AI translation of the entire study. Respondents answer in their native language. Analysis returns to your team in English.
+
+BUILT-IN CAMPAIGNS: Email outreach is part of the platform. No separate Mailchimp. No separate analytics vendor. No data scientist needed.
+
+CLOSE: "One platform. Survey + outreach + analytics + reporting. That's the difference."`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 5: PRODUCT
@@ -141,19 +199,35 @@ export async function GET() {
   addHeader(s5, 'Product')
   addFooter(s5, pg)
   const cols = [
-    { title: 'AI Study Wizard', desc: 'Select industry + goals.\nAI generates complete study.\n7 blueprints, 18 industries.', color: DN.sarinaBlue },
-    { title: 'Conversational Collection', desc: 'Respondents chat with your agent.\nAI clarifiers probe short answers.\n15 question types + skip logic.', color: DN.teal },
-    { title: 'Built-in Campaigns', desc: 'Rich email templates.\nMerge tags, reminders, tracking.\nNo Mailchimp required.', color: DN.hermesOrange },
-    { title: '15 Languages', desc: 'One-click AI translation.\nAuto-translate responses.\nNo translation vendors.', color: DN.gold },
-    { title: 'AI Analytics', desc: 'Theme extraction at scale.\nStatistical significance.\nPPTX, HTML, CSV export.', color: DN.navy },
+    { title: 'AI Study Wizard',          color: DN.sarinaBlue },
+    { title: 'Conversational Collection', color: DN.teal },
+    { title: 'Built-in Campaigns',        color: DN.hermesOrange },
+    { title: '15 Languages',              color: DN.gold },
+    { title: 'AI Analytics',              color: DN.navy },
   ]
   cols.forEach((col, i) => {
     const x = 0.4 + i * 2.55
-    s5.addShape('rect', { x, y: 1.4, w: 2.35, h: 5.2, fill: { color: DN.slateLight }, rectRadius: 0.1 })
-    s5.addShape('rect', { x, y: 1.4, w: 2.35, h: 0.5, fill: { color: col.color }, rectRadius: 0.1 })
-    s5.addText(col.title, { x, y: 1.45, w: 2.35, h: 0.45, fontSize: 12, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', autoFit: true })
-    s5.addText(col.desc, { x: x + 0.15, y: 2.1, w: 2.05, h: 4.2, fontSize: 11, fontFace: 'Arial', color: DN.ink, lineSpacing: 18, autoFit: true })
+    s5.addShape('rect', { x, y: 1.6, w: 2.35, h: 4.8, fill: { color: col.color }, rectRadius: 0.1 })
+    s5.addText(col.title, { x: x + 0.1, y: 1.6, w: 2.15, h: 4.8, fontSize: 22, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', autoFit: true })
   })
+  s5.addText('Five capabilities. One platform. No stitching.', {
+    x: 0.4, y: 6.6, w: 12.5, h: 0.4, fontSize: 14, fontFace: 'Arial', color: DN.navy, italic: true, bold: true, align: 'center',
+  })
+  s5.addNotes(
+`Five product columns. Walk them in 90 seconds.
+
+AI STUDY WIZARD: Pick industry + goals, AI generates a complete study. 7 blueprints, 18 industries supported out of the box.
+
+CONVERSATIONAL COLLECTION: Respondents chat with your agent. AI clarifiers probe short answers. 15 question types with skip logic.
+
+BUILT-IN CAMPAIGNS: Rich email templates, merge tags, reminders, tracking. No Mailchimp required.
+
+15 LANGUAGES: One-click AI translation of the whole study. Auto-translate responses back. No translation vendors.
+
+AI ANALYTICS: Theme extraction at scale. Statistical significance testing. Export to PPTX, HTML, CSV. No data scientist required.
+
+The whole stack — collection through reporting — under one login, one bill.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 6: CONVERSATIONAL ADVANTAGE
@@ -177,6 +251,25 @@ export async function GET() {
   s6.addText('3-5x more actionable text per respondent. Same survey length. No interviewer required.', {
     x: 0.5, y: 6.5, w: 12.3, h: 0.4, fontSize: 14, fontFace: 'Arial', color: DN.sarinaBlue, bold: true, align: 'center'
   })
+  s6.addNotes(
+`The side-by-side that lands the whole pitch.
+
+LEFT (traditional): "How was your experience? 4 stars. Any comments? It was good."
+Insight captured: positive sentiment. That's it.
+
+RIGHT (Sentimetrx):
+Bot asks the same opener. User taps "good — 4 stars."
+Bot probes: "What made it good?"
+User: "Staff was friendly but we waited a long time."
+Bot probes again: "Could you tell me more about the wait?"
+User: "45 min for a table with a reservation."
+
+Insight captured: staff driver (positive) + 45-min wait + reservation issue. THREE actionable signals.
+
+Land the punchline: "3-5× more actionable text per respondent. Same survey length. No interviewer required."
+
+This is the slide that makes researchers and CX leaders perk up.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 7: COMPETITIVE LANDSCAPE
@@ -208,6 +301,20 @@ export async function GET() {
   })))]
   s7.addTable(tableRows as any, { x: 0.6, y: 2.0, w: 12, colW: [2.2, 3, 3, 3.8], border: { pt: 0.5, color: DN.slateLight } })
 
+  s7.addNotes(
+`The competitive grid. Walk the diagonal — don't read every cell.
+
+KEY ROWS to land:
+- COLLECTION: survey tools = static forms; text analytics = nothing (they need data fed in); us = AI conversation.
+- AI FOLLOW-UP: only Sentimetrx does real-time contextual follow-ups.
+- ANALYTICS: survey tools = basic charts; text analytics = theme extraction; us = both with statistical significance.
+- CAMPAIGNS: only us has it built in.
+- LANGUAGES: only us has one-click AI translation.
+- COST: survey tools $25-100K, text analytics $15-80K, us = a fraction of the combined.
+
+The point: no incumbent stack does all five well. Procurement teams are sick of stitching three vendors together. We are the consolidation play.`
+  )
+
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 8: AI DEPTH
   // ═══════════════════════════════════════════════════════════════
@@ -232,6 +339,19 @@ export async function GET() {
   s8.addText('We use Claude (Anthropic) across the stack — deeply integrated, not API wrappers.', {
     x: 0.6, y: 6.6, w: 12, h: 0.4, fontSize: 12, fontFace: 'Arial', color: DN.slate, italic: true
   })
+  s8.addNotes(
+`The "we're not a wrapper" slide. Six places AI actually does work.
+
+WALK QUICKLY — one line each:
+- STUDY CREATION: AI generates complete studies from industry + goals (not just templates).
+- REAL-TIME CLARIFICATION: AI reads each response and generates the contextual follow-up. Not pre-written branching.
+- SMART DEFLECTION: AI detects off-topic questions and redirects warmly without breaking the conversation.
+- TRANSLATION: AI translates the study to 15 languages AND responses back to English for analysis.
+- THEME EXTRACTION: AI discovers patterns across thousands of open-ended responses. No taxonomy seeding required.
+- STATISTICAL ANALYSIS: AI runs significance testing on theme distributions — surfaces "this segment significantly differs."
+
+THE PUNCH LINE at the bottom: "We use Claude (Anthropic) across the stack. Deeply integrated, not API wrappers. The AI is the spine, not a feature."`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 9: MARKET OPPORTUNITY
@@ -271,6 +391,17 @@ export async function GET() {
   s9.addText('Specific TAM / SAM / SOM dollar figures pending — to be sourced before external use.', {
     x: 0.6, y: 6.95, w: 12, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate, italic: true, align: 'center',
   })
+  s9.addNotes(
+`The market opportunity slide. Three adjacent markets — survey software, text analytics, and CX management. All three are large and growing.
+
+We deliberately don't put specific TAM dollar figures on the slide. Source them from your preferred research firm (MarketsandMarkets, Grand View Research, Forrester, Gartner) and add the citations before external use.
+
+OUR WEDGE: mid-market organizations spending across 3-5 separate tools today. Too small for Qualtrics or Medallia. Too sophisticated for SurveyMonkey alone.
+
+TAM / SAM / SOM breakdown: define TAM = mid-market survey + analytics. SAM = English + multilingual mid-market. SOM = the initial verticals where we have proof points (hospitality, sports, education, airports, political).
+
+Don't quote a number you can't back up. The footnote at the bottom tells the LP this is intentional.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 10: CASE STUDIES
@@ -296,6 +427,21 @@ export async function GET() {
   s10.addText('"Ana performed almost as well as the team of professors and outperformed the graduate student — in less than 5% of the time."\n— Dr. Fevzi Okumus, UCF Rosen College', {
     x: 1.0, y: 6.2, w: 11.5, h: 0.8, fontSize: 11, fontFace: 'Arial', color: DN.white, italic: true, valign: 'middle', lineSpacing: 16
   })
+  s10.addNotes(
+`Four customer case studies. Each is a different industry — proves we're not a one-vertical novelty.
+
+HARLEM GLOBETROTTERS: 10× more responses vs post-event email. 15-20% in-venue response rate (industry email surveys average 5-15%).
+
+JW MARRIOTT: 10× more responses than post-stay email. Actionable feedback within hours, not weeks.
+
+UCF ROSEN COLLEGE: less than 5% of the time taken by human experts. Near-identical quality to professors. This is the diligence-proof point — independent third-party validation.
+
+ORLANDO RESORT: seconds to identify a root cause vs weeks of manual analysis. Saved a costly renovation by catching the real driver in the data.
+
+THE FACULTY QUOTE at the bottom: "Ana performed almost as well as the team of professors and outperformed the graduate student — in less than 5% of the time." — Dr. Fevzi Okumus, UCF Rosen College.
+
+Don't paraphrase this. Read the quote.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 11: BUSINESS MODEL
@@ -321,6 +467,17 @@ export async function GET() {
   s11.addText('85%+ gross margin target — AI costs ~$0.002/interaction', {
     x: 0.6, y: 6.0, w: 12, h: 0.4, fontSize: 13, fontFace: 'Arial', color: DN.slate
   })
+  s11.addNotes(
+`Three tiers. Walk them quickly.
+
+STARTER ($99/mo): 3 active studies, 1K responses/month, basic analytics. For consultancies, small CX teams, education users.
+
+PROFESSIONAL ($299/mo): Unlimited studies, 10K responses/month, AI analytics + campaigns. The mid-market sweet spot.
+
+ENTERPRISE (custom): White-label, SSO, dedicated support, unlimited everything. Multi-brand restaurant groups, large hospitality, political ops.
+
+THE MARGIN POINT: 85%+ gross margin target. AI inference costs at scale are roughly $0.002 per interaction (with prompt caching). The economics of the product mirror traditional SaaS, not a services business.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 12: GO-TO-MARKET
@@ -341,6 +498,27 @@ export async function GET() {
     s12.addText(p.items, { x: x + 0.2, y: 2.3, w: 3.4, h: 2.5, fontSize: 13, fontFace: 'Arial', color: DN.ink, lineSpacing: 22 })
   })
 
+  s12.addNotes(
+`Three GTM phases. Walk them as a timeline.
+
+PHASE 1 (now): Three vertical wedges where we have references.
+- HEALTHCARE patient experience.
+- NONPROFIT donor feedback.
+- HOSPITALITY guest experience.
+
+PHASE 2 (6 months): Channel scale.
+- White-label partner program — agencies and consultancies re-brand under their own.
+- Integration marketplace — connect to Salesforce, HubSpot, Slack, Snowflake, etc.
+- Self-serve freemium tier — bottom-of-funnel acquisition.
+
+PHASE 3 (12 months): Platform expansion.
+- API platform access — developers build on top.
+- Real-time feedback triggers — fire events to other systems.
+- Embedded survey widgets — drop into any web property.
+
+The arc: prove the verticals, scale via partners, become a platform.`
+  )
+
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 13: WHY NOW
   // ═══════════════════════════════════════════════════════════════
@@ -357,11 +535,26 @@ export async function GET() {
   ]
   reasons.forEach((r, i) => {
     const y = 1.5 + i * 1.1
-    s13.addShape('rect', { x: 0.6, y, w: 0.5, h: 0.5, fill: { color: DN.sarinaBlue }, rectRadius: 0.25 })
-    s13.addText(`${i + 1}`, { x: 0.6, y, w: 0.5, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle' })
-    s13.addText(r.title, { x: 1.3, y, w: 4, h: 0.5, fontSize: 14, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle' })
-    s13.addText(r.desc, { x: 5.5, y, w: 7.5, h: 0.5, fontSize: 13, fontFace: 'Arial', color: DN.ink, valign: 'middle' })
+    s13.addShape('ellipse', { x: 0.6, y, w: 0.7, h: 0.7, fill: { color: DN.sarinaBlue } })
+    s13.addText(`${i + 1}`, { x: 0.6, y, w: 0.7, h: 0.7, fontSize: 24, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle' })
+    s13.addText(r.title, { x: 1.5, y, w: 11.3, h: 0.7, fontSize: 20, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle', autoFit: true })
   })
+
+  s13.addNotes(
+`Five reasons "why now." Walk them quickly — each is a 10-second beat.
+
+1. AI COSTS CROSSED THE THRESHOLD. Claude Haiku makes real-time conversational AI viable at roughly $0.002 per interaction. Two years ago this was impossible economically.
+
+2. SURVEY FATIGUE IS PEAKING. Response rates at all-time lows. The market is ready for a different approach — they've stopped using the old tools, they just don't have a replacement yet.
+
+3. MULTI-LANGUAGE DEMAND. Every customer-facing organization needs feedback in multiple languages. $10K+ translation workflows are everywhere — and ripe for AI disruption.
+
+4. TOOL CONSOLIDATION TREND. CFOs are cutting point-solution budgets. "One platform" is the winning pitch right now. Companies are killing 3 of their 5 vendors.
+
+5. REGULATORY PRESSURE. Healthcare, financial services, and government are mandating structured feedback collection (CMS for healthcare, OMB for federal). Compliance creates urgency.
+
+All five are happening NOW. Not in 18 months. Now.`
+  )
 
   // ═══════════════════════════════════════════════════════════════
   // SLIDE 14: THE ASK
@@ -384,6 +577,22 @@ export async function GET() {
   s14.addText('sentimetrx.ai  •  info@datanautix.com  •  calendly.com/sanjay-datanautix', {
     x: 0.8, y: 6.5, w: 11, h: 0.4, fontSize: 13, fontFace: 'Arial', color: DN.slate
   })
+  s14.addNotes(
+`The closing ask. Four use-of-funds buckets:
+
+1. SCALE AI INFRASTRUCTURE: handle the next 10× of conversations without manual intervention.
+2. HIRE SALES TEAM: vertical reps for healthcare, nonprofit, and hospitality. Three named hires.
+3. BUILD WHITE-LABEL CHANNEL PROGRAM: agencies and consultancies as a distribution layer.
+4. PRODUCT EXPANSION: SMS, embedded widgets, public API.
+
+TARGET MILESTONES (18 months from close):
+- $1M ARR
+- 200+ paying organizations
+- 3 channel partners
+- 50K monthly responses
+
+Don't end with "let me know what you think." End with the next step: "Here is what I'd like to do. Let me know if you can join the next investor call on [date]."`
+  )
 
   // Generate buffer
   const buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
