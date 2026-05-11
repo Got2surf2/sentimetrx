@@ -4,6 +4,7 @@ import {
   isOutputSafe,
   isOutputClean,
   looksLikeAIRefusal,
+  cleanDeflectResponse,
 } from '@/lib/guardrails'
 
 describe('guardrails — input', () => {
@@ -79,5 +80,48 @@ describe('guardrails — AI refusal detection', () => {
 
   it('returns false for empty input', () => {
     expect(looksLikeAIRefusal('')).toBe(false)
+  })
+})
+
+// CRITICAL — these check the deflection-response sanitizer. Anything that
+// returns `deflection: <text>` from cleanDeflectResponse lands verbatim in
+// the bot's reply to an end user. Treat the failure mode like a security
+// incident; if a meta-prompt phrase slips past, expand the regex and add
+// the exact phrase here so regressions stay caught.
+describe('cleanDeflectResponse — meta-prompt leakage prevention', () => {
+  it('treats NONE as no deflection', () => {
+    expect(cleanDeflectResponse('NONE').deflection).toBeNull()
+    expect(cleanDeflectResponse('  NONE  ').deflection).toBeNull()
+    expect(cleanDeflectResponse('NONE — user gave clear feedback').deflection).toBeNull()
+  })
+
+  it('passes through a legitimate redirect message', () => {
+    const out = cleanDeflectResponse("Got it. Let's bring it back to the season schedule.")
+    // Phrase still trimmed/cleaned but a deflection should come back non-null.
+    expect(out.deflection).not.toBeNull()
+    expect(out.deflection?.length).toBeGreaterThan(5)
+  })
+
+  // 2026-05-11 incident: TGL bot leaked an evaluator-style response into
+  // the chat. This exact phrase must be filtered.
+  it("blocks the 2026-05-11 TGL incident phrase", () => {
+    expect(cleanDeflectResponse(
+      "I'm ready to help. Please provide the user's message that needs evaluation."
+    ).deflection).toBeNull()
+  })
+
+  it('blocks meta-prompt scaffolding phrases', () => {
+    const phrases = [
+      "I'm ready to help. Please provide the user's message.",
+      'Please provide the message you want me to evaluate.',
+      'Awaiting your input.',
+      'I am ready to evaluate the message.',
+      'Share the message you want classified.',
+      'Here is the message to evaluate.',
+      'Paste the message you want analyzed.',
+    ]
+    for (const p of phrases) {
+      expect(cleanDeflectResponse(p).deflection, p).toBeNull()
+    }
   })
 })

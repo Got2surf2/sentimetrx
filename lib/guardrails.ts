@@ -140,8 +140,11 @@ export function cleanDeflectResponse(raw: string, testing = false): { deflection
   if (/^\d+\.\s/m.test(text)) return { deflection: null, thinking }
   if (/\*\*|##|```/.test(text)) return { deflection: null, thinking }
   if (text.split(/\s+/).length > 35) return { deflection: null, thinking }
-  // Meta-language about analysis, instructions, prompts, or missing data
-  if (/I notice|I need|I can.t complete|I don.t see|haven.t provided|actual participant|no actual|discussion question|discussion topic|provided me|framework|template|placeholder|actual reply|actual response|actual topic|REASONING|DECISION|DEFLECT|DEBUG|scenario|more information|Could you.*provide|I.d be happy.*(but|however)|I appreciate you.*(but|setting|providing|testing|task)|ready to analyze|weren.t filled|your message/i.test(text)) return { deflection: null, thinking }
+  // Meta-language about analysis, instructions, prompts, or missing data.
+  // **Treat this list as a security control** — anything that slips past
+  // here lands verbatim in the bot's reply to the end user. Reproduce the
+  // failure mode with `npm test -- guardrails` before tightening.
+  if (/I notice|I need|I can.t complete|I don.t see|haven.t provided|actual participant|no actual|discussion question|discussion topic|provided me|framework|template|placeholder|actual reply|actual response|actual topic|REASONING|DECISION|DEFLECT|DEBUG|scenario|more information|Could you.*provide|I.d be happy.*(but|however)|I appreciate you.*(but|setting|providing|testing|task)|ready to analyze|weren.t filled|your message|user.?s message|needs evaluation|Please provide|ready to help|I.?m ready|I am ready|evaluate the|provide the.*message|message to evaluate|awaiting your|share the message|here is the message|paste the/i.test(text)) return { deflection: null, thinking }
 
   return { deflection: text, thinking }
 }

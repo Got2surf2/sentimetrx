@@ -2,6 +2,14 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, SECURITY) — Stop meta-prompt leakage in bot deflection
+
+- **Incident:** TGL bot replied to "what type of viewer does this attract" with `"I'm ready to help. Please provide the user's message that needs evaluation."` — internal evaluator-prompt scaffolding leaked verbatim into a user-facing chat. This is the kind of prompt-internals exposure that erodes trust and reveals pipeline structure.
+- **Root cause:** the deflection AI (`/api/bots/[id]/chat/route.ts:159`) returned meta-scaffolding instead of `"NONE"` or a real redirect. `cleanDeflectResponse` (`lib/guardrails.ts:103`) is the security boundary that filters such output — its meta-prompt regex (line 144) had `"your message"` and `"ready to analyze"` but **not** `"user's message"`, `"ready to help"`, `"needs evaluation"`, or `"please provide"`. The phrase slipped past and became the bot reply.
+- **Fix:** expanded the regex to cover `user.?s message`, `needs evaluation`, `Please provide`, `ready to help`, `I.?m ready`, `I am ready`, `evaluate the`, `provide the.*message`, `message to evaluate`, `awaiting your`, `share the message`, `here is the message`, `paste the`. The same shared util protects /api/townhall/chat and /api/deflect.
+- **Lock:** 11 new unit tests in `tests/unit/guardrails.test.ts` — including the exact incident phrase byte-for-byte — so any regex regression fails the build.
+- **Defense-in-depth gap surfaced:** the main bot AI response (line 660 in the chat route) returns `result.text` directly without a final scrubber. Lower-risk than the deflection path (the main AI has a personality + factual-accuracy guard) but the same scrub-on-output pattern should be applied. Filed for follow-up.
+
 ## 2026-05-11 (Mon, late, governance) — In-app governance trend page
 
 - **New `/admin/governance` page** that reads `docs/weekly-reports/*.md` at request time, parses the score table (Secrets/Security/Dependencies/Structure/Tests/Documentation/Maintainability + Total), and renders a trend chart + breakdown + report list. Why: the governance audit PRs sit on GitHub today (https://github.com/Got2surf2/sentimetrx/pulls) — useful for the merge as an evidence artifact, but no in-product surface showed the improvement trajectory. The "we monitor and improve on a continuous basis" story now has a concrete chart.
