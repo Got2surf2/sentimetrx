@@ -244,20 +244,75 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
 
   afterAll(async () => {
     if (!admin) return
-    // Most child tables CASCADE through their parents (studies->responses,
-    // datasets->dataset_rows_flat/dataset_state/collections,
-    // campaigns->campaign_respondents, townhall_sessions->themes/turns,
-    // organizations->bots/datasets/campaigns/townhall_sessions). We only
-    // need to delete the parents, plus a few rows that cascade via clients.
-    if (ids.userA)    try { await admin.from('users').delete().eq('id', ids.userA) } catch {}
-    if (ids.userB)    try { await admin.from('users').delete().eq('id', ids.userB) } catch {}
-    if (ids.orgA)     try { await admin.from('organizations').delete().eq('id', ids.orgA) } catch {}
-    if (ids.orgB)     try { await admin.from('organizations').delete().eq('id', ids.orgB) } catch {}
-    if (ids.clientA)  try { await admin.from('clients').delete().eq('id', ids.clientA) } catch {}
-    if (ids.clientB)  try { await admin.from('clients').delete().eq('id', ids.clientB) } catch {}
-    if (ids.userA)    try { await admin.auth.admin.deleteUser(ids.userA as string) } catch {}
-    if (ids.userB)    try { await admin.auth.admin.deleteUser(ids.userB as string) } catch {}
-  }, 30_000)
+    // Earlier this hook trusted FK CASCADE on every child of organizations
+    // and silently swallowed errors with `try {} catch {}`. In practice at
+    // least one child FK (likely RESTRICT, not CASCADE) blocks the org
+    // delete, so the swallowed error left orgs/datasets/auth.users orphaned
+    // run after run. Now: delete known children explicitly by org_id BEFORE
+    // the org, and surface any cleanup error so we notice immediately
+    // instead of letting the prod-linked DB accumulate test cruft.
+    const errors: string[] = []
+    const tryDelete = async (label: string, fn: () => any) => {
+      try {
+        const { error } = await fn()
+        if (error) errors.push(`${label}: ${error.message}`)
+      } catch (e: any) {
+        errors.push(`${label}: ${e?.message || String(e)}`)
+      }
+    }
+
+    const orgIds = [ids.orgA, ids.orgB].filter(Boolean) as string[]
+    if (orgIds.length > 0) {
+      // Delete children first, ordered so grandchildren go before parents
+      // even if a particular FK doesn't cascade.
+      const datasetIds: string[] = []
+      const dsRes = await admin.from('datasets').select('id').in('org_id', orgIds)
+      for (const r of dsRes.data || []) datasetIds.push(r.id)
+      const sessionRes = await admin.from('townhall_sessions').select('id').in('org_id', orgIds)
+      const sessionIds = (sessionRes.data || []).map(r => r.id)
+      const collRes = await admin.from('collections').select('id').in('org_id', orgIds)
+      const collIds = (collRes.data || []).map(r => r.id)
+      const campRes = await admin.from('campaigns').select('id').in('org_id', orgIds)
+      const campIds = (campRes.data || []).map(r => r.id)
+      const studyRes = await admin.from('studies').select('id').in('org_id', orgIds)
+      const studyIds = (studyRes.data || []).map(r => r.id)
+
+      if (datasetIds.length) await tryDelete('dataset_rows_flat', () => admin.from('dataset_rows_flat').delete().in('dataset_id', datasetIds))
+      if (datasetIds.length) await tryDelete('dataset_state',     () => admin.from('dataset_state').delete().in('dataset_id', datasetIds))
+      if (collIds.length)    await tryDelete('collection_members',() => admin.from('collection_members').delete().in('collection_id', collIds))
+      if (campIds.length)    await tryDelete('campaign_respondents', () => admin.from('campaign_respondents').delete().in('campaign_id', campIds))
+      if (sessionIds.length) await tryDelete('townhall_themes',   () => admin.from('townhall_themes').delete().in('session_id', sessionIds))
+      if (sessionIds.length) await tryDelete('townhall_turns',    () => admin.from('townhall_turns').delete().in('session_id', sessionIds))
+      if (studyIds.length)   await tryDelete('responses',         () => admin.from('responses').delete().in('study_id', studyIds))
+
+      await tryDelete('datasets',          () => admin.from('datasets').delete().in('org_id', orgIds))
+      await tryDelete('collections',       () => admin.from('collections').delete().in('org_id', orgIds))
+      await tryDelete('campaigns',         () => admin.from('campaigns').delete().in('org_id', orgIds))
+      await tryDelete('studies',           () => admin.from('studies').delete().in('org_id', orgIds))
+      await tryDelete('bots',              () => admin.from('bots').delete().in('org_id', orgIds))
+      await tryDelete('townhall_sessions', () => admin.from('townhall_sessions').delete().in('org_id', orgIds))
+    }
+
+    if (ids.userA)   await tryDelete('users.userA',         () => admin.from('users').delete().eq('id', ids.userA))
+    if (ids.userB)   await tryDelete('users.userB',         () => admin.from('users').delete().eq('id', ids.userB))
+    if (ids.orgA)    await tryDelete('organizations.orgA',  () => admin.from('organizations').delete().eq('id', ids.orgA))
+    if (ids.orgB)    await tryDelete('organizations.orgB',  () => admin.from('organizations').delete().eq('id', ids.orgB))
+    if (ids.clientA) await tryDelete('clients.clientA',     () => admin.from('clients').delete().eq('id', ids.clientA))
+    if (ids.clientB) await tryDelete('clients.clientB',     () => admin.from('clients').delete().eq('id', ids.clientB))
+
+    if (ids.userA) {
+      try { await admin.auth.admin.deleteUser(ids.userA as string) }
+      catch (e: any) { errors.push(`auth.users.userA: ${e?.message || String(e)}`) }
+    }
+    if (ids.userB) {
+      try { await admin.auth.admin.deleteUser(ids.userB as string) }
+      catch (e: any) { errors.push(`auth.users.userB: ${e?.message || String(e)}`) }
+    }
+
+    if (errors.length) {
+      throw new Error(`cleanup failed (RUN_ID=${RUN_ID}):\n  ${errors.join('\n  ')}`)
+    }
+  }, 60_000)
 
   // Each table gets its own assertion so a single failure is clearly
   // attributable. The shape is always: as Org B, query this table for

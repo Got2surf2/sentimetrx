@@ -2,6 +2,11 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, even later) — Two cleanup follow-ups: shared invite UI + test-leak fix
+
+- **Extracted `components/team/PendingInvitesList.tsx`** and wired both the org-owner `/settings/team` panel and the super-admin `/admin/clients/[id]` "Invite Links" panel to use it. Why: side-by-side they had visibly different button styles, status badges, row spacing — read as "shoddy" / "two different products". Same UI shipped twice = a guaranteed drift surface. New rule (`feedback_shared_components.md` in user memory): when the same UI element appears on 2+ pages, extract first, edit second — never ship two parallel implementations.
+- **Fixed `cross-org-egress.test.ts` cleanup leak.** The `afterAll` trusted FK CASCADE on every child of `organizations` and silently swallowed errors with `try {} catch {}`. In practice at least one child FK is RESTRICT, so org delete failed → swallowed → orphaned rows accumulated each run. Forensics: 3 leftover Org A rows from May-10 runs (organizations + auth.users + datasets + dataset_rows_flat). Fix: explicitly delete known children by `org_id` first (datasets, collections, campaigns, studies, bots, townhall_sessions + their grandchildren), then collect any per-table errors into an array and `throw` at the end. Re-ran `npm run test:egress` → 27 passed, zero leftover rows in the post-run sanity query. Cleaned the historical leak by hand before the fix.
+
 ## 2026-05-11 (Mon, later) — Streamline the invite-acceptance flow end-to-end
 
 - **Six fixes to the team-invite UX in one pass.** Why: walked the flow end to end after wiring up the email send and found the post-click experience was still kludgy. Symptoms were each minor on their own but compounded into a "this looks half-built" first impression for any new teammate.

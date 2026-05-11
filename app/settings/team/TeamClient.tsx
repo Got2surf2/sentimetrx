@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import { MODULE_LABELS, type ModuleFeatures } from '@/lib/types'
+import PendingInvitesList, { type PendingInvite } from '@/components/team/PendingInvitesList'
 
 interface Org {
   id: string
@@ -116,6 +117,11 @@ export default function TeamClient({ org, members: initialMembers, invites: init
 
   function copyLink(token: string) {
     navigator.clipboard.writeText(`${BASE}/invite/${token}`)
+    flash('Link copied to clipboard')
+  }
+
+  function copyInvite(inv: PendingInvite) {
+    navigator.clipboard.writeText(`${BASE}/invite/${inv.token}`)
     flash('Link copied to clipboard')
   }
 
@@ -369,30 +375,12 @@ export default function TeamClient({ org, members: initialMembers, invites: init
             {invites.length > 0 && (
               <div className="mt-4">
                 <p className="text-xs text-gray-500 mb-2">Pending invites</p>
-                <div className="space-y-1.5">
-                  {invites.map(inv => (
-                    <div key={inv.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-200">
-                      <div>
-                        <span className="text-xs text-gray-400">{inv.email || 'Open invite'}</span>
-                        <span className="text-xs text-gray-600 ml-2">expires {new Date(inv.expires_at).toLocaleDateString()}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => resendInvite(inv.id, inv.email)}
-                          className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-slate-700 transition-colors">
-                          Resend
-                        </button>
-                        <button onClick={() => copyLink(inv.token)}
-                          className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-slate-700 transition-colors">
-                          Copy Link
-                        </button>
-                        <button onClick={() => revokeInvite(inv.id, inv.email)}
-                          className="text-xs text-red-400 hover:text-white px-2 py-1 rounded hover:bg-red-600 transition-colors">
-                          Revoke
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <PendingInvitesList
+                  invites={invites as PendingInvite[]}
+                  onResend={resendInvite}
+                  onCopy={copyInvite}
+                  onRevoke={revokeInvite}
+                />
               </div>
             )}
           </section>

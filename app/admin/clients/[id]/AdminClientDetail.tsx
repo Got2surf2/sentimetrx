@@ -5,6 +5,7 @@ import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import OrgFeatureToggles from '@/components/analyze/OrgFeatureToggles'
 import Link from 'next/link'
+import PendingInvitesList, { type PendingInvite } from '@/components/team/PendingInvitesList'
 
 interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string; disabled?: boolean; last_login_at?: string | null; logins_30d?: number }
 interface Study   { id: string; guid: string; name: string; bot_name: string; bot_emoji: string; status: string; visibility: string; created_at: string; response_count: number }
@@ -29,7 +30,6 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
   const [invites,       setInvites]       = useState(initialInvites)
   const [togglingStudy, setTogglingStudy] = useState<string | null>(null)
   const [transferring,  setTransferring]  = useState<string | null>(null)
-  const [copiedInvite,  setCopiedInvite]  = useState<string | null>(null)
   const [generatingInv, setGeneratingInv] = useState(false)
   const [inviteEmail,   setInviteEmail]   = useState('')
   const [showInvForm,   setShowInvForm]   = useState(false)
@@ -155,10 +155,9 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
     }
   }
 
-  const handleCopyInvite = async (url: string, id: string) => {
+  const copyInviteFromList = async (inv: PendingInvite) => {
+    const url = baseUrl + '/invite/' + inv.token
     await navigator.clipboard.writeText(url)
-    setCopiedInvite(id)
-    setTimeout(() => setCopiedInvite(null), 2000)
   }
 
   const handleResendInvite = async (id: string, email: string | null) => {
@@ -181,12 +180,6 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
       setError(`Error: ${data.error || 'Could not revoke'}`)
     }
     setTimeout(() => setError(null), 5000)
-  }
-
-  const inviteStatus = (inv: Invite) => {
-    if (inv.used_at)                           return { label: 'Used',    cls: 'bg-green-500/15 text-green-400' }
-    if (new Date(inv.expires_at) < new Date()) return { label: 'Expired', cls: 'bg-red-500/15 text-red-400' }
-    return { label: 'Pending', cls: 'bg-yellow-500/15 text-yellow-400' }
   }
 
   const uploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -433,51 +426,13 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
             </div>
           )}
 
-          {invites.length === 0 ? (
-            <Empty text="No invite links yet" />
-          ) : (
-            <div className="flex flex-col divide-y divide-gray-200">
-              {invites.map(inv => {
-                const status = inviteStatus(inv)
-                return (
-                  <div key={inv.id} className="flex items-center justify-between py-3 gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + status.cls}>{status.label}</span>
-                        {inv.email && <span className="text-xs text-gray-500 truncate">{inv.email}</span>}
-                      </div>
-                      <div className="text-xs text-slate-600 mt-0.5">
-                        Expires {new Date(inv.expires_at).toLocaleDateString()}
-                        {inv.used_at && ' · Used ' + new Date(inv.used_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                    {!inv.used_at && new Date(inv.expires_at) > new Date() && (
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button
-                          onClick={() => handleResendInvite(inv.id, inv.email)}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors"
-                        >
-                          Resend
-                        </button>
-                        <button
-                          onClick={() => handleCopyInvite(inv.invite_url, inv.id)}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors"
-                        >
-                          {copiedInvite === inv.id ? 'Copied!' : 'Copy Link'}
-                        </button>
-                        <button
-                          onClick={() => handleRevokeInvite(inv.id, inv.email)}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-600 hover:text-white text-red-600 transition-colors"
-                        >
-                          Revoke
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <PendingInvitesList
+            invites={invites as PendingInvite[]}
+            onResend={handleResendInvite}
+            onCopy={copyInviteFromList}
+            onRevoke={handleRevokeInvite}
+            emptyText="No invite links yet"
+          />
         </Section>
       </main>
     </div>
