@@ -349,6 +349,7 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Branded HTML invite email auto-sent via Resend from `invites@sentimetrx.ai`; copy-link fallback if send fails
 - Resend or revoke pending invites from the team page
 - Invitee accepts via warm-themed `/invite/[token]` showing org name + role; email field is locked to the invited address; auto-signed-in on accept (no second login)
+- Accepting an invite for an email that already has an `auth.users` row verifies the typed password against the existing account before linking it to the new org (handles partially-created or pre-existing auth users without overwriting their password)
 - Role assignment (owner/member)
 - Track invite usage
 - Remove members from org

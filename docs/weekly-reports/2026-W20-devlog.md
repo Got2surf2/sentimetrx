@@ -2,6 +2,12 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late) — Handle existing auth.users on invite-register
+
+- **Patched `/api/invite/register` to handle the "auth user exists, public.users doesn't" case.** Why: testing the new invite flow surfaced an orphan auth user (`sanjay@datanautix.com`, created 2026-03-03, last sign-in 2026-05-07) that had no public.users row. Old register endpoint called `auth.admin.createUser` unconditionally → 422 "already registered" → invite was unusable for any email that had ever signed up before. New behavior: look up `auth.users.id` by email via a new `get_auth_user_id_by_email` SECURITY DEFINER function (sql/047, applied to prod via `supabase db query --linked`); if found, verify the typed password by attempting a server-side `signInWithPassword` on a bare anon client (anyone with the invite link could otherwise overwrite the existing password); if password is correct AND no public.users row exists for that auth id, insert the public.users row linking them to the invite's org. If they already have a public.users row in another org, return 409 (single-org-per-user is current schema; cross-org moves are a separate concern). The createUser path is unchanged for genuinely new emails.
+- **Why a SQL function for the email lookup:** Supabase JS admin SDK has no `getUserByEmail` filter, only paginated `listUsers()`. SECURITY DEFINER + `EXECUTE` granted only to `service_role` keeps anon/authenticated from enumerating emails.
+- **Rollback safety:** `auth.admin.deleteUser` rollback on a public.users insert failure is now gated on whether *this run* created the auth user — never deletes a pre-existing account.
+
 ## 2026-05-11 (Mon, even later) — Two cleanup follow-ups: shared invite UI + test-leak fix
 
 - **Extracted `components/team/PendingInvitesList.tsx`** and wired both the org-owner `/settings/team` panel and the super-admin `/admin/clients/[id]` "Invite Links" panel to use it. Why: side-by-side they had visibly different button styles, status badges, row spacing — read as "shoddy" / "two different products". Same UI shipped twice = a guaranteed drift surface. New rule (`feedback_shared_components.md` in user memory): when the same UI element appears on 2+ pages, extract first, edit second — never ship two parallel implementations.
