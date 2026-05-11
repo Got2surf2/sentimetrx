@@ -2,6 +2,13 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, egress lock-in) — Egress test suite for the two new dataset/regulations gates
+
+- **New `tests/integration/dataset-routes-egress.test.ts` (env-gated, `npm run test:dataset-egress`).** Locks the gates added earlier today. Mirrors the `campaign-routes-egress` pattern: mocks `@/lib/supabase/server`, seeds Org A + Org B with their own users + Org A's `study` + `study_dataset` + `regulations dataset`, signs in as Org B, hits Org A resources, asserts 404. Three negative tests (sync POST, regulations batch POST, regulations finalize POST) + two control tests (owning-org calls assert NOT 404 to prove the gate is what fires for cross-org, not a missing-resource bug).
+- **5/5 pass against prod-linked Supabase**, post-run sanity check shows zero leftover rows under the `_datasetroute_` prefix.
+- Added `test:dataset-egress` script to `package.json` and a one-line entry in `docs/TESTING.md`.
+- W19 governance progression #1 (bare service-role id lookups) is now FULLY closed: audit done, two bugs fixed, two test suites locking the gates. No remaining open follow-ups in the work queue from the W19 baseline.
+
 ## 2026-05-11 (Mon, late, cross-org audit) — Close the 2 confirmed bare-id service-role leaks
 
 - **Strict re-audit of W19's "38 bare service-role id lookups."** Wrote a tighter candidate finder (`/tmp/audit_service_id.sh`) that matches multi-line chains in `app/api/**/route.ts` where `service.from(...).eq('id', ...)` appears without a paired `.eq('org_id', ...)`. Surfaced 67 raw chains across 37 files. Then dispatched an Explore agent to classify each into ALREADY_GATED_BY_SIBLING_CHECK / ADMIN_GATED / CRON_GATED / PRIMARY_KEY_IS_TENANT_ID / TOKEN_AUTHENTICATED_PUBLIC / NEEDS_GATE / UNCERTAIN. After the classification: **65 chains were intentional or already gated by a sibling org_id check; 2 were real bugs**.

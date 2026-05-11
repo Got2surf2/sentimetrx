@@ -16,6 +16,7 @@ npm run test:rls          # env-gated: cross-org RLS isolation (real Supabase)
 npm run test:egress       # env-gated: cross-org data egress per table (real Supabase)
 npm run test:auth-flows   # env-gated: real Supabase auth round-trips
 npm run test:campaign-egress # env-gated: campaign-by-id route handlers
+npm run test:dataset-egress  # env-gated: dataset sync + regulations download route handlers
 ```
 
 CI runs the first two on every push and PR.

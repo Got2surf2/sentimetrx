@@ -19,6 +19,7 @@
     "test:egress": "EGRESS_TEST=1 vitest run cross-org-egress",
     "test:auth-flows": "AUTH_FLOWS_TEST=1 vitest run auth-flows",
     "test:campaign-egress": "CAMPAIGN_EGRESS_TEST=1 vitest run campaign-routes-egress",
+    "test:dataset-egress": "DATASET_EGRESS_TEST=1 vitest run dataset-routes-egress",
     "loadtest:k6": "k6 run tests/loadtest/townhall.k6.js",
     "loadtest:browsers": "playwright test --config=tests/loadtest/playwright.config.ts"
   },
