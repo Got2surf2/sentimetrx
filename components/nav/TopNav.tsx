@@ -21,48 +21,17 @@ interface Props {
 const HERMES = '#E8632A'
 
 function CogMenu({ currentPage }: { currentPage?: string }) {
-  var [open, setOpen] = useState(false)
-  // Active when on any hub-linked page (covers team, all /admin/* pages,
-  // downloads, etc.). Keeps the gear visually anchored on those pages.
+  // Active when on any hub-linked page so the gear stays visually anchored.
   var isActive = currentPage === 'team' || currentPage === 'admin' || currentPage === 'questions' || currentPage === 'downloads'
   return (
-    <div style={{ position: 'relative' }}>
-      <button
-        onClick={function() { setOpen(function(v) { return !v }) }}
-        className={'text-sm font-medium transition-all whitespace-nowrap px-2.5 py-1.5 rounded-full ' +
-          (isActive ? 'bg-white/25 text-white' : 'text-orange-100 hover:bg-white/15 hover:text-white')}
-        title="Settings & Admin"
-        style={{ fontSize: 16, lineHeight: 1 }}>
-        {'\u2699'}
-      </button>
-      {open && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={function() { setOpen(false) }} />
-          <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'white', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 100, minWidth: 200, padding: '4px 0', overflow: 'hidden' }}>
-            <Link href="/admin/hub" onClick={function() { setOpen(false) }}
-              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 600, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
-              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-              {'\u2699'} Settings & Admin
-            </Link>
-            <form action="/api/auth/signout" method="POST">
-              <button type="submit"
-                onClick={function() { setOpen(false) }}
-                style={{ display: 'block', width: '100%', textAlign: 'left' as const, padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', transition: 'background .1s' }}
-                onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
-                onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
-                {'\u21A6'} Sign out
-              </button>
-            </form>
-            <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
-            <div style={{ padding: '8px 16px' }}>
-              <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Build {process.env.NEXT_PUBLIC_BUILD_NUMBER}</div>
-              <div style={{ fontSize: 10, color: '#d1d5db', marginTop: 2 }}>{process.env.NEXT_PUBLIC_BUILD_DATE}</div>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <Link
+      href="/admin/hub"
+      className={'text-sm font-medium transition-all whitespace-nowrap px-2.5 py-1.5 rounded-full ' +
+        (isActive ? 'bg-white/25 text-white' : 'text-orange-100 hover:bg-white/15 hover:text-white')}
+      title="Settings & Admin"
+      style={{ fontSize: 16, lineHeight: 1 }}>
+      {'\u2699'}
+    </Link>
   )
 }
 
