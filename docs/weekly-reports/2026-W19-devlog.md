@@ -2,6 +2,10 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-10 (Sun, later) — Gear menu link to Governance Reports PR list
+
+- **Added "Governance Reports" link in the gear menu (desktop + mobile)** pointing at `https://github.com/Got2surf2/sentimetrx/pulls`. Why: every Monday the governance routine opens a PR with that week's audit report; the merge of that PR is the SOC 2 / NIST AI RMF / EU AI Act evidence artifact. Putting it one click from the gear means the owner doesn't have to bookmark or remember the URL. Admin-only (the gear menu itself is already `isAdmin && CogMenu`).
+
 ## 2026-05-10 (Sun, later) — Stop auth-flows test from generating bounce notifications
 
 - **Switched auth-flows test emails from `_authflowtest_<runid>_a@authflowtest.local` → `got2surf2+authflowtest_<runid>_a@gmail.com` (Gmail `+suffix` aliasing).** Why: two test cases (`resetPasswordForEmail`, `signInWithOtp`) cause Supabase to actually send mail. With `.local` the recipient domain doesn't exist, so every run produced NXDOMAIN bounces back to the project's configured sender (`shpatel@datanautix.com`). With `+suffix` aliasing the mail delivers to a real owner-controlled inbox where it can be filtered. No DNS work; tests still all pass against real Supabase.

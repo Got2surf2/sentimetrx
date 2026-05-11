@@ -97,6 +97,12 @@ function CogMenu({ currentPage }: { currentPage?: string }) {
               onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
               {'\uD83D\uDCCA'} Investor Decks
             </Link>
+            <a href="https://github.com/Got2surf2/sentimetrx/pulls" target="_blank" rel="noopener noreferrer" onClick={function() { setOpen(false) }}
+              style={{ display: 'block', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', textDecoration: 'none', transition: 'background .1s' }}
+              onMouseEnter={function(e) { (e.target as HTMLElement).style.background = '#f9fafb' }}
+              onMouseLeave={function(e) { (e.target as HTMLElement).style.background = 'transparent' }}>
+              {'\u2696'} Governance Reports
+            </a>
             <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
             <div style={{ padding: '8px 16px' }}>
               <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Build {process.env.NEXT_PUBLIC_BUILD_NUMBER}</div>
@@ -265,6 +271,10 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
                   className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                   <span className="text-base w-5 text-center">{'📊'}</span><span>Investor Decks</span>
                 </Link>
+                <a href="https://github.com/Got2surf2/sentimetrx/pulls" target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <span className="text-base w-5 text-center">{'⚖'}</span><span>Governance Reports</span>
+                </a>
               </>
             )}
             <div className="border-t border-gray-100 my-1" />
