@@ -43,8 +43,9 @@ const CARDS: Card[] = [
   { category: 'quality', icon: '🛡',  title: 'Content Guard',    description: 'Test moderation rules and sentiment scoring on sample text.', href: '/admin/content-guard' },
 
   // Reports
+  { category: 'reports', icon: '📈', title: 'Governance Trend',   description: 'Weekly audit scores over time — we monitor and improve on a continuous basis.', href: '/admin/governance' },
   { category: 'reports', icon: '📊', title: 'Investor Decks',     description: 'Pitch, architecture, and product overview decks.', href: '/admin/decks' },
-  { category: 'reports', icon: '⚖',  title: 'Governance Reports', description: 'Weekly audit PRs — SOC 2 / NIST AI RMF evidence trail.', href: 'https://github.com/Got2surf2/sentimetrx/pulls', external: true },
+  { category: 'reports', icon: '⚖',  title: 'Audit PR History',   description: 'Source markdown PRs on GitHub — the merge record is the SOC 2 / NIST AI RMF evidence trail.', href: 'https://github.com/Got2surf2/sentimetrx/pulls', external: true },
 ]
 
 const TABS: { key: Category; label: string }[] = [

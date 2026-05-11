@@ -2,6 +2,13 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-11 (Mon, late, governance) — In-app governance trend page
+
+- **New `/admin/governance` page** that reads `docs/weekly-reports/*.md` at request time, parses the score table (Secrets/Security/Dependencies/Structure/Tests/Documentation/Maintainability + Total), and renders a trend chart + breakdown + report list. Why: the governance audit PRs sit on GitHub today (https://github.com/Got2surf2/sentimetrx/pulls) — useful for the merge as an evidence artifact, but no in-product surface showed the improvement trajectory. The "we monitor and improve on a continuous basis" story now has a concrete chart.
+- **Pieces:** `lib/governanceReports.ts` (server-only parser; regex-extracts category rows + total), `components/admin/GovernanceTrend.tsx` (SVG line chart + per-category horizontal bars + report list, all hand-rolled to match codebase style; no chart-lib dependency added), `app/admin/governance/page.tsx` (admin-gated wrapper).
+- **Admin Hub Reports tab updated:** Governance Trend as the primary card; Investor Decks alongside; Audit PR History (the GitHub link) as a third "source PRs" card so the markdown originals stay one click away.
+- W20's audit runs Monday 2026-05-18 04:00 ET; chart will pick up the second data point automatically.
+
 ## 2026-05-11 (Mon, late, gear-menu) — Replace 11-item gear dropdown with /admin/hub (tabbed cards)
 
 - **New `/admin/hub` page** with four tabs (Team & Org, Operations, Quality & Testing, Reports) and 12 small cards (icon + title + description + Open link) covering every admin tool that used to live in the gear dropdown. Adding a new admin tool = one entry in the `CARDS` array.
