@@ -653,15 +653,17 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
   }
 
   // Right: themes + takeaways — dynamically sized to fit within page
-  const rightAvail = H - 0.38 - 0.12 - colY  // total available height on right side (above footer)
+  // Themes condensed (4 thinner bars), Recommended Actions gets more room
+  // so commentary doesn't overflow into the next card.
+  const rightAvail = H - 0.38 - 0.12 - colY
   const hasTakeaways = takeaways.length > 0
-  const maxThemes = Math.min(themes.length, 5)
+  const maxThemes = Math.min(themes.length, 4)
   const maxTA     = Math.min(takeaways.length, 3)
-  // Reserve space for takeaways: header (0.30) + cards
-  const taReserve = hasTakeaways ? 0.30 + maxTA * 0.56 : 0
-  // Themes get remaining space
-  const themeAvail = rightAvail - taReserve - (hasTakeaways ? 0.14 : 0) - 0.30  // minus theme header
-  const thH = maxThemes > 0 ? Math.min(0.52, (themeAvail - 0.06 * (maxThemes - 1)) / maxThemes) : 0
+  // Reserve more space for takeaway cards (was 0.56 → 0.78)
+  const taCardSlot = 0.78
+  const taReserve = hasTakeaways ? 0.30 + maxTA * taCardSlot : 0
+  const themeAvail = rightAvail - taReserve - (hasTakeaways ? 0.14 : 0) - 0.30
+  const thH = maxThemes > 0 ? Math.min(0.42, (themeAvail - 0.06 * (maxThemes - 1)) / maxThemes) : 0
   const thGap = 0.06
 
   if (themes.length > 0) {
@@ -685,19 +687,20 @@ function buildSummarySlide(pptx: any, datasetName: string, totalRows: number, bu
 
   if (hasTakeaways) {
     const taY = themes.length > 0 ? colY + 0.30 + maxThemes * (thH + thGap) + 0.14 : colY + 0.34
-    const taCardH = Math.min(0.52, (H - 0.38 - 0.12 - taY - 0.30) / maxTA - 0.04)
+    const taCardH = Math.min(0.74, (H - 0.38 - 0.12 - taY - 0.30) / maxTA - 0.04)
+    // ~3 lines × ~62 chars/line at fontSize 9 in rightW-0.58 column
+    const TAKEAWAY_MAX = 185
     slide.addText('RECOMMENDED ACTIONS', { x: rightX, y: taY, w: rightW, h: 0.22, fontSize: 11.5, bold: true, color: DN.gold, charSpacing: 1.5 })
     solidRect(slide, pptx, rightX, taY + 0.24, rightW, 0.025, DN.gold, 62)
     takeaways.slice(0, maxTA).forEach(function(ta, i) {
       const ty = taY + 0.30 + i * (taCardH + 0.04)
       solidRect(slide, pptx, rightX, ty, rightW, taCardH, DN.navyMid)
       solidRect(slide, pptx, rightX, ty, 0.05, taCardH, i === 0 ? DN.gold : DN.teal)
-      // Number badge
-      const badgeS = Math.min(0.30, taCardH * 0.6)
+      const badgeS = Math.min(0.30, taCardH * 0.55)
       const badgeY = ty + (taCardH - badgeS) / 2
       solidRect(slide, pptx, rightX + 0.10, badgeY, badgeS, badgeS, i === 0 ? DN.gold : DN.teal)
       slide.addText(String(i + 1), { x: rightX + 0.10, y: badgeY, w: badgeS, h: badgeS, fontSize: 11, bold: true, color: i === 0 ? DN.navy : DN.white, align: 'center', valign: 'middle' })
-      slide.addText(ta, { x: rightX + 0.50, y: ty + 0.03, w: rightW - 0.58, h: taCardH - 0.06, fontSize: 9, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
+      slide.addText(trimNatural(ta, TAKEAWAY_MAX), { x: rightX + 0.50, y: ty + 0.04, w: rightW - 0.58, h: taCardH - 0.08, fontSize: 9, color: DN.white, valign: 'middle', wrap: true, lineSpacingMultiple: 1.2, autoFit: true })
     })
   }
 
@@ -1162,31 +1165,42 @@ function buildOpenEndedSlide(pptx: any, datasetName: string, f: SelectedField, a
   // Relevant themes (declared here so narrative can reference it for bottom reserve)
   const relThemes = themes.slice(0, 4)
 
-  // Narrative — give it all remaining space above themes/implication
+  // ── Bottom blocks: explicit positions, computed bottom-up so the narrative
+  //    box gets every spare inch and nothing overlaps. ──
+  const footerTopY      = H - 0.38
+  const implH           = 0.46
+  const implTopY        = ai.implication ? (footerTopY - 0.04 - implH) : footerTopY
+  const pillsH          = 0.32
+  const pillsBotY       = (ai.implication ? implTopY : footerTopY) - 0.08
+  const pillsTopY       = pillsBotY - pillsH
+  const themesLblH      = 0.18
+  const themesLblTopY   = pillsTopY - 0.04 - themesLblH
+  const narBottomY      = relThemes.length > 0
+    ? (themesLblTopY - 0.08)
+    : (ai.implication ? (implTopY - 0.08) : (footerTopY - 0.08))
+
+  // Narrative — grows to fill the space above themes/implication
   if (ai.narrative) {
     const narY = leftStartY + (ai.keyFinding ? 1.65 : 0.92)
-    const bottomReserve = (relThemes.length > 0 ? 0.72 : 0) + (ai.implication ? 0.58 : 0) + 0.38
-    const narH = Math.max(0.5, H - narY - bottomReserve - 0.08)
-    // ~12 chars per inch width at fontSize 11.5, ~5.5 lines per inch height → estimate max chars
+    const narH = Math.max(0.5, narBottomY - narY)
     const maxNarChars = Math.round(narH * 5 * 50)
-    insightBox(slide, pptx, PAD, narY, leftW, narH, trimNatural(ai.narrative, Math.min(maxNarChars, 350)), DN.teal, DN.tealPale)
+    insightBox(slide, pptx, PAD, narY, leftW, narH, trimNatural(ai.narrative, Math.min(maxNarChars, 380)), DN.teal, DN.tealPale)
   }
   if (relThemes.length > 0) {
-    const thY = H - (ai.implication ? 1.30 : 0.72)
-    lbl(slide, 'THEMES IDENTIFIED', PAD, thY, leftW)
+    lbl(slide, 'THEMES IDENTIFIED', PAD, themesLblTopY, leftW)
     const pillW = (leftW - 0.1 * (relThemes.length - 1)) / relThemes.length
     relThemes.forEach(function(t: any, i: number) {
       const tc = (t.color || DN.teal).replace('#', '')
-      rect(slide, pptx, PAD + i * (pillW + 0.1), thY + 0.24, pillW, 0.36, tc + '20', 0.07, tc + '60')
-      slide.addText(trunc(t.name, 16), { x: PAD + i * (pillW + 0.1) + 0.06, y: thY + 0.24, w: pillW - 0.12, h: 0.36, fontSize: 8.5, bold: true, color: tc, align: 'center', valign: 'middle' })
+      rect(slide, pptx, PAD + i * (pillW + 0.1), pillsTopY, pillW, pillsH, tc + '20', 0.07, tc + '60')
+      slide.addText(trunc(t.name, 16), { x: PAD + i * (pillW + 0.1) + 0.06, y: pillsTopY, w: pillW - 0.12, h: pillsH, fontSize: 8.5, bold: true, color: tc, align: 'center', valign: 'middle' })
     })
   }
 
   // Implication
   if (ai.implication) {
-    solidRect(slide, pptx, PAD, H - 0.78, leftW, 0.48, DN.orangePale)
-    solidRect(slide, pptx, PAD, H - 0.78, 0.07, 0.48, DN.orange)
-    slide.addText('→ ' + ai.implication, { x: PAD + 0.14, y: H - 0.78 + 0.04, w: leftW - 0.2, h: 0.4, fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
+    solidRect(slide, pptx, PAD, implTopY, leftW, implH, DN.orangePale)
+    solidRect(slide, pptx, PAD, implTopY, 0.07, implH, DN.orange)
+    slide.addText('→ ' + ai.implication, { x: PAD + 0.14, y: implTopY + 0.04, w: leftW - 0.2, h: implH - 0.08, fontSize: 9.5, color: DN.navyLight, italic: true, valign: 'middle', wrap: true, autoFit: true })
   }
 
   // Right panel: quotes
@@ -3041,35 +3055,31 @@ export async function POST(req: Request, { params }: Params) {
           processing: 'WHAT WE FIGURED OUT',
           outputs:    'WHAT WE PRODUCED',
         },
+        // 3 items per column — renderer caps at 3. Picked for impact, not exhaustiveness.
         inputs: [
-          { value: allRows.length.toLocaleString() + (rowsSampled ? '*' : ''), label: rowsSampled ? 'responses analysed (sampled)' : 'responses analysed',
-            sub: isCollection ? `from ${flatDatasetIds.length} source datasets in the collection` : 'single dataset · every row examined' },
           { value: totalChars.toLocaleString(), label: 'characters of verbatim text',
-            sub: `~${totalWords.toLocaleString()} word tokens · ${vocab.size.toLocaleString()} unique vocabulary` },
-          { value: totalSentences.toLocaleString(), label: 'sentence fragments parsed',
-            sub: 'every clause examined for themes, sentiment, and intent' },
+            sub: `${allRows.length.toLocaleString()}${rowsSampled ? '*' : ''} responses · ${totalSentences.toLocaleString()} sentences · ${vocab.size.toLocaleString()} unique words` },
           { value: String(nFields), label: 'open-ended fields examined',
-            sub: nFields > 1 ? `${crossTabs} potential cross-tabulations · all evaluated` : 'depth over breadth' },
+            sub: nFields > 1 ? `${crossTabs} potential cross-tabulations evaluated` : 'depth over breadth · every clause examined' },
+          { value: isCollection ? `${flatDatasetIds.length} datasets` : '1 dataset', label: isCollection ? 'in the collection' : 'single source',
+            sub: rowsSampled ? '* sampling applied · still statistically representative' : 'every row examined for themes, sentiment, intent' },
         ],
         processing: [
-          { value: 'Claude (Anthropic)', label: 'theme mining + narrative drafting',
-            sub: `${themesCount} theme passes · 0 retries · audience-tuned to ${audience}` },
-          { value: 'Statistical engine', label: 'distributions · significance · ranking',
-            sub: `${sigTests.toLocaleString()} significance tests · ${segmentCuts.toLocaleString()} segment cuts evaluated` },
-          { value: 'AI quote selection', label: 'representative comments scored',
-            sub: `~${quoteCandidates.toLocaleString()} candidate response × theme pairings ranked` },
-          { value: themesCount > 0 ? `${themesCount} themes` : 'pattern discovery', label: 'mined from the open-ended fields',
-            sub: 'each scored on impact, sentiment, and segment differences' },
+          { value: `${themesCount || 'pattern'} ${themesCount ? 'themes mined' : 'discovery'}`, label: 'Claude (Anthropic) · audience-tuned',
+            sub: `${themesCount} theme passes · 0 retries · narrative drafted for ${audience}` },
+          { value: sigTests.toLocaleString(), label: 'significance tests run',
+            sub: `${segmentCuts.toLocaleString()} segment cuts evaluated · distributions + impact ranking` },
+          { value: quoteCandidates.toLocaleString(), label: 'response × theme pairings scored',
+            sub: 'AI quote selection picks representative comments per theme' },
         ],
         outputs: [
           { value: `~${totalAfter} slides`, label: 'rendered for this report',
             sub: 'distributions · themes · quotes · cross-tabs · key takeaways' },
-          ...(themesCount > 0 ? [{ value: String(themesCount), label: 'themes surfaced',
-            sub: 'with keywords, sentiment, and statistical impact' }] : []),
-          ...((narratives.keyTakeaways || []).length > 0 ? [{ value: String((narratives.keyTakeaways || []).length), label: 'key takeaways written',
-            sub: 'distilled from the analytical findings' }] : []),
-          { value: audience.charAt(0).toUpperCase() + audience.slice(1), label: 'narrative tier',
-            sub: 'depth tuned to the chosen audience' },
+          { value: themesCount > 0 ? String(themesCount) : audience.charAt(0).toUpperCase() + audience.slice(1),
+            label: themesCount > 0 ? 'themes surfaced' : 'narrative tier',
+            sub: themesCount > 0 ? 'with keywords, sentiment, and statistical impact' : 'depth tuned to the chosen audience' },
+          { value: String((narratives.keyTakeaways || []).length || 0), label: 'key takeaways written',
+            sub: 'distilled from the analytical findings · ready to brief' },
         ],
         pipelineStages: [
           'ingest', 'clean', 'themes (LLM)', 'sentiment',

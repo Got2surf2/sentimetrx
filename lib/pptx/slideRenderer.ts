@@ -478,9 +478,9 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   // ── Layout constants — every region derives from these ──
   const contentTop = CY + 0.05
   const contentBot = FY - 0.15
-  const statH      = 1.55     // top stats — single tight-stacked text box
-  const pipeH      = spec.pipelineStages && spec.pipelineStages.length > 0 ? 0.50 : 0
-  const strapH     = 1.05     // bottom productivity strap
+  const statH      = 1.30     // top stats region
+  const pipeH      = spec.pipelineStages && spec.pipelineStages.length > 0 ? 0.45 : 0
+  const strapH     = 0.95     // bottom productivity strap
   const gap        = 0.15
 
   const colY    = contentTop + statH + gap
@@ -488,30 +488,44 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   const pipeY   = pipeH > 0 ? (strapY - gap - pipeH) : strapY
   const colH    = (pipeH > 0 ? pipeY : strapY) - gap - colY
 
-  // ── Top stats: value + label + sub stacked tightly in ONE text box.
-  //    Using a paragraph array means line heights derive from font sizes
-  //    directly — no inter-box padding to wrestle with.
+  // ── Top stats: separate text boxes, explicit y positions, margin:0 so
+  //    there is no internal padding stealing space between stacked elements.
   const wallClockTxt = fmtWallClock(spec.wallClockSeconds)
   const wallNum  = wallClockTxt.replace(/seconds?|minutes?|hours?/, '').trim()
   const wallUnit = wallClockTxt.match(/seconds?|minutes?|hours?/)?.[0] || 'time'
 
   function drawStat(x: number, w: number, value: string, label: string, color: string, sub?: string) {
-    const paras: any[] = [
-      { text: value, options: { fontSize: 64, bold: true, color, breakLine: true, paraSpaceAfter: 4 } },
-      { text: label, options: { fontSize: 18, bold: true, color: DX.ink, breakLine: !!sub, paraSpaceAfter: sub ? 3 : 0 } },
-    ]
-    if (sub) paras.push({ text: sub, options: { fontSize: 10, color: DN.slate, italic: true } })
-    slide.addText(paras, {
-      x, y: contentTop + 0.20, w, h: statH - 0.20,
-      align: 'center', valign: 'top', wrap: false,
+    // Stat region inside statH (1.30) — top padding 0.05 + value 0.78 + 0.02
+    // gap + label 0.22 + 0.02 gap + sub 0.18 + bottom 0.03 = 1.30 exactly
+    const topPad = 0.05
+    const valH   = 0.78
+    const lblHt  = 0.22
+    const subHt  = 0.18
+    const g      = 0.02
+    const valY = contentTop + topPad
+    const lblY = valY + valH + g
+    const subY = lblY + lblHt + g
+    slide.addText(value, {
+      x, y: valY, w, h: valH,
+      fontSize: 56, bold: true, color, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
     })
+    slide.addText(label, {
+      x, y: lblY, w, h: lblHt,
+      fontSize: 18, bold: true, color: DX.ink, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+    })
+    if (sub) {
+      slide.addText(sub, {
+        x, y: subY, w, h: subHt,
+        fontSize: 10, color: DN.slate, italic: true, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+      })
+    }
   }
 
   if (spec.decisionsMade !== undefined) {
     const half = (W - PAD * 2 - 0.4) / 2
     drawStat(PAD, half, wallNum, wallUnit, DN.teal, 'wall-clock')
     slide.addShape(pptx.ShapeType.rect, {
-      x: PAD + half + 0.2 - 0.01, y: contentTop + 0.3, w: 0.02, h: statH - 0.5,
+      x: PAD + half + 0.2 - 0.01, y: contentTop + 0.20, w: 0.02, h: statH - 0.40,
       fill: { color: DN.divider }, line: { width: 0 },
     })
     drawStat(PAD + half + 0.4, half, spec.decisionsMade.toLocaleString(), 'decisions made', DN.gold,
@@ -520,13 +534,13 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
     drawStat(PAD, W - PAD * 2, wallNum, wallUnit, DN.teal)
   }
 
-  // ── Three columns ──
+  // ── Three columns ── max 3 items each (graceful slice if caller passes more)
   const headers = spec.columnHeaders || { inputs: 'INPUTS TAKEN', processing: 'PROCESSING DONE', outputs: 'OUTPUTS GENERATED' }
   const colW = (W - PAD * 2 - gap * 2) / 3
   const cols = [
-    { tag: headers.inputs,     items: spec.inputs,     color: DX.navyMid },
-    { tag: headers.processing, items: spec.processing, color: DN.teal },
-    { tag: headers.outputs,    items: spec.outputs,    color: DN.gold },
+    { tag: headers.inputs,     items: spec.inputs.slice(0, 3),     color: DX.navyMid },
+    { tag: headers.processing, items: spec.processing.slice(0, 3), color: DN.teal },
+    { tag: headers.outputs,    items: spec.outputs.slice(0, 3),    color: DN.gold },
   ]
   cols.forEach((col, i) => {
     const x = PAD + i * (colW + gap)
@@ -536,22 +550,39 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
       x, y: colY, w: colW, h: 0.42,
       fontSize: 11, bold: true, color: DN.white, align: 'center', valign: 'middle', charSpacing: 3, autoFit: true,
     })
-    const innerTop = colY + 0.55
-    const innerH = colH - 0.65
-    const itemH = innerH / Math.max(col.items.length, 1)
+
+    // ── Item slot calculations ──
+    // Item content (with sub):    value 0.24 + gap 0.04 + label 0.16 + gap 0.04 + sub 0.28 = 0.76
+    // Item content (no sub):      value 0.24 + gap 0.04 + label 0.16 = 0.44
+    // Plus 0.06 bottom padding per item.
+    const innerTop = colY + 0.55             // header (0.42) + top pad (0.13)
+    const innerBot = colY + colH - 0.10      // bottom pad
+    const innerH = innerBot - innerTop
+    const itemSlotH = innerH / Math.max(col.items.length, 1)
+    const valH = 0.24
+    const labH = 0.16
+    const subH = 0.28
+    const g    = 0.04
+
     col.items.forEach((it, j) => {
-      const iy = innerTop + j * itemH
-      // Value + label (+ optional sub) in ONE text box so line heights are
-      // driven by font sizes directly — no inter-box padding gaps.
-      const paras: any[] = [
-        { text: it.value, options: { fontSize: 16, bold: true, color: DX.ink, breakLine: true, paraSpaceAfter: 2 } },
-        { text: it.label, options: { fontSize: 9.5, color: DN.slate, italic: true, breakLine: !!it.sub, paraSpaceAfter: it.sub ? 3 : 0 } },
-      ]
-      if (it.sub) paras.push({ text: it.sub, options: { fontSize: 8.5, color: DX.slateDark } })
-      slide.addText(paras, {
-        x: x + 0.15, y: iy, w: colW - 0.3, h: itemH - 0.04,
-        align: 'left', valign: 'top', wrap: true,
+      const iy = innerTop + j * itemSlotH + 0.02   // tiny top padding inside each slot
+      const valY = iy
+      const lblY = valY + valH + g
+      const subY = lblY + labH + g
+      slide.addText(it.value, {
+        x: x + 0.15, y: valY, w: colW - 0.3, h: valH,
+        fontSize: 16, bold: true, color: DX.ink, valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
       })
+      slide.addText(it.label, {
+        x: x + 0.15, y: lblY, w: colW - 0.3, h: labH,
+        fontSize: 9.5, color: DN.slate, italic: true, valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+      })
+      if (it.sub) {
+        slide.addText(it.sub, {
+          x: x + 0.15, y: subY, w: colW - 0.3, h: subH,
+          fontSize: 8.5, color: DX.slateDark, valign: 'top', wrap: true, autoFit: true, margin: 0 as any, lineSpacingMultiple: 1.15,
+        })
+      }
     })
   })
 
