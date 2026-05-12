@@ -41,6 +41,7 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
       .from('organizations')
       .select('id, name, plan')
       .neq('plan', 'suspended')
+      .neq('status', 'suspended')
       .order('name')
     allOrgs = (orgs || []).filter((o: any) => o.id !== orgId).map((o: any) => ({ id: o.id, name: o.name }))
   }
@@ -126,7 +127,7 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
       />
       <SubHeader crumbs={[{ label: 'Analyze' }]} isAdmin={isAdmin} orgId={orgId || ''} showFilters />
       <main className="pt-28 px-4 pb-12 max-w-6xl mx-auto">
-        <AnalyzeClient initialDatasets={datasets} isAdmin={isAdmin} allOrgs={allOrgs} />
+        <AnalyzeClient initialDatasets={datasets} isAdmin={isAdmin} allOrgs={allOrgs} userOrgId={orgId} />
       </main>
     </div>
   )

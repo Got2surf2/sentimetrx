@@ -22,7 +22,8 @@ export default async function EditStudyPage({ params }: Props) {
   if (orgData?.features?.surveys === false) redirect('/dashboard')
   const isAdmin = !!orgData?.is_admin_org
 
-  // Fetch all orgs for admin transfer dropdown
+  // Fetch all orgs for admin transfer dropdown. Filter out suspended /
+  // archived so you can't hand work to a frozen org.
   let allOrgs: { id: string; name: string }[] = []
   if (isAdmin) {
     const service = createServiceRoleClient()
@@ -30,6 +31,8 @@ export default async function EditStudyPage({ params }: Props) {
       .from('organizations')
       .select('id, name')
       .neq('id', study.org_id)
+      .neq('plan', 'suspended')
+      .neq('status', 'suspended')
       .order('name')
     allOrgs = data || []
   }

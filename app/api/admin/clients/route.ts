@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
     .from('organizations')
     .select('id, name, slug, plan, status, is_admin_org, created_at')
     .order('created_at', { ascending: false })
-  if (activeOnly) orgsQuery = orgsQuery.eq('status', 'active')
+  // activeOnly filters by BOTH columns: legacy rows have plan='suspended'
+  // with status='active'; new rows update both. Either signal disqualifies
+  // an org from being a transfer target.
+  if (activeOnly) orgsQuery = orgsQuery.eq('status', 'active').neq('plan', 'suspended')
   const { data: orgs } = await orgsQuery
 
   if (!orgs) return NextResponse.json([])

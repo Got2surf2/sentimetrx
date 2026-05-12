@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { emptyThemeModel } from '@/lib/datasetUtils'
 import type { SchemaFieldConfig, SchemaConfig } from '@/lib/analyzeTypes'
 
@@ -16,20 +17,15 @@ export async function POST(req: Request) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(features)')
-    .eq('id', user.id)
-    .single()
+  const { orgId: callerOrgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!callerOrgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
-  if (!orgData?.features?.analyze) {
+  // Feature gate uses the caller's own org features (not the target org).
+  const { data: callerOrgRow } = await supabase
+    .from('organizations').select('features').eq('id', callerOrgId).single()
+  if (!(callerOrgRow as any)?.features?.analyze) {
     return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
   }
-
-  const orgId = userData?.org_id as string
-  if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
   const body = await req.json()
   const { name, members } = body as { name: string; members: { dataset_id: string; label: string }[] }
@@ -41,17 +37,36 @@ export async function POST(req: Request) {
 
   const service = createServiceRoleClient()
 
-  // Verify all member datasets exist and belong to this org
+  // Fetch all member datasets without an upfront org filter; we need
+  // to inspect their org_ids to enforce the same-org rule and decide
+  // where the collection lives.
   const memberIds = members.map(function(m) { return m.dataset_id })
   const { data: memberDatasets, error: memErr } = await service
     .from('datasets')
-    .select('id, name, row_count, source')
+    .select('id, name, row_count, source, org_id')
     .in('id', memberIds)
-    .eq('org_id', orgId)
 
   if (memErr) return NextResponse.json({ error: memErr.message }, { status: 500 })
   if (!memberDatasets || memberDatasets.length !== memberIds.length) {
-    return NextResponse.json({ error: 'One or more datasets not found or not in your org' }, { status: 400 })
+    return NextResponse.json({ error: 'One or more datasets not found' }, { status: 400 })
+  }
+
+  // All members must share a single org — that org becomes the
+  // collection's home. Mixing orgs is rejected because the resulting
+  // collection couldn't legitimately belong to any one tenant.
+  const orgIds = Array.from(new Set(memberDatasets.map((d: any) => d.org_id).filter(Boolean)))
+  if (orgIds.length === 0) {
+    return NextResponse.json({ error: 'Member datasets have no org_id' }, { status: 400 })
+  }
+  if (orgIds.length > 1) {
+    return NextResponse.json({ error: 'All collection members must belong to the same organization' }, { status: 400 })
+  }
+  const collectionOrgId = orgIds[0] as string
+
+  // Authorize: non-admins can only build collections in their own org.
+  // Admins (Phase E) can build a collection in any org's home.
+  if (!isAdmin && collectionOrgId !== callerOrgId) {
+    return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   }
 
   // Compute total row count across members
@@ -98,14 +113,16 @@ export async function POST(req: Request) {
     }
   }
 
-  // 1. Create dataset record
+  // 1. Create dataset record in the collection's home org (members' org).
+  //    For non-admin callers this equals callerOrgId by the check above;
+  //    for admins building cross-org collections it's the target org.
   const { data: dataset, error: dsErr } = await service
     .from('datasets')
     .insert({
       name:        name.trim(),
       description: 'Collection of ' + members.length + ' datasets',
       source:      'collection',
-      org_id:      orgId,
+      org_id:      collectionOrgId,
       created_by:  user.id,
       visibility:  'private',
       status:      'active',
@@ -136,7 +153,7 @@ export async function POST(req: Request) {
     .from('collections')
     .insert({
       dataset_id: dataset.id,
-      org_id:     orgId,
+      org_id:     collectionOrgId,
       created_by: user.id,
     })
     .select('id')

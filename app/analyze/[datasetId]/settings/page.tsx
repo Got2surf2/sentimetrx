@@ -57,13 +57,18 @@ export default async function SettingsPage({ params }: Props) {
     reviewSourceId = rs?.id || null
   }
 
-  // Fetch all orgs for admin transfer dropdown
+  // Fetch all orgs for admin transfer dropdown. Filter out suspended /
+  // archived so you can't hand work to a frozen org. Both `plan` and
+  // `status` are checked because legacy rows used `plan='suspended'`
+  // before the dedicated `status` column landed (migration 035).
   let allOrgs: { id: string; name: string }[] = []
   if (isAdmin) {
     const { data: orgs } = await (service || (await import('@/lib/supabase/server')).createServiceRoleClient())
       .from('organizations')
       .select('id, name')
       .neq('id', (dataset as any).org_id)
+      .neq('plan', 'suspended')
+      .neq('status', 'suspended')
       .order('name')
     allOrgs = orgs || []
   }

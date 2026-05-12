@@ -15,6 +15,7 @@ interface Props {
   initialDatasets: DatasetWithState[]
   isAdmin?:        boolean
   allOrgs?:        OrgOption[]
+  userOrgId?:      string
 }
 
 interface Filters {
@@ -25,7 +26,7 @@ interface Filters {
 
 const HERMES = '#e8622a'
 
-export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrgs = [] }: Props) {
+export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrgs = [], userOrgId }: Props) {
   const router = useRouter()
   const [datasets, setDatasets] = useState<DatasetWithState[]>(initialDatasets)
   const [filters,  setFilters]  = useState<Filters>({ source: 'all', visibility: 'all', status: 'all' })
@@ -86,7 +87,9 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const activeCount   = datasets.filter(function(d) { return d.status === 'active' }).length
   const archivedCount = datasets.filter(function(d) { return d.status === 'archived' }).length
 
-  // Only non-collection, active datasets are eligible for collections
+  // Only non-collection, active datasets are eligible for collections.
+  // Admins can mix datasets from any org they're viewing — the API
+  // verifies all members share one org_id (the collection's home org).
   const eligibleForCollection = datasets.filter(function(d) {
     return d.source !== 'collection' && d.status === 'active'
   })
