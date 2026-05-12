@@ -1540,18 +1540,25 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var sqlBucket: string = effectiveBucket === 'hour' ? 'day' : effectiveBucket
 
   var isCollection = _enrichCtx.datasetSource === 'collection'
-  var aggSpec = !isCollection && dateField ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
+  var hasBreakdown = !!(colorByField && colorByField.trim())
+  // Skip the SQL date_series aggregation when a breakdown is active.
+  // date_series returns one series with no breakdown column so it can't
+  // drive multi-line charts. Forcing the rows path also keeps rows in
+  // sync with theme-filter toggles — when enrichKey is -1 the
+  // useChartRows useEffect short-circuits and stale (pre-toggle) rows
+  // survive, which is the bug behind "I unchecked a theme but the line
+  // is still showing."
+  var aggSpec = !isCollection && dateField && !hasBreakdown ? { op: 'date_series', dateField: dateField, metricField: metricField || null, bucket: sqlBucket } : null
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
-  var useRowsFallback = isCollection || !aggLoaded || !(aggData?.series)
+  var useRowsFallback = isCollection || hasBreakdown || !aggLoaded || !(aggData?.series)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, useRowsFallback ? (_enrichCtx.enrichKey || 0) : -1)
-  var loaded = isCollection ? rowsLoaded : (aggLoaded && aggData?.series ? true : rowsLoaded)
+  var loaded = (isCollection || hasBreakdown) ? rowsLoaded : (aggLoaded && aggData?.series ? true : rowsLoaded)
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
 
   // ── Build traces — with optional categorical breakdown ──────────────
   var traces: any[] = []
-  var hasBreakdown = !!(colorByField && colorByField.trim())
 
   // Pre-compute breakdown groups (used by both combined and split modes)
   var catGroups: Record<string, Record<string, number[]>> = {}
