@@ -1,96 +1,72 @@
 // app/api/datasets/[datasetId]/export/html/share/route.ts
-// POST — accepts a pre-generated HTML file, uploads to S3,
-// returns a pre-signed GET URL valid for 7 days.
+// POST — accepts a pre-generated HTML file, uploads to Supabase Storage,
+// returns a signed GET URL valid for 7 days.
 //
-// Required env vars:
-//   AWS_ACCESS_KEY_ID
-//   AWS_SECRET_ACCESS_KEY
-//   AWS_REGION          (e.g. "us-east-1")
-//   AWS_S3_BUCKET       (your bucket name)
+// Was previously backed by AWS S3 (AWS_S3_BUCKET / AWS_REGION /
+// AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) — switched to Supabase
+// Storage so there's no extra service to configure. The signed-URL model
+// is the same: link itself is the capability, short TTL, unguessable
+// path.
 
 import { NextResponse } from 'next/server'
-import { createClient, getAuthUser } from '@/lib/supabase/server'
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { randomUUID } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: { datasetId: string } }
 
+const BUCKET = 'report-exports'
 const EXPIRY_SECONDS = 7 * 24 * 60 * 60  // 7 days
 
 export async function POST(req: Request, { params }: Params) {
-  // Auth check
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Validate env vars
-  const bucket = process.env.AWS_S3_BUCKET
-  const region = process.env.AWS_REGION
-  if (!bucket || !region) {
-    return NextResponse.json(
-      { error: 'AWS_S3_BUCKET and AWS_REGION must be configured in environment variables.' },
-      { status: 500 }
-    )
+  // Cross-org gate: caller must own the dataset (or be a platform admin).
+  // Same Phase E pattern as the rest of the dataset routes.
+  const { orgId, isAdmin } = await getCallerOrgContext(supabase)
+  const service = createServiceRoleClient()
+  const { data: dataset } = await service
+    .from('datasets').select('org_id').eq('id', params.datasetId).single()
+  if (!dataset) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) {
+    return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   }
 
-  // Read HTML body (sent as text/html)
-  let htmlContent: Buffer
+  // Read HTML body (sent as text/html).
+  let htmlBuffer: Buffer
   try {
     const arrayBuffer = await req.arrayBuffer()
     if (arrayBuffer.byteLength === 0) {
       return NextResponse.json({ error: 'Empty body — no HTML to upload.' }, { status: 400 })
     }
-    htmlContent = Buffer.from(arrayBuffer)
+    htmlBuffer = Buffer.from(arrayBuffer)
   } catch {
     return NextResponse.json({ error: 'Could not read request body.' }, { status: 400 })
   }
 
-  // Build S3 key: reports/<datasetId>/<uuid>.html
-  const key = `reports/${params.datasetId}/${randomUUID()}.html`
+  // Path: reports/<datasetId>/<uuid>.html — unguessable, scoped per dataset.
+  const path = `reports/${params.datasetId}/${randomUUID()}.html`
 
-  const s3 = new S3Client({
-    region,
-    credentials: {
-      accessKeyId:     process.env.AWS_ACCESS_KEY_ID ?? '',
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
-    },
+  const { error: uploadErr } = await service.storage.from(BUCKET).upload(path, htmlBuffer, {
+    contentType: 'text/html; charset=utf-8',
+    upsert:      false,
   })
-
-  // Upload
-  try {
-    await s3.send(new PutObjectCommand({
-      Bucket:      bucket,
-      Key:         key,
-      Body:        htmlContent,
-      ContentType: 'text/html; charset=utf-8',
-    }))
-  } catch (e: any) {
-    console.error('[share] S3 upload error:', e)
-    return NextResponse.json(
-      { error: 'Upload failed: ' + (e.message || 'S3 error') },
-      { status: 502 }
-    )
+  if (uploadErr) {
+    console.error('[share] upload error:', uploadErr)
+    return NextResponse.json({ error: 'Upload failed: ' + uploadErr.message }, { status: 502 })
   }
 
-  // Generate pre-signed GET URL (7 days)
-  let url: string
-  try {
-    url = await getSignedUrl(
-      s3,
-      new GetObjectCommand({ Bucket: bucket, Key: key }),
-      { expiresIn: EXPIRY_SECONDS }
-    )
-  } catch (e: any) {
-    console.error('[share] presign error:', e)
-    return NextResponse.json(
-      { error: 'Could not generate share link: ' + (e.message || 'presign error') },
-      { status: 502 }
-    )
+  const { data: signed, error: signErr } = await service.storage.from(BUCKET)
+    .createSignedUrl(path, EXPIRY_SECONDS)
+  if (signErr || !signed?.signedUrl) {
+    console.error('[share] presign error:', signErr)
+    return NextResponse.json({ error: 'Could not generate share link: ' + (signErr?.message || 'unknown') }, { status: 502 })
   }
 
   const expiresAt = new Date(Date.now() + EXPIRY_SECONDS * 1000).toISOString()
-  return NextResponse.json({ url, expiresAt, key })
+  return NextResponse.json({ url: signed.signedUrl, expiresAt, key: path })
 }

@@ -370,7 +370,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
             <button onClick={handleShare} disabled={shareState === 'uploading'}
               style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700, color: '#0284c7', background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 8, cursor: shareState === 'uploading' ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: shareState === 'uploading' ? 0.7 : 1 }}>
               <span style={{ fontSize: 16 }}>{shareState === 'uploading' ? '⏳' : '🔗'}</span>
-              {shareState === 'uploading' ? 'Uploading to AWS…' : 'Push to AWS — get shareable link'}
+              {shareState === 'uploading' ? 'Uploading…' : 'Get shareable link (7 days)'}
             </button>
           )}
           {shareState === 'error' && (
