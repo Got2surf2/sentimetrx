@@ -2,6 +2,15 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-12 (Tue) — Per-org BYO Anthropic key
+
+- **Why:** a new customer turned on AI and got prompted for an Anthropic key, because the legacy `mineThemes` path rejected with `NO_API_KEY` when the org had no `apiKey` stored on the user. The default should be "platform absorbs cost, billed back via `usage_log`" — a key prompt is the *escape hatch*, not the entry point. Earlier today (cf4f60b) the prompts were removed; this entry is the durable provisioning layer.
+- **`sql/051_org_ai_key.sql` (applied to prod).** Four new columns on `organizations`: `ai_key_mode` (`platform`|`byo`, default `platform`), `ai_api_key` (raw secret, service-role-only access), `ai_api_key_set_at`, `ai_api_key_set_by` (FK → `auth.users`). Why a column instead of `features` JSONB: features is selected widely across the app; a secret in features would leak to any caller that selects the column.
+- **`lib/aiKey.ts`** — 60s in-memory per-org cache. `resolveOrgAiKey(orgId)` returns the customer's key only when `mode='byo'` AND a key is set; otherwise `undefined` so the caller falls back to `ANTHROPIC_API_KEY` env. `invalidateOrgAiKey(orgId)` is called by the admin write endpoint so changes take effect immediately. Lookup failures fall back to env rather than erroring out an AI call.
+- **`lib/ai.ts::callAI()`** auto-resolves the BYO key when `opts.usage?.org_id` is present and no explicit `apiKey` was passed. One call site, every AI feature inherits it — theme mining, StoryTime, agents, search re-rank, deck generation.
+- **`/api/admin/orgs/[id]/ai-key`** (GET / PUT / DELETE) — super-admin gated via `requireAdmin()`. GET returns `{ mode, isSet, setAt, setBy }` without the secret. PUT accepts `{ mode, api_key? }`; switching to `platform` clears the stored key; `byo` without `api_key` preserves the existing key (rotate-mode toggle). DELETE reverts to platform and clears everything.
+- **`components/admin/OrgAiKeyPanel.tsx`** mounted as a new "AI Key" section on `/admin/clients/[id]`. Radio buttons for platform vs BYO, password input for the secret, replace / clear & revert actions. The secret never round-trips back to the browser — only the metadata does.
+
 ## 2026-05-12 (Tue, early) — Hard-delete an org with robust confirmation
 
 - **New `DELETE /api/admin/orgs/[id]`.** Defense layers, in order: (1) `requireAdmin()`, (2) refuses if `is_admin_org` (platform org can't be hard-deleted), (3) refuses unless org is already suspended (`plan='suspended'` OR `status='suspended'`), (4) body must include `confirm_name` matching the org's name exactly (case-insensitive), (5) writes an `admin_action_log` row BEFORE the destructive step so we still have evidence if FK cascade fails.

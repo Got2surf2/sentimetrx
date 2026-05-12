@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import OrgFeatureToggles from '@/components/analyze/OrgFeatureToggles'
+import OrgAiKeyPanel from '@/components/admin/OrgAiKeyPanel'
 import Link from 'next/link'
 import PendingInvitesList, { type PendingInvite } from '@/components/team/PendingInvitesList'
 
@@ -337,6 +338,11 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
             orgId={org.id}
             initialFeatures={org.features || {}}
           />
+        </Section>
+
+        {/* AI Key */}
+        <Section title="AI Key">
+          <OrgAiKeyPanel orgId={org.id} />
         </Section>
 
         {/* Members */}

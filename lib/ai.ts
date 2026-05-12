@@ -255,7 +255,19 @@ function parseOpenAIResponse(data: any, model: string, tier: ModelTier): AIRespo
 // ── Main export ──────────────────────────────────────────────────────────────
 
 export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
-  const resolved = resolveProvider(opts)
+  // BYO-key resolution: if the caller didn't supply an explicit apiKey
+  // but the usage context names an org_id, look up that org's
+  // ai_key_mode/ai_api_key. When mode='byo' and a key is set, route
+  // this call through the customer's own Anthropic account. Otherwise
+  // resolveProvider falls back to ANTHROPIC_API_KEY env (platform).
+  // Cached per-org for 60s in lib/aiKey to avoid hot-path DB hits.
+  let effective = opts
+  if (!opts.apiKey && opts.usage?.org_id) {
+    const { resolveOrgAiKey } = await import('@/lib/aiKey')
+    const byo = await resolveOrgAiKey(opts.usage.org_id)
+    if (byo) effective = { ...opts, apiKey: byo }
+  }
+  const resolved = resolveProvider(effective)
 
   if (!resolved.apiKey) {
     throw new Error(`No API key configured for provider: ${resolved.provider}`)
