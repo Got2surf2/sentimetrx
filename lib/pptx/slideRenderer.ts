@@ -478,9 +478,9 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   // ── Layout constants — every region derives from these ──
   const contentTop = CY + 0.05
   const contentBot = FY - 0.15
-  const statH      = 1.30     // top stats row — number on top + label below stacked
+  const statH      = 1.55     // top stats — single tight-stacked text box
   const pipeH      = spec.pipelineStages && spec.pipelineStages.length > 0 ? 0.50 : 0
-  const strapH     = 1.05     // bottom productivity strap (slimmer)
+  const strapH     = 1.05     // bottom productivity strap
   const gap        = 0.15
 
   const colY    = contentTop + statH + gap
@@ -488,40 +488,36 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   const pipeY   = pipeH > 0 ? (strapY - gap - pipeH) : strapY
   const colH    = (pipeH > 0 ? pipeY : strapY) - gap - colY
 
-  // ── Top stats: stacked value/label format so long labels never wrap into content ──
+  // ── Top stats: value + label + sub stacked tightly in ONE text box.
+  //    Using a paragraph array means line heights derive from font sizes
+  //    directly — no inter-box padding to wrestle with.
   const wallClockTxt = fmtWallClock(spec.wallClockSeconds)
-  const numH = statH * 0.55
-  const lblH = statH * 0.20
-  const subStatH = statH * 0.20
+  const wallNum  = wallClockTxt.replace(/seconds?|minutes?|hours?/, '').trim()
+  const wallUnit = wallClockTxt.match(/seconds?|minutes?|hours?/)?.[0] || 'time'
 
   function drawStat(x: number, w: number, value: string, label: string, color: string, sub?: string) {
-    slide.addText(value, {
-      x, y: contentTop, w, h: numH,
-      fontSize: 64, bold: true, color, align: 'center', valign: 'bottom', autoFit: true, wrap: false,
+    const paras: any[] = [
+      { text: value, options: { fontSize: 64, bold: true, color, breakLine: true, paraSpaceAfter: 4 } },
+      { text: label, options: { fontSize: 18, bold: true, color: DX.ink, breakLine: !!sub, paraSpaceAfter: sub ? 3 : 0 } },
+    ]
+    if (sub) paras.push({ text: sub, options: { fontSize: 10, color: DN.slate, italic: true } })
+    slide.addText(paras, {
+      x, y: contentTop + 0.20, w, h: statH - 0.20,
+      align: 'center', valign: 'top', wrap: false,
     })
-    slide.addText(label, {
-      x, y: contentTop + numH + 0.02, w, h: lblH,
-      fontSize: 16, bold: true, color: DX.ink, align: 'center', valign: 'top', autoFit: true, wrap: false,
-    })
-    if (sub) {
-      slide.addText(sub, {
-        x, y: contentTop + numH + lblH + 0.04, w, h: subStatH,
-        fontSize: 10, color: DN.slate, italic: true, align: 'center', valign: 'top', autoFit: true,
-      })
-    }
   }
 
   if (spec.decisionsMade !== undefined) {
     const half = (W - PAD * 2 - 0.4) / 2
-    drawStat(PAD, half, wallClockTxt.replace(/seconds?/, '').trim(), wallClockTxt.match(/seconds?/) ? 'seconds' : 'time', DN.teal, 'wall-clock')
+    drawStat(PAD, half, wallNum, wallUnit, DN.teal, 'wall-clock')
     slide.addShape(pptx.ShapeType.rect, {
-      x: PAD + half + 0.2 - 0.01, y: contentTop + 0.1, w: 0.02, h: statH - 0.2,
+      x: PAD + half + 0.2 - 0.01, y: contentTop + 0.3, w: 0.02, h: statH - 0.5,
       fill: { color: DN.divider }, line: { width: 0 },
     })
     drawStat(PAD + half + 0.4, half, spec.decisionsMade.toLocaleString(), 'decisions made', DN.gold,
              'canonicalisations · categorisations · rankings · selections')
   } else {
-    drawStat(PAD, W - PAD * 2, wallClockTxt.replace(/seconds?/, '').trim(), wallClockTxt.match(/seconds?/) ? 'seconds' : 'time', DN.teal)
+    drawStat(PAD, W - PAD * 2, wallNum, wallUnit, DN.teal)
   }
 
   // ── Three columns ──
@@ -545,27 +541,17 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
     const itemH = innerH / Math.max(col.items.length, 1)
     col.items.forEach((it, j) => {
       const iy = innerTop + j * itemH
-      const hasSub = !!it.sub
-      // Heights inside each item — value / label / optional sub.
-      // When a sub is present, give it ~half the item so a 2-line wrap can't
-      // bleed into the next item below.
-      const valH = hasSub ? itemH * 0.32 : itemH * 0.55
-      const labH = hasSub ? itemH * 0.22 : itemH * 0.40
-      const subH = hasSub ? itemH * 0.42 : 0   // 2-line room
-      slide.addText(it.value, {
-        x: x + 0.15, y: iy, w: colW - 0.3, h: valH,
-        fontSize: 16, bold: true, color: DX.ink, valign: 'bottom', autoFit: true, wrap: false,
+      // Value + label (+ optional sub) in ONE text box so line heights are
+      // driven by font sizes directly — no inter-box padding gaps.
+      const paras: any[] = [
+        { text: it.value, options: { fontSize: 16, bold: true, color: DX.ink, breakLine: true, paraSpaceAfter: 2 } },
+        { text: it.label, options: { fontSize: 9.5, color: DN.slate, italic: true, breakLine: !!it.sub, paraSpaceAfter: it.sub ? 3 : 0 } },
+      ]
+      if (it.sub) paras.push({ text: it.sub, options: { fontSize: 8.5, color: DX.slateDark } })
+      slide.addText(paras, {
+        x: x + 0.15, y: iy, w: colW - 0.3, h: itemH - 0.04,
+        align: 'left', valign: 'top', wrap: true,
       })
-      slide.addText(it.label, {
-        x: x + 0.15, y: iy + valH, w: colW - 0.3, h: labH,
-        fontSize: 9.5, color: DN.slate, italic: true, valign: 'top', autoFit: true,
-      })
-      if (hasSub) {
-        slide.addText(it.sub!, {
-          x: x + 0.15, y: iy + valH + labH, w: colW - 0.3, h: subH,
-          fontSize: 8.5, color: DX.slateDark, valign: 'top', autoFit: true, wrap: true,
-        })
-      }
     })
   })
 
