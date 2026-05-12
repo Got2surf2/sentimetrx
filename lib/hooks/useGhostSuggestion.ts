@@ -16,8 +16,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
+export type GhostSurface =
+  | 'export-instructions'
+  | 'bot-system-prompt'
+  | 'bot-personality'
+  | 'bot-deflection-message'
+
 interface Args {
-  surface: 'export-instructions'
+  surface: GhostSurface
   context: Record<string, unknown>
   prefix:  string
   enabled: boolean

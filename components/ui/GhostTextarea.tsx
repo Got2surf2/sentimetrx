@@ -16,12 +16,12 @@
 // real estate) — keep it desktop-only for v1.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { useGhostSuggestion } from '@/lib/hooks/useGhostSuggestion'
+import { useGhostSuggestion, type GhostSurface } from '@/lib/hooks/useGhostSuggestion'
 
 interface Props {
   value:    string
   onChange: (v: string) => void
-  surface:  'export-instructions'
+  surface:  GhostSurface
   context:  Record<string, unknown>
   /** Disables ghost-text. (The hook also honors useOrgAiMode off-mode.) */
   disabled?:    boolean

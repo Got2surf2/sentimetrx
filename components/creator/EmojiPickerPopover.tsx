@@ -47,20 +47,20 @@ const PICKER_CSS = `
     --border-color: #e5e7eb;
     --button-active-background: #fff7ed;
     --button-hover-background: #fef3ec;
-    --category-emoji-size: 1.25rem;
-    --emoji-size: 1.6rem;
-    --emoji-padding: 8px;
+    --category-emoji-size: 1.15rem;
+    --emoji-size: 1.55rem;
+    --emoji-padding: 6px;
     --indicator-color: #e8622a;
     --input-border-color: #d1d5db;
     --input-font-color: #111827;
     --input-placeholder-color: #9ca3af;
     --outline-color: #fb923c;
     --category-font-color: #6b7280;
-    --num-columns: 8;
+    --num-columns: 9;
     --border-radius: 0px;
     width: 100%;
     height: 100%;
-    min-height: 300px;
+    min-height: 340px;
     border: none;
     box-shadow: none;
   }
@@ -137,75 +137,56 @@ export default function EmojiPickerPopover({
   }, [open])
 
   const btnSizeCls = size === 'sm'
-    ? 'text-base px-1.5 py-1 min-w-[2rem]'
-    : 'text-xl px-2 py-1.5 min-w-[2.5rem]'
+    ? 'text-base px-2 py-1 min-w-[2.25rem] gap-1.5'
+    : 'text-xl px-2.5 py-1.5 min-w-[2.75rem] gap-2'
 
   return (
     <>
-      {/* Trigger */}
+      {/* Trigger — clearer affordance than the previous "emoji + ▼". */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="Pick emoji"
-        className={`${btnSizeCls} bg-white border border-gray-300 rounded-lg hover:border-orange-400 transition-colors flex items-center gap-1 leading-none ${className}`}
+        title="Change emoji"
+        className={`${btnSizeCls} bg-white border border-gray-300 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-colors flex items-center leading-none ${className}`}
       >
         <span>{value || '😊'}</span>
-        <span className="text-gray-400 text-[10px] leading-none">▼</span>
+        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Change</span>
       </button>
 
-      {/* Full-screen modal */}
+      {/* Centered popover — was previously a full-screen drawer-on-mobile,
+          which felt heavyweight for picking a single emoji. */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={() => setOpen(false)}>
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/40" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+          <div className="absolute inset-0 bg-black/30" />
 
-          {/* Modal panel */}
           <div
-            className="relative bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden"
-            style={{ maxHeight: '85vh' }}
+            className="relative bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ width: 420, maxWidth: '100%', maxHeight: '70vh' }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-              <span className="text-sm font-semibold text-gray-700">Choose Emoji</span>
+            {/* Header — preview + close */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-shrink-0">
+              <span className="text-3xl leading-none">{value || '😊'}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-gray-800">Choose an emoji</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">Search below, or pick a suggestion.</div>
+              </div>
               <button type="button" onClick={() => setOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">&times;</button>
+                title="Close"
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none px-2 -mr-2">&times;</button>
             </div>
 
-            {/* Current selection + paste input */}
-            <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-100 flex-shrink-0">
-              <span className="text-3xl">{value || '😊'}</span>
-              <span className="text-xs text-gray-400 flex-1">Current selection</span>
-              <input
-                type="text"
-                placeholder="Paste emoji"
-                className="w-16 text-center text-xl border border-gray-200 rounded-lg px-1 py-1 outline-none focus:border-orange-400"
-                style={{ fontSize: 16 }}
-                onChange={(e) => {
-                  const val = e.target.value
-                  if (!val) return
-                  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-                    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
-                    const segments = Array.from(segmenter.segment(val), s => s.segment)
-                    if (segments.length > 0) { onChange(segments[segments.length - 1]); setOpen(false) }
-                  } else {
-                    onChange(val.slice(-2)); setOpen(false)
-                  }
-                }}
-              />
-            </div>
-
-            {/* Industry / curated quick-picks */}
+            {/* Curated quick-picks — denser grid, bigger tap targets. */}
             <div className="px-4 pt-3 pb-2 border-b border-gray-100 flex-shrink-0">
-              <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider mb-1.5">{aboveLabel}</p>
-              <div className="flex flex-wrap gap-1">
-                {aboveEmojis.slice(0, 40).map((e, i) => (
+              <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider mb-2">{aboveLabel}</p>
+              <div className="grid grid-cols-10 gap-1">
+                {aboveEmojis.slice(0, 30).map((e, i) => (
                   <button
                     key={i}
                     type="button"
                     onClick={() => { onChange(e); setOpen(false) }}
                     title={e}
-                    className={`text-2xl p-2 rounded-lg hover:bg-orange-50 transition-colors leading-none ${value === e ? 'bg-orange-100 ring-2 ring-orange-400' : ''}`}
+                    className={`text-xl aspect-square rounded-md flex items-center justify-center hover:bg-orange-50 transition-colors leading-none ${value === e ? 'bg-orange-100 ring-2 ring-orange-400' : ''}`}
                   >
                     {e}
                   </button>
@@ -213,14 +194,14 @@ export default function EmojiPickerPopover({
               </div>
             </div>
 
-            {/* Full emoji-picker-element — search, all categories, skin tones */}
+            {/* Full picker — search, all categories, skin tones. */}
             <div ref={pickerRef} className="w-full flex-1 min-h-0 overflow-hidden" />
 
             {/* OS keyboard hint */}
             <div className="px-3 py-2 border-t border-gray-100 text-center flex-shrink-0">
               <span className="text-[11px] text-gray-400">
                 Or press <kbd className="font-mono bg-gray-100 px-1 rounded">&#x2318; Ctrl Space</kbd> (Mac) &middot;{' '}
-                <kbd className="font-mono bg-gray-100 px-1 rounded">Win .</kbd> (Windows) for the OS keyboard
+                <kbd className="font-mono bg-gray-100 px-1 rounded">Win .</kbd> (Windows)
               </span>
             </div>
           </div>

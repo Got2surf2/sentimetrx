@@ -3,7 +3,8 @@
 // continuation for the user's current input prefix, or empty string if
 // nothing is a good enough fit. Branded as "Ana suggests".
 //
-// Surfaces (whitelisted): 'export-instructions'.
+// Surfaces (whitelisted): 'export-instructions', 'bot-system-prompt',
+// 'bot-personality', 'bot-deflection-message'.
 //
 // Off-mode is honored via callAI's org gate — when the org's AI mode is
 // 'off', callAI throws AIDisabledError and we return empty suggestion (no
@@ -17,14 +18,37 @@ import { NextRequest, NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 10
 
+type Surface =
+  | 'export-instructions'
+  | 'bot-system-prompt'
+  | 'bot-personality'
+  | 'bot-deflection-message'
+
 interface SuggestRequest {
-  surface: 'export-instructions'
+  surface: Surface
   prefix:  string
   context: Record<string, unknown>
 }
 
 const MAX_PREFIX_CHARS = 400
 const MAX_OUTPUT_TOKENS = 30
+
+// Shared rules every surface follows — kept in one place so prompt drift
+// across surfaces doesn't cause inconsistent UX.
+const RULES =
+  'Continue what the user has typed with ONE plausible short continuation (4–18 words). ' +
+  'Match their voice, register, and partial-word state — if they ended mid-word, complete the word. ' +
+  'Never repeat what they have typed. Never add quotes, headers, labels, or explanations. ' +
+  'If you cannot produce a high-confidence continuation that flows naturally, return an empty string. ' +
+  'Output ONLY the continuation text, nothing else.'
+
+function buildBotContextLine(ctx: { botName?: string; botSubject?: string; botPersonality?: string }): string {
+  const parts: string[] = []
+  if (ctx.botName) parts.push('Agent name: "' + ctx.botName + '"')
+  if (ctx.botSubject) parts.push('Subject: "' + ctx.botSubject + '"')
+  if (ctx.botPersonality) parts.push('Established personality: "' + ctx.botPersonality.slice(0, 200) + '"')
+  return parts.length > 0 ? parts.join('. ') + '.' : ''
+}
 
 function buildPrompt(req: SuggestRequest): { system: string; user: string } | null {
   if (req.surface === 'export-instructions') {
@@ -40,17 +64,47 @@ function buildPrompt(req: SuggestRequest): { system: string; user: string } | nu
     const system =
       'You are Ana, an inline writing assistant for a survey analytics platform. ' +
       'The user is composing instructions for an AI-generated executive presentation about their dataset. ' +
-      'Your job: continue what they have typed, in their voice, with ONE plausible, short completion (4–18 words). ' +
-      'Use the dataset name and themes as context — your suggestion should be specific to this dataset when possible. ' +
-      'Never repeat what they have already typed. Never add quotes, headers, or explanations. ' +
-      'If you can not produce a high-confidence continuation that flows naturally from the prefix, return an empty string. ' +
-      'Output ONLY the continuation text, nothing else.\n\n' +
+      RULES + '\n\n' +
       'Dataset: ' + (ctx.datasetName || 'unnamed') +
       (ctx.datasetSource ? ' (source: ' + ctx.datasetSource + ')' : '') + '. ' +
       (ctx.audience ? 'Audience: ' + ctx.audience + '. ' : '') +
       themesLine
     return { system, user: req.prefix }
   }
+
+  if (req.surface === 'bot-system-prompt') {
+    const ctx = req.context as { botName?: string; botSubject?: string; botPersonality?: string }
+    const system =
+      'You are Ana, an inline writing assistant. ' +
+      'The user is writing a system prompt for a customer-facing AI agent on this platform. ' +
+      'System prompts are instructions to the agent describing how it should behave, what topics it covers, tone, refusal rules. ' +
+      RULES + '\n\n' +
+      buildBotContextLine(ctx)
+    return { system, user: req.prefix }
+  }
+
+  if (req.surface === 'bot-personality') {
+    const ctx = req.context as { botName?: string; botSubject?: string }
+    const system =
+      'You are Ana, an inline writing assistant. ' +
+      'The user is describing the personality and voice of an AI agent. ' +
+      'These are short prose descriptions like "Friendly customer-support rep for a SaaS product. Casual, uses first names, explains technical concepts simply." ' +
+      RULES + '\n\n' +
+      buildBotContextLine(ctx)
+    return { system, user: req.prefix }
+  }
+
+  if (req.surface === 'bot-deflection-message') {
+    const ctx = req.context as { botName?: string; botSubject?: string; botPersonality?: string }
+    const system =
+      'You are Ana, an inline writing assistant. ' +
+      'The user is writing a "deflection message" — what the agent says when asked something off-topic or out of scope. ' +
+      'Tone should match the agent\'s established personality. Be polite, brief, redirect to what the agent CAN help with. ' +
+      RULES + '\n\n' +
+      buildBotContextLine(ctx)
+    return { system, user: req.prefix }
+  }
+
   return null
 }
 

@@ -4,6 +4,7 @@
 // Bot creator/editor — create or edit a branded chatbot
 
 import { useState, useEffect, useRef, Suspense } from 'react'
+import GhostTextarea from '@/components/ui/GhostTextarea'
 import { useRouter, useSearchParams } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import TransferOrg from '@/components/ui/TransferOrg'
@@ -576,12 +577,13 @@ function BotCreatorInner() {
           </Section>
 
           <Section title="Personality & Voice">
-            <textarea
+            <GhostTextarea
               value={personality}
-              onChange={function(e) { setPersonality(e.target.value) }}
+              onChange={setPersonality}
+              surface="bot-personality"
+              context={{ botName: name, botSubject: subject }}
               placeholder={"Describe who this agent emulates and how it should communicate.\n\ne.g., Emulates Alex Vindman — retired Army lieutenant colonel, direct and measured communication style. Uses military precision in language. Approachable but serious.\n\ne.g., Friendly customer support rep for a SaaS product. Casual, uses first names, explains technical concepts simply."}
-              rows={4}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical' }}
+              style={{ width: '100%', minHeight: 100, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box', outline: 'none' }}
             />
           </Section>
 
@@ -910,9 +912,16 @@ function BotCreatorInner() {
               </div>
             </label>
             {deflectionEnabled && (
-              <textarea value={deflectionMessage} onChange={function(e) { setDeflectionMessage(e.target.value) }}
-                placeholder="Custom redirect message (optional). Leave empty for AI-generated redirects."
-                rows={2} style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', marginLeft: 26, maxWidth: 'calc(100% - 26px)' }} />
+              <div style={{ marginLeft: 26, maxWidth: 'calc(100% - 26px)' }}>
+                <GhostTextarea
+                  value={deflectionMessage}
+                  onChange={setDeflectionMessage}
+                  surface="bot-deflection-message"
+                  context={{ botName: name, botSubject: subject, botPersonality: personality }}
+                  placeholder="Custom redirect message (optional). Leave empty for AI-generated redirects."
+                  style={{ width: '100%', minHeight: 56, padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box', outline: 'none' }}
+                />
+              </div>
             )}
           </Section>
 
@@ -996,9 +1005,14 @@ function BotCreatorInner() {
 
           <Section title="Advanced: System Prompt">
             <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>Direct instructions for the AI. Personality, guardrails, and knowledge are injected automatically — use this only for additional custom behavior.</p>
-            <textarea value={systemPrompt} onChange={function(e) { setSystemPrompt(e.target.value) }}
+            <GhostTextarea
+              value={systemPrompt}
+              onChange={setSystemPrompt}
+              surface="bot-system-prompt"
+              context={{ botName: name, botSubject: subject, botPersonality: personality }}
               placeholder={"Optional. Most agents don't need this.\n\nYou should:\n- Be friendly and concise\n- Only discuss topics related to [subject]"}
-              rows={6} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5 }} />
+              style={{ width: '100%', minHeight: 140, padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.5, boxSizing: 'border-box', outline: 'none' }}
+            />
           </Section>
 
           <Section title="Content Safety">
