@@ -105,7 +105,7 @@ export async function POST(req: Request, { params }: Params) {
   if (inserted && inserted.length > 0) {
     try {
       const texts = inserted.map(function(c: any) { return c.title + '\n' + c.content })
-      const embeddings = await generateEmbeddings(texts)
+      const embeddings = await generateEmbeddings(texts, bot.org_id)
       for (var i = 0; i < inserted.length; i++) {
         if (embeddings[i]) {
           await service.from('bot_knowledge_chunks')

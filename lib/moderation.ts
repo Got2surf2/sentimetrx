@@ -4,6 +4,14 @@ import 'server-only'
 // OpenAI Moderation API wrapper for social comment toxicity scoring.
 // Free endpoint, no rate-limit concerns at our volume.
 // Returns per-comment category scores that feed into the tagging pipeline.
+//
+// Per-org AI mode is enforced here (same rules as lib/embeddings.ts):
+//   off    → returns empty scores (caller treats as "no moderation signal")
+//   byo + openai → uses the customer's OpenAI key
+//   byo + anthropic → falls back to platform OPENAI_API_KEY (we eat the cost)
+//   platform → platform OPENAI_API_KEY
+
+import { resolveOrgAiConfig } from '@/lib/aiKey'
 
 export interface ModerationScore {
   toxicity: number       // harassment + hate combined peak
@@ -14,8 +22,17 @@ export interface ModerationScore {
   categories: string[]   // which categories flagged (above threshold)
 }
 
-export async function moderateTexts(texts: string[]): Promise<ModerationScore[]> {
-  const key = process.env.OPENAI_API_KEY
+async function resolveOpenAIKey(orgId: string | undefined): Promise<string | null> {
+  if (orgId) {
+    const cfg = await resolveOrgAiConfig(orgId)
+    if (cfg.mode === 'off') return null
+    if (cfg.mode === 'byo' && cfg.provider === 'openai' && cfg.key) return cfg.key
+  }
+  return process.env.OPENAI_API_KEY || null
+}
+
+export async function moderateTexts(texts: string[], orgId: string | undefined): Promise<ModerationScore[]> {
+  const key = await resolveOpenAIKey(orgId)
   if (!key || texts.length === 0) return texts.map(() => emptyScore())
 
   // OpenAI moderation accepts an array of strings

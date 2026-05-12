@@ -166,7 +166,7 @@ export async function GET(req: NextRequest) {
       if (newComments.length === 0) continue
 
       // Batch-score all comments through OpenAI moderation (free, async)
-      const moderationScores = await moderateTexts(newComments.map(c => c.text))
+      const moderationScores = await moderateTexts(newComments.map(c => c.text), conn.org_id)
 
       // Get org's moderation sensitivity
       const orgData = Array.isArray((conn as any).organizations) ? (conn as any).organizations[0] : (conn as any).organizations

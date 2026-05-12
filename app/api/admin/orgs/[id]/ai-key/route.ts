@@ -1,11 +1,13 @@
 // app/api/admin/orgs/[id]/ai-key/route.ts
-// Super-admin only — provision the AI key mode/secret for a customer org.
+// Super-admin only — provision the AI key mode/provider/secret for a customer org.
 //
-//   GET    — returns status: { mode, isSet, setAt, setBy } (never the key)
-//   PUT    — body: { mode: 'platform' | 'byo', api_key?: string }
-//              mode='platform' clears any stored key
-//              mode='byo' + api_key sets the secret
-//              mode='byo' alone (api_key omitted) preserves the existing key
+//   GET    — returns status: { mode, provider, isSet, setAt, setBy } (never the key)
+//   PUT    — body: { mode: 'off'|'platform'|'byo', provider?: 'anthropic'|'openai', api_key?: string }
+//              mode='off'      → no AI calls allowed for this org (server enforces)
+//              mode='platform' → use Sentimetrx env keys (default)
+//              mode='byo' + provider + api_key → set the secret
+//              mode='byo' alone (api_key omitted) → preserves existing key but
+//                                                   still updates provider if passed
 //   DELETE — revert to mode='platform' and null out the stored key
 //
 // Cache invalidation: invalidateOrgAiKey(orgId) is called on every write
@@ -38,26 +40,35 @@ export async function PUT(req: Request, { params }: Params) {
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const mode = body?.mode
-  if (mode !== 'platform' && mode !== 'byo') {
-    return NextResponse.json({ error: 'mode must be "platform" or "byo"' }, { status: 400 })
+  if (mode !== 'off' && mode !== 'platform' && mode !== 'byo') {
+    return NextResponse.json({ error: 'mode must be "off", "platform", or "byo"' }, { status: 400 })
   }
+  const provider: 'anthropic' | 'openai' | undefined = body?.provider === 'anthropic' || body?.provider === 'openai' ? body.provider : undefined
   const apiKey: string | undefined = typeof body?.api_key === 'string' ? body.api_key.trim() : undefined
 
   const updates: Record<string, unknown> = { ai_key_mode: mode }
-  if (mode === 'platform') {
-    // Switching back to platform clears any stored secret + metadata.
+
+  if (mode === 'off' || mode === 'platform') {
+    // Switching out of BYO clears any stored secret + metadata.
     updates.ai_api_key = null
     updates.ai_api_key_set_at = null
     updates.ai_api_key_set_by = null
-  } else if (apiKey !== undefined) {
-    if (apiKey === '') {
-      return NextResponse.json({ error: 'api_key cannot be empty when mode=byo' }, { status: 400 })
+  } else {
+    // mode === 'byo'
+    if (!provider) {
+      return NextResponse.json({ error: 'provider is required for mode=byo' }, { status: 400 })
     }
-    updates.ai_api_key = apiKey
-    updates.ai_api_key_set_at = new Date().toISOString()
-    updates.ai_api_key_set_by = user.id
+    updates.ai_provider = provider
+    if (apiKey !== undefined) {
+      if (apiKey === '') {
+        return NextResponse.json({ error: 'api_key cannot be empty when mode=byo' }, { status: 400 })
+      }
+      updates.ai_api_key = apiKey
+      updates.ai_api_key_set_at = new Date().toISOString()
+      updates.ai_api_key_set_by = user.id
+    }
+    // mode='byo' without api_key keeps the existing key in place (provider rotation only).
   }
-  // mode='byo' without api_key keeps the existing key in place.
 
   const service = createServiceRoleClient()
   const { error } = await service.from('organizations').update(updates).eq('id', params.id)

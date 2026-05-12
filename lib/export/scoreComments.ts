@@ -1,15 +1,13 @@
 // lib/export/scoreComments.ts
-// AI-powered comment relevance scoring for export slides.
-// Given a theme and candidate comments, scores each comment 1-5 for relevance,
-// then returns the best ones. Falls back to keyword-only if AI is unavailable.
+// AI scoring/phrase-extraction helpers for export quote selection.
+//
+// All call sites pass orgId (not an apiKey) — the org-level AI gate runs
+// inside callAI() based on usage.org_id. orgId=undefined means "skip AI,
+// fall back to length-based selection" (used when the export was started
+// with skipAI=true).
 
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
-
-export interface ScoredComment {
-  text: string
-  score: number   // 1-5 relevance to theme
-}
 
 export interface ThemeInfo {
   name: string
@@ -18,10 +16,19 @@ export interface ThemeInfo {
   sentiment?: string
 }
 
+export interface ScoredComment {
+  text: string
+  score: number
+}
+
+export interface HighlightedComment {
+  text: string
+  phrases: string[]
+}
+
 /**
- * Score a batch of candidate comments for relevance to a theme using Claude.
- * Returns scored comments sorted by relevance (highest first).
- *
+ * Score each comment for how well it represents the theme.
+ * Uses Claude Haiku for speed. Returns scores 1-5 (5 = perfect, 1 = irrelevant).
  * Processes up to 30 candidates in a single API call for efficiency.
  * If API fails, returns all candidates with score=3 (neutral) so the caller
  * can fall back to length-based selection.
@@ -29,7 +36,7 @@ export interface ThemeInfo {
 export async function scoreCommentsForTheme(
   candidates: string[],
   theme: ThemeInfo,
-  apiKey: string,
+  orgId: string,
   maxCandidates = 30,
 ): Promise<ScoredComment[]> {
   // Trim to max candidates (take evenly spaced sample if too many)
@@ -71,45 +78,34 @@ No explanation, no markdown, just the array.`
       maxTokens: 200,
       timeoutMs: 8000,
       messages: [{ role: 'user', content: prompt }],
-      apiKey,
+      usage: { org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' },
     })
 
-    logUsage({ resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
+    logUsage({ org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
-
     const scores: number[] = JSON.parse(clean)
 
     if (!Array.isArray(scores) || scores.length !== pool.length) {
       throw new Error('Score count mismatch')
     }
 
-    return pool
-      .map((text, i) => ({ text, score: Math.max(1, Math.min(5, Math.round(scores[i]))) }))
-      .sort((a, b) => b.score - a.score)
-
-  } catch {
-    // AI unavailable — return all with neutral score, caller falls back to length sort
+    return pool.map((text, i) => ({ text, score: scores[i] || 3 }))
+  } catch (err) {
+    // Fallback: all neutral so caller falls back to length-based selection
     return pool.map(text => ({ text, score: 3 }))
   }
 }
 
 /**
- * Pick the best N comments for a theme from a candidate pool.
- * Uses AI scoring if apiKey is provided, otherwise falls back to length-based.
- *
- * @param candidates - regex-matched comments (already filtered by keyword)
- * @param theme - theme info for scoring context
- * @param count - how many to pick (default 5)
- * @param apiKey - Anthropic API key (if absent, skip AI scoring)
- * @param usedComments - set of already-used comments to skip (dedup)
- * @param maxLen - max length to trim comments to
+ * Pick the best `count` comments for this theme.
+ * Uses AI scoring when orgId is provided, otherwise falls back to length-based.
  */
 export async function pickBestComments(
   candidates: string[],
   theme: ThemeInfo,
   count = 5,
-  apiKey?: string,
+  orgId?: string,
   usedComments?: Set<string>,
   maxLen = 350,
 ): Promise<string[]> {
@@ -123,50 +119,38 @@ export async function pickBestComments(
 
   let picked: string[]
 
-  if (apiKey && pool.length > 0) {
-    // AI-scored selection
-    const scored = await scoreCommentsForTheme(pool, theme, apiKey)
-    // Only keep comments scoring 4+ (good fit or better)
-    // If not enough 4+ scores, take the best available down to score 3
-    const good = scored.filter(s => s.score >= 4)
-    const acceptable = good.length >= count ? good : scored.filter(s => s.score >= 3)
-    const source = acceptable.length >= count ? acceptable : scored
+  if (orgId && pool.length > 0) {
+    try {
+      // AI-scored selection
+      const scored = await scoreCommentsForTheme(pool, theme, orgId)
+      // Only keep comments scoring 4+ (good fit or better)
+      // If not enough 4+ scores, take the best available down to score 3
+      const good = scored.filter(s => s.score >= 4)
+      const acceptable = good.length >= count ? good : scored.filter(s => s.score >= 3)
+      const source = acceptable.length >= count ? acceptable : scored
 
-    picked = source.slice(0, count).map(s => s.text)
+      picked = source.slice(0, count).map(s => s.text)
+    } catch {
+      // AI disabled (mode='off') or transient error: fall through to length-based.
+      const sorted = [...pool].sort((a, b) => b.length - a.length)
+      picked = sorted.slice(0, Math.min(sorted.length, count))
+    }
   } else {
     // Fallback: length-based (original behavior)
     const sorted = [...pool].sort((a, b) => b.length - a.length)
     const top = sorted.slice(0, Math.min(sorted.length, 40))
-    const n = Math.min(count, top.length)
-    const step = top.length / n
-    picked = Array.from({ length: n }, (_, i) => top[Math.floor(i * step)])
+    picked = top.slice(0, count)
   }
 
-  // Trim and register as used
-  const trimmed = picked.map(s => trimToSentence(s, maxLen))
-  if (usedComments) trimmed.forEach(s => usedComments.add(s.slice(0, 120)))
-  return trimmed
-}
-
-/** Trim text to maxLen, cutting at the last sentence boundary if possible */
-function trimToSentence(s: string, max: number): string {
-  if (s.length <= max) return s
-  const cut = s.slice(0, max)
-  const lastSent = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '))
-  if (lastSent > max * 0.5) return cut.slice(0, lastSent + 1)
-  const lastWord = cut.lastIndexOf(' ')
-  return (lastWord > max * 0.5 ? cut.slice(0, lastWord) : cut) + '…'
-}
-
-// ── AI Phrase Extraction for Export Highlighting ──────────────────────────────
-
-export interface HighlightedComment {
-  text: string
-  phrases: string[]  // conceptual phrases to highlight (bold teal in PPTX)
+  // Trim long comments
+  return picked.map(text => {
+    if (text.length <= maxLen) return text
+    return text.slice(0, maxLen).replace(/\s+\S*$/, '') + '…'
+  })
 }
 
 /**
- * Given selected comments and a theme, uses AI to extract the conceptual phrases
+ * For each comment, extract the conceptual phrase(s) — the meaningful clauses
  * that relate to the theme — not just keyword words but the full meaningful phrase.
  *
  * Example: theme "Wait Time", comment "The food was great but we had to wait over 30 minutes"
@@ -177,10 +161,10 @@ export interface HighlightedComment {
 export async function extractHighlightPhrases(
   comments: string[],
   theme: ThemeInfo,
-  apiKey?: string,
+  orgId?: string,
 ): Promise<HighlightedComment[]> {
   if (!comments.length) return []
-  if (!apiKey) {
+  if (!orgId) {
     // Fallback: return keywords as phrases
     return comments.map(text => ({ text, phrases: theme.keywords }))
   }
@@ -216,10 +200,10 @@ One inner array per comment, in order. No markdown, no explanation, just the JSO
       maxTokens: 800,
       timeoutMs: 10000,
       messages: [{ role: 'user', content: prompt }],
-      apiKey,
+      usage: { org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' },
     })
 
-    logUsage({ resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
+    logUsage({ org_id: orgId, resource_type: 'dataset', event_type: 'score_comments' }, result.usage)
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     const parsed: string[][] = JSON.parse(clean)
@@ -230,10 +214,10 @@ One inner array per comment, in order. No markdown, no explanation, just the JSO
 
     return comments.map((text, i) => ({
       text,
-      phrases: Array.isArray(parsed[i]) ? parsed[i].filter((p: any) => typeof p === 'string' && p.length > 0) : theme.keywords,
+      phrases: (parsed[i] || []).filter(p => typeof p === 'string' && p.length > 2),
     }))
   } catch {
-    // Fallback to keywords
+    // AI disabled or failed: fall back to keywords as phrases
     return comments.map(text => ({ text, phrases: theme.keywords }))
   }
 }

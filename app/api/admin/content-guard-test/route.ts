@@ -25,7 +25,8 @@ export async function POST(req: NextRequest) {
   const batch = texts.slice(0, 500) // cap at 500
 
   // Optionally call OpenAI moderation
-  var moderationScores = useModeration ? await moderateTexts(batch) : null
+  // Admin tester: no tenant context — always uses platform key.
+  var moderationScores = useModeration ? await moderateTexts(batch, undefined) : null
 
   var results = batch.map(function(text, i) {
     var audit = auditContent(text)

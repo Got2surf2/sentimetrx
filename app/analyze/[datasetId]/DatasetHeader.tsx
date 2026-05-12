@@ -12,6 +12,7 @@ import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
+import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
 interface DatasetMeta {
   id: string; name: string; source: 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'; visibility: 'private' | 'public'
@@ -52,6 +53,8 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var [showExport,  setShowExport]  = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
   var [showSearch,  setShowSearch]  = useState(false)
+  var orgAi = useOrgAiMode()
+  var aiDisabledByOrg = !orgAi.loading && orgAi.mode === 'off'
 
   useEffect(function() {
     try {
@@ -198,8 +201,8 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             <span>{'\u25BD'}</span><span className="ana-lbl">Filters{filterCount > 0 ? ' (' + filterCount + ')' : ''}</span>
           </button>
 
-          {/* Ask Ana */}
-          {aiEnabled && onAskAna && (
+          {/* Ask Ana — hidden when the org has disabled AI entirely. */}
+          {aiEnabled && !aiDisabledByOrg && onAskAna && (
             <button onClick={onAskAna} className="ana-tab ana-c6" title="Ask Ana"
               style={{
                 height: '100%', display: 'flex', alignItems: 'center', gap: 5,
@@ -313,32 +316,44 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               Anthropic key by default; usage is logged per-org in
               usage_log. The tiny gear opens a prompt for a custom
               key that overrides the platform one for this browser
-              (used when an operator wants to bring their own quota). */}
+              (used when an operator wants to bring their own quota).
+              When the org admin has set AI mode='off', the user-level
+              toggle is replaced with a static \u201CDisabled by admin\u201D pill. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', flexShrink: 0 }}>
-            <button onClick={function() {
-              var next = !aiEnabled; setAiEnabled(next)
-              try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
-            }}
-              title={apiKey ? 'Using your custom Anthropic key' : 'Using the platform Anthropic key'}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.2)', border: '1px solid ' + (aiEnabled ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)'), borderRadius: 20, color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? '#4ade80' : '#94a3b8', display: 'inline-block' }} />
-              {aiEnabled ? 'AI on' : 'AI off'}
-            </button>
-            <button onClick={function() {
-              var key = prompt(apiKey
-                ? 'Custom Anthropic key (leave blank to use platform key):'
-                : 'Optional: paste your own Anthropic key to override the platform key. Leave blank to keep using the platform key.', apiKey || '')
-              if (key === null) return
-              setApiKey(key)
-              try {
-                if (key) localStorage.setItem('sentimetrx_tm_apikey', key)
-                else localStorage.removeItem('sentimetrx_tm_apikey')
-              } catch {}
-            }}
-              title={apiKey ? 'Custom key set \u2014 click to edit or clear' : 'Optional: use your own Anthropic key'}
-              style={{ padding: '4px 9px', fontSize: 11, fontWeight: 600, background: apiKey ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 20, color: 'rgba(255,255,255,.8)', cursor: 'pointer' }}>
-              {apiKey ? '\uD83D\uDD11' : '\u2699'}
-            </button>
+            {aiDisabledByOrg ? (
+              <span title="AI is disabled for your organization by an admin. Contact your administrator to enable AI features."
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: 'rgba(0,0,0,.25)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 20, color: 'rgba(255,255,255,.7)', whiteSpace: 'nowrap', cursor: 'help' }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                AI disabled by admin
+              </span>
+            ) : (
+              <>
+                <button onClick={function() {
+                  var next = !aiEnabled; setAiEnabled(next)
+                  try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
+                }}
+                  title={apiKey ? 'Using your custom Anthropic key' : 'Using the platform Anthropic key'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.2)', border: '1px solid ' + (aiEnabled ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)'), borderRadius: 20, color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? '#4ade80' : '#94a3b8', display: 'inline-block' }} />
+                  {aiEnabled ? 'AI on' : 'AI off'}
+                </button>
+                <button onClick={function() {
+                  var key = prompt(apiKey
+                    ? 'Custom Anthropic key (leave blank to use platform key):'
+                    : 'Optional: paste your own Anthropic key to override the platform key. Leave blank to keep using the platform key.', apiKey || '')
+                  if (key === null) return
+                  setApiKey(key)
+                  try {
+                    if (key) localStorage.setItem('sentimetrx_tm_apikey', key)
+                    else localStorage.removeItem('sentimetrx_tm_apikey')
+                  } catch {}
+                }}
+                  title={apiKey ? 'Custom key set \u2014 click to edit or clear' : 'Optional: use your own Anthropic key'}
+                  style={{ padding: '4px 9px', fontSize: 11, fontWeight: 600, background: apiKey ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 20, color: 'rgba(255,255,255,.8)', cursor: 'pointer' }}>
+                  {apiKey ? '\uD83D\uDD11' : '\u2699'}
+                </button>
+              </>
+            )}
           </div>
         </div>
 

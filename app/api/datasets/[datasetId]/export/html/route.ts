@@ -55,7 +55,7 @@ function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'_'
 
 // ── AI narratives (shared logic with pptx route) ──────────────────────────────
 async function generateNarratives(
-  apiKey: string, datasetName: string, totalRows: number,
+  orgId: string, datasetName: string, totalRows: number,
   audience: string, fields: SelectedField[], instructions?: string
 ): Promise<Narratives> {
   const audienceNote: Record<string, string> = {
@@ -106,9 +106,9 @@ ${fields.map(f => {
     maxTokens: 3500,
     timeoutMs: 45000,
     messages: [{ role: 'user', content: prompt }],
-    apiKey,
+    usage: { org_id: orgId, resource_type: 'dataset', event_type: 'html_export' },
   })
-  logUsage({ resource_type: 'dataset', event_type: 'html_export' }, result.usage)
+  logUsage({ org_id: orgId, resource_type: 'dataset', event_type: 'html_export' }, result.usage)
   const raw = result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'')
   try { return JSON.parse(raw) }
   catch { return { reportTitle: '', executiveSummary: [], keyTakeaways: [], fieldInsights: Object.fromEntries(fields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])) } }
@@ -400,7 +400,7 @@ function buildOpenEndedSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, 
 async function buildThemeDetailSlides(
   ctx: SlideCtx, themes: any[], fieldLabel: string,
   allRows: Record<string,any>[], rowKeyMap: Record<string,string>, fieldKeys: string[],
-  apiKey?: string,
+  orgId?: string,
 ): Promise<string[]> {
   if (!themes?.length) return []
 
@@ -440,7 +440,7 @@ async function buildThemeDetailSlides(
       pool,
       { name: t.name || '', description: t.description || '', keywords: t.keywords || [], sentiment: t.sentiment || '' },
       5,
-      apiKey || undefined,
+      orgId,
       undefined,
       350,
     )
@@ -822,7 +822,7 @@ export async function POST(req: Request, { params }: Params) {
   const service = createServiceRoleClient()
 
   const { data: dataset } = await service
-    .from('datasets').select('id, name, row_count, study_id, studies(id, name, config)').eq('id', params.datasetId).single()
+    .from('datasets').select('id, name, row_count, study_id, org_id, studies(id, name, config)').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const { data: stateRow } = await service
@@ -1010,9 +1010,8 @@ export async function POST(req: Request, { params }: Params) {
     reportTitle: '', executiveSummary: [], keyTakeaways: [],
     fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '' }])),
   }
-  const apiKey = skipAI ? undefined : process.env.ANTHROPIC_API_KEY
-  if (apiKey) {
-    try { narratives = await generateNarratives(apiKey, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
+  if (!skipAI) {
+    try { narratives = await generateNarratives((dataset as any).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error('[export/html] AI error:', e) }
   }
 
@@ -1075,7 +1074,7 @@ export async function POST(req: Request, { params }: Params) {
     // After each open-ended slide, add per-theme detail slides with field-specific counts
     if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
       const fieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes
-      const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], skipAI ? undefined : (apiKey || undefined))
+      const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], skipAI ? undefined : (dataset as any).org_id)
       themeSlides.forEach(ts => slides.push(ts))
     }
   }

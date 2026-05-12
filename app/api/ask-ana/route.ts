@@ -296,7 +296,7 @@ For collections, also recommend a distribution strategy:
 Ask the user 1-2 brief questions about what they're looking to learn, then make your recommendation. Be conversational and concise.`
 
     const tools = [...ANA_TOOLS, RECOMMEND_SAMPLING_TOOL]
-    return streamAnthropicResponse(metaPrompt, question, conversationHistory, tools)
+    return streamAnthropicResponse(metaPrompt, question, conversationHistory, tools, userData.org_id)
   }
 
   // ── Normal mode: fetch data rows with sampling ──────────────────────────
@@ -468,7 +468,7 @@ Keep your responses concise but thorough. Use markdown formatting for readabilit
 Here is the dataset:
 ${dataContext}`
 
-  return streamAnthropicResponse(systemPrompt, question, conversationHistory, ANA_TOOLS)
+  return streamAnthropicResponse(systemPrompt, question, conversationHistory, ANA_TOOLS, userData.org_id)
 }
 
 // ── Fetch rows from a single dataset, using RPC sampling for large ones ───
@@ -515,9 +515,21 @@ async function streamAnthropicResponse(
   systemPrompt: string,
   question: string,
   conversationHistory: Message[] | undefined,
-  tools: any[]
+  tools: any[],
+  orgId: string,
 ): Promise<Response> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  // Per-org AI gate: 'off' refuses; 'byo' + anthropic uses customer key;
+  // 'byo' + openai falls back to platform env (we eat the cost, same rule
+  // as embeddings — customer chose BYOK+OpenAI knowing the streaming
+  // endpoint is Anthropic-only). 'platform' uses env.
+  const { resolveOrgAiConfig } = await import('@/lib/aiKey')
+  const cfg = await resolveOrgAiConfig(orgId)
+  if (cfg.mode === 'off') {
+    return NextResponse.json({ error: 'AI is disabled for this organization.' }, { status: 403 })
+  }
+  const apiKey = cfg.mode === 'byo' && cfg.provider === 'anthropic' && cfg.key
+    ? cfg.key
+    : process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
   }

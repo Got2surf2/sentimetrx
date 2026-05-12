@@ -1,15 +1,37 @@
 import 'server-only'
 
 // lib/embeddings.ts
-// OpenAI text-embedding-3-small wrapper for vector search
-// Falls back gracefully when no OPENAI_API_KEY is set
+// OpenAI text-embedding-3-small wrapper for vector search.
+//
+// Per-org AI mode is enforced here:
+//   off    → returns null/null-array (caller already handles "no embedding available")
+//   byo + openai → uses the customer's OpenAI key
+//   byo + anthropic → falls back to platform OPENAI_API_KEY (Anthropic has
+//                     no equivalent endpoint; we eat the cost so semantic
+//                     search keeps working)
+//   platform → platform OPENAI_API_KEY
+//
+// orgId is intentionally REQUIRED (typed string | undefined): pass `undefined`
+// only from admin-only / platform-only paths that genuinely have no tenant.
+
+import { resolveOrgAiConfig } from '@/lib/aiKey'
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIMS = 1536
 
-/** Generate embedding for a single text string. Returns null if no API key. */
-export async function generateEmbedding(text: string): Promise<number[] | null> {
-  const key = process.env.OPENAI_API_KEY
+async function resolveOpenAIKey(orgId: string | undefined): Promise<string | null> {
+  if (orgId) {
+    const cfg = await resolveOrgAiConfig(orgId)
+    if (cfg.mode === 'off') return null
+    if (cfg.mode === 'byo' && cfg.provider === 'openai' && cfg.key) return cfg.key
+    // mode='byo' + provider='anthropic': platform absorbs OpenAI cost.
+  }
+  return process.env.OPENAI_API_KEY || null
+}
+
+/** Generate embedding for a single text string. Returns null if AI disabled or no key. */
+export async function generateEmbedding(text: string, orgId: string | undefined): Promise<number[] | null> {
+  const key = await resolveOpenAIKey(orgId)
   if (!key) return null
 
   const res = await fetch('https://api.openai.com/v1/embeddings', {
@@ -28,8 +50,8 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
 }
 
 /** Generate embeddings for multiple texts in one batch call. Returns array aligned with input (null for failures). */
-export async function generateEmbeddings(texts: string[]): Promise<(number[] | null)[]> {
-  const key = process.env.OPENAI_API_KEY
+export async function generateEmbeddings(texts: string[], orgId: string | undefined): Promise<(number[] | null)[]> {
+  const key = await resolveOpenAIKey(orgId)
   if (!key) return texts.map(function() { return null })
   if (texts.length === 0) return []
 

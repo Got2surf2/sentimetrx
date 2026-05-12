@@ -255,17 +255,27 @@ function parseOpenAIResponse(data: any, model: string, tier: ModelTier): AIRespo
 // ── Main export ──────────────────────────────────────────────────────────────
 
 export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
-  // BYO-key resolution: if the caller didn't supply an explicit apiKey
-  // but the usage context names an org_id, look up that org's
-  // ai_key_mode/ai_api_key. When mode='byo' and a key is set, route
-  // this call through the customer's own Anthropic account. Otherwise
-  // resolveProvider falls back to ANTHROPIC_API_KEY env (platform).
-  // Cached per-org for 60s in lib/aiKey to avoid hot-path DB hits.
+  // Per-org AI gate. Three modes:
+  //   off       → throw AIDisabledError (no outbound vendor call, full stop)
+  //   byo       → force providerConfig to the customer's provider + key,
+  //               overriding any explicit opts.apiKey the caller passed
+  //   platform  → fall through to env-key resolution (current default)
+  // The org check runs unconditionally when usage.org_id is set, even if
+  // the caller passed an explicit apiKey — otherwise export routes that
+  // hardcode ANTHROPIC_API_KEY would bypass both the off gate AND the
+  // BYOK redirect. Cached per-org for 60s in lib/aiKey.
   let effective = opts
-  if (!opts.apiKey && opts.usage?.org_id) {
-    const { resolveOrgAiKey } = await import('@/lib/aiKey')
-    const byo = await resolveOrgAiKey(opts.usage.org_id)
-    if (byo) effective = { ...opts, apiKey: byo }
+  if (opts.usage?.org_id) {
+    const { resolveOrgAiConfig, AIDisabledError } = await import('@/lib/aiKey')
+    const cfg = await resolveOrgAiConfig(opts.usage.org_id)
+    if (cfg.mode === 'off') throw new AIDisabledError(opts.usage.org_id)
+    if (cfg.mode === 'byo' && cfg.key) {
+      effective = {
+        ...opts,
+        apiKey: undefined,
+        providerConfig: { provider: cfg.provider, apiKey: cfg.key },
+      }
+    }
   }
   const resolved = resolveProvider(effective)
 

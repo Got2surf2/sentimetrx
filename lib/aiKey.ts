@@ -1,23 +1,42 @@
 import 'server-only'
 
 // lib/aiKey.ts
-// Per-org Anthropic key resolver. Used by callAI() — when a request
-// carries a usage.org_id and the caller didn't pass an explicit apiKey,
-// we look up the org's ai_key_mode + ai_api_key and return the BYO key
-// if the org is configured that way. Otherwise callAI falls back to
-// ANTHROPIC_API_KEY env (platform absorbs the cost).
+// Per-org AI configuration resolver: mode ('off' | 'platform' | 'byo'),
+// provider ('anthropic' | 'openai'), and the BYOK secret. Cached in-
+// memory per process for 60s; admin writes call invalidateOrgAiKey()
+// to flush.
 //
-// Cached in-memory per process for 60s so a chat conversation doesn't
-// hit Supabase on every turn. Invalidated when the admin UI changes
-// the key via /api/admin/orgs/[id]/ai-key (it calls invalidateOrgAiKey).
+// AIDisabledError is the contract for the off-mode guarantee — every
+// outbound AI path imports assertOrgAiEnabled and treats this error
+// as a hard refusal (return null for embeddings/moderation; 403 for
+// route handlers).
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-const TTL_MS = 60_000
-const cache = new Map<string, { value: string | undefined; expiresAt: number }>()
+export type AiMode = 'off' | 'platform' | 'byo'
+export type AiProvider = 'anthropic' | 'openai'
 
-export async function resolveOrgAiKey(orgId: string): Promise<string | undefined> {
-  if (!orgId) return undefined
+export interface OrgAiConfig {
+  mode:     AiMode
+  provider: AiProvider          // BYOK provider; for platform/off this is informational only
+  key:      string | undefined  // BYOK secret; undefined unless mode='byo' AND a key is set
+}
+
+export class AIDisabledError extends Error {
+  code = 'AI_DISABLED' as const
+  constructor(orgId: string) {
+    super(`AI is disabled for org ${orgId}`)
+    this.name = 'AIDisabledError'
+  }
+}
+
+const TTL_MS = 60_000
+const cache = new Map<string, { value: OrgAiConfig; expiresAt: number }>()
+
+const DEFAULT_CONFIG: OrgAiConfig = { mode: 'platform', provider: 'anthropic', key: undefined }
+
+export async function resolveOrgAiConfig(orgId: string): Promise<OrgAiConfig> {
+  if (!orgId) return DEFAULT_CONFIG
   const now = Date.now()
   const hit = cache.get(orgId)
   if (hit && hit.expiresAt > now) return hit.value
@@ -26,19 +45,27 @@ export async function resolveOrgAiKey(orgId: string): Promise<string | undefined
     const service = createServiceRoleClient()
     const { data } = await service
       .from('organizations')
-      .select('ai_key_mode, ai_api_key')
+      .select('ai_key_mode, ai_provider, ai_api_key')
       .eq('id', orgId)
       .single()
-    const value = (data as any)?.ai_key_mode === 'byo' && (data as any)?.ai_api_key
-      ? ((data as any).ai_api_key as string)
-      : undefined
+    const row = data as any
+    const mode: AiMode = (row?.ai_key_mode as AiMode) || 'platform'
+    const provider: AiProvider = (row?.ai_provider as AiProvider) || 'anthropic'
+    const key: string | undefined = mode === 'byo' && row?.ai_api_key ? (row.ai_api_key as string) : undefined
+    const value: OrgAiConfig = { mode, provider, key }
     cache.set(orgId, { value, expiresAt: now + TTL_MS })
     return value
   } catch {
-    // On lookup failure: don't error the AI call, just fall back to env.
-    cache.set(orgId, { value: undefined, expiresAt: now + TTL_MS })
-    return undefined
+    cache.set(orgId, { value: DEFAULT_CONFIG, expiresAt: now + TTL_MS })
+    return DEFAULT_CONFIG
   }
+}
+
+/** Throws AIDisabledError when the org's mode is 'off'. No-op otherwise. */
+export async function assertOrgAiEnabled(orgId: string | undefined): Promise<void> {
+  if (!orgId) return
+  const cfg = await resolveOrgAiConfig(orgId)
+  if (cfg.mode === 'off') throw new AIDisabledError(orgId)
 }
 
 export function invalidateOrgAiKey(orgId: string): void {
@@ -46,26 +73,37 @@ export function invalidateOrgAiKey(orgId: string): void {
 }
 
 export interface OrgAiKeyStatus {
-  mode:      'platform' | 'byo'
-  isSet:     boolean
-  setAt:     string | null
-  setBy:     string | null
+  mode:     AiMode
+  provider: AiProvider
+  isSet:    boolean
+  setAt:    string | null
+  setBy:    string | null
 }
 
-/** Admin-only — returns metadata about the org's AI key WITHOUT the secret. */
+/** Admin-only — returns metadata about the org's AI configuration WITHOUT the secret. */
 export async function getOrgAiKeyStatus(orgId: string): Promise<OrgAiKeyStatus | null> {
   if (!orgId) return null
   const service = createServiceRoleClient()
   const { data } = await service
     .from('organizations')
-    .select('ai_key_mode, ai_api_key, ai_api_key_set_at, ai_api_key_set_by')
+    .select('ai_key_mode, ai_provider, ai_api_key, ai_api_key_set_at, ai_api_key_set_by')
     .eq('id', orgId)
     .single()
   if (!data) return null
+  const row = data as any
   return {
-    mode:  ((data as any).ai_key_mode as 'platform' | 'byo') || 'platform',
-    isSet: !!(data as any).ai_api_key,
-    setAt: (data as any).ai_api_key_set_at || null,
-    setBy: (data as any).ai_api_key_set_by || null,
+    mode:     (row.ai_key_mode as AiMode) || 'platform',
+    provider: (row.ai_provider as AiProvider) || 'anthropic',
+    isSet:    !!row.ai_api_key,
+    setAt:    row.ai_api_key_set_at || null,
+    setBy:    row.ai_api_key_set_by || null,
   }
+}
+
+// ── Back-compat shim ─────────────────────────────────────────────────────────
+// Old call sites (callAI) used resolveOrgAiKey(orgId) → string | undefined.
+// Kept until those sites migrate to resolveOrgAiConfig.
+export async function resolveOrgAiKey(orgId: string): Promise<string | undefined> {
+  const cfg = await resolveOrgAiConfig(orgId)
+  return cfg.key
 }

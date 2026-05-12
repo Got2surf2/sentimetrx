@@ -396,7 +396,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   } else if (userQuery) {
     try {
       // Generate query embedding for semantic search
-      const queryEmbedding = await generateEmbedding(userQuery)
+      const queryEmbedding = await generateEmbedding(userQuery, bot.org_id)
 
       const rpcParams: any = { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 }
       let rpcName = 'search_knowledge_chunks'
