@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { serializeFilters, filterCount } from '@/lib/filterUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
+import GhostTextarea from '@/components/ui/GhostTextarea'
 import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
 
 const HERMES = '#e8622a'
@@ -578,13 +579,19 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                     <div style={{ fontSize: 10, fontWeight: 700, color: S.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>
                       Your Instructions
                     </div>
-                    <textarea
+                    <GhostTextarea
                       value={instructions}
-                      onChange={function(e) { setInstructions(e.target.value) }}
+                      onChange={setInstructions}
+                      surface="export-instructions"
+                      context={{
+                        datasetName,
+                        datasetSource,
+                        audience,
+                        themes: themes.slice(0, 5).map(function(t) { return { name: t.name } }),
+                      }}
+                      disabled={!aiEnabled}
                       placeholder={'Describe exactly what you want in the deck.\n\nExamples:\n• "Focus on satisfaction by hotel brand — highlight the gap between top and bottom performers"\n• "Show NPS breakdown, pull top 3 themes from open-ended feedback, and add a slide on demographics"\n• "Executive summary only — 3 slides max, no charts, just the key numbers"'}
                       style={{ width: '100%', minHeight: 160, padding: '12px 14px', fontSize: 12, fontFamily: 'inherit', color: S.text, background: S.bg, border: '1.5px solid ' + S.border, borderRadius: 8, resize: 'vertical', lineHeight: 1.6, boxSizing: 'border-box', outline: 'none' }}
-                      onFocus={function(e) { e.target.style.borderColor = HERMES }}
-                      onBlur={function(e) { e.target.style.borderColor = S.border }}
                     />
                     <div style={{ fontSize: 10, color: S.textFaint, marginTop: 4 }}>
                       AI will use your instructions to shape the narrative, slide order, and what to emphasize.
