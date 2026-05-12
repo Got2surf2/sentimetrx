@@ -2,6 +2,14 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-12 (Tue, early) — Hard-delete an org with robust confirmation
+
+- **New `DELETE /api/admin/orgs/[id]`.** Defense layers, in order: (1) `requireAdmin()`, (2) refuses if `is_admin_org` (platform org can't be hard-deleted), (3) refuses unless org is already suspended (`plan='suspended'` OR `status='suspended'`), (4) body must include `confirm_name` matching the org's name exactly (case-insensitive), (5) writes an `admin_action_log` row BEFORE the destructive step so we still have evidence if FK cascade fails.
+- **New `GET /api/admin/orgs/[id]`.** Returns the org plus counts of every org-scoped table (`users`, `studies`, `datasets`, `bots`, `campaigns`, `townhall_sessions`, `collections`, `review_sources`, `reddit_sources`, `social_connections`, `invites`, `org_transfers`) for the modal preview.
+- **UI: `AdminClientDetail` delete modal.** Red "Delete Org…" button only shows once the org is suspended. Clicking opens a modal that fetches the preview, shows the count of each thing about to be erased, and requires the operator to type the org name. The Delete-forever button stays disabled until the typed string matches; on success, navigates back to `/admin`.
+- **Why type-the-name and not just two clicks:** muscle memory clicks through "Are you sure?" prompts; typing the org name forces the operator to read the screen and commit to a specific target. Same pattern GitHub uses for repo delete.
+- The destructive `DELETE FROM organizations` is expected to clean children via FK CASCADE (in place from earlier migrations); if any FK is RESTRICT the surfaced DB error tells us where to fix.
+
 ## 2026-05-11 (Mon, late, admin-bypass audit) — Security review of the Phase E escape valve + fixes
 
 - **Audit dispatched** (Explore agent, scope: every read AND write path for `is_admin_org`, the SQL function `is_platform_admin()`, every new route the bypass was added to, plus adjacent gates). Findings:

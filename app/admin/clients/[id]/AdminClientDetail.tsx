@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import OrgFeatureToggles from '@/components/analyze/OrgFeatureToggles'
@@ -40,6 +41,15 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoMsg,       setLogoMsg]       = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Delete-org modal — robust confirmation flow. Operator must type the
+  // org name exactly. Preview counts are fetched on open so they see
+  // what's about to vanish.
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletePreview,   setDeletePreview]   = useState<Record<string, number> | null>(null)
+  const [deleteTyped,     setDeleteTyped]     = useState('')
+  const [deleting,        setDeleting]        = useState(false)
+  const router = useRouter()
 
   const statusColor = (s: string) => {
     if (s === 'active')  return 'bg-green-500/15 text-green-400'
@@ -126,6 +136,41 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
       setError('Failed to update organization plan.')
     } finally {
       setTogglingPlan(false)
+    }
+  }
+
+  // Open the delete modal — fetch the preview (row counts) so the user
+  // sees what's about to be erased before they type the org name.
+  const openDeleteModal = async () => {
+    setShowDeleteModal(true)
+    setDeleteTyped('')
+    setDeletePreview(null)
+    try {
+      const res = await fetch('/api/admin/orgs/' + org.id)
+      if (res.ok) {
+        const data = await res.json()
+        setDeletePreview(data.counts || {})
+      }
+    } catch { /* preview is informational, ignore */ }
+  }
+
+  const handleDeleteOrg = async () => {
+    if (deleteTyped.trim().toLowerCase() !== org.name.trim().toLowerCase()) return
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/orgs/' + org.id, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm_name: deleteTyped }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Delete failed')
+      // Org is gone — back to the admin client list.
+      router.push('/admin')
+    } catch (e: any) {
+      setError(e.message || 'Delete failed')
+      setDeleting(false)
     }
   }
 
@@ -239,13 +284,24 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
               <div className="text-gray-400 text-sm">slug: {org.slug}</div>
             </div>
             {!org.is_admin_org && (
-              <button
-                onClick={handleTogglePlan}
-                disabled={togglingPlan}
-                className={'text-sm px-4 py-2 rounded-xl transition-all disabled:opacity-50 ' + (orgPlan === 'suspended' ? 'bg-green-500/15 hover:bg-green-500/25 text-green-400' : 'bg-red-500/15 hover:bg-red-500/25 text-red-400')}
-              >
-                {togglingPlan ? '...' : orgPlan === 'suspended' ? 'Reactivate Org' : 'Suspend Org'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleTogglePlan}
+                  disabled={togglingPlan}
+                  className={'text-sm px-4 py-2 rounded-xl transition-all disabled:opacity-50 ' + (orgPlan === 'suspended' ? 'bg-green-500/15 hover:bg-green-500/25 text-green-400' : 'bg-red-500/15 hover:bg-red-500/25 text-red-400')}
+                >
+                  {togglingPlan ? '...' : orgPlan === 'suspended' ? 'Reactivate Org' : 'Suspend Org'}
+                </button>
+                {orgPlan === 'suspended' && (
+                  <button
+                    onClick={openDeleteModal}
+                    className="text-sm px-4 py-2 rounded-xl transition-all bg-red-600 text-white hover:bg-red-700"
+                    title="Delete org permanently (already suspended, ready for hard delete)"
+                  >
+                    Delete Org…
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -435,6 +491,82 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
           />
         </Section>
       </main>
+
+      {/* Delete-org modal — robust confirmation flow.
+          - Opens after the operator has already suspended the org.
+          - Shows a preview of what will be deleted.
+          - Delete button stays disabled until the typed name matches
+            the org's name exactly (case-insensitive). */}
+      {showDeleteModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => { if (!deleting) setShowDeleteModal(false) }}
+        >
+          <div
+            style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 520, padding: 24, boxShadow: '0 24px 64px rgba(0,0,0,.32)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>Permanently delete {org.name}?</h2>
+            <p style={{ fontSize: 13, color: '#374151', marginBottom: 16 }}>
+              This <strong>cannot be undone.</strong> Every member, dataset, study, agent, campaign, and PulseIQ session in this org will be erased.
+            </p>
+
+            {deletePreview && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>What will be deleted:</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px 16px', fontSize: 12, color: '#374151' }}>
+                  {Object.entries(deletePreview)
+                    .filter(([, n]) => (n as number) > 0)
+                    .map(([table, n]) => (
+                      <div key={table}>
+                        <span style={{ fontWeight: 700 }}>{n}</span>{' '}
+                        <span style={{ color: '#6b7280' }}>{table.replace(/_/g, ' ')}</span>
+                      </div>
+                    ))}
+                  {Object.values(deletePreview).every(n => n === 0) && (
+                    <div style={{ color: '#6b7280' }}>The org has no data attached — just the org row.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <label style={{ display: 'block', fontSize: 12, color: '#374151', marginBottom: 6 }}>
+              Type the org's name to confirm: <strong style={{ color: '#7f1d1d' }}>{org.name}</strong>
+            </label>
+            <input
+              type="text"
+              autoFocus
+              value={deleteTyped}
+              onChange={(e) => setDeleteTyped(e.target.value)}
+              placeholder={org.name}
+              disabled={deleting}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #e5e7eb', fontSize: 14, marginBottom: 16, outline: 'none' }}
+            />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                style={{ padding: '8px 16px', borderRadius: 10, background: '#f3f4f6', color: '#374151', fontSize: 13, fontWeight: 600, border: 'none', cursor: deleting ? 'wait' : 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteOrg}
+                disabled={deleting || deleteTyped.trim().toLowerCase() !== org.name.trim().toLowerCase()}
+                style={{
+                  padding: '8px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, border: 'none',
+                  background: (!deleting && deleteTyped.trim().toLowerCase() === org.name.trim().toLowerCase()) ? '#dc2626' : '#fecaca',
+                  color: 'white',
+                  cursor: (!deleting && deleteTyped.trim().toLowerCase() === org.name.trim().toLowerCase()) ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {deleting ? 'Deleting…' : 'Delete forever'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
