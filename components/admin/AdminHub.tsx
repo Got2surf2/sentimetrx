@@ -32,6 +32,7 @@ const CARDS: Card[] = [
   // Operations
   { category: 'operations', icon: '🔧', title: 'Admin Panel',      description: 'Manage client organizations, plans, and platform-wide settings.', href: '/admin' },
   { category: 'operations', icon: '📥', title: 'Download Monitor', description: 'Active syncs, errors, frequencies across Reddit, Google Reviews, Substack, Regulations, and uploads.', href: '/admin/downloads' },
+  { category: 'operations', icon: '🐛', title: 'Sentry Digest',    description: 'Unresolved production errors with one-click triage.', href: '/admin/sentry' },
   { category: 'operations', icon: '💰', title: 'AI Usage',         description: 'Token usage and cost tracking by org and model.', href: '/admin/usage' },
   { category: 'operations', icon: '🧮', title: 'Cost Estimator',   description: 'Project AI costs for different usage scenarios.', href: '/admin/estimator' },
 
