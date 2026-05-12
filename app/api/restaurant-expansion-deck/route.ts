@@ -610,6 +610,123 @@ That's the next slide.`
   )
 }
 
+// ── 9.5 Business benefit: analyst time ────────────────────────────────────
+function slideAnalystsDoInsights(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'Your analysts do insights. Not data prep.')
+  addFooter(s, pg)
+
+  // Three before/after rows
+  const rows = [
+    { before: 'Coding 1,000 verbatims by hand',                 after: 'AI clarifier captures the answer at the table' },
+    { before: 'Excel cross-tab + dedup marathon',               after: 'Ana auto-builds the cuts and surfaces the gaps' },
+    { before: 'Two-week deck assembly from blank slides',       after: 'Generated deck in hours — analyst edits, not authors' },
+  ]
+  const rowH = 1.1
+  const startY = 1.55
+  rows.forEach((r, i) => {
+    const y = startY + i * (rowH + 0.18)
+    // BEFORE chip — drab grey
+    s.addShape('rect', { x: 0.5, y, w: 5.6, h: rowH, fill: { color: '6B7280' }, rectRadius: 0.1 })
+    s.addText('BEFORE', { x: 0.7, y: y + 0.12, w: 1.2, h: 0.3, fontFace: 'Arial', fontSize: 10, color: DN.white, bold: true, charSpacing: 3 })
+    s.addText(r.before, { x: 0.7, y: y + 0.42, w: 5.2, h: rowH - 0.52, fontFace: 'Arial', fontSize: 14, color: DN.white, valign: 'middle', autoFit: true })
+
+    // Arrow
+    s.addText('→', { x: 6.2, y, w: 0.95, h: rowH, fontFace: 'Arial', fontSize: 36, color: DN.gold, bold: true, align: 'center', valign: 'middle' })
+
+    // AFTER chip — branded teal
+    s.addShape('rect', { x: 7.2, y, w: 5.6, h: rowH, fill: { color: DN.teal }, rectRadius: 0.1 })
+    s.addText('AFTER', { x: 7.4, y: y + 0.12, w: 1.2, h: 0.3, fontFace: 'Arial', fontSize: 10, color: DN.gold, bold: true, charSpacing: 3 })
+    s.addText(r.after, { x: 7.4, y: y + 0.42, w: 5.2, h: rowH - 0.52, fontFace: 'Arial', fontSize: 14, color: DN.white, bold: true, valign: 'middle', autoFit: true })
+  })
+
+  // Bottom strap
+  s.addText('Same headcount. Different output.', {
+    x: 0.5, y: 6.45, w: 12.3, h: 0.5,
+    fontFace: 'Arial', fontSize: 22, color: DN.navy, bold: true, italic: true, align: 'center',
+  })
+
+  s.addNotes(
+`The business case in one slide. The spend on senior CX / research analysts doesn't change — what those people DO changes.
+
+WALK THE THREE ROWS:
+
+CODING 1,000 VERBATIMS: traditional process — junior analyst tags every open-end by hand against a taxonomy that gets refined over two weeks. With Sentimetrx, the AI clarifier already pulled the structured signal at the table when the guest answered. No backlog of "it was fine" responses to mine.
+
+EXCEL CROSS-TAB MARATHON: every senior analyst has spent a Friday building pivot after pivot looking for the segment that matters. Ana builds them all — distributions, NPS by segment, theme by location, sentiment by day-of-week — automatically. Analyst reviews and picks the cuts that matter.
+
+DECK ASSEMBLY: the worst part. Two weeks of pasting charts into PowerPoint and writing first-draft copy. Generated deck arrives ready to edit. Analyst's job is sharpening the narrative, not authoring it from blank.
+
+THE BUSINESS CASE: same headcount, same payroll. But the time those people spend goes from janitorial — fetching, sorting, cleaning data — to strategic: figuring out WHY the data says what it says and what your team should do about it.
+
+That's the upgrade. The cost doesn't move. The output multiplies.`
+  )
+}
+
+// ── 9.6 Business benefit: AI at the core ──────────────────────────────────
+function slideAIAtTheCore(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'AI at the core unlocks shared intelligence.')
+  addFooter(s, pg)
+
+  const cards = [
+    {
+      tag: '1 · ONE THEME MODEL',
+      title: 'Every source speaks the same vocabulary.',
+      body: 'Sarina surveys · Google Reviews · social · CRM tickets · file uploads all run through one LLM. "Long wait" means the same thing everywhere.',
+      color: DN.sarinaBlue,
+    },
+    {
+      tag: '2 · CROSS-SOURCE PATTERNS',
+      title: 'A signal in one channel cross-references the others.',
+      body: 'A "long wait" spike in Sarina at Location X immediately cross-references Google Reviews at the same location. You see the pattern, not the channel.',
+      color: DN.teal,
+    },
+    {
+      tag: '3 · AMBIGUITY RESOLVED UPSTREAM',
+      title: 'The real answer lands at capture time.',
+      body: '"It was fine" gets the follow-up at the table — not flagged in a report three weeks later. The cleanup work happens before the data ever reaches your team.',
+      color: DN.hermesOrange,
+    },
+  ]
+  const cardW = 4.0
+  const startX = 0.5
+  const gap = 0.18
+  const cardY = 1.55
+  const cardH = 4.6
+  cards.forEach((c, i) => {
+    const x = startX + i * (cardW + gap)
+    s.addShape('rect', { x, y: cardY, w: cardW, h: cardH, fill: { color: DN.slateCard }, rectRadius: 0.1 })
+    s.addShape('rect', { x, y: cardY, w: cardW, h: 0.55, fill: { color: c.color }, rectRadius: 0.1 })
+    s.addText(c.tag, { x: x + 0.15, y: cardY, w: cardW - 0.3, h: 0.55, fontFace: 'Arial', fontSize: 11, color: DN.white, bold: true, valign: 'middle', charSpacing: 2, autoFit: true })
+    s.addText(c.title, { x: x + 0.2, y: cardY + 0.75, w: cardW - 0.4, h: 1.3, fontFace: 'Arial', fontSize: 17, color: DN.navy, bold: true, valign: 'top', lineSpacing: 22, autoFit: true })
+    s.addText(c.body, { x: x + 0.2, y: cardY + 2.15, w: cardW - 0.4, h: cardH - 2.3, fontFace: 'Arial', fontSize: 12, color: DN.ink, valign: 'top', lineSpacing: 18, autoFit: true })
+  })
+
+  // Bottom strap — contrast with incumbents
+  s.addShape('rect', { x: 0.5, y: 6.3, w: 12.3, h: 0.7, fill: { color: DN.navy }, rectRadius: 0.08 })
+  s.addShape('rect', { x: 0.5, y: 6.3, w: 0.18, h: 0.7, fill: { color: DN.gold } })
+  s.addText('Architecture, not bolt-on integration.', {
+    x: 0.5, y: 6.3, w: 12.3, h: 0.7, fontFace: 'Arial', fontSize: 16, color: DN.gold, bold: true, italic: true, align: 'center', valign: 'middle',
+  })
+
+  s.addNotes(
+`This is the architectural argument — what changes when AI is the SPINE of the platform, not a feature bolted on top.
+
+THE THREE BENEFITS:
+
+1. ONE THEME MODEL. Every source — Sarina survey verbatims, Google Reviews, Facebook comments, Reddit posts, CRM tickets, even uploaded CSVs — flows through the same LLM and gets analysed against the same vocabulary. A "long wait" theme means the same thing whether it surfaced in a post-visit survey or a Google Review. Incumbents can't do this because their text analytics is a separate vendor layer bolted on after collection.
+
+2. CROSS-SOURCE PATTERNS. Because everything speaks the same language, you can see WHEN a signal jumps channels. A "long wait" spike in Sarina post-visit surveys at one location — does it ALSO appear in Google Reviews of that location? In Yelp? In social media mentions? With one theme model, the cross-reference is instant. You catch the pattern before it becomes a brand-level perception.
+
+3. AMBIGUITY RESOLVED UPSTREAM. The hardest thing about traditional analysis is mining "it was fine" or "it was good" for real signal — you can't, because the moment is gone. Sentimetrx pushes that resolution upstream: the AI clarifier asks the follow-up at the table, when the guest still has the answer. By the time the data reaches your team, it's already clean.
+
+THE PUNCHLINE: this is why the architecture choice matters. Bolting AI onto a 15-year-old stack — what Qualtrics and Medallia are doing — gives you the analysis layer, not the cross-source synthesis. Putting AI at the core gives you all three.
+
+"Architecture, not bolt-on integration."`
+  )
+}
+
 // ── 10. Proposed pilot ─────────────────────────────────────────────────────
 function slidePilot(pptx: any, pg: number) {
   const s = pptx.addSlide()
@@ -672,6 +789,8 @@ function buildDeck(pptx: any, clientName: string) {
   slideListening(pptx, ++pg)
   slideCampaigns(pptx, ++pg)
   slideItAllRollsIntoAna(pptx, ++pg)
+  slideAnalystsDoInsights(pptx, ++pg)
+  slideAIAtTheCore(pptx, ++pg)
   slidePilot(pptx, ++pg)
 }
 
