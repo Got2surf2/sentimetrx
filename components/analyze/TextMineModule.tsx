@@ -28,6 +28,7 @@ import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
 // Heaviest tab-specific and modal sub-components — split out of the
 // textmine route bundle so the Themes tab (default landing) ships less JS.
@@ -994,6 +995,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   const [apiKey, setApiKey] = useState<string>('')
   const [aiEnabled, setAiEnabled] = useState<boolean>(false)
+  const orgAi = useOrgAiMode()
+  const aiDisabledByOrg = !orgAi.loading && orgAi.mode === 'off'
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [showThemeEditor, setShowThemeEditor] = useState(initialOpenEditor || false)
   const [industryThemes, setIndustryThemes] = useState<Record<string, Theme[]> | null>(null)
@@ -1693,19 +1696,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             ? samplingInfo.sampled.toLocaleString() + ' of ' + samplingInfo.total.toLocaleString() + ' responses sampled'
                             : rows.length.toLocaleString() + ' response' + (rows.length !== 1 ? 's' : '') + ' imported'
                           } across {openFields.length} open-ended field{openFields.length !== 1 ? 's' : ''}.
-                          {' '}{datasetSource === 'study'
-                            ? 'Run an AI analysis to discover themes, or apply a theme library.'
-                            : 'Run an AI analysis or pick an industry theme library to get started.'}
+                          {' '}{aiDisabledByOrg
+                            ? 'Pick an industry theme library to get started.'
+                            : datasetSource === 'study'
+                              ? 'Run an AI analysis to discover themes, or apply a theme library.'
+                              : 'Run an AI analysis or pick an industry theme library to get started.'}
                         </p>
                       </>
                     )}
                     {rows.length > 0 && (
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button onClick={function() { mineThemes() }} disabled={!canMine || !aiEnabled}
-                          title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
-                          style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
-                          {'\u29E1'} Mine with AI
-                        </button>
+                        {!aiDisabledByOrg && (
+                          <button onClick={function() { mineThemes() }} disabled={!canMine || !aiEnabled}
+                            title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
+                            style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
+                            {'\u29E1'} Mine with AI
+                          </button>
+                        )}
                         <button onClick={function() { setShowThemeEditor(true) }}
                           style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
                           {'\u2261'} {anaLibrary ? 'Apply ' + (INDUSTRY_LABELS[anaLibrary as Industry] || anaLibrary) + ' themes' : 'Choose theme library'}
@@ -2224,7 +2231,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         <ThemeEditor
           onApply={handleThemeEditorApply}
           onClose={function() { setShowThemeEditor(false) }}
-          onMineWithAI={canMine && aiEnabled ? function() { setShowThemeEditor(false); mineThemes() } : undefined}
+          onMineWithAI={canMine && aiEnabled && !aiDisabledByOrg ? function() { setShowThemeEditor(false); mineThemes() } : undefined}
           initialData={themes ? { themes: themes.themes, libName: themeLibName, source: themeSource } : null}
           industryThemes={industryThemes}
           datasetId={datasetId}

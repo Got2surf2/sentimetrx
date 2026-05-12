@@ -16,6 +16,13 @@ Editorial log of what got worked on this week and **why**. Companion to the week
 - **UI hide.** New lightweight endpoint `GET /api/me/ai-mode` returns the caller's org mode (no admin needed, never returns the secret). New `useOrgAiMode()` client hook. `DatasetHeader` consumes the hook: when the org is `off`, the user-level "AI on/off" toggle + gear icon are replaced with a static red "AI disabled by admin" pill, and the "Ask Ana" tab is hidden. The server gate is the actual guarantee; this is just so users don't see broken buttons.
 - **Not done in this commit.** Other AI-button hiding (Mine Themes, StoryTime entry, export "AI narratives" checkbox) — those will still render in `off`-mode but the server-side 403 / null-fallback path keeps the guarantee intact. Followup if any of them feel rough in practice.
 
+## 2026-05-12 (Tue, late) — Hide AI-driven buttons when org mode='off'
+
+- **Why:** server gate is solid, but the lingering UI buttons (Mine Themes, StoryTime entry, theme-editor "Mine with AI") would visibly error or no-op when clicked. Cleaner to hide them outright so an off-mode tenant never sees AI affordances they can't use.
+- **`DatasetHeader.tsx`** — StoryTime tab now gated on `!aiDisabledByOrg`. The whole export modal is reachable only through StoryTime, so this also takes the modal out of play for off-mode orgs (no separate "data-only export" path yet — surface if anyone asks).
+- **`TextMineModule.tsx`** — wired in `useOrgAiMode()` directly (rather than threading a prop). "Mine with AI" empty-state button hidden when `aiDisabledByOrg`; the theme-library button stays so users can still apply industry themes. ThemeEditor's inline "Mine with AI" CTA (`onMineWithAI`) also gated. Empty-state copy now reads "Pick an industry theme library to get started" for off-mode tenants instead of telling them to run an AI analysis they can't run.
+- **Surrogate-pair emoji preserved** in the StoryTime button label (`🎬`) — Edit tool handled the wrap correctly.
+
 ## 2026-05-12 (Tue) — Per-org BYO Anthropic key
 
 - **Why:** a new customer turned on AI and got prompted for an Anthropic key, because the legacy `mineThemes` path rejected with `NO_API_KEY` when the org had no `apiKey` stored on the user. The default should be "platform absorbs cost, billed back via `usage_log`" — a key prompt is the *escape hatch*, not the entry point. Earlier today (cf4f60b) the prompts were removed; this entry is the durable provisioning layer.

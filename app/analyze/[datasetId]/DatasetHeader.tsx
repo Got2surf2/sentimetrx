@@ -229,16 +229,18 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             <span>{'\uD83D\uDD0D'}</span><span className="ana-lbl">Search</span>
           </button>
 
-          {/* StoryTime */}
-          <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="StoryTime"
-            style={{
-              height: '100%', display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,.65)',
-              background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
-              cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-            }}>
-            <span>{'\uD83C\uDFAC'}</span><span className="ana-lbl">StoryTime</span>
-          </button>
+          {/* StoryTime \u2014 AI-driven; hidden entirely when the org has AI off. */}
+          {!aiDisabledByOrg && (
+            <button onClick={function() { setShowExport(true) }} className="ana-tab ana-c7" title="StoryTime"
+              style={{
+                height: '100%', display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,.65)',
+                background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+              }}>
+              <span>{'\uD83C\uDFAC'}</span><span className="ana-lbl">StoryTime</span>
+            </button>
+          )}
 
           {/* Share Analytics */}
           <button onClick={function() { setShowShareAnalytics(true) }} className="ana-tab ana-c8" title="Share Analytics"
