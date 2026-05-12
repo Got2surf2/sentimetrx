@@ -58,14 +58,13 @@ async function resolveTargetOrgId(service: ReturnType<typeof createServiceRoleCl
   return null
 }
 
-async function gateShareTarget(service: ReturnType<typeof createServiceRoleClient>, userId: string, type: ShareType, targetId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+async function gateShareTarget(service: ReturnType<typeof createServiceRoleClient>, userId: string, type: ShareType, targetId: string): Promise<{ ok: true; targetOrgId: string } | { ok: false; status: number; error: string }> {
   const { orgId, isAdmin } = await getUserOrg(service, userId)
   if (!orgId) return { ok: false, status: 401, error: 'Unauthorized' }
-  if (isAdmin) return { ok: true }
   const targetOrg = await resolveTargetOrgId(service, type, targetId)
   if (!targetOrg) return { ok: false, status: 404, error: 'Target not found' }
-  if (targetOrg !== orgId) return { ok: false, status: 403, error: 'Forbidden' }
-  return { ok: true }
+  if (!isAdmin && targetOrg !== orgId) return { ok: false, status: 403, error: 'Forbidden' }
+  return { ok: true, targetOrgId: targetOrg }
 }
 
 export async function POST(req: NextRequest) {
@@ -98,7 +97,7 @@ export async function POST(req: NextRequest) {
     const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
     const { data: convData, error: convErr } = await service
       .from('shared_links')
-      .insert({ type: 'conversation', target_id, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: { html: body.html } })
+      .insert({ type: 'conversation', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: { html: body.html } })
       .select('token, expires_at')
       .single()
     if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 })
@@ -113,7 +112,7 @@ export async function POST(req: NextRequest) {
     const expiresAt2 = new Date(Date.now() + hours2 * 3600 * 1000)
     const { data: aData, error: aErr } = await service
       .from('shared_links')
-      .insert({ type: 'analytics', target_id, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: body.metadata })
+      .insert({ type: 'analytics', target_id, org_id: gate.targetOrgId, created_by: user.id, expires_at: expiresAt2.toISOString(), metadata: body.metadata })
       .select('token, expires_at')
       .single()
     if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 })
@@ -131,6 +130,7 @@ export async function POST(req: NextRequest) {
     .insert({
       type,
       target_id,
+      org_id: gate.targetOrgId,
       created_by: user.id,
       expires_at: expiresAt.toISOString(),
     })

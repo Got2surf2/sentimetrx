@@ -72,24 +72,47 @@ The CLAUDE.md "Multi-tenancy invariants" section is the canonical
 shortlist for Claude; here is the longer policy:
 
 - **Every new `public` table requires:**
-  1. `enable row level security`
-  2. At least one `select` policy that filters by `org_id`
-  3. A case in `tests/integration/rls-isolation.test.ts` that
-     proves Org A cannot read Org B's row for that table
+  1. `enable row level security` — non-negotiable. The blanket
+     `sql/032_enable_rls_everywhere.sql` loop covers every public
+     table; a new table created after 032 must add its own
+     `alter table … enable row level security` line.
+  2. **A select policy filtering by `org_id` IF the table is read
+     via the Supabase auth client (user JWT).** Tables that are
+     read only via the service role intentionally stay
+     RLS-on-but-policy-less per 032's documented pattern — RLS
+     blocks any accidental auth-client read to empty results,
+     service-role bypasses RLS for legitimate writes. **Decide
+     which category your table belongs to and stick to that
+     pattern**; mixing them silently is the bug shape that
+     produces "table has RLS but no policy" false-positive
+     findings.
+  3. A case in `tests/integration/rls-isolation.test.ts` proving
+     Org A cannot read Org B's row for that table — for both
+     categories. Service-role-only tables: assert the auth-client
+     read returns empty for the wrong org.
   4. A case in `tests/integration/cross-org-egress.test.ts` (or
      a route-specific egress file — see below) covering the route
-     handlers that read that table. RLS does not cover service-role
-     paths.
+     handlers that read that table. **This is the load-bearing
+     check for service-role-only tables** — RLS does not cover
+     service-role paths, so service-role tables need explicit
+     route-level egress coverage.
 
 - **Service-role queries must pair `id` with `org_id`.** A bare
   `id` lookup with the service-role client is a cross-tenant leak.
   Either:
   - Inline the explicit filter: `service.from(t).eq('id', x).eq('org_id', orgId)`, **or**
-  - Wrap the lookup in `lib/auth/requireAdmin.ts`-style helper if
-    the access pattern is reused. The repo does not currently
-    expose a generalized `gate*Access` helper — `<TBD>` item 11
-    below tracks extracting one once a second reusable pattern
-    emerges.
+  - **Use a gate function that resolves and verifies the target's
+    org before the service-role lookup.** Example pattern:
+    `app/api/share/route.ts` uses `gateShareTarget(service, userId,
+    type, targetId)` which calls `resolveTargetOrgId` against the
+    target's parent table (studies / campaigns / townhall_sessions
+    / datasets / bots / responses) and returns `{ ok: true,
+    targetOrgId }` only if the user's org matches. Service-role
+    queries downstream of that gate are safe by construction —
+    the gate is the single source of the audited policy.
+  - Open `<TBD>` item 11 below tracks extracting a generalized
+    `gate*Access` helper once a second reusable pattern emerges
+    beyond the share-target case.
 
 - **Internal-only routes (`/admin/*`, deck generators, strategy
   endpoints) wrap with `requireAdmin` (`lib/auth/requireAdmin.ts`)
