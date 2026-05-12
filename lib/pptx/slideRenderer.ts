@@ -461,13 +461,13 @@ function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string)
   footer(slide, pptx, datasetName)
 }
 
-function fmtWallClock(seconds: number): string {
+export function fmtWallClock(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)} seconds`
   if (seconds < 3600) return `${Math.round(seconds / 60)} minutes`
   return `${(seconds / 3600).toFixed(1)} hours`
 }
 
-function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: string) {
+export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title || 'How this deck was made.')
@@ -534,7 +534,7 @@ function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: string)
   footer(slide, pptx, datasetName)
 }
 
-function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName: string) {
+export function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title || 'Every deck is custom.', spec.tagline)

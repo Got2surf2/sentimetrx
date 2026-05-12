@@ -16,6 +16,7 @@ import { expandLemma } from '@/lib/lemmas'
 import { buildKwRegex } from '@/lib/themeUtils'
 import { computeThemeImpact } from '@/lib/themeImpact'
 import { DN as DN_SHARED, W, H, HH, CY, PAD, FY, bgFill as bg, logo, trunc } from '@/lib/pptx/shared'
+import { renderProvenance, renderCustomDecks } from '@/lib/pptx/slideRenderer'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -2255,6 +2256,9 @@ export async function POST(req: Request, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // ── Provenance tracker — populates the closing "How this deck was made" slide
+  const ssStartedAt = Date.now()
+
   const body = await req.json().catch(() => ({}))
   const selectedFieldNames: string[] = body.fields || []
   const audience: string             = body.audience || 'stakeholder'
@@ -2956,6 +2960,65 @@ export async function POST(req: Request, { params }: Params) {
     // Closing slide
     if ((narratives.keyTakeaways || []).length > 0) {
       buildClosingSlide(pptx, datasetName, narratives.keyTakeaways)
+    }
+
+    // ── "Every deck is custom" upsell slide (default on) + provenance receipt ──
+    try {
+      // Count slides rendered so far (pptxgenjs exposes the internal slides array)
+      const slidesSoFar = ((pptx as any).slides?.length ?? 0)
+      const totalAfter = slidesSoFar + 2 // +2 for the two slides we are about to add
+
+      renderCustomDecks(pptx, {
+        type: 'custom_decks',
+        title: 'Every deck is custom.',
+        tagline: 'Not template-filled — generated for your data, your fields, your questions.',
+        capabilities: [
+          'StoryTime composes itself from your dataset — slides chosen by what the data shows.',
+          'Give us a question, get a deck — entity analysis, churn drivers, theme deep-dives, segment comparisons.',
+          'Every run is fresh — same chrome, different content. Take it from analysis to readout in minutes.',
+        ],
+        examples: [
+          'Why are customers churning?',
+          'What new programs would they support?',
+          'Top complaints by segment?',
+          'Which themes drive ratings?',
+        ],
+        hook: 'Ask: "What would you want a custom slide for?"',
+      }, datasetName)
+
+      const wallClockSeconds = (Date.now() - ssStartedAt) / 1000
+      const isCollection = dataset?.source === 'collection'
+
+      renderProvenance(pptx, {
+        type: 'provenance',
+        title: 'How this deck was made.',
+        wallClockSeconds,
+        inputs: [
+          { value: allRows.length.toLocaleString() + (rowsSampled ? '*' : ''), label: rowsSampled ? 'responses analysed (sampled)' : 'responses analysed' },
+          { value: String(selectedFieldNames.length), label: 'open-ended fields examined' },
+          { value: isCollection ? `${flatDatasetIds.length} datasets` : '1 dataset', label: isCollection ? 'in collection (multi-source)' : 'single source' },
+          ...(themes && themes.length > 0 ? [{ value: String(themes.length), label: 'themes mined' }] : []),
+        ],
+        processing: [
+          { value: 'Claude (Anthropic)', label: 'theme mining + narrative drafting' },
+          { value: 'Statistical engine', label: 'distributions · significance · ranking' },
+          { value: audience, label: 'audience-tuned narrative depth' },
+          { value: 'AI quote selection', label: `from ${allRows.length.toLocaleString()} candidate responses` },
+        ],
+        outputs: [
+          { value: `~${totalAfter} slides`, label: 'rendered for this report' },
+          ...(themes && themes.length > 0 ? [{ value: String(themes.length), label: 'themes surfaced' }] : []),
+          ...((narratives.keyTakeaways || []).length > 0 ? [{ value: String((narratives.keyTakeaways || []).length), label: 'key takeaways written' }] : []),
+          { value: audience.charAt(0).toUpperCase() + audience.slice(1), label: 'narrative tier' },
+        ],
+        // Industry rule-of-thumb: 2–4 hours per analytical slide
+        humanEquivLow:  Math.max(8, Math.round(totalAfter * 2)),
+        humanEquivHigh: Math.max(16, Math.round(totalAfter * 4)),
+        note: 'Range based on a common consulting rule-of-thumb of 2–4 hours per analytical slide (data extraction, theme work, interpretation, chart build, copy).',
+      }, datasetName)
+    } catch (provErr: any) {
+      // Provenance failure must never block the deck itself
+      console.error('[export/pptx] provenance/custom-decks slide failed:', provErr?.message || provErr)
     }
 
     const buffer  = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
