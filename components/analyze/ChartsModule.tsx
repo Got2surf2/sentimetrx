@@ -242,8 +242,17 @@ function PlotlyChart({ traces, layout, style }: { traces: any[]; layout?: any; s
     if (typeof ly.title === 'string') ly = Object.assign({}, ly, { title: { text: ly.title, standoff: 18 } })
     merged.xaxis = Object.assign({}, baseX, lx)
     merged.yaxis = Object.assign({}, baseY, ly)
-    getPlotly().then(function(Plotly) { Plotly.newPlot(ref.current, traces, merged, { responsive: true, displayModeBar: false }) })
-    return function() { if (ref.current) getPlotly().then(function(Plotly) { try { Plotly.purge(ref.current) } catch {} }) }
+    // getPlotly() is async; by the time the promise resolves the
+    // component may have unmounted (user navigated away mid-render)
+    // and ref.current is null. newPlot(null) throws "DOM element
+    // provided is null or undefined" — Sentry caught this in prod
+    // 2026-05-12. Null-check inside the .then.
+    getPlotly().then(function(Plotly) { if (ref.current) Plotly.newPlot(ref.current, traces, merged, { responsive: true, displayModeBar: false }) })
+    return function() {
+      const el = ref.current
+      if (!el) return
+      getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
+    }
   }, [traces, layout])
   return <div ref={ref} style={style || { width: '100%', height: 400 }} />
 }

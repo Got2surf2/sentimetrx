@@ -22,10 +22,17 @@ function PlotlyChart({ data, layout, style }: { data: any[]; layout?: any; style
     var T2 = { bg: '#f4f5f7', border: '#e5e7eb', borderMid: '#d1d5db', textMute: '#6b7280' }
     var base = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { family: 'Inter,system-ui,sans-serif', color: T2.textMute, size: 11 }, margin: { t: 16, r: 20, b: 48, l: 56 }, xaxis: { gridcolor: T2.border, zerolinecolor: T2.borderMid, linecolor: T2.border }, yaxis: { gridcolor: T2.border, zerolinecolor: T2.borderMid, linecolor: T2.border } }
     var merged = Object.assign({}, base, layout || {})
+    // Same null-ref guard as ChartsModule's PlotlyChart — getPlotly()
+    // is async, ref.current can be null if the user navigated away
+    // before the dynamic import resolved.
     getPlotly().then(function(Plotly) {
-      Plotly.newPlot(ref.current, data, merged, { responsive: true, displayModeBar: false })
+      if (ref.current) Plotly.newPlot(ref.current, data, merged, { responsive: true, displayModeBar: false })
     })
-    return function() { if (ref.current) getPlotly().then(function(Plotly) { try { Plotly.purge(ref.current) } catch {} }) }
+    return function() {
+      const el = ref.current
+      if (!el) return
+      getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
+    }
   }, [data, layout])
   return <div ref={ref} style={style || { width: '100%', height: 260 }} />
 }
