@@ -23,6 +23,17 @@ for (const line of envText.split('\n')) {
 import { createClient } from '@supabase/supabase-js'
 import { renderDeck, type DeckSpec, type SlideSpec } from '../lib/pptx/slideRenderer'
 
+// ── Provenance tracker — wraps all metrics for the closing slide ──────────
+const tracker = {
+  startedAt: Date.now(),
+  aiCalls: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  model: 'claude-haiku-4-5-20251001',
+  dataPointsSurfaced: 0,
+  insightsStated: 0,
+}
+
 // Direct Anthropic fetch — avoids the server-only guard in lib/ai
 async function callClaude(prompt: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY!
@@ -34,7 +45,7 @@ async function callClaude(prompt: string): Promise<string> {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: tracker.model,
       max_tokens: 4000,
       system: 'You are a precise data normaliser. Output valid JSON only.',
       messages: [{ role: 'user', content: prompt }],
@@ -42,6 +53,9 @@ async function callClaude(prompt: string): Promise<string> {
   })
   if (!res.ok) throw new Error(`anthropic ${res.status}: ${await res.text()}`)
   const json = await res.json() as any
+  tracker.aiCalls += 1
+  tracker.inputTokens += json.usage?.input_tokens || 0
+  tracker.outputTokens += json.usage?.output_tokens || 0
   return json.content?.[0]?.text || ''
 }
 
@@ -229,7 +243,7 @@ async function main() {
       if (longLower.includes(shortLower) || sharedPrefix) {
         // Merge shorter → longer (use the more-specific name)
         agg[longer].count += agg[shorter].count
-        for (const r of agg[shorter].raw) agg[longer].raw.add(r)
+        Array.from(agg[shorter].raw).forEach(r => agg[longer].raw.add(r))
         delete agg[shorter]
       }
     }
@@ -272,6 +286,9 @@ async function main() {
     accentColor: 'E8B84B',
     insight: `Top ${top24.length} entities account for ${top24Share}% of all mentions.`,
   })
+  tracker.dataPointsSurfaced += top24.length // each entity card = one observation
+  tracker.insightsStated += 1                // the insight caption
+
   slides.push({
     type: 'bar_chart',
     title: `${FIELD_DISPLAY} — by category`,
@@ -281,6 +298,9 @@ async function main() {
       ? `${titleCase(catBars[0][0])} is the top category — ${Math.round(catBars[0][1] / totalMentions * 100)}% of all mentions.`
       : undefined,
   })
+  tracker.dataPointsSurfaced += catBars.length // each bar = one observation
+  tracker.insightsStated += 1                  // the insight caption
+
   if (longTail.length > 0) {
     slides.push({
       type: 'entity_grid',
@@ -289,6 +309,7 @@ async function main() {
       entities: longTail.map(r => ({ name: r.canonical, mentions: r.count, category: titleCase(r.category) })),
       accentColor: '00B4D8',
     })
+    tracker.dataPointsSurfaced += longTail.length
   }
   if (quotes.length > 0) {
     slides.push({
@@ -297,7 +318,64 @@ async function main() {
       subtitle: 'Verbatim phrasing from donors · one per category',
       quotes,
     })
+    tracker.dataPointsSurfaced += quotes.length // each quote = one observation
   }
+
+  // ── "Every deck is custom" slide (togglable; ON for the coalition deck) ──
+  const INCLUDE_CUSTOM_DECKS_SLIDE = true
+  if (INCLUDE_CUSTOM_DECKS_SLIDE) {
+    slides.push({
+      type: 'custom_decks',
+      title: 'Every deck is custom.',
+      tagline: 'Not template-filled — generated for your data, your fields, your questions.',
+      capabilities: [
+        'StoryTime composes itself from your dataset — slides chosen by what the data shows.',
+        'Give us a question, get a deck — entity analysis, churn drivers, theme deep-dives, segment comparisons.',
+        'Every run is fresh — same chrome, different content. Take it from analysis to readout in minutes.',
+      ],
+      examples: [
+        'Why are donors churning?',
+        'What new programs would donors fund?',
+        'Active vs inactive donor concerns?',
+        'Which org names get the most affinity?',
+      ],
+      hook: 'Ask: "What would you want a custom slide for?"',
+    })
+  }
+
+  // ── Provenance / "how this deck was made" slide (always on) ──
+  const wallClockSeconds = (Date.now() - tracker.startedAt) / 1000
+  slides.push({
+    type: 'provenance',
+    title: 'How this deck was made.',
+    wallClockSeconds,
+    inputs: [
+      { value: String(fieldValues.length),            label: 'survey responses analysed' },
+      { value: String(allRaw.length),                  label: 'entity mentions extracted' },
+      { value: String(members.length) + ' datasets', label: 'source datasets in the collection' },
+      { value: '1 open-ended field',                   label: '("q3_response" — Charities donated to)' },
+    ],
+    processing: [
+      { value: tracker.model.replace(/-\d+-\d+$/, ''), label: 'Anthropic model (fast tier)' },
+      { value: String(tracker.aiCalls) + ' AI passes', label: 'canonicalisation + categorisation' },
+      { value: `~${Math.round((tracker.inputTokens + tracker.outputTokens) / 1000)}K tokens`, label: 'analysed by the LLM' },
+      { value: `${uniqueRaw.length} → ${sorted.length}`, label: 'unique raw mentions → canonical entities' },
+      { value: String(Object.keys(catCounts).length),  label: 'categories auto-assigned' },
+    ],
+    outputs: [
+      { value: String(slides.length + 1) + ' slides',  label: '(includes this one)' },
+      { value: String(top24.length),                    label: 'organisations ranked' },
+      { value: String(catBars.length),                  label: 'categories charted' },
+      { value: String(quotes.length),                   label: 'verbatim quotes selected' },
+      { value: String(tracker.dataPointsSurfaced),      label: 'data points surfaced' },
+      { value: String(tracker.insightsStated),          label: 'insight statements written' },
+    ],
+    // Industry rule of thumb: 2-4 hours for analytical slides with data work
+    // applied to 4 content slides = 8-16 hour range
+    humanEquivLow: 8,
+    humanEquivHigh: 16,
+    note: 'Range based on a common consulting rule-of-thumb of 2–4 hours per analytical slide (data extraction, theme work, interpretation, chart build, copy). Applied to the four content slides above.',
+  })
 
   const deck: DeckSpec = {
     title: `${COLLECTION_DATASET_NAME} — ${FIELD_DISPLAY}`,

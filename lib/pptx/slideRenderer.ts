@@ -72,7 +72,28 @@ export interface EntityGridSlide {
   insight?: string
 }
 
-export type SlideSpec = BarChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide
+export interface ProvenanceSlide {
+  type: 'provenance'
+  title?: string
+  wallClockSeconds: number
+  inputs:     { label: string; value: string }[]
+  processing: { label: string; value: string }[]
+  outputs:    { label: string; value: string }[]
+  humanEquivLow:  number   // hours
+  humanEquivHigh: number   // hours
+  note?: string
+}
+
+export interface CustomDecksSlide {
+  type: 'custom_decks'
+  title?: string
+  tagline?: string
+  capabilities: string[]
+  examples?: string[]
+  hook?: string
+}
+
+export type SlideSpec = BarChartSlide | KpiGridSlide | TableSlide | BulletsSlide | QuotesSlide | TwoColumnSlide | EntityGridSlide | ProvenanceSlide | CustomDecksSlide
 
 export interface DeckSpec {
   title: string
@@ -440,6 +461,128 @@ function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string)
   footer(slide, pptx, datasetName)
 }
 
+function fmtWallClock(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)} seconds`
+  if (seconds < 3600) return `${Math.round(seconds / 60)} minutes`
+  return `${(seconds / 3600).toFixed(1)} hours`
+}
+
+function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  bgFill(slide, pptx)
+  hdr(slide, pptx, spec.title || 'How this deck was made.')
+
+  // Big anchor stat — wall-clock time
+  slide.addText(fmtWallClock(spec.wallClockSeconds), {
+    x: PAD, y: CY + 0.05, w: W - PAD * 2, h: 1.2,
+    fontSize: 64, bold: true, color: DN.teal, align: 'center', valign: 'middle', autoFit: true,
+  })
+
+  // Three columns: INPUTS · PROCESSING · OUTPUTS
+  const colY = CY + 1.35
+  const colH = 3.7
+  const gap = 0.12
+  const colW = (W - PAD * 2 - gap * 2) / 3
+  const cols = [
+    { tag: 'INPUTS TAKEN',      items: spec.inputs,     color: DX.navyMid },
+    { tag: 'PROCESSING DONE',   items: spec.processing, color: DN.teal },
+    { tag: 'OUTPUTS GENERATED', items: spec.outputs,    color: DN.gold },
+  ]
+  cols.forEach((col, i) => {
+    const x = PAD + i * (colW + gap)
+    slide.addShape(pptx.ShapeType.rect, { x, y: colY, w: colW, h: colH, fill: { color: DN.slateCard }, rectRadius: 0.1, line: { color: DN.divider, width: 1 } })
+    slide.addShape(pptx.ShapeType.rect, { x, y: colY, w: colW, h: 0.45, fill: { color: col.color }, rectRadius: 0.1, line: { width: 0 } })
+    slide.addText(col.tag, {
+      x, y: colY, w: colW, h: 0.45,
+      fontSize: 11, bold: true, color: DN.white, align: 'center', valign: 'middle', charSpacing: 3,
+    })
+    // Items
+    const itemH = (colH - 0.55) / Math.max(col.items.length, 1)
+    col.items.forEach((it, j) => {
+      const iy = colY + 0.55 + j * itemH
+      slide.addText(it.value, {
+        x: x + 0.15, y: iy, w: colW - 0.3, h: itemH * 0.55,
+        fontSize: 18, bold: true, color: DX.ink, valign: 'middle', autoFit: true,
+      })
+      slide.addText(it.label, {
+        x: x + 0.15, y: iy + itemH * 0.55, w: colW - 0.3, h: itemH * 0.45,
+        fontSize: 9.5, color: DN.slate, italic: true, valign: 'top', autoFit: true,
+      })
+    })
+  })
+
+  // Bottom productivity strap — no dollar figures, just time range
+  const strapY = colY + colH + 0.18
+  const strapH = FY - strapY - 0.15
+  slide.addShape(pptx.ShapeType.rect, { x: PAD, y: strapY, w: W - PAD * 2, h: strapH, fill: { color: DX.ink }, rectRadius: 0.08, line: { width: 0 } })
+  slide.addShape(pptx.ShapeType.rect, { x: PAD, y: strapY, w: 0.18, h: strapH, fill: { color: DN.gold }, line: { width: 0 } })
+  slide.addText('HUMAN-ANALYST EQUIVALENT', {
+    x: PAD + 0.35, y: strapY + 0.08, w: 5, h: 0.3,
+    fontSize: 10, bold: true, color: DN.gold, charSpacing: 3,
+  })
+  slide.addText(`${spec.humanEquivLow}–${spec.humanEquivHigh} hours`, {
+    x: PAD + 0.35, y: strapY + 0.36, w: W - PAD * 2 - 0.5, h: 0.42,
+    fontSize: 22, bold: true, color: DN.white, valign: 'middle', autoFit: true,
+  })
+  if (spec.note) {
+    slide.addText(spec.note, {
+      x: PAD + 0.35, y: strapY + strapH - 0.32, w: W - PAD * 2 - 0.5, h: 0.28,
+      fontSize: 9.5, color: DN.tealLight, italic: true, valign: 'middle',
+    })
+  }
+
+  footer(slide, pptx, datasetName)
+}
+
+function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName: string) {
+  const slide = pptx.addSlide('NUMBERED')
+  bgFill(slide, pptx)
+  hdr(slide, pptx, spec.title || 'Every deck is custom.', spec.tagline)
+
+  // Capabilities — three or four big chips down the left
+  const capW = 7.0
+  const capH = (FY - CY - 0.8 - 0.1 * (spec.capabilities.length - 1)) / Math.max(spec.capabilities.length, 1)
+  spec.capabilities.forEach((cap, i) => {
+    const y = CY + 0.1 + i * (capH + 0.1)
+    slide.addShape(pptx.ShapeType.rect, { x: PAD, y, w: capW, h: capH, fill: { color: DN.slateCard }, rectRadius: 0.08, line: { width: 0 } })
+    slide.addShape(pptx.ShapeType.rect, { x: PAD, y, w: 0.18, h: capH, fill: { color: DN.teal }, line: { width: 0 } })
+    slide.addText(cap, {
+      x: PAD + 0.35, y, w: capW - 0.5, h: capH,
+      fontSize: 15, color: DX.ink, valign: 'middle', wrap: true, autoFit: true, lineSpacingMultiple: 1.3,
+    })
+  })
+
+  // Examples — right column
+  if (spec.examples && spec.examples.length > 0) {
+    const exX = PAD + capW + 0.25
+    const exW = W - exX - PAD
+    const exH = FY - CY - 1.0
+    slide.addShape(pptx.ShapeType.rect, { x: exX, y: CY + 0.1, w: exW, h: exH, fill: { color: DX.ink }, rectRadius: 0.08, line: { width: 0 } })
+    slide.addShape(pptx.ShapeType.rect, { x: exX, y: CY + 0.1, w: exW, h: 0.4, fill: { color: DN.gold }, rectRadius: 0.08, line: { width: 0 } })
+    slide.addText('EXAMPLE CUSTOM DECKS', {
+      x: exX, y: CY + 0.1, w: exW, h: 0.4,
+      fontSize: 10, bold: true, color: DX.ink, align: 'center', valign: 'middle', charSpacing: 3,
+    })
+    const itemH = (exH - 0.5) / spec.examples.length
+    spec.examples.forEach((ex, i) => {
+      slide.addText(`"${ex}"`, {
+        x: exX + 0.2, y: CY + 0.55 + i * itemH, w: exW - 0.4, h: itemH,
+        fontSize: 12, color: DN.white, italic: true, valign: 'middle', wrap: true, autoFit: true,
+      })
+    })
+  }
+
+  // Hook at the bottom
+  if (spec.hook) {
+    slide.addText(spec.hook, {
+      x: PAD, y: FY - 0.4, w: W - PAD * 2, h: 0.34,
+      fontSize: 13, bold: true, italic: true, color: DN.teal, align: 'center', valign: 'middle',
+    })
+  }
+
+  footer(slide, pptx, datasetName)
+}
+
 // ── Title slide ─────────────────────────────────────────────────────────────
 function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetName: string) {
   const slide = pptx.addSlide('NUMBERED')
@@ -492,6 +635,8 @@ export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<B
       case 'quotes':      renderQuotes(pptx, spec, datasetName); break
       case 'two_column':  renderTwoColumn(pptx, spec, datasetName); break
       case 'entity_grid': renderEntityGrid(pptx, spec as EntityGridSlide, datasetName); break
+      case 'provenance':   renderProvenance(pptx, spec, datasetName); break
+      case 'custom_decks': renderCustomDecks(pptx, spec, datasetName); break
       default:
         // Unknown type — render as bullets with the raw data
         renderBullets(pptx, { type: 'bullets', title: (spec as any).title || 'Slide', bullets: [JSON.stringify(spec)] }, datasetName)
