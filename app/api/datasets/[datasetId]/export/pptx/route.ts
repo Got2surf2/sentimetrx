@@ -3020,10 +3020,13 @@ export async function POST(req: Request, { params }: Params) {
       let totalWords = 0
       let totalSentences = 0
       const vocab = new Set<string>()
+      // Use rowVal() — selectedFieldNames are normalised keys ('general_experience_comments')
+      // but row data has the original column titles ('General Experience Comments').
+      // Direct row[f] indexing silently misses every field whose name has spaces/caps.
       for (const row of allRows) {
         for (const f of selectedFieldNames) {
-          const v = (row as any)[f]
-          if (typeof v !== 'string' || !v.trim()) continue
+          const v = rowVal(row, f)
+          if (!v) continue
           totalChars += v.length
           for (const w of v.toLowerCase().match(/[a-z][a-z'-]+/g) || []) { vocab.add(w); totalWords += 1 }
           totalSentences += v.split(/[.!?]+/).filter(s => s.trim().length > 2).length
@@ -3057,8 +3060,8 @@ export async function POST(req: Request, { params }: Params) {
         },
         // 3 items per column — renderer caps at 3. Picked for impact, not exhaustiveness.
         inputs: [
-          { value: totalChars.toLocaleString(), label: 'characters of verbatim text',
-            sub: `${allRows.length.toLocaleString()}${rowsSampled ? '*' : ''} responses · ${totalSentences.toLocaleString()} sentences · ${vocab.size.toLocaleString()} unique words` },
+          { value: totalWords.toLocaleString(), label: 'words of verbatim text analysed',
+            sub: `${allRows.length.toLocaleString()}${rowsSampled ? '*' : ''} responses · ${totalSentences.toLocaleString()} sentences · ${vocab.size.toLocaleString()} unique vocabulary` },
           { value: String(nFields), label: 'open-ended fields examined',
             sub: nFields > 1 ? `${crossTabs} potential cross-tabulations evaluated` : 'depth over breadth · every clause examined' },
           { value: isCollection ? `${flatDatasetIds.length} datasets` : '1 dataset', label: isCollection ? 'in the collection' : 'single source',
