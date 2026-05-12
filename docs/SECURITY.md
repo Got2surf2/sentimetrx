@@ -355,11 +355,14 @@ leak is reviewer-enforced until the wrapper assert lands.
     `.github/workflows/ci.yml`).
 - **Static analysis:**
   - ESLint (`next/core-web-vitals`) + TypeScript strict mode.
-  - The `.eslintrc.json` currently enables zero
-    `@typescript-eslint/*` rules even though the plugin is
-    declared. Open `<TBD>` item 10: enable
-    `no-floating-promises`, `no-misused-promises`,
-    `no-explicit-any` (warn), and `consistent-type-imports`.
+  - `.eslintrc.json` enables `no-floating-promises`,
+    `no-misused-promises`, `no-explicit-any`, and
+    `consistent-type-imports` — all at **`warn`** (not `error`).
+    The first two were set to `error` on 2026-05-12 but downgraded
+    after 374 pre-existing violations broke the Vercel deploy
+    (`next build` runs ESLint). Open `<TBD>` item 10 now tracks
+    fixing the 374 violations and promoting the rules back to
+    `error`.
   - Open `<TBD>` item 2 (continued): add CodeQL on push for
     OWASP Top 10 pattern detection.
 - **Penetration testing:** **annual** external pen test (ratified
@@ -499,10 +502,16 @@ plumbing that needs to ship.
 9. **Incident-response plumbing:** post-mortem template,
    on-call rotation policy, public status page. Bundle for the
    first paying customer.
-10. **Tighten ESLint config:** enable
-    `@typescript-eslint/no-floating-promises`,
-    `no-misused-promises`, `no-explicit-any` (warn),
-    `consistent-type-imports`.
+10. **Tighten ESLint config:** all four rules
+    (`no-floating-promises`, `no-misused-promises`,
+    `no-explicit-any`, `consistent-type-imports`) are currently
+    enabled at `warn`. **Remaining work:** fix the 374
+    `no-floating-promises` / `no-misused-promises` violations
+    (and the 1801 `any` warnings), then promote the two
+    promise rules back to `error` so `next build` enforces them.
+    Initial attempt on 2026-05-12 set them to `error`
+    immediately and broke production — sequence matters: fix
+    first, then enforce.
 11. **Extract a `gate*Access` helper** in `lib/auth/` once a
     second reusable pattern emerges (today there's only the
     two-callsite case in `app/api/bots/[id]/...`).

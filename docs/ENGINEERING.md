@@ -24,13 +24,15 @@ Last reviewed: 2026-05-12.
   it.
 - **`npm test` must pass.** Unit + integration; mocks at every
   external boundary (Supabase, Anthropic, Resend, S3).
-- **`npm run lint` clean.** Current config is `next/core-web-vitals`;
-  the `@typescript-eslint` plugin is loaded but no rules are
-  enabled yet — SECURITY.md Open `<TBD>` item 10 tracks enabling
-  `no-floating-promises`, `no-misused-promises`,
-  `no-explicit-any` (warn), `consistent-type-imports`. Until
-  then, "lint clean" really means "no React/Next core-vitals
-  warnings."
+- **`npm run lint` clean.** Current config is `next/core-web-vitals`
+  + `@typescript-eslint` with `no-floating-promises`,
+  `no-misused-promises`, `no-explicit-any`, `consistent-type-imports`
+  all at **`warn`** (not `error`). The first two were briefly set to
+  `error` on 2026-05-12 but downgraded to `warn` because `next build`
+  runs ESLint and 374 pre-existing violations broke production
+  deploys. Open `<TBD>` item 10 now tracks **fixing the 374
+  violations** and then promoting the rules back to `error`. Until
+  then, "lint clean" really means "no React/Next core-vitals warnings."
 - **No dead code.** If a function is unreferenced for ≥1 week of
   active development, delete it. Reviewers can ask "where is this
   called?" and the answer must exist in the diff or repo.
