@@ -35,8 +35,12 @@ the offending code, severity, and verification.
 | P1 `server-only` placement (SECURITY §4) | 5 / 5 critical | 0 | — | scripts / tests exempt |
 | P1 structured console payloads (ENG §4) | ~rest | **2 sites** | — | — |
 | P1 PII in log payloads (SECURITY §5) | — | **1 site** | — | — |
+| P2 `audit_events` table (SECURITY §6) | — | **1** (partial via `admin_action_log`) | — | — |
+| P2 Sentry `beforeSend` scrub (SECURITY §5) | — | **1** (no scrub defined in any of 3 configs) | — | — |
+| P2 `npm audit --audit-level=high` | — | **2 advisories** (next.js DoS / smuggling / cache-poison chain; postcss XSS) | — | — |
+| P2 ESLint TBD-10 rules enabled | — | **config shipped** — triage: 374 errors + 1801 warnings across 349 files (1594 `any`, 212 misused-promise, 162 floating-promise, 123 type-import) | — | — |
 
-**Net real findings: 1 P0 (fixed today) + 3 P1 (all fixed today, commit `f74133b`).**
+**Net real findings: 1 P0 (fixed today) + 3 P1 (all fixed today, commit `f74133b`) + 4 P2 (surfaced today, none shipped except the ESLint config change).**
 
 ---
 
@@ -243,16 +247,207 @@ console.warn({
 
 ---
 
-## Deferred to next audit
+## Tier 1 deferred items — addressed 2026-05-12 (this audit, second pass)
 
-Not run in this session — bundle into a P2/P3 follow-up:
+### P2-A — `audit_events` table (SECURITY §6) — **MISSING (partial coverage today)**
 
-- **P2** — does `audit_events` exist matching SECURITY.md §6
-  schema? (Open TBD item 4.)
-- **P2** — Sentry `beforeSend` scrub end-to-end audit against §5
-  field list. (Open TBD item 1.)
-- **P2** — ESLint config: enable the `@typescript-eslint/*` rules
-  listed in SECURITY.md Open TBD item 10.
+**Policy mapping:** SECURITY.md §6 — application-level audit log
+named `audit_events` with schema `(actor_user_id, actor_org_id,
+action, target_table, target_id, target_org_id, ip, ua, at)`,
+service-role-only insert, RLS `using (false)` for UPDATE/DELETE.
+
+**Reality:** grep across `sql/` returns zero hits for
+`audit_events`. The only audit-style table is
+`sql/048_admin_action_log.sql`, which is a strict subset of §6:
+
+| §6 contract field | `admin_action_log` column | Status |
+|---|---|---|
+| `actor_user_id` | `initiated_by` | ✓ (renamed) |
+| `actor_org_id` | — | **missing** |
+| `action` | `action_type` | ✓ (renamed) |
+| `target_table` | `resource_type` | ✓ (renamed) |
+| `target_id` | `resource_id` | ✓ (renamed) |
+| `target_org_id` | `target_org_id` | ✓ |
+| `ip` | — | **missing** |
+| `ua` | — | **missing** |
+| `at` | `created_at` | ✓ (renamed) |
+
+**Scope gap:** `admin_action_log` is also narrower in *what* it
+records. §6 says it must capture: any `requireAdmin` hit
+(success and denial), billing changes, org membership changes
+(invite / role change / removal), exports (deck / dataset /
+audit), bulk deletes. Today the only writer is
+`lib/orgTransfer.ts` for org-transfer events. None of the 13
+admin routes under `app/api/admin/*` log a row; no membership
+or export route logs a row.
+
+**Tamper-resistance:** the migration *does* match §6 in spirit
+(RLS on, no INSERT/UPDATE/DELETE policy → default-deny for
+non-service-role; service role bypasses RLS for legitimate
+inserts). The §6 wording specifies explicit `using (false)`
+policies on UPDATE/DELETE; the migration achieves the same
+behavior via "no policy = denied by default." Functionally
+equivalent — but worth re-aligning the doc wording or the
+migration on the next pass.
+
+**Recommendation:** treat `admin_action_log` as the precursor.
+Open `<TBD>` item 4 in SECURITY.md should be re-scoped to:
+(a) rename / extend `admin_action_log` to match the §6 column
+contract (add `actor_org_id`, `ip`, `ua`), and (b) add
+`logAdminAction()` calls at the `requireAdmin` boundary, billing
+mutation, org-membership mutation, export, and bulk-delete
+sites. Effort: 1 migration + ~10 callsite edits + 1 RLS test.
+
+**Owner:** next session (P1).
+
+---
+
+### P2-B — `npm audit --audit-level=high` — **2 advisories, both in Next.js dep tree**
+
+**Run output (2026-05-12, current `main` lockfile):**
+
+```
+high   next  9.3.4-canary.0 - 16.3.0-canary.5
+       14 chained advisories (DoS via Image Optimizer remotePatterns,
+       HTTP request smuggling in rewrites, cache-poisoning in RSC
+       responses, XSS in CSP-nonce App Router, middleware/proxy
+       bypass via i18n, SSRF in WebSocket upgrades, etc.)
+       fix: npm audit fix --force → next@16.2.6 (breaking change)
+
+moderate postcss  <8.5.10
+       XSS via unescaped </style> in CSS stringify output
+       fix: same — bundled with the next upgrade
+```
+
+**Current version:** `next@^14.2.35`. The auto-fix path is
+`next@16.2.6`, a **two-major-version jump** (14 → 16). Not
+auto-applicable; needs the official Next.js codemod path and a
+typecheck/test pass.
+
+**Risk assessment:** All 14 high advisories are self-hosted DoS /
+cache-poisoning / smuggling scenarios. On Vercel-managed
+Next.js, the runtime / proxy layer mitigates several of them
+(Vercel's image optimizer is the proxy that handles the
+DoS-via-remotePatterns path; Vercel's middleware runtime patches
+some of the i18n-bypass class). None of these advisories are
+known to be actively exploited against deployments on Vercel.
+
+**Recommendation:** Schedule a Next 14 → 15 → 16 upgrade as a
+dedicated P1 work item — not a same-session hotfix. Use
+`/vercel:next-upgrade` skill for the codemod path. Until then,
+add `npm audit --audit-level=high` to `.github/workflows/ci.yml`
+(Open TBD item 2) to keep visibility but allow the run to fail
+softly until the upgrade lands.
+
+**Owner:** dedicated upgrade session, multi-day effort.
+
+---
+
+### P2-C — ESLint TBD-10 rules enabled + triaged — **CONFIG SHIPPED, scope surfaced**
+
+**Policy mapping:** SECURITY.md Open `<TBD>` item 10.
+
+**Change:** `.eslintrc.json` now enables all four rules:
+
+```json
+"@typescript-eslint/no-floating-promises": "error",
+"@typescript-eslint/no-misused-promises": "error",
+"@typescript-eslint/no-explicit-any": "warn",
+"@typescript-eslint/consistent-type-imports": "warn"
+```
+
+The first two are type-aware rules; `parserOptions.project` and
+`parser: "@typescript-eslint/parser"` were added so they
+function.
+
+**Triage scope** (single `npm run lint` run, 2026-05-12):
+
+| Rule | Level | Count | Notes |
+|---|---|---:|---|
+| `no-explicit-any` | warn | **1594** | Concentrated in PPTX / HTML export routes (`app/api/datasets/[datasetId]/export/{pptx,html}/route.ts` — single-file totals in the high hundreds). Use of `any` in pptxgenjs callbacks is the major source. |
+| `no-misused-promises` | error | **212** | Mostly `onClick={async () => ...}` JSX attributes in admin client components. Each fix is `void (async () => ...)()` or a wrapper. Mechanical. |
+| `no-floating-promises` | error | **162** | Bare `fetch(...)` / `supabase.from(...)` calls with no `await` or `.catch`. Many are intentional fire-and-forget; fix is to prefix with `void`. |
+| `consistent-type-imports` | warn | **123** | `import { Foo } from 'x'` where `Foo` is type-only. Auto-fixable. |
+| **Total** | — | **2091** | across **349** files |
+
+**Errors that would block CI today: 374** (no-misused-promises +
+no-floating-promises). CI today only runs `typecheck`, not lint —
+so this change does NOT break the build. But running
+`npm run lint` locally now surfaces these.
+
+**Recommendation:**
+- Run `npx eslint --fix .` first — `consistent-type-imports` is
+  auto-fixable (drops the 123 warnings) and a chunk of
+  `no-floating-promises` is too (adds `void`).
+- The remaining errors are real (a missing `await` in an
+  admin handler is the kind of bug this rule catches). Fix in a
+  dedicated sweep, not piecemeal — count-down on a tracker.
+- Keep `no-explicit-any` at `warn` permanently; tighten
+  individual files as they get rewritten.
+
+**Owner:** dedicated cleanup session; ~2 hours for auto-fix
+sweep + spot-check, ~1 day for the remaining 374 error-level
+violations.
+
+---
+
+### P2-D — Sentry `beforeSend` scrub audit (SECURITY §5) — **NO SCRUB DEFINED**
+
+**Policy mapping:** SECURITY.md §5 — *"Sentry `beforeSend` scrub
+must drop email, phone, password fields, and the contents of
+`req.body` for survey/response endpoints."*
+
+**Files audited:**
+- `sentry.client.config.ts` (10 effective lines)
+- `sentry.server.config.ts` (10 effective lines)
+- `sentry.edge.config.ts` (10 effective lines)
+
+**Finding:** **None of the three configs defines a `beforeSend`
+hook.** All three pass only `dsn`, `integrations`,
+`tracesSampleRate`, `environment` to `Sentry.init`. There is
+zero app-level scrubbing of email, phone, password, or
+`req.body` content before events leave the process.
+
+**What we have today:** Sentry's server-side default scrubbing
+strips a fixed set of patterns (credit-card numbers, US SSNs,
+common auth headers). It does NOT scrub email, phone,
+free-text `req.body`, or arbitrary user-supplied PII fields.
+
+**Concrete leak paths (illustrative, not exhaustive):**
+- Unhandled exception in `app/api/study/[guid]/route.ts` (survey
+  submission) — the `req.body` containing free-text answers
+  can land in the Sentry breadcrumb / extra-context payload
+  Next.js attaches.
+- Unhandled exception in `app/api/b/[slug]/route.ts` (agent
+  chat) — same path; respondent's free-text message can ship.
+- Errors in `app/api/campaigns/[id]/send/route.ts` previously
+  included phone numbers in the message string (fixed today,
+  commit `f74133b`); a future regression of the same shape
+  would ship phone to Sentry uncontested.
+- Stack frames with local-variable inspection enabled can
+  surface email/name fields read from `dataset_rows_flat`.
+
+**Recommendation (next session, ~30-60 min):**
+
+Add a shared `lib/sentryScrub.ts` exporting `scrubEvent(event)`
+that:
+1. Walks `event.request.data` and recursively redacts any key
+   matching `/^(email|phone|password|secret|token|api[_-]?key)$/i`.
+2. For survey/response endpoint paths (`/api/study/`,
+   `/api/b/`, `/api/th/`, `/api/campaigns/`), drop
+   `event.request.data` entirely (response bodies are PII by
+   default — §5 classification).
+3. Walks `event.extra` and `event.contexts` similarly.
+
+Wire it into all three configs as
+`Sentry.init({ ..., beforeSend: scrubEvent })`.
+
+**Owner:** next session (P1 — pair with §6 `audit_events` work).
+
+---
+
+## Still deferred to next audit
+
 - **P2** — structured-payload audit of `console.*` calls in `lib/`
   (this audit covered `app/api/` only).
 - **P2** — cascade-FK coverage for org deletion + a delete-path
@@ -261,9 +456,10 @@ Not run in this session — bundle into a P2/P3 follow-up:
   service-role-only tables reclassified above. Today they pass
   by-default (RLS empty-results); the explicit test would harden
   against a future audit-client-read regression.
-- **P3** — `// @ts-ignore` / `any` inventory.
+- **P3** — `// @ts-ignore` / `any` inventory (Tier 1 surfaced the
+  `any` count: **1594 sites across the lint scan**; a fuller
+  per-file ranked inventory is still deferred).
 - **P3** — files > 400 LOC inventory.
-- **P3** — `npm audit --audit-level=high` result.
 
 ---
 
