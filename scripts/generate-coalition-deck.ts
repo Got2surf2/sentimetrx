@@ -404,10 +404,10 @@ async function main() {
       { value: String(tracker.insightsStated),          label: 'insight statements written', sub: 'computed from the aggregations on each slide' },
     ],
     pipelineStages: [
-      'ingest', 'clean', 'split', 'filter noise',
+      'ingest', 'clean', 'split', 'filter',
       'canonicalise (LLM)', 'categorise (LLM)',
-      'cross-batch dedup', 'aggregate', 'rank',
-      'select quotes', 'render',
+      'dedup', 'aggregate', 'rank',
+      'quotes', 'render',
     ],
     humanEquivLow:  8,
     humanEquivHigh: 16,

@@ -3072,9 +3072,9 @@ export async function POST(req: Request, { params }: Params) {
             sub: 'depth tuned to the chosen audience' },
         ],
         pipelineStages: [
-          'ingest', 'clean text', 'mine themes (LLM)', 'score sentiment',
-          'compute impact', 'cross-tabulate', 'run significance tests',
-          'rank quotes', 'draft narratives (LLM)', 'compose slides', 'render',
+          'ingest', 'clean', 'themes (LLM)', 'sentiment',
+          'impact', 'cross-tab', 'significance',
+          'rank quotes', 'narrative (LLM)', 'compose', 'render',
         ],
         humanEquivLow:  Math.max(8, Math.round(totalAfter * 2)),
         humanEquivHigh: Math.max(16, Math.round(totalAfter * 4)),
