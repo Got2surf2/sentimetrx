@@ -71,7 +71,11 @@ RULES:
     logUsage({ resource_type: 'townhall', event_type: 'simulate' }, result.usage)
     const cleaned = result.text.trim().replace(/^["']|["']$/g, '')
     if (looksLikeAIRefusal(cleaned)) {
-      console.warn('[townhall/simulate] AI refusal detected for persona "' + persona.name + '"; substituting fallback. text=' + cleaned.slice(0, 200))
+      console.warn({
+        event: 'townhall_simulate_ai_refusal',
+        persona_name: persona.name,
+        text_preview: cleaned.slice(0, 200),
+      })
       return NextResponse.json({
         message: persona.flags?.includes('curt-detection') ? 'ok' : 'I think that\'s an important issue for our community.',
         language: targetLang,

@@ -768,7 +768,10 @@ async function callClaude(
     // as a bot moderator message visible to participants. Empty text lets
     // callers fall through to their existing fallback paths.
     if (looksLikeAIRefusal(outText)) {
-      console.warn('[TH chat] AI refusal detected; dropping bot text. text=' + outText.slice(0, 200))
+      console.warn({
+        event: 'th_chat_ai_refusal',
+        text_preview: outText.slice(0, 200),
+      })
       return { text: '', thinking }
     }
     return { text: outText, thinking }

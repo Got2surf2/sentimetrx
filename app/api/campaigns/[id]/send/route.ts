@@ -131,7 +131,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         try {
           await smsProvider.send({ to: respondent.phone, body: smsBody })
         } catch (smsErr: any) {
-          console.error('SMS send failed for', respondent.phone, smsErr.message)
+          console.error({
+            event: 'sms_send_failed',
+            campaign_id: params.id,
+            respondent_id: respondent.id,
+            phone_tail: respondent.phone?.slice(-4),
+            error: smsErr?.message,
+          })
         }
       }
 
