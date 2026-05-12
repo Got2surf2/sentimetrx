@@ -69,3 +69,10 @@ The repo carries heavy spec docs that must stay in sync with code. When a change
 - `FEATURES.md` — feature inventory
 - `docs/{TESTING,CAMPAIGNS,BOTS,SURVEYS,TOWNHALL,ANALYTICS,SOCIAL,SEARCH,DATA_SOURCES,USAGE_ACCOUNTING}.md`
 - `docs/weekly-reports/YYYY-WXX-devlog.md` — append a brief WHY entry for meaningful commits; the Monday governance routine reads it.
+
+## Policy docs (consolidated for buyer DD readiness)
+
+- `docs/SECURITY.md` — threat model, multi-tenancy invariants, secrets, PII classification, audit logging, incident response, compliance posture. **Read before touching auth, multi-tenancy code, AI prompts, or anything that handles user data.**
+- `docs/ENGINEERING.md` — code quality bar, branch/review policy, migration safety, observability, perf budgets, a11y, feature flags, idempotency, deprecation path.
+
+When a change touches an area either doc describes, update the doc in the same commit. Open `<TBD: ...>` items in each doc track decisions awaiting human approval.
