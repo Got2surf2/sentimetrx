@@ -1265,9 +1265,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // Read real-time toggle state from localStorage (header may have changed it)
     var liveAi = false; try { liveAi = localStorage.getItem('sentimetrx_ai_enabled') === '1' } catch {}
     if (!liveAi) { setAiEnabled(false); setError('AI is turned off. Enable AI in the header to mine themes.'); return }
+    // BYO-key flow is opt-in now: if a key has been saved previously
+    // it's used; otherwise the server falls back to ANTHROPIC_API_KEY
+    // and the customer org piggybacks on the platform key (usage is
+    // logged per-org in usage_log for billing/cap purposes).
     var liveKey = ''; try { liveKey = localStorage.getItem('sentimetrx_tm_apikey') || '' } catch {}
     if (liveKey) setApiKey(liveKey)
-    if (!liveKey) { setShowApiKeyModal(true); return }
     if (!effectiveFields.length || !filteredRows.length) return
     setLoading(true)
     setError(null)

@@ -1,10 +1,14 @@
 // app/api/datasets/[datasetId]/mine-themes/route.ts
 // Proxies Claude AI theme mining.
-// User provides their own API key -- stored only in their browser, passed per-request.
+// Default: caller org piggybacks on the server's ANTHROPIC_API_KEY (every
+// other AI route already does this — usage_log captures per-org spend so
+// we can bill back or cap if needed). A user-supplied apiKey in the body
+// is still accepted and takes precedence (kept for BYO-key edge cases).
 // Proprietary system prompt stays server-side and never reaches the browser.
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 
@@ -40,9 +44,9 @@ export async function POST(request: Request, { params }: Props) {
 
   const { apiKey, texts, fieldName, schemaCtx } = body
 
-  if (!apiKey || typeof apiKey !== 'string') {
-    return NextResponse.json({ error: 'NO_API_KEY' }, { status: 400 })
-  }
+  // No more NO_API_KEY rejection. callAI() falls back to ANTHROPIC_API_KEY
+  // env when body.apiKey is undefined, so customer orgs piggyback on the
+  // server key by default. Usage is logged per-org in usage_log.
   if (!texts || !texts.length) {
     return NextResponse.json({ error: 'No text provided' }, { status: 400 })
   }
@@ -86,7 +90,8 @@ export async function POST(request: Request, { params }: Props) {
       return NextResponse.json({ error: 'API_' + status + ': ' + e.message }, { status })
     }
 
-    logUsage({ resource_type: 'dataset', resource_id: params.datasetId, event_type: 'mine_themes' }, result.usage)
+    const { orgId } = await getCallerOrgContext(supabase)
+    logUsage({ org_id: orgId ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'mine_themes' }, result.usage)
 
     const rawText = result.text
 
