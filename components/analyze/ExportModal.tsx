@@ -604,10 +604,18 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: S.textFaint, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span>Fields to Include <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional — defaults to all)</span></span>
-                      <button onClick={function() { setSelected(new Set(fields.map(f => f.field))) }}
-                        style={{ fontSize: 11, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
-                        Select all
-                      </button>
+                      {(function() {
+                        const allFieldsSelected = fields.length > 0 && fields.every(function(f: any) { return selected.has(f.field) })
+                        return (
+                          <button onClick={function() {
+                            if (allFieldsSelected) setSelected(new Set())
+                            else                   setSelected(new Set(fields.map(f => f.field)))
+                          }}
+                            style={{ fontSize: 11, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
+                            {allFieldsSelected ? 'Select none' : 'Select all'}
+                          </button>
+                        )
+                      })()}
                     </div>
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   </div>
