@@ -472,15 +472,24 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title || 'How this deck was made.')
 
+  // ── Layout constants — every element derives from these ──
+  const contentTop = CY + 0.05
+  const contentBot = FY - 0.15
+  const statH      = 1.05    // big "47 seconds" anchor
+  const strapH     = 1.20    // bottom productivity strap (label + stat + note)
+  const gapAbove   = 0.18    // between stat and columns
+  const gapBelow   = 0.18    // between columns and strap
+
   // Big anchor stat — wall-clock time
   slide.addText(fmtWallClock(spec.wallClockSeconds), {
-    x: PAD, y: CY + 0.05, w: W - PAD * 2, h: 1.2,
+    x: PAD, y: contentTop, w: W - PAD * 2, h: statH,
     fontSize: 64, bold: true, color: DN.teal, align: 'center', valign: 'middle', autoFit: true,
   })
 
-  // Three columns: INPUTS · PROCESSING · OUTPUTS
-  const colY = CY + 1.35
-  const colH = 3.7
+  // Three columns: INPUTS · PROCESSING · OUTPUTS — span between the stat and the strap
+  const colY = contentTop + statH + gapAbove
+  const strapY = contentBot - strapH
+  const colH = strapY - gapBelow - colY
   const gap = 0.12
   const colW = (W - PAD * 2 - gap * 2) / 3
   const cols = [
@@ -496,38 +505,47 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
       x, y: colY, w: colW, h: 0.45,
       fontSize: 11, bold: true, color: DN.white, align: 'center', valign: 'middle', charSpacing: 3,
     })
-    // Items
     const itemH = (colH - 0.55) / Math.max(col.items.length, 1)
     col.items.forEach((it, j) => {
       const iy = colY + 0.55 + j * itemH
       slide.addText(it.value, {
-        x: x + 0.15, y: iy, w: colW - 0.3, h: itemH * 0.55,
-        fontSize: 18, bold: true, color: DX.ink, valign: 'middle', autoFit: true,
+        x: x + 0.15, y: iy, w: colW - 0.3, h: itemH * 0.5,
+        fontSize: 18, bold: true, color: DX.ink, valign: 'bottom', autoFit: true,
       })
       slide.addText(it.label, {
-        x: x + 0.15, y: iy + itemH * 0.55, w: colW - 0.3, h: itemH * 0.45,
+        x: x + 0.15, y: iy + itemH * 0.5, w: colW - 0.3, h: itemH * 0.5,
         fontSize: 9.5, color: DN.slate, italic: true, valign: 'top', autoFit: true,
       })
     })
   })
 
-  // Bottom productivity strap — no dollar figures, just time range
-  const strapY = colY + colH + 0.18
-  const strapH = FY - strapY - 0.15
+  // ── Bottom productivity strap — horizontal split: stat on left, note on right ──
   slide.addShape(pptx.ShapeType.rect, { x: PAD, y: strapY, w: W - PAD * 2, h: strapH, fill: { color: DX.ink }, rectRadius: 0.08, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: PAD, y: strapY, w: 0.18, h: strapH, fill: { color: DN.gold }, line: { width: 0 } })
+
+  // Left column (~38% width): label + big stat stacked
+  const leftX = PAD + 0.35
+  const leftW = (W - PAD * 2 - 0.35) * 0.38
   slide.addText('HUMAN-ANALYST EQUIVALENT', {
-    x: PAD + 0.35, y: strapY + 0.08, w: 5, h: 0.3,
-    fontSize: 10, bold: true, color: DN.gold, charSpacing: 3,
+    x: leftX, y: strapY + 0.18, w: leftW, h: 0.28,
+    fontSize: 10, bold: true, color: DN.gold, valign: 'middle', charSpacing: 3,
   })
   slide.addText(`${spec.humanEquivLow}–${spec.humanEquivHigh} hours`, {
-    x: PAD + 0.35, y: strapY + 0.36, w: W - PAD * 2 - 0.5, h: 0.42,
-    fontSize: 22, bold: true, color: DN.white, valign: 'middle', autoFit: true,
+    x: leftX, y: strapY + 0.48, w: leftW, h: strapH - 0.6,
+    fontSize: 28, bold: true, color: DN.white, valign: 'middle', autoFit: true,
   })
+
+  // Vertical divider line between left and right sections
+  const divX = leftX + leftW + 0.25
+  slide.addShape(pptx.ShapeType.rect, { x: divX, y: strapY + 0.25, w: 0.015, h: strapH - 0.5, fill: { color: DN.tealLight, transparency: 60 }, line: { width: 0 } })
+
+  // Right column: the italic explanation, vertically centred
   if (spec.note) {
+    const rightX = divX + 0.25
+    const rightW = W - PAD - rightX - 0.05
     slide.addText(spec.note, {
-      x: PAD + 0.35, y: strapY + strapH - 0.32, w: W - PAD * 2 - 0.5, h: 0.28,
-      fontSize: 9.5, color: DN.tealLight, italic: true, valign: 'middle',
+      x: rightX, y: strapY + 0.18, w: rightW, h: strapH - 0.36,
+      fontSize: 11, color: DN.tealLight, italic: true, valign: 'middle', wrap: true, lineSpacingMultiple: 1.35, autoFit: true,
     })
   }
 
@@ -539,44 +557,55 @@ export function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title || 'Every deck is custom.', spec.tagline)
 
-  // Capabilities — three or four big chips down the left
+  // ── Shared vertical bounds — left stack and right box align top + bottom ──
+  const hookH = spec.hook ? 0.55 : 0.10
+  const topY    = CY + 0.10
+  const bottomY = FY - hookH
+  const totalH  = bottomY - topY
+
+  // Left: N capability chips, evenly distributed within [topY, bottomY]
   const capW = 7.0
-  const capH = (FY - CY - 0.8 - 0.1 * (spec.capabilities.length - 1)) / Math.max(spec.capabilities.length, 1)
+  const N = Math.max(spec.capabilities.length, 1)
+  const gap = 0.14
+  const capH = (totalH - gap * (N - 1)) / N
   spec.capabilities.forEach((cap, i) => {
-    const y = CY + 0.1 + i * (capH + 0.1)
+    const y = topY + i * (capH + gap)
     slide.addShape(pptx.ShapeType.rect, { x: PAD, y, w: capW, h: capH, fill: { color: DN.slateCard }, rectRadius: 0.08, line: { width: 0 } })
     slide.addShape(pptx.ShapeType.rect, { x: PAD, y, w: 0.18, h: capH, fill: { color: DN.teal }, line: { width: 0 } })
     slide.addText(cap, {
-      x: PAD + 0.35, y, w: capW - 0.5, h: capH,
+      x: PAD + 0.4, y, w: capW - 0.55, h: capH,
       fontSize: 15, color: DX.ink, valign: 'middle', wrap: true, autoFit: true, lineSpacingMultiple: 1.3,
     })
   })
 
-  // Examples — right column
+  // Right: single examples box — IDENTICAL top + bottom Y as the left stack
   if (spec.examples && spec.examples.length > 0) {
     const exX = PAD + capW + 0.25
     const exW = W - exX - PAD
-    const exH = FY - CY - 1.0
-    slide.addShape(pptx.ShapeType.rect, { x: exX, y: CY + 0.1, w: exW, h: exH, fill: { color: DX.ink }, rectRadius: 0.08, line: { width: 0 } })
-    slide.addShape(pptx.ShapeType.rect, { x: exX, y: CY + 0.1, w: exW, h: 0.4, fill: { color: DN.gold }, rectRadius: 0.08, line: { width: 0 } })
+    const exHeaderH = 0.45
+    slide.addShape(pptx.ShapeType.rect, { x: exX, y: topY, w: exW, h: totalH, fill: { color: DX.ink }, rectRadius: 0.08, line: { width: 0 } })
+    slide.addShape(pptx.ShapeType.rect, { x: exX, y: topY, w: exW, h: exHeaderH, fill: { color: DN.gold }, rectRadius: 0.08, line: { width: 0 } })
     slide.addText('EXAMPLE CUSTOM DECKS', {
-      x: exX, y: CY + 0.1, w: exW, h: 0.4,
+      x: exX, y: topY, w: exW, h: exHeaderH,
       fontSize: 10, bold: true, color: DX.ink, align: 'center', valign: 'middle', charSpacing: 3,
     })
-    const itemH = (exH - 0.5) / spec.examples.length
+    // Distribute the example lines evenly inside the box
+    const innerTop = topY + exHeaderH + 0.15
+    const innerBot = topY + totalH - 0.15
+    const itemH = (innerBot - innerTop) / spec.examples.length
     spec.examples.forEach((ex, i) => {
       slide.addText(`"${ex}"`, {
-        x: exX + 0.2, y: CY + 0.55 + i * itemH, w: exW - 0.4, h: itemH,
-        fontSize: 12, color: DN.white, italic: true, valign: 'middle', wrap: true, autoFit: true,
+        x: exX + 0.25, y: innerTop + i * itemH, w: exW - 0.5, h: itemH,
+        fontSize: 13, color: DN.white, italic: true, valign: 'middle', wrap: true, autoFit: true,
       })
     })
   }
 
-  // Hook at the bottom
+  // Hook at the bottom — anchored to the same bottomY as the columns
   if (spec.hook) {
     slide.addText(spec.hook, {
-      x: PAD, y: FY - 0.4, w: W - PAD * 2, h: 0.34,
-      fontSize: 13, bold: true, italic: true, color: DN.teal, align: 'center', valign: 'middle',
+      x: PAD, y: bottomY + 0.12, w: W - PAD * 2, h: hookH - 0.2,
+      fontSize: 14, bold: true, italic: true, color: DN.teal, align: 'center', valign: 'middle',
     })
   }
 
