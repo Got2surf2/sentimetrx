@@ -404,9 +404,10 @@ async function main() {
       'dedup', 'aggregate', 'rank',
       'quotes', 'render',
     ],
-    humanEquivLow:  8,
-    humanEquivHigh: 16,
-    note: 'Range based on a common consulting rule-of-thumb of 2–4 hours per analytical slide (data extraction, theme work, interpretation, chart build, copy). Applied to the four content slides above.',
+    // 30-60 min per analytical slide, applied to the content slides only
+    humanEquivLow:  2,
+    humanEquivHigh: 4,
+    note: 'Estimated analyst time to produce the equivalent entity analysis end-to-end — pulling responses, splitting and cleaning mentions, normalising organisation names, categorising, ranking, picking representative quotes, and composing the slides.',
   })
 
   const deck: DeckSpec = {

@@ -3089,9 +3089,11 @@ export async function POST(req: Request, { params }: Params) {
           'impact', 'cross-tab', 'significance',
           'rank quotes', 'narrative (LLM)', 'compose', 'render',
         ],
-        humanEquivLow:  Math.max(8, Math.round(totalAfter * 2)),
-        humanEquivHigh: Math.max(16, Math.round(totalAfter * 4)),
-        note: 'Range based on a common consulting rule-of-thumb of 2–4 hours per analytical slide (data extraction, theme work, interpretation, chart build, copy). Small-sample studies still warrant the same modelling depth — the system runs every cross-tab and significance test the data supports.',
+        // Analytical slides only — exclude the title slide and the two closer slides.
+        // 30-60 min per analytical slide for an end-to-end human equivalent.
+        humanEquivLow:  Math.max(2, Math.round(Math.max(1, totalAfter - 1 - (includeCustomDecks ? 1 : 0) - (includeProvenance ? 1 : 0)) * 0.5)),
+        humanEquivHigh: Math.max(4, Math.round(Math.max(1, totalAfter - 1 - (includeCustomDecks ? 1 : 0) - (includeProvenance ? 1 : 0)) * 1.0)),
+        note: 'Estimated analyst time to produce the equivalent work end-to-end — pulling and cleaning data, defining themes, running cross-tabs and significance tests, interpreting findings, building charts, and writing copy. Small-sample studies still warrant the same modelling depth.',
       }, datasetName)
     } catch (provErr: any) {
       // __skip_closers__ is a deliberate skip — anything else is a real failure
