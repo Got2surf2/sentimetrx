@@ -9,7 +9,7 @@
 //   4. Owner row
 //   5. Analyze button (always at bottom via mt-auto)
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
@@ -61,18 +61,15 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const [syncing,       setSyncing]       = useState(false)
   const [syncToast,     setSyncToast]     = useState('')
   const [showTransfer,  setShowTransfer]  = useState(false)
-  const [collectionInfo, setCollectionInfo] = useState<{ collectionDatasetId: string; collectionName: string } | null>(null)
+  // Collection membership preloaded by /analyze/page.tsx in a single
+  // batched query — was previously a per-card fetch (Sentry N+1).
+  // setCollectionInfo is still used after "Remove from collection" to
+  // clear the chip without a full page reload.
+  const [collectionInfo, setCollectionInfo] = useState<{ collectionDatasetId: string; collectionName: string } | null>(
+    (dataset as any).collection_info || null
+  )
   const [transferOrgId, setTransferOrgId] = useState('')
   const [transferring,  setTransferring]  = useState(false)
-
-  // Check if this dataset belongs to a collection (for warning on delete)
-  useEffect(function() {
-    if (dataset.source === 'collection') return
-    fetch('/api/datasets/' + dataset.id + '/collection-check')
-      .then(function(r) { return r.json() })
-      .then(function(d) { if (d.collection_dataset_id) setCollectionInfo({ collectionDatasetId: d.collection_dataset_id, collectionName: d.collection_name }) })
-      .catch(function() {})
-  }, [dataset.id, dataset.source])
 
   const isStudy      = dataset.source === 'study'
   const isReviews    = dataset.source === 'google_reviews'

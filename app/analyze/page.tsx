@@ -97,6 +97,26 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
     }
   }
 
+  // Preload "is this dataset in a collection?" for every non-collection
+  // dataset in one query. Previously each DatasetCard did its own
+  // /api/datasets/<id>/collection-check fetch on mount — Sentry flagged
+  // the N+1 (30 cards → 30 round-trips on every /analyze load).
+  const nonCollectionIds = (rawDatasets || []).filter((d: any) => d.source !== 'collection').map((d: any) => d.id)
+  const collectionInfoByDsId: Record<string, { collectionDatasetId: string; collectionName: string }> = {}
+  if (nonCollectionIds.length > 0) {
+    const { data: mems } = await supabase
+      .from('collection_members')
+      .select('dataset_id, collections(dataset_id, datasets!collections_dataset_id_fkey(name))')
+      .in('dataset_id', nonCollectionIds)
+    for (const m of (mems || []) as any[]) {
+      const colRel = Array.isArray(m.collections) ? m.collections[0] : m.collections
+      const colDsId = colRel?.dataset_id
+      const nameRel = colRel?.datasets
+      const name = Array.isArray(nameRel) ? nameRel[0]?.name : nameRel?.name
+      if (colDsId) collectionInfoByDsId[m.dataset_id] = { collectionDatasetId: colDsId, collectionName: name || 'Untitled Collection' }
+    }
+  }
+
   const datasets = (rawDatasets || []).map(function(d: any) {
     const studyName = d.studies?.name ?? null
     const creatorName = creatorMap[d.created_by] || null
@@ -109,7 +129,8 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
     const { studies: _s, dataset_state: _ds, ...rest } = d
     const rowCount = d.source === 'collection' && collectionRowCounts[d.id] != null ? collectionRowCounts[d.id] : d.row_count
     const cardOrgName = isAdmin ? (orgNameMap[d.org_id] || null) : (orgData?.name || null)
-    return { ...rest, row_count: rowCount, study_name: studyName, creator_name: creatorName, org_name: cardOrgName, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName }
+    const collectionInfo = collectionInfoByDsId[d.id] || null
+    return { ...rest, row_count: rowCount, study_name: studyName, creator_name: creatorName, org_name: cardOrgName, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName, collection_info: collectionInfo }
   })
 
   return (
