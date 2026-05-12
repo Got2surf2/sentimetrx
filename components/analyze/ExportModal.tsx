@@ -738,10 +738,19 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
             </span>
           )}
         </div>
-        <button onClick={function() { setSelected(function() { return new Set(fields.map((f: any) => f.field)) }) }}
-          style={{ fontSize: 11, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
-          Select all
-        </button>
+        {(function() {
+          const allSelected = fields.length > 0 && fields.every(function(f: any) { return selected.has(f.field) })
+          return (
+            <button onClick={function() {
+              setSelected(function() {
+                return allSelected ? new Set<string>() : new Set(fields.map((f: any) => f.field))
+              })
+            }}
+              style={{ fontSize: 11, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
+              {allSelected ? 'Select none' : 'Select all'}
+            </button>
+          )
+        })()}
       </div>
 
       {sectionOrder.map(function(section) {
@@ -756,10 +765,22 @@ function FieldPicker({ byType, selected, toggleField, selectAllType, fields, set
                 <span style={{ fontSize: 10, fontWeight: 700, color: meta.color, textTransform: 'uppercase', letterSpacing: '.06em' }}>{meta.label}</span>
                 <span style={{ fontSize: 10, color: S.textFaint }}>· {meta.desc}</span>
               </div>
-              <button onClick={function() { setSelected(function(prev) { const next = new Set(prev); secFields.forEach(function(f: any) { next.add(f.field) }); return next }) }}
-                style={{ fontSize: 10, color: S.textFaint, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                All
-              </button>
+              {(function() {
+                const allInSection = secFields.length > 0 && secFields.every(function(f: any) { return selected.has(f.field) })
+                return (
+                  <button onClick={function() {
+                    setSelected(function(prev) {
+                      const next = new Set(prev)
+                      if (allInSection) secFields.forEach(function(f: any) { next.delete(f.field) })
+                      else              secFields.forEach(function(f: any) { next.add(f.field) })
+                      return next
+                    })
+                  }}
+                    style={{ fontSize: 10, color: S.textFaint, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {allInSection ? 'None' : 'All'}
+                  </button>
+                )
+              })()}
             </div>
             {/* Fields within this section, sub-grouped by type */}
             {TYPE_ORDER.filter(t => secFields.some((f: any) => f.type === t)).map(function(type) {
