@@ -1559,12 +1559,18 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   var catNames: string[] = []
 
   if (hasBreakdown) {
-    // Group rows by category value, then by bucketed date
+    // Group rows by category value, then by bucketed date. Rows where the
+    // breakdown field is empty / null are dropped entirely — they were
+    // previously surfaced as a "(blank)" line in the chart, but the Filter
+    // Themes sidebar doesn't list "(blank)" so the user couldn't toggle
+    // it off. Skipping them keeps chart and sidebar in sync.
     var allDates = new Set<string>()
     rows.forEach(function(r) {
       var raw = String(r[dateField] || ''); if (!raw) return
+      var rawCat = r[colorByField!]
+      var cat = String(rawCat ?? '').trim()
+      if (!cat) return  // drop unlabeled rows from the breakdown
       var d = bucketKey(raw, effectiveBucket)
-      var cat = String(r[colorByField!] || '(blank)')
       allDates.add(d)
       if (!catGroups[cat]) catGroups[cat] = {}
       if (!catGroups[cat][d]) catGroups[cat][d] = []
