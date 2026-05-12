@@ -37,7 +37,13 @@ export default function FilterBar({ isAdmin, orgId }: Props) {
     if (!ready || navigating.current) return
     const targetOrg = selectedOrg || orgId
     if (!targetOrg) { setUsers([]); return }
-    fetch('/api/admin/orgs/' + targetOrg + '/users', { credentials: 'include' })
+    // Super-admin filtering to a non-own org → admin cross-org endpoint.
+    // Otherwise (the common case) → /api/org/users, available to any authed
+    // user and scoped to their own org.
+    const usersUrl = (targetOrg && targetOrg !== orgId)
+      ? '/api/admin/orgs/' + targetOrg + '/users'
+      : '/api/org/users'
+    fetch(usersUrl, { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
       .then(d => { if (!navigating.current) setUsers(Array.isArray(d) ? d : []) })
       .catch(() => {})

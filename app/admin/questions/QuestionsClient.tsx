@@ -335,7 +335,7 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
     setLoading(true)
     const params = new URLSearchParams()
     if (industry) params.set('industry', industry)
-    fetch('/api/admin/questions?' + params.toString())
+    fetch('/api/questions/library?' + params.toString())
       .then(function(r) { return r.json() })
       .then(function(d) { setData(d); setLoading(false) })
       .catch(function() { setLoading(false) })

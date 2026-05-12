@@ -706,7 +706,7 @@ function OpenEndedBankPanel({
     if (loadedIndustry === currentIndustry) { setOpen(v => !v); return }
     setOpen(true)
     setLoading(true)
-    fetch('/api/admin/questions?type=open_ended' + (currentIndustry ? '&industry=' + currentIndustry : ''))
+    fetch('/api/questions/library?type=open_ended' + (currentIndustry ? '&industry=' + currentIndustry : ''))
       .then(function(r) { return r.json() })
       .then(function(d) { setBankQuestions(d.openEnded || []); setLoadedIndustry(currentIndustry); setLoading(false) })
       .catch(function() { setLoading(false) })

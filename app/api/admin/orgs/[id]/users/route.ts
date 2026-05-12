@@ -1,26 +1,21 @@
+// app/api/admin/orgs/[id]/users/route.ts
+// GET — super-admin: list users in any org by id. Own-org callers should
+// use /api/org/users instead; that path is gated by the caller's own org
+// and does not require admin.
+
 import { createClient, getAuthUser } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface Params { params: { id: string } }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(_req: NextRequest, { params }: Params) {
+  const denied = await requireAdmin()
+  if (denied) return denied
+
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', user.id)
-    .single()
-
-  const orgData = Array.isArray(userData?.organizations) ? userData.organizations[0] : userData?.organizations as any
-  const isAdmin = orgData?.is_admin_org === true
-  const sameOrg = userData?.org_id === params.id
-
-  // 404 instead of 403 so the route doesn't leak its existence to callers
-  // who aren't super-admin and aren't a member of the target org.
-  if (!isAdmin && !sameOrg) return new NextResponse('Not Found', { status: 404 })
 
   const { data, error } = await supabase
     .from('users')

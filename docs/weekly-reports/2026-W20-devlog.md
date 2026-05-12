@@ -32,6 +32,18 @@ Editorial log of what got worked on this week and **why**. Companion to the week
 - **Regression coverage.** Extended `tests/integration/dataset-routes-egress.test.ts` with four new cases: cross-org 404 + control owning-org NOT-404 for `auto-setup`, plus cross-org 403 + control 200 for `org/logo` DELETE. All 9 cases pass against prod-linked Supabase via `npm run test:dataset-egress`. `docs/TESTING.md` updated.
 - **The W19 "38 bare-id lookups" finding is closed,** but the framing was wrong — the actual exploitable count was 2, both fixed here. The other 36 named files had the gate in code rather than chained into the Supabase query, which is why the static-grep audit flagged them as candidates. W20 score should reflect the closure.
 
+## 2026-05-12 (Tue, EOD) — Close W19's other HIGH: split intentionally-public reads out of /api/admin/*
+
+- **Why:** W19's second HIGH finding was "5 admin routes missing `requireAdmin`". Direct inspection showed 3 of those files were already fully wrapped; the other 2 had a legitimate non-admin GET handler living under `/api/admin/*` for historical-naming reasons (the filter-bar org/user picker; the survey-creator question library). Both were checked by inline `isAdmin || sameOrg` logic — secure, but the path name lied about who could call them, and a static-grep auditor will keep flagging them every week as long as the names mismatch the gate.
+- **Fix:** moved both non-admin reads to honest paths. Now `/api/admin/*` is uniformly `requireAdmin()`-gated.
+  - **New `/api/org/users`** — GET returns users in the caller's own org. Used by `SubHeader.tsx` and `FilterBar.tsx` whenever the active filter is the caller's own org (the common case).
+  - **New `/api/questions/library`** — GET returns the JSON question banks plus the caller's org's custom questions. Used by `StepQuestions.tsx` (survey/agent creator wizard) and `QuestionsClient.tsx` (admin UI's library read).
+- **Lockdown:**
+  - `/api/admin/orgs/[id]/users` GET — now strictly `requireAdmin()`. Only super-admins listing users in a non-own org. SubHeader/FilterBar fall back to this path only when `selectedOrg && selectedOrg !== orgId` (super-admin filtering to another org).
+  - `/api/admin/questions` — GET removed entirely; POST stays (already `requireAdmin()`-wrapped).
+- **Caller updates:** 4 files. SubHeader + FilterBar got the conditional fallback. StepQuestions + QuestionsClient swapped to the new library path. No other callers of the old paths exist.
+- **Why this matters for next Monday's audit:** the W19 audit's two HIGH findings were both labeling artifacts — the gates were in place, the names lied. After this commit, every `/api/admin/*` route uniformly requires admin, and the audit's path-based heuristic should stop flagging them. Combined with the bare-id work earlier today, Security 5/10 → ≥8/10 is now well-evidenced.
+
 ## 2026-05-12 (Tue) — Per-org BYO Anthropic key
 
 - **Why:** a new customer turned on AI and got prompted for an Anthropic key, because the legacy `mineThemes` path rejected with `NO_API_KEY` when the org had no `apiKey` stored on the user. The default should be "platform absorbs cost, billed back via `usage_log`" — a key prompt is the *escape hatch*, not the entry point. Earlier today (cf4f60b) the prompts were removed; this entry is the durable provisioning layer.
