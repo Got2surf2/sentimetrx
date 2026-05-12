@@ -40,6 +40,20 @@ interface FieldSummary { type: string; nonNull: number; counts?: Record<string, 
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
 interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any; datasetSource?: string }
 
+// Cap on how many categorical values any categorical-axis chart will
+// render. Beyond this, labels overlap, bars get too thin to read, and
+// treemap tiles become unreadable. Renderers truncate to the top N by
+// count and add a "Showing top N of M" subtitle so the operator knows
+// the chart isn't lying.
+const MAX_CATEGORIES_PER_CHART = 30
+
+function clipBadge(n: number, total: number): string {
+  // Inline HTML snippet for Plotly chart titles. Plotly supports basic
+  // HTML in title strings, so this renders as a small grey second line.
+  if (total <= n) return ''
+  return '<br><span style="font-size:11px;color:#9ca3af;font-weight:400">Showing top ' + n + ' of ' + total + ' values</span>'
+}
+
 // ─── Chart slot definitions ───────────────────────────────────────────────
 
 interface SlotDef {
@@ -351,7 +365,8 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       : useSmartOrder
         ? (isOrd ? smartOrder(rawKeys, catRemap) : rawEntries.slice().sort(freqThenAlpha).map(function(e) { return e[0] }))
         : rawKeys.slice().sort()
-    var entries = orderedKeys.slice(0, 30).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
+    var totalKeys = orderedKeys.length
+    var entries = orderedKeys.slice(0, MAX_CATEGORIES_PER_CHART).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
     var isH = opts?.orient === 'h'
     // Reverse for horizontal so first item (largest/alphabetically first) renders at top
     if (isH) entries.reverse()
@@ -393,7 +408,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     else { trace.x = wrappedCats; trace.y = displayVals }
 
     var isCount = opts?.barMode !== 'percent'
-    return <PlotlyChart traces={[trace]} layout={{ title: catLabel, xaxis: { title: isH ? yTitle : '', ...(!isH ? catXAxis(wrappedCats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
+    return <PlotlyChart traces={[trace]} layout={{ title: catLabel + clipBadge(MAX_CATEGORIES_PER_CHART, totalKeys), xaxis: { title: isH ? yTitle : '', ...(!isH ? catXAxis(wrappedCats) : {}), ...(isH && isCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : yTitle, ...(!isH && isCount ? { tickformat: ',d' } : {}) }, barcornerradius: 4 }} />
   }
 
   if (chartType === 'distribution') {
@@ -445,16 +460,19 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'treemap') {
     var catF2 = config.category; if (!catF2) return <EmptyChart msg="Assign a category field above." />
     var s2 = fs[catF2]; if (!s2 || !s2.counts) return <EmptyChart msg="No data." />
-    var e2 = (function() { var raw = Object.entries(s2.counts); var f2Obj = schema.find(function(f) { return f.field === catF2 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f2Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 30).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
+    var totalKeys2 = Object.keys(s2.counts).length
+    var e2 = (function() { var raw = Object.entries(s2.counts); var f2Obj = schema.find(function(f) { return f.field === catF2 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f2Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, MAX_CATEGORIES_PER_CHART).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
-    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ title: flByName(catF2, schema), margin: { t: 48, r: 8, b: 8, l: 8 } }} />
+    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ title: flByName(catF2, schema) + clipBadge(MAX_CATEGORIES_PER_CHART, totalKeys2), margin: { t: 48, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'bubbles') {
     var catF3 = config.category; if (!catF3) return <EmptyChart msg="Assign a category field above." />
     var s3 = fs[catF3]; if (!s3 || !s3.counts) return <EmptyChart msg="No data." />
+    var totalKeys3 = Object.keys(s3.counts).length
     var f3Obj = schema.find(function(f) { return f.field === catF3 })
-    var e3Keys = smartOrder(Object.keys(s3.counts), f3Obj?.remapping).slice(0, 25)
+    var BUBBLES_CAP = 25
+    var e3Keys = smartOrder(Object.keys(s3.counts), f3Obj?.remapping).slice(0, BUBBLES_CAP)
     var e3 = e3Keys.map(function(k) { return [k, s3.counts![k] || 0] as [string, number] }).sort(function(a, b) { return b[1] - a[1] })
     // Circle-pack layout: place largest first, then find best position for each subsequent circle
     var maxVal = Math.max.apply(null, e3.map(function(e) { return e[1] })) || 1
@@ -490,19 +508,21 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
       marker: { size: radii.map(function(r) { return r * 2 }), color: e3.map(function(_, i) { return pal[i % pal.length] }), opacity: 0.85, line: { color: e3.map(function(_, i) { return pal[i % pal.length] }), width: 1.5 }, sizemode: 'diameter' as const },
       text: e3.map(function(e) { var pct = total3 > 0 ? Math.round(e[1] / total3 * 100) : 0; return e[0] + '\n' + e[1].toLocaleString() + ' (' + pct + '%)' }),
       textposition: 'center' as const, textfont: { size: radii.map(function(r) { return Math.max(8, Math.min(13, r * 0.28)) }) }, hoverinfo: 'text' as const
-    }]} layout={{ title: flByName(catF3, schema), showlegend: false, xaxis: { visible: false, zeroline: false }, yaxis: { visible: false, zeroline: false, scaleanchor: 'x' }, margin: { t: 48, r: 8, b: 8, l: 8 } }} />
+    }]} layout={{ title: flByName(catF3, schema) + clipBadge(BUBBLES_CAP, totalKeys3), showlegend: false, xaxis: { visible: false, zeroline: false }, yaxis: { visible: false, zeroline: false, scaleanchor: 'x' }, margin: { t: 48, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'waterfall') {
     var catF4 = config.category; if (!catF4) return <EmptyChart msg="Assign a category field above." />
     var s4 = fs[catF4]; if (!s4 || !s4.counts) return <EmptyChart msg="No data." />
-    var e4 = (function() { var raw = Object.entries(s4.counts); var f4Obj = schema.find(function(f) { return f.field === catF4 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f4Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, 15).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
+    var totalKeys4 = Object.keys(s4.counts).length
+    var WATERFALL_CAP = 15
+    var e4 = (function() { var raw = Object.entries(s4.counts); var f4Obj = schema.find(function(f) { return f.field === catF4 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f4Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, WATERFALL_CAP).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
     var wLabels = wrapLabels(e4.map(function(e) { return e[0] }).concat(['Total']), 18)
     var wValues = e4.map(function(e) { return e[1] })
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
     var measures: string[] = wValues.map(function() { return 'relative' }).concat(['total'])
     wValues.push(total)
-    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: primaryColor } } }]} layout={{ title: flByName(catF4, schema), xaxis: { ...catXAxis(wLabels) }, margin: { t: 48, r: 16, b: 48, l: 56 }, showlegend: false }} />
+    return <PlotlyChart traces={[{ type: 'waterfall', x: wLabels, y: wValues, measure: measures, connector: { line: { color: T.borderMid } }, increasing: { marker: { color: T.green } }, decreasing: { marker: { color: T.red } }, totals: { marker: { color: primaryColor } } }]} layout={{ title: flByName(catF4, schema) + clipBadge(WATERFALL_CAP, totalKeys4), xaxis: { ...catXAxis(wLabels) }, margin: { t: 48, r: 16, b: 48, l: 56 }, showlegend: false }} />
   }
 
   if (chartType === 'bullet') {
@@ -522,8 +542,10 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'funnel') {
     var catF5 = config.category; if (!catF5) return <EmptyChart msg="Assign a category field above." />
     var s5 = fs[catF5]; if (!s5 || !s5.counts) return <EmptyChart msg="No data." />
-    var e5 = (function() { var raw = Object.entries(s5.counts); var f5Obj = schema.find(function(f) { return f.field === catF5 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f5Obj?.remapping) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, 12).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
-    return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ title: flByName(catF5, schema), margin: { t: 48, r: 16, b: 8, l: 120 }, showlegend: false }} />
+    var totalKeys5 = Object.keys(s5.counts).length
+    var FUNNEL_CAP = 12
+    var e5 = (function() { var raw = Object.entries(s5.counts); var f5Obj = schema.find(function(f) { return f.field === catF5 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f5Obj?.remapping) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, FUNNEL_CAP).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
+    return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ title: flByName(catF5, schema) + clipBadge(FUNNEL_CAP, totalKeys5), margin: { t: 48, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
   if (chartType === 'gantt') {
@@ -2156,13 +2178,31 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
           onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setBodyDragOver(false) }}
           onDrop={handleBodyDrop}
         >
-          {/* Inline field selectors — dropdowns per slot */}
+          {/* Inline field selectors — dropdowns per slot.
+              Each categorical option includes its distinct-value count so
+              the operator sees cardinality upfront. Renderers further cap
+              at MAX_CATEGORIES_PER_CHART (~30) to keep charts readable. */}
           {currentSlots.length > 0 && (
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
               {currentSlots.map(function(slot) {
                 var opts = allFields.filter(function(f) {
                   return slot.accepts.includes(f.type) || slot.accepts.includes('any')
-                }).map(function(f) { return { v: f.field, l: fl(f), section: f.section || 'core' } })
+                }).map(function(f) {
+                  var label = fl(f)
+                  if (f.type === 'categorical') {
+                    var counts = analytics?.fieldSummaries[f.field]?.counts
+                    if (counts) {
+                      var n = Object.keys(counts).length
+                      if (n > 0) {
+                        var tag = n > MAX_CATEGORIES_PER_CHART
+                          ? '  (' + n + ' values · top ' + MAX_CATEGORIES_PER_CHART + ' shown)'
+                          : '  (' + n + ' values)'
+                        label += tag
+                      }
+                    }
+                  }
+                  return { v: f.field, l: label, section: f.section || 'core' }
+                })
                   .sort(function(a, b) { return a.l.localeCompare(b.l) })
                 return <ChartSlot key={slot.key} label={slot.label} value={currentConfig[slot.key] || ''} required={slot.required}
                   accepts={slot.accepts}
