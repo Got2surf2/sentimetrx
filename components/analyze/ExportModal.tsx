@@ -80,6 +80,9 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   const [impactOEFields,     setImpactOEFields]     = useState<Set<string>>(new Set())
   const [impactScoreFields,  setImpactScoreFields]  = useState<Set<string>>(new Set())
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
+  // Closer-slide toggles — both default on; user can opt out per export
+  const [includeCustomDecks, setIncludeCustomDecks] = useState(true)
+  const [includeProvenance,  setIncludeProvenance]  = useState(true)
   // aiEnabled now flows in from DatasetHeader as a prop (the component that
   // owns the toggle). Was previously a local state polled from localStorage
   // every 2s — wasteful and a memory-leak risk if the modal closed without
@@ -196,7 +199,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
     }, 3500)
 
     try {
-      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled }
+      const body: any = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance }
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
       if (impactOEFields.size > 0) body.impactOEFields = Array.from(impactOEFields)
       if (impactScoreFields.size > 0) body.impactScoreFields = Array.from(impactScoreFields)
@@ -544,6 +547,10 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
+                  <CloserSlidesToggles
+                    includeCustomDecks={includeCustomDecks} setIncludeCustomDecks={setIncludeCustomDecks}
+                    includeProvenance={includeProvenance}   setIncludeProvenance={setIncludeProvenance}
+                  />
                   {error && <ErrorBox message={error} />}
                 </>
               )}
@@ -607,6 +614,10 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
+                  <CloserSlidesToggles
+                    includeCustomDecks={includeCustomDecks} setIncludeCustomDecks={setIncludeCustomDecks}
+                    includeProvenance={includeProvenance}   setIncludeProvenance={setIncludeProvenance}
+                  />
 
                   {error && <ErrorBox message={error} />}
                 </>
@@ -663,6 +674,38 @@ const SECTION_META: Record<string, { label: string; color: string; desc: string 
   custom:         { label: 'Survey Questions',      color: '#E8632A', desc: 'Custom questions asked to respondents' },
   psychographic:  { label: 'Psychographic Profile', color: '#0D2B45', desc: 'Attitudes, values & lifestyle' },
   demographic:    { label: 'Demographics',           color: '#4A6572', desc: 'Audience composition' },
+}
+
+function CloserSlidesToggles({
+  includeCustomDecks, setIncludeCustomDecks,
+  includeProvenance,  setIncludeProvenance,
+}: {
+  includeCustomDecks: boolean
+  setIncludeCustomDecks: (v: boolean) => void
+  includeProvenance: boolean
+  setIncludeProvenance: (v: boolean) => void
+}) {
+  return (
+    <div style={{ marginTop: 14, padding: '12px 14px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
+        Closing Slides
+      </div>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#374151', cursor: 'pointer', marginBottom: 8 }}>
+        <input type="checkbox" checked={includeCustomDecks} onChange={function(e) { setIncludeCustomDecks(e.target.checked) }} style={{ marginTop: 3 }} />
+        <span>
+          <b style={{ color: '#111827' }}>&quot;Every deck is custom.&quot;</b>
+          <span style={{ color: '#6b7280', fontSize: 12 }}> — upsell slide that highlights what the platform can compose on demand</span>
+        </span>
+      </label>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+        <input type="checkbox" checked={includeProvenance} onChange={function(e) { setIncludeProvenance(e.target.checked) }} style={{ marginTop: 3 }} />
+        <span>
+          <b style={{ color: '#111827' }}>&quot;How this deck was made.&quot;</b>
+          <span style={{ color: '#6b7280', fontSize: 12 }}> — provenance receipt with wall-clock time, decisions made, and the modelling pipeline</span>
+        </span>
+      </label>
+    </div>
+  )
 }
 
 function FieldPicker({ byType, selected, toggleField, selectAllType, fields, setSelected, fieldCounts }: FieldPickerProps) {

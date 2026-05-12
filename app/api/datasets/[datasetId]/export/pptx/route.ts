@@ -260,7 +260,7 @@ interface Narratives {
 }
 
 async function generateNarratives(
-  apiKey: string,
+  orgId: string,
   datasetName: string,
   totalRows: number,
   audience: string,
@@ -344,10 +344,10 @@ ${fields.map(f => {
     maxTokens: 3500,
     timeoutMs: 38000,
     messages: [{ role: 'user', content: prompt }],
-    apiKey,
+    usage: { org_id: orgId, resource_type: 'dataset', event_type: 'pptx' },
   })
 
-  logUsage({ resource_type: 'dataset', event_type: 'pptx' }, result.usage)
+  logUsage({ org_id: orgId, resource_type: 'dataset', event_type: 'pptx' }, result.usage)
 
   const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
 
@@ -1417,7 +1417,7 @@ function buildThemeGridSlides(pptx: any, datasetName: string, themes: any[], fie
 async function buildThemeSlides(
   pptx: any, datasetName: string, themes: any[], fieldLabel?: string,
   allRows?: Record<string,any>[], rowKeyMap?: Record<string,string>, fieldKeys?: string[],
-  usedComments?: Set<string>, apiKey?: string, getStripColor?: (text: string) => string | undefined,
+  usedComments?: Set<string>, orgId?: string, getStripColor?: (text: string) => string | undefined,
 ) {
   if (!themes || themes.length === 0) return
 
@@ -1452,7 +1452,7 @@ async function buildThemeSlides(
 
     const themeInfo = { name: t.name || '', description: t.description || '', keywords: t.keywords || [], sentiment: t.sentiment || '' }
     // Only use AI scoring if there are many candidates to filter; skip for small pools
-    const useAI = pool.length > 8 ? (apiKey || undefined) : undefined
+    const useAI = pool.length > 8 ? orgId : undefined
     const picked = await pickBestComments(pool, themeInfo, 5, useAI, usedComments || undefined, 350)
     // Use keyword-based highlighting (fast) — AI phrase extraction removed for performance
     return picked.map(text => ({ text, phrases: themeInfo.keywords }))
@@ -2274,6 +2274,9 @@ export async function POST(req: Request, { params }: Params) {
   const reportTitle: string             = body.reportTitle || ''
   const impactOEFields: string[]       = body.impactOEFields || []
   const skipAI: boolean                = body.skipAI === true
+  // Closer-slide toggles — default ON; ExportModal lets the user opt out per export
+  const includeCustomDecks: boolean    = body.includeCustomDecks !== false
+  const includeProvenance:  boolean    = body.includeProvenance  !== false
 
   if (mode === 'quick' && selectedFieldNames.length === 0) {
     return NextResponse.json({ error: 'Select at least one field' }, { status: 400 })
@@ -2282,7 +2285,7 @@ export async function POST(req: Request, { params }: Params) {
   const service = createServiceRoleClient()
 
   const { data: dataset } = await service
-    .from('datasets').select('id, name, source, row_count, ana_library, study_id, studies(id, name, config)').eq('id', params.datasetId).single()
+    .from('datasets').select('id, name, source, row_count, ana_library, study_id, org_id, studies(id, name, config)').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const { data: stateRow } = await service
@@ -2595,9 +2598,8 @@ export async function POST(req: Request, { params }: Params) {
     keyTakeaways: [],
     fieldInsights: Object.fromEntries(selectedFields.map(f => [f.field, { keyFinding: f.label, narrative: '', implication: '', watchout: '' }])),
   }
-  const apiKey = skipAI ? undefined : process.env.ANTHROPIC_API_KEY
-  if (apiKey) {
-    try { narratives = await generateNarratives(apiKey, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
+  if (!skipAI) {
+    try { narratives = await generateNarratives((dataset as any).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
     catch (e) { console.error('[export/pptx] AI error:', e) }
   }
 
@@ -2845,7 +2847,7 @@ export async function POST(req: Request, { params }: Params) {
         }
         // c) Per-theme detail slides with verbatims on the right
         if (includeThemeSlides && fieldThemes.length > 0) {
-          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (apiKey || undefined), getStripColor)
+          await buildThemeSlides(pptx, datasetName, fieldThemes, openEndedSelected.length > 1 ? f.label : undefined, allRows, rowKeyMap, [f.field], usedCommentTexts, skipAI ? undefined : (dataset as any).org_id, getStripColor)
         }
       }
     }
@@ -2962,13 +2964,17 @@ export async function POST(req: Request, { params }: Params) {
       buildClosingSlide(pptx, datasetName, narratives.keyTakeaways)
     }
 
-    // ── "Every deck is custom" upsell slide (default on) + provenance receipt ──
+    // ── "Every deck is custom" upsell slide + provenance receipt ──
+    // Both toggles default ON; ExportModal lets the user opt out per export.
     try {
+      if (!includeCustomDecks && !includeProvenance) {
+        throw '__skip_closers__'  // user opted out of both — render nothing
+      }
       // Count slides rendered so far (pptxgenjs exposes the internal slides array)
       const slidesSoFar = ((pptx as any).slides?.length ?? 0)
-      const totalAfter = slidesSoFar + 2 // +2 for the two slides we are about to add
+      const totalAfter = slidesSoFar + (includeCustomDecks ? 1 : 0) + (includeProvenance ? 1 : 0)
 
-      renderCustomDecks(pptx, {
+      if (includeCustomDecks) renderCustomDecks(pptx, {
         type: 'custom_decks',
         title: 'Every deck is custom.',
         tagline: 'Not template-filled — generated for your data, your fields, your questions.',
@@ -2986,6 +2992,9 @@ export async function POST(req: Request, { params }: Params) {
         hook: 'Ask: "What would you want a custom slide for?"',
       }, datasetName)
 
+      if (!includeProvenance) {
+        throw '__skip_closers__'  // user kept Custom Decks but turned off provenance
+      }
       const wallClockSeconds = (Date.now() - ssStartedAt) / 1000
       const isCollection = dataset?.source === 'collection'
 
@@ -3072,8 +3081,10 @@ export async function POST(req: Request, { params }: Params) {
         note: 'Range based on a common consulting rule-of-thumb of 2–4 hours per analytical slide (data extraction, theme work, interpretation, chart build, copy). Small-sample studies still warrant the same modelling depth — the system runs every cross-tab and significance test the data supports.',
       }, datasetName)
     } catch (provErr: any) {
-      // Provenance failure must never block the deck itself
-      console.error('[export/pptx] provenance/custom-decks slide failed:', provErr?.message || provErr)
+      // __skip_closers__ is a deliberate skip — anything else is a real failure
+      if (provErr !== '__skip_closers__') {
+        console.error('[export/pptx] provenance/custom-decks slide failed:', provErr?.message || provErr)
+      }
     }
 
     const buffer  = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
