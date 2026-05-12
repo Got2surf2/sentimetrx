@@ -76,11 +76,14 @@ export interface ProvenanceSlide {
   type: 'provenance'
   title?: string
   wallClockSeconds: number
-  inputs:     { label: string; value: string }[]
-  processing: { label: string; value: string }[]
-  outputs:    { label: string; value: string }[]
-  humanEquivLow:  number   // hours
-  humanEquivHigh: number   // hours
+  decisionsMade?: number   // optional second top stat (canonicalisations + categorisations + …)
+  columnHeaders?: { inputs: string; processing: string; outputs: string }
+  inputs:     { label: string; value: string; sub?: string }[]
+  processing: { label: string; value: string; sub?: string }[]
+  outputs:    { label: string; value: string; sub?: string }[]
+  pipelineStages?: string[]   // optional chip strip below the columns
+  humanEquivLow:  number       // hours
+  humanEquivHigh: number       // hours
   note?: string
 }
 
@@ -472,58 +475,122 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   bgFill(slide, pptx)
   hdr(slide, pptx, spec.title || 'How this deck was made.')
 
-  // ── Layout constants — every element derives from these ──
+  // ── Layout constants — every region derives from these ──
   const contentTop = CY + 0.05
   const contentBot = FY - 0.15
-  const statH      = 1.05    // big "47 seconds" anchor
-  const strapH     = 1.20    // bottom productivity strap (label + stat + note)
-  const gapAbove   = 0.18    // between stat and columns
-  const gapBelow   = 0.18    // between columns and strap
+  const statH      = 0.95     // top stats row
+  const pipeH      = spec.pipelineStages && spec.pipelineStages.length > 0 ? 0.55 : 0
+  const strapH     = 1.20     // bottom productivity strap
+  const gap        = 0.16
 
-  // Big anchor stat — wall-clock time
-  slide.addText(fmtWallClock(spec.wallClockSeconds), {
-    x: PAD, y: contentTop, w: W - PAD * 2, h: statH,
-    fontSize: 64, bold: true, color: DN.teal, align: 'center', valign: 'middle', autoFit: true,
-  })
+  const colY    = contentTop + statH + gap
+  const strapY  = contentBot - strapH
+  const pipeY   = pipeH > 0 ? (strapY - gap - pipeH) : strapY
+  const colH    = (pipeH > 0 ? pipeY : strapY) - gap - colY
 
-  // Three columns: INPUTS · PROCESSING · OUTPUTS — span between the stat and the strap
-  const colY = contentTop + statH + gapAbove
-  const strapY = contentBot - strapH
-  const colH = strapY - gapBelow - colY
-  const gap = 0.12
+  // ── Top stats: one or two big anchor numbers ──
+  const wallClockTxt = fmtWallClock(spec.wallClockSeconds)
+  if (spec.decisionsMade !== undefined) {
+    // Two stats — split horizontally, divider in between
+    const half = (W - PAD * 2 - 0.4) / 2
+    slide.addText(wallClockTxt, {
+      x: PAD, y: contentTop, w: half, h: statH,
+      fontSize: 56, bold: true, color: DN.teal, align: 'center', valign: 'middle', autoFit: true,
+    })
+    slide.addText('wall-clock', {
+      x: PAD, y: contentTop + statH * 0.78, w: half, h: 0.22,
+      fontSize: 11, color: DN.slate, italic: true, align: 'center', valign: 'top',
+    })
+    // Divider
+    slide.addShape(pptx.ShapeType.rect, {
+      x: PAD + half + 0.2 - 0.01, y: contentTop + 0.1, w: 0.02, h: statH - 0.2,
+      fill: { color: DN.divider }, line: { width: 0 },
+    })
+    slide.addText(`${spec.decisionsMade.toLocaleString()} decisions made`, {
+      x: PAD + half + 0.4, y: contentTop, w: half, h: statH,
+      fontSize: 56, bold: true, color: DN.gold, align: 'center', valign: 'middle', autoFit: true,
+    })
+    slide.addText('canonicalisations · categorisations · rankings · selections', {
+      x: PAD + half + 0.4, y: contentTop + statH * 0.78, w: half, h: 0.22,
+      fontSize: 10, color: DN.slate, italic: true, align: 'center', valign: 'top',
+    })
+  } else {
+    // Single centred stat (back-compat)
+    slide.addText(wallClockTxt, {
+      x: PAD, y: contentTop, w: W - PAD * 2, h: statH,
+      fontSize: 64, bold: true, color: DN.teal, align: 'center', valign: 'middle', autoFit: true,
+    })
+  }
+
+  // ── Three columns ──
+  const headers = spec.columnHeaders || { inputs: 'INPUTS TAKEN', processing: 'PROCESSING DONE', outputs: 'OUTPUTS GENERATED' }
   const colW = (W - PAD * 2 - gap * 2) / 3
   const cols = [
-    { tag: 'INPUTS TAKEN',      items: spec.inputs,     color: DX.navyMid },
-    { tag: 'PROCESSING DONE',   items: spec.processing, color: DN.teal },
-    { tag: 'OUTPUTS GENERATED', items: spec.outputs,    color: DN.gold },
+    { tag: headers.inputs,     items: spec.inputs,     color: DX.navyMid },
+    { tag: headers.processing, items: spec.processing, color: DN.teal },
+    { tag: headers.outputs,    items: spec.outputs,    color: DN.gold },
   ]
   cols.forEach((col, i) => {
     const x = PAD + i * (colW + gap)
     slide.addShape(pptx.ShapeType.rect, { x, y: colY, w: colW, h: colH, fill: { color: DN.slateCard }, rectRadius: 0.1, line: { color: DN.divider, width: 1 } })
-    slide.addShape(pptx.ShapeType.rect, { x, y: colY, w: colW, h: 0.45, fill: { color: col.color }, rectRadius: 0.1, line: { width: 0 } })
+    slide.addShape(pptx.ShapeType.rect, { x, y: colY, w: colW, h: 0.42, fill: { color: col.color }, rectRadius: 0.1, line: { width: 0 } })
     slide.addText(col.tag, {
-      x, y: colY, w: colW, h: 0.45,
-      fontSize: 11, bold: true, color: DN.white, align: 'center', valign: 'middle', charSpacing: 3,
+      x, y: colY, w: colW, h: 0.42,
+      fontSize: 11, bold: true, color: DN.white, align: 'center', valign: 'middle', charSpacing: 3, autoFit: true,
     })
-    const itemH = (colH - 0.55) / Math.max(col.items.length, 1)
+    const innerTop = colY + 0.55
+    const innerH = colH - 0.65
+    const itemH = innerH / Math.max(col.items.length, 1)
     col.items.forEach((it, j) => {
-      const iy = colY + 0.55 + j * itemH
+      const iy = innerTop + j * itemH
+      const hasSub = !!it.sub
+      // Heights inside each item — value / label / optional sub
+      const valH = hasSub ? itemH * 0.40 : itemH * 0.55
+      const labH = hasSub ? itemH * 0.28 : itemH * 0.40
+      const subH = hasSub ? itemH * 0.32 : 0
       slide.addText(it.value, {
-        x: x + 0.15, y: iy, w: colW - 0.3, h: itemH * 0.5,
-        fontSize: 18, bold: true, color: DX.ink, valign: 'bottom', autoFit: true,
+        x: x + 0.15, y: iy, w: colW - 0.3, h: valH,
+        fontSize: 16, bold: true, color: DX.ink, valign: 'bottom', autoFit: true,
       })
       slide.addText(it.label, {
-        x: x + 0.15, y: iy + itemH * 0.5, w: colW - 0.3, h: itemH * 0.5,
+        x: x + 0.15, y: iy + valH, w: colW - 0.3, h: labH,
         fontSize: 9.5, color: DN.slate, italic: true, valign: 'top', autoFit: true,
       })
+      if (hasSub) {
+        slide.addText(it.sub!, {
+          x: x + 0.15, y: iy + valH + labH, w: colW - 0.3, h: subH,
+          fontSize: 8.5, color: DX.slateDark, valign: 'top', autoFit: true,
+        })
+      }
     })
   })
+
+  // ── Pipeline chip strip ──
+  if (pipeH > 0 && spec.pipelineStages && spec.pipelineStages.length > 0) {
+    slide.addShape(pptx.ShapeType.rect, {
+      x: PAD, y: pipeY, w: W - PAD * 2, h: pipeH,
+      fill: { color: DX.navyLight }, rectRadius: 0.06, line: { width: 0 },
+    })
+    slide.addShape(pptx.ShapeType.rect, {
+      x: PAD, y: pipeY, w: 0.14, h: pipeH,
+      fill: { color: DN.gold }, line: { width: 0 },
+    })
+    slide.addText('PIPELINE', {
+      x: PAD + 0.25, y: pipeY, w: 0.9, h: pipeH,
+      fontSize: 9, bold: true, color: DN.gold, valign: 'middle', charSpacing: 2,
+    })
+    // The stage chips themselves — one addText with bullet-ish separators
+    const stagesText = spec.pipelineStages.map(s => `✓ ${s}`).join('   ·   ')
+    slide.addText(stagesText, {
+      x: PAD + 1.25, y: pipeY, w: W - PAD * 2 - 1.4, h: pipeH,
+      fontSize: 10.5, color: DN.white, valign: 'middle', autoFit: true,
+    })
+  }
 
   // ── Bottom productivity strap — horizontal split: stat on left, note on right ──
   slide.addShape(pptx.ShapeType.rect, { x: PAD, y: strapY, w: W - PAD * 2, h: strapH, fill: { color: DX.ink }, rectRadius: 0.08, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: PAD, y: strapY, w: 0.18, h: strapH, fill: { color: DN.gold }, line: { width: 0 } })
 
-  // Left column (~38% width): label + big stat stacked
   const leftX = PAD + 0.35
   const leftW = (W - PAD * 2 - 0.35) * 0.38
   slide.addText('HUMAN-ANALYST EQUIVALENT', {
@@ -535,11 +602,9 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
     fontSize: 28, bold: true, color: DN.white, valign: 'middle', autoFit: true,
   })
 
-  // Vertical divider line between left and right sections
   const divX = leftX + leftW + 0.25
   slide.addShape(pptx.ShapeType.rect, { x: divX, y: strapY + 0.25, w: 0.015, h: strapH - 0.5, fill: { color: DN.tealLight, transparency: 60 }, line: { width: 0 } })
 
-  // Right column: the italic explanation, vertically centred
   if (spec.note) {
     const rightX = divX + 0.25
     const rightW = W - PAD - rightX - 0.05

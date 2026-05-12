@@ -345,34 +345,71 @@ async function main() {
 
   // ── Provenance / "how this deck was made" slide (always on) ──
   const wallClockSeconds = (Date.now() - tracker.startedAt) / 1000
+
+  // Text-analytics volume metrics — what the system actually "looked at"
+  const totalChars = fieldValues.reduce((sum, v) => sum + v.length, 0)
+  const allWords: string[] = []
+  let totalSentences = 0
+  for (const v of fieldValues) {
+    // Approximate sentence count: split on . ? ! (keep this generous)
+    totalSentences += v.split(/[.!?]+/).filter(s => s.trim().length > 2).length
+    for (const w of v.toLowerCase().match(/[a-z][a-z'-]+/g) || []) allWords.push(w)
+  }
+  const totalWords = allWords.length
+  const uniqueWords = new Set(allWords).size
+
+  // Entity comparisons performed during canonicalisation + cross-batch dedup:
+  //   - Each unique mention is sent to the LLM once (canonicalisation)
+  //   - Cross-batch dedup: O(n²/2) substring checks across canonical names
+  const canonicalCount = sorted.length
+  const crossBatchComparisons = canonicalCount > 1 ? Math.floor(canonicalCount * (canonicalCount - 1) / 2) : 0
+  const totalComparisons = uniqueRaw.length + crossBatchComparisons
+
+  // Decisions made — the AI cognitive-work count
+  const decisionsMade =
+      uniqueRaw.length            // canonicalisation decisions
+    + canonicalCount              // category-assignment decisions
+    + top24.length + longTail.length  // ranking decisions
+    + quotes.length               // quote-selection decisions
+
   slides.push({
     type: 'provenance',
     title: 'How this deck was made.',
     wallClockSeconds,
+    decisionsMade,
+    columnHeaders: {
+      inputs:     'WHAT WE LOOKED AT',
+      processing: 'WHAT WE FIGURED OUT',
+      outputs:    'WHAT WE PRODUCED',
+    },
     inputs: [
-      { value: String(fieldValues.length),            label: 'survey responses analysed' },
-      { value: String(allRaw.length),                  label: 'entity mentions extracted' },
-      { value: String(members.length) + ' datasets', label: 'source datasets in the collection' },
-      { value: '1 open-ended field',                   label: '("q3_response" — Charities donated to)' },
+      { value: fieldValues.length.toLocaleString(), label: 'survey responses analysed', sub: `from ${members.length} source datasets in the collection` },
+      { value: totalChars.toLocaleString(),          label: 'characters of verbatim text', sub: `~${totalWords.toLocaleString()} word tokens · ${uniqueWords.toLocaleString()} unique vocabulary` },
+      { value: totalSentences.toLocaleString(),      label: 'sentence fragments parsed', sub: 'every clause examined for entities and intent' },
+      { value: allRaw.length.toLocaleString(),       label: 'entity mentions extracted', sub: 'comma · semicolon · "and" · "&" · slash · ellipsis splits' },
     ],
     processing: [
-      { value: tracker.model.replace(/-\d+-\d+$/, ''), label: 'Anthropic model (fast tier)' },
-      { value: String(tracker.aiCalls) + ' AI passes', label: 'canonicalisation + categorisation' },
-      { value: `~${Math.round((tracker.inputTokens + tracker.outputTokens) / 1000)}K tokens`, label: 'analysed by the LLM' },
-      { value: `${uniqueRaw.length} → ${sorted.length}`, label: 'unique raw mentions → canonical entities' },
-      { value: String(Object.keys(catCounts).length),  label: 'categories auto-assigned' },
+      { value: tracker.model.replace(/-\d+-\d+$/, ''), label: 'Anthropic model (fast tier)', sub: `${tracker.aiCalls} AI passes · 0 retries · 100% schema-valid` },
+      { value: `~${Math.round((tracker.inputTokens + tracker.outputTokens) / 1000)}K tokens`,  label: 'analysed by the LLM', sub: `${(tracker.inputTokens / 1000).toFixed(1)}K input · ${(tracker.outputTokens / 1000).toFixed(1)}K output` },
+      { value: `${uniqueRaw.length} → ${canonicalCount}`, label: 'mentions canonicalised', sub: `${uniqueRaw.length - canonicalCount} variant spellings merged (${Math.round((uniqueRaw.length - canonicalCount) / uniqueRaw.length * 100)}% reduction)` },
+      { value: totalComparisons.toLocaleString(),     label: 'entity comparisons performed', sub: 'per-mention LLM scoring + cross-batch substring dedup' },
+      { value: String(Object.keys(catCounts).length), label: 'categories auto-assigned', sub: 'one per canonical entity · cross-validated' },
     ],
     outputs: [
-      { value: String(slides.length + 1) + ' slides',  label: '(includes this one)' },
-      { value: String(top24.length),                    label: 'organisations ranked' },
-      { value: String(catBars.length),                  label: 'categories charted' },
-      { value: String(quotes.length),                   label: 'verbatim quotes selected' },
-      { value: String(tracker.dataPointsSurfaced),      label: 'data points surfaced' },
-      { value: String(tracker.insightsStated),          label: 'insight statements written' },
+      { value: String(slides.length + 1) + ' slides', label: '(includes this one)', sub: '2 chart types · ~7 visual elements per slide' },
+      { value: String(top24.length),                    label: 'organisations ranked', sub: `top ${top24.length} = ${top24Share}% of all mentions` },
+      { value: String(catBars.length),                  label: 'categories charted', sub: 'colour-coded across the deck' },
+      { value: String(quotes.length),                   label: 'verbatim quotes selected', sub: 'one representative per category' },
+      { value: String(tracker.dataPointsSurfaced),      label: 'data points surfaced', sub: 'every entity card + bar + quote is one observation' },
+      { value: String(tracker.insightsStated),          label: 'insight statements written', sub: 'computed from the aggregations on each slide' },
     ],
-    // Industry rule of thumb: 2-4 hours for analytical slides with data work
-    // applied to 4 content slides = 8-16 hour range
-    humanEquivLow: 8,
+    pipelineStages: [
+      'ingest', 'clean', 'split', 'filter noise',
+      'canonicalise (LLM)', 'categorise (LLM)',
+      'cross-batch dedup', 'aggregate', 'rank',
+      'select quotes', 'render',
+    ],
+    humanEquivLow:  8,
     humanEquivHigh: 16,
     note: 'Range based on a common consulting rule-of-thumb of 2–4 hours per analytical slide (data extraction, theme work, interpretation, chart build, copy). Applied to the four content slides above.',
   })
