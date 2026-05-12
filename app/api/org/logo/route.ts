@@ -75,6 +75,21 @@ export async function DELETE(req: NextRequest) {
   const { org_id } = await req.json()
   if (!org_id) return NextResponse.json({ error: 'Missing org_id' }, { status: 400 })
 
+  // Mirror the POST gate: only the org's own member, or a platform admin,
+  // may clear the logo. Without this check, any authed user could DELETE
+  // any org's logo by posting that org's id.
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
+  const orgData = userData?.organizations
+  const isAdmin = Array.isArray(orgData) ? orgData[0]?.is_admin_org : (orgData as any)?.is_admin_org
+  const isOwner = userData?.org_id === org_id
+  if (!isAdmin && !isOwner) {
+    return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
+  }
+
   const service = createServiceRoleClient()
 
   await service.storage.from('org-logos').remove([`${org_id}/logo.png`, `${org_id}/logo.jpg`, `${org_id}/logo.webp`])

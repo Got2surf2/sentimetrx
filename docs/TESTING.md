@@ -64,6 +64,7 @@ makes the suite easy to reason about as a unit.
 | RLS isolation | Cross-org read returns null + every public table has RLS + no `USING(true)` policy outside allowlist (env-gated) | The single biggest multi-tenancy risk |
 | Cross-org data egress | Per org-scoped table: Org B cannot read Org A row by id or list scan (env-gated) | Proves policies actually filter, not just that they exist — extends rls-isolation |
 | Campaign route egress | Service-role-client campaign-by-id routes (`/export`, `/respondents`) 404 cross-tenant + control 200 owning-org (env-gated) | RLS doesn't apply to service-role queries — this is the safety net for handler-level org_id gates |
+| Dataset / org route egress | `datasets/[id]/sync`, `datasets/[id]/auto-setup`, `regulations-sources/download-comments`, `org/logo` DELETE — 404/403 cross-tenant + control owning-org (env-gated) | Same safety net for service-role mutations on datasets and the organizations table |
 | Auth flows | Real Supabase signInWithPassword + OTP + reset + admin-createUser invite shape + signOut (env-gated) | Mocking the auth client only proves wrapper code; this proves the round-trip |
 | E2E download | Login → /api/pitch-deck → pptx (env-gated) | Catches cookie/session breakage that unit tests can't see |
 

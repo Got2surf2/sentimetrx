@@ -1,14 +1,15 @@
 /**
- * Dataset / regulations route cross-org egress test — env-gated.
+ * Dataset / regulations / org route cross-org egress test — env-gated.
  *
- * Locks the gates added 2026-05-11 to two service-role routes that had
- * bare `service.from('datasets').eq('id', id)` lookups with no org_id
- * check. The W19 audit's "38 bare-id lookups" pattern, finally closed
- * for these two routes.
+ * Locks the gates on service-role routes that fetch a row by bare `.eq('id', ...)`
+ * and would otherwise let a cross-org caller mutate it. The W19 audit's
+ * "38 bare-id lookups" pattern.
  *
  * Routes under test:
  *  - POST /api/datasets/[datasetId]/sync
+ *  - POST /api/datasets/[datasetId]/auto-setup
  *  - POST /api/regulations-sources/download-comments (batch + finalize)
+ *  - DELETE /api/org/logo
  *
  * Strategy mirrors campaign-routes-egress.test.ts: mock @/lib/supabase/server
  * to return real supabase-js clients (Org B signed in for createClient,
@@ -276,6 +277,77 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
       )
       const res = await POST(req as any)
       expect(res.status).not.toBe(404)
+    } finally {
+      ctx.signedIn = prev
+    }
+  })
+
+  it('POST /api/datasets/[datasetId]/auto-setup 404s for cross-org caller', async () => {
+    // Pre-fix this route would happily overwrite Org A's schema + name when
+    // called by Org B with Org A's dataset id.
+    const { POST } = await import('@/app/api/datasets/[datasetId]/auto-setup/route')
+    const req = new NextRequest(
+      'http://test.local/api/datasets/' + ids.studyDatasetA + '/auto-setup',
+      { method: 'POST' },
+    )
+    const res = await POST(req as any, { params: { datasetId: ids.studyDatasetA! } })
+    expect(res.status).toBe(404)
+  })
+
+  it('POST /api/datasets/[datasetId]/auto-setup does NOT 404 for the owning org (control)', async () => {
+    // Owning org may hit a 400 ("Study config not found") because the seed
+    // study has an empty config, but it must NOT 404 — that would mean the
+    // gate is firing for the wrong reason.
+    const { POST } = await import('@/app/api/datasets/[datasetId]/auto-setup/route')
+    const orgASession = createSupabaseClient(url!, anonKey!, { auth: { persistSession: false } })
+    const signIn = await orgASession.auth.signInWithPassword({
+      email: ORG_A_EMAIL, password: ORG_A_PASSWORD,
+    })
+    expect(signIn.error, signIn.error?.message).toBeNull()
+    const prev = ctx.signedIn
+    ctx.signedIn = orgASession
+    try {
+      const req = new NextRequest(
+        'http://test.local/api/datasets/' + ids.studyDatasetA + '/auto-setup',
+        { method: 'POST' },
+      )
+      const res = await POST(req as any, { params: { datasetId: ids.studyDatasetA! } })
+      expect(res.status).not.toBe(404)
+    } finally {
+      ctx.signedIn = prev
+    }
+  })
+
+  it('DELETE /api/org/logo 403s when caller does not own the target org', async () => {
+    // Pre-fix this route would clear any org's logo when called by any
+    // authed user with that org's id. POST had the check; DELETE didn't.
+    const { DELETE } = await import('@/app/api/org/logo/route')
+    const req = new NextRequest('http://test.local/api/org/logo', {
+      method: 'DELETE',
+      body: JSON.stringify({ org_id: ids.orgA }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await DELETE(req as any)
+    expect(res.status).toBe(403)
+  })
+
+  it('DELETE /api/org/logo 200s for the owning org (control)', async () => {
+    const { DELETE } = await import('@/app/api/org/logo/route')
+    const orgASession = createSupabaseClient(url!, anonKey!, { auth: { persistSession: false } })
+    const signIn = await orgASession.auth.signInWithPassword({
+      email: ORG_A_EMAIL, password: ORG_A_PASSWORD,
+    })
+    expect(signIn.error, signIn.error?.message).toBeNull()
+    const prev = ctx.signedIn
+    ctx.signedIn = orgASession
+    try {
+      const req = new NextRequest('http://test.local/api/org/logo', {
+        method: 'DELETE',
+        body: JSON.stringify({ org_id: ids.orgA }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const res = await DELETE(req as any)
+      expect(res.status).toBe(200)
     } finally {
       ctx.signedIn = prev
     }

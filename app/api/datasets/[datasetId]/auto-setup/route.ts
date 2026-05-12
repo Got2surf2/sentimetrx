@@ -20,11 +20,23 @@ export async function POST(_req: Request, { params }: Params) {
 
   const service = createServiceRoleClient()
 
+  // Cross-org gate: service-role bypasses RLS, so confirm the caller's org
+  // owns this dataset before letting them overwrite schema_config + name.
+  // Admin-org members can act cross-org (Phase E parity).
+  const { data: userData } = await supabase
+    .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
+  const userOrgId = (userData as any)?.org_id as string | null
+
   // Load dataset + linked study
   const { data: dataset } = await service
     .from('datasets').select('*, studies(id, name, config)').eq('id', params.datasetId).single()
 
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  if (!isAdmin && (dataset as any).org_id !== userOrgId) {
+    return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  }
   if (dataset.source !== 'study' || !dataset.study_id) {
     return NextResponse.json({ error: 'Not a study-linked dataset' }, { status: 400 })
   }
