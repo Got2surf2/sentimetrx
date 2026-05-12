@@ -178,6 +178,132 @@ Pause on the colors: sarinaBlue Ana = the centerpiece. The rest orbit it.`
   )
 }
 
+// ── 2.5 With or without AI ─────────────────────────────────────────────────
+function slideWithWithoutAI(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'Available with or without AI.')
+  addFooter(s, pg)
+
+  // 6 columns, each with two stacked boxes (without / with AI)
+  const modules = [
+    { name: 'Sarina',     without: 'Forms · branching · QR / NFC · manual translation',          withAI: 'Real-time clarifiers · adaptive flow · auto-translate' },
+    { name: 'Agents',     without: 'Scripted FAQ · decision trees',                              withAI: 'RAG retrieval · drift review · safety' },
+    { name: 'PulseIQ',    without: 'Manual moderation · structured Q&A',                         withAI: 'AI moderation · real-time topic detection' },
+    { name: 'Listening',  without: 'Reviews + social + Reddit ingest · keyword filters',         withAI: 'Theme + sentiment + intent extraction' },
+    { name: 'Campaigns',  without: 'Scheduling · merge tags · webhook tracking',                 withAI: 'AI personalization · smart send timing' },
+    { name: 'Ana',        without: 'Charts · statistics · hypothesis tests · dashboards',        withAI: 'Theme mining · AI summaries · quote selection' },
+  ]
+
+  const cardW = 2.0
+  const startX = 0.55
+  const gap = 0.08
+
+  modules.forEach((m, i) => {
+    const x = startX + i * (cardW + gap)
+
+    // Module name header
+    s.addShape('rect', { x, y: 1.4, w: cardW, h: 0.55, fill: { color: DN.navy }, rectRadius: 0.06 })
+    s.addText(m.name, { x, y: 1.4, w: cardW, h: 0.55, fontSize: 14, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', autoFit: true })
+
+    // WITHOUT AI box (drab grey)
+    s.addShape('rect', { x, y: 2.05, w: cardW, h: 2.05, fill: { color: 'F2F2F2' }, rectRadius: 0.06 })
+    s.addShape('rect', { x, y: 2.05, w: cardW, h: 0.35, fill: { color: '6B7280' }, rectRadius: 0.06 })
+    s.addText('WITHOUT AI', { x, y: 2.05, w: cardW, h: 0.35, fontSize: 9, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 2 })
+    s.addText(m.without, { x: x + 0.1, y: 2.45, w: cardW - 0.2, h: 1.6, fontSize: 10, fontFace: 'Arial', color: '4B5563', valign: 'top', lineSpacing: 14, autoFit: true })
+
+    // WITH AI box (branded teal)
+    s.addShape('rect', { x, y: 4.2, w: cardW, h: 2.05, fill: { color: DN.tealPale }, rectRadius: 0.06 })
+    s.addShape('rect', { x, y: 4.2, w: cardW, h: 0.35, fill: { color: DN.teal }, rectRadius: 0.06 })
+    s.addText('WITH AI', { x, y: 4.2, w: cardW, h: 0.35, fontSize: 9, fontFace: 'Arial', color: DN.white, bold: true, align: 'center', valign: 'middle', charSpacing: 2 })
+    s.addText(m.withAI, { x: x + 0.1, y: 4.6, w: cardW - 0.2, h: 1.6, fontSize: 10, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'top', lineSpacing: 14, autoFit: true })
+  })
+
+  s.addText('You choose what to switch on.', {
+    x: 0.5, y: 6.5, w: 12.3, h: 0.5, fontSize: 18, fontFace: 'Arial', color: DN.navy, bold: true, italic: true, align: 'center',
+  })
+
+  s.addNotes(
+`The capability map. Every module is useful WITHOUT AI — and gets sharper with AI on. Walk it column by column at a high level; let the slide do the work.
+
+SARINA: even without AI, you have a modern survey platform — branching forms, QR/NFC capture, manual translation. Switch AI on and you get real-time clarifiers, adaptive flow, auto-translate.
+
+AGENTS: without AI, scripted FAQ trees (cheaper but limited). With AI, true RAG agents trained on your menu, with safety + drift review.
+
+PULSEIQ: without AI, manually-moderated live Q&A. With AI, hundreds of concurrent conversations moderated automatically with real-time topic detection.
+
+LISTENING: the ingestion pipelines (Google Reviews, social, Reddit, regulatory) work without AI — you just get raw data with keyword filters. AI on = theme + sentiment + intent extraction.
+
+CAMPAIGNS: without AI, modern email/SMS orchestration (scheduling, merge tags, tracking). With AI, per-recipient personalization and smart send timing.
+
+ANA: this is the one you ALREADY have. Without AI: charts, statistics, hypothesis tests. With AI: theme mining, AI summaries, quote selection — that's what you've been using.
+
+THE POINT: You don't have to flip everything on at once. Pick what fits your policy and your AI posture. Add more later.
+
+That's the lead-in to the next slide — which addresses "and even when AI is on, whose AI is it?"`
+  )
+}
+
+// ── 2.6 AI-agnostic ────────────────────────────────────────────────────────
+function slideAIAgnostic(pptx: any, pg: number) {
+  const s = pptx.addSlide()
+  addHeader(s, 'AI-agnostic. Bring your own.')
+  addFooter(s, pg)
+
+  // Four big options
+  const options = [
+    { tag: 'DEFAULT',    title: 'Our Anthropic + OpenAI setup',  body: 'Plug-and-play · no procurement · production-ready',   color: DN.sarinaBlue },
+    { tag: 'YOUR PROVIDER', title: 'Anthropic · OpenAI · Azure · Bedrock · Gemini', body: 'Route AI calls through your existing enterprise contract', color: DN.teal },
+    { tag: 'BYOK',       title: 'Your API keys',                  body: 'Spend lands on your bill · your governance · your audit trail', color: DN.hermesOrange },
+    { tag: 'YOUR GATEWAY', title: 'Your internal AI gateway',     body: 'Already running LangSmith / LiteLLM / a custom proxy? Point us at it.', color: DN.gold },
+  ]
+  options.forEach((opt, i) => {
+    const col = i % 2, row = Math.floor(i / 2)
+    const x = 0.5 + col * 6.2
+    const y = 1.4 + row * 1.85
+    s.addShape('rect', { x, y, w: 6.05, h: 1.6, fill: { color: DN.slateCard }, rectRadius: 0.1 })
+    s.addShape('rect', { x, y, w: 0.18, h: 1.6, fill: { color: opt.color } })
+    s.addText(opt.tag, { x: x + 0.35, y: y + 0.12, w: 5, h: 0.3, fontSize: 10, fontFace: 'Arial', color: opt.color, bold: true, charSpacing: 3 })
+    s.addText(opt.title, { x: x + 0.35, y: y + 0.4, w: 5.6, h: 0.45, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true, valign: 'middle', autoFit: true })
+    s.addText(opt.body, { x: x + 0.35, y: y + 0.9, w: 5.6, h: 0.65, fontSize: 11, fontFace: 'Arial', color: DN.ink, italic: true, valign: 'top', autoFit: true })
+  })
+
+  // Bottom contrast strap
+  s.addShape('rect', { x: 0.5, y: 5.3, w: 12.3, h: 1.5, fill: { color: DN.navy }, rectRadius: 0.1 })
+  s.addShape('rect', { x: 0.5, y: 5.3, w: 0.2, h: 1.5, fill: { color: DN.gold } })
+  s.addText('THE CONTRAST', { x: 0.85, y: 5.4, w: 6, h: 0.3, fontSize: 10, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 3 })
+  s.addText('Qualtrics, Medallia, Forsta = locked into their AI. Their model, their keys, their data path.', {
+    x: 0.85, y: 5.7, w: 12.0, h: 0.5, fontSize: 14, fontFace: 'Arial', color: DN.white, bold: true,
+  })
+  s.addText('You bring your AI to the table — we run on it.', {
+    x: 0.85, y: 6.25, w: 12.0, h: 0.45, fontSize: 14, fontFace: 'Arial', color: DN.sarinaBlue, italic: true, bold: true,
+  })
+
+  s.addNotes(
+`The procurement-and-governance slide. Land this hard if their CIO/IT or CISO is in the room.
+
+Four ways the AI layer can be configured:
+
+DEFAULT — our Anthropic + OpenAI setup. Plug-and-play. No procurement work on your side. Fastest to start.
+
+YOUR PROVIDER — if your team already has an enterprise contract with Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, or Google Gemini, we route AI calls through that. You keep your existing relationship, pricing, and governance.
+
+BYOK (Bring Your Own Key) — API keys live on your side. Spend lands on your bill. Your governance team controls usage. Your audit trail.
+
+YOUR GATEWAY — if you already run an internal AI gateway (LangSmith, LiteLLM, a custom proxy for data residency or PII redaction), point us at it. We don't care what's behind it.
+
+WHY THIS MATTERS:
+- Compliance: your data path stays under your control.
+- Cost: you can negotiate AI rates better than we ever could.
+- Lock-in: zero. Switch providers without switching platforms.
+
+THE CONTRAST (bottom strap, land hard):
+"Qualtrics, Medallia, Forsta are locked into their AI. Their model, their keys, their data path."
+"You bring your AI to the table — we run on it."
+
+That's the differentiator for any enterprise IT/legal team that has policies on AI providers.`
+  )
+}
+
 // ── 3. Why now ─────────────────────────────────────────────────────────────
 function slideWhyNow(pptx: any, pg: number) {
   const s = pptx.addSlide()
@@ -537,6 +663,8 @@ function buildDeck(pptx: any, clientName: string) {
   pg = 1
   slideWhereWeStarted(pptx, ++pg)
   slidePlatformToday(pptx, ++pg)
+  slideWithWithoutAI(pptx, ++pg)
+  slideAIAgnostic(pptx, ++pg)
   slideWhyNow(pptx, ++pg)
   slideSarina(pptx, ++pg)
   slideAgents(pptx, ++pg)
