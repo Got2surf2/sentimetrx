@@ -45,7 +45,7 @@ const CARDS: Card[] = [
 
   // Reports
   { category: 'reports', icon: '📈', title: 'Governance Trend',   description: 'Weekly audit scores over time — we monitor and improve on a continuous basis.', href: '/admin/governance' },
-  { category: 'reports', icon: '📊', title: 'Investor Decks',     description: 'Pitch, architecture, and product overview decks.', href: '/admin/decks' },
+  { category: 'reports', icon: '📊', title: 'Investor & Client Presentations',     description: 'Investor pitch, rollup, architecture, engineering reality, and per-client expansion decks.', href: '/admin/decks' },
   { category: 'reports', icon: '⚖',  title: 'Audit PR History',   description: 'Source markdown PRs on GitHub — the merge record is the SOC 2 / NIST AI RMF evidence trail.', href: 'https://github.com/Got2surf2/sentimetrx/pulls', external: true },
 ]
 

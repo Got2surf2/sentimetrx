@@ -193,7 +193,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
                 </Link>
                 <Link href="/admin/decks" onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                  <span className="text-base w-5 text-center">{'📊'}</span><span>Investor Decks</span>
+                  <span className="text-base w-5 text-center">{'📊'}</span><span>Investor &amp; Client Presentations</span>
                 </Link>
                 <a href="https://github.com/Got2surf2/sentimetrx/pulls" target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">

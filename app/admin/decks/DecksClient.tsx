@@ -139,7 +139,7 @@ export default function DecksClient({
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>Investor &amp; Strategy Decks</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>Investor &amp; Client Presentations</h1>
         <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
           Server-generated PPTX. Each deck rebuilds on every download — content updates immediately when the underlying route changes.
         </p>
