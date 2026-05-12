@@ -36,7 +36,7 @@ the offending code, severity, and verification.
 | P1 structured console payloads (ENG §4) | ~rest | **2 sites** | — | — |
 | P1 PII in log payloads (SECURITY §5) | — | **1 site** | — | — |
 
-**Net real findings: 1 P0 (fixed today) + 3 P1 (open).**
+**Net real findings: 1 P0 (fixed today) + 3 P1 (all fixed today, commit `f74133b`).**
 
 ---
 
@@ -151,9 +151,9 @@ service-role-only-by-design (no change required):**
 
 ---
 
-## P1 findings (still open)
+## P1 findings (all fixed today, commit `f74133b`)
 
-### P1-1 — Phone number logged in SMS-failure error handler
+### P1-1 — Phone number logged in SMS-failure error handler — **FIXED**
 
 **Policy:** SECURITY.md §5 — *"Never put PII into a structured log
 message. Use opaque ids; if a field must be logged for debugging,
@@ -183,7 +183,7 @@ console.error({
 
 ---
 
-### P1-2 — Two interpolated `console.warn` calls instead of structured payloads
+### P1-2 — Two interpolated `console.warn` calls instead of structured payloads — **FIXED**
 
 **Policy:** ENGINEERING.md §4 — *"prod handlers must call
 `console.warn` / `console.error` with a single object argument —
