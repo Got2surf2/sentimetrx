@@ -2058,14 +2058,18 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var downloadPNG = function() {
     if (!chartBodyRef.current) return
     if (activeChart === 'table') { downloadCSV(); return }
-    var plotDiv = chartBodyRef.current.querySelector('.js-plotly-plot') as HTMLElement
-    if (plotDiv) {
+    // querySelector returns only the first match — that's the source of
+    // the split-view bug where only one chart got exported. For 0/many,
+    // fall through to the SVG-tiling path (downloadSVGasPNG iterates
+    // every SVG and composites them onto one canvas).
+    var plotDivs = chartBodyRef.current.querySelectorAll('.js-plotly-plot')
+    if (plotDivs.length === 1) {
       getPlotly().then(function(Plotly) {
-        Plotly.downloadImage(plotDiv, { format: 'png', width: 1200, height: 700, filename: activeChart + '_chart' })
+        Plotly.downloadImage(plotDivs[0] as HTMLElement, { format: 'png', width: 1200, height: 700, filename: activeChart + '_chart' })
       })
       return
     }
-    // Fallback for SVG-based charts (bullet/KPI gauges)
+    // 0 charts (SVG-only bullets/gauges) OR many (split view) → tile.
     downloadSVGasPNG()
   }
 
