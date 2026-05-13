@@ -1989,6 +1989,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                         var blocked = false
                                         for (var bk = Math.min(wi,wj)+1; bk < Math.max(wi,wj); bk++) { if (CONJ.has(words[bk])) { blocked = true; break } }
                                         if (blocked) continue
+                                        // Don't surface the theme's own keywords as their own
+                                        // opinions — when keywords are themselves opinion words
+                                        // (e.g. "amazing", "outstanding" on an Overall Experience
+                                        // theme) the chips below the line just duplicated the
+                                        // chips above. Opinions are meant to add new info.
+                                        if (kws.has(w)) continue
                                         if (posWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'positive' }; posTotal++ }
                                         else if (negWords.has(w)) { opCounts[w] = { c: (opCounts[w]?.c || 0) + 1, s: 'negative' }; negTotal++ }
                                       }
