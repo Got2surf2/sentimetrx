@@ -211,18 +211,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: safety.warning || 'Please rephrase your question.' }, { status: 400 })
   }
 
-  // Verify dataset ownership
-  const { data: dataset } = await supabase
+  // Verify dataset ownership. Service-role read + explicit org_id
+  // check: the org boundary is enforced by our own equality below,
+  // not by RLS. Going through the auth-client occasionally returned
+  // null for rows that demonstrably existed (the page next to this
+  // route had no trouble loading the same dataset), which surfaced
+  // as a generic "Dataset not found". Splitting the lookup into
+  // exists vs cross-org also lets us return useful diagnostics.
+  const service = createServiceRoleClient()
+  const { data: dataset } = await service
     .from('datasets')
     .select('id, name, source, row_count, org_id')
     .eq('id', datasetId)
-    .eq('org_id', userData.org_id)
     .single()
 
-  if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-
-  // Fetch dataset state (themes + schema) for framework context
-  const service = createServiceRoleClient()
+  if (!dataset) return NextResponse.json({ error: 'Dataset no longer exists' }, { status: 404 })
+  if (dataset.org_id !== userData.org_id) {
+    return NextResponse.json({ error: 'You do not have access to this dataset' }, { status: 403 })
+  }
   const { data: stateRow } = await service
     .from('dataset_state')
     .select('theme_model, schema_config')
