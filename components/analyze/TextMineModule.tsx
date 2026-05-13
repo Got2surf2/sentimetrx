@@ -2017,10 +2017,20 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 {/* Count + % + CI + mini bar */}
                                 <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
                                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
-                                    <span style={{ fontSize: 13, color: T.textMid }}><strong style={{ fontSize: 18, color: cardBorder }}>{(t.count || 0).toLocaleString()}</strong> responses</span>
+                                    <span style={{ fontSize: 13, color: T.textMid }}>
+                                      <strong style={{ fontSize: 18, color: cardBorder }}>{(t.count || 0).toLocaleString()}</strong> records
+                                      {(t.snippetCount || 0) > 0 && (
+                                        <>
+                                          {' \u00b7 '}
+                                          <strong style={{ color: T.textMid }}>{(t.snippetCount || 0).toLocaleString()}</strong> snippets
+                                        </>
+                                      )}
+                                    </span>
                                     <span style={{ fontSize: 22, fontWeight: 800, color: cardBorder }}>{pct}%</span>
                                   </div>
-                                  <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>95% CI: {t.ciLow ?? 0}{'\u2013'}{t.ciHigh ?? 0}%</div>
+                                  <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>
+                                    {pct}% coverage {'\u00b7'} 95% CI: {t.ciLow ?? 0}{'\u2013'}{t.ciHigh ?? 0}%
+                                  </div>
                                   {t.avgRating != null && !useRatingColor && (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                                       <span style={{ fontSize: 11, color: T.textMid }}>Avg Rating: <strong style={{ color: t.ratingDelta != null && t.ratingDelta > 0 ? '#059669' : t.ratingDelta != null && t.ratingDelta < -0.1 ? '#dc2626' : T.text }}>{t.avgRating.toFixed(2)}</strong></span>

@@ -53,7 +53,10 @@ export interface Theme {
   description: string
   keywords: string[]
   sentiment: string
-  count: number
+  count: number             // unique rows matched ("records")
+  snippetCount?: number     // total keyword-match occurrences across matched rows
+                            // ("signals" / "snippets"): a row mentioning a theme
+                            // keyword 3 times contributes 3 to this count.
   percentage: number
   ciLow?: number
   ciHigh?: number
@@ -136,11 +139,21 @@ export function recountThemes(
       return String(r[f] || '').trim().length > 0
     })
   })
-  // Pre-compile keyword regexes for all themes to avoid rebuilding per row
+  // Pre-compile keyword regexes for all themes to avoid rebuilding per row.
+  // Two flavors:
+  //   themeRegexes  — non-global, used with .test() to detect any-match (counts
+  //                   rows = records).
+  //   themeRegexesG — global, used with .match() to count keyword occurrences
+  //                   per matched row (= snippets). Built once, reused per row.
   const themeRegexes: Map<string, RegExp[]> = new Map()
+  const themeRegexesG: Map<string, RegExp[]> = new Map()
   for (const t of themes) {
     if (t.keywords && t.keywords.length) {
-      themeRegexes.set(t.id, t.keywords.map(buildKwRegex))
+      const baseRegexes = t.keywords.map(buildKwRegex)
+      themeRegexes.set(t.id, baseRegexes)
+      themeRegexesG.set(t.id, baseRegexes.map(function(re) {
+        return new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g')
+      }))
     }
   }
 
@@ -157,11 +170,12 @@ export function recountThemes(
 
   return themes.map(function(t) {
     const regexes = themeRegexes.get(t.id)
+    const regexesG = themeRegexesG.get(t.id)
     if (!regexes || !regexes.length) {
       const ci = wilsonCI(0, nonEmpty.length)
-      return { ...t, count: 0, percentage: 0, ciLow: ci.ciLow, ciHigh: ci.ciHigh }
+      return { ...t, count: 0, snippetCount: 0, percentage: 0, ciLow: ci.ciLow, ciHigh: ci.ciHigh }
     }
-    var count = 0, totalPos = 0, totalNeg = 0
+    var count = 0, snippetCount = 0, totalPos = 0, totalNeg = 0
     var ratingSum = 0, ratingCnt = 0
     var ratingValues: number[] = []
     // Per-keyword rating accumulators
@@ -175,6 +189,15 @@ export function recountThemes(
       const lower = text.toLowerCase()
       if (regexes.some(function(re) { return re.test(lower) })) {
         count++
+        // Snippets: count every keyword-regex hit in this row's text, not
+        // just whether the row matched at all. A row mentioning "slow" 3
+        // times contributes 3 to snippetCount but 1 to count.
+        if (regexesG) {
+          for (var gi = 0; gi < regexesG.length; gi++) {
+            const m = lower.match(regexesG[gi])
+            if (m) snippetCount += m.length
+          }
+        }
         var score = lexiconScore(text)
         totalPos += score.pos
         totalNeg += score.neg
@@ -224,7 +247,7 @@ export function recountThemes(
         ratingInfo.midBoxPct = 100 - ratingInfo.topBoxPct - ratingInfo.bottomBoxPct
       }
     }
-    return { ...t, count, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh, sentiment, ...ratingInfo }
+    return { ...t, count, snippetCount, percentage: pct, ciLow: ci.ciLow, ciHigh: ci.ciHigh, sentiment, ...ratingInfo }
   })
 }
 
