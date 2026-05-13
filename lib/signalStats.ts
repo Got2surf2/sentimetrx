@@ -119,49 +119,61 @@ export async function computeSignalStatsRaw(
     return emptyStats(themes.length)
   }
 
-  // records = non-empty rows (max over fields, summed across members)
-  let records = 0
-  for (const f of fields) {
-    let fieldTotal = 0
-    for (const did of datasetIds) {
-      const { count } = await service
-        .from('dataset_rows_flat')
-        .select('id', { count: 'exact', head: true })
-        .eq('dataset_id', did)
-        .not('data->' + f, 'is', null)
-        .neq('data->>' + f, '')
-      fieldTotal += count || 0
-    }
-    records = Math.max(records, fieldTotal)
-  }
+  // Run every independent DB call in parallel. For a 14-theme dataset
+  // on a 2-member collection the old serial loop was ~30 RPCs ×
+  // ~100ms each = ~3s per dataset; parallel it's bounded by the
+  // slowest single RPC (~300-500ms). Three groups of work fire at once:
+  //   - records  : per-field non-empty counts × member
+  //   - signals  : per-theme count_theme_matches × member
+  //   - inThemes : union-keyword count_theme_matches × member
 
-  // signals = sum of per-theme record counts (a row in N themes counts N×)
-  let signals = 0
-  for (const t of themes) {
-    for (const did of datasetIds) {
-      const { data } = await service.rpc('count_theme_matches', {
-        p_dataset_id: did,
-        p_field_keys: fields,
-        p_keywords: t.keywords!.filter(Boolean),
-      })
-      signals += Number(data) || 0
-    }
-  }
-
-  // inThemes = rows matching ANY theme — union of keywords through the
-  // same regex alternation that count_theme_matches builds.
   const allKeywords = Array.from(
     new Set(themes.flatMap(t => (t.keywords || []).filter(Boolean))),
   )
-  let inThemes = 0
-  for (const did of datasetIds) {
-    const { data } = await service.rpc('count_theme_matches', {
+
+  // records — promise per (field, member); reduce per field, max across fields
+  const recordsPerField = await Promise.all(
+    fields.map(async f => {
+      const counts = await Promise.all(
+        datasetIds.map(async did => {
+          const { count } = await service
+            .from('dataset_rows_flat')
+            .select('id', { count: 'exact', head: true })
+            .eq('dataset_id', did)
+            .not('data->' + f, 'is', null)
+            .neq('data->>' + f, '')
+          return count || 0
+        }),
+      )
+      return counts.reduce((s, c) => s + c, 0)
+    }),
+  )
+  const records = recordsPerField.reduce((m, v) => Math.max(m, v), 0)
+
+  // signals — one promise per (theme, member), summed
+  const signalsCalls = themes.flatMap(t =>
+    datasetIds.map(did =>
+      service.rpc('count_theme_matches', {
+        p_dataset_id: did,
+        p_field_keys: fields,
+        p_keywords: (t.keywords || []).filter(Boolean),
+      }),
+    ),
+  )
+  // inThemes — one promise per member
+  const inThemesCalls = datasetIds.map(did =>
+    service.rpc('count_theme_matches', {
       p_dataset_id: did,
       p_field_keys: fields,
       p_keywords: allKeywords,
-    })
-    inThemes += Number(data) || 0
-  }
+    }),
+  )
+  const [signalsResults, inThemesResults] = await Promise.all([
+    Promise.all(signalsCalls),
+    Promise.all(inThemesCalls),
+  ])
+  const signals = signalsResults.reduce((s, r) => s + (Number(r.data) || 0), 0)
+  const inThemes = inThemesResults.reduce((s, r) => s + (Number(r.data) || 0), 0)
 
   const themeFitPct = records > 0 ? Math.round((inThemes / records) * 100) : 0
   return {
