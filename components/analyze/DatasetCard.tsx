@@ -16,6 +16,19 @@ import type { DatasetWithState } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
 
+// Phase C: dataset listing carries server-computed signal stats keyed
+// by dataset id, fetched in one batch from /api/datasets/signal-stats-batch.
+// Cards render skeleton until their entry lands so the listing doesn't
+// flash + reflow.
+export interface SignalStatsBrief {
+  records: number
+  signals: number
+  inThemes: number
+  themeFitPct: number
+  themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
+  themeCount: number
+}
+
 interface Props {
   dataset:             DatasetWithState
   onDelete:            (id: string) => void
@@ -25,11 +38,18 @@ interface Props {
   isAdmin?:            boolean
   allOrgs?:            OrgOption[]
   onTransfer?:         (datasetId: string, studyId: string | null, orgId: string) => Promise<void>
+  signalStats?:        SignalStatsBrief | null  // undefined = still loading, null = no themes/data
 }
 
 const HERMES = '#e8622a'
 const HERMES_BG = '#fff4ef'
 const HERMES_MID = '#fcd5c0'
+
+const FIT_BAND: Record<SignalStatsBrief['themeFitBand'], { fg: string; bg: string; border: string }> = {
+  Tight:   { fg: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
+  Mixed:   { fg: '#92400e', bg: '#fffbeb', border: '#fde68a' },
+  Diffuse: { fg: '#9f1239', bg: '#fff1f2', border: '#fecdd3' },
+}
 
 function timeAgo(iso: string): string {
   const diff  = Date.now() - new Date(iso).getTime()
@@ -52,7 +72,7 @@ function Badge({ label, color, bg, border }: { label: string, color: string, bg:
   )
 }
 
-export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer }: Props) {
+export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats }: Props) {
   const router = useRouter()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [renaming,      setRenaming]      = useState(false)
@@ -507,6 +527,38 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           {timeAgo(dataset.updated_at)}
         </div>
       </div>
+
+      {/* Phase C signal-stats block. Undefined until the batch fetch
+          returns (skeleton); null when the dataset has no themes
+          (block hides). Same vocabulary as the dataset detail strip:
+          records · signals · Theme-fit band + %. */}
+      {signalStats === undefined && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+          <span style={{ height: 12, width: 100, background: '#f3f4f6', borderRadius: 6 }} />
+          <span style={{ height: 12, width: 80, background: '#f3f4f6', borderRadius: 6 }} />
+        </div>
+      )}
+      {signalStats && signalStats.themeCount > 0 && signalStats.records > 0 && (function() {
+        const fit = FIT_BAND[signalStats.themeFitBand]
+        const tip = signalStats.themeFitPct + '% of records (' + signalStats.inThemes.toLocaleString() +
+          ' of ' + signalStats.records.toLocaleString() + ') match at least one of the ' +
+          signalStats.themeCount + ' themes.'
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
+            <span style={{ color: '#6b7280' }} title="Sum of per-theme record matches (a row in N themes contributes N).">
+              <strong style={{ color: '#111827' }}>{signalStats.signals.toLocaleString()}</strong> signals
+            </span>
+            <span style={{ color: '#d1d5db' }}>·</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} title={tip}>
+              <span style={{ color: '#6b7280' }}>Theme fit</span>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: fit.bg, color: fit.fg, border: '1px solid ' + fit.border }}>
+                {signalStats.themeFitBand}
+              </span>
+              <strong style={{ color: '#111827' }}>{signalStats.themeFitPct}%</strong>
+            </span>
+          </div>
+        )
+      })()}
 
       {/* 3b. Scoring donut — shows when a scored field exists with analytics */}
       {(function() {

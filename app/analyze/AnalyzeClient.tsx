@@ -3,9 +3,9 @@
 // app/analyze/AnalyzeClient.tsx
 // Dataset card grid with filter bar and create button
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import DatasetCard from '@/components/analyze/DatasetCard'
+import DatasetCard, { type SignalStatsBrief } from '@/components/analyze/DatasetCard'
 import DatasetFilterBar from '@/components/analyze/DatasetFilterBar'
 import NewCollectionModal from '@/components/analyze/NewCollectionModal'
 import type { DatasetWithState } from '@/lib/analyzeTypes'
@@ -31,6 +31,43 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const [datasets, setDatasets] = useState<DatasetWithState[]>(initialDatasets)
   const [filters,  setFilters]  = useState<Filters>({ source: 'all', visibility: 'all', status: 'all' })
   const [showCollectionModal, setShowCollectionModal] = useState(false)
+  // Phase C: batched signal stats. `undefined` means "not yet fetched"
+  // for that dataset (cards render skeleton); after the batch returns,
+  // the entry is either a SignalStatsBrief or null (no themes).
+  const [signalStatsMap, setSignalStatsMap] = useState<Record<string, SignalStatsBrief | null>>({})
+
+  useEffect(function() {
+    const ids = initialDatasets.map(function(d) { return d.id })
+    if (ids.length === 0) return
+    let cancelled = false
+    // 50/batch matches the server-side cap; chunk if a user has more
+    // than that on their listing.
+    const CHUNK = 50
+    async function run() {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK)
+        try {
+          const res = await fetch('/api/datasets/signal-stats-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: slice }),
+          })
+          if (!res.ok) continue
+          const data = await res.json()
+          if (cancelled || !data?.stats) continue
+          setSignalStatsMap(function(prev) {
+            const next: Record<string, SignalStatsBrief | null> = { ...prev }
+            for (const id of slice) {
+              next[id] = (data.stats as Record<string, SignalStatsBrief>)[id] || null
+            }
+            return next
+          })
+        } catch { /* silent */ }
+      }
+    }
+    void run()
+    return function() { cancelled = true }
+  }, [initialDatasets])
 
   const filtered = datasets.filter(function(d) {
     if (filters.source !== 'all' && d.source !== filters.source) return false
@@ -168,6 +205,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
                 isAdmin={isAdmin}
                 allOrgs={allOrgs}
                 onTransfer={handleTransfer}
+                signalStats={signalStatsMap[dataset.id]}
               />
             )
           })}
