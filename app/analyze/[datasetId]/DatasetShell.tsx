@@ -10,6 +10,7 @@ import type { Filters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
 import AskAnaPanel from '@/components/analyze/AskAnaPanel'
 import DatasetHeader from './DatasetHeader'
+import DatasetMetricStrip from '@/components/analyze/DatasetMetricStrip'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface DatasetMeta {
@@ -180,6 +181,10 @@ function ShellInner({ dataset, userName, orgName, schemaFields, datasetId, child
     <>
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} filterCount={fCount} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
+
+      {/* Phase B metric strip — records / signals / theme-fit. Sits between
+          the orange header and the filter chips, visible on every tab. */}
+      <DatasetMetricStrip datasetId={dataset.id} />
 
       {/* Global filter chips bar — visible on ALL tabs */}
       {fCount > 0 && (function() {
