@@ -49,19 +49,23 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var pathname = usePathname()
 
   var [apiKey,      setApiKey]      = useState('')
-  var [aiEnabled,   setAiEnabled]   = useState(false)
   var [showExport,  setShowExport]  = useState(false)
   var [showShareAnalytics, setShowShareAnalytics] = useState(false)
   var [showSearch,  setShowSearch]  = useState(false)
+  var [aiToggling,  setAiToggling]  = useState(false)
   var orgAi = useOrgAiMode()
+  // Org ceiling (admin-set "off" makes the user toggle unreachable).
   var aiDisabledByOrg = !orgAi.loading && orgAi.mode === 'off'
+  // Personal opt-in — server-of-record on users.ai_enabled, audited
+  // per flip in ai_consent_audit. Was localStorage in the old build;
+  // localStorage now functions only as a fast-read cache for older
+  // consumers (TextMine / Stats) that still read it directly.
+  var aiEnabled = orgAi.userEnabled
 
   useEffect(function() {
     try {
       var k = localStorage.getItem('sentimetrx_tm_apikey')
       if (k) setApiKey(k)
-      var ai = localStorage.getItem('sentimetrx_ai_enabled')
-      if (ai === '1') setAiEnabled(true)
     } catch {}
   }, [])
 
@@ -330,14 +334,25 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               </span>
             ) : (
               <>
-                <button onClick={function() {
-                  var next = !aiEnabled; setAiEnabled(next)
-                  try { localStorage.setItem('sentimetrx_ai_enabled', next ? '1' : '0') } catch {}
-                }}
-                  title={apiKey ? 'Using your custom Anthropic key' : 'Using the platform Anthropic key'}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.2)', border: '1px solid ' + (aiEnabled ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)'), borderRadius: 20, color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <button
+                  onClick={async function() {
+                    if (aiToggling || orgAi.loading) return
+                    setAiToggling(true)
+                    var result = await orgAi.setUserEnabled(!aiEnabled)
+                    setAiToggling(false)
+                    if (!result.ok && result.error) alert(result.error)
+                  }}
+                  disabled={aiToggling || orgAi.loading}
+                  title={
+                    orgAi.loading
+                      ? 'Loading your AI preference…'
+                      : aiEnabled
+                        ? 'AI is enabled for your account. Click to turn off. Every change is logged for compliance.'
+                        : 'AI is disabled for your account. Click to opt in. Every change is logged for compliance.'
+                  }
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', fontSize: 12, fontWeight: 600, background: aiEnabled ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.2)', border: '1px solid ' + (aiEnabled ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)'), borderRadius: 20, color: 'white', cursor: (aiToggling || orgAi.loading) ? 'wait' : 'pointer', whiteSpace: 'nowrap', opacity: (aiToggling || orgAi.loading) ? 0.65 : 1 }}>
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiEnabled ? '#4ade80' : '#94a3b8', display: 'inline-block' }} />
-                  {aiEnabled ? 'AI on' : 'AI off'}
+                  {orgAi.loading ? 'AI …' : aiEnabled ? 'AI on' : 'AI off'}
                 </button>
                 <button onClick={function() {
                   var key = prompt(apiKey
