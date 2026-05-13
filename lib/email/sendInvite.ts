@@ -24,6 +24,7 @@ export async function sendInviteEmail(
   service: SupabaseClient,
   invite: InviteRow,
   inviterId: string,
+  customMessage?: string,
 ): Promise<SendResult> {
   try {
     const [orgRes, inviterRes] = await Promise.all([
@@ -42,6 +43,7 @@ export async function sendInviteEmail(
       role:         invite.role,
       inviteUrl,
       expiresAt:    invite.expires_at,
+      customMessage,
     })
 
     const provider = getEmailProvider('resend')

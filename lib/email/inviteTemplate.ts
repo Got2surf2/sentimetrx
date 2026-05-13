@@ -1,12 +1,13 @@
 import 'server-only'
 
 export interface InviteEmailParams {
-  orgName:       string
-  inviterName?:  string
-  inviterEmail?: string
-  role:          string
-  inviteUrl:     string
-  expiresAt:     string
+  orgName:        string
+  inviterName?:   string
+  inviterEmail?:  string
+  role:           string
+  inviteUrl:      string
+  expiresAt:      string
+  customMessage?: string  // optional plain-text note from the inviter; rendered as a quoted block above the CTA
 }
 
 export interface InviteEmailContent {
@@ -49,6 +50,23 @@ export function buildInviteEmail(p: InviteEmailParams): InviteEmailContent {
   const eUrl     = escapeHtml(p.inviteUrl)
   const eExpiry  = escapeHtml(expiry)
 
+  // Custom message block: rendered as a quoted paragraph between the
+  // body line and the CTA button. Plain-text input only — line breaks
+  // are preserved with <br>, but HTML is escaped so an inviter can't
+  // inject markup.
+  const trimmedMsg = (p.customMessage || '').trim()
+  const eMsgHtml = trimmedMsg
+    ? `<tr>
+          <td style="padding:0 40px 8px 40px;">
+            <div style="border-left:3px solid ${ORANGE};padding:10px 14px;background-color:#fff7f1;border-radius:0 6px 6px 0;">
+              <p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:${ORANGE};text-transform:uppercase;letter-spacing:.06em;">Note from ${eInviter}</p>
+              <p style="margin:0;font-size:14px;line-height:1.55;color:${TEXT};">${escapeHtml(trimmedMsg).replace(/\n/g, '<br>')}</p>
+            </div>
+          </td>
+        </tr>`
+    : ''
+  const eMsgText = trimmedMsg ? `\nNote from ${inviterLabel}:\n${trimmedMsg}\n` : ''
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -89,6 +107,7 @@ export function buildInviteEmail(p: InviteEmailParams): InviteEmailContent {
             </p>
           </td>
         </tr>
+        ${eMsgHtml}
         <tr>
           <td style="padding:24px 40px 8px 40px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0">
@@ -140,14 +159,14 @@ export function buildInviteEmail(p: InviteEmailParams): InviteEmailContent {
 
   const text = [
     `${inviterLabel} invited you to join ${orgName} on Sentimetrx as a ${p.role}.`,
-    ``,
+    eMsgText,
     `Accept the invitation:`,
     p.inviteUrl,
     ``,
     `This invitation expires on ${expiry}.`,
     ``,
     `Sentimetrx is a Datanautix product. If you weren't expecting this invitation, you can safely ignore this email.`,
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 
   return { subject, html, text }
 }

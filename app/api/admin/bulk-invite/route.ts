@@ -27,9 +27,10 @@ const ALLOWED_ROLES = new Set(['owner', 'admin', 'member', 'viewer'])
 interface BulkInviteUser { email: string; name?: string }
 interface ResultRow {
   email:  string
-  status: 'sent' | 'duplicate' | 'failed' | 'already_user'
+  status: 'sent' | 'created' | 'duplicate' | 'failed' | 'already_user'
   error?: string
   token?: string
+  invite_url?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { org_id?: string; users?: unknown; role?: string }
+  let body: { org_id?: string; users?: unknown; role?: string; message?: string; sendEmail?: boolean }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -45,6 +46,11 @@ export async function POST(req: NextRequest) {
   const orgId = body.org_id
   if (!orgId) return NextResponse.json({ error: 'org_id is required' }, { status: 400 })
 
+  const customMessage = typeof body.message === 'string' ? body.message.slice(0, 2000) : undefined
+  // sendEmail defaults to true. When explicitly false, just create the
+  // invite rows + return URLs — the inviter wants to send their own
+  // email out-of-band (with preamble, etc).
+  const sendEmail = body.sendEmail !== false
   const requestedRole = (body.role || 'owner') as string
   if (!ALLOWED_ROLES.has(requestedRole)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
@@ -140,11 +146,20 @@ export async function POST(req: NextRequest) {
       continue
     }
 
-    const sendResult = await sendInviteEmail(service, invite, user.id)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    const inviteUrl = `${baseUrl.replace(/\/$/, '')}/invite/${invite.token}`
+
+    if (!sendEmail) {
+      // Link-only mode: skip sendInviteEmail entirely.
+      results.push({ email: u.email, status: 'created', token: invite.token, invite_url: inviteUrl })
+      continue
+    }
+
+    const sendResult = await sendInviteEmail(service, invite, user.id, customMessage)
     if (sendResult.status === 'sent') {
-      results.push({ email: u.email, status: 'sent', token: invite.token })
+      results.push({ email: u.email, status: 'sent', token: invite.token, invite_url: inviteUrl })
     } else {
-      results.push({ email: u.email, status: 'failed', error: sendResult.error, token: invite.token })
+      results.push({ email: u.email, status: 'failed', error: sendResult.error, token: invite.token, invite_url: inviteUrl })
     }
   }
 

@@ -36,9 +36,14 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
   const [inviteEmail,   setInviteEmail]   = useState('')
   const [showInvForm,   setShowInvForm]   = useState(false)
   const [bulkPaste,     setBulkPaste]     = useState('')
+  const [bulkMessage,   setBulkMessage]   = useState('')
   const [showBulkForm,  setShowBulkForm]  = useState(false)
   const [bulkSending,   setBulkSending]   = useState(false)
-  const [bulkResults,   setBulkResults]   = useState<Array<{ email: string; status: 'sent' | 'duplicate' | 'failed' | 'already_user'; error?: string }> | null>(null)
+  const [bulkResults,   setBulkResults]   = useState<Array<{ email: string; status: 'sent' | 'created' | 'duplicate' | 'failed' | 'already_user'; error?: string; invite_url?: string }> | null>(null)
+  const [bulkSendEmail, setBulkSendEmail] = useState(true)
+  const [previewHtml,   setPreviewHtml]   = useState<string | null>(null)
+  const [previewSubject,setPreviewSubject]= useState('')
+  const [previewLoading,setPreviewLoading]= useState(false)
   const [error,         setError]         = useState<string | null>(null)
   const [orgPlan,       setOrgPlan]       = useState(org.plan)
   const [togglingPlan,  setTogglingPlan]  = useState(false)
@@ -242,6 +247,25 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
     return out
   }
 
+  const handlePreviewEmail = async () => {
+    setPreviewLoading(true)
+    try {
+      const res = await fetch('/api/admin/invite-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: org.id, message: bulkMessage.trim() || undefined, role: 'owner' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Preview failed'); return }
+      setPreviewHtml(data.html || '')
+      setPreviewSubject(data.subject || '')
+    } catch (e) {
+      setError('Preview failed: ' + ((e as Error)?.message || 'network'))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   const handleBulkInvite = async () => {
     const users = parseBulk(bulkPaste)
     if (users.length === 0) { setError('No valid emails detected — paste one per line.'); return }
@@ -252,7 +276,13 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
       const res = await fetch('/api/admin/bulk-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: org.id, users, role: 'owner' }),
+        body: JSON.stringify({
+          org_id: org.id,
+          users,
+          role: 'owner',
+          message: bulkMessage.trim() || undefined,
+          sendEmail: bulkSendEmail,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -580,36 +610,89 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
                 placeholder={'Lori Van Duyne <lvanduyne@darden.com>\nAditya Rajpal <arajpal@darden.com>\n…'}
                 className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400 font-mono"
               />
+              <div className="mt-3">
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none mb-2">
+                  <input type="checkbox" checked={bulkSendEmail} onChange={e => setBulkSendEmail(e.target.checked)} />
+                  <span><strong>Send invite emails from Sentimetrx</strong> — if off, links are just generated and you can email them yourself with your own message.</span>
+                </label>
+                {bulkSendEmail && (
+                  <>
+                    <label className="text-xs text-gray-500 block mb-1">Custom message <span className="text-gray-400">(optional — rendered as a quoted note above the Accept button)</span></label>
+                    <textarea
+                      value={bulkMessage}
+                      onChange={e => setBulkMessage(e.target.value)}
+                      rows={4}
+                      maxLength={2000}
+                      placeholder={"Hi team — your Sentimetrx accounts are ready. Click Accept to set a password and sign in. Reach out with any questions.\n\n— Sanjay"}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400"
+                    />
+                  </>
+                )}
+              </div>
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-xs text-gray-500">{parseBulk(bulkPaste).length} valid email(s) detected</span>
                 <div className="flex-1" />
+                {bulkSendEmail && (
+                  <button
+                    onClick={handlePreviewEmail}
+                    disabled={previewLoading}
+                    className="px-3 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-800 font-semibold text-sm transition-all"
+                  >
+                    {previewLoading ? 'Loading…' : 'Preview email'}
+                  </button>
+                )}
                 <button
                   onClick={handleBulkInvite}
                   disabled={bulkSending || parseBulk(bulkPaste).length === 0}
                   className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all"
                 >
-                  {bulkSending ? 'Sending…' : 'Send invites'}
+                  {bulkSending ? (bulkSendEmail ? 'Sending…' : 'Creating…') : (bulkSendEmail ? 'Send invites' : 'Create invite links')}
                 </button>
               </div>
               {bulkResults && (
-                <div className="mt-3 text-xs space-y-1 max-h-48 overflow-y-auto">
-                  {bulkResults.map(r => (
-                    <div key={r.email} className="flex items-center gap-2">
-                      <span className={
-                        r.status === 'sent'         ? 'text-green-600 font-semibold' :
-                        r.status === 'duplicate'    ? 'text-amber-600 font-semibold' :
-                        r.status === 'already_user' ? 'text-gray-500 font-semibold' :
-                                                       'text-red-600 font-semibold'
-                      } style={{ minWidth: 90 }}>
-                        {r.status === 'sent' ? '✓ Sent' :
-                         r.status === 'duplicate' ? '⏭ Pending' :
-                         r.status === 'already_user' ? '⏭ Registered' :
-                         '✗ Failed'}
-                      </span>
-                      <span className="text-gray-800">{r.email}</span>
-                      {r.error && <span className="text-red-500 text-[10px]">({r.error})</span>}
-                    </div>
-                  ))}
+                <div className="mt-3">
+                  {(() => {
+                    const withUrl = bulkResults.filter(r => r.invite_url && (r.status === 'sent' || r.status === 'created' || r.status === 'failed'))
+                    if (withUrl.length === 0) return null
+                    const lines = withUrl.map(r => r.email + '\t' + r.invite_url).join('\n')
+                    return (
+                      <div className="mb-2 flex items-center gap-2">
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(lines).catch(() => {}); setError('✓ Copied ' + withUrl.length + ' email/link pairs to clipboard'); setTimeout(() => setError(null), 3000) }}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold"
+                        >Copy email/link pairs ({withUrl.length})</button>
+                        <span className="text-[10px] text-gray-400">tab-separated, paste into Sheets or your mail client</span>
+                      </div>
+                    )
+                  })()}
+                  <div className="text-xs space-y-1 max-h-64 overflow-y-auto">
+                    {bulkResults.map(r => (
+                      <div key={r.email} className="flex items-start gap-2 flex-wrap">
+                        <span className={
+                          r.status === 'sent'         ? 'text-green-600 font-semibold' :
+                          r.status === 'created'      ? 'text-blue-600 font-semibold' :
+                          r.status === 'duplicate'    ? 'text-amber-600 font-semibold' :
+                          r.status === 'already_user' ? 'text-gray-500 font-semibold' :
+                                                         'text-red-600 font-semibold'
+                        } style={{ minWidth: 100 }}>
+                          {r.status === 'sent' ? '✓ Sent' :
+                           r.status === 'created' ? '✓ Link' :
+                           r.status === 'duplicate' ? '⏭ Pending' :
+                           r.status === 'already_user' ? '⏭ Registered' :
+                           '✗ Failed'}
+                        </span>
+                        <span className="text-gray-800">{r.email}</span>
+                        {r.invite_url && (r.status === 'created' || r.status === 'failed') && (
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(r.invite_url!).catch(() => {}) }}
+                            className="text-[10px] px-2 py-0.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700"
+                            title={r.invite_url}
+                          >Copy link</button>
+                        )}
+                        {r.error && <span className="text-red-500 text-[10px]">({r.error})</span>}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -624,6 +707,42 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
           />
         </Section>
       </main>
+
+      {/* Email preview modal — opens from the bulk-invite "Preview email"
+          button. Renders the rendered HTML inside an iframe so the
+          modal style can't interfere with the email's table-based
+          layout. */}
+      {previewHtml !== null && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => { setPreviewHtml(null); setPreviewSubject('') }}
+        >
+          <div
+            style={{ background: 'white', borderRadius: 12, width: '100%', maxWidth: 720, maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,.28)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>Email preview</div>
+                <div style={{ fontSize: 13, color: '#111827', fontWeight: 600, marginTop: 2 }}>{previewSubject || '(no subject)'}</div>
+              </div>
+              <button
+                onClick={() => { setPreviewHtml(null); setPreviewSubject('') }}
+                style={{ fontSize: 18, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+              >&times;</button>
+            </div>
+            <iframe
+              title="Invite email preview"
+              srcDoc={previewHtml}
+              sandbox=""
+              style={{ flex: 1, border: 'none', width: '100%', minHeight: 480, background: '#f5f5f4' }}
+            />
+            <div style={{ padding: '10px 18px', borderTop: '1px solid #e5e7eb', background: '#fafafa', fontSize: 11, color: '#6b7280' }}>
+              This is exactly what recipients will see. The Accept button links to a sample <code>PREVIEW-TOKEN</code> in this preview; real invites generate one per recipient.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete-org modal — robust confirmation flow.
           - Opens after the operator has already suspended the org.
