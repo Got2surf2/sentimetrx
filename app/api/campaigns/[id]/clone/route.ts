@@ -14,19 +14,26 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
   const service = createServiceRoleClient()
 
-  // Fetch original campaign and verify it belongs to the caller's org.
+  // Fetch original campaign (admin-org bypass on cross-org access).
+  // Clone stays in the *original* campaign's org — admin cloning a customer's
+  // campaign produces a copy in that customer's org, not the admin's.
   const { data: original } = await service
     .from('campaigns')
     .select('*')
     .eq('id', params.id)
     .single()
 
-  if (!original || original.org_id !== userData.org_id) {
+  if (!original || (!isAdmin && original.org_id !== userData.org_id)) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 

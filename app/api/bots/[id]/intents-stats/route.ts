@@ -13,14 +13,20 @@ export async function GET(req: NextRequest, { params }: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
   const service = createServiceRoleClient()
 
-  // Load bot + verify ownership
+  // Load bot + verify ownership (admin-org bypass)
   const { data: bot } = await service.from('bots').select('id, org_id, intents').eq('id', params.id).single()
-  if (!bot || bot.org_id !== userData.org_id) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
 
   const intents: any[] = bot.intents || []
   if (intents.length === 0) return NextResponse.json({ intents: [] })

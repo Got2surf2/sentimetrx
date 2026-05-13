@@ -56,13 +56,19 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'text is required (min 10 chars)' }, { status: 400 })
   }
 
-  // Verify bot ownership
-  const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+  // Verify bot ownership (admin-org bypass: platform admins can write cross-org)
+  const { data: userData } = await supabase
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
   const service = createServiceRoleClient()
   const { data: bot } = await service.from('bots').select('id, org_id, subject, opponents').eq('id', params.id).single()
-  if (!bot || bot.org_id !== userData.org_id) {
+  if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 

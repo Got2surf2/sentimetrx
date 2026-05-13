@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { checkMessage } from '@/lib/contentGuard'
 
@@ -181,14 +182,12 @@ function computeMemberBudgets(
 }
 
 export async function POST(req: Request) {
-  // Auth
+  // Auth + admin-org context. Admin-org users get cross-org dataset visibility
+  // (same pattern as the rest of the platform; see lib/auth/orgAccess.ts).
   const supabase = createClient()
-  const user = await getAuthUser(supabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userData } = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
-  if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
+  if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = { id: userId }
 
   const body = await req.json()
   const { datasetId, question, conversationHistory, filters, metadataOnly } = body as {
@@ -226,7 +225,7 @@ export async function POST(req: Request) {
     .single()
 
   if (!dataset) return NextResponse.json({ error: 'Dataset no longer exists' }, { status: 404 })
-  if (dataset.org_id !== userData.org_id) {
+  if (!isAdmin && dataset.org_id !== orgId) {
     return NextResponse.json({ error: 'You do not have access to this dataset' }, { status: 403 })
   }
   const { data: stateRow } = await service
@@ -302,7 +301,7 @@ For collections, also recommend a distribution strategy:
 Ask the user 1-2 brief questions about what they're looking to learn, then make your recommendation. Be conversational and concise.`
 
     const tools = [...ANA_TOOLS, RECOMMEND_SAMPLING_TOOL]
-    return streamAnthropicResponse(metaPrompt, question, conversationHistory, tools, userData.org_id)
+    return streamAnthropicResponse(metaPrompt, question, conversationHistory, tools, dataset.org_id)
   }
 
   // ── Normal mode: fetch data rows with sampling ──────────────────────────
@@ -474,7 +473,7 @@ Keep your responses concise but thorough. Use markdown formatting for readabilit
 Here is the dataset:
 ${dataContext}`
 
-  return streamAnthropicResponse(systemPrompt, question, conversationHistory, ANA_TOOLS, userData.org_id)
+  return streamAnthropicResponse(systemPrompt, question, conversationHistory, ANA_TOOLS, dataset.org_id)
 }
 
 // ── Fetch rows from a single dataset, using RPC sampling for large ones ───

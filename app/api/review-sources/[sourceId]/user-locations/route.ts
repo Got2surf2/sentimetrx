@@ -17,8 +17,10 @@ export async function GET(_req: Request, { params }: Params) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { data: userData } = await supabase
-      .from('users').select('org_id, role').eq('id', user.id).single()
+      .from('users').select('org_id, role, organizations(is_admin_org)').eq('id', user.id).single()
     if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+    const orgRel = (userData as any)?.organizations
+    const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
     // Only owners/admins can view all assignments
     if (!['owner', 'admin', 'platform_admin'].includes(userData.role || '')) {
@@ -27,10 +29,12 @@ export async function GET(_req: Request, { params }: Params) {
 
     const service = createServiceRoleClient()
 
-    // Verify source belongs to org
+    // Verify source belongs to org (admin-org bypass)
     const { data: source } = await service
-      .from('review_sources').select('id').eq('id', params.sourceId).eq('org_id', userData.org_id).single()
-    if (!source) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      .from('review_sources').select('id, org_id').eq('id', params.sourceId).single()
+    if (!source || (!isAdmin && (source as any).org_id !== userData.org_id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
 
     const { data: assignments, error } = await service
       .from('user_locations')
@@ -52,8 +56,10 @@ export async function POST(req: Request, { params }: Params) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { data: userData } = await supabase
-      .from('users').select('org_id, role').eq('id', user.id).single()
+      .from('users').select('org_id, role, organizations(is_admin_org)').eq('id', user.id).single()
     if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
+    const orgRel = (userData as any)?.organizations
+    const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
     if (!['owner', 'admin', 'platform_admin'].includes(userData.role || '')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
@@ -61,10 +67,13 @@ export async function POST(req: Request, { params }: Params) {
 
     const service = createServiceRoleClient()
 
-    // Verify source belongs to org
+    // Verify source belongs to org (admin-org bypass — admins can manage cross-org)
     const { data: source } = await service
-      .from('review_sources').select('id').eq('id', params.sourceId).eq('org_id', userData.org_id).single()
-    if (!source) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      .from('review_sources').select('id, org_id').eq('id', params.sourceId).single()
+    if (!source || (!isAdmin && (source as any).org_id !== userData.org_id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    const sourceOrgId = (source as any).org_id as string
 
     const body = await req.json()
     const { user_id, location_ids } = body
@@ -73,11 +82,12 @@ export async function POST(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'user_id and location_ids are required' }, { status: 400 })
     }
 
-    // Verify target user is in same org
+    // Target user must belong to the source's org (admin can assign across orgs
+    // but the assignment must still be within a single org boundary)
     const { data: targetUser } = await service
       .from('users').select('org_id').eq('id', user_id).single()
-    if (targetUser?.org_id !== userData.org_id) {
-      return NextResponse.json({ error: 'User not in your organization' }, { status: 400 })
+    if (targetUser?.org_id !== sourceOrgId) {
+      return NextResponse.json({ error: 'User not in this source\'s organization' }, { status: 400 })
     }
 
     const rows = location_ids.map(function(lid: string) {

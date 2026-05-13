@@ -17,20 +17,25 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase
-    .from('users').select('org_id').eq('id', user.id).single()
+    .from('users')
+    .select('org_id, organizations(is_admin_org)')
+    .eq('id', user.id)
+    .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const orgRel = (userData as any)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
 
   // Use service role for all campaign data reads (bypasses RLS)
   const service = createServiceRoleClient()
 
-  // Fetch campaign with study info
+  // Fetch campaign with study info (admin-org bypass on cross-org access)
   const { data: campaign } = await service
     .from('campaigns')
     .select('*, studies(name, guid, slug)')
     .eq('id', params.id)
     .single()
 
-  if (!campaign || campaign.org_id !== userData.org_id) {
+  if (!campaign || (!isAdmin && campaign.org_id !== userData.org_id)) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
   if (campaign.status === 'completed') {
