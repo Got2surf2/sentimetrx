@@ -115,32 +115,31 @@ export async function POST(req: Request, { params }: Props) {
       })
     }
 
-    // Optional: pairwise co-occurrence. Skip themes with no keywords.
-    // O(N²) pairs × M member datasets, ~50ms each. For ~15 themes on a
-    // collection of 2 members that's ~210 RPC calls — slow but
-    // acceptable. Future-optimization: a single SQL function that
-    // returns the full matrix in one row scan.
+    // Optional: full co-occurrence matrix via compute_theme_cooccurrence_matrix.
+    // One RPC per member dataset returns the full N×N matrix in a single
+    // row scan. Sum the per-member matrices for collections. ~10× faster
+    // than the older pairwise count_theme_intersection loop (Capital
+    // Grille: 1.8s for the matrix vs ~9s pairwise).
     let cooccurrenceMatrix: Record<string, Record<string, number>> | undefined
     if (cooccurrence) {
       cooccurrenceMatrix = {}
-      const themesWithKws = themes.filter(t => (t.keywords || []).filter(Boolean).length > 0)
-      for (let i = 0; i < themesWithKws.length; i++) {
-        const a = themesWithKws[i]
-        cooccurrenceMatrix[a.id] = {}
-        for (let j = 0; j < themesWithKws.length; j++) {
-          if (i === j) continue
-          const b = themesWithKws[j]
-          let pairCount = 0
-          for (const did of datasetIds) {
-            const { data: x } = await service.rpc('count_theme_intersection', {
-              p_dataset_id: did,
-              p_field_keys: fields,
-              p_keywords_a: (a.keywords || []).filter(Boolean),
-              p_keywords_b: (b.keywords || []).filter(Boolean),
-            })
-            pairCount += Number(x) || 0
+      const themesPayload = themes
+        .filter(t => (t.keywords || []).filter(Boolean).length > 0)
+        .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean) }))
+
+      for (const did of datasetIds) {
+        const { data } = await service.rpc('compute_theme_cooccurrence_matrix', {
+          p_dataset_id: did,
+          p_field_keys: fields,
+          p_themes: themesPayload,
+        })
+        const memberMatrix = (data as Record<string, Record<string, number>> | null) || {}
+        // Merge into the accumulator
+        for (const [a, bs] of Object.entries(memberMatrix)) {
+          if (!cooccurrenceMatrix[a]) cooccurrenceMatrix[a] = {}
+          for (const [b, n] of Object.entries(bs)) {
+            cooccurrenceMatrix[a][b] = (cooccurrenceMatrix[a][b] || 0) + Number(n)
           }
-          cooccurrenceMatrix[a.id][b.id] = pairCount
         }
       }
     }

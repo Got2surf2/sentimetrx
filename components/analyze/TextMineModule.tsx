@@ -904,12 +904,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
   // Server-computed enrichment for theme cards:
-  //   topicalWords[themeId]      → top topical words [word, count][]
+  //   topicalWords[themeId]      → top topical words [word, count][] (currently unused)
   //   cooccurrence[themeIdA]     → { themeIdB: rowsMatchingBoth, ... }
-  // Both fetched from /api/datasets/[id]/theme-counts with the cooccurrence
-  // + topical flags. Empty maps until the fetch returns.
+  //   cooccurrenceLoaded         → true once the fetch has returned (so the card
+  //                                can distinguish "pre-fetch placeholder" from
+  //                                "fetch returned, theme has no co-occurrences").
+  // Fetched from /api/datasets/[id]/theme-counts with the cooccurrence flag.
   const [serverTopical, setServerTopical] = useState<Record<string, [string, number][]>>({})
   const [serverCoOccurrence, setServerCoOccurrence] = useState<Record<string, Record<string, number>>>({})
+  const [cooccurrenceLoaded, setCooccurrenceLoaded] = useState(false)
 
   // sessionStorage key for persisting UI state across reloads. Initial state
   // is the default (NOT the saved value) so server-render and client-first-
@@ -1132,6 +1135,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Falls back silently to client-side counts if the endpoint fails.
   const fetchServerThemeCounts = useCallback(async function(themeModel: ThemeModel, fields: string[]) {
     if (!themeModel?.themes?.length || !fields.length) return
+    // Reset loaded flag so the theme card's "Co-occurs with themes" section
+    // re-enters its placeholder state until this fetch returns. Otherwise a
+    // theme-model edit would briefly show stale chips during the refetch.
+    setCooccurrenceLoaded(false)
     try {
       const res = await fetch('/api/datasets/' + datasetId + '/theme-counts', {
         method: 'POST',
@@ -1164,6 +1171,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setSamplingInfo({ sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows })
       if (data.topical) setServerTopical(data.topical)
       if (data.cooccurrence) setServerCoOccurrence(data.cooccurrence)
+      // Mark loaded whether or not cooccurrence is present, so the theme
+      // card stops showing the placeholder once the fetch resolves —
+      // even when a theme has no co-occurring siblings.
+      setCooccurrenceLoaded(true)
     } catch { /* fallback to client-side counts silently */ }
   }, [datasetId, totalRows])
 
@@ -1979,12 +1990,31 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 )}
                                 {/* Opinions — top 3 opinion words for this theme's keywords */}
                                 {/* "Co-occurs with themes" reads from serverCoOccurrence, set
-                                    by fetchServerThemeCounts. The companion "Often mentioned
-                                    with" section was dropped — the ±2-window SQL implementation
-                                    timed out on large collections, and the no-window version
-                                    surfaced too much dataset boilerplate (restaurant names,
-                                    generic adjectives). Revisit when stored theme hits land. */}
+                                    by fetchServerThemeCounts. Until the fetch resolves a small
+                                    placeholder + Lottie spinner stands in — the matrix RPC
+                                    takes ~1–2s per dataset (per member for collections), and
+                                    the card looks lifeless without a hint that something's
+                                    coming. cooccurrenceLoaded flips to true on response so we
+                                    can suppress the section entirely when a theme genuinely
+                                    has no co-occurring siblings. */}
                                 {(function() {
+                                  if (!cooccurrenceLoaded) {
+                                    return (
+                                      <div style={{ marginBottom: 10 }}>
+                                        <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                                          Co-occurs with themes
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
+                                            {[1, 2, 3].map(function(i) {
+                                              return <span key={i} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: T.border, color: 'transparent', minWidth: 60, height: 14 }}>—</span>
+                                            })}
+                                          </div>
+                                          <LottieLoader size={18} />
+                                        </div>
+                                      </div>
+                                    )
+                                  }
                                   var coRowsByThemeId = serverCoOccurrence[t.id] || {}
                                   var themeNameById: Record<string, string> = {}
                                   ;(themes?.themes || []).forEach(function(other) { themeNameById[other.id] = other.name })
