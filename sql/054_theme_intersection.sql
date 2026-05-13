@@ -56,18 +56,20 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ============================================================
 -- 2. Topical-word extraction
 -- ============================================================
--- Pulls the most common content words that appear in rows matching a
--- theme. Excludes (a) the theme's own keywords, (b) a fixed stopword
--- list (articles, pronouns, auxiliaries, prepositions, generic
--- adjectives), and (c) a sentiment-adjective list — we want substantive
--- topical nouns/verbs, not sentiment color or filler.
+-- Pulls the most common content words that appear NEAR (±2 tokens) a
+-- theme's keyword hits in matching rows. Restricted-window logic
+-- matters: without it, dataset-specific boilerplate (restaurant names
+-- appearing once per review, generic openers like "We went to...") gets
+-- counted equally with topical content. With it, only words physically
+-- adjacent to keyword mentions register, naturally filtering out names
+-- and openings that sit in their own clauses.
 --
--- Implementation: for each matching row, split text on \W+, unnest the
--- words, filter, group + count. Returns the top N words as a jsonb
--- array of [word, count] tuples. Approximate match to the client-side
--- ±2-window pass — server-side scan is broader (whole row text) but
--- cheaper than streaming rows to the browser; reviews tend to be short
--- enough that the difference is small in practice.
+-- Excludes (a) the theme's own keyword stems (regex-matched), (b) a
+-- stopword list (articles, pronouns, auxiliaries, prepositions, generic
+-- adjectives, intensifiers), (c) a sentiment-adjective list, and (d)
+-- words shorter than 3 chars or pure digits.
+--
+-- Returns top N as a jsonb array of [word, count] tuples.
 CREATE OR REPLACE FUNCTION extract_theme_topical_words(
   p_dataset_id uuid,
   p_field_keys text[],
@@ -103,16 +105,36 @@ BEGIN
     FROM matching_rows mr, unnest(p_field_keys) AS k
     GROUP BY mr.id
   ),
-  words AS (
-    SELECT unnest(regexp_split_to_array(combined_text, '[^a-z0-9'']+')) AS word
-    FROM row_text
+  -- Tokenize each row's text into (word, position) tuples. WITH ORDINALITY
+  -- numbers the tokens 1..N in document order.
+  tokens AS (
+    SELECT rt.id, tk.word, tk.pos
+    FROM row_text rt,
+         LATERAL unnest(regexp_split_to_array(rt.combined_text, '[^a-z0-9'']+'))
+           WITH ORDINALITY AS tk(word, pos)
+    WHERE tk.word IS NOT NULL AND tk.word != ''
+  ),
+  -- Positions where a keyword stem appears (regex-matched, same word-
+  -- boundary semantics as count_theme_matches).
+  kw_positions AS (
+    SELECT id, pos FROM tokens WHERE word ~* pattern
+  ),
+  -- The ±2 window: every token within 2 positions of a keyword hit,
+  -- excluding the keyword position itself. A token sitting between two
+  -- nearby keywords gets credited to both (matches old client behavior).
+  window_words AS (
+    SELECT t.word
+    FROM tokens t
+    JOIN kw_positions kp ON t.id = kp.id
+    WHERE t.pos BETWEEN kp.pos - 2 AND kp.pos + 2
+      AND t.pos != kp.pos
   ),
   filtered AS (
     SELECT word, count(*) AS cnt
-    FROM words
+    FROM window_words
     WHERE length(word) >= 3
       AND word !~ '^[0-9]+$'
-      AND NOT (word = ANY(p_keywords))
+      AND word !~* pattern                   -- exclude keyword stems
       AND NOT (word = ANY(p_extra_excludes))
       AND word NOT IN (
         -- Stopwords + sentiment adjectives, kept in sync with the

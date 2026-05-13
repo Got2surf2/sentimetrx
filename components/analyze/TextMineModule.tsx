@@ -1139,8 +1139,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         body: JSON.stringify({
           themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
           fields: fields,
-          cooccurrence: true,   // request pairwise theme intersection counts
-          topical: true,        // request topical-word lists per theme
+          cooccurrence: true,   // pairwise theme intersection counts
+          // topical: false — extract_theme_topical_words SQL times out on
+          // large collections with the ±2 window; the no-window version
+          // surfaces too much boilerplate. Section dropped from the card.
         }),
       })
       if (!res.ok) return
@@ -1976,12 +1978,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   </div>
                                 )}
                                 {/* Opinions — top 3 opinion words for this theme's keywords */}
-                                {/* Topical words + co-occurring themes. Both read from
-                                    server-computed maps populated by fetchServerThemeCounts
-                                    via /api/datasets/[id]/theme-counts (cooccurrence + topical
-                                    flags). Empty until that fetch returns. */}
+                                {/* "Co-occurs with themes" reads from serverCoOccurrence, set
+                                    by fetchServerThemeCounts. The companion "Often mentioned
+                                    with" section was dropped — the ±2-window SQL implementation
+                                    timed out on large collections, and the no-window version
+                                    surfaced too much dataset boilerplate (restaurant names,
+                                    generic adjectives). Revisit when stored theme hits land. */}
                                 {(function() {
-                                  var topTopics = serverTopical[t.id] || []
                                   var coRowsByThemeId = serverCoOccurrence[t.id] || {}
                                   var themeNameById: Record<string, string> = {}
                                   ;(themes?.themes || []).forEach(function(other) { themeNameById[other.id] = other.name })
@@ -1990,41 +1993,25 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     .sort(function(a, b) { return b[1] - a[1] })
                                     .slice(0, 3)
                                   var thisCount = t.count || 0
-                                  if (topTopics.length === 0 && coEntries.length === 0) return null
+                                  if (coEntries.length === 0) return null
                                   return (
                                     <div style={{ marginBottom: 10 }}>
-                                      {topTopics.length > 0 && (
-                                        <>
-                                          <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
-                                            Often mentioned with
-                                          </div>
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: coEntries.length > 0 ? 8 : 0 }}>
-                                            {topTopics.map(function(e) {
-                                              return <span key={e[0]} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: T.bg, color: T.textMid, border: '1px solid ' + T.border }}>{e[0]} ({e[1].toLocaleString()})</span>
-                                            })}
-                                          </div>
-                                        </>
-                                      )}
-                                      {coEntries.length > 0 && (
-                                        <>
-                                          <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
-                                            Co-occurs with themes
-                                          </div>
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                            {coEntries.map(function(e) {
-                                              var otherId = e[0]; var pairCount = e[1]
-                                              var otherIdx = (themes?.themes || []).findIndex(function(x) { return x.id === otherId })
-                                              var otherPal = otherIdx >= 0 ? (themeColors[otherIdx] || THEME_PALETTE[0]) : THEME_PALETTE[0]
-                                              var pctOfThis = thisCount > 0 ? Math.round(pairCount / thisCount * 100) : 0
-                                              return (
-                                                <span key={otherId} title={pairCount.toLocaleString() + ' records mention both'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60' }}>
-                                                  {themeNameById[otherId]} ({pctOfThis}%)
-                                                </span>
-                                              )
-                                            })}
-                                          </div>
-                                        </>
-                                      )}
+                                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                                        Co-occurs with themes
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                        {coEntries.map(function(e) {
+                                          var otherId = e[0]; var pairCount = e[1]
+                                          var otherIdx = (themes?.themes || []).findIndex(function(x) { return x.id === otherId })
+                                          var otherPal = otherIdx >= 0 ? (themeColors[otherIdx] || THEME_PALETTE[0]) : THEME_PALETTE[0]
+                                          var pctOfThis = thisCount > 0 ? Math.round(pairCount / thisCount * 100) : 0
+                                          return (
+                                            <span key={otherId} title={pairCount.toLocaleString() + ' records mention both'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60' }}>
+                                              {themeNameById[otherId]} ({pctOfThis}%)
+                                            </span>
+                                          )
+                                        })}
+                                      </div>
                                     </div>
                                   )
                                 })()}
