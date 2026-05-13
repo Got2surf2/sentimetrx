@@ -58,6 +58,46 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 
 ---
 
+## Entity Extraction (Open-Ended Fields)
+
+Per-row entity tags for open-ended text fields. Used to surface "who/what was mentioned" alongside themes.
+
+### Pipeline (`lib/entityExtraction.ts`)
+1. Page through `dataset_rows_flat.data[field]` (up to 10K rows)
+2. Split each cell on commas / semicolons / "and" / "&" / slashes / newlines
+3. Send unique raw mentions to Claude Haiku in batches of 200
+4. Haiku returns `{ canonical, category }` per raw — variants collapse ("Red Cross" / "ARC" → "American Red Cross")
+5. AI-placeholder canonicals ("Unknown", "Various", "Others") are dropped
+6. Persist per-row pairs to `public.entity_mentions` (UNIQUE on `dataset_id, row_id, source_field, canonical`)
+7. Update `datasets.entity_extraction_state[field]` with run metadata (timestamp, rows_scanned, mentions_inserted)
+
+### Triggering
+- Schema tab → expand any open-ended field → "Extract entities" button
+- POST `/api/datasets/[id]/extract-entities` body `{ field }`
+- **Not auto-run on sync** — extraction is explicit per-field. AI cost guardrail: each run is bounded by 10K rows + 2K unique mentions canonicalised. Ballpark cents per dataset.
+
+### Read APIs
+- `GET /api/datasets/[id]/entities` → top entities for the whole dataset (with category rollup)
+- `GET /api/datasets/[id]/entities?theme=<themeId>` → entities that co-occur with theme keywords (via `top_entities_for_theme` SQL function — joins `entity_mentions.row_id` with rows whose combined text matches the theme regex)
+- `?field=<sourceField>` → restrict to one source field
+- `?limit=<n>` → default 50, max 200
+
+### Where entities show up
+- **Schema tab** — per-field extract button + last-run timestamp + entity count + top-10 chip preview
+- **Theme cards** — collapsed "Top entities" section per theme (lazy-fetches on expand to keep card weight low)
+- **Ask Ana** — top 40 entities grouped by category appended to the system prompt, so Ana can answer "which charities were mentioned" or "what restaurants come up most" without re-scanning rows
+- **TextMine entity-chip filter** — deferred; needs `RowsContext` to carry `dataset_rows_flat.id` through the rows pipeline
+
+### Tables (migrations 058, 059)
+- `entity_mentions` — RLS enabled (default-deny); service-role-only GRANTs
+- `datasets.entity_extraction_state` — per-field run metadata (jsonb)
+- `top_entities_for_theme()` — SQL function with `SECURITY DEFINER` + locked `search_path`
+
+### Existing deck export
+`/api/entity-analysis-deck?dataset=X&field=Y` predates the in-product version and still works. It runs the canonicalisation fresh per call (no row provenance, no persistence) and produces a 4-slide PPTX. Kept for the "drop into a StoryTime deck" workflow.
+
+---
+
 ## Charts Module (13+ Types)
 
 | Chart | Slots | Use Case |

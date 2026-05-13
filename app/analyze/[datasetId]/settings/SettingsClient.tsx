@@ -318,7 +318,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         {schemaRefreshMsg && (
           <pre className={'text-xs whitespace-pre-wrap font-sans m-0 ' + (schemaRefreshMsg.startsWith('Refresh failed') ? 'text-red-600' : 'text-gray-600')}>{schemaRefreshMsg}</pre>
         )}
-        <SchemaEditor schema={schema} onChange={handleSaveSchema} onSave={function() { router.refresh() }} />
+        <SchemaEditor schema={schema} datasetId={dataset.id} onChange={handleSaveSchema} onSave={function() { router.refresh() }} />
       </div>
 
       {/* Append data — not for google_reviews datasets */}

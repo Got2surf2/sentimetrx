@@ -236,6 +236,25 @@ export async function POST(req: Request) {
   const existingThemes: any[] = (stateRow?.theme_model as any)?.themes || []
   const schemaFields: any[] = (stateRow?.schema_config as any)?.fields || []
 
+  // ── Pull top entities so Ana can reason about "who/what was mentioned" ──
+  // Only included if extraction has been run on this dataset. Capped at top
+  // 40 by mention count to keep the system-prompt budget bounded.
+  const { data: entityRows } = await service
+    .from('entity_mentions')
+    .select('canonical, category')
+    .eq('dataset_id', datasetId)
+    .limit(5000)
+  type EntityAgg = { canonical: string; category: string; mentions: number }
+  const entityAgg: Record<string, EntityAgg> = {}
+  ;(entityRows || []).forEach(function(r: any) {
+    const key = r.canonical as string
+    if (!entityAgg[key]) entityAgg[key] = { canonical: key, category: r.category, mentions: 0 }
+    entityAgg[key].mentions += 1
+  })
+  const topEntities = Object.values(entityAgg)
+    .sort(function(a, b) { return b.mentions - a.mentions })
+    .slice(0, 40)
+
   // ── Resolve collection members ──────────────────────────────────────────
   let collectionMembers: { dataset_id: string; name: string; row_count: number }[] = []
   if (dataset.source === 'collection') {
@@ -445,6 +464,24 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
         .join('; ')
     : ''
 
+  // Entities mentioned in this dataset (only if extraction has been run).
+  // Grouped by category so Ana can answer "which charities were mentioned"
+  // or "what restaurants come up most" without re-scanning the data.
+  const entitiesByCategory: Record<string, EntityAgg[]> = {}
+  topEntities.forEach(function(e) {
+    if (!entitiesByCategory[e.category]) entitiesByCategory[e.category] = []
+    entitiesByCategory[e.category].push(e)
+  })
+  const entityContext = topEntities.length > 0
+    ? '\n\nEntities mentioned in this dataset (canonicalised, top 40 by mention count):\n' +
+      Object.keys(entitiesByCategory).sort().map(function(cat) {
+        const list = entitiesByCategory[cat]
+          .map(function(e) { return e.canonical + ' (' + e.mentions + ')' })
+          .join(', ')
+        return '- ' + cat + ': ' + list
+      }).join('\n')
+    : ''
+
   const systemPrompt = `You are Ana, a senior data analyst assistant. You have been given a dataset of ${filteredRows.length} ${sourceLabel} from "${dataset.name}".
 
 CRITICAL RULE: You must ONLY use the data provided below to answer questions. NEVER use outside knowledge, general knowledge, or information not present in this dataset. Every claim, statistic, and insight must be directly traceable to the rows provided. If the data does not contain enough information to answer a question, say "I don't see enough data in this dataset to answer that" — do NOT fill in gaps with general knowledge or assumptions.
@@ -468,7 +505,7 @@ When the user asks to extract entities, identify organizations, find names, or d
 
 When the user asks to download their analysis as slides or a deck, call generate_report and structure your previous analysis into appropriate slide types.
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
 
 Here is the dataset:
 ${dataContext}`

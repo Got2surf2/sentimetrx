@@ -32,6 +32,7 @@ export type UserEventName =
   | 'campaign_sent'          // campaign sent
   | 'ai_toggled'             // user opt-in/out (also logged in ai_consent_audit)
   | 'ask_ana'                // ask-ana query
+  | 'entities_extracted'     // entity extraction run on a dataset+field
 
 export type UserEventCategory =
   | 'auth' | 'data' | 'analyze' | 'export' | 'share' | 'agent' | 'campaign' | 'admin'
@@ -52,6 +53,7 @@ const CATEGORY: Record<UserEventName, UserEventCategory> = {
   campaign_sent:          'campaign',
   ai_toggled:             'auth',
   ask_ana:                'analyze',
+  entities_extracted:     'analyze',
 }
 
 interface RecordEventOpts {

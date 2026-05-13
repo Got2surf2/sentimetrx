@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt } from '@/lib/analyzeTypes'
 import { suggestMapping } from '@/lib/scaleUtils'
+import ExtractEntitiesPanel from '@/components/analyze/ExtractEntitiesPanel'
 
 function suggestMappingForField(values: string[]): Record<string, number> | null {
   return suggestMapping(values)
@@ -14,6 +15,7 @@ function suggestMappingForField(values: string[]): Record<string, number> | null
 
 interface Props {
   schema:    SchemaConfig
+  datasetId?: string
   onChange?: (s: SchemaConfig) => void
   onSave?:  () => void
   readOnly?: boolean
@@ -103,8 +105,9 @@ function ValuePills({ values }: { values: string[] }) {
 }
 
 // Expanded inline editor
-function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange }: {
+function FieldEditor({ f, datasetId, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange }: {
   f:             SchemaFieldConfig
+  datasetId?:    string
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onValueAliasChange: (field: string, value: string, alias: string) => void
@@ -286,13 +289,19 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
           </div>
         </div>
       )}
+
+      {/* \u2500\u2500 Entity extraction (open-ended only) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+      {f.type === 'open-ended' && datasetId && (
+        <ExtractEntitiesPanel datasetId={datasetId} field={f.field} />
+      )}
     </div>
   )
 }
 
 // Full-width row card
-function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, readOnly, index }: {
+function FieldCard({ f, datasetId, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, readOnly, index }: {
   f:             SchemaFieldConfig
+  datasetId?:    string
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onScoreToggle: (field: string) => void
@@ -492,7 +501,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
           </div>
           {/* Scrollable body */}
           <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} />
+            <FieldEditor f={f} datasetId={datasetId} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} />
           </div>
         </div>
       </div>
@@ -502,7 +511,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
 }
 
 // Main SchemaEditor
-export default function SchemaEditor({ schema, onChange, onSave, readOnly }: Props) {
+export default function SchemaEditor({ schema, datasetId, onChange, onSave, readOnly }: Props) {
   const [sortAZ,     setSortAZ]     = useState(false)
   const [typeFilter, setTypeFilter] = useState('all')
   const [saving,     setSaving]     = useState(false)
@@ -694,7 +703,7 @@ export default function SchemaEditor({ schema, onChange, onSave, readOnly }: Pro
           })
           .map(function(f, i) {
           return (
-            <FieldCard key={f.field} f={f} index={i}
+            <FieldCard key={f.field} f={f} index={i} datasetId={datasetId}
               onTypeChange={handleTypeChange}
               onAliasChange={handleAliasChange}
               onScoreToggle={handleScoreToggle}
