@@ -903,6 +903,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [themeSource, setThemeSource] = useState<string | null>((savedThemeModel as any)?.themeSource || (savedThemeModel as any)?.source || null)
   const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
+  // Server-computed enrichment for theme cards:
+  //   topicalWords[themeId]      → top topical words [word, count][]
+  //   cooccurrence[themeIdA]     → { themeIdB: rowsMatchingBoth, ... }
+  // Both fetched from /api/datasets/[id]/theme-counts with the cooccurrence
+  // + topical flags. Empty maps until the fetch returns.
+  const [serverTopical, setServerTopical] = useState<Record<string, [string, number][]>>({})
+  const [serverCoOccurrence, setServerCoOccurrence] = useState<Record<string, Record<string, number>>>({})
 
   // sessionStorage key for persisting UI state across reloads. Initial state
   // is the default (NOT the saved value) so server-render and client-first-
@@ -1132,6 +1139,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         body: JSON.stringify({
           themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
           fields: fields,
+          cooccurrence: true,   // request pairwise theme intersection counts
+          topical: true,        // request topical-word lists per theme
         }),
       })
       if (!res.ok) return
@@ -1151,6 +1160,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         }
       })
       setSamplingInfo({ sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows })
+      if (data.topical) setServerTopical(data.topical)
+      if (data.cooccurrence) setServerCoOccurrence(data.cooccurrence)
     } catch { /* fallback to client-side counts silently */ }
   }, [datasetId, totalRows])
 
@@ -1965,87 +1976,55 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   </div>
                                 )}
                                 {/* Opinions — top 3 opinion words for this theme's keywords */}
+                                {/* Topical words + co-occurring themes. Both read from
+                                    server-computed maps populated by fetchServerThemeCounts
+                                    via /api/datasets/[id]/theme-counts (cooccurrence + topical
+                                    flags). Empty until that fetch returns. */}
                                 {(function() {
-                                  // Topical words: what people are talking about WHEN they
-                                  // mention this theme's keywords. We scan ±2 words around each
-                                  // keyword hit (within a clause, blocked by conjunctions) and
-                                  // tally any word that isn't (a) a stopword, (b) a theme
-                                  // keyword, (c) a generic sentiment adjective, (d) shorter
-                                  // than 3 chars, or (e) numeric. Previous behavior pulled
-                                  // pos/neg sentiment adjectives — useful but not "what they're
-                                  // talking about." Replaced per product call.
-                                  var STOPWORDS = new Set([
-                                    // articles / pronouns / determiners
-                                    'a','an','the','this','that','these','those','i','me','my','mine','we','us','our','ours','you','your','yours','he','him','his','she','her','hers','it','its','they','them','their','theirs','myself','yourself','itself','themselves',
-                                    // common verbs / auxiliaries
-                                    'is','are','was','were','be','been','being','am','have','has','had','do','does','did','done','doing','will','would','should','could','can','may','might','must','shall',
-                                    'get','got','gets','getting','go','goes','went','going','gone','come','came','comes','coming','make','made','makes','making','take','took','takes','taking','give','gave','gives','giving','say','said','says','saying','see','saw','sees','seeing','seen','know','knew','knows','knowing','known','think','thought','thinks','thinking','feel','felt','feels','want','wanted','wants','need','needed','needs','try','tried','tries','use','used','uses','find','found','finds','put','puts','let','lets','keep','kept','keeps','seem','seemed','seems','look','looked','looks','looking','tell','told','tells','telling','ask','asked','asks','asking','show','showed','shows','call','called','calls','calling',
-                                    // prepositions / conjunctions
-                                    'in','on','at','to','for','of','with','by','from','about','as','into','through','onto','upon','over','under','between','after','before','during','since','until','while','within','without','around','near',
-                                    'and','or','nor','but','so','because','if','when','then','than','though','although','however','also','plus','yet','still','either','neither','whether',
-                                    // adverbs / qualifiers
-                                    'very','really','quite','just','too','still','even','only','always','never','sometimes','often','rarely','usually','almost','nearly','already','probably','definitely','actually','basically','literally','barely','simply','exactly','especially',
-                                    'here','there','where','everywhere','anywhere','somewhere','now','today','tonight','tomorrow','yesterday','soon','later','earlier','ever',
-                                    'how','what','which','who','whom','whose','why',
-                                    // generic adjectives / amounts
-                                    'all','some','any','many','much','more','most','less','least','few','several','enough','little','lot','lots',
-                                    'other','others','another','same','different','similar','such','own','new','old','first','last','next','recent',
-                                    'good','bad','better','best','worse','worst','great','nice','okay','fine',
-                                    // negation / yes-no
-                                    'not','no','yes','none','nothing','anything','something','everything',
-                                    // numerics / time words
-                                    'one','two','three','four','five','six','seven','eight','nine','ten','time','times','day','days','night','nights','minute','minutes','hour','hours','week','weeks','month','months','year','years',
-                                    // misc filler
-                                    'way','ways','thing','things','place','people','person','someone','everyone','anyone',
-                                    'go','went','back','again','around','ago',
-                                    // contractions remnants (left after \W+ split)
-                                    's','t','m','re','ve','ll','d',
-                                  ])
-                                  // Carry over old pos/neg adjectives so we don't surface them
-                                  // as "topical" words — they're sentiment, not topic.
-                                  var SENTIMENT_ADJ = new Set(['good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best','delicious','tasty','fresh','friendly','nice','lovely','clean','quick','fast','warm','crispy','tender','flavorful','juicy','rich','creamy','attentive','helpful','polite','outstanding','superb','incredible','comfortable','cozy','pleasant','enjoyable','reasonable','generous','authentic','exceptional','satisfying','refreshing','favorite','love','loved','recommend','bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale','rude','dirty','expensive','overpriced','small','loud','noisy','crowded','long','soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless','mediocre','disappointing','disgusting','uncomfortable','unfriendly','unprofessional','filthy','gross','lukewarm','watery','tough','chewy','rubbery','hard','wrong','missing','broken','ignored','waited','annoyed','frustrated','underwhelming','overrated'])
-                                  var topicCounts: Record<string, number> = {}
-                                  var kws = new Set((t.keywords || []).map(function(k) { return k.toLowerCase() }))
-                                  var field = activeField || (themes ? themes.fieldName : '')
-                                  var WINDOW = 2
-                                  var CONJ = new Set(['and','or','nor','also','plus','with'])
-                                  filteredRows.forEach(function(row) {
-                                    var text = String(row[field] || '').toLowerCase()
-                                    if (!text) return
-                                    var clauses = text.split(/\b(?:but|however|although|yet|though|while|whereas)\b|[,]/i)
-                                    clauses.forEach(function(clause) {
-                                    var words = clause.trim().split(/\W+/)
-                                    for (var wi = 0; wi < words.length; wi++) {
-                                      if (!kws.has(words[wi])) continue
-                                      for (var wj = Math.max(0, wi - WINDOW); wj < Math.min(words.length, wi + WINDOW + 1); wj++) {
-                                        if (wj === wi) continue
-                                        var w = words[wj]
-                                        // Block conjunctions between center keyword and candidate
-                                        var blocked = false
-                                        for (var bk = Math.min(wi,wj)+1; bk < Math.max(wi,wj); bk++) { if (CONJ.has(words[bk])) { blocked = true; break } }
-                                        if (blocked) continue
-                                        if (!w || w.length < 3) continue
-                                        if (/^\d+$/.test(w)) continue
-                                        if (kws.has(w)) continue              // theme's own keywords
-                                        if (STOPWORDS.has(w)) continue        // generic English
-                                        if (SENTIMENT_ADJ.has(w)) continue    // not topical
-                                        topicCounts[w] = (topicCounts[w] || 0) + 1
-                                      }
-                                    }
-                                    }) // end clauses.forEach
-                                  })
-                                  var topTopics = Object.entries(topicCounts).sort(function(a, b) { return b[1] - a[1] }).slice(0, 5)
-                                  if (topTopics.length === 0) return null
+                                  var topTopics = serverTopical[t.id] || []
+                                  var coRowsByThemeId = serverCoOccurrence[t.id] || {}
+                                  var themeNameById: Record<string, string> = {}
+                                  ;(themes?.themes || []).forEach(function(other) { themeNameById[other.id] = other.name })
+                                  var coEntries = Object.entries(coRowsByThemeId)
+                                    .filter(function(e) { return e[1] > 0 && themeNameById[e[0]] })
+                                    .sort(function(a, b) { return b[1] - a[1] })
+                                    .slice(0, 3)
+                                  var thisCount = t.count || 0
+                                  if (topTopics.length === 0 && coEntries.length === 0) return null
                                   return (
                                     <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
-                                        Often mentioned with
-                                      </div>
-                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                        {topTopics.map(function(e) {
-                                          return <span key={e[0]} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: T.bg, color: T.textMid, border: '1px solid ' + T.border }}>{e[0]} ({e[1]})</span>
-                                        })}
-                                      </div>
+                                      {topTopics.length > 0 && (
+                                        <>
+                                          <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                                            Often mentioned with
+                                          </div>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: coEntries.length > 0 ? 8 : 0 }}>
+                                            {topTopics.map(function(e) {
+                                              return <span key={e[0]} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: T.bg, color: T.textMid, border: '1px solid ' + T.border }}>{e[0]} ({e[1].toLocaleString()})</span>
+                                            })}
+                                          </div>
+                                        </>
+                                      )}
+                                      {coEntries.length > 0 && (
+                                        <>
+                                          <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                                            Co-occurs with themes
+                                          </div>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                            {coEntries.map(function(e) {
+                                              var otherId = e[0]; var pairCount = e[1]
+                                              var otherIdx = (themes?.themes || []).findIndex(function(x) { return x.id === otherId })
+                                              var otherPal = otherIdx >= 0 ? (themeColors[otherIdx] || THEME_PALETTE[0]) : THEME_PALETTE[0]
+                                              var pctOfThis = thisCount > 0 ? Math.round(pairCount / thisCount * 100) : 0
+                                              return (
+                                                <span key={otherId} title={pairCount.toLocaleString() + ' records mention both'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60' }}>
+                                                  {themeNameById[otherId]} ({pctOfThis}%)
+                                                </span>
+                                              )
+                                            })}
+                                          </div>
+                                        </>
+                                      )}
                                     </div>
                                   )
                                 })()}

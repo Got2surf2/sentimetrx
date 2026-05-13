@@ -18,6 +18,8 @@ export async function POST(req: Request, { params }: Props) {
   let body: {
     themes: { id: string; keywords: string[] }[]
     fields: string[]
+    cooccurrence?: boolean      // when true, also compute pairwise theme intersection counts
+    topical?: boolean           // when true, also extract topical-word lists per theme
   }
   try {
     body = await req.json()
@@ -25,7 +27,7 @@ export async function POST(req: Request, { params }: Props) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { themes, fields } = body
+  const { themes, fields, cooccurrence, topical } = body
   if (!themes?.length || !fields?.length) {
     return NextResponse.json({ error: 'Provide themes and fields' }, { status: 400 })
   }
@@ -113,7 +115,67 @@ export async function POST(req: Request, { params }: Props) {
       })
     }
 
-    return NextResponse.json({ counts, totalNonEmpty })
+    // Optional: pairwise co-occurrence. Skip themes with no keywords.
+    // O(N²) pairs × M member datasets, ~50ms each. For ~15 themes on a
+    // collection of 2 members that's ~210 RPC calls — slow but
+    // acceptable. Future-optimization: a single SQL function that
+    // returns the full matrix in one row scan.
+    let cooccurrenceMatrix: Record<string, Record<string, number>> | undefined
+    if (cooccurrence) {
+      cooccurrenceMatrix = {}
+      const themesWithKws = themes.filter(t => (t.keywords || []).filter(Boolean).length > 0)
+      for (let i = 0; i < themesWithKws.length; i++) {
+        const a = themesWithKws[i]
+        cooccurrenceMatrix[a.id] = {}
+        for (let j = 0; j < themesWithKws.length; j++) {
+          if (i === j) continue
+          const b = themesWithKws[j]
+          let pairCount = 0
+          for (const did of datasetIds) {
+            const { data: x } = await service.rpc('count_theme_intersection', {
+              p_dataset_id: did,
+              p_field_keys: fields,
+              p_keywords_a: (a.keywords || []).filter(Boolean),
+              p_keywords_b: (b.keywords || []).filter(Boolean),
+            })
+            pairCount += Number(x) || 0
+          }
+          cooccurrenceMatrix[a.id][b.id] = pairCount
+        }
+      }
+    }
+
+    // Optional: topical words per theme. Sum word counts across member
+    // datasets so a single "Often mentioned with" list represents the
+    // whole collection.
+    let topicalWords: Record<string, [string, number][]> | undefined
+    if (topical) {
+      topicalWords = {}
+      for (const t of themes) {
+        const kws = (t.keywords || []).filter(Boolean)
+        if (!kws.length) { topicalWords[t.id] = []; continue }
+        // Merge per-member word counts
+        const merged: Record<string, number> = {}
+        for (const did of datasetIds) {
+          const { data } = await service.rpc('extract_theme_topical_words', {
+            p_dataset_id: did,
+            p_field_keys: fields,
+            p_keywords: kws,
+            p_extra_excludes: [],
+            p_max_results: 15,  // a bit wider than 5 so the post-merge top-5 has room
+          })
+          const pairs = (data as [string, number][] | null) || []
+          for (const [w, c] of pairs) {
+            merged[w] = (merged[w] || 0) + Number(c)
+          }
+        }
+        topicalWords[t.id] = Object.entries(merged)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+      }
+    }
+
+    return NextResponse.json({ counts, totalNonEmpty, cooccurrence: cooccurrenceMatrix, topical: topicalWords })
   }
 
   // Fallback: batch streaming (same as before but simplified)
