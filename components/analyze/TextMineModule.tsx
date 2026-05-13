@@ -1936,7 +1936,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 onClick={function() { handleDrillTheme(t) }}
                                 onMouseEnter={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 18px rgba(0,0,0,.10)' }}
                                 onMouseLeave={function(e) { (e.currentTarget as HTMLElement).style.boxShadow = '' }}
-                                style={{ background: T.bgCard, border: '2px solid ' + cardBorder, borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .15s, transform .12s' }}>
+                                style={{ background: T.bgCard, border: '2px solid ' + cardBorder, borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .15s, transform .12s', display: 'flex', flexDirection: 'column' }}>
                                 {/* Top row: dot + badges */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: cardBorder, flexShrink: 0 }} />
@@ -2036,7 +2036,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                           var otherPal = otherIdx >= 0 ? (themeColors[otherIdx] || THEME_PALETTE[0]) : THEME_PALETTE[0]
                                           var pctOfThis = thisCount > 0 ? Math.round(pairCount / thisCount * 100) : 0
                                           return (
-                                            <span key={otherId} title={pairCount.toLocaleString() + ' records mention both'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60' }}>
+                                            <span key={otherId} title={pctOfThis + '% of ' + t.name + ' records also mention ' + themeNameById[otherId] + ' (' + pairCount.toLocaleString() + ' records)'} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: otherPal.bg, color: otherPal.text, border: '1px solid ' + otherPal.border + '60', cursor: 'help' }}>
                                               {themeNameById[otherId]} ({pctOfThis}%)
                                             </span>
                                           )
@@ -2045,8 +2045,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     </div>
                                   )
                                 })()}
-                                {/* Count + % + CI + mini bar */}
-                                <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
+                                {/* Count + % + CI + mini bar. marginTop: auto pins this
+                                    block to the bottom of the card so footers align across
+                                    siblings in the same grid row even when keyword wrap and
+                                    co-occurs section heights vary. */}
+                                <div style={{ borderTop: '1px solid ' + T.border, paddingTop: 10, marginTop: 'auto' }}>
                                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
                                     <span style={{ fontSize: 13, color: T.textMid }}>
                                       <strong style={{ fontSize: 18, color: cardBorder }}>{(t.count || 0).toLocaleString()}</strong> records
