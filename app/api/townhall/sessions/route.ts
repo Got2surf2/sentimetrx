@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { NextRequest, NextResponse } from 'next/server'
 import type { TownHallConfig, TownHallGuideTopic } from '@/lib/types'
 import { validateOrgFilter } from '@/lib/orgValidate'
+import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 
 // GET /api/townhall/sessions — list sessions.
 // Non-admin: scoped to user's org. Admin: all orgs by default, narrowed to
@@ -124,5 +125,14 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { ip, userAgent } = eventContextFromRequest(req)
+  await recordUserEvent({
+    userId: user.id, orgId: (userData as { org_id?: string | null } | null)?.org_id || null,
+    event: 'townhall_created',
+    metadata: { session_id: data.id, slug: data.slug, name: body.name },
+    ip, userAgent,
+  })
+
   return NextResponse.json(data, { status: 201 })
 }

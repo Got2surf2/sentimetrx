@@ -4,6 +4,7 @@
 
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,5 +82,13 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { ip, userAgent } = eventContextFromRequest(req)
+  await recordUserEvent({
+    userId: user.id, orgId: userData.org_id, event: 'campaign_created',
+    metadata: { campaign_id: data.id, study_id, name },
+    ip, userAgent,
+  })
+
   return NextResponse.json(data, { status: 201 })
 }

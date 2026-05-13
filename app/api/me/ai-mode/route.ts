@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { resolveOrgAiConfig } from '@/lib/aiKey'
+import { recordUserEvent } from '@/lib/userEvents'
 
 export const dynamic = 'force-dynamic'
 
@@ -119,6 +120,16 @@ export async function PATCH(req: NextRequest) {
     new_value:  nextValue,
     ip,
     user_agent: ua,
+  })
+
+  // Mirror into the activity stream for stickiness analysis.
+  await recordUserEvent({
+    userId:    user.id,
+    orgId:     orgId || null,
+    event:     'ai_toggled',
+    metadata:  { action: nextValue ? 'enable' : 'disable' },
+    ip,
+    userAgent: ua,
   })
 
   return NextResponse.json({ userEnabled: nextValue, audited: true })

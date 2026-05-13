@@ -6,6 +6,7 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 
 export const dynamic = 'force-dynamic'
 
@@ -102,6 +103,10 @@ export async function POST(req: NextRequest) {
       .single()
     if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 })
     const baseUrl2 = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    {
+      const { ip, userAgent } = eventContextFromRequest(req)
+      await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type: 'conversation', target_id }, ip, userAgent })
+    }
     return NextResponse.json({ url: `${baseUrl2}/shared/conversation/${convData.token}`, token: convData.token, expires_at: convData.expires_at }, { status: 201 })
   }
 
@@ -117,6 +122,10 @@ export async function POST(req: NextRequest) {
       .single()
     if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 })
     const baseUrl2 = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
+    {
+      const { ip, userAgent } = eventContextFromRequest(req)
+      await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type: 'analytics', target_id }, ip, userAgent })
+    }
     return NextResponse.json({ url: `${baseUrl2}/shared/${aData.token}`, token: aData.token, expires_at: aData.expires_at }, { status: 201 })
   }
 
@@ -141,6 +150,11 @@ export async function POST(req: NextRequest) {
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
   const shareUrl = `${baseUrl}/shared/${data.token}`
+
+  {
+    const { ip, userAgent } = eventContextFromRequest(req)
+    await recordUserEvent({ userId: user.id, orgId: gate.targetOrgId, event: 'share_created', metadata: { type, target_id }, ip, userAgent })
+  }
 
   return NextResponse.json({ url: shareUrl, token: data.token, expires_at: data.expires_at }, { status: 201 })
 }

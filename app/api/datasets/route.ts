@@ -2,9 +2,10 @@
 // GET  /api/datasets  -- list all datasets for the user's org
 // POST /api/datasets  -- create a new dataset + initial state record
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { emptySchemaConfig, emptyThemeModel } from '@/lib/datasetUtils'
+import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +47,7 @@ export async function GET() {
   return NextResponse.json({ datasets: enriched })
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const supabase = createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -112,6 +113,13 @@ export async function POST(req: Request) {
     .single()
 
   if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 })
+
+  const { ip, userAgent } = eventContextFromRequest(req)
+  await recordUserEvent({
+    userId: user.id, orgId, event: 'dataset_created',
+    metadata: { dataset_id: dataset.id, source, study_id: study_id || null, name: name.trim() },
+    ip, userAgent,
+  })
 
   return NextResponse.json({ id: dataset.id, state_id: state.id }, { status: 201 })
 }
