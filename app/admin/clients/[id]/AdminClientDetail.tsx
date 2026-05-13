@@ -35,6 +35,10 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
   const [generatingInv, setGeneratingInv] = useState(false)
   const [inviteEmail,   setInviteEmail]   = useState('')
   const [showInvForm,   setShowInvForm]   = useState(false)
+  const [bulkPaste,     setBulkPaste]     = useState('')
+  const [showBulkForm,  setShowBulkForm]  = useState(false)
+  const [bulkSending,   setBulkSending]   = useState(false)
+  const [bulkResults,   setBulkResults]   = useState<Array<{ email: string; status: 'sent' | 'duplicate' | 'failed' | 'already_user'; error?: string }> | null>(null)
   const [error,         setError]         = useState<string | null>(null)
   const [orgPlan,       setOrgPlan]       = useState(org.plan)
   const [togglingPlan,  setTogglingPlan]  = useState(false)
@@ -204,6 +208,74 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
   const copyInviteFromList = async (inv: PendingInvite) => {
     const url = baseUrl + '/invite/' + inv.token
     await navigator.clipboard.writeText(url)
+  }
+
+  // Parses lines like:
+  //   Lori Van Duyne <lvanduyne@darden.com>
+  //   lvanduyne@darden.com
+  //   "Lori Van Duyne", lvanduyne@darden.com
+  // Skips blank lines and dedupes by email.
+  const parseBulk = (raw: string): Array<{ email: string; name?: string }> => {
+    const out: Array<{ email: string; name?: string }> = []
+    const seen = new Set<string>()
+    for (const line of raw.split(/\r?\n/)) {
+      const s = line.trim()
+      if (!s) continue
+      const angle = s.match(/^(.*?)<([^>]+)>\s*$/)
+      let email = ''
+      let name: string | undefined
+      if (angle) {
+        name  = angle[1].replace(/[",]/g, '').trim() || undefined
+        email = angle[2].trim().toLowerCase()
+      } else {
+        const tokenMatch = s.match(/[^\s,;<>]+@[^\s,;<>]+/)
+        if (!tokenMatch) continue
+        email = tokenMatch[0].trim().toLowerCase()
+        const before = s.slice(0, tokenMatch.index).replace(/[",]/g, '').trim()
+        name = before || undefined
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue
+      if (seen.has(email)) continue
+      seen.add(email)
+      out.push({ email, name })
+    }
+    return out
+  }
+
+  const handleBulkInvite = async () => {
+    const users = parseBulk(bulkPaste)
+    if (users.length === 0) { setError('No valid emails detected — paste one per line.'); return }
+    setBulkSending(true)
+    setBulkResults(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/bulk-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: org.id, users, role: 'owner' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error || 'Bulk invite failed')
+        return
+      }
+      setBulkResults(data.results || [])
+      // Refresh pending invites list with the freshly created ones
+      const inviteRows: Invite[] = (data.results as Array<{ email: string; status: string; token?: string }>)
+        .filter(r => r.token && (r.status === 'sent' || r.status === 'failed'))
+        .map(r => ({
+          id: r.token!, token: r.token!, email: r.email, role: 'owner',
+          used_at: null,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          created_at: new Date().toISOString(),
+          invite_url: baseUrl + '/invite/' + r.token,
+        }))
+      if (inviteRows.length > 0) setInvites(prev => [...inviteRows, ...prev])
+    } catch (e) {
+      setError('Bulk invite failed: ' + ((e as Error)?.message || 'network'))
+    } finally {
+      setBulkSending(false)
+    }
   }
 
   const handleResendInvite = async (id: string, email: string | null) => {
@@ -462,12 +534,20 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
         <Section title="Invite Links">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-gray-400">Generate links to invite new members to this organization.</p>
-            <button
-              onClick={() => setShowInvForm(f => !f)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors"
-            >
-              {showInvForm ? 'Cancel' : '+ New Invite'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowBulkForm(f => !f); if (!showBulkForm) setShowInvForm(false) }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors"
+              >
+                {showBulkForm ? 'Cancel bulk' : '+ Bulk Invite'}
+              </button>
+              <button
+                onClick={() => { setShowInvForm(f => !f); if (!showInvForm) setShowBulkForm(false) }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 text-slate-300 transition-colors"
+              >
+                {showInvForm ? 'Cancel' : '+ New Invite'}
+              </button>
+            </div>
           </div>
 
           {showInvForm && (
@@ -485,6 +565,53 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
               >
                 {generatingInv ? 'Generating...' : 'Generate'}
               </button>
+            </div>
+          )}
+
+          {showBulkForm && (
+            <div className="mb-4 p-3 rounded-xl bg-gray-50 border border-gray-200">
+              <div className="text-xs text-gray-500 mb-2">
+                Paste one per line. Accepts <code>Name &lt;email@example.com&gt;</code> or bare emails. Already-registered users and pending invites are skipped automatically.
+              </div>
+              <textarea
+                value={bulkPaste}
+                onChange={e => setBulkPaste(e.target.value)}
+                rows={8}
+                placeholder={'Lori Van Duyne <lvanduyne@darden.com>\nAditya Rajpal <arajpal@darden.com>\n…'}
+                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400 font-mono"
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-gray-500">{parseBulk(bulkPaste).length} valid email(s) detected</span>
+                <div className="flex-1" />
+                <button
+                  onClick={handleBulkInvite}
+                  disabled={bulkSending || parseBulk(bulkPaste).length === 0}
+                  className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all"
+                >
+                  {bulkSending ? 'Sending…' : 'Send invites'}
+                </button>
+              </div>
+              {bulkResults && (
+                <div className="mt-3 text-xs space-y-1 max-h-48 overflow-y-auto">
+                  {bulkResults.map(r => (
+                    <div key={r.email} className="flex items-center gap-2">
+                      <span className={
+                        r.status === 'sent'         ? 'text-green-600 font-semibold' :
+                        r.status === 'duplicate'    ? 'text-amber-600 font-semibold' :
+                        r.status === 'already_user' ? 'text-gray-500 font-semibold' :
+                                                       'text-red-600 font-semibold'
+                      } style={{ minWidth: 90 }}>
+                        {r.status === 'sent' ? '✓ Sent' :
+                         r.status === 'duplicate' ? '⏭ Pending' :
+                         r.status === 'already_user' ? '⏭ Registered' :
+                         '✗ Failed'}
+                      </span>
+                      <span className="text-gray-800">{r.email}</span>
+                      {r.error && <span className="text-red-500 text-[10px]">({r.error})</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
