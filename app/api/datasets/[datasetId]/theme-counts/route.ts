@@ -32,41 +32,80 @@ export async function POST(req: Request, { params }: Props) {
 
   const service = createServiceRoleClient()
 
-  // Check if flat table has data
-  const { count: flatCount } = await service
-    .from('dataset_rows_flat')
-    .select('id', { count: 'exact', head: true })
-    .eq('dataset_id', params.datasetId)
+  // Resolve the set of dataset IDs that actually hold the rows. For a
+  // regular dataset that's just [datasetId]. For a collection, rows live
+  // in the member datasets — collections themselves have nothing in
+  // dataset_rows_flat. Sum counts across members.
+  const { data: datasetMeta } = await service
+    .from('datasets')
+    .select('source')
+    .eq('id', params.datasetId)
+    .single()
 
-  const totalFlat = flatCount || 0
+  let datasetIds: string[] = [params.datasetId]
+  if ((datasetMeta as { source?: string } | null)?.source === 'collection') {
+    const { data: collection } = await service
+      .from('collections')
+      .select('id')
+      .eq('dataset_id', params.datasetId)
+      .single()
+    if (collection) {
+      const { data: members } = await service
+        .from('collection_members')
+        .select('dataset_id')
+        .eq('collection_id', (collection as { id: string }).id)
+      datasetIds = ((members || []) as { dataset_id: string }[]).map(m => m.dataset_id)
+    } else {
+      datasetIds = []
+    }
+  }
+
+  // Check if any of the underlying flat tables have data
+  let totalFlat = 0
+  for (const did of datasetIds) {
+    const { count: flatCount } = await service
+      .from('dataset_rows_flat')
+      .select('id', { count: 'exact', head: true })
+      .eq('dataset_id', did)
+    totalFlat += flatCount || 0
+  }
 
   if (totalFlat > 0) {
-    // SQL-based counting using the count_theme_matches function
+    // SQL-based counting using the count_theme_matches function, summed
+    // across the resolved dataset IDs (1 entry for regular datasets, N
+    // for collections).
     const counts: { id: string; count: number; percentage: number }[] = []
 
-    // Get total non-empty rows (denominator)
+    // Get total non-empty rows (denominator), summed across members
     let totalNonEmpty = 0
     for (const f of fields) {
-      const { count: nonEmpty } = await service
-        .from('dataset_rows_flat')
-        .select('id', { count: 'exact', head: true })
-        .eq('dataset_id', params.datasetId)
-        .not('data->' + f, 'is', null)
-        .neq('data->>' + f, '')
-      totalNonEmpty = Math.max(totalNonEmpty, nonEmpty || 0)
+      let fieldTotal = 0
+      for (const did of datasetIds) {
+        const { count: nonEmpty } = await service
+          .from('dataset_rows_flat')
+          .select('id', { count: 'exact', head: true })
+          .eq('dataset_id', did)
+          .not('data->' + f, 'is', null)
+          .neq('data->>' + f, '')
+        fieldTotal += nonEmpty || 0
+      }
+      totalNonEmpty = Math.max(totalNonEmpty, fieldTotal)
     }
 
     for (const t of themes) {
       const kws = (t.keywords || []).filter(Boolean)
       if (!kws.length) { counts.push({ id: t.id, count: 0, percentage: 0 }); continue }
 
-      const { data: matchCount } = await service.rpc('count_theme_matches', {
-        p_dataset_id: params.datasetId,
-        p_field_keys: fields,
-        p_keywords: kws,
-      })
+      let c = 0
+      for (const did of datasetIds) {
+        const { data: matchCount } = await service.rpc('count_theme_matches', {
+          p_dataset_id: did,
+          p_field_keys: fields,
+          p_keywords: kws,
+        })
+        c += Number(matchCount) || 0
+      }
 
-      const c = Number(matchCount) || 0
       counts.push({
         id: t.id,
         count: c,
