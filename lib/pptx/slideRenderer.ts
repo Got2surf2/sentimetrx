@@ -436,16 +436,21 @@ function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string)
 
     rect(slide, pptx, x, y, cardW, cardH, DN.white)
     solidRect(slide, pptx, x, y, 0.05, cardH, accent)
+    // Right-justified number + unit. Box is wide enough for 4-digit mention
+    // counts at fontSize 16 bold (was 0.38, narrow → wrapped on 2 digits).
+    // Title box's right margin (cardW - 1.05) reserves room for the number
+    // column so the two regions never overlap.
+    const numW = 0.95
     slide.addText(trunc(ent.name, 35), {
-      x: x + 0.16, y: y + 0.06, w: cardW - 0.55, h: 0.28,
+      x: x + 0.16, y: y + 0.06, w: cardW - numW - 0.20, h: 0.28,
       fontSize: 10, bold: true, color: DX.ink, wrap: true, autoFit: true,
     })
     slide.addText(String(ent.mentions), {
-      x: x + cardW - 0.5, y: y + 0.04, w: 0.38, h: 0.3,
+      x: x + cardW - numW - 0.05, y: y + 0.04, w: numW, h: 0.3,
       fontSize: 16, bold: true, color: accent, align: 'right',
     })
     slide.addText(ent.mentions === 1 ? 'mention' : 'mentions', {
-      x: x + cardW - 0.65, y: y + 0.3, w: 0.55, h: 0.16,
+      x: x + cardW - numW - 0.05, y: y + 0.3, w: numW, h: 0.16,
       fontSize: 7, color: DN.slate, align: 'right',
     })
     solidRect(slide, pptx, x + 0.16, y + cardH - 0.18, barW, 0.08, accent)
