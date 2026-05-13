@@ -1832,6 +1832,42 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
   // Inject virtual "Themes" field if theme model exists
   var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+
+  // Live theme counts via the existing server-side endpoint. The persisted
+  // theme_model.themes[].count is unreliable — it's often 0 on datasets
+  // where AI mining didn't populate it or a sync added rows without a
+  // re-count. TextMine recomputes counts client-side via recountThemes
+  // because it already has the rows loaded; Charts doesn't, so we ask the
+  // server (count_theme_matches SQL → fast for 20K+ row datasets).
+  var [liveThemeCounts, setLiveThemeCounts] = useState<Record<string, number> | null>(null)
+  var themesSig = hasThemes
+    ? themeModel.themes.map(function(t: any) { return (t.id || t.name) + ':' + (t.keywords || []).join('|') }).join(';;')
+    : ''
+  useEffect(function() {
+    if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); return }
+    var cancelled = false
+    var payload = {
+      themes: themeModel.themes.map(function(t: any) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
+      fields: [themeSourceField],
+    }
+    fetch('/api/datasets/' + datasetId + '/theme-counts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function(r) { return r.ok ? r.json() : null })
+      .then(function(d) {
+        if (cancelled || !d || !Array.isArray(d.counts)) return
+        var map: Record<string, number> = {}
+        themeModel.themes.forEach(function(t: any) {
+          var hit = d.counts.find(function(c: any) { return c.id === (t.id || t.name) })
+          map[t.name] = hit ? hit.count : 0
+        })
+        setLiveThemeCounts(map)
+      })
+      .catch(function() { /* fall back to stored counts */ })
+    return function() { cancelled = true }
+  }, [datasetId, hasThemes, themeSourceField, themesSig])
   var allFields = hasThemes
     ? fields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' }])
     : fields
@@ -1850,7 +1886,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       var themeCounts: Record<string, number> = {}
       themeModel.themes
         .filter(function(t: any) { return !activeThemeNames || activeThemeNames.has(t.name || t.label) })
-        .forEach(function(t: any) { themeCounts[t.name] = t.count || 0 })
+        .forEach(function(t: any) {
+          // Prefer live server-counted value over the persisted (often stale) count.
+          var live = liveThemeCounts ? liveThemeCounts[t.name] : undefined
+          themeCounts[t.name] = live != null ? live : (t.count || 0)
+        })
       extraSummaries['__themes__'] = { type: 'categorical', nonNull: analytics.totalRows, counts: themeCounts, topN: Object.keys(themeCounts) }
     }
     // Build summaries for mapped numeric fields from categorical counts + remapping
