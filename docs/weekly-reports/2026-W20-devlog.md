@@ -2,7 +2,14 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
-## 2026-05-15 (Thu, latest) — Entities: dedicated card, click-to-comments, dedup pass
+## 2026-05-15 (Thu, latest) — EntitiesCard polish: category tabs, truncation, modal highlight
+
+- **Why:** first render of the EntitiesCard was a wall of 209 pills in one scroll — user called it rough. Wanted it sorted out and capped.
+- **Layout:** category **tabs** (sorted largest-first) replace the stacked sections — one category visible at a time. Each tab caps at 30 pills with a "Show all N" / "Show fewer" toggle. The whole card now **renders nothing** until entities exist (no empty card, no loading flash) — per the user's "only show if there are entities."
+- **Modal:** comment rows are now carded (tinted bg, border, radius) instead of bare divider lines; header sits on a tinted strip with the count as a pill; metadata is a clean wrapped key/value line. Each comment **highlights the entity hit** inline — `highlightTerms()` wraps occurrences of the canonical + aliases (word-boundary, case-insensitive) in an on-brand marker, so the reader sees why the row matched.
+- Typecheck clean; TextMine route compiles clean on the local dev server. Not pushed.
+
+## 2026-05-15 (Thu) — Entities: dedicated card, click-to-comments, dedup pass
 
 - **Why:** user feedback after the entity-bug fixes. The per-theme-card "Top entities" section felt flaky — for restaurant reviews the entities are mostly dishes, and dishes co-occur with *every* theme, so every theme card showed the same Filet/Lobster list. It wasn't differentiating anything, and it added clutter. The user's call: pull entities off the theme cards and give them one dedicated home, make them clickable, and merge the near-duplicates ("Filet" + "Filet Mignon" + "Mignon"; "Brussels Sprout" + "Brussels Sprouts").
 - **Dedicated Entities card** — new `components/analyze/EntitiesCard.tsx`, rendered once on the TextMine Themes tab (below the stat boxes). Scope-wide catalog grouped by category (Dishes, Drinks, People, Brands & Competitors, Places, Other); pills styled like the grey theme-keyword pills, category colour only in the section-header dot. The old per-theme-card block + its lazy-fetch state (`entitiesByTheme`, `entitiesExpanded`, `fetchTopEntitiesForTheme`, `toggleEntitiesForTheme`) is removed from `TextMineModule`.
