@@ -3,7 +3,7 @@
 // Two-phase: submit tasks → check results across multiple sync calls
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { submitReviewTask, checkReviewTask, type ReviewTaskRef, type DfsReview } from './dataforseo'
+import { submitReviewTask, submitTripadvisorReviewTask, checkReviewTask, type ReviewTaskRef, type DfsReview } from './dataforseo'
 import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
 import { computeAnalyticsSQL } from './analyticsCompute'
 
@@ -76,6 +76,10 @@ export async function syncReviewSource(
     .from('review_sources').select('*').eq('id', sourceId).single()
   if (srcErr || !source) throw new Error('Review source not found: ' + (srcErr?.message || sourceId))
   if (!source.dataset_id) throw new Error('Review source has no linked dataset')
+
+  // Dispatch review-task submission on the source's platform. checkReviewTask
+  // (Phase 1) self-routes off the stored task ref, so only submission branches.
+  const submitTask = source.source === 'tripadvisor' ? submitTripadvisorReviewTask : submitReviewTask
 
   const startTime = Date.now()
   const allNewRows: Record<string, unknown>[] = []
@@ -174,7 +178,7 @@ export async function syncReviewSource(
         const depth = isInitial
           ? estimateDepth(loc.review_count, loc.created_at, dateStart, dateEnd)
           : 200
-        const ref = await submitReviewTask(loc.place_id, depth, 'newest')
+        const ref = await submitTask(loc.place_id, depth, 'newest')
         // Store task ref so next call can check it
         await service.from('review_source_locations').update({
           error_message: serializeTaskRef(ref),
@@ -221,7 +225,7 @@ export async function syncReviewSource(
         if (Date.now() - startTime > TIME_BUDGET_MS) break
         try {
           result.processing_location = loc.name
-          const ref = await submitReviewTask(loc.place_id, 200, 'newest')
+          const ref = await submitTask(loc.place_id, 200, 'newest')
           await service.from('review_source_locations').update({
             error_message: serializeTaskRef(ref),
           }).eq('id', loc.id)

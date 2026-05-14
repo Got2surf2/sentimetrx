@@ -3,7 +3,7 @@
 **Module:** `/app/api/{reddit,review,substack,regulations}-sources/*`, `/app/analyze/new/`, `lib/{reddit,dataforseo,reviewSync,substack,regulations}.ts`, `components/analyze/{Reddit,GoogleReviews,Substack,Regulations}Wizard.tsx`
 **Storage (config):** `reddit_sources`, `reddit_source_threads` (`sql/phase8_reddit.sql`); `review_sources`, `review_source_locations`, `user_locations` (`sql/phase7_google_reviews.sql`); Substack and Regulations have **no config tables** — metadata lives on `datasets.description` JSONB.
 **Storage (rows):** all four sources insert into `dataset_rows_flat` (one row per item, JSONB `data` column).
-**External APIs:** DataforSEO (Google Reviews), Reddit public JSON (no auth), Substack public JSON (no auth), Regulations.gov API v4 (api.data.gov key).
+**External APIs:** DataforSEO (Google + Tripadvisor Reviews), Reddit public JSON (no auth), Substack public JSON (no auth), Regulations.gov API v4 (api.data.gov key).
 **Feature gate:** `organizations.features.googleReviews`, `.reddit`, `.substack`. Regulations is gated by `.analyze`.
 
 > **Spec scope:** complete enough to rebuild all four ingest modules from
@@ -321,11 +321,15 @@ Finalizer. Reads sample rows from `dataset_rows_flat`, builds the Reddit schema 
 
 The most complex source — operates async via DataforSEO's task-submit/task-get pattern, driven by a 6-hour cron.
 
+**Multi-platform:** despite the legacy name, this module pulls from both **Google** and **Tripadvisor** (migration 065). The platform is chosen in the wizard and stored on `review_sources.source`. `datasets.source` stays `'google_reviews'` for both — it's the discriminator the analyze UI keys off; the authoritative platform lives on `review_sources.source` (and `datasets.description.platform`). Yelp is intentionally excluded — DataForSEO retired its Yelp endpoints.
+
 ### Wizard flow — `components/analyze/GoogleReviewsWizard.tsx`
-1. User enters brand keyword → `POST /api/review-sources/search` calls DataforSEO Maps Live and returns up to ~700 candidate locations.
+1. User picks a platform (Google / Tripadvisor) and enters a brand keyword → `POST /api/review-sources/search` returns candidate locations. Google uses the Maps **Live** endpoint (instant, ~700 results); Tripadvisor is **task-based** — the route submits a search task and polls within its 30s budget (~210 results).
 2. User selects locations (checkboxes), optionally sets date range and sync frequency.
 3. User clicks Create → `POST /api/review-sources` creates dataset + review_source + review_source_locations rows. `next_sync_at` is set to `now()` so the cron picks it up immediately.
 4. The 6-hour cron does the rest (no UI polling needed). UI shows progress on the dataset page.
+
+> **Tripadvisor caveat:** the Tripadvisor search endpoint returns no structured address/city/state, so those columns are NULL for Tripadvisor locations — the wizard's per-state grouping lumps them under "Other". Review pulls are unaffected.
 
 ### API routes
 
@@ -333,9 +337,9 @@ The most complex source — operates async via DataforSEO's task-submit/task-get
 **Response:** `{ sources: Array<{...review_source fields, locations_count}> }` for the user's org.
 
 #### `POST /api/review-sources`
-**Body:** `{ brand_name, locations: DfsLocation[], dataset_name?, sync_frequency_hours?, start_date?, end_date?, brand_tag? }` — `brand_tag` defaults to `brand_name` when omitted (a reviews dataset always has a brand).
+**Body:** `{ brand_name, locations: DfsLocation[], dataset_name?, source?: 'google'|'tripadvisor', sync_frequency_hours?, start_date?, end_date?, brand_tag? }` — `source` defaults to `'google'`; `brand_tag` defaults to `brand_name` when omitted (a reviews dataset always has a brand).
 **Response:** `{ source_id, dataset_id, locations, status: 'active' }` (201).
-Creates dataset, review_source (status='active'), one location row per selection (`selected=true`). Sets `next_sync_at = now()`. Optional date range stored in `datasets.description`.
+Creates dataset, review_source (status='active', `source` = the chosen platform), one location row per selection (`selected=true`). Sets `next_sync_at = now()`. Optional date range stored in `datasets.description`.
 
 #### `GET /api/review-sources/[sourceId]`
 **Response:** `{ source, locations, datasetRowCount }`. Locations ordered by state, city.
@@ -347,9 +351,9 @@ Creates dataset, review_source (status='active'), one location row per selection
 Cascades: deletes source → locations → linked dataset → its `dataset_rows_flat` and `dataset_state`.
 
 #### `POST /api/review-sources/search`
-**Body:** `{ keyword: string }`
-**Response:** `{ keyword, count, locations: DfsLocation[] }`.
-Calls `searchLocations(keyword)` → DataforSEO. Preview only — does **not** persist. Used by wizard step 1.
+**Body:** `{ keyword: string, source?: 'google'|'tripadvisor' }` (`source` defaults to `'google'`)
+**Response:** `{ keyword, source, count, locations: DfsLocation[] }`.
+Dispatches to `searchLocations(keyword)` (Google) or `searchTripadvisorLocations(keyword)` (Tripadvisor) → DataforSEO. Preview only — does **not** persist. Used by wizard step 1.
 
 #### `POST /api/review-sources/[sourceId]/sync`
 **Body:** `{}`
@@ -373,8 +377,10 @@ Manual sync trigger for the same algorithm the cron runs. Useful for testing.
 1. Find locations with `last_synced_at IS NULL` AND `error_message IS NULL` (unsynced, not in flight).
 2. For each (up to `BATCH_SIZE = 3`):
    - Compute initial `depth` via `estimateDepth(review_count, created_at, start_date, end_date)`. For incremental syncs (after first), use `depth = 200`.
-   - Call `submitReviewTask(place_id, depth, 'newest')` → DataforSEO `POST .../task_post`. Returns `{ taskId, getPath }`.
+   - Call `submitReviewTask` (Google) or `submitTripadvisorReviewTask` (Tripadvisor), dispatched on `review_sources.source` → DataforSEO `POST .../task_post`. Returns `{ taskId, getPath }`.
    - Store `error_message = "pending_task:{taskId}|{getPath}"` (the column is overloaded for pending refs).
+
+Phase 1's `checkReviewTask` is platform-agnostic — it picks the right review parser by inspecting `ref.getPath` (`…/tripadvisor/…` → Tripadvisor parser), so old pending task refs keep working without a schema change.
 
 **Returns:** `{ synced, total, locations_synced, locations_remaining, locations_errored, locations_submitted, errors, expected_reviews, with_comments, without_comments, pending_locations, processing_location }` for UI/cron telemetry.
 
@@ -386,7 +392,9 @@ Endpoint base: `https://api.dataforseo.com/v3`. Auth: HTTP Basic, header `Author
 |---|---|---|
 | `searchLocations(keyword)` | `POST /serp/google/maps/live/advanced` body `[{keyword, location_code: 2840, language_code: 'en', device: 'desktop', os: 'windows', depth: 700}]` | `DfsLocation[]` (place_id, title, address, address_info, rating, votes, phone, lat/lng) |
 | `submitReviewTask(placeId, depth?, sortBy?)` | `POST /reviews/google/task_post` (or `/business_data/google/reviews/task_post` fallback) body `[{place_id, location_code: 2840, language_code: 'en', depth: 200..4490, sort_by: 'newest'\|'relevant'}]` | `{ taskId, getPath }` |
-| `checkReviewTask(ref)` | `GET {ref.getPath}/{ref.taskId}` | `{ status: 'ready'\|'pending'\|'error', reviews?: DfsReview[], message? }` |
+| `searchTripadvisorLocations(keyword)` | `POST /business_data/tripadvisor/search/task_post` body `[{keyword, location_name: 'United States', depth: 210}]`, then polls `task_get` (~25s) | `DfsLocation[]` — `place_id` holds the Tripadvisor `url_path`; address/city/state are NULL |
+| `submitTripadvisorReviewTask(urlPath, depth?, sortBy?)` | `POST /business_data/tripadvisor/reviews/task_post` body `[{url_path, depth: ≤4490, sort_by: 'most_recent'\|'detailed_reviews', language_code: 'en'}]` — `'newest'\|'relevant'` is translated to Tripadvisor's sort terms | `{ taskId, getPath }` |
+| `checkReviewTask(ref)` | `GET {ref.getPath}/{ref.taskId}` — parser selected by `getPath` (Google vs Tripadvisor) | `{ status: 'ready'\|'pending'\|'error', reviews?: DfsReview[], message? }` |
 
 ### Why two phases?
 

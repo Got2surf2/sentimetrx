@@ -4,10 +4,13 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
-import { searchLocations } from '@/lib/dataforseo'
+import { searchLocations, searchTripadvisorLocations } from '@/lib/dataforseo'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
+
+const SOURCES = ['google', 'tripadvisor'] as const
+type ReviewPlatform = (typeof SOURCES)[number]
 
 export async function POST(req: Request) {
   try {
@@ -33,10 +36,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'keyword is required' }, { status: 400 })
     }
 
-    const locations = await searchLocations(keyword.trim())
+    const source: ReviewPlatform = SOURCES.includes(body.source) ? body.source : 'google'
+
+    const locations = source === 'tripadvisor'
+      ? await searchTripadvisorLocations(keyword.trim())
+      : await searchLocations(keyword.trim())
 
     return NextResponse.json({
       keyword: keyword.trim(),
+      source,
       count: locations.length,
       locations,
     })

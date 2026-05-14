@@ -190,6 +190,10 @@ export async function checkReviewTask(ref: ReviewTaskRef): Promise<TaskCheckResu
   const task = result?.tasks?.[0]
   if (!task) return { status: 'pending' }
 
+  // The task's getPath is a reliable platform discriminator, so old pending
+  // task refs (which carry no explicit source) still route correctly.
+  const parseItem = ref.getPath.includes('tripadvisor') ? parseTripadvisorReviewItem : parseReviewItem
+
   if (task.status_code === 20000 && task.result?.length) {
     const resultData = task.result[0]
     const items = resultData?.items || []
@@ -198,7 +202,7 @@ export async function checkReviewTask(ref: ReviewTaskRef): Promise<TaskCheckResu
       // Items empty but reviews exist — might be nested differently
       console.warn('[dataforseo] reviews_count > 0 but items is empty. Full result keys:', Object.keys(resultData).join(','))
     }
-    const reviews = items.map(parseReviewItem).filter((r: DfsReview | null) => r !== null) as DfsReview[]
+    const reviews = items.map(parseItem).filter((r: DfsReview | null) => r !== null) as DfsReview[]
     if (items.length > 0 && reviews.length === 0) {
       console.warn('[dataforseo] parseReviewItem filtered all items. Sample item:', JSON.stringify(items[0]).slice(0, 300))
     }
@@ -307,6 +311,117 @@ function parseReviewItem(item: any): DfsReview | null {
     owner_timestamp: item.owner_timestamp || null,
     review_url: item.review_url || item.profile_url || null,
     review_likes: item.reviews_count || 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tripadvisor — business search + reviews
+//
+// Tripadvisor search and reviews are both task-based (no live endpoint). A
+// business is identified by its url_path (e.g. the path of its Tripadvisor
+// page), which we store in the same place_id column Google uses.
+// ---------------------------------------------------------------------------
+
+/** Search Tripadvisor for a brand/category. Submits a task and polls within
+ *  the calling route's time budget (search has no live endpoint). */
+export async function searchTripadvisorLocations(keyword: string): Promise<DfsLocation[]> {
+  const postData = await post('/business_data/tripadvisor/search/task_post', [{
+    keyword,
+    location_name: 'United States',
+    depth: 210,                // Tripadvisor search max
+  }])
+  const taskId = postData?.tasks?.[0]?.id
+  if (!taskId) {
+    throw new Error(`Tripadvisor search failed: ${postData?.tasks?.[0]?.status_message || 'no task ID'}`)
+  }
+
+  // Poll task_get — ~25s worst case, inside the route's 30s maxDuration.
+  for (let i = 0; i < 10; i++) {
+    await sleep(2500)
+    const result = await get('/business_data/tripadvisor/search/task_get/' + taskId)
+    const task = result?.tasks?.[0]
+    if (!task) continue
+    if (task.status_code === 20000 && task.result?.length) {
+      const items = task.result[0]?.items || []
+      return items
+        .filter((it: any) => it?.url_path)
+        .map(parseTripadvisorBusinessItem)
+        .filter((l: DfsLocation | null) => l !== null)
+    }
+    // 40402/40602 = queued, 140607 = handed to a worker — keep polling.
+    if (task.status_code === 40402 || task.status_code === 40602 || task.status_code === 140607) continue
+    if (task.status_code >= 40000) {
+      throw new Error(`Tripadvisor search failed (${task.status_code}): ${task.status_message}`)
+    }
+  }
+  throw new Error('Tripadvisor search timed out — please try again')
+}
+
+function parseTripadvisorBusinessItem(item: any): DfsLocation | null {
+  if (!item?.url_path) return null
+  // Search titles arrive rank-prefixed: "1. Salami Social Club" — strip it.
+  // Tripadvisor search does not return structured address fields.
+  const name = String(item.title || '').replace(/^\d+\.\s*/, '')
+  return {
+    place_id: item.url_path,
+    name,
+    address: null,
+    city: null,
+    state: null,
+    zip: null,
+    rating: item.rating?.value ?? null,
+    review_count: item.reviews_count ?? 0,
+    phone: null,
+    latitude: null,
+    longitude: null,
+  }
+}
+
+/** Submit a Tripadvisor reviews task. Mirrors submitReviewTask's signature so
+ *  callers can dispatch on source without translating arguments. */
+export async function submitTripadvisorReviewTask(
+  urlPath: string,
+  depth: number = 700,
+  sortBy: 'newest' | 'relevant' = 'newest',
+): Promise<ReviewTaskRef> {
+  const tripSort = sortBy === 'newest' ? 'most_recent' : 'detailed_reviews'
+  const postData = await post('/business_data/tripadvisor/reviews/task_post', [{
+    url_path: urlPath,
+    depth: Math.min(depth, 4490),
+    sort_by: tripSort,
+    language_code: 'en',
+  }])
+  const taskStatus = postData?.tasks?.[0]
+  if (taskStatus?.id) {
+    return { taskId: taskStatus.id, getPath: '/business_data/tripadvisor/reviews/task_get/' }
+  }
+  throw new Error(`Failed to submit Tripadvisor review task: ${taskStatus?.status_message || 'no task ID'}`)
+}
+
+// Tripadvisor returns timestamps as "2025-06-08 00:00:00 +00:00"; downstream
+// code expects an ISO string it can .split('T')[0] and compare lexically.
+function normalizeTimestamp(ts: string | null | undefined): string {
+  if (!ts) return ''
+  const t = ts.trim()
+  if (!t || t.includes('T')) return t
+  return t.replace(' ', 'T').replace(/\s+/g, '')
+}
+
+function parseTripadvisorReviewItem(item: any): DfsReview | null {
+  if (!item) return null
+  const reviewId = item.review_id || item.id || (item.rank_absolute != null ? String(item.rank_absolute) : '')
+  if (!reviewId) return null
+  const response = Array.isArray(item.responses) ? item.responses[0] : null
+  return {
+    review_id: String(reviewId),
+    profile_name: item.user_profile?.name || 'Anonymous',
+    rating: typeof item.rating === 'number' ? item.rating : (item.rating?.value ?? 0),
+    review_text: item.review_text || null,
+    timestamp: normalizeTimestamp(item.timestamp),
+    owner_answer: response?.text || null,
+    owner_timestamp: response ? (normalizeTimestamp(response.timestamp) || null) : null,
+    review_url: item.url || null,
+    review_likes: 0,
   }
 }
 

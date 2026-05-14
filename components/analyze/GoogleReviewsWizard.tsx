@@ -6,8 +6,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import BrandTagInput from '@/components/analyze/BrandTagInput'
 
 const HERMES = '#E8632A'
+
+type ReviewPlatform = 'google' | 'tripadvisor'
+const PLATFORMS: { id: ReviewPlatform; label: string }[] = [
+  { id: 'google', label: 'Google' },
+  { id: 'tripadvisor', label: 'Tripadvisor' },
+]
 
 interface Location {
   place_id: string
@@ -31,10 +38,13 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
   const [step, setStep] = useState<WizardStep>(1)
 
   // Step 1: Search
+  const [source, setSource] = useState<ReviewPlatform>('google')
   const [keyword, setKeyword] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState('')
   const [locations, setLocations] = useState<Location[]>([])
+
+  const sourceLabel = PLATFORMS.find(function(p) { return p.id === source })!.label
 
   // Step 2: Selection
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -45,6 +55,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
 
   // Step 3: Confirm + Download
   const [datasetName, setDatasetName] = useState('')
+  const [brandTag, setBrandTag] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
@@ -60,7 +71,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
       const res = await fetch('/api/review-sources/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: keyword.trim() }),
+        body: JSON.stringify({ keyword: keyword.trim(), source }),
       })
       const data = await res.json()
       if (!res.ok) { setSearchError(data.error || 'Search failed'); return }
@@ -140,9 +151,11 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
         body: JSON.stringify({
           brand_name: keyword.trim(),
           dataset_name: datasetName.trim(),
+          source,
           locations: selectedLocations,
           start_date: startDate || null,
           end_date: endDate || null,
+          brand_tag: brandTag.trim() || null,
         }),
       })
       const data = await res.json()
@@ -192,6 +205,22 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
               <h3 className="font-bold text-gray-800 mb-1">Search for a brand or business</h3>
               <p className="text-xs text-gray-400">Enter the name of a restaurant chain, business, or specific location</p>
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-600">Review platform</label>
+              <div className="flex gap-2">
+                {PLATFORMS.map(function(p) {
+                  const active = source === p.id
+                  return (
+                    <button key={p.id}
+                      onClick={function() { setSource(p.id) }}
+                      className={'px-4 py-1.5 rounded-xl text-sm font-semibold border transition-all ' + (active ? 'text-white border-transparent' : 'text-gray-500 border-gray-300 hover:border-gray-400')}
+                      style={active ? { background: HERMES } : {}}>
+                      {p.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
             <div className="flex gap-3">
               <input
                 value={keyword}
@@ -210,7 +239,7 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
             </div>
             {searching && (
               <div className="flex items-center gap-3 py-2">
-                <LottieLoader size={56} message="Searching Google Maps..." />
+                <LottieLoader size={56} message={'Searching ' + sourceLabel + '...'} />
               </div>
             )}
           </div>
@@ -340,8 +369,10 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
               <input value={datasetName} onChange={function(e) { setDatasetName(e.target.value) }}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors" />
             </div>
+            <BrandTagInput value={brandTag} onChange={setBrandTag} placeholder={keyword || 'e.g. Capital Grille'} />
             {([
               ['Brand',              keyword],
+              ['Platform',           sourceLabel],
               ['Locations selected', selected.size + ' of ' + locations.length],
               ['Estimated reviews',  estimatedReviews.toLocaleString()],
               ['Date range',         (startDate || 'All time') + ' \u2192 ' + (endDate || 'Today')],

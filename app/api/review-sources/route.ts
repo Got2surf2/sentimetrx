@@ -67,10 +67,15 @@ export async function POST(req: Request) {
     if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
     const body = await req.json()
-    const { brand_name, locations, dataset_name, sync_frequency_hours, start_date, end_date } = body
+    const { brand_name, locations, dataset_name, sync_frequency_hours, start_date, end_date, brand_tag } = body
 
     if (!brand_name?.trim()) return NextResponse.json({ error: 'brand_name is required' }, { status: 400 })
     if (!locations?.length) return NextResponse.json({ error: 'At least one location is required' }, { status: 400 })
+
+    // Platform the reviews are pulled from. dataset.source stays 'google_reviews'
+    // for every review-sync dataset — it's the discriminator the analyze UI keys
+    // off; the authoritative platform lives on review_sources.source.
+    const platform: 'google' | 'tripadvisor' = body.source === 'tripadvisor' ? 'tripadvisor' : 'google'
 
     const service = createServiceRoleClient()
 
@@ -80,13 +85,16 @@ export async function POST(req: Request) {
       .from('datasets')
       .insert({
         name:        dsName,
-        description: JSON.stringify({ type: 'google_reviews', brand: brand_name.trim(), locations: locations.length, start_date: start_date || null, end_date: end_date || null }),
+        description: JSON.stringify({ type: 'google_reviews', platform, brand: brand_name.trim(), locations: locations.length, start_date: start_date || null, end_date: end_date || null }),
         source:      'google_reviews',
         org_id:      orgId,
         created_by:  user.id,
         visibility:  'private',
         status:      'active',
         row_count:   0,
+        // A Google Reviews dataset always has a brand — default the brand
+        // tag to the brand name so it lands in a brand-collection.
+        brand_tag:   (brand_tag && brand_tag.trim()) || brand_name.trim(),
       })
       .select('id')
       .single()
@@ -111,6 +119,7 @@ export async function POST(req: Request) {
         org_id:                orgId,
         dataset_id:            dataset.id,
         brand_name:            brand_name.trim(),
+        source:                platform,
         status:                'pending',
         sync_frequency_hours:  sync_frequency_hours || 24,
         created_by:            user.id,
