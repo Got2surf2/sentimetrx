@@ -48,7 +48,7 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
 
   let dsQuery = supabase
     .from('datasets')
-    .select('id, org_id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, studies(name), dataset_state(theme_model)')
+    .select('id, org_id, name, description, source, study_id, ana_library, visibility, status, row_count, last_synced_at, created_at, updated_at, created_by, brand_collection_id, studies(name), dataset_state(theme_model)')
     .order('created_at', { ascending: false })
   if (scopeOrgId) dsQuery = dsQuery.eq('org_id', scopeOrgId)
   const { data: rawDatasets, error: dsErr } = await dsQuery
@@ -77,12 +77,22 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
     }
   }
 
-  // Compute live row counts for collections
+  // Compute live row counts + kind + member tallies for collections.
+  // kind/collection_id are mapped for every collection (incl. empty ones)
+  // so the Brand pill still renders; row/member counts only exist once a
+  // collection has members.
   const collectionDs = (rawDatasets || []).filter((d: any) => d.source === 'collection')
-  const collectionRowCounts: Record<string, number> = {}
+  const collectionRowCounts:    Record<string, number> = {}
+  const collectionMemberCounts: Record<string, number> = {}
+  const collectionKindByDsId:   Record<string, 'manual' | 'brand'> = {}
+  const collectionIdByDsId:     Record<string, string> = {}
   if (collectionDs.length > 0) {
-    const { data: cols } = await supabase.from('collections').select('id, dataset_id').in('dataset_id', collectionDs.map((d: any) => d.id))
+    const { data: cols } = await supabase.from('collections').select('id, dataset_id, kind').in('dataset_id', collectionDs.map((d: any) => d.id))
     if (cols && cols.length > 0) {
+      for (const col of cols) {
+        collectionKindByDsId[col.dataset_id] = (col as any).kind === 'brand' ? 'brand' : 'manual'
+        collectionIdByDsId[col.dataset_id]   = col.id
+      }
       const { data: members } = await supabase.from('collection_members').select('collection_id, dataset_id').in('collection_id', cols.map(c => c.id))
       if (members && members.length > 0) {
         const memberDsIds = Array.from(new Set(members.map(m => m.dataset_id)))
@@ -91,7 +101,8 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
         ;(memberDs || []).forEach(d => { memberCounts[d.id] = d.row_count || 0 })
         for (const col of cols) {
           const colMembers = members.filter(m => m.collection_id === col.id)
-          collectionRowCounts[col.dataset_id] = colMembers.reduce((s, m) => s + (memberCounts[m.dataset_id] || 0), 0)
+          collectionRowCounts[col.dataset_id]    = colMembers.reduce((s, m) => s + (memberCounts[m.dataset_id] || 0), 0)
+          collectionMemberCounts[col.dataset_id] = colMembers.length
         }
       }
     }
@@ -130,7 +141,15 @@ export default async function AnalyzePage({ searchParams }: { searchParams: { or
     const rowCount = d.source === 'collection' && collectionRowCounts[d.id] != null ? collectionRowCounts[d.id] : d.row_count
     const cardOrgName = isAdmin ? (orgNameMap[d.org_id] || null) : (orgData?.name || null)
     const collectionInfo = collectionInfoByDsId[d.id] || null
-    return { ...rest, row_count: rowCount, study_name: studyName, creator_name: creatorName, org_name: cardOrgName, theme_count: themeCount, theme_source: themeSource, theme_lib_name: themeLibName, collection_info: collectionInfo }
+    const isColl = d.source === 'collection'
+    return {
+      ...rest, row_count: rowCount, study_name: studyName, creator_name: creatorName,
+      org_name: cardOrgName, theme_count: themeCount, theme_source: themeSource,
+      theme_lib_name: themeLibName, collection_info: collectionInfo,
+      collection_kind: isColl ? (collectionKindByDsId[d.id] || 'manual') : undefined,
+      member_count:    isColl ? (collectionMemberCounts[d.id] ?? 0) : undefined,
+      collection_id:   isColl ? (collectionIdByDsId[d.id] || null) : undefined,
+    }
   })
 
   return (

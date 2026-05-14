@@ -31,6 +31,9 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const [datasets, setDatasets] = useState<DatasetWithState[]>(initialDatasets)
   const [filters,  setFilters]  = useState<Filters>({ source: 'all', visibility: 'all', status: 'all' })
   const [showCollectionModal, setShowCollectionModal] = useState(false)
+  // Brand drill-in: when set, the grid shows only that brand-collection's
+  // member datasets instead of the flat listing. Cleared by "Back to all".
+  const [drillIn, setDrillIn] = useState<{ collectionId: string; name: string } | null>(null)
   // Phase C: batched signal stats. `undefined` means "not yet fetched"
   // for that dataset (cards render skeleton); after the batch returns,
   // the entry is either a SignalStatsBrief or null (no themes).
@@ -69,7 +72,16 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
     return function() { cancelled = true }
   }, [initialDatasets])
 
-  const filtered = datasets.filter(function(d) {
+  // Brand members are hidden from the flat grid — they're reached by
+  // drilling into their brand card. Drilling in flips the grid to show
+  // exactly that brand's members. Standalone datasets and manual
+  // collections (no brand_collection_id) are unaffected.
+  const scoped = datasets.filter(function(d) {
+    if (drillIn) return d.brand_collection_id === drillIn.collectionId
+    return !d.brand_collection_id
+  })
+
+  const filtered = scoped.filter(function(d) {
     if (filters.source !== 'all' && d.source !== filters.source) return false
     if (filters.visibility !== 'all' && d.visibility !== filters.visibility) return false
     if (filters.status !== 'all' && d.status !== filters.status) return false
@@ -165,6 +177,22 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
         </div>
       </div>
 
+      {/* Brand drill-in header */}
+      {drillIn && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={function() { setDrillIn(null) }}
+            className="px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
+            style={{ background: '#eef2ff', color: '#4338ca', border: '1.5px solid #c7d2fe' }}>
+            ← Back to all datasets
+          </button>
+          <span className="text-sm text-gray-600">
+            <span style={{ fontWeight: 700, color: '#111827' }}>🏷 {drillIn.name}</span>
+            {' · '}{filtered.length} {filtered.length === 1 ? 'dataset' : 'datasets'}
+          </span>
+        </div>
+      )}
+
       {/* Filter bar */}
       {datasets.length > 0 && <DatasetFilterBar filters={filters} onChange={setFilters} />}
 
@@ -206,6 +234,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
                 allOrgs={allOrgs}
                 onTransfer={handleTransfer}
                 signalStats={signalStatsMap[dataset.id]}
+                onDrillIn={function(collectionId, name) { setDrillIn({ collectionId: collectionId, name: name }) }}
               />
             )
           })}

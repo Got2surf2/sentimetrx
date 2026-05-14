@@ -2,6 +2,13 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-14 (Wed, latest) — Brand cards: distinct treatment + drill-in on /analyze
+
+- **Why:** user saw the 9 brand-collections the `061` backfill created ("Eddie V's" etc.) and asked why individual datasets had "become collections." Root cause: the entity rebuild stores brand-collections as `source='collection'` virtual datasets, so they render identically to manual collections and their member datasets *also* show as loose cards — a cluttered, confusing flat grid. The `062` migration's own comment promised the UI would distinguish + hide brand members, but that was never built.
+- **Brand cards now read as containers, not datasets.** `DatasetCard` renders a distinct `🏷 Brand` pill + indigo accent when `collection_kind==='brand'`, shows a member-dataset count in the stats row, and carries a "View N datasets →" drill-in button. `/analyze` data layer now fetches `collections.kind` + per-collection member tallies and `brand_collection_id` on every dataset.
+- **Brand members are hidden from the flat grid.** `AnalyzeClient` filters out any dataset with a `brand_collection_id`; clicking a brand card's drill-in flips the grid to show exactly that brand's members with a "← Back to all datasets" header. Standalone datasets and manual collections are untouched — scope was deliberately kept to brand-collections only.
+- **Not addressed (still half-built, see `brand-profile-concept` memory):** brand-collections still have no merged schema (`find_or_create_brand_collection` never creates `dataset_state`), so Charts/Stats won't work on them — only entity/text. Lifecycle (persist-and-hide vs auto-delete) also still unresolved. These are the next coherence items.
+
 ## 2026-05-14 (Wed, even later still) — Multi-source review downloads: add Tripadvisor
 
 - **Why:** user asked whether Yelp/Tripadvisor reviews could be added alongside Google. Yelp is a dead end — DataForSEO retired its Yelp endpoints, and the third-party scrapers (Outscraper/Apify) carry TOS + reliability risk for marginal volume (Google is ~85% of review volume for casual-dining chains anyway). Tripadvisor, by contrast, is a clean add: DataForSEO still supports it, same API client, same auth, same billing. The genuine product value of a second source isn't volume — it's *divergence* ("4.5 on Google, 3.8 on Tripadvisor" is an operator insight).

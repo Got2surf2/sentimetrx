@@ -39,11 +39,13 @@ interface Props {
   allOrgs?:            OrgOption[]
   onTransfer?:         (datasetId: string, studyId: string | null, orgId: string) => Promise<void>
   signalStats?:        SignalStatsBrief | null  // undefined = still loading, null = no themes/data
+  onDrillIn?:          (collectionId: string, name: string) => void  // brand cards only
 }
 
 const HERMES = '#e8622a'
 const HERMES_BG = '#fff4ef'
 const HERMES_MID = '#fcd5c0'
+const INDIGO = '#6366f1'
 
 const FIT_BAND: Record<SignalStatsBrief['themeFitBand'], { fg: string; bg: string; border: string }> = {
   Tight:   { fg: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
@@ -72,7 +74,7 @@ function Badge({ label, color, bg, border }: { label: string, color: string, bg:
   )
 }
 
-export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats }: Props) {
+export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats, onDrillIn }: Props) {
   const router = useRouter()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [renaming,      setRenaming]      = useState(false)
@@ -97,6 +99,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   const isTownHall   = dataset.source === 'townhall'
   const isSubstack   = dataset.source === 'substack'
   const isCollection = dataset.source === 'collection'
+  const isBrand = isCollection && dataset.collection_kind === 'brand'
   const isArchived = dataset.status === 'archived'
   const fieldCount = dataset.state?.schema_config?.fields?.filter(function(f: { type: string }) {
     return f.type !== 'ignore'
@@ -294,7 +297,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
     <div style={{
       background:    'white',
       border:        '1px solid #e8e8ec',
-      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : isCollection ? '#0ea5e9' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES),
+      borderTop:     '3px solid ' + (isArchived ? '#d1d5db' : isBrand ? INDIGO : isCollection ? '#0ea5e9' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES),
       borderRadius:  12,
       padding:       '16px',
       boxShadow:     '0 1px 4px rgba(0,0,0,.05)',
@@ -310,7 +313,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       // has nothing inside that bleeds past the rounded corners.
       overflow:      'visible' as const,
     }}
-    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isCollection ? '0 4px 16px rgba(14,165,233,.12)' : isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isSubstack ? '0 4px 16px rgba(225,29,72,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
+    onMouseEnter={function(e) { if (!isArchived) (e.currentTarget as HTMLDivElement).style.boxShadow = isBrand ? '0 4px 16px rgba(99,102,241,.12)' : isCollection ? '0 4px 16px rgba(14,165,233,.12)' : isReddit ? '0 4px 16px rgba(16,185,129,.12)' : isTownHall ? '0 4px 16px rgba(139,92,246,.12)' : isSubstack ? '0 4px 16px rgba(225,29,72,.12)' : isReviews ? '0 4px 16px rgba(37,99,235,.12)' : '0 4px 16px rgba(232,98,42,.12)' }}
     onMouseLeave={function(e) { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.05)' }}>
 
       {/* 1. Name + menu */}
@@ -427,6 +430,8 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           <Badge label={'\uD83C\uDFE4 PulseIQ'} color="#7c3aed" bg="#f5f3ff" border="#ddd6fe" />
         ) : isSubstack ? (
           <Badge label={'\u270D Substack'} color="#e11d48" bg="#fff1f2" border="#fecdd3" />
+        ) : isBrand ? (
+          <Badge label={'\uD83C\uDFF7 Brand'} color="#4338ca" bg="#eef2ff" border="#c7d2fe" />
         ) : isCollection ? (
           <Badge label={'\uD83D\uDCC2 Collection'} color="#0284c7" bg="#f0f9ff" border="#bae6fd" />
         ) : (
@@ -521,6 +526,13 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             <span style={{ fontSize: 13, lineHeight: 1, color: '#9ca3af' }}>&#9783;</span>
             <span style={{ fontWeight: 700, color: '#111827' }}>{fieldCount}</span>
             <span style={{ color: '#9ca3af' }}>fields</span>
+          </div>
+        )}
+        {isCollection && dataset.member_count != null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 13, lineHeight: 1, color: '#9ca3af' }}>&#9707;</span>
+            <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.member_count}</span>
+            <span style={{ color: '#9ca3af' }}>{dataset.member_count === 1 ? 'dataset' : 'datasets'}</span>
           </div>
         )}
         <div style={{ marginLeft: 'auto', color: '#9ca3af', fontSize: 11 }}>
@@ -649,6 +661,21 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         )}
       </div>
 
+      {/* Brand drill-in — reveals the brand's member datasets in the grid */}
+      {isBrand && onDrillIn && dataset.collection_id && (
+        <button
+          onClick={function() { onDrillIn(dataset.collection_id as string, dataset.name) }}
+          style={{
+            width: '100%', padding: '7px 0', borderRadius: 9, fontSize: 12, fontWeight: 600,
+            color: '#4338ca', background: '#eef2ff', border: '1px solid #c7d2fe',
+            cursor: 'pointer', fontFamily: 'inherit', transition: 'opacity .15s',
+          }}
+          onMouseEnter={function(e) { (e.currentTarget as HTMLButtonElement).style.opacity = '0.85' }}
+          onMouseLeave={function(e) { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}>
+          View {dataset.member_count ?? 0} {dataset.member_count === 1 ? 'dataset' : 'datasets'} {'→'}
+        </button>
+      )}
+
       {/* 5. Analyze button */}
       <button
         onClick={function() { router.push('/analyze/' + dataset.id + '/textmine') }}
@@ -656,7 +683,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         style={{
           width: '100%', padding: '9px 0', borderRadius: 9, fontSize: 13, fontWeight: 700,
           color: isArchived ? '#9ca3af' : 'white',
-          background: isArchived ? '#f3f4f6' : isCollection ? '#0ea5e9' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES,
+          background: isArchived ? '#f3f4f6' : isBrand ? INDIGO : isCollection ? '#0ea5e9' : isReddit ? '#10B981' : isTownHall ? '#8B5CF6' : isSubstack ? '#e11d48' : isReviews ? '#2563eb' : HERMES,
           border: 'none', cursor: isArchived ? 'not-allowed' : 'pointer',
           transition: 'opacity .15s', fontFamily: 'inherit',
         }}

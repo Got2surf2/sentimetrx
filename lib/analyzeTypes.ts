@@ -207,6 +207,15 @@ export interface DatasetWithState extends Dataset {
   creator_name?:   string
   creator_email?:  string
   org_name?:       string
+  // Set on source='collection' rows: 'brand' = auto-curated by brand_tag,
+  // 'manual' = user-curated. member_count + collection_id are the
+  // collections-table id and member tally for that virtual dataset.
+  collection_kind?:     'manual' | 'brand' | null
+  member_count?:        number
+  collection_id?:       string | null
+  // Set on member datasets: the brand-collection they belong to. Drives
+  // hiding them from the flat /analyze grid (shown via brand drill-in).
+  brand_collection_id?: string | null
 }
 
 // -- Paginated rows response (for TextMine) ------------------------------

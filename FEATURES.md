@@ -269,6 +269,7 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Manual CSV upload with schema auto-detection
 - Schema configuration: column types (open-ended, categorical, numeric, date, ID, ignore)
 - Custom field labels and export names
+- Collections group datasets for cross-dataset analysis; brand-collections (auto-curated by a dataset's brand tag) show as a distinct Brand card with drill-in to member datasets
 
 ### Text Mining (AI-Powered Theme Extraction)
 - Claude API-powered theme discovery from open-ended responses
