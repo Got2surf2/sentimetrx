@@ -353,13 +353,16 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
     }
   }
 
-  const handleResendInvite = async (id: string, email: string | null) => {
-    const res = await fetch(`/api/invite/${id}/resend`, { method: 'POST' })
-    const data = await res.json().catch(() => ({}))
-    if (data.email_status === 'sent')        setError(`✓ Invite re-emailed to ${email || 'invitee'}`)
-    else if (data.email_status === 'failed') setError(`Resend failed: ${data.email_error || 'unknown error'}`)
-    else                                     setError(`Error: ${data.error || 'Could not resend'}`)
-    setTimeout(() => setError(null), 5000)
+  const handleResendInvite = async (id: string) => {
+    try {
+      const res = await fetch(`/api/invite/${id}/resend`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (data.email_status === 'sent')   return { ok: true,  message: '✓ Sent' }
+      if (data.email_status === 'failed') return { ok: false, message: `Failed: ${data.email_error || 'email error'}` }
+      return { ok: false, message: data.error || 'Could not resend' }
+    } catch {
+      return { ok: false, message: 'Network error' }
+    }
   }
 
   const handleRevokeInvite = async (id: string, email: string | null) => {

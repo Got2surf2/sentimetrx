@@ -10,9 +10,14 @@ export interface PendingInvite {
   expires_at: string
 }
 
+export interface ResendResult {
+  ok:      boolean
+  message: string
+}
+
 interface Props {
   invites:   PendingInvite[]
-  onResend:  (id: string, email: string | null) => void | Promise<void>
+  onResend:  (id: string, email: string | null) => Promise<ResendResult>
   onCopy:    (invite: PendingInvite) => void | Promise<void>
   onRevoke:  (id: string, email: string | null) => void | Promise<void>
   emptyText?: string
@@ -24,8 +29,11 @@ function inviteStatus(inv: PendingInvite) {
   return { label: 'Pending', cls: 'bg-yellow-100 text-yellow-700' }
 }
 
+type ResendState = { status: 'sending' } | { status: 'done'; ok: boolean; message: string }
+
 export default function PendingInvitesList({ invites, onResend, onCopy, onRevoke, emptyText = 'No pending invites' }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [resendState, setResendState] = useState<Record<string, ResendState>>({})
 
   if (invites.length === 0) {
     return <p className="text-xs text-gray-400">{emptyText}</p>
@@ -37,6 +45,12 @@ export default function PendingInvitesList({ invites, onResend, onCopy, onRevoke
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  const handleResend = async (inv: PendingInvite) => {
+    setResendState(prev => ({ ...prev, [inv.id]: { status: 'sending' } }))
+    const result = await onResend(inv.id, inv.email)
+    setResendState(prev => ({ ...prev, [inv.id]: { status: 'done', ok: result.ok, message: result.message } }))
+  }
+
   return (
     <div className="flex flex-col divide-y divide-gray-200">
       {invites.map(inv => {
@@ -44,6 +58,7 @@ export default function PendingInvitesList({ invites, onResend, onCopy, onRevoke
         const accepted   = !!inv.used_at
         const expired    = new Date(inv.expires_at) < new Date()
         const actionable = !accepted && !expired
+        const rs         = resendState[inv.id]
         return (
           <div key={inv.id} className="flex items-center justify-between py-3 gap-3">
             <div className="min-w-0">
@@ -58,11 +73,23 @@ export default function PendingInvitesList({ invites, onResend, onCopy, onRevoke
             </div>
             {actionable && (
               <div className="flex items-center gap-1.5 flex-shrink-0">
+                {rs && (
+                  <span
+                    title={rs.status === 'done' ? rs.message : undefined}
+                    className={
+                      'text-xs max-w-[160px] truncate ' +
+                      (rs.status === 'sending' ? 'text-gray-400' : rs.ok ? 'text-green-600' : 'text-red-600')
+                    }
+                  >
+                    {rs.status === 'sending' ? 'Sending…' : rs.message}
+                  </span>
+                )}
                 <button
-                  onClick={() => onResend(inv.id, inv.email)}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors"
+                  onClick={() => handleResend(inv)}
+                  disabled={rs?.status === 'sending'}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-slate-700 hover:text-white text-slate-700 transition-colors disabled:opacity-50"
                 >
-                  Resend
+                  {rs?.status === 'sending' ? 'Sending…' : 'Resend'}
                 </button>
                 <button
                   onClick={() => handleCopy(inv)}

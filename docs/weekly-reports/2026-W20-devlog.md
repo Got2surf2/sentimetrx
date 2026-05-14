@@ -2,7 +2,13 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
-## 2026-05-15 (Thu, latest) — Survey responses: always-stamp completed_at + backfill
+## 2026-05-15 (Thu, latest) — Resend-invite button: feedback at the point of action
+
+- **Why:** onboarding the Darden pilot — bulk-created 11 invites, then the per-row "Resend" button felt dead ("just changes color on hover"). It wasn't broken: `handleResendInvite` fired and the email sent, but the only feedback was a `setError(...)` flash rendered ~380 lines up at the top of `AdminClientDetail` (under the nav) that auto-cleared after 5s — invisible to anyone scrolled down at the invites list. The action worked; the confirmation was just unreachable.
+- **Fix:** moved resend feedback into the shared `PendingInvitesList` component — per-row inline status next to the button ("Sending…" → green "✓ Sent" / red "Failed: …"), persistent so it doubles as a "which ones have I done" checklist. `onResend` now returns `{ ok, message }` instead of `void`; both call sites (`AdminClientDetail`, `settings/team/TeamClient`) updated to return the result and drop their off-screen `setError`/`flash` for resend. Button disables while in-flight.
+- No API/route change — `/api/invite/[id]/resend` and `sendInviteEmail` were already correct.
+
+## 2026-05-15 (Thu) — Survey responses: always-stamp completed_at + backfill
 
 - **Why:** investigating the Olive Garden demo survey — 6 people in the room yesterday but "nothing showed a timestamp." Traced it: no data loss (all 16 responses + full payloads intact), but **9 of 16 had `completed_at = NULL`**. Root cause: `app/api/respond/route.ts` wrote `completed_at = NULL` on every partial save and only stamped a real time on the final "complete" submit — so a survey that never sent a formal "complete" (abandoned, or the widget didn't fire it) kept its payload but no date. Globally: 50 such rows across 6 studies.
 - **Fix (per the user's call):** `respond/route.ts` now stamps `completed_at` on **every** save — it's a last-activity time, `status` stays the authoritative complete/incomplete signal. One-line change; the partial-save upsert path already carried `completed_at` in its update payload.

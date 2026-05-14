@@ -125,12 +125,16 @@ export default function TeamClient({ org, members: initialMembers, invites: init
     flash('Link copied to clipboard')
   }
 
-  async function resendInvite(id: string, email?: string | null) {
-    const res = await fetch(`/api/invite/${id}/resend`, { method: 'POST' })
-    const data = await res.json()
-    if (data.email_status === 'sent')      flash(`Invite re-emailed to ${email || 'invitee'}`)
-    else if (data.email_status === 'failed') flash(`Resend failed: ${data.email_error || 'unknown error'}`)
-    else                                     flash(`Error: ${data.error || 'Could not resend'}`)
+  async function resendInvite(id: string) {
+    try {
+      const res = await fetch(`/api/invite/${id}/resend`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (data.email_status === 'sent')   return { ok: true,  message: '✓ Sent' }
+      if (data.email_status === 'failed') return { ok: false, message: `Failed: ${data.email_error || 'email error'}` }
+      return { ok: false, message: data.error || 'Could not resend' }
+    } catch {
+      return { ok: false, message: 'Network error' }
+    }
   }
 
   async function revokeInvite(id: string, email?: string | null) {
