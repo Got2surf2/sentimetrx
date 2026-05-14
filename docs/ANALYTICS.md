@@ -58,43 +58,86 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 
 ---
 
-## Entity Extraction (Open-Ended Fields)
+## Entity Discovery & Catalog
 
-Per-row entity tags for open-ended text fields. Used to surface "who/what was mentioned" alongside themes.
+A flat, scope-level catalog of the named entities a dataset talks about — dishes,
+drinks, places, people, brands. Surfaces "who/what was mentioned" alongside themes.
 
-### Pipeline (`lib/entityExtraction.ts`)
-1. Page through `dataset_rows_flat.data[field]` (up to 10K rows)
-2. Split each cell on commas / semicolons / "and" / "&" / slashes / newlines
-3. Send unique raw mentions to Claude Haiku in batches of 200
-4. Haiku returns `{ canonical, category }` per raw — variants collapse ("Red Cross" / "ARC" → "American Red Cross")
-5. AI-placeholder canonicals ("Unknown", "Various", "Others") are dropped
-6. Persist per-row pairs to `public.entity_mentions` (UNIQUE on `dataset_id, row_id, source_field, canonical`)
-7. Update `datasets.entity_extraction_state[field]` with run metadata (timestamp, rows_scanned, mentions_inserted)
+**Why the rebuild (May 2026):** v1 ran per-row NER on comma-split cell fragments and
+produced garbage entities ("attentive", "Great food", "service"). v2 separates two
+concerns: *discovery* (a small sample tells us the **list** of entities) and *counting*
+(full-text search gives **accurate counts** across the whole dataset, not a sample).
+
+### Scope model
+
+Entities are catalogued per **scope**, not per dataset+field:
+- A **plain dataset** reads its own catalog — scope `('dataset', dataset_id)`.
+- A **branded dataset** (`datasets.brand_tag` set) reads a shared **brand-collection**
+  catalog — scope `('collection', brand_collection_id)`. A brand's datasets across
+  every source (reviews, survey, Reddit…) share one catalog.
+- A **collection** virtual dataset reads its collection catalog, counted across members.
+
+Brand-collections are auto-curated: a free-text `brand_tag` on a dataset find-or-creates
+the brand-collection and syncs membership via DB triggers (migrations 060–062).
+`lib/entityFilter.ts::resolveEntityScope` maps any dataset id to its scope + member list.
+
+### Discovery (`lib/entityDiscovery.ts`)
+1. Resolve the dataset's scope; sample ~300 rows at random across its member datasets.
+2. Concatenate each row's text values; batch through Claude Haiku NER (25 rows/call, 4
+   in flight). The prompt is **strict** — only specific *named* things, never adjectives,
+   sentiments, or generic nouns ("service", "atmosphere", "the food").
+3. Aggregate by `slug` (JS mirror of the SQL `slugify()`); merge aliases.
+4. Upsert the flat catalog into `public.entity_catalog` (UNIQUE on `scope_type, scope_id,
+   slug`) — first canonical/category wins, aliases union, `sample_count` accumulates.
+5. Log the run to `public.entity_catalog_refresh` (before/after/new counts, sample size,
+   cost estimate, duration).
+
+`sample_count` is a discovery-frequency hint, **not** a row count — real counts are live.
+
+### Counting (`lib/entityFilter.ts` + `count_entity_terms`)
+`entity_catalog` deliberately stores **no counts**. At read time, `getEntitiesWithCounts`
+builds one `websearch_to_tsquery` per entity (canonical + aliases OR'd) and calls the
+`count_entity_terms` SQL function (migration 064) — a single set-based query against the
+GIN-indexed `dataset_rows_flat.tsv`, counting matching rows across the scope's members.
+An optional theme query ANDs in a theme's keyword match. Zero-count entities are dropped
+from results (self-heals on the next discovery run).
 
 ### Triggering
-- Schema tab → expand any open-ended field → "Extract entities" button
-- POST `/api/datasets/[id]/extract-entities` body `{ field }`
-- **Not auto-run on sync** — extraction is explicit per-field. AI cost guardrail: each run is bounded by 10K rows + 2K unique mentions canonicalised. Ballpark cents per dataset.
+- Schema tab → one **"Discover entities"** panel per dataset (not per field).
+- POST `/api/datasets/[id]/discover-entities` — scope-resolving; mode `manual`.
+- **Not auto-run on sync** — discovery is explicit (AI cost). A run samples ≤1000 rows;
+  ballpark a few cents per run. (Incremental + weekly-cron refresh land in Phase 6.)
 
-### Read APIs
-- `GET /api/datasets/[id]/entities` → top entities for the whole dataset (with category rollup)
-- `GET /api/datasets/[id]/entities?theme=<themeId>` → entities that co-occur with theme keywords (via `top_entities_for_theme` SQL function — joins `entity_mentions.row_id` with rows whose combined text matches the theme regex)
-- `?field=<sourceField>` → restrict to one source field
-- `?limit=<n>` → default 50, max 200
+### Read APIs (all scope-resolving)
+- `GET /api/datasets/[id]/entities` → catalog entities with live counts + category
+  rollup + `last_refresh`. `?theme=<themeId>` intersects counts with the theme's
+  keywords; `?limit=<n>` default 50, max 200.
+- `GET /api/datasets/[id]/rows-by-entity?entity=<slug>` → the rows mentioning one
+  entity, across the scope's members. `?limit` default 100 / max 500, `?offset`.
 
 ### Where entities show up
-- **Schema tab** — per-field extract button + last-run timestamp + entity count + top-10 chip preview
-- **Theme cards** — collapsed "Top entities" section per theme (lazy-fetches on expand to keep card weight low)
-- **Ask Ana** — top 40 entities grouped by category appended to the system prompt, so Ana can answer "which charities were mentioned" or "what restaurants come up most" without re-scanning rows
-- **TextMine entity-chip filter** — deferred; needs `RowsContext` to carry `dataset_rows_flat.id` through the rows pipeline
+- **Schema tab** — one per-dataset panel: Discover button, last-discovery timestamp,
+  catalog size, top-12 chip preview with live counts + category dots.
+- **Theme cards** — collapsed "Top entities" section per theme (lazy-fetches on expand;
+  uses `?theme=` so counts are entity-∩-theme).
+- **Ask Ana** — top 40 entities grouped by category appended to the system prompt.
 
-### Tables (migrations 058, 059)
-- `entity_mentions` — RLS enabled (default-deny); service-role-only GRANTs
-- `datasets.entity_extraction_state` — per-field run metadata (jsonb)
-- `top_entities_for_theme()` — SQL function with `SECURITY DEFINER` + locked `search_path`
+### Tables (migrations 060–064)
+- `collections.kind` / `slug`, `datasets.brand_tag` / `brand_collection_id` — brand-
+  collection foundation; `slugify()` + `find_or_create_brand_collection()` (060–061).
+- `set_brand_collection_id` / `sync_brand_collection_members` triggers (062).
+- `entity_catalog`, `entity_catalog_refresh` — RLS enabled (default-deny), service-role
+  GRANTs only; reads go through the scope-gated API routes (063).
+- `count_entity_terms()` — live full-text count, `SECURITY DEFINER` + locked
+  `search_path` (064).
+- **Pending (Phase 7, migration 065):** the v1 `entity_mentions` table,
+  `top_entities_for_theme()`, and `datasets.entity_extraction_state` are dropped once
+  this app code is verified — they are unused as of this rebuild.
 
 ### Existing deck export
-`/api/entity-analysis-deck?dataset=X&field=Y` predates the in-product version and still works. It runs the canonicalisation fresh per call (no row provenance, no persistence) and produces a 4-slide PPTX. Kept for the "drop into a StoryTime deck" workflow.
+`/api/entity-analysis-deck?dataset=X&field=Y` predates the in-product feature and still
+works — it runs canonicalisation fresh per call (no persistence) and produces a 4-slide
+PPTX. Unaffected by the rebuild; kept for the "drop into a StoryTime deck" workflow.
 
 ---
 

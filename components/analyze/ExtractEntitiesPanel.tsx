@@ -1,27 +1,33 @@
 'use client'
 
 // components/analyze/ExtractEntitiesPanel.tsx
-// Embedded in the Schema-tab FieldCard for open-ended fields. Lets the
-// caller trigger entity extraction on this field, shows last-extraction
-// state, and previews the top entities.
+// One panel per dataset on the Schema tab. Triggers entity *discovery* for
+// the dataset's scope (its own catalog, or the shared brand-/collection
+// catalog it belongs to), shows the last-discovery state, and previews the
+// top entities with LIVE full-text counts.
 //
 // Backend:
-//   POST /api/datasets/[id]/extract-entities  { field }
-//   GET  /api/datasets/[id]/entities?field=<field>&limit=10
+//   POST /api/datasets/[id]/discover-entities
+//   GET  /api/datasets/[id]/entities?limit=12
 
 import { useEffect, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 interface EntityRow {
+  slug:      string
   canonical: string
-  category: string
-  mentions: number
-  distinct_rows?: number
+  category:  string
+  mentions:  number
+}
+
+interface LastRefresh {
+  triggered_at:   string
+  triggered_by:   string
+  entities_after: number | null
 }
 
 interface Props {
   datasetId: string
-  field:     string
 }
 
 const P = {
@@ -34,30 +40,32 @@ const P = {
   textFaint: '#9ca3af',
   accent:    '#e8622a',
   accentBg:  '#fff4ef',
-  accentMid: '#fcd5c0',
 }
 
+// Categories from lib/entityDiscovery.ts: food | drink | place | person | brand | other
 const CATEGORY_COLOR: Record<string, string> = {
-  religious: '#E8B84B', health: '#DC2626', humanitarian: '#0F7173',
-  education: '#00B4D8', youth: '#6D28D9', animal: '#D97706',
-  veterans: '#0D2B45', environmental: '#059669', community: '#E8632A',
-  arts: '#4A6572', business: '#0F766E', government: '#1E40AF',
-  media: '#7C3AED', sports: '#059669', food: '#EA580C', other: '#8FA3AE',
+  food:   '#EA580C',
+  drink:  '#7C3AED',
+  place:  '#0F7173',
+  person: '#1E40AF',
+  brand:  '#B45309',
+  other:  '#8FA3AE',
 }
 
-export default function ExtractEntitiesPanel({ datasetId, field }: Props) {
-  const [loading, setLoading] = useState(true)
-  const [extracting, setExtracting] = useState(false)
-  const [error, setError] = useState('')
-  const [entities, setEntities] = useState<EntityRow[]>([])
+export default function ExtractEntitiesPanel({ datasetId }: Props) {
+  const [loading, setLoading]       = useState(true)
+  const [discovering, setDiscovering] = useState(false)
+  const [error, setError]           = useState('')
+  const [entities, setEntities]     = useState<EntityRow[]>([])
   const [totalDistinct, setTotalDistinct] = useState<number | null>(null)
-  const [lastRun, setLastRun] = useState<{ at: string; rows_scanned: number; mentions_inserted: number } | null>(null)
+  const [scopeType, setScopeType]   = useState<'dataset' | 'collection' | null>(null)
+  const [lastRefresh, setLastRefresh] = useState<LastRefresh | null>(null)
 
   async function loadPreview() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/datasets/' + datasetId + '/entities?field=' + encodeURIComponent(field) + '&limit=10')
+      const res = await fetch('/api/datasets/' + datasetId + '/entities?limit=12')
       if (!res.ok) {
         setEntities([])
         setTotalDistinct(null)
@@ -66,6 +74,8 @@ export default function ExtractEntitiesPanel({ datasetId, field }: Props) {
       const data = await res.json()
       setEntities(data.entities || [])
       setTotalDistinct(typeof data.total_distinct === 'number' ? data.total_distinct : null)
+      setScopeType(data.scope_type || null)
+      setLastRefresh(data.last_refresh || null)
     } catch (err: any) {
       setError(err?.message || 'Failed to load entities')
     } finally {
@@ -73,78 +83,67 @@ export default function ExtractEntitiesPanel({ datasetId, field }: Props) {
     }
   }
 
-  async function loadState() {
-    try {
-      const res = await fetch('/api/datasets/' + datasetId)
-      if (!res.ok) return
-      const data = await res.json()
-      const state = data?.dataset?.entity_extraction_state || data?.entity_extraction_state || {}
-      if (state && state[field]) setLastRun(state[field])
-    } catch { /* non-fatal */ }
-  }
-
   useEffect(function() {
     loadPreview()
-    loadState()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId, field])
+  }, [datasetId])
 
-  async function runExtract() {
-    setExtracting(true)
+  async function runDiscover() {
+    setDiscovering(true)
     setError('')
     try {
-      const res = await fetch('/api/datasets/' + datasetId + '/extract-entities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field }),
-      })
+      const res = await fetch('/api/datasets/' + datasetId + '/discover-entities', { method: 'POST' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Extraction failed')
-      setLastRun({
-        at: new Date().toISOString(),
-        rows_scanned: data.rows_scanned,
-        mentions_inserted: data.mentions_inserted,
-      })
+      if (!res.ok) throw new Error(data?.error || 'Discovery failed')
       await loadPreview()
     } catch (err: any) {
-      setError(err?.message || 'Extraction failed')
+      setError(err?.message || 'Discovery failed')
     } finally {
-      setExtracting(false)
+      setDiscovering(false)
     }
   }
 
+  const hasRun = !!lastRefresh || entities.length > 0
+
   return (
-    <div onClick={function(e) { e.stopPropagation() }}
-      style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid ' + P.border }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: P.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' as const }}>
-          Entities
+    <div style={{ marginTop: 18, padding: '16px 18px', background: P.white, border: '1px solid ' + P.border, borderRadius: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: P.text, margin: 0 }}>Entities</h3>
           {totalDistinct != null && totalDistinct > 0 && (
-            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: P.accentBg, color: P.accent, border: '1px solid ' + P.accent + '40' }}>
-              {totalDistinct.toLocaleString()} distinct
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: P.accentBg, color: P.accent, border: '1px solid ' + P.accent + '40' }}>
+              {totalDistinct.toLocaleString()} found
+            </span>
+          )}
+          {scopeType === 'collection' && (
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: P.bg, color: P.textMute, border: '1px solid ' + P.border }}>
+              brand-wide
             </span>
           )}
         </div>
         <button
-          onClick={runExtract}
-          disabled={extracting}
+          onClick={runDiscover}
+          disabled={discovering}
           style={{
-            fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6,
-            background: extracting ? P.bg : P.accentBg, color: P.accent,
-            border: '1px solid ' + P.accent + '40', cursor: extracting ? 'wait' : 'pointer',
+            fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
+            background: discovering ? P.bg : P.accentBg, color: P.accent,
+            border: '1px solid ' + P.accent + '40', cursor: discovering ? 'wait' : 'pointer',
             fontFamily: 'inherit',
           }}>
-          {extracting ? 'Extracting…' : (entities.length > 0 ? 'Re-extract' : 'Extract entities')}
+          {discovering ? 'Discovering…' : (hasRun ? 'Re-discover' : 'Discover entities')}
         </button>
       </div>
 
       <div style={{ fontSize: 11, color: P.textMute, lineHeight: 1.5, marginBottom: 8 }}>
-        Runs Claude Haiku over unique values in this field to group variants ("Red Cross" / "ARC" {'→'} "American Red Cross") and tag a category. Results power the theme card's top-entities section and TextMine filters. Costs a few cents per dataset.
+        Runs Claude Haiku over a sample of rows to find the named entities {'—'} dishes, places, people, brands {'—'} this data talks about. Counts are computed live from full-text search, so they stay accurate across the whole dataset. Costs a few cents per run.
       </div>
 
-      {lastRun && (
+      {lastRefresh && (
         <div style={{ fontSize: 11, color: P.textFaint, marginBottom: 8 }}>
-          Last extracted {new Date(lastRun.at).toLocaleString()} {'·'} {lastRun.rows_scanned.toLocaleString()} rows scanned {'·'} {lastRun.mentions_inserted.toLocaleString()} mentions
+          Last discovered {new Date(lastRefresh.triggered_at).toLocaleString()}
+          {lastRefresh.entities_after != null && (
+            <> {'·'} {lastRefresh.entities_after.toLocaleString()} entities in catalog</>
+          )}
         </div>
       )}
 
@@ -154,29 +153,32 @@ export default function ExtractEntitiesPanel({ datasetId, field }: Props) {
         </div>
       )}
 
-      {(loading || extracting) && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+      {(loading || discovering) && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}>
           <LottieLoader size={28} />
         </div>
       )}
 
-      {!loading && !extracting && entities.length === 0 && !error && (
+      {!loading && !discovering && entities.length === 0 && !error && (
         <div style={{ fontSize: 11, color: P.textFaint, fontStyle: 'italic' as const }}>
-          No entities extracted yet. Click {'"'}Extract entities{'"'} to run.
+          {hasRun
+            ? 'No entities surfaced yet. Re-discover to sample more rows.'
+            : 'No entities discovered yet. Click "Discover entities" to run.'}
         </div>
       )}
 
-      {!loading && entities.length > 0 && (
+      {!loading && !discovering && entities.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
           {entities.map(function(e) {
             const color = CATEGORY_COLOR[e.category] || CATEGORY_COLOR.other
             return (
-              <span key={e.canonical} style={{
-                fontSize: 11, padding: '3px 10px',
-                background: P.white, color: P.text,
-                borderRadius: 12, border: '1px solid ' + P.border,
-                display: 'inline-flex' as const, alignItems: 'center', gap: 6,
-              }}>
+              <span key={e.slug} title={e.canonical + ' · ' + e.category + ' · ' + e.mentions.toLocaleString() + ' rows'}
+                style={{
+                  fontSize: 11, padding: '3px 10px',
+                  background: P.bg, color: P.text,
+                  borderRadius: 12, border: '1px solid ' + P.border,
+                  display: 'inline-flex' as const, alignItems: 'center', gap: 6,
+                }}>
                 <span style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
                 <span style={{ fontWeight: 600 }}>{e.canonical}</span>
                 <span style={{ color: P.textFaint }}>{e.mentions.toLocaleString()}</span>

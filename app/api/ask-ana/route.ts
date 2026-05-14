@@ -11,6 +11,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { checkMessage } from '@/lib/contentGuard'
+import { getEntitiesWithCounts } from '@/lib/entityFilter'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -237,23 +238,20 @@ export async function POST(req: Request) {
   const schemaFields: any[] = (stateRow?.schema_config as any)?.fields || []
 
   // ── Pull top entities so Ana can reason about "who/what was mentioned" ──
-  // Only included if extraction has been run on this dataset. Capped at top
-  // 40 by mention count to keep the system-prompt budget bounded.
-  const { data: entityRows } = await service
-    .from('entity_mentions')
-    .select('canonical, category')
-    .eq('dataset_id', datasetId)
-    .limit(5000)
+  // Reads this dataset's entity catalog — its own, or the shared brand-/
+  // collection catalog it belongs to — with live full-text row counts. Empty
+  // until discovery has been run on the Schema tab. Capped at 40 to bound the
+  // system-prompt budget. Optional context — never block Ana on it.
   type EntityAgg = { canonical: string; category: string; mentions: number }
-  const entityAgg: Record<string, EntityAgg> = {}
-  ;(entityRows || []).forEach(function(r: any) {
-    const key = r.canonical as string
-    if (!entityAgg[key]) entityAgg[key] = { canonical: key, category: r.category, mentions: 0 }
-    entityAgg[key].mentions += 1
-  })
-  const topEntities = Object.values(entityAgg)
-    .sort(function(a, b) { return b.mentions - a.mentions })
-    .slice(0, 40)
+  let topEntities: EntityAgg[] = []
+  try {
+    const entityResult = await getEntitiesWithCounts({ service, datasetId, limit: 40 })
+    if (!('notFound' in entityResult)) {
+      topEntities = entityResult.entities.map(function(e) {
+        return { canonical: e.canonical, category: e.category, mentions: e.mentions }
+      })
+    }
+  } catch { /* entities are optional context */ }
 
   // ── Resolve collection members ──────────────────────────────────────────
   let collectionMembers: { dataset_id: string; name: string; row_count: number }[] = []
@@ -464,16 +462,17 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
         .join('; ')
     : ''
 
-  // Entities mentioned in this dataset (only if extraction has been run).
+  // Entities mentioned in this dataset (only if discovery has been run).
   // Grouped by category so Ana can answer "which charities were mentioned"
-  // or "what restaurants come up most" without re-scanning the data.
+  // or "what restaurants come up most" without re-scanning the data. The
+  // count is the number of rows mentioning the entity (live full-text count).
   const entitiesByCategory: Record<string, EntityAgg[]> = {}
   topEntities.forEach(function(e) {
     if (!entitiesByCategory[e.category]) entitiesByCategory[e.category] = []
     entitiesByCategory[e.category].push(e)
   })
   const entityContext = topEntities.length > 0
-    ? '\n\nEntities mentioned in this dataset (canonicalised, top 40 by mention count):\n' +
+    ? '\n\nEntities mentioned in this dataset (canonicalised, top 40 by rows mentioning them):\n' +
       Object.keys(entitiesByCategory).sort().map(function(cat) {
         const list = entitiesByCategory[cat]
           .map(function(e) { return e.canonical + ' (' + e.mentions + ')' })

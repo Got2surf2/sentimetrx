@@ -105,9 +105,8 @@ function ValuePills({ values }: { values: string[] }) {
 }
 
 // Expanded inline editor
-function FieldEditor({ f, datasetId, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange }: {
+function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange }: {
   f:             SchemaFieldConfig
-  datasetId?:    string
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onValueAliasChange: (field: string, value: string, alias: string) => void
@@ -290,18 +289,13 @@ function FieldEditor({ f, datasetId, onTypeChange, onAliasChange, onValueAliasCh
         </div>
       )}
 
-      {/* \u2500\u2500 Entity extraction (open-ended only) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-      {f.type === 'open-ended' && datasetId && (
-        <ExtractEntitiesPanel datasetId={datasetId} field={f.field} />
-      )}
     </div>
   )
 }
 
 // Full-width row card
-function FieldCard({ f, datasetId, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, readOnly, index }: {
+function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, readOnly, index }: {
   f:             SchemaFieldConfig
-  datasetId?:    string
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onScoreToggle: (field: string) => void
@@ -501,7 +495,7 @@ function FieldCard({ f, datasetId, onTypeChange, onAliasChange, onScoreToggle, o
           </div>
           {/* Scrollable body */}
           <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-            <FieldEditor f={f} datasetId={datasetId} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} />
+            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} />
           </div>
         </div>
       </div>
@@ -703,7 +697,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
           })
           .map(function(f, i) {
           return (
-            <FieldCard key={f.field} f={f} index={i} datasetId={datasetId}
+            <FieldCard key={f.field} f={f} index={i}
               onTypeChange={handleTypeChange}
               onAliasChange={handleAliasChange}
               onScoreToggle={handleScoreToggle}
@@ -720,6 +714,8 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
           No fields match this filter.
         </div>
       )}
+
+      {datasetId && <ExtractEntitiesPanel datasetId={datasetId} />}
     </div>
   )
 }

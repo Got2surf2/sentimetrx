@@ -2107,7 +2107,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       )}
                                       {ex && data === 'empty' && (
                                         <div style={{ fontSize: 10, color: T.textFaint, marginTop: 4, fontStyle: 'italic' as const }}>
-                                          No entities {'—'} run extraction on Schema tab
+                                          No entities {'—'} run discovery on the Schema tab
                                         </div>
                                       )}
                                       {ex && Array.isArray(data) && (
