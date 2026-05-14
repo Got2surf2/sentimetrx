@@ -288,6 +288,110 @@ async function nerBatch(texts: string[], orgId: string | null, datasetId: string
   }
 }
 
+// ── Canonicalisation pass ──────────────────────────────────────────────────
+// Per-batch NER produces near-duplicates across batches ("Filet" in one
+// batch, "Filet Mignon" in another; "Brussels Sprout" vs "Brussels Sprouts").
+// One Haiku call over the full entity list merges variants while preserving
+// real distinctions — best-effort, a failed pass just leaves the raw map.
+
+function canonicalisePrompt(canonicals: string[]): string {
+  return `You are normalising a list of named entities extracted from customer reviews. For each input, output the canonical (cleanest standard) form and a category.
+
+Merge obvious variants of the SAME thing under one canonical:
+- "Filet" / "Filet Mignon" / "Mignon" -> "Filet Mignon"
+- "Brussels Sprout" / "Brussels Sprouts" -> "Brussels Sprouts"
+- "Mac & Cheese" / "Mac and Cheese" / "mac n cheese" -> "Mac & Cheese"
+
+PRESERVE real distinctions — do NOT over-merge different things:
+- "Lobster" and "Lobster Mac & Cheese" are DIFFERENT dishes — keep separate
+- "Ribeye" and "Filet Mignon" are different cuts — keep separate
+- "Old Fashioned" and "Manhattan" are different cocktails — keep separate
+
+Categories (pick the single best fit; lower-case): food | drink | place | person | brand | other
+
+Return ONLY a JSON object, no prose, no markdown fences. Keys are the raw inputs verbatim. Values are { "canonical": "...", "category": "..." }.
+
+Inputs:
+${canonicals.map(c => `- ${c}`).join('\n')}`
+}
+
+/** Second-pass canonicalisation over the slug-aggregated entity map. Returns a
+ *  new map keyed by the canonicalised slug (variants merged: aliases unioned,
+ *  pre-merge canonicals kept as aliases so the FTS query still hits them,
+ *  sample counts summed) plus the token cost. On any failure the original map
+ *  is returned unchanged. */
+async function canonicaliseDiscovered(
+  discovered: Map<string, DiscoveredEntity>,
+  orgId: string | null,
+  datasetId: string,
+): Promise<{ map: Map<string, DiscoveredEntity>; inputTokens: number; outputTokens: number }> {
+  const entries = Array.from(discovered.values())
+  if (entries.length < 2) return { map: discovered, inputTokens: 0, outputTokens: 0 }
+
+  const mapping: Record<string, { canonical: string; category: string }> = {}
+  let inputTokens = 0
+  let outputTokens = 0
+  const BATCH = 200
+  const rawList = entries.map(e => e.canonical)
+  for (let i = 0; i < rawList.length; i += BATCH) {
+    const batch = rawList.slice(i, i + BATCH)
+    try {
+      const res = await callAI({
+        tier: 'fast',
+        system: 'You are a precise data normaliser. Output valid JSON only.',
+        messages: [{ role: 'user', content: canonicalisePrompt(batch) }],
+        maxTokens: 4000,
+        timeoutMs: 30_000,
+        usage: orgId
+          ? { org_id: orgId, resource_type: 'dataset', resource_id: datasetId, event_type: 'entity_discovery' }
+          : undefined,
+      })
+      inputTokens += res.usage?.input_tokens || 0
+      outputTokens += res.usage?.output_tokens || 0
+      const text = (res.text || '').trim()
+      const start = text.indexOf('{')
+      const end = text.lastIndexOf('}')
+      if (start < 0 || end <= start) continue
+      const parsed = JSON.parse(text.slice(start, end + 1))
+      for (const [k, v] of Object.entries(parsed)) {
+        const vv = v as any
+        if (vv && typeof vv.canonical === 'string' && vv.canonical.trim().length >= 2) {
+          mapping[k] = {
+            canonical: vv.canonical.trim(),
+            category: CATEGORIES.includes(String(vv.category || '').toLowerCase())
+              ? String(vv.category).toLowerCase()
+              : '',
+          }
+        }
+      }
+    } catch {
+      // Leave this batch uncanonicalised — its entries default to themselves.
+    }
+  }
+
+  // Re-aggregate under the canonical names. An entry with no mapping keeps its
+  // own canonical/category.
+  const merged = new Map<string, DiscoveredEntity>()
+  for (const e of entries) {
+    const m = mapping[e.canonical]
+    const canonical = m && m.canonical ? m.canonical : e.canonical
+    const category = m && m.category ? m.category : e.category
+    const slug = slugify(canonical)
+    if (!slug) continue
+    const cur = merged.get(slug)
+    if (cur) {
+      cur.sampleCount += e.sampleCount
+      for (const a of Array.from(e.aliases)) cur.aliases.add(a)
+      if (e.canonical.toLowerCase() !== canonical.toLowerCase()) cur.aliases.add(e.canonical.toLowerCase())
+    } else {
+      const aliases = new Set(Array.from(e.aliases))
+      if (e.canonical.toLowerCase() !== canonical.toLowerCase()) aliases.add(e.canonical.toLowerCase())
+      merged.set(slug, { canonical, category, aliases, sampleCount: e.sampleCount })
+    }
+  }
+  return { map: merged, inputTokens, outputTokens }
+}
+
 // ── discoverEntities ───────────────────────────────────────────────────────
 
 /** Run entity discovery for a dataset's scope: sample rows, NER them, upsert
@@ -387,7 +491,7 @@ export async function discoverEntities(opts: {
     outputTokens += br.outputTokens
     if (br.error) errors.push(br.error)
   }
-  const costCents = Math.round((inputTokens / 1_000_000) * 100 + (outputTokens / 1_000_000) * 500)
+  let costCents = Math.round((inputTokens / 1_000_000) * 100 + (outputTokens / 1_000_000) * 500)
 
   // Every batch failed and nothing came back — surface the failure.
   const anyEntities = batchResults.some(br => br.entities.length > 0)
@@ -418,8 +522,14 @@ export async function discoverEntities(opts: {
     }
   }
 
+  // ── Canonicalise: merge cross-batch near-duplicates into one entity ──────
+  const canon = await canonicaliseDiscovered(discovered, scope.orgId, datasetId)
+  inputTokens += canon.inputTokens
+  outputTokens += canon.outputTokens
+  costCents = Math.round((inputTokens / 1_000_000) * 100 + (outputTokens / 1_000_000) * 500)
+
   // Cap to the strongest-signal entities if a run somehow over-produces.
-  let discoveredList = Array.from(discovered.entries())
+  let discoveredList = Array.from(canon.map.entries())
   if (discoveredList.length > MAX_ENTITIES) {
     discoveredList = discoveredList
       .sort((a, b) => b[1].sampleCount - a[1].sampleCount)

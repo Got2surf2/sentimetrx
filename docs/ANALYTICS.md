@@ -88,9 +88,15 @@ the brand-collection and syncs membership via DB triggers (migrations 060–062)
    specific *named* things, never adjectives, sentiments, or generic nouns ("service",
    "atmosphere", "the food").
 3. Aggregate by `slug` (JS mirror of the SQL `slugify()`); merge aliases.
-4. Upsert the flat catalog into `public.entity_catalog` (UNIQUE on `scope_type, scope_id,
+4. **Canonicalisation pass** (`canonicaliseDiscovered`) — per-batch NER produces
+   cross-batch near-duplicates ("Filet" / "Filet Mignon" / "Mignon"; "Brussels Sprout" /
+   "Brussels Sprouts"). One more Haiku call over the full entity list merges variants
+   under one canonical (pre-merge canonicals kept as aliases so the FTS query still hits
+   them) while preserving real distinctions ("Lobster" ≠ "Lobster Mac & Cheese"). Best-
+   effort — a failed pass just leaves the slug-aggregated map.
+5. Upsert the flat catalog into `public.entity_catalog` (UNIQUE on `scope_type, scope_id,
    slug`) — first canonical/category wins, aliases union, `sample_count` accumulates.
-5. Log the run to `public.entity_catalog_refresh` (before/after/new counts, sample size,
+6. Log the run to `public.entity_catalog_refresh` (before/after/new counts, sample size,
    cost estimate, duration).
 
 **Field selection** (`SchemaFieldConfig.entityExtraction`): discovery reads a dataset's
@@ -160,8 +166,11 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
 ### Where entities show up
 - **Schema tab** — one per-dataset panel: Discover button, last-discovery timestamp,
   catalog size, top-12 chip preview with live counts + category dots.
-- **Theme cards** — collapsed "Top entities" section per theme (lazy-fetches on expand;
-  uses `?theme=` so counts are entity-∩-theme).
+- **TextMine → Themes tab** — a dedicated **Entities card** (`components/analyze/
+  EntitiesCard.tsx`), scope-wide, grouped by category. Pills are styled like the theme
+  keyword pills; clicking one opens a modal of the comments that mention it (via
+  `rows-by-entity`). Entities are *not* shown per-theme-card — dishes co-occur with every
+  theme, so a per-card list just repeated the same entities and added clutter.
 - **Ask Ana** — top 40 entities grouped by category appended to the system prompt.
 
 ### Tables (migrations 060–066)

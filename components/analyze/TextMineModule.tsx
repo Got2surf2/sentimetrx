@@ -27,6 +27,7 @@ import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import BreakdownDist from '@/components/analyze/textmine/BreakdownDist'
 import OpinionPopover from '@/components/analyze/textmine/OpinionPopover'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
+import EntitiesCard from '@/components/analyze/EntitiesCard'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 
@@ -913,10 +914,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [serverTopical, setServerTopical] = useState<Record<string, [string, number][]>>({})
   const [serverCoOccurrence, setServerCoOccurrence] = useState<Record<string, Record<string, number>>>({})
   const [cooccurrenceLoaded, setCooccurrenceLoaded] = useState(false)
-  // Per-theme entities — lazy-loaded on expand. 'loading' / 'empty' / array.
-  type EntityRow = { canonical: string; category: string; mentions: number }
-  const [entitiesByTheme, setEntitiesByTheme] = useState<Record<string, 'loading' | 'empty' | EntityRow[]>>({})
-  const [entitiesExpanded, setEntitiesExpanded] = useState<Record<string, boolean>>({})
 
   // sessionStorage key for persisting UI state across reloads. Initial state
   // is the default (NOT the saved value) so server-render and client-first-
@@ -1181,37 +1178,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setCooccurrenceLoaded(true)
     } catch { /* fallback to client-side counts silently */ }
   }, [datasetId, totalRows])
-
-  // Lazy fetcher for per-theme top entities. Called when a theme card's
-  // "Top entities" section is expanded. Caches results in entitiesByTheme.
-  const fetchTopEntitiesForTheme = useCallback(async function(themeId: string) {
-    setEntitiesByTheme(function(prev) {
-      if (prev[themeId]) return prev
-      return { ...prev, [themeId]: 'loading' as const }
-    })
-    try {
-      const res = await fetch('/api/datasets/' + datasetId + '/entities?theme=' + encodeURIComponent(themeId) + '&limit=8')
-      if (!res.ok) {
-        setEntitiesByTheme(function(prev) { return { ...prev, [themeId]: 'empty' as const } })
-        return
-      }
-      const data = await res.json()
-      const arr: EntityRow[] = (data.entities || []) as EntityRow[]
-      setEntitiesByTheme(function(prev) { return { ...prev, [themeId]: arr.length === 0 ? 'empty' as const : arr } })
-    } catch {
-      setEntitiesByTheme(function(prev) { return { ...prev, [themeId]: 'empty' as const } })
-    }
-  }, [datasetId])
-
-  const toggleEntitiesForTheme = useCallback(function(themeId: string) {
-    setEntitiesExpanded(function(prev) {
-      const next = { ...prev, [themeId]: !prev[themeId] }
-      return next
-    })
-    if (!entitiesByTheme[themeId]) {
-      fetchTopEntitiesForTheme(themeId)
-    }
-  }, [entitiesByTheme, fetchTopEntitiesForTheme])
 
   // Trigger shared row fetch on mount
   useEffect(function() {
@@ -1884,6 +1850,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         </div>
                       </div>
 
+                      {/* ── Entities — scope-wide, click an entity to read its comments ─── */}
+                      <EntitiesCard datasetId={datasetId} schema={schema} />
+
                       {/* ── Distribution view ─── */}
                       {themesView === 'distribution' && (
                         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '18px 20px', marginBottom: 20 }}>
@@ -2077,51 +2046,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                           )
                                         })}
                                       </div>
-                                    </div>
-                                  )
-                                })()}
-                                {/* Top entities — collapsed by default so we don't pile
-                                    onto card weight. Click toggle to lazy-fetch and
-                                    show the entities that co-occur with this theme.
-                                    Requires entity extraction to have been run on
-                                    the Schema tab. */}
-                                {(function() {
-                                  var ex = !!entitiesExpanded[t.id]
-                                  var data = entitiesByTheme[t.id]
-                                  return (
-                                    <div style={{ marginBottom: 10 }}>
-                                      <button
-                                        onClick={function(e) { e.stopPropagation(); toggleEntitiesForTheme(t.id) }}
-                                        style={{
-                                          fontSize: 9, fontWeight: 700, color: T.textFaint,
-                                          textTransform: 'uppercase' as const, letterSpacing: '.06em',
-                                          background: 'transparent', border: 'none', padding: 0,
-                                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
-                                          fontFamily: 'inherit',
-                                        }}>
-                                        <span style={{ display: 'inline-block', transform: ex ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>{'▸'}</span>
-                                        Top entities
-                                      </button>
-                                      {ex && data === 'loading' && (
-                                        <div style={{ marginTop: 4 }}><LottieLoader size={16} /></div>
-                                      )}
-                                      {ex && data === 'empty' && (
-                                        <div style={{ fontSize: 10, color: T.textFaint, marginTop: 4, fontStyle: 'italic' as const }}>
-                                          No entities {'—'} run discovery on the Schema tab
-                                        </div>
-                                      )}
-                                      {ex && Array.isArray(data) && (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
-                                          {data.map(function(en) {
-                                            return (
-                                              <span key={en.canonical} title={en.canonical + ' · ' + en.category + ' · ' + en.mentions.toLocaleString() + ' mentions'}
-                                                style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600, background: T.bg, color: T.textMid, border: '1px solid ' + T.border }}>
-                                                {en.canonical} ({en.mentions})
-                                              </span>
-                                            )
-                                          })}
-                                        </div>
-                                      )}
                                     </div>
                                   )
                                 })()}
