@@ -510,7 +510,7 @@ After creation, each source uses the standard `/analyze/[datasetId]` flow for an
 
 ### Per-source rate limits
 - Reddit: hard-coded 2s between requests, backoff 5/10/15s on 429/403. Reddit will quietly throttle aggressive scraping.
-- DataforSEO: pay-per-task. Submit cost ≈ $0.0006 per location; check is free. Typical brand with 50 locations costs ~$0.03 per full sync.
+- DataforSEO: pay-per-task, **priced by review depth, not a flat per-location fee**. The submit requests `depth` 1,000–4,490 reviews per location (see `estimateDepth` in `lib/reviewSync.ts`) and DataforSEO bills per page of results returned; `task_get` checks are free. Measured blended cost (2026-05, 123,274 reviews / $45.67 spent): **≈ $0.37 per 1,000 reviews** (~$0.14 per location, ~366 reviews/location avg). **Budget $0.50 per 1,000 reviews** to cover location-search SERP calls and Phase-3 refresh overhead. A 50-location brand full backfill is therefore on the order of ~$7, not cents. Auto-refresh sources (`sync_frequency_hours > 0`) re-pull `depth` 200 per location each cycle — a recurring cost; set `sync_frequency_hours = 0` for manual-only sources.
 - Substack: no observed limits; 500ms self-imposed.
 - Regulations.gov: free tier = 1000 req/hour. Effective comment throughput is ~330/hour per docket due to detail-fetch round-trips.
 

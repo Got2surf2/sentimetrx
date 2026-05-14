@@ -2,6 +2,12 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-14 (Wed) — DataForSEO cost correction + all review sources to manual refresh
+
+- **Why:** user pushed back on a cost estimate — funded DataForSEO with $50 and burned ~$40 far faster than the docs implied. Pulled the real numbers from the live DataForSEO account (`appendix/user_data`) and Supabase: **$45.67 spent produced 123,274 review records → ≈ $0.37 per 1,000 reviews**, not the $0.0006/location the doc claimed. Root cause of the bad doc figure: $0.0006 is DataForSEO's *minimum* price for a depth≤10 request, but `estimateDepth` requests depth 1,000–4,490 per location and DataForSEO bills per page of results.
+- **`docs/DATA_SOURCES.md` §12 rate-limits corrected** — replaced the flat per-location figure with the measured blended cost ($0.37/1k, budget $0.50/1k), the depth-based pricing explanation, and a note that auto-refresh sources carry a recurring per-cycle cost.
+- **All 10 review_sources set to manual refresh** (prod DB: `sync_frequency_hours = 0`, `next_sync_at = 2999-01-01`). Nobu (24h) and Fleming's (6h) were the only two on auto-refresh and were quietly burning credit in the background every cron cycle; the other 8 were already manual. Fully reversible — set `sync_frequency_hours` back to a positive value to re-enable.
+
 ## 2026-05-12 (Tue, very late) — Theme card: add snippet count (Phase A of "snippets analyzed" feature)
 
 - **Why:** product framing exercise. A "480 rows" dataset reads as trivial; "480 rows · 12,400 signals" reads as substantive. We're building a metric vocabulary — *records* (unique rows), *snippets* (every keyword-match occurrence, so a row mentioning "slow" 3× contributes 3), and *theme fit* (records-in-themes / records) — that lets even a small dataset earn its place in a deck. Locked-in design after a long brainstorm: signal/snippet = keyword-occurrence count (not just row count), so a 89-record theme could show 134 snippets when the language is repetitive. % coverage on the theme card = records / total dataset records ("how widespread is this issue").
