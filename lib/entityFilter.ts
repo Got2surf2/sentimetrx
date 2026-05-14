@@ -16,6 +16,7 @@ import 'server-only'
 // resolveEntityScope + slugify from here.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SchemaConfig } from '@/lib/analyzeTypes'
 
 // ── slugify — JS mirror of sql/060 public.slugify() ────────────────────────
 // Must stay byte-for-byte equivalent: it's the join key between catalog
@@ -98,6 +99,44 @@ export async function resolveEntityScope(
 
   // Plain dataset → own scope.
   return { found: true, scopeType: 'dataset', scopeId: datasetId, memberDatasetIds: [datasetId], orgId }
+}
+
+// ── Open-ended field resolution ────────────────────────────────────────────
+
+/** The field keys eligible for entity extraction from a dataset's schema:
+ *  `open-ended` type and not explicitly opted out (`entityExtraction !==
+ *  false`). Categorical (location / state) columns, numerics, dates, and
+ *  ignored fields are excluded — feeding their values to entity NER or
+ *  matching entities against them just produces noise like "Florida". Shared
+ *  by the write side (lib/entityDiscovery.ts) and the read side below. */
+export function eligibleEntityFields(schemaConfig: unknown): string[] {
+  const fields = (schemaConfig as SchemaConfig | null)?.fields
+  if (!Array.isArray(fields)) return []
+  return fields
+    .filter(f => f.type === 'open-ended' && f.entityExtraction !== false)
+    .map(f => f.field)
+}
+
+/** Map each member dataset to its entity-eligible open-ended field keys.
+ *  Passed to count_entity_terms / get_rows_by_entity as the `p_text_fields`
+ *  jsonb so full-text entity matches are rechecked against review prose only,
+ *  never structured columns like a `location` label. A dataset with no
+ *  eligible fields is omitted — it contributes no entity matches. */
+async function resolveScopeTextFields(
+  service: SupabaseClient,
+  datasetIds: string[],
+): Promise<Record<string, string[]>> {
+  if (datasetIds.length === 0) return {}
+  const { data } = await service
+    .from('dataset_state')
+    .select('dataset_id, schema_config')
+    .in('dataset_id', datasetIds)
+  const out: Record<string, string[]> = {}
+  for (const row of (data || []) as Array<{ dataset_id: string; schema_config: unknown }>) {
+    const fields = eligibleEntityFields(row.schema_config)
+    if (fields.length > 0) out[row.dataset_id] = fields
+  }
+  return out
 }
 
 // ── Entity query construction ──────────────────────────────────────────────
@@ -203,10 +242,12 @@ export async function getEntitiesWithCounts(opts: {
 
   const countByTerm = new Map<string, number>()
   if (terms.length > 0) {
+    const textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
     const { data: counts } = await service.rpc('count_entity_terms', {
       p_dataset_ids: scope.memberDatasetIds,
       p_terms:       terms,
       p_theme_query: themeQuery,
+      p_text_fields: textFields,
     })
     for (const c of (counts || []) as Array<{ term: string; row_count: number }>) {
       countByTerm.set(c.term, Number(c.row_count) || 0)
@@ -286,17 +327,22 @@ export async function getRowsByEntity(opts: {
   const query = buildEntityQuery(entity.canonical, (entityRow as any).aliases || [])
   if (!query) return { rows: [], entity, total: 0 }
 
-  const { data: rows, count } = await service
-    .from('dataset_rows_flat')
-    .select('id, dataset_id, row_index, data', { count: 'exact' })
-    .in('dataset_id', scope.memberDatasetIds)
-    .textSearch('tsv', query, { type: 'websearch', config: 'english' })
-    .order('row_index', { ascending: true })
-    .range(offset, offset + limit - 1)
+  const textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
+  const { data: rpcRows } = await service.rpc('get_rows_by_entity', {
+    p_dataset_ids: scope.memberDatasetIds,
+    p_query:       query,
+    p_text_fields: textFields,
+    p_limit:       limit,
+    p_offset:      offset,
+  })
 
+  const matched = (rpcRows || []) as Array<{
+    id: number; dataset_id: string; row_index: number
+    data: Record<string, unknown>; total_count: number
+  }>
   return {
-    rows:   (rows || []) as RowsByEntityResult['rows'],
+    rows:   matched.map(r => ({ id: r.id, dataset_id: r.dataset_id, row_index: r.row_index, data: r.data })),
     entity,
-    total:  typeof count === 'number' ? count : null,
+    total:  matched.length > 0 ? Number(matched[0].total_count) : 0,
   }
 }

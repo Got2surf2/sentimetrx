@@ -102,15 +102,34 @@ selected contributes nothing. **Manual** runs (the Schema-tab "Discover" button)
 the scope's catalog first and rebuild — this is how a polluted catalog (entities found
 before field-selection existed) gets cleaned up. Cron / incremental modes accumulate.
 
+**Subject context**: field selection stops *structured* location columns from reaching
+NER, but the subject brand and its cities are also genuinely written into review prose
+("we love Fleming's in Tampa") — a generic extractor flags them as `brand` / `place`
+findings. So discovery passes a **do-not-extract list** into the prompt:
+`gatherDiscoveryContext()` collects the scope's brand name(s) (`datasets.brand_tag`) and
+every categorical field's distinct `values` (cities, states, location labels), and the
+prompt instructs NER to skip them — they are what the data is *about*, not findings in it.
+
 `sample_count` is a discovery-frequency hint, **not** a row count — real counts are live.
 
 ### Counting (`lib/entityFilter.ts` + `count_entity_terms`)
 `entity_catalog` deliberately stores **no counts**. At read time, `getEntitiesWithCounts`
 builds one `websearch_to_tsquery` per entity (canonical + aliases OR'd) and calls the
-`count_entity_terms` SQL function (migration 064) — a single set-based query against the
-GIN-indexed `dataset_rows_flat.tsv`, counting matching rows across the scope's members.
-An optional theme query ANDs in a theme's keyword match. Zero-count entities are dropped
-from results (self-heals on the next discovery run).
+`count_entity_terms` SQL function (migrations 064 + 070) — a single set-based query
+across the scope's members. An optional theme query ANDs in a theme's keyword match.
+Zero-count entities are dropped from results (self-heals on the next discovery run).
+
+**Open-ended recheck (migration 070)**: `dataset_rows_flat.tsv` is built from *every*
+string value in a row — including structured columns like `location`. Counting raw `tsv`
+matches meant a place entity ("Tampa") matched every review *located* in Tampa, not the
+ones that *mention* it (780 vs. 46 rows for Fleming's). The fix keeps the GIN-indexed
+`tsv` as a fast prefilter (an open-ended-only match is always a subset), then rechecks
+each candidate against a tsvector rebuilt from *only* the open-ended fields.
+`count_entity_terms` and `get_rows_by_entity` take a `p_text_fields` jsonb map
+(`{dataset_id: [field, …]}`) that `lib/entityFilter.ts` derives from each member's schema
+via `resolveScopeTextFields()` + the shared `eligibleEntityFields()`. The theme keyword
+match stays on the full `tsv` (theme keywords are content words, not structured labels).
+`p_text_fields` is optional (`NULL` = legacy full-`tsv` behaviour).
 
 ### Triggering
 Discovery does paid Haiku NER, so each path is gated to run only when it adds value:
@@ -135,7 +154,8 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
   rollup + `last_refresh`. `?theme=<themeId>` intersects counts with the theme's
   keywords; `?limit=<n>` default 50, max 200.
 - `GET /api/datasets/[id]/rows-by-entity?entity=<slug>` → the rows mentioning one
-  entity, across the scope's members. `?limit` default 100 / max 500, `?offset`.
+  entity, across the scope's members (via the `get_rows_by_entity` RPC, same open-ended
+  recheck as counting). `?limit` default 100 / max 500, `?offset`.
 
 ### Where entities show up
 - **Schema tab** — one per-dataset panel: Discover button, last-discovery timestamp,
@@ -151,7 +171,9 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
 - `entity_catalog`, `entity_catalog_refresh` — RLS enabled (default-deny), service-role
   GRANTs only; reads go through the scope-gated API routes (063).
 - `count_entity_terms()` — live full-text count, `SECURITY DEFINER` + locked
-  `search_path` (064).
+  `search_path` (064; migration 070 adds the `p_text_fields` open-ended recheck).
+- `get_rows_by_entity()` — entity drill-down read with the same open-ended recheck;
+  `count(*) OVER()` carries the pagination total (070).
 - `collections.rules` (reserved jsonb seam for brand-level rules) + `find_or_create_
   brand_collection()` now seeds a `dataset_state` row, so every brand-collection
   carries a merged schema and Charts/Stats work on it (066). The merged schema is

@@ -18,7 +18,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { callAI } from '@/lib/ai'
-import { resolveEntityScope, slugify } from '@/lib/entityFilter'
+import { resolveEntityScope, slugify, eligibleEntityFields } from '@/lib/entityFilter'
 
 export type DiscoveryMode = 'initial' | 'incremental' | 'manual' | 'cron'
 
@@ -27,6 +27,7 @@ const ROWS_PER_BATCH      = 25   // rows per Haiku NER call
 const NER_CONCURRENCY     = 4    // batches in flight at once
 const MAX_ENTITIES        = 400  // hard cap on discovered entities per run
 const MAX_ALIASES         = 25   // per catalog entry
+const MAX_CONTEXT_VALUES  = 60   // structured values fed to the NER prompt as "do not extract"
 
 const CATEGORIES = ['food', 'drink', 'place', 'person', 'brand', 'other']
 
@@ -51,6 +52,14 @@ interface DiscoveredEntity {
   sampleCount: number
 }
 
+/** What the scope's data is *about* — handed to the NER prompt as a "do not
+ *  extract" list. Without it the extractor pulls the subject brand and its
+ *  own locations out of review prose and surfaces them as findings. */
+interface DiscoveryContext {
+  brandNames:       string[]
+  structuredValues: string[]
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Concatenate the values of a row's selected entity-extraction fields into
@@ -68,21 +77,6 @@ function rowText(data: unknown, allowedKeys: Set<string>): string {
     }
   }
   return parts.join(' · ').slice(0, 600)
-}
-
-/** The field keys eligible for entity extraction from a dataset's schema:
- *  `open-ended` type and not explicitly opted out (`entityExtraction !==
- *  false`). Categorical (location / state) columns, numerics, dates, and
- *  ignored fields are excluded — feeding them to NER just produces noise
- *  like "Florida" or "Texas". */
-function eligibleEntityFields(schemaConfig: unknown): Set<string> {
-  const fields = (schemaConfig as SchemaConfig | null)?.fields
-  if (!Array.isArray(fields)) return new Set()
-  return new Set(
-    fields
-      .filter(f => f.type === 'open-ended' && f.entityExtraction !== false)
-      .map(f => f.field),
-  )
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -118,7 +112,7 @@ async function sampleRowTexts(
     // Only this dataset's selected open-ended fields feed NER.
     const { data: stateRow } = await service
       .from('dataset_state').select('schema_config').eq('dataset_id', dsId).single()
-    const allowedKeys = eligibleEntityFields((stateRow as any)?.schema_config)
+    const allowedKeys = new Set(eligibleEntityFields((stateRow as any)?.schema_config))
     if (allowedKeys.size === 0) continue
 
     let rows: Array<{ data: unknown }> | null = null
@@ -146,15 +140,75 @@ async function sampleRowTexts(
   return texts
 }
 
+/** Collect the "subject" of a scope's data: the brand(s) the reviews are
+ *  about (datasets.brand_tag) and the structured location / category labels
+ *  already attached to rows (the distinct `values` of every categorical
+ *  field). The NER prompt is told NOT to re-extract any of these — they are
+ *  what the data is about, not findings within it. */
+async function gatherDiscoveryContext(
+  service: SupabaseClient,
+  datasetIds: string[],
+): Promise<DiscoveryContext> {
+  if (datasetIds.length === 0) return { brandNames: [], structuredValues: [] }
+
+  const { data: dsRows } = await service
+    .from('datasets').select('brand_tag').in('id', datasetIds)
+  const brandNames = Array.from(new Set(
+    ((dsRows || []) as Array<{ brand_tag: string | null }>)
+      .map(d => (d.brand_tag || '').trim())
+      .filter(Boolean),
+  ))
+
+  const { data: stateRows } = await service
+    .from('dataset_state').select('schema_config').in('dataset_id', datasetIds)
+  const valueSet = new Set<string>()
+  for (const row of (stateRows || []) as Array<{ schema_config: unknown }>) {
+    const fields = (row.schema_config as SchemaConfig | null)?.fields
+    if (!Array.isArray(fields)) continue
+    for (const f of fields) {
+      if (f.type !== 'categorical' || !Array.isArray(f.values)) continue
+      for (const v of f.values) {
+        const clean = (v || '').trim()
+        if (clean.length >= 2) valueSet.add(clean)
+      }
+    }
+  }
+  // Shortest first — bare cities / states before long compound labels — then
+  // cap to bound NER prompt token cost.
+  const structuredValues = Array.from(valueSet)
+    .sort((a, b) => a.length - b.length)
+    .slice(0, MAX_CONTEXT_VALUES)
+
+  return { brandNames, structuredValues }
+}
+
 // ── NER batch ──────────────────────────────────────────────────────────────
 
 const NER_SYSTEM =
   'You are a precise named-entity extractor. Output valid JSON only. When in doubt, leave it out — a false entity is worse than a missed one.'
 
-function nerPrompt(texts: string[]): string {
+/** A "do not extract" preamble built from the scope's subject — the brand the
+ *  reviews are about and the structured location / category labels already on
+ *  the rows. Empty string when there's no context to pass. */
+function contextBlock(ctx: DiscoveryContext): string {
+  const lines: string[] = []
+  if (ctx.brandNames.length > 0) {
+    lines.push(`These texts are customer reviews ABOUT: ${ctx.brandNames.join(', ')}.`)
+  }
+  if (ctx.structuredValues.length > 0) {
+    lines.push(`Every row is already labelled with structured location / category metadata drawn from this set: ${ctx.structuredValues.join(', ')}.`)
+  }
+  if (lines.length === 0) return ''
+  return lines.join('\n') +
+    `\nDo NOT extract the subject brand(s) above, their formal or legal names, or any of those location / category names — they are what the data is ABOUT, not findings within it. A review mentioning the subject brand at one of its known locations should yield neither the brand nor that location. Extract only the specific things reviewers talk about: dishes, drinks, named staff, competitor brands.
+
+`
+}
+
+function nerPrompt(texts: string[], ctx: DiscoveryContext): string {
   return `Extract NAMED ENTITIES from these customer review / survey / comment texts.
 
-Extract ONLY specific, named things a person could point to:
+${contextBlock(ctx)}Extract ONLY specific, named things a person could point to:
 - food: named dishes and menu items ("Filet Mignon", "Lobster Mac & Cheese", "Caesar Salad") — NOT generic food words ("steak", "appetizer", "dessert", "the food")
 - drink: named beverages, wines, cocktails ("Old Fashioned", "Caymus Cabernet", "Tito's")
 - place: named locations, cities, neighborhoods, specific named venues ("Tysons Corner", "the DC location", "Times Square")
@@ -191,12 +245,12 @@ interface BatchResult {
   error: string | null
 }
 
-async function nerBatch(texts: string[], orgId: string | null, datasetId: string): Promise<BatchResult> {
+async function nerBatch(texts: string[], orgId: string | null, datasetId: string, ctx: DiscoveryContext): Promise<BatchResult> {
   try {
     const res = await callAI({
       tier: 'fast',
       system: NER_SYSTEM,
-      messages: [{ role: 'user', content: nerPrompt(texts) }],
+      messages: [{ role: 'user', content: nerPrompt(texts, ctx) }],
       maxTokens: 1500,
       timeoutMs: 30_000,
       usage: orgId
@@ -316,11 +370,14 @@ export async function discoverEntities(opts: {
   }
 
   // ── NER ──────────────────────────────────────────────────────────────────
+  // Context (subject brand + structured location labels) tells the extractor
+  // what NOT to surface — the data's subject is not a finding within it.
+  const context = await gatherDiscoveryContext(service, sampleFrom)
   const batches: string[][] = []
   for (let i = 0; i < texts.length; i += ROWS_PER_BATCH) {
     batches.push(texts.slice(i, i + ROWS_PER_BATCH))
   }
-  const batchResults = await mapLimit(batches, NER_CONCURRENCY, b => nerBatch(b, scope.orgId, datasetId))
+  const batchResults = await mapLimit(batches, NER_CONCURRENCY, b => nerBatch(b, scope.orgId, datasetId, context))
 
   let inputTokens = 0
   let outputTokens = 0
