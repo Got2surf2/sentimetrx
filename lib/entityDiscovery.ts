@@ -16,6 +16,7 @@ import 'server-only'
 // *named* things — never adjectives, sentiments, or generic nouns.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { callAI } from '@/lib/ai'
 import { resolveEntityScope, slugify } from '@/lib/entityFilter'
 
@@ -52,18 +53,36 @@ interface DiscoveredEntity {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Concatenate the string values of a flat row's `data` jsonb into one text
- *  blob for NER. Mirrors the tsv trigger's filter (skip short / numeric-only)
- *  and caps length to bound token cost. */
-function rowText(data: unknown): string {
-  if (!data || typeof data !== 'object') return ''
+/** Concatenate the values of a row's selected entity-extraction fields into
+ *  one text blob for NER. `allowedKeys` restricts which `data` keys are read —
+ *  only the schema's chosen open-ended fields, never categorical/location
+ *  columns. Skips short / numeric-only values and caps length to bound token
+ *  cost. */
+function rowText(data: unknown, allowedKeys: Set<string>): string {
+  if (!data || typeof data !== 'object' || allowedKeys.size === 0) return ''
   const parts: string[] = []
-  for (const v of Object.values(data as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    if (!allowedKeys.has(k)) continue
     if (typeof v === 'string' && v.trim().length > 2 && /[a-zA-Z]/.test(v)) {
       parts.push(v.trim())
     }
   }
   return parts.join(' · ').slice(0, 600)
+}
+
+/** The field keys eligible for entity extraction from a dataset's schema:
+ *  `open-ended` type and not explicitly opted out (`entityExtraction !==
+ *  false`). Categorical (location / state) columns, numerics, dates, and
+ *  ignored fields are excluded — feeding them to NER just produces noise
+ *  like "Florida" or "Texas". */
+function eligibleEntityFields(schemaConfig: unknown): Set<string> {
+  const fields = (schemaConfig as SchemaConfig | null)?.fields
+  if (!Array.isArray(fields)) return new Set()
+  return new Set(
+    fields
+      .filter(f => f.type === 'open-ended' && f.entityExtraction !== false)
+      .map(f => f.field),
+  )
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -77,8 +96,10 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 }
 
 /** Pull a random-ish sample of row texts across the scope's member datasets,
- *  split evenly per dataset. Non-deterministic on purpose — a re-run should
- *  explore different rows and surface new entities. */
+ *  split evenly per dataset. Each dataset contributes only the values of its
+ *  schema-selected open-ended fields (see eligibleEntityFields) — a dataset
+ *  with none selected contributes nothing. Non-deterministic on purpose — a
+ *  re-run should explore different rows and surface new entities. */
 async function sampleRowTexts(
   service: SupabaseClient,
   datasetIds: string[],
@@ -93,6 +114,12 @@ async function sampleRowTexts(
       .from('datasets').select('row_count').eq('id', dsId).single()
     const rowCount = ((ds as any)?.row_count as number) || 0
     if (rowCount === 0) continue
+
+    // Only this dataset's selected open-ended fields feed NER.
+    const { data: stateRow } = await service
+      .from('dataset_state').select('schema_config').eq('dataset_id', dsId).single()
+    const allowedKeys = eligibleEntityFields((stateRow as any)?.schema_config)
+    if (allowedKeys.size === 0) continue
 
     let rows: Array<{ data: unknown }> | null = null
     if (rowCount <= perDataset) {
@@ -112,7 +139,7 @@ async function sampleRowTexts(
       rows = data as any
     }
     for (const r of rows || []) {
-      const t = rowText(r.data)
+      const t = rowText(r.data, allowedKeys)
       if (t) texts.push(t)
     }
   }
@@ -232,6 +259,17 @@ export async function discoverEntities(opts: {
     ? opts.sampleDatasetIds
     : scope.memberDatasetIds
 
+  // Manual runs rebuild the scope's catalog from scratch: this is how a user
+  // clears entities discovered before field-selection existed (e.g. location
+  // noise from a categorical column). Cron / incremental modes accumulate.
+  if (mode === 'manual') {
+    await service
+      .from('entity_catalog')
+      .delete()
+      .eq('scope_type', scope.scopeType)
+      .eq('scope_id', scope.scopeId)
+  }
+
   // Existing catalog — for before/new counts and alias/sample-count merge.
   const { data: existing } = await service
     .from('entity_catalog')
@@ -267,12 +305,13 @@ export async function discoverEntities(opts: {
   // ── Sample ───────────────────────────────────────────────────────────────
   const texts = await sampleRowTexts(service, sampleFrom, sampleSize)
   if (texts.length === 0) {
-    await writeRefresh({ sample_size: 0, error: 'No rows to sample' })
+    const emptyMsg = 'No rows to sample — check that at least one open-ended field is enabled for entity extraction in the Schema tab'
+    await writeRefresh({ sample_size: 0, error: emptyMsg })
     return {
       scope_type: scope.scopeType, scope_id: scope.scopeId, mode,
       sample_size: 0, datasets_sampled: sampleFrom,
       entities_before: entitiesBefore, entities_after: entitiesBefore, entities_new: 0,
-      duration_ms: Date.now() - startedAt, cost_est_cents: 0, error: 'No rows to sample',
+      duration_ms: Date.now() - startedAt, cost_est_cents: 0, error: emptyMsg,
     }
   }
 

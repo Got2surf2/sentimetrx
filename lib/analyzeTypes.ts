@@ -27,6 +27,11 @@ export interface SchemaFieldConfig {
   hidden?:        boolean
   status?:        string          // 'ignored' etc — used to hide fields in UI
   scoreField?:    boolean
+  // Opt-out flag for entity extraction. Only meaningful on `open-ended`
+  // fields: absent/true = feed this field to entity discovery, false =
+  // skip it. Lets the user keep entity NER off fields like a free-text
+  // location or name column. Non-open-ended fields are never eligible.
+  entityExtraction?: boolean
   nonNullCount?:  number
   avgLen?:        string
   avgWords?:      string

@@ -2,7 +2,15 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
-## 2026-05-15 (Thu, latest) — Resend-invite button: feedback at the point of action
+## 2026-05-15 (Thu, latest) — Entity extraction: field selection (stop the location noise)
+
+- **Why:** testing the entity feature on the Fleming's brand card, the "Top Entities" list was half garbage — "Florida", "Texas", "Tampa, Florida", "Sarasota, Florida" sitting next to real entities like "Filet Mignon". Root cause: `lib/entityDiscovery.ts` `rowText()` did `Object.values(data)` — it fed **every** string column of every row to the NER model, including structured location/state columns. Garbage in, garbage out. The user's call: entity extraction must be field-scoped, not all-fields.
+- **Fix:** discovery now reads only `open-ended` fields, and only those not opted out. New `SchemaFieldConfig.entityExtraction?: boolean` (opt-out semantics: absent/true = included, false = skipped — no schema backfill needed). `eligibleEntityFields()` resolves the set per dataset; `sampleRowTexts` looks up each dataset's `dataset_state.schema_config` and passes the allowed keys to `rowText`. Categorical/numeric/date/ignored columns are now structurally ineligible — that also satisfies "turned-off fields shouldn't be available for entity extraction."
+- **UI:** per-field "Use for entity extraction" toggle on the Schema tab (`SchemaEditor` → `FieldEditor`), shown only on open-ended fields, default on.
+- **Polluted-catalog cleanup:** `mode === 'manual'` discovery (the Schema-tab "Discover / Re-discover" button) now clears the scope's `entity_catalog` first and rebuilds — so existing polluted catalogs self-heal on one re-run. Cron / incremental modes still accumulate.
+- The three trigger points (compute route, brand discovery, weekly cron) needed no changes — field resolution happens inside `discoverEntities` / `sampleRowTexts`.
+
+## 2026-05-15 (Thu) — Resend-invite button: feedback at the point of action
 
 - **Why:** onboarding the Darden pilot — bulk-created 11 invites, then the per-row "Resend" button felt dead ("just changes color on hover"). It wasn't broken: `handleResendInvite` fired and the email sent, but the only feedback was a `setError(...)` flash rendered ~380 lines up at the top of `AdminClientDetail` (under the nav) that auto-cleared after 5s — invisible to anyone scrolled down at the invites list. The action worked; the confirmation was just unreachable.
 - **Fix:** moved resend feedback into the shared `PendingInvitesList` component — per-row inline status next to the button ("Sending…" → green "✓ Sent" / red "Failed: …"), persistent so it doubles as a "which ones have I done" checklist. `onResend` now returns `{ ok, message }` instead of `void`; both call sites (`AdminClientDetail`, `settings/team/TeamClient`) updated to return the result and drop their off-screen `setError`/`flash` for resend. Button disables while in-flight.

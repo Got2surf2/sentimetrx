@@ -135,7 +135,7 @@ export default function ExtractEntitiesPanel({ datasetId }: Props) {
       </div>
 
       <div style={{ fontSize: 11, color: P.textMute, lineHeight: 1.5, marginBottom: 8 }}>
-        Runs Claude Haiku over a sample of rows to find the named entities {'—'} dishes, places, people, brands {'—'} this data talks about. Counts are computed live from full-text search, so they stay accurate across the whole dataset. Costs a few cents per run.
+        Runs Claude Haiku over a sample of rows to find the named entities {'—'} dishes, places, people, brands {'—'} this data talks about. Only reads the open-ended fields enabled for entity extraction in the schema above. Counts are computed live from full-text search, so they stay accurate across the whole dataset. Re-discover rebuilds the catalog from scratch. Costs a few cents per run.
       </div>
 
       {lastRefresh && (

@@ -105,13 +105,15 @@ function ValuePills({ values }: { values: string[] }) {
 }
 
 // Expanded inline editor
-function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange }: {
+function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange, onEntityExtractionToggle }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onValueAliasChange: (field: string, value: string, alias: string) => void
   onRemappingChange: (field: string, remapping: Record<string, number> | undefined) => void
+  onEntityExtractionToggle: (field: string) => void
 }) {
+  const entityOn = f.entityExtraction !== false
   const ut     = getActiveType(f)
   const isAuto = !f.sqt
   const vals   = f.values || []
@@ -163,6 +165,27 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
           })}
         </div>
       </div>
+
+      {/* Entity extraction — only meaningful on open-ended fields. Default on. */}
+      {f.type === 'open-ended' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '7px 10px', borderRadius: 8, background: entityOn ? '#eff6ff' : P.bg, border: '1px solid ' + (entityOn ? '#bfdbfe' : P.border) }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: entityOn ? '#2563eb' : P.textFaint, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
+              {entityOn ? '✓ Used for entity extraction' : 'Entity Extraction'}
+            </div>
+            <div style={{ fontSize: 10, color: P.textFaint, marginTop: 2, lineHeight: 1.4 }}>
+              Feed this field to entity discovery (dishes, places, people, brands).
+            </div>
+          </div>
+          <button onClick={function() { onEntityExtractionToggle(f.field) }}
+            style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 12, cursor: 'pointer', flexShrink: 0,
+              background: entityOn ? 'transparent' : P.white,
+              color: entityOn ? '#dc2626' : P.textMid,
+              border: '1px solid ' + (entityOn ? '#dc262630' : P.borderMid), fontFamily: 'inherit' }}>
+            {entityOn ? 'Disable' : 'Enable'}
+          </button>
+        </div>
+      )}
 
       {/* Score mapping — enable/disable row, shown before value pills */}
       {canMap && (
@@ -294,13 +317,14 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
 }
 
 // Full-width row card
-function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, readOnly, index }: {
+function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, readOnly, index }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
   onScoreToggle: (field: string) => void
   onValueAliasChange: (field: string, value: string, alias: string) => void
   onRemappingChange: (field: string, remapping: Record<string, number> | undefined) => void
+  onEntityExtractionToggle: (field: string) => void
   readOnly?:     boolean
   index:         number
 }) {
@@ -495,7 +519,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
           </div>
           {/* Scrollable body */}
           <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} />
+            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} onEntityExtractionToggle={onEntityExtractionToggle} />
           </div>
         </div>
       </div>
@@ -531,6 +555,17 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
     applyUpdate({ ...schema,
       fields: schema.fields.map(function(f) {
         return f.field === field ? { ...f, scoreField: !f.scoreField } : f
+      }) })
+  }
+
+  // Toggle around the default-on: absent/true → false (opt out),
+  // false → undefined (back to default on). Keeps the saved schema minimal.
+  function handleEntityExtractionToggle(field: string) {
+    applyUpdate({ ...schema,
+      fields: schema.fields.map(function(f) {
+        return f.field === field
+          ? { ...f, entityExtraction: f.entityExtraction === false ? undefined : false }
+          : f
       }) })
   }
 
@@ -703,6 +738,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
               onScoreToggle={handleScoreToggle}
               onValueAliasChange={handleValueAliasChange}
               onRemappingChange={handleRemappingChange}
+              onEntityExtractionToggle={handleEntityExtractionToggle}
               readOnly={readOnly}
             />
           )

@@ -83,14 +83,24 @@ the brand-collection and syncs membership via DB triggers (migrations 060–062)
 
 ### Discovery (`lib/entityDiscovery.ts`)
 1. Resolve the dataset's scope; sample ~300 rows at random across its member datasets.
-2. Concatenate each row's text values; batch through Claude Haiku NER (25 rows/call, 4
-   in flight). The prompt is **strict** — only specific *named* things, never adjectives,
-   sentiments, or generic nouns ("service", "atmosphere", "the food").
+2. Concatenate **only the schema-selected entity-extraction fields** of each row; batch
+   through Claude Haiku NER (25 rows/call, 4 in flight). The prompt is **strict** — only
+   specific *named* things, never adjectives, sentiments, or generic nouns ("service",
+   "atmosphere", "the food").
 3. Aggregate by `slug` (JS mirror of the SQL `slugify()`); merge aliases.
 4. Upsert the flat catalog into `public.entity_catalog` (UNIQUE on `scope_type, scope_id,
    slug`) — first canonical/category wins, aliases union, `sample_count` accumulates.
 5. Log the run to `public.entity_catalog_refresh` (before/after/new counts, sample size,
    cost estimate, duration).
+
+**Field selection** (`SchemaFieldConfig.entityExtraction`): discovery reads a dataset's
+`open-ended` fields *only* — categorical/location/numeric/date/ignored columns are never
+fed to NER (they produce noise like "Florida" or "Texas"). Each open-ended field carries
+an opt-out flag, toggled per-field on the **Schema tab**: absent/true = included,
+`false` = skipped. `eligibleEntityFields()` resolves the set; a dataset with none
+selected contributes nothing. **Manual** runs (the Schema-tab "Discover" button) clear
+the scope's catalog first and rebuild — this is how a polluted catalog (entities found
+before field-selection existed) gets cleaned up. Cron / incremental modes accumulate.
 
 `sample_count` is a discovery-frequency hint, **not** a row count — real counts are live.
 
