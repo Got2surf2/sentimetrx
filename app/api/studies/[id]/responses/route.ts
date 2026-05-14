@@ -99,13 +99,10 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (sentiment) query = query.eq('sentiment', sentiment)
   if (minNps)    query = query.gte('nps_score', parseInt(minNps))
   if (maxNps)    query = query.lte('nps_score', parseInt(maxNps))
-  if (from && to) {
-    query = query.or(`and(completed_at.gte.${from},completed_at.lte.${to}T23:59:59Z),completed_at.is.null`)
-  } else if (from) {
-    query = query.or(`completed_at.gte.${from},completed_at.is.null`)
-  } else if (to) {
-    query = query.or(`completed_at.lte.${to}T23:59:59Z,completed_at.is.null`)
-  }
+  // completed_at is now always set (partials carry their last-activity time),
+  // so date filters apply uniformly — no null-bypass clause needed.
+  if (from) query = query.gte('completed_at', from)
+  if (to)   query = query.lte('completed_at', to + 'T23:59:59Z')
   if (!isExport) query = query.range(offset, offset + limit - 1)
   if (isExport)  query = query.range(0, 49999)
 

@@ -12,6 +12,11 @@ import { auditContent, auditConversationLog, type ContentFlag } from '@/lib/cont
 // Supports two modes:
 //   1. Partial save (status='incomplete') — upserts by session_id after each question
 //   2. Final submit (status='complete')   — marks response complete, checks device limits
+//
+// `completed_at` is stamped on EVERY save (partial or final), so it's really
+// "last activity" — partial/abandoned surveys still carry a real date. `status`
+// is the authoritative complete-vs-incomplete signal, not the presence of a
+// timestamp.
 
 export async function POST(req: NextRequest) {
   // Rate limit: 120 requests per minute per IP (partial saves + final submit; multiple users may share an IP)
@@ -119,7 +124,9 @@ export async function POST(req: NextRequest) {
     duration_sec:     duration_sec ?? null,
     ip_hash,
     status:           isPartial ? 'incomplete' : 'complete',
-    completed_at:     isPartial ? null : new Date().toISOString(),
+    // Always stamped — see header note. On a partial save this is the
+    // last-activity time; on the final submit it's the completion time.
+    completed_at:     new Date().toISOString(),
   }
   if (fp_hash) rowData.fp_hash = fp_hash
   if (session_id) rowData.session_id = session_id

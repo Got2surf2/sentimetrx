@@ -139,6 +139,9 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 - `responses` — Full JSONB payload, sentiment, scores, duration, session tracking
 - `datasets` — TextMine analysis container (source: upload/study/google_reviews)
 
+### Response timestamps & partial saves
+A `responses` row is created on the first partial save and upserted by `session_id` on every step. `app/api/respond/route.ts` stamps `completed_at` on **every** save (partial or final), so it's really a *last-activity* time — every row has a real date, including abandoned surveys. **`status` (`incomplete` / `complete`) is the authoritative complete-vs-incomplete signal — never the presence of `completed_at`.** (Before mid-2026, partial saves wrote `completed_at = NULL`; migration `068_backfill_response_timestamps.sql` recovered those historical dates from `payload.timestamp`.)
+
 ### Key Indexes
 - `idx_responses_study` — By study_id
 - `idx_responses_sentiment` — By study_id + sentiment
