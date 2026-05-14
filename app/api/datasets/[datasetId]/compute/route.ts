@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeAnalyticsSQL, computeAnalyticsFromRows } from '@/lib/analyticsCompute'
+import { rebuildBrandSchema } from '@/lib/brandRules'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,21 @@ export async function POST(_req: Request, { params }: Params) {
 
   if (stateErr || !stateRow) {
     return NextResponse.json({ error: 'dataset_state not found — upload schema first' }, { status: 404 })
+  }
+
+  // Brand-collections: rebuild the merged schema from current members before
+  // computing. Member schemas fill in over time (uploads load rows, sources
+  // sync), so a brand built earlier can have a stale or empty schema until
+  // this runs. Mutates stateRow.schema_config so the checks below see it.
+  if ((dataset as any).source === 'collection') {
+    const { data: brandCol } = await service
+      .from('collections').select('id, kind').eq('dataset_id', params.datasetId).single()
+    if (brandCol && (brandCol as any).kind === 'brand') {
+      await rebuildBrandSchema(service, (brandCol as any).id)
+      const { data: refreshed } = await service
+        .from('dataset_state').select('schema_config').eq('dataset_id', params.datasetId).single()
+      if (refreshed) stateRow.schema_config = refreshed.schema_config
+    }
   }
 
   const schema = stateRow.schema_config

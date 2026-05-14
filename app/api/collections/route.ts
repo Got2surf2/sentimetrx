@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { emptyThemeModel } from '@/lib/datasetUtils'
-import type { SchemaFieldConfig, SchemaConfig } from '@/lib/analyzeTypes'
+import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,46 +72,9 @@ export async function POST(req: Request) {
   // Compute total row count across members
   const totalRows = memberDatasets.reduce(function(sum, d) { return sum + (d.row_count || 0) }, 0)
 
-  // Build merged schema from all member schemas
-  const schemaResults = await Promise.all(memberIds.map(function(id) {
-    return service.from('dataset_state').select('schema_config').eq('dataset_id', id).single()
-  }))
-
-  const fieldMap: Record<string, SchemaFieldConfig> = {}
-  // Always add the collection label field first
-  fieldMap['_collection_label'] = {
-    field: '_collection_label',
-    type: 'categorical',
-    label: 'Source Dataset',
-    section: 'core',
-  }
-
-  for (var i = 0; i < schemaResults.length; i++) {
-    var sc = schemaResults[i].data?.schema_config as SchemaConfig | null
-    if (!sc?.fields) continue
-    for (var j = 0; j < sc.fields.length; j++) {
-      var f = sc.fields[j]
-      if (!fieldMap[f.field]) {
-        fieldMap[f.field] = { ...f }
-      }
-    }
-  }
-
-  var mergedSchema: SchemaConfig = {
-    fields: Object.values(fieldMap),
-    primaryTextField: undefined,
-    autoDetected: false,
-    version: 1,
-  }
-
-  // Find a primary text field from member schemas
-  for (var k = 0; k < schemaResults.length; k++) {
-    var sc2 = schemaResults[k].data?.schema_config as SchemaConfig | null
-    if (sc2?.primaryTextField) {
-      mergedSchema.primaryTextField = sc2.primaryTextField
-      break
-    }
-  }
+  // Merged schema across all member datasets — shared with brand-collections
+  // (lib/brandRules.rebuildBrandSchema) so the two merge paths can't drift.
+  const mergedSchema = await buildMergedCollectionSchema(service, memberIds)
 
   // 1. Create dataset record in the collection's home org (members' org).
   //    For non-admin callers this equals callerOrgId by the check above;
