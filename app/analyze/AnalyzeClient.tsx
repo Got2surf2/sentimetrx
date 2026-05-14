@@ -72,13 +72,22 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
     return function() { cancelled = true }
   }, [initialDatasets])
 
-  // Brand members are hidden from the flat grid — they're reached by
-  // drilling into their brand card. Drilling in flips the grid to show
-  // exactly that brand's members. Standalone datasets and manual
-  // collections (no brand_collection_id) are unaffected.
+  // A brand is "active" only with ≥2 members: it then shows as a Brand
+  // card with members hidden behind drill-in. With 0-1 members the brand
+  // card is hidden and its lone dataset (if any) shows as a normal card —
+  // the brand identity still persists in the DB, ready to activate when a
+  // 2nd dataset joins. Standalone datasets and manual collections are
+  // unaffected. Drilling in flips the grid to that brand's members.
+  const activeBrandIds = new Set(
+    datasets
+      .filter(function(d) { return d.collection_kind === 'brand' && (d.member_count ?? 0) >= 2 })
+      .map(function(d) { return d.collection_id })
+  )
   const scoped = datasets.filter(function(d) {
     if (drillIn) return d.brand_collection_id === drillIn.collectionId
-    return !d.brand_collection_id
+    if (d.collection_kind === 'brand') return activeBrandIds.has(d.collection_id)
+    if (d.brand_collection_id) return !activeBrandIds.has(d.brand_collection_id)
+    return true
   })
 
   const filtered = scoped.filter(function(d) {
