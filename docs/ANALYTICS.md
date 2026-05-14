@@ -103,10 +103,22 @@ An optional theme query ANDs in a theme's keyword match. Zero-count entities are
 from results (self-heals on the next discovery run).
 
 ### Triggering
-- Schema tab → one **"Discover entities"** panel per dataset (not per field).
-- POST `/api/datasets/[id]/discover-entities` — scope-resolving; mode `manual`.
-- **Not auto-run on sync** — discovery is explicit (AI cost). A run samples ≤1000 rows;
-  ballpark a few cents per run. (Incremental + weekly-cron refresh land in Phase 6.)
+Discovery does paid Haiku NER, so each path is gated to run only when it adds value:
+- **Manual** — Schema tab → one **"Discover entities"** panel per dataset (not per
+  field). POST `/api/datasets/[id]/discover-entities`, mode `manual`. Works for any
+  dataset, branded or not.
+- **Incremental** (Phase 6) — the compute route calls
+  `lib/brandRules.discoverBrandEntitiesIfNeeded` after a branded dataset's analytics
+  compute succeeds — the first point its rows are guaranteed to exist (the create
+  routes run before rows load). Gated **once per dataset**: the gate reads
+  `entity_catalog_refresh.datasets_sampled`, so subsequent syncs/computes are free.
+  Backgrounded via `waitUntil` — never adds latency to the compute response. Mode
+  `incremental`, samples only the dataset that just landed.
+- **Weekly cron** (Phase 6) — `/api/cron/entity-discovery` (Sun 05:00 UTC) re-runs
+  discovery for **every brand-collection**, sampling across all of the brand's
+  member datasets. Mode `cron`. Brand scope only — plain datasets are not refreshed
+  on a schedule (bounds AI cost; brand-level analysis is the use case).
+- A run samples ≤1000 rows (default 300); ballpark a few cents per run.
 
 ### Read APIs (all scope-resolving)
 - `GET /api/datasets/[id]/entities` → catalog entities with live counts + category
@@ -134,7 +146,8 @@ from results (self-heals on the next discovery run).
   brand_collection()` now seeds a `dataset_state` row, so every brand-collection
   carries a merged schema and Charts/Stats work on it (066). The merged schema is
   rebuilt lazily from current members in the compute route; `lib/brandRules.ts` is
-  the Phase 6 on-join seam.
+  the brand-rules seam (`rebuildBrandSchema` + Phase 6's
+  `discoverBrandEntitiesIfNeeded`), both invoked from the compute route.
 - **Pending (Phase 7, migration 067):** the v1 `entity_mentions` table,
   `top_entities_for_theme()`, and `datasets.entity_extraction_state` are dropped once
   this app code is verified — they are unused as of this rebuild.

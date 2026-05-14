@@ -8,10 +8,11 @@
 // dataset_state.analytics instead.
 
 import { NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeAnalyticsSQL, computeAnalyticsFromRows } from '@/lib/analyticsCompute'
-import { rebuildBrandSchema } from '@/lib/brandRules'
+import { rebuildBrandSchema, discoverBrandEntitiesIfNeeded } from '@/lib/brandRules'
 
 export const dynamic = 'force-dynamic'
 
@@ -148,6 +149,16 @@ export async function POST(_req: Request, { params }: Params) {
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
+
+  // Phase 6: if this is a branded dataset and its rows have just landed,
+  // discover its entities into the brand catalog. Runs once per dataset
+  // (gated inside) and only does paid AI work the first time — backgrounded
+  // via waitUntil so it never adds latency to the compute response.
+  waitUntil(
+    discoverBrandEntitiesIfNeeded(service, params.datasetId).catch(err => {
+      console.error('[compute] brand entity discovery failed:', err)
+    }),
+  )
 
   return NextResponse.json({
     ok:         true,

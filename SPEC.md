@@ -313,7 +313,7 @@ All powered by Anthropic Claude API. **AI toggle** (`sentimetrx_ai_enabled` in l
 | Chat/Bot | 3 | `/api/bot-chat`, `/api/nora-chat`, `/api/clara-chat` |
 | Org & Users | 8 | `/api/orgs`, `/api/invite`, `/api/settings/profile` |
 | Admin | 8 | `/api/admin/orgs`, `/api/admin/questions` |
-| Cron Jobs | 4 | `/api/cron/campaign-scheduler`, `/api/cron/review-sync`, `/api/cron/townhall-theme-detection` |
+| Cron Jobs | 9 | `/api/cron/campaign-scheduler`, `/api/cron/review-sync`, `/api/cron/townhall-theme-detection`, `/api/cron/entity-discovery` |
 
 **Total**: ~91 API routes
 
