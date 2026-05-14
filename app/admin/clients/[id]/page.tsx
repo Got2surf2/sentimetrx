@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import { getReviewBudget } from '@/lib/reviewLimits'
 import AdminClientDetail from './AdminClientDetail'
 
 interface Props { params: { id: string } }
@@ -25,11 +26,14 @@ export default async function AdminClientPage({ params }: Props) {
 
   const { data: org } = await service
     .from('organizations')
-    .select('id, name, slug, plan, is_admin_org, logo_url, features, created_at')
+    .select('id, name, slug, plan, is_admin_org, logo_url, features, limits, created_at')
     .eq('id', params.id)
     .single()
 
   if (!org) notFound()
+
+  // This org's review-download budget for the current calendar month.
+  const reviewBudget = await getReviewBudget(service, params.id)
 
   const { data: rawMembers } = await service
     .from('users')
@@ -101,6 +105,7 @@ export default async function AdminClientPage({ params }: Props) {
       baseUrl={base}
       currentUserId={user.id}
       userEmail={user.email || ''}
+      reviewBudget={reviewBudget}
     />
   )
 }

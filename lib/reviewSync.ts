@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { submitReviewTask, submitTripadvisorReviewTask, checkReviewTask, type ReviewTaskRef, type DfsReview } from './dataforseo'
 import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
 import { computeAnalyticsSQL } from './analyticsCompute'
+import { getReviewBudget, logReviewDownload } from './reviewLimits'
 
 export interface SyncResult {
   synced: number
@@ -22,6 +23,8 @@ export interface SyncResult {
   // Progress context for UI
   pending_locations: string[]   // names of locations with pending tasks
   processing_location: string | null  // name of the location currently being checked/submitted
+  // True when the org's monthly review-download cap stopped task submission.
+  limit_reached: boolean
 }
 
 const BATCH_SIZE = 3
@@ -69,7 +72,7 @@ export async function syncReviewSource(
     synced: 0, total: 0, locations_synced: 0, locations_remaining: 0,
     locations_errored: 0, locations_submitted: 0, errors: [],
     expected_reviews: 0, with_comments: 0, without_comments: 0,
-    pending_locations: [], processing_location: null,
+    pending_locations: [], processing_location: null, limit_reached: false,
   }
 
   const { data: source, error: srcErr } = await service
@@ -80,6 +83,14 @@ export async function syncReviewSource(
   // Dispatch review-task submission on the source's platform. checkReviewTask
   // (Phase 1) self-routes off the stored task ref, so only submission branches.
   const submitTask = source.source === 'tripadvisor' ? submitTripadvisorReviewTask : submitReviewTask
+
+  // Monthly review-download budget (Darden-pilot cost guard). `remainingBudget`
+  // is null for uncapped orgs; otherwise it's decremented as Phase 2/3 submit
+  // tasks, so a single sync call can't blow past the org's cap. See
+  // lib/reviewLimits. Phase 1 (draining already-submitted tasks) is never
+  // gated — its cost was already incurred at submit time.
+  const budget = await getReviewBudget(service, source.org_id)
+  let remainingBudget = budget.remaining
 
   const startTime = Date.now()
   const allNewRows: Record<string, unknown>[] = []
@@ -172,17 +183,28 @@ export async function syncReviewSource(
   if (unsyncedLocs && unsyncedLocs.length > 0) {
     for (const loc of unsyncedLocs) {
       if (Date.now() - startTime > TIME_BUDGET_MS) break
+      // Monthly cap reached — stop submitting new download tasks. Any
+      // in-flight tasks still drain via Phase 1; the org resumes next month.
+      if (remainingBudget !== null && remainingBudget <= 0) {
+        result.limit_reached = true
+        result.errors.push('Monthly review-download limit reached — new downloads paused')
+        break
+      }
       try {
         result.processing_location = loc.name
         const isInitial = !loc.last_review_id
-        const depth = isInitial
+        let depth = isInitial
           ? estimateDepth(loc.review_count, loc.created_at, dateStart, dateEnd)
           : 200
+        // Cap depth to the remaining monthly budget. Tasks are newest-first,
+        // so a budget-capped task pulls the most-recent N reviews.
+        if (remainingBudget !== null) depth = Math.min(depth, remainingBudget)
         const ref = await submitTask(loc.place_id, depth, 'newest')
         // Store task ref so next call can check it
         await service.from('review_source_locations').update({
           error_message: serializeTaskRef(ref),
         }).eq('id', loc.id)
+        if (remainingBudget !== null) remainingBudget -= depth
         result.locations_submitted++
       } catch (err: any) {
         result.locations_errored++
@@ -223,12 +245,22 @@ export async function syncReviewSource(
     if (staleLocs && staleLocs.length > 0) {
       for (const loc of staleLocs) {
         if (Date.now() - startTime > TIME_BUDGET_MS) break
+        // Monthly cap reached — pause refreshes too (a refresh still costs a
+        // DataForSEO task). Resumes next calendar month.
+        if (remainingBudget !== null && remainingBudget <= 0) {
+          result.limit_reached = true
+          result.errors.push('Monthly review-download limit reached — refresh paused')
+          break
+        }
         try {
           result.processing_location = loc.name
-          const ref = await submitTask(loc.place_id, 200, 'newest')
+          let depth = 200
+          if (remainingBudget !== null) depth = Math.min(depth, remainingBudget)
+          const ref = await submitTask(loc.place_id, depth, 'newest')
           await service.from('review_source_locations').update({
             error_message: serializeTaskRef(ref),
           }).eq('id', loc.id)
+          if (remainingBudget !== null) remainingBudget -= depth
           result.locations_submitted++
         } catch (err: any) {
           result.locations_errored++
@@ -249,6 +281,14 @@ export async function syncReviewSource(
   if (allNewRows.length > 0) {
     await insertReviewRows(service, source.dataset_id, allNewRows)
     result.synced = allNewRows.length
+    // Ledger the ingested records against the org's monthly budget.
+    await logReviewDownload(service, {
+      orgId:          source.org_id,
+      reviewSourceId: source.id,
+      datasetId:      source.dataset_id,
+      source:         source.source,
+      records:        allNewRows.length,
+    })
   }
 
   const { data: ds } = await service

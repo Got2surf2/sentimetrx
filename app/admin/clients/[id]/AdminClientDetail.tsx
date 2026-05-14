@@ -12,9 +12,11 @@ import PendingInvitesList, { type PendingInvite } from '@/components/team/Pendin
 interface Member  { id: string; email: string; full_name: string | null; role: string; created_at: string; disabled?: boolean; last_login_at?: string | null; logins_30d?: number }
 interface Study   { id: string; guid: string; name: string; bot_name: string; bot_emoji: string; status: string; visibility: string; created_at: string; response_count: number }
 interface Invite  { id: string; token: string; email: string | null; role: string; used_at: string | null; expires_at: string; created_at: string; invite_url: string }
-interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean; logo_url?: string; features?: Record<string, boolean | unknown> }
+interface Org     { id: string; name: string; slug: string; plan: string; is_admin_org: boolean; logo_url?: string; features?: Record<string, boolean | unknown>; limits?: Record<string, unknown> }
 
 interface OrgOption { id: string; name: string }
+
+interface ReviewBudget { cap: number | null; used: number; remaining: number | null }
 
 interface Props {
   org:           Org
@@ -25,9 +27,10 @@ interface Props {
   baseUrl:       string
   currentUserId: string
   userEmail?:    string
+  reviewBudget:  ReviewBudget
 }
 
-export default function AdminClientDetail({ org, members: initialMembers, studies: initialStudies, allOrgs, invites: initialInvites, baseUrl, currentUserId, userEmail='' }: Props) {
+export default function AdminClientDetail({ org, members: initialMembers, studies: initialStudies, allOrgs, invites: initialInvites, baseUrl, currentUserId, userEmail='', reviewBudget }: Props) {
   const [studies,       setStudies]       = useState(initialStudies)
   const [invites,       setInvites]       = useState(initialInvites)
   const [togglingStudy, setTogglingStudy] = useState<string | null>(null)
@@ -51,6 +54,13 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoMsg,       setLogoMsg]       = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Review-download monthly cap. Empty string = unlimited.
+  const initialCap = typeof org.limits?.review_records_monthly === 'number'
+    ? String(org.limits.review_records_monthly) : ''
+  const [reviewCap,   setReviewCap]   = useState(initialCap)
+  const [savingLimit, setSavingLimit] = useState(false)
+  const [limitMsg,    setLimitMsg]    = useState('')
 
   // Delete-org modal — robust confirmation flow. Operator must type the
   // org name exactly. Preview counts are fetched on open so they see
@@ -146,6 +156,41 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
       setError('Failed to update organization plan.')
     } finally {
       setTogglingPlan(false)
+    }
+  }
+
+  // Save the monthly review-download cap. Blank input clears the cap
+  // (unlimited); a number sets organizations.limits.review_records_monthly.
+  const handleSaveReviewLimit = async () => {
+    const trimmed = reviewCap.trim()
+    let parsed: number | null = null
+    if (trimmed !== '') {
+      const n = Number(trimmed)
+      if (!Number.isFinite(n) || n < 0) {
+        setLimitMsg('Enter a whole number, or leave blank for unlimited.')
+        setTimeout(() => setLimitMsg(''), 4000)
+        return
+      }
+      parsed = Math.floor(n)
+    }
+    setSavingLimit(true)
+    setLimitMsg('')
+    try {
+      const nextLimits: Record<string, unknown> = { ...(org.limits || {}) }
+      if (parsed === null) delete nextLimits.review_records_monthly
+      else nextLimits.review_records_monthly = parsed
+      const res = await fetch('/api/admin/clients/' + org.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limits: nextLimits }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      setLimitMsg(parsed === null ? '✓ Cap removed — unlimited' : '✓ Saved')
+    } catch {
+      setLimitMsg('Failed to save limit.')
+    } finally {
+      setSavingLimit(false)
+      setTimeout(() => setLimitMsg(''), 3000)
     }
   }
 
@@ -445,6 +490,57 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
         {/* AI Key */}
         <Section title="AI Key">
           <OrgAiKeyPanel orgId={org.id} />
+        </Section>
+
+        {/* Review Downloads */}
+        <Section title="Review Downloads">
+          <p className="text-xs text-gray-400 mb-4">
+            Monthly cap on review records downloadable from Google &amp; Tripadvisor.
+            Blank = unlimited. When the cap is hit, new downloads pause until the next
+            calendar month — in-flight tasks still finish.
+          </p>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Monthly record cap</label>
+              <input
+                type="number"
+                min={0}
+                value={reviewCap}
+                onChange={e => setReviewCap(e.target.value)}
+                placeholder="Unlimited"
+                className="w-44 bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400"
+              />
+            </div>
+            <button
+              onClick={handleSaveReviewLimit}
+              disabled={savingLimit}
+              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold text-sm transition-all"
+            >
+              {savingLimit ? 'Saving…' : 'Save cap'}
+            </button>
+            {limitMsg && <span className="text-xs text-gray-500 pb-2">{limitMsg}</span>}
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
+            {(() => {
+              const trimmed = reviewCap.trim()
+              const n = trimmed === '' ? null : Number(trimmed)
+              const capNum = (n !== null && Number.isFinite(n) && n >= 0) ? Math.floor(n) : null
+              const used = reviewBudget.used
+              if (capNum === null) {
+                return <span><strong>{used.toLocaleString()}</strong> records downloaded this month · <span className="text-gray-400">no cap</span></span>
+              }
+              const over = used >= capNum
+              return (
+                <span>
+                  <strong className={over ? 'text-red-600' : ''}>{used.toLocaleString()}</strong>
+                  {' / ' + capNum.toLocaleString()} records this month ·{' '}
+                  <span className={over ? 'text-red-600 font-semibold' : 'text-green-700'}>
+                    {over ? 'limit reached' : Math.max(0, capNum - used).toLocaleString() + ' remaining'}
+                  </span>
+                </span>
+              )
+            })()}
+          </div>
         </Section>
 
         {/* Members */}

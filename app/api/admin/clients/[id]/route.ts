@@ -13,7 +13,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: org } = await service
     .from('organizations')
-    .select('id, name, slug, plan, is_admin_org, created_at')
+    .select('id, name, slug, plan, is_admin_org, limits, created_at')
     .eq('id', params.id)
     .single()
 
@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ org, members, studies: studiesWithCounts, invites })
 }
 
-// PATCH /api/admin/clients/[id] - update org (plan, name, is_admin_org)
+// PATCH /api/admin/clients/[id] - update org (plan, name, is_admin_org, limits)
 export async function PATCH(req: NextRequest, { params }: Params) {
   const denied = await requireAdmin()
   if (denied) return denied
@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const service = createServiceRoleClient()
   const body = await req.json()
 
-  const allowed = ['name', 'slug', 'plan', 'is_admin_org']
+  const allowed = ['name', 'slug', 'plan', 'is_admin_org', 'limits']
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .from('organizations')
     .update(updates)
     .eq('id', params.id)
-    .select('id, name, plan, is_admin_org')
+    .select('id, name, plan, is_admin_org, limits')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

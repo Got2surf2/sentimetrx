@@ -379,12 +379,24 @@ Manual sync trigger for the same algorithm the cron runs. Useful for testing.
 1. Find locations with `last_synced_at IS NULL` AND `error_message IS NULL` (unsynced, not in flight).
 2. For each (up to `BATCH_SIZE = 3`):
    - Compute initial `depth` via `estimateDepth(review_count, created_at, start_date, end_date)`. For incremental syncs (after first), use `depth = 200`.
+   - **Cap `depth` to the org's remaining monthly review-download budget** (see *Download limits & accounting* below). If the budget is already exhausted, stop submitting tasks this run.
    - Call `submitReviewTask` (Google) or `submitTripadvisorReviewTask` (Tripadvisor), dispatched on `review_sources.source` → DataforSEO `POST .../task_post`. Returns `{ taskId, getPath }`.
    - Store `error_message = "pending_task:{taskId}|{getPath}"` (the column is overloaded for pending refs).
 
+(Phase 3 — incremental refresh of already-synced locations — submits `depth = 200` newest-first tasks under the same budget cap.)
+
 Phase 1's `checkReviewTask` is platform-agnostic — it picks the right review parser by inspecting `ref.getPath` (`…/tripadvisor/…` → Tripadvisor parser), so old pending task refs keep working without a schema change.
 
-**Returns:** `{ synced, total, locations_synced, locations_remaining, locations_errored, locations_submitted, errors, expected_reviews, with_comments, without_comments, pending_locations, processing_location }` for UI/cron telemetry.
+**Returns:** `{ synced, total, locations_synced, locations_remaining, locations_errored, locations_submitted, errors, expected_reviews, with_comments, without_comments, pending_locations, processing_location, limit_reached }` for UI/cron telemetry. `limit_reached` is `true` when the org's monthly cap stopped task submission.
+
+### Download limits & accounting
+
+Review downloads are the only paid data-source path, so they have an opt-in per-org monthly cap (built for the Darden pilot, where we absorb the DataForSEO cost). Migration `067_review_download_limits.sql`:
+
+- **`review_downloads`** — append-only ledger, one row per sync call that ingested rows (`org_id`, `review_source_id`, `dataset_id`, `source`, `records`, `created_at`). Doubles as the billing record and the monthly-cap counter. Written by `lib/reviewSync.ts` after `insertReviewRows`.
+- **`organizations.limits`** jsonb — `{ "review_records_monthly": N }` sets the cap. Absent / empty `{}` = unlimited (the default for every org).
+
+`lib/reviewLimits.ts::getReviewBudget(service, orgId)` returns `{ cap, used, remaining }` for the current calendar month (UTC). `syncReviewSource` reads it once at the start of each run and decrements a local `remainingBudget` as Phase 2/3 submit tasks, so a single run can't blow past the cap. Because tasks are requested newest-first, a budget-capped `depth` pulls the **most-recent N reviews** — the cap doubles as a recency-sampling lever rather than a sequential full-history pull. Cross-run overshoot from in-flight tasks is bounded and acceptable for a cost guard. The cap is set per org on the admin client-detail page (`/admin/clients/[id]` → Review Downloads).
 
 ### `lib/dataforseo.ts` — DataforSEO API wrapper
 
