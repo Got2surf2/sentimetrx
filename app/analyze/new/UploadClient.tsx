@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
+import BrandTagInput from '@/components/analyze/BrandTagInput'
 import RedditWizard from '@/components/analyze/RedditWizard'
 import SubstackWizard from '@/components/analyze/SubstackWizard'
 import RegulationsWizard from '@/components/analyze/RegulationsWizard'
@@ -187,6 +188,7 @@ export default function UploadClient() {
   const [dragging,    setDragging]    = useState(false)
   const [name,        setName]        = useState('')
   const [description, setDescription] = useState('')
+  const [brandTag,    setBrandTag]    = useState('')
   const [visibility,  setVisibility]  = useState<'private' | 'public'>('private')
   const [creating,    setCreating]    = useState(false)
   const [uploadPct,   setUploadPct]   = useState(0)
@@ -264,7 +266,7 @@ export default function UploadClient() {
       // 1. Create dataset record
       const dsRes  = await fetch('/api/datasets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), description: description || null, source: 'upload', visibility }),
+        body: JSON.stringify({ name: name.trim(), description: description || null, source: 'upload', visibility, brand_tag: brandTag.trim() || null }),
       })
       const dsData = await dsRes.json()
       if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
@@ -472,6 +474,7 @@ export default function UploadClient() {
               <textarea value={description} onChange={function(e) { setDescription(e.target.value) }} rows={2}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors resize-none" />
             </div>
+            <BrandTagInput value={brandTag} onChange={setBrandTag} />
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-gray-700">Visibility</label>
               <div className="flex gap-3">

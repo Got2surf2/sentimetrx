@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
   if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
   const body = await req.json()
-  const { name, description, source, study_id, visibility, ana_library } = body
+  const { name, description, source, study_id, visibility, ana_library, brand_tag } = body
 
   if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
   if (!['upload', 'study', 'google_reviews'].includes(source)) {
@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
       status:      'active',
       row_count:   0,
       ana_library: ana_library || null,
+      brand_tag:   (brand_tag && brand_tag.trim()) || null,
     })
     .select('id')
     .single()

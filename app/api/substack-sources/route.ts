@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
     var body = await req.json()
-    var { publication_url, dataset_name, publication_name } = body
+    var { publication_url, dataset_name, publication_name, brand_tag } = body
 
     if (!publication_url?.trim()) return NextResponse.json({ error: 'publication_url is required' }, { status: 400 })
 
@@ -47,6 +47,7 @@ export async function POST(req: Request) {
         visibility: 'private',
         status: 'active',
         row_count: 0,
+        brand_tag: (brand_tag && brand_tag.trim()) || null,
       })
       .select('id')
       .single()

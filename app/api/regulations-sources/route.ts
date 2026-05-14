@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
   const body = await req.json()
-  const { dataset_name, docket_id, docket_title, agency, comment_count } = body
+  const { dataset_name, docket_id, docket_title, agency, comment_count, brand_tag } = body
   if (!dataset_name || !docket_id) return NextResponse.json({ error: 'dataset_name and docket_id required' }, { status: 400 })
 
   const service = createServiceRoleClient()
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     source: 'regulations',
     row_count: 0,
     description: JSON.stringify(downloadMeta),
+    brand_tag: (brand_tag && brand_tag.trim()) || null,
   }).select('id').single()
   if (dsErr) return NextResponse.json({ error: dsErr.message }, { status: 500 })
 

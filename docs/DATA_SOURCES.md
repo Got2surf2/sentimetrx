@@ -82,7 +82,7 @@ ALTER TABLE reddit_source_threads ENABLE ROW LEVEL SECURITY;
 -- No policies — service-role only after migration 032.
 ```
 
-### Google Reviews — `sql/phase7_google_reviews.sql`
+### Google Reviews — `sql/phase7_google_reviews.sql` (+ `sql/065_multi_source_reviews.sql`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS review_sources (
@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS review_sources (
   org_id                UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   dataset_id            UUID REFERENCES datasets(id) ON DELETE SET NULL,
   brand_name            TEXT NOT NULL,
+  source                TEXT NOT NULL DEFAULT 'google'   -- migration 065: review platform
+                          CHECK (source IN ('google','tripadvisor')),
   status                TEXT NOT NULL DEFAULT 'pending'
                           CHECK (status IN ('pending','searching','active','paused','error')),
   sync_frequency_hours  INT NOT NULL DEFAULT 24,
@@ -106,7 +108,7 @@ CREATE INDEX idx_rs_next_sync  ON review_sources(next_sync_at) WHERE status = 'a
 CREATE TABLE IF NOT EXISTS review_source_locations (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_source_id  UUID NOT NULL REFERENCES review_sources(id) ON DELETE CASCADE,
-  place_id          TEXT NOT NULL,
+  place_id          TEXT NOT NULL,    -- Google place_id, or Tripadvisor url_path
   name              TEXT NOT NULL,
   address, city, state, zip TEXT,
   rating            NUMERIC(2,1),
@@ -292,8 +294,9 @@ Reddit, Substack, Regulations are **all UI-initiated** — the user triggers dow
 Calls `https://old.reddit.com/r/{name}/{sort}.json?limit=100`. Strips `r/` prefix. 404 / 403 produce friendly errors. Reddit's *search* endpoints require auth and are blocked, so this uses the public listing.
 
 #### `POST /api/reddit-sources`
-**Body:** `{ search_query, dataset_name?, threads: RedditThread[], max_comments_per_thread? }`
+**Body:** `{ search_query, dataset_name?, threads: RedditThread[], max_comments_per_thread?, brand_tag? }`
 **Response:** `{ source_id, dataset_id, threads, status: 'created' }` (201).
+`brand_tag` (optional, all create routes) sets `datasets.brand_tag` — the DB trigger find-or-creates the brand-collection so the dataset shares one entity catalog with the brand's other datasets. See ANALYTICS.md → Entity Discovery & Catalog.
 Creates `datasets`, `reddit_sources`, and one `reddit_source_threads` row per submitted thread. Does **not** download comments.
 
 #### `POST /api/reddit-sources/[sourceId]/download-thread`
@@ -330,7 +333,7 @@ The most complex source — operates async via DataforSEO's task-submit/task-get
 **Response:** `{ sources: Array<{...review_source fields, locations_count}> }` for the user's org.
 
 #### `POST /api/review-sources`
-**Body:** `{ brand_name, locations: DfsLocation[], dataset_name?, sync_frequency_hours?, start_date?, end_date? }`
+**Body:** `{ brand_name, locations: DfsLocation[], dataset_name?, sync_frequency_hours?, start_date?, end_date?, brand_tag? }` — `brand_tag` defaults to `brand_name` when omitted (a reviews dataset always has a brand).
 **Response:** `{ source_id, dataset_id, locations, status: 'active' }` (201).
 Creates dataset, review_source (status='active'), one location row per selection (`selected=true`). Sets `next_sync_at = now()`. Optional date range stored in `datasets.description`.
 
@@ -403,7 +406,7 @@ DataforSEO is async — submitting a task returns immediately with an ID, the ac
 ### API routes
 
 #### `POST /api/substack-sources`
-**Body:** `{ publication_url, dataset_name?, publication_name? }`
+**Body:** `{ publication_url, dataset_name?, publication_name?, brand_tag? }`
 **Response:** `{ dataset_id, status: 'created' }` (201).
 Creates dataset (`source: 'substack'`) and dataset_state with the Substack schema. Does **not** fetch posts.
 
@@ -448,7 +451,7 @@ Public-comment ingestion for federal dockets. The most user-visible pagination m
 If `page === 1` and `query` matches the docket-ID regex (`[A-Z]{2,5}-[0-9]{4}-\d+`), tries direct lookup first.
 
 #### `POST /api/regulations-sources`
-**Body:** `{ dataset_name, docket_id, docket_title?, agency?, comment_count? }`
+**Body:** `{ dataset_name, docket_id, docket_title?, agency?, comment_count?, brand_tag? }`
 **Response:** `{ dataset_id }`
 Creates dataset (`source: 'regulations'`) with `description: { type, docket_id, docket_title, agency, comment_count, download_status: 'downloading', next_page: 1 }`. Creates dataset_state with the Regulations schema.
 

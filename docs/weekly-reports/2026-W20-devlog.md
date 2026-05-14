@@ -2,6 +2,14 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-14 (Wed, even later) — Brand-tag autocomplete on dataset-create forms (entity rebuild Phase 5 cont.)
+
+- **Why:** the entity rebuild scopes catalogs by brand-collection — but nothing in the UI let a user *tag* a dataset with its brand. `datasets.brand_tag` is what the 062 trigger keys on to find-or-create the brand-collection; without it every new dataset is its own isolated entity scope.
+- **Shared component.** New `components/analyze/BrandTagInput.tsx` — a free-text input backed by a `<datalist>` of the org's existing brand tags (new `GET /api/brands`). Typing an existing brand auto-suggests it (so the dataset joins that brand-collection); a new one creates the brand-collection on save.
+- **Wired into 5 of 6 create forms** — CSV upload, Google Reviews, Reddit, Substack, Regulations — with `brand_tag` threaded through each form's create API into the `datasets` insert. Google Reviews defaults `brand_tag` to `brand_name` (a reviews dataset always has a brand).
+- **Survey creator (SmartStudyWizard) deferred** — the one outlier: it never fetches, it emits a `StudyDraft` and the dataset row is created lazily in `/api/studies/[id]/analyze`. Threading `brand_tag` there needs a `studies`-row carrier (config jsonb or a new column) — materially more work, queued as a follow-up.
+- Typecheck clean.
+
 ## 2026-05-14 (Wed, later) — Entity rebuild Phase 5: app code (discovery, catalog, scope-resolving routes)
 
 - **Why:** v1 entity extraction (committed `d246e27`, never pushed) ran per-row NER on comma-split cell fragments and produced garbage entities ("attentive", "Great food", "service"). v2 separates the two concerns v1 conflated: *discovery* (a small sample tells us the **list** of entities) and *counting* (full-text search gives **accurate** counts across the whole dataset, not a sample). DB foundation (060–063) was already applied; this is the app-code rewrite.

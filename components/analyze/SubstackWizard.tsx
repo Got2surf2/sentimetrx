@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import type { SubstackPost } from '@/lib/substack'
+import BrandTagInput from '@/components/analyze/BrandTagInput'
 
 const HERMES = '#E8632A'
 
@@ -49,6 +50,7 @@ export default function SubstackWizard({ onBack }: Props) {
 
   // Step 3: Download
   var [datasetName, setDatasetName] = useState('')
+  var [brandTag, setBrandTag] = useState('')
   var [creating, setCreating] = useState(false)
   var [createError, setCreateError] = useState('')
   var [statusMsg, setStatusMsg] = useState('')
@@ -200,6 +202,7 @@ export default function SubstackWizard({ onBack }: Props) {
           publication_url: baseUrl,
           dataset_name: datasetName.trim() || 'Substack Comments',
           publication_name: publication?.name || '',
+          brand_tag: brandTag.trim() || null,
         }),
       })
       var createData = await createRes.json()
@@ -472,6 +475,9 @@ export default function SubstackWizard({ onBack }: Props) {
               <label className="text-xs font-semibold text-gray-500 uppercase">Dataset Name</label>
               <input value={datasetName} onChange={function(e) { setDatasetName(e.target.value) }}
                 className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-orange-400" />
+            </div>
+            <div className="mb-3">
+              <BrandTagInput value={brandTag} onChange={setBrandTag} />
             </div>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>

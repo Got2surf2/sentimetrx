@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import BrandTagInput from '@/components/analyze/BrandTagInput'
 
 const HERMES = '#E8632A'
 
@@ -49,6 +50,7 @@ export default function RedditWizard({ onBack }: Props) {
 
   // Step 3: Confirm + Download + sample size + progress
   const [datasetName, setDatasetName] = useState('')
+  const [brandTag, setBrandTag] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
@@ -201,6 +203,7 @@ export default function RedditWizard({ onBack }: Props) {
           dataset_name: datasetName.trim(),
           threads: selectedThreads,
           max_comments_per_thread: maxCommentsPerThread,
+          brand_tag: brandTag.trim() || null,
         }),
       })
       var createData = await createRes.json()
@@ -550,6 +553,7 @@ export default function RedditWizard({ onBack }: Props) {
               <input value={datasetName} onChange={function(e) { setDatasetName(e.target.value) }}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm outline-none focus:border-orange-400 transition-colors" />
             </div>
+            <BrandTagInput value={brandTag} onChange={setBrandTag} />
             {([
               ['Search query',       keyword],
               ['Threads selected',   selected.size + ' of ' + threads.length],

@@ -5,6 +5,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import BrandTagInput from '@/components/analyze/BrandTagInput'
 
 const HERMES = '#E8632A'
 
@@ -42,6 +43,7 @@ export default function RegulationsWizard({ onBack }: Props) {
   var [selectedDocket, setSelectedDocket] = useState<Docket | null>(null)
   var [loadingCount, setLoadingCount] = useState(false)
   var [datasetName, setDatasetName] = useState('')
+  var [brandTag, setBrandTag] = useState('')
   var [creating, setCreating] = useState(false)
 
   async function handleSearch(page?: number) {
@@ -112,6 +114,7 @@ export default function RegulationsWizard({ onBack }: Props) {
           docket_title: selectedDocket.title,
           agency: selectedDocket.agency,
           comment_count: selectedDocket.commentCount > 0 ? selectedDocket.commentCount : 0,
+          brand_tag: brandTag.trim() || null,
         }),
       })
       var text = await res.text()
@@ -232,6 +235,8 @@ export default function RegulationsWizard({ onBack }: Props) {
               className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 outline-none focus:border-orange-400 transition-colors"
             />
           </div>
+
+          <BrandTagInput value={brandTag} onChange={setBrandTag} />
 
           <p className="text-xs text-gray-400">Comments will download automatically in the background after you create the dataset.</p>
 

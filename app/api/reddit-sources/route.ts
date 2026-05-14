@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
 
     const body = await req.json()
-    const { search_query, dataset_name, threads, max_comments_per_thread } = body
+    const { search_query, dataset_name, threads, max_comments_per_thread, brand_tag } = body
 
     if (!search_query?.trim()) return NextResponse.json({ error: 'search_query is required' }, { status: 400 })
     if (!threads?.length) return NextResponse.json({ error: 'At least one thread is required' }, { status: 400 })
@@ -51,6 +51,7 @@ export async function POST(req: Request) {
         visibility:  'private',
         status:      'active',
         row_count:   0,
+        brand_tag:   (brand_tag && brand_tag.trim()) || null,
       })
       .select('id')
       .single()
