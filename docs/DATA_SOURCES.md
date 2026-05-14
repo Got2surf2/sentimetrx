@@ -352,8 +352,10 @@ Cascades: deletes source → locations → linked dataset → its `dataset_rows_
 
 #### `POST /api/review-sources/search`
 **Body:** `{ keyword: string, source?: 'google'|'tripadvisor' }` (`source` defaults to `'google'`)
-**Response:** `{ keyword, source, count, locations: DfsLocation[] }`.
-Dispatches to `searchLocations(keyword)` (Google) or `searchTripadvisorLocations(keyword)` (Tripadvisor) → DataforSEO. Preview only — does **not** persist. Used by wizard step 1.
+**Response:** `{ keyword, source, count, locations: ScoredLocation[] }`.
+Dispatches to `searchLocations(keyword)` (Google) or `searchTripadvisorLocations(keyword)` (Tripadvisor) → DataforSEO, then runs the results through `scoreBrandMatch` (`lib/brandMatch.ts`) so the response is ranked strongest-match-first. Preview only — does **not** persist. Used by wizard step 1.
+
+**Brand-match scoring — `lib/brandMatch.ts`.** A brand search ("Chuy's") returns the real chain plus look-alikes ("Chuy's de Mexico" — a different business). `scoreBrandMatch(keyword, locations)` annotates each result with `matchScore` (0-100) and `matchStrength` (`'strong'`|`'weak'`), sorted strongest-first. Two signals, pure + deterministic (no API cost): (1) **token similarity** — Dice coefficient between the location name and the keyword, after dropping structural stopwords (`the`, `a`, `of`, …); (2) **chain consensus** — the largest cluster of identically-named locations *that is still relevant to the keyword* is treated as "the brand", so a loose keyword still ranks the real chain (e.g. "Chuy's Tex-Mex") above look-alikes. A relevance floor stops a big unrelated cluster from hijacking the ranking. The wizard pre-selects only `'strong'` matches (falling back to all if none are strong) and badges `'weak'` ones.
 
 #### `POST /api/review-sources/[sourceId]/sync`
 **Body:** `{}`

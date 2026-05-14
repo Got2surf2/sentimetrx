@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchLocations, searchTripadvisorLocations } from '@/lib/dataforseo'
+import { scoreBrandMatch } from '@/lib/brandMatch'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -38,9 +39,13 @@ export async function POST(req: Request) {
 
     const source: ReviewPlatform = SOURCES.includes(body.source) ? body.source : 'google'
 
-    const locations = source === 'tripadvisor'
+    const rawLocations = source === 'tripadvisor'
       ? await searchTripadvisorLocations(keyword.trim())
       : await searchLocations(keyword.trim())
+
+    // Rank by how strongly each result matches the brand the user typed —
+    // a "Chuy's" search returns the chain plus unrelated look-alikes.
+    const locations = scoreBrandMatch(keyword.trim(), rawLocations)
 
     return NextResponse.json({
       keyword: keyword.trim(),

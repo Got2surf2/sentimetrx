@@ -25,6 +25,8 @@ interface Location {
   zip: string | null
   rating: number | null
   review_count: number
+  matchScore?: number
+  matchStrength?: 'strong' | 'weak'
 }
 
 type WizardStep = 1 | 2 | 3
@@ -77,10 +79,13 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
       if (!res.ok) { setSearchError(data.error || 'Search failed'); return }
       if (!data.locations?.length) { setSearchError('No locations found for "' + keyword.trim() + '"'); return }
       setLocations(data.locations)
-      // Auto-select all
-      const all = new Set<string>()
-      data.locations.forEach(function(l: Location) { all.add(l.place_id) })
-      setSelected(all)
+      // Pre-select only confident matches. If nothing scored as a strong
+      // match, fall back to selecting all so the user isn't left stuck.
+      const strong = data.locations.filter(function(l: Location) { return l.matchStrength === 'strong' })
+      const toSelect: Location[] = strong.length > 0 ? strong : data.locations
+      const sel = new Set<string>()
+      toSelect.forEach(function(l: Location) { sel.add(l.place_id) })
+      setSelected(sel)
       setDatasetName(keyword.trim() + ' Reviews')
       setStep(2)
     } catch (err: any) {
@@ -298,7 +303,12 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
                               <td style={{ padding: '6px 14px', width: 28 }}>
                                 <input type="checkbox" checked readOnly style={{ accentColor: '#059669', width: 14, height: 14, cursor: 'pointer' }} />
                               </td>
-                              <td style={{ padding: '6px 6px', fontWeight: 600, color: '#111827' }}>{loc.name || 'Unknown'}</td>
+                              <td style={{ padding: '6px 6px', fontWeight: 600, color: '#111827' }}>
+                                {loc.name || 'Unknown'}
+                                {loc.matchStrength === 'weak' && (
+                                  <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: 6, whiteSpace: 'nowrap' }}>Weak match</span>
+                                )}
+                              </td>
                               <td style={{ padding: '6px 6px', color: '#6b7280', fontSize: 12 }}>{[loc.city, loc.state].filter(Boolean).join(', ') || loc.address || ''}</td>
                               <td style={{ padding: '6px 6px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12, width: 55 }}>{loc.rating != null ? loc.rating.toFixed(1) + ' \u2605' : ''}</td>
                               <td style={{ padding: '6px 14px', textAlign: 'right', color: '#6b7280', fontSize: 12, width: 70 }}>{loc.review_count.toLocaleString()}</td>
@@ -333,7 +343,12 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
                                 <td style={{ padding: '6px 14px', width: 28 }}>
                                   <input type="checkbox" checked={false} readOnly style={{ accentColor: HERMES, width: 14, height: 14, cursor: 'pointer' }} />
                                 </td>
-                                <td style={{ padding: '6px 6px', fontWeight: 600, color: '#111827' }}>{loc.name || 'Unknown'}</td>
+                                <td style={{ padding: '6px 6px', fontWeight: 600, color: '#111827' }}>
+                                {loc.name || 'Unknown'}
+                                {loc.matchStrength === 'weak' && (
+                                  <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: 6, whiteSpace: 'nowrap' }}>Weak match</span>
+                                )}
+                              </td>
                                 <td style={{ padding: '6px 6px', color: '#6b7280', fontSize: 12 }}>{[loc.city, loc.state].filter(Boolean).join(', ') || loc.address || ''}</td>
                                 <td style={{ padding: '6px 6px', textAlign: 'center', color: '#d97706', fontWeight: 700, fontSize: 12, width: 55 }}>{loc.rating != null ? loc.rating.toFixed(1) + ' \u2605' : ''}</td>
                                 <td style={{ padding: '6px 14px', textAlign: 'right', color: '#6b7280', fontSize: 12, width: 70 }}>{loc.review_count.toLocaleString()}</td>
