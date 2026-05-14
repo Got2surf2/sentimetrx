@@ -122,7 +122,7 @@ from results (self-heals on the next discovery run).
   uses `?theme=` so counts are entity-∩-theme).
 - **Ask Ana** — top 40 entities grouped by category appended to the system prompt.
 
-### Tables (migrations 060–064)
+### Tables (migrations 060–066)
 - `collections.kind` / `slug`, `datasets.brand_tag` / `brand_collection_id` — brand-
   collection foundation; `slugify()` + `find_or_create_brand_collection()` (060–061).
 - `set_brand_collection_id` / `sync_brand_collection_members` triggers (062).
@@ -130,7 +130,12 @@ from results (self-heals on the next discovery run).
   GRANTs only; reads go through the scope-gated API routes (063).
 - `count_entity_terms()` — live full-text count, `SECURITY DEFINER` + locked
   `search_path` (064).
-- **Pending (Phase 7, migration 065):** the v1 `entity_mentions` table,
+- `collections.rules` (reserved jsonb seam for brand-level rules) + `find_or_create_
+  brand_collection()` now seeds a `dataset_state` row, so every brand-collection
+  carries a merged schema and Charts/Stats work on it (066). The merged schema is
+  rebuilt lazily from current members in the compute route; `lib/brandRules.ts` is
+  the Phase 6 on-join seam.
+- **Pending (Phase 7, migration 067):** the v1 `entity_mentions` table,
   `top_entities_for_theme()`, and `datasets.entity_extraction_state` are dropped once
   this app code is verified — they are unused as of this rebuild.
 
