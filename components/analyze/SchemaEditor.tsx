@@ -4,7 +4,7 @@
 // Full-width row cards. Click to expand inline editor.
 // Hermes orange palette throughout.
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt } from '@/lib/analyzeTypes'
 import { suggestMapping } from '@/lib/scaleUtils'
 import ExtractEntitiesPanel from '@/components/analyze/ExtractEntitiesPanel'
@@ -534,6 +534,9 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
   const [typeFilter, setTypeFilter] = useState('all')
   const [saving,     setSaving]     = useState(false)
   const [saved,      setSaved]      = useState(false)
+  // Track saved state so the Save button only enables when something changed.
+  const savedSnapshotRef = useRef(JSON.stringify(schema))
+  const isDirty = JSON.stringify(schema) !== savedSnapshotRef.current
 
   function applyUpdate(next: SchemaConfig) { if (onChange) onChange(next) }
 
@@ -615,6 +618,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
       })
       onChange(schema)
       if (onSave) onSave()
+      savedSnapshotRef.current = JSON.stringify(schema)
       setSaved(true)
       // Auto-redirect to TextMine after first save on new datasets (Reddit/Substack)
       var params = new URLSearchParams(window.location.search)
@@ -686,8 +690,12 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
             </button>
           )}
           {!readOnly && onChange && (
-            <button onClick={handleSave} disabled={saving}
-              style={{ ...btnBase, fontSize: 12, padding: '5px 18px', borderRadius: 9, background: saving ? P.accentBg : HERMES, color: saving ? P.accent : 'white', borderColor: HERMES, opacity: saving ? 0.7 : 1 }}>
+            <button onClick={handleSave} disabled={saving || (!isDirty && !saved)}
+              style={{ ...btnBase, fontSize: 12, padding: '5px 18px', borderRadius: 9,
+                background: saved ? P.accentBg : (!isDirty || saving) ? P.bg : HERMES,
+                color: saved ? P.accent : (!isDirty || saving) ? P.textFaint : 'white',
+                borderColor: saved ? P.accent : !isDirty ? P.border : HERMES,
+                opacity: saving ? 0.7 : 1, cursor: (!isDirty && !saved) ? 'not-allowed' : 'pointer' }}>
               {saved ? '\u2713 Saved' : saving ? 'Saving...' : 'Save Schema'}
             </button>
           )}
