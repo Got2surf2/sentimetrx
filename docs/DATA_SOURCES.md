@@ -11,7 +11,7 @@
 > source has a different cadence and chunking model), external API call
 > signatures, env vars, per-source `dataset_rows_flat.data` schemas, and
 > cross-source operational notes. Source of truth is the code — current
-> as of 2026-05-06.
+> as of 2026-05-15.
 
 ---
 
@@ -148,20 +148,19 @@ Both store metadata on `datasets.description` (a JSONB column on the standard `d
 
 **Substack `datasets.description`:**
 ```json
-{ "type": "substack", "publication": "mattyglesias.substack.com", "publication_name": "Slow Boring" }
+{ "type": "substack", "publication": "https://mattyglesias.substack.com" }
 ```
 
 **Regulations `datasets.description`:**
 ```json
 {
-  "type": "regulations", "docket_id": "USDA-2024-0003",
+  "docket_id": "USDA-2024-0003",
   "docket_title": "Procedures for Quantification...", "agency": "USDA",
-  "comment_count": 372, "download_status": "downloading", "next_page": 5,
-  "use_search": false
+  "comment_count": 372, "download_status": "downloading", "next_page": 5
 }
 ```
 
-The download flow updates `next_page` and `download_status` between calls.
+The download flow updates `next_page` and `download_status` between calls. `use_search: true` is added mid-download only if the Regulations.gov API needed the `filter[searchTerm]` fallback (see § 9).
 
 ---
 
@@ -192,13 +191,10 @@ Reddit, Substack, Regulations are **all UI-initiated** — the user triggers dow
 
 ## 5. `dataset_rows_flat` Row Schemas (the JSONB `data` column)
 
-### Reddit row
+### Reddit row — produced by `lib/reddit.ts::commentToRow`
 ```json
 {
-  "comment_id":       "t1_xyz123",
-  "thread_id":        "t3_abc456",
-  "subreddit":        "AskReddit",
-  "thread_title":     "What's your favorite...",
+  "comment_id":       "xyz123",
   "author":           "user123",
   "body":             "Comment text…",
   "score":            42,
@@ -208,72 +204,76 @@ Reddit, Substack, Regulations are **all UI-initiated** — the user triggers dow
   "is_submitter":     false,
   "gilded":           0,
   "total_awards":     0,
-  "permalink":        "/r/AskReddit/comments/abc456/_/xyz123/",
-  "created_utc":      1715000000,
+  "post_date":        "2024-05-06",
+  "subreddit":        "AskReddit",
+  "thread_title":     "What's your favorite...",
+  "thread_id":        "abc456",
   "depth":            2,
-  "parent_id":        "t1_parent123"
+  "permalink":        "https://www.reddit.com/r/AskReddit/comments/abc456/_/xyz123/"
 }
 ```
+Note: `created_utc` is converted to a `post_date` YYYY-MM-DD string; the row carries no `parent_id` even though the `RedditComment` interface has one. The post selftext (when present) is inserted as a separate row with `depth: -1` and `comment_id: "post_<thread_id>"`.
 
-### Google Reviews row
+### Google Reviews row — produced by `lib/reviewSync.ts::reviewToRow`
 ```json
 {
-  "review_id":        "place_id_review_xyz",
-  "location_id":      "ChIJ…",
-  "location_name":    "Starbucks, New York, NY",
-  "place_id":         "ChIJ…",
-  "reviewer_name":    "Jane Doe",
-  "rating":           4,
-  "review_text":      "Great coffee…",
-  "timestamp":        "2026-05-01T12:34:56Z",
-  "owner_response":   "Thank you!",
-  "owner_timestamp":  "2026-05-02T10:00:00Z",
-  "review_url":       "https://maps.google.com/…",
-  "review_likes":     3,
-  "city":             "New York",
-  "state":            "NY"
+  "review_id":         "abc_xyz",
+  "author":            "Jane Doe",
+  "rating":            4,
+  "review_text":       "Great coffee…",
+  "review_date":       "2026-05-01",
+  "location":          "Starbucks 5th Ave - New York, NY",
+  "location_name":     "Starbucks 5th Ave",
+  "location_address":  "123 5th Ave, New York, NY 10003",
+  "location_city":     "New York",
+  "location_state":    "NY",
+  "place_id":          "ChIJ…",
+  "owner_response":    "Thank you!",
+  "review_likes":      3
 }
 ```
+Note: the DataForSEO `timestamp` (ISO) is truncated to a `review_date` YYYY-MM-DD string. Tripadvisor rows use the same schema (the upstream review id, profile name, rating, and timestamp parse into the same fields). The row carries no `location_id` (the `review_source_locations` row is not joined into the JSONB), no `owner_timestamp`, and no `review_url`.
 
-### Substack row
+### Substack row — produced by `lib/substack.ts::commentToRow`
 ```json
 {
-  "comment_id":      "c_12345",
-  "post_id":         67890,
-  "post_title":      "My thoughts on…",
-  "post_date":       "2026-04-15",
+  "comment_id":      "12345",
   "author":          "reader_name",
   "author_handle":   "@reader",
   "body":            "Great post…",
   "likes":           2,
   "is_author_reply": false,
-  "comment_date":    "2026-04-16T08:30:00Z",
+  "post_title":      "My thoughts on…",
+  "post_date":       "2026-04-15",
+  "comment_date":    "2026-04-16",
   "depth":           0,
-  "parent_id":       null,
+  "parent_id":       "",
   "children_count":  1,
-  "restacks":        0,
-  "edited":          false
+  "restacks":        0
 }
 ```
+Note: `comment_date` is truncated to YYYY-MM-DD (not an ISO timestamp). The `post_id` and `edited` fields on the `SubstackComment` interface are intentionally **not** persisted into the row. `parent_id` is the empty string when no parent (Substack uses an `ancestor_path` it derives from).
 
-### Regulations.gov row
+### Regulations.gov row — produced by `lib/regulations.ts::commentToRow`
 ```json
 {
-  "comment_id":     "USDA-2024-0003-12345",
-  "docket_id":      "USDA-2024-0003",
-  "document_id":    "USDA-2024-0003-0001",
-  "commenter_name": "John Smith",
-  "organization":   "Environmental Group",
-  "city":           "Denver",
-  "state":          "CO",
-  "country":        "US",
-  "posted_date":    "2024-03-15",
-  "comment_text":   "We oppose this rule because…",
-  "comment_type":   "Comment",
-  "agency":         "USDA",
-  "title":          "Re: Proposed Rule"
+  "comment_id":      "USDA-2024-0003-12345",
+  "comment_text":    "We oppose this rule because…",
+  "comment_type":    "Comment",
+  "commenter_name":  "John Smith",
+  "organization":    "Environmental Group",
+  "city":            "Denver",
+  "state":           "CO",
+  "country":         "US",
+  "posted_date":     "2024-03-15",
+  "agency":          "USDA",
+  "docket_id":       "USDA-2024-0003",
+  "document_id":     "USDA-2024-0003-0001",
+  "title":           "Re: Proposed Rule",
+  "tracking_number": "lcq-jw9k-abcd"
 }
 ```
+Note: `comment_type` is `"Attachment Cover Note"` when the body is short and matches the attachment-cover boilerplate detector (`isAttachmentOnly`), otherwise `"Comment"`. The row is dropped (returns `null` from `commentToRow`) when the cleaned body is empty.
 
 ---
 
@@ -302,7 +302,7 @@ Creates `datasets`, `reddit_sources`, and one `reddit_source_threads` row per su
 #### `POST /api/reddit-sources/[sourceId]/download-thread`
 **Body:** `{ thread_id, max_comments? }`
 **Response:** `{ comments, has_post, rows_inserted }`.
-Calls `fetchThreadComments(permalink, max_comments || 500)`. Includes the post selftext as row 0 (`depth=0`, `parent_id=null`). Inserts into `dataset_rows_flat` in 50-row chunks. Updates `dataset.row_count` and `reddit_source_threads.total_pulled`. Designed to be called once per thread from the UI.
+Calls `fetchThreadComments(permalink, max_comments || 500)`. When the post has selftext, inserts the post as the first row (`comment_id: "post_<thread_id>"`, `depth: -1`, `is_submitter: true`) before the comments. Inserts into `dataset_rows_flat` in 50-row chunks. Updates `dataset.row_count` and `reddit_source_threads.total_pulled`. Designed to be called once per thread from the UI; threads already fully downloaded (`total_pulled > 0`) are skipped.
 
 #### `POST /api/reddit-sources/[sourceId]/sync`
 **Body:** `{}`
@@ -334,7 +334,7 @@ The most complex source — operates async via DataforSEO's task-submit/task-get
 ### API routes
 
 #### `GET /api/review-sources`
-**Response:** `{ sources: Array<{...review_source fields, locations_count}> }` for the user's org.
+**Response:** `{ sources: Array<{...review_source fields, review_source_locations: [{count}]}> }` for the user's org. The locations array carries a single `{count}` row (Supabase relation-count syntax) the UI unwraps for the locations-per-source badge.
 
 #### `POST /api/review-sources`
 **Body:** `{ brand_name, locations: DfsLocation[], dataset_name?, source?: 'google'|'tripadvisor', sync_frequency_hours?, start_date?, end_date?, brand_tag? }` — `source` defaults to `'google'`; `brand_tag` defaults to `brand_name` when omitted (a reviews dataset always has a brand).
@@ -362,28 +362,47 @@ Dispatches to `searchLocations(keyword)` (Google) or `searchTripadvisorLocations
 **Response:** the `SyncResult` shape (see lib/reviewSync.ts below).
 Manual sync trigger for the same algorithm the cron runs. Useful for testing.
 
+#### `PATCH /api/review-sources/[sourceId]/locations`
+**Body:** `{ clear_errors: true }` → returns `{ ok: true }`.
+Clears `error_message` on every location of this source so they can be retried on the next sync. Used by the UI's "Retry failed locations" button.
+
+#### `GET /api/review-sources/[sourceId]/user-locations`
+**Response:** `{ assignments: Array<{id, user_id, location_id, review_source_locations: {name, city, state}, users: {email, full_name}}> }`.
+Role-gated (`owner` / `admin` / `platform_admin`); returns all user-to-location assignments for this source. Backs the per-user location-restriction feature so a non-admin user only sees rows / analytics for their assigned locations.
+
+#### `POST /api/review-sources/[sourceId]/user-locations`
+**Body:** `{ user_id, location_ids: string[] }`
+**Response:** `{ ok: true, assigned: number }` (201).
+Upserts `user_locations` rows. Role-gated; admin-org callers can assign across orgs, otherwise the target user must belong to the same org as the source.
+
+#### `DELETE /api/review-sources/[sourceId]/user-locations`
+**Body:** `{ user_id, location_ids?: string[] }`
+**Response:** `{ ok: true }`.
+Removes assignments. Omitting `location_ids` clears every assignment for the user on this source.
+
 ### `lib/reviewSync.ts` — the two-phase sync algorithm
 
 `syncReviewSource(sourceId, service)` does both phases within a single Vercel function invocation, time-bounded to ~45s (under the 60s timeout).
 
 **Phase 1: Check pending tasks (~first 15s)**
 1. Find locations whose `error_message` starts with `pending_task:` → these have a DataforSEO task in flight.
-2. For each (up to `BATCH_SIZE = 3`):
+2. For each (up to `PHASE1_BATCH_SIZE = 10` — deliberately larger than Phase 2 so backlogged queues drain faster; a 29-task backlog took 10 cron cycles at the old batch-of-3 cadence — see the 2026-05-11 Flemings incident note in `lib/reviewSync.ts`):
    - Parse the task ref: `pending_task:{taskId}|{getPath}`.
-   - Call `checkReviewTask(ref)` → DataforSEO `GET {getPath}/{taskId}`.
-   - If `status_code === 20000` → task ready. Filter reviews by date range + `last_review_id`. Convert to JSONB rows. Insert into `dataset_rows_flat` (500-row chunks). Update `last_review_id`, `last_review_date`, `total_pulled`, `last_synced_at`. Clear `error_message`.
+   - Call `checkReviewTask(ref)` → DataforSEO `GET {getPath}/{taskId}`. The parser is chosen by inspecting `getPath` (Google vs Tripadvisor), so old refs route correctly without a schema change.
+   - If `status_code === 20000` → task ready. Filter reviews by `last_review_id` / `last_review_date` (dedup), then by configured date range. Convert to JSONB rows. Insert into `dataset_rows_flat` (500-row chunks). Update `last_review_id`, `last_review_date`, `total_pulled`, `last_synced_at`. Clear `error_message` (or set it to `'API returned 0 reviews'` if the task came back empty).
    - If status is in `[40402, 40602, 140607]` → task pending. Leave the ref in place; next call retries.
-   - If error → store `error_message`. Don't retry.
+   - If non-transient error → store `error_message`. **Transient errors** (timeouts, network blips, DataForSEO `40601` / `40401` / `40602`) preserve the pending ref so the cron retries instead of permanently parking the location.
 
 **Phase 2: Submit new tasks (remaining time, max 45s total)**
 1. Find locations with `last_synced_at IS NULL` AND `error_message IS NULL` (unsynced, not in flight).
 2. For each (up to `BATCH_SIZE = 3`):
-   - Compute initial `depth` via `estimateDepth(review_count, created_at, start_date, end_date)`. For incremental syncs (after first), use `depth = 200`.
-   - **Cap `depth` to the org's remaining monthly review-download budget** (see *Download limits & accounting* below). If the budget is already exhausted, stop submitting tasks this run.
+   - Compute initial `depth` via `estimateDepth(review_count, created_at, start_date, end_date)` — clamped to `[200, 4490]`. For incremental syncs (after first), use `depth = 200`.
+   - **Cap `depth` to the org's remaining monthly review-download budget** (see *Download limits & accounting* below). If the budget is already exhausted, set `limit_reached: true` on the result and stop submitting tasks this run.
    - Call `submitReviewTask` (Google) or `submitTripadvisorReviewTask` (Tripadvisor), dispatched on `review_sources.source` → DataforSEO `POST .../task_post`. Returns `{ taskId, getPath }`.
-   - Store `error_message = "pending_task:{taskId}|{getPath}"` (the column is overloaded for pending refs).
+   - Store `error_message = "pending_task:{taskId}|{getPath}"` (the column is overloaded for pending refs). Decrement local `remainingBudget`.
+   - Transient submit failures skip writing `error_message` so the cron picks the location up next cycle.
 
-(Phase 3 — incremental refresh of already-synced locations — submits `depth = 200` newest-first tasks under the same budget cap.)
+**Phase 3: Incremental refresh of already-synced locations.** Selects up to `BATCH_SIZE = 3` locations whose `last_synced_at < now - REFRESH_STALE_MS` (1 hour) with no current `error_message`, ordered by oldest-synced-first. Submits `depth = 200` `'newest'`-first tasks under the same monthly-budget cap; Phase 1 picks the results up on a later call and `filterNewReviews` dedupes against `last_review_id` / `last_review_date`. The 1-hour staleness floor keeps a single sync session from re-refreshing the same location twice.
 
 Phase 1's `checkReviewTask` is platform-agnostic — it picks the right review parser by inspecting `ref.getPath` (`…/tripadvisor/…` → Tripadvisor parser), so old pending task refs keep working without a schema change.
 
@@ -405,7 +424,7 @@ Endpoint base: `https://api.dataforseo.com/v3`. Auth: HTTP Basic, header `Author
 | Function | Endpoint | Returns |
 |---|---|---|
 | `searchLocations(keyword)` | `POST /serp/google/maps/live/advanced` body `[{keyword, location_code: 2840, language_code: 'en', device: 'desktop', os: 'windows', depth: 700}]` | `DfsLocation[]` (place_id, title, address, address_info, rating, votes, phone, lat/lng) |
-| `submitReviewTask(placeId, depth?, sortBy?)` | `POST /reviews/google/task_post` (or `/business_data/google/reviews/task_post` fallback) body `[{place_id, location_code: 2840, language_code: 'en', depth: 200..4490, sort_by: 'newest'\|'relevant'}]` | `{ taskId, getPath }` |
+| `submitReviewTask(placeId, depth?, sortBy?)` | Two attempts: (1) `POST /reviews/google/task_post` body `[{keyword: 'place_id:{placeId}', location_code: 2840, language_code: 'en', depth: ≤4490, sort_by: 'newest'\|'relevant'}]`, (2) fallback `POST /business_data/google/reviews/task_post` body `[{place_id, depth: ≤4490, sort_by, language_code: 'en'}]` (note: no `location_code` on the fallback) | `{ taskId, getPath }` |
 | `searchTripadvisorLocations(keyword)` | `POST /business_data/tripadvisor/search/task_post` body `[{keyword, location_name: 'United States', depth: 210}]`, then polls `task_get` (~25s) | `DfsLocation[]` — `place_id` holds the Tripadvisor `url_path`; address/city/state are NULL |
 | `submitTripadvisorReviewTask(urlPath, depth?, sortBy?)` | `POST /business_data/tripadvisor/reviews/task_post` body `[{url_path, depth: ≤4490, sort_by: 'most_recent'\|'detailed_reviews', language_code: 'en'}]` — `'newest'\|'relevant'` is translated to Tripadvisor's sort terms | `{ taskId, getPath }` |
 | `checkReviewTask(ref)` | `GET {ref.getPath}/{ref.taskId}` — parser selected by `getPath` (Google vs Tripadvisor) | `{ status: 'ready'\|'pending'\|'error', reviews?: DfsReview[], message? }` |
@@ -430,7 +449,7 @@ DataforSEO is async — submitting a task returns immediately with an ID, the ac
 #### `POST /api/substack-sources`
 **Body:** `{ publication_url, dataset_name?, publication_name?, brand_tag? }`
 **Response:** `{ dataset_id, status: 'created' }` (201).
-Creates dataset (`source: 'substack'`) and dataset_state with the Substack schema. Does **not** fetch posts.
+Creates dataset (`source: 'substack'`, description `{ type: 'substack', publication: publication_url }`) and dataset_state pre-populated with the Substack schema. `publication_name` is only used to build the default dataset name (`"Substack: {publication_name || publication_url}"`); it's not persisted. Does **not** fetch posts.
 
 #### `POST /api/substack-sources/fetch-posts`
 **Body:** `{ url, offset? }`
@@ -475,7 +494,7 @@ If `page === 1` and `query` matches the docket-ID regex (`[A-Z]{2,5}-[0-9]{4}-\d
 #### `POST /api/regulations-sources`
 **Body:** `{ dataset_name, docket_id, docket_title?, agency?, comment_count?, brand_tag? }`
 **Response:** `{ dataset_id }`
-Creates dataset (`source: 'regulations'`) with `description: { type, docket_id, docket_title, agency, comment_count, download_status: 'downloading', next_page: 1 }`. Creates dataset_state with the Regulations schema.
+Creates dataset (`source: 'regulations'`) with `description: { docket_id, docket_title, agency, comment_count, download_status: 'downloading', next_page: 1 }`. Creates dataset_state with the Regulations schema. (No `type` field on the description JSON; the dataset row's `source` column is the discriminator.)
 
 #### `POST /api/regulations-sources/download-comments`
 **Body:** `{ dataset_id, docket_id, page: number, finalize?: boolean, use_search?: boolean }`
@@ -496,7 +515,7 @@ Endpoint: `https://api.regulations.gov/v4`. Auth: header `X-Api-Key: {REGULATION
 | Function | Endpoint | Returns |
 |---|---|---|
 | `searchDockets(query, page?)` | `GET /dockets?filter[searchTerm]={q}&page[size]=25&page[number]={p}&sort=-lastModifiedDate` | `{ dockets, totalElements }` |
-| `listComments(docketId, page?, pageSize?, useSearch?)` | `GET /comments?filter[docketId]={id}&page[size]=10&page[number]={p}&sort=-postedDate` | `{ data: [{id, type, attributes}], meta: {totalElements, totalPages} }` |
+| `listComments(docketId, page?, pageSize?, useSearch?)` | `GET /comments?filter[docketId]={id}&page[size]={pageSize≥5}&page[number]={p}&sort=-postedDate` — auto-falls back to `filter[searchTerm]={id}` (and re-runs with `useSearch: true`) when `filter[docketId]` returns 0 results | `{ data: RegCommentListItem[], totalElements: number, lastPage: number, usedSearch?: true }` |
 | `getCommentDetail(id)` | `GET /comments/{id}` | full comment with `attributes.comment` body |
 | `fetchCommentsBatch(ids)` | loops `getCommentDetail` | `RegCommentDetail[]` |
 | `commentToRow(detail)` | n/a | JSONB row per § 5 |
