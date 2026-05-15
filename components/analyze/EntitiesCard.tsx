@@ -63,8 +63,14 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
   const pillsRef = useRef<HTMLDivElement>(null)
 
   const aboveThreshold = entities.filter(function(e) { return e.mentions >= MIN_MENTIONS })
-  const lowCount       = entities.length - aboveThreshold.length
-  const displayed      = showAll ? entities : aboveThreshold
+  // When no entity clears the noise-reduction threshold (small datasets where
+  // every mention count is single-digit), fall back to showing all entities —
+  // otherwise the card renders the "35 found" badge but zero pills, with no
+  // path to reveal them (the "Include low-frequency" toggle is gated behind
+  // the "More" expand, which itself only shows when pills overflow).
+  const noneAboveThreshold = aboveThreshold.length === 0
+  const lowCount       = noneAboveThreshold ? 0 : entities.length - aboveThreshold.length
+  const displayed      = showAll || noneAboveThreshold ? entities : aboveThreshold
 
   // Detect whether the 4-row cap is actually hiding anything (so we only show
   // "More" when there's something to expand to). Must be declared before any
