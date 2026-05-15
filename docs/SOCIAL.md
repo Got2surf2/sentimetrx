@@ -9,7 +9,7 @@
 > full DDL, every API contract, verbatim AI prompts, every Graph API call, the
 > tagging pipeline's regex/templates, UI state shape, env vars, and error
 > handling patterns. Source of truth is the code — this spec is current as of
-> 2026-05-06 and should be refreshed after any substantive changes.
+> 2026-05-15 and should be refreshed after any substantive changes.
 
 ---
 
@@ -20,7 +20,7 @@ Social monitoring lets an org connect their Facebook Pages and Instagram Busines
 1. **Webhook** (primary) — Meta posts events to `/api/social/webhook` as comments are created. Sub-second latency.
 2. **Cron poll** (backstop) — `/api/cron/social-sync` runs every 15 minutes to catch missed webhook deliveries and backfill history.
 
-Each ingested comment passes through `tagComment()` (`lib/socialTagging.ts`), which produces sentiment, content-guard flags (profanity, threats, slurs, spam), topic tags, intent tags, and emotion. `routeResponse()` decides whether to silently moderate, queue for human review, send a templated reply, or call AI for a custom response.
+Each ingested comment is scored by the content guard (`auditContent()` + `scoreSentimentFull()`) for sentiment + content-guard flags (profanity, threats, slurs, spam). The **cron path** also runs the full `tagComment()` pipeline (`lib/socialTagging.ts`), which adds topic tags, intent tags, emotion, and an OpenAI moderation overlay. `routeResponse()` decides whether to silently moderate, queue for human review, send a templated reply, or call AI for a custom response. (The webhook path skips the `tagComment` overlay — comments arrive faster, but get the lighter content-guard treatment until the next cron sweep covers them.)
 
 Operators triage from `/app/social` — a single-page console with filtered feed, per-comment actions, bulk actions, alert rules, and DM templates. Comments can be exported as a TextMine dataset (`/api/social/export-dataset`) for the same analytics treatment as any other source.
 
@@ -168,39 +168,39 @@ Cron endpoints don't have a user context — they validate `Authorization: Beare
 | `META_APP_SECRET` | yes | — | OAuth token exchange, token refresh |
 | `META_REDIRECT_URI` | optional | `${NEXT_PUBLIC_SITE_URL}/api/social/callback` | OAuth callback target |
 | `META_WEBHOOK_VERIFY_TOKEN` | yes | — | Webhook GET handshake |
-| `NEXT_PUBLIC_SITE_URL` | optional | hardcoded fallback `https://www.sentimetrx.ai` | Used by `META_REDIRECT_URI` default |
-| `CRON_SECRET` | optional | none (auth disabled if unset — **set this in production**) | `/api/cron/social-sync`, `/api/cron/social-token-refresh` |
-| `OPENAI_API_KEY` | yes | — | OpenAI moderation API in cron sync |
+| `NEXT_PUBLIC_SITE_URL` | required by callback; fallback in connect | `https://www.sentimetrx.ai` (only used by `connect/route.ts`) | OAuth start + callback. `callback/route.ts` returns 503 if unset; `connect/route.ts` falls back to the hardcoded host. |
+| `CRON_SECRET` | yes (≥16 chars) | — | `lib/cronAuth.ts` is fail-closed — missing or short secret → 503 on every cron call. |
+| `OPENAI_API_KEY` | yes | — | Used by `lib/moderation.ts` (`moderateTexts`) inside the cron sync. |
 
 ---
 
 ## 4. OAuth Flow — `/api/social/connect` & `/api/social/callback`
 
-### `POST /api/social/connect`
+### `GET /api/social/connect`
 **Auth:** logged-in user.
 **Request:** none.
-**Response:** `{ url: string }` — Facebook OAuth URL for the client to navigate to.
+**Response:** `302` redirect to the Facebook OAuth URL. (No JSON — the browser follows the redirect directly.)
 
 Builds the OAuth URL against `https://www.facebook.com/v19.0/dialog/oauth`:
 - `client_id` = `META_APP_ID`
-- `redirect_uri` = `META_REDIRECT_URI` or `${NEXT_PUBLIC_SITE_URL}/api/social/callback`
-- `state` = base64(JSON({userId})) — used to identify the user on callback
+- `redirect_uri` = `META_REDIRECT_URI` or `${NEXT_PUBLIC_SITE_URL || 'https://www.sentimetrx.ai'}/api/social/callback`
+- `state` = `signOauthState({ userId })` — **HMAC-signed** state from `lib/oauthState`. Plain base64 would let an attacker replay or forge `userId` on the callback and attach their own pages/tokens to a victim's org.
 - `scope` = `pages_show_list,pages_read_engagement,pages_manage_posts`
 
 ### `GET /api/social/callback?code=…&state=…`
-**Auth:** state param (no session required).
-**Response:** redirect to `/social?connected=true` on success or `/social?error=…` on failure.
+**Auth:** signed state param (no session required).
+**Response:** redirect to `/social?connected=true` on success, or `/social?error={oauth_denied|invalid_state|no_org|no_pages|oauth_failed}` on failure. Returns `503 { error: "Site URL not configured" }` if `NEXT_PUBLIC_SITE_URL` is unset (the redirect host is pinned to that env var so a forged `Host`/`X-Forwarded-Host` can't redirect victims off-site).
 
-1. **Decode `state`** to recover `userId`. Look up `org_id` from `users`.
+1. **`verifyOauthState(state)`** — rejects forged or expired states; recover `userId`. Look up `org_id` from `users`.
 2. **Exchange code → short-lived token:**
-   `GET https://graph.facebook.com/v19.0/oauth/access_token?client_id=…&client_secret=…&redirect_uri=…&code=…`
+   `POST https://graph.facebook.com/v19.0/oauth/access_token` with `application/x-www-form-urlencoded` body `client_id, client_secret, redirect_uri, code`. (POST keeps `META_APP_SECRET` out of upstream proxy/CDN/NEL logs that would capture a query string.)
 3. **Exchange short-lived → long-lived (60-day):**
-   `GET https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=…&client_secret=…&fb_exchange_token=…`
+   `POST https://graph.facebook.com/v19.0/oauth/access_token` with body `grant_type=fb_exchange_token, client_id, client_secret, fb_exchange_token`.
 4. **List user's Pages:** `GET /me/accounts?access_token=…`
 5. For each page:
    - **Try fetch IG account:** `GET /{pageId}?fields=instagram_business_account{id,username}&access_token=…`
-   - **Wipe stale connections** for this user: `DELETE FROM social_connections WHERE connected_by = userId`
-   - **Insert one row** per Page, plus one row per linked Instagram Business account if present
+   - **Replace this page's connection only** (narrow delete): `DELETE FROM social_connections WHERE org_id=… AND platform='facebook' AND account_id={page.id}`, then insert. Same per-account replace for the linked Instagram Business account.
+   - **Insert one row** per Page, plus one row per linked Instagram Business account if present.
 6. Redirect to `/social?connected=true`
 
 ### `GET /api/social/connections`
@@ -208,7 +208,7 @@ Builds the OAuth URL against `https://www.facebook.com/v19.0/dialog/oauth`:
 
 ### `DELETE /api/social/connections/[id]`
 **Auth:** logged-in user, must own the connection's org.
-**Response:** `{ success: true }`. Soft-deletes the row.
+**Response:** `{ ok: true }`. **Hard-deletes** the `social_connections` row (cascade removes its `social_comments` via the `ON DELETE CASCADE` FK).
 
 ---
 
@@ -219,7 +219,7 @@ Builds the OAuth URL against `https://www.facebook.com/v19.0/dialog/oauth`:
 **Response:** plain text `hub.challenge` value if `hub.verify_token === META_WEBHOOK_VERIFY_TOKEN`, else 403.
 
 ### `POST` — Comment event payload
-**Auth:** none (Meta is a trusted sender). Optionally verify `X-Hub-Signature-256` against `META_APP_SECRET` (not currently implemented).
+**Auth:** **HMAC-SHA256 verification** of `x-hub-signature-256` against `META_APP_SECRET` (`verifyMetaSignature` in `webhook/route.ts`, constant-time compare via `timingSafeEqual`). Without this an attacker could POST forged comment events that get inserted into `social_comments` and trigger Graph API calls with the victim org's stored access tokens. Returns `503` if `META_APP_SECRET` is unset, `401` on signature mismatch, `400` on invalid JSON.
 
 **Payload shape (illustrative):**
 ```json
@@ -236,16 +236,17 @@ Builds the OAuth URL against `https://www.facebook.com/v19.0/dialog/oauth`:
 }
 ```
 
-**Response:** always 200 (Meta retries on non-200). Errors logged to console; never thrown.
+**Response:** `200 { received: true }` on the success path (Meta retries on non-200). Errors during per-comment processing are logged to console and skipped — they don't fail the whole batch.
 
-**Per change:**
-1. **Fetch full comment** via Graph API:
+**Per change** (only `entry.changes[].field === 'feed'` with `value.item === 'comment'` for FB; `field === 'comments'` for IG):
+1. **Look up connection** by `account_id = entry.id`. Skip if no matching connection.
+2. **Fetch full comment** via Graph API using the connection's stored token:
    - Facebook: `GET /{comment_id}?fields=id,message,from,created_time,is_hidden,parent&access_token=…`
    - Instagram: `GET /{comment_id}?fields=id,text,username,timestamp&access_token=…`
-2. **Dedupe** — skip if `social_comments.comment_id` already exists.
-3. **Tag** — call `auditContent()` + `scoreSentimentFull()` (see § 7).
-4. **Insert** into `social_comments`.
-5. **No auto-actions** in webhook path. The cron handles auto-hide/auto-reply for consistency.
+3. **Dedupe** — skip if `social_comments.comment_id` already exists.
+4. **Lightweight tag only** — `auditContent()` + `scoreSentimentFull()` (see § 7). The webhook path **does not** run the full `tagComment()` pipeline (no topic/intent/emotion overlays, no OpenAI moderation, no auto-hide/auto-delete). Those run on the next cron sweep.
+5. **Insert** into `social_comments`.
+6. **No auto-actions** in webhook path. The cron handles auto-hide/auto-reply for consistency.
 
 ---
 
@@ -253,7 +254,7 @@ Builds the OAuth URL against `https://www.facebook.com/v19.0/dialog/oauth`:
 
 **Schedule (`vercel.json`):** `*/15 * * * *` (every 15 min).
 **Max duration:** 60s (`maxDuration = 60`).
-**Auth:** `Authorization: Bearer ${CRON_SECRET}`.
+**Auth:** `Authorization: Bearer ${CRON_SECRET}` enforced by `lib/cronAuth.ts` — fail-closed (503 if `CRON_SECRET` is missing or <16 chars; 401 on mismatch; constant-time compare).
 
 **Per active connection** (`token_expires_at > now`):
 
@@ -276,26 +277,31 @@ Builds the OAuth URL against `https://www.facebook.com/v19.0/dialog/oauth`:
 5. **Tag** — `tagComment(text, postText, moderationScore, sensitivity)` per comment.
 6. **Insert** all new rows.
 7. **Auto-actions** (per `social_auto_config`):
-   - If `auto_hide_enabled && severity ≥ auto_hide_severity` → `POST /{comment_id}` with `{ is_hidden: true }`. Log `auto_hide`. Skip for `demo_*`/`test_comment_*` IDs.
-   - If `auto_delete_enabled && severity === 'severe'` → `DELETE /{comment_id}`. Log `delete`.
-   - If `auto_reply_enabled`:
-     - Mode `queue` → no action.
+   - **Auto-hide** — if `auto_hide_enabled` AND `tagComment(...).isHidden` (the tagging pipeline already decided based on `moderation_sensitivity` + content guard severity + AI moderation thresholds; there is **no separate `auto_hide_severity` check** in the cron) → `POST /{comment_id}` with `{ is_hidden: true }`. Skipped for `demo_*` IDs.
+   - **Auto-delete** — `auto_delete_enabled` is **NOT honored by the cron** (the field exists in `social_auto_config` defaults but the cron has no delete branch). Severe content goes through auto-hide instead. Open work item: either implement or remove the field.
+   - **Auto-reply** — if `auto_reply_enabled`, iterate non-reply comments:
+     - Mode `queue` → skip (human review only).
      - Mode `positive_neutral` → skip negatives.
-     - Mode `all` → `routeResponse()` decides template vs AI vs silent. Post via `POST /{comment_id}/replies` with `{ message }`. Log `reply` or `ai_reply`.
+     - All non-queue modes call `routeResponse(tagged, author_name, post_text.slice(0,50))`:
+       - `silent` / `review` → skip.
+       - `template` → post the template response.
+       - `ai` → only fires when mode is `all`; calls `callAI({ tier:'fast', maxTokens:200, timeoutMs:15000 })` with the same brand-guard system prompt as the user-triggered ai-reply route.
+     - On post: `POST /{comment_id}/replies` with `{ message }`, then update `our_reply` + `replied_at` locally.
+   - **No `social_moderation_log` writes from the cron** — only the user-action routes log there. Auto-actions are observable via `our_reply` (auto-reply) and `is_hidden` (auto-hide) on `social_comments`, plus `console.log` lines in the function output.
 
-**Returns:** `{ synced: number, connections: number }`.
+**Returns:** `{ ok: true, synced: number, connections: number }`.
 
 ### Token refresh — `/api/cron/social-token-refresh`
 
 **Schedule:** `0 6 * * *` (daily 06:00 UTC).
 **Max duration:** 30s.
-**Auth:** same `CRON_SECRET`.
+**Auth:** same fail-closed `CRON_SECRET` via `lib/cronAuth.ts`.
 
-1. Find connections where `token_expires_at` is within 7 days of now and not yet expired.
-2. For each: `GET /v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=…&client_secret=…&fb_exchange_token={current_token}`
-3. Update `access_token` and `token_expires_at`.
+1. Find connections where `token_expires_at < now() + 7 days` AND `token_expires_at > now()`.
+2. For each: `POST /v19.0/oauth/access_token` with `application/x-www-form-urlencoded` body `grant_type=fb_exchange_token, client_id, client_secret, fb_exchange_token={current_token}`. (POST keeps `META_APP_SECRET` out of upstream proxy/CDN/NEL logs.)
+3. Update `access_token`, `token_expires_at`, and `updated_at`.
 
-**Returns:** `{ refreshed, failed }`.
+**Returns:** `{ ok: true, refreshed, failed }`.
 
 ---
 
@@ -378,16 +384,19 @@ Flagged when: no topic match, no campaign-related word (`vote|elect|campaign|may
 ### Competitor mentions
 Flagged on case-insensitive match of: `Qualtrics`, `SurveyMonkey`, `Typeform`, `Medallia`.
 
-### `routeResponse(tagged, authorName?, postTopic?) → ResponseRoute`
+### `routeResponse(tagged, authorName?, postTopic?) → RouteResult`
 
-Returns one of `'silent' | 'review' | 'template' | 'ai'`:
+Returns `{ route: 'silent' | 'review' | 'template' | 'ai', response: string | null, reason: string }`:
 
-- `isHidden || isDeleted` → `silent`
-- Has `review` flag → `review`
-- `off_topic` flag → `template` (pick from `TEMPLATES.off_topic`)
-- `sentiment === 'positive'` AND has intent → `template` (`positive_intent_donate` or `positive_intent_volunteer`)
-- `sentiment === 'positive'` AND no topic → `template` (`positive`)
-- Otherwise → `ai`
+- `isDeleted` → `silent` (reason `'Auto-deleted'`)
+- `isHidden` → `silent` (reason `'Auto-hidden'`)
+- Has `review` flag → `review` (response `null`)
+- `off_topic` flag → `template`, response = `inject(pick(TEMPLATES.off_topic), authorName, postTopic)`
+- `sentiment === 'positive'` AND has intent → look up `TEMPLATES['positive_intent_' + intents[0]]`. Only `donate` and `volunteer` have pools; `event` falls through to `ai`.
+- `sentiment === 'positive'` AND no topic match → `template`, response = `inject(pick(TEMPLATES.positive), authorName)`
+- Otherwise → `ai` (response `null`; caller is expected to call the LLM)
+
+`inject()` substitutes `[name]` and `[topic]` placeholders, gracefully removing them when no value is provided.
 
 ### Template pool
 
@@ -425,25 +434,34 @@ const TEMPLATES = {
 
 ## 8. AI Prompts (Verbatim)
 
-### Single-comment AI reply — `app/api/social/comments/[id]/ai-reply/route.ts:38-49`
+### Single-comment AI reply — `app/api/social/comments/[id]/ai-reply/route.ts` (system prompt assembled at lines 41–49)
 
-System prompt (`tier: 'fast'`, `maxTokens: 200`, `timeoutMs: 15000`):
+System prompt (`tier: 'fast'`, `maxTokens: 200`, `timeoutMs: 15000`) — built by joining these lines with `\n`. The `ORIGINAL POST` block is **only included when `comment.post_text` exists**:
 
 ```
 You are a social media manager replying to a comment on {platform}.
 Keep replies concise (1-3 sentences), friendly, and on-brand.
 Never be defensive or argumentative. Be helpful and warm.
 CRITICAL: NEVER mention "Datanautix", "sentimetrx", "Sentimetrx", "Sarina", "Ana", or any internal platform/tool names. You are replying on behalf of the page owner, not as a software company. Do not reference any AI tools, moderation systems, or analytics platforms.
-
+[
 ORIGINAL POST:
 {comment.post_text}
+]
 ```
 
 User prompt: `'Reply to this comment: "' + comment.text + '"'`
 
-### Cron auto-reply — `app/api/cron/social-sync/route.ts:257-261`
+### Cron auto-reply — `app/api/cron/social-sync/route.ts` (line ~259)
 
-Same system prompt as single-comment AI reply (slight rewording but identical guardrails).
+Inlined system prompt (no `ORIGINAL POST` block; the cron does not pass post context to the LLM):
+
+```
+You are a social media manager replying to a comment on {platform}. Keep replies concise (1-3 sentences), friendly, and on-brand. Never be defensive or argumentative.
+
+CRITICAL: NEVER mention "Datanautix", "sentimetrx", "Sentimetrx", "Sarina", "Ana", or any internal platform/tool names. You are replying on behalf of the page owner, not as a software company. Do not reference any AI tools, moderation systems, or analytics platforms.
+```
+
+User prompt: `'Reply to this comment: "' + c.text + '"'`
 
 ### Demo generator — `app/api/social/demo/route.ts:36-54`
 
@@ -483,10 +501,10 @@ All against `https://graph.facebook.com/v19.0/`.
 
 | Operation | Method | Endpoint | Fields / Body | Caller |
 |---|---|---|---|---|
-| OAuth: code → token | GET | `/oauth/access_token?client_id&client_secret&redirect_uri&code` | — | `callback/route.ts:11` |
-| OAuth: short → long | GET | `/oauth/access_token?grant_type=fb_exchange_token&client_id&client_secret&fb_exchange_token` | — | `callback/route.ts:22`, `cron/social-token-refresh` |
-| List Pages | GET | `/me/accounts?access_token` | implicit `id, name, access_token` | `callback/route.ts:28` |
-| Get linked IG account | GET | `/{pageId}` | `fields=instagram_business_account{id,username}` | `callback/route.ts:35` |
+| OAuth: code → token | POST | `/oauth/access_token` | form body: `client_id, client_secret, redirect_uri, code` | `callback/route.ts` (`exchangeCodeForToken`) |
+| OAuth: short → long | POST | `/oauth/access_token` | form body: `grant_type=fb_exchange_token, client_id, client_secret, fb_exchange_token` | `callback/route.ts` (`getLongLivedToken`), `cron/social-token-refresh` |
+| List Pages | GET | `/me/accounts?access_token` | implicit `id, name, access_token` | `callback/route.ts` (`getPageTokens`) |
+| Get linked IG account | GET | `/{pageId}` | `fields=instagram_business_account{id,username}` | `callback/route.ts` (`getInstagramAccount`) |
 | List FB posts | GET | `/{pageId}/posts` | `fields=id,message,created_time&limit=25&since={unix}` | `cron/social-sync:19` |
 | List FB comments | GET | `/{post_id}/comments` | `fields=id,message,from,created_time,is_hidden,parent{id}&limit=100` | `cron/social-sync:32` |
 | List IG media | GET | `/{igAccountId}/media` | `fields=id,caption,timestamp&limit=25` | `cron/social-sync:58` |
@@ -510,51 +528,51 @@ All routes require an authenticated user, enforce `org_id`, use the service role
 
 **Response:**
 ```json
-{ "comments": SocialComment[], "total": number, "page": number, "pages": number }
+{ "comments": SocialComment[], "total": number, "page": number, "limit": number, "pages": number }
 ```
 
 Order: `platform_created_at DESC`.
 
 ### `POST /api/social/comments/[id]/hide`
 
-**Body:** `{ hide: boolean }` (defaults to true).
-**Action:** `POST /{comment_id}` Graph call with `{ is_hidden: hide }`. Update `is_hidden` locally. Log `hide`/`unhide`.
-**Response:** `{ success, is_hidden }`.
+**Body:** ignored — the route always **toggles** `is_hidden`. (UI state is the source of truth; callers who want explicit set-state must call `/handle`-style routes for hide too. Open work item: accept an explicit `{ hide: boolean }` body.)
+**Action:** Reads current `is_hidden`, computes `newHidden = !current`, calls `POST /{comment_id}` with `{ is_hidden: newHidden }` (skipped for `demo_*` / `test_comment_*` IDs). Update local `is_hidden`. Insert `social_moderation_log` with action `hide` or `unhide`.
+**Response:** `{ ok: true, is_hidden: boolean }`.
 
 ### `POST /api/social/comments/[id]/reply`
 
 **Body:** `{ message: string }`.
 **Action:** `POST /{comment_id}/replies` with `{ message }`. Update `our_reply, replied_at`. Log `reply`.
-**Response:** `{ success, reply_id }`.
+**Response:** `{ ok: true }`. (No `reply_id` is returned — the platform reply ID isn't stored.)
 
 ### `POST /api/social/comments/[id]/ai-reply`
 
-**Body:** `{ autoPost?: boolean }` (default `true`).
-**Action:** Generate reply via `callAI({tier:'fast'})`. If `autoPost`, post via Graph and update local state. Log `ai_reply`.
-**Response:** `{ reply: string, posted: boolean, error?: string }`.
+**Body:** `{ autoPost?: boolean }` (default `true` — `body.autoPost !== false`).
+**Action:** Generate reply via `callAI({tier:'fast'})` with the system prompt in § 8. Always logs `ai_reply` to `social_moderation_log`. If `autoPost`, post via Graph and update `our_reply`/`replied_at`.
+**Response:** `{ reply: string, posted: boolean }`. If the Graph post fails, returns `{ reply, posted: false, error: 'Failed to post to platform' }` so the UI can show the generated text and let the user post manually.
 
 ### `POST /api/social/comments/[id]/delete`
 
-**Action:** `DELETE /{comment_id}` Graph call. Set `is_deleted=true`. Log `delete`.
-**Response:** `{ success: true }`.
+**Action:** `DELETE /{comment_id}` Graph call (skipped for demo IDs). Set `is_deleted=true` locally. Log `delete`.
+**Response:** `{ ok: true }`.
 
 ### `POST /api/social/comments/[id]/handle`
 
 **Body:** `{ handled?: boolean }` — if omitted, toggles current state.
 **Action:** Update `is_handled`. **No moderation log entry.**
-**Response:** `{ is_handled: boolean }`.
+**Response:** `{ ok: true, is_handled: boolean }`.
 
 ### `POST /api/social/comments/[id]/dm`
 
 **Body:** `{ message: string, intent?: string, template?: string }`.
-**Action:** `POST /me/messages` Graph call with `{ recipient: {id: comment.author_id}, message: {text} }`. Insert row into `social_dm_log`. Log `dm`.
-**Response:** `{ success: true }`.
+**Action:** `POST /me/messages` Graph call with `{ recipient: {id: comment.author_id}, message: {text} }`. Insert row into `social_dm_log`. Log `dm` to `social_moderation_log`.
+**Response:** `{ ok: true }`. Returns `{ error: 'No author ID available for DM' }` (400) if the comment has no `author_id`.
 
 ### `POST /api/social/comments/bulk`
 
 **Body:** `{ action: 'hide' | 'delete', commentIds: string[] }`.
-**Action:** Iterates per-comment Graph calls. Logs each.
-**Response:** `{ succeeded: number, failed: number, errors: string[] }`.
+**Action:** Iterates per-comment Graph calls (sequential to stay within Meta rate budget). Logs each to `social_moderation_log`. Per-comment failures increment `failed` and continue.
+**Response:** `{ ok: true, succeeded: number, failed: number }`. (No per-error message array; check function logs.)
 
 ---
 
@@ -577,11 +595,19 @@ Stored on `organizations.features.social_auto_config`.
 
 ### `GET / POST / PATCH / DELETE /api/social/alerts`
 
-CRUD for alert rules. Body: `{ rule_type, config: object, channels: string[], enabled: bool }`. Channels are dispatch targets (`'email'`, `'slack'`, etc.) — implementation handled by the alert dispatcher (TODO: separate spec).
+CRUD for alert rules.
+- `GET` → `{ rules: SocialAlertRule[] }`, ordered `created_at DESC`.
+- `POST` body: `{ rule_type: string, config?: object, channels?: string[], enabled?: bool }` (only `rule_type` required; defaults: `config={}`, `channels=[]`, `enabled=true`). Returns the inserted row directly with status `201`.
+- `PATCH` body: `{ id, ...updates }` where updates are whitelisted to `rule_type | config | channels | enabled` (spread of arbitrary keys would let callers escape the org filter by forging `org_id`). Returns `{ ok: true }`.
+- `DELETE` body: `{ id }`. Returns `{ ok: true }`.
+
+Channels are dispatch targets (`'email'`, `'slack'`, etc.) — implementation handled by the alert dispatcher (TODO: separate spec).
 
 ### `GET / POST /api/social/dm-templates`
 
-Stored as `social_alert_rules` rows with `rule_type='dm_template'`. Body: `{ intent, name?, message }` (stored in `config`).
+Stored as `social_alert_rules` rows with `rule_type='dm_template'`.
+- `GET` → `{ templates: SocialAlertRule[] }`.
+- `POST` body: `{ intent, message, name? }` (both `intent` and `message` required). Stored as `config = { intent, name: name || intent, message }`. Returns the inserted row with status `201`.
 
 ### `GET /api/social/stats?from=…&to=…`
 
@@ -598,11 +624,14 @@ Default range: last 24h. Returns counts computed in-memory:
 
 ### `POST /api/social/demo` (admin only)
 
-Generates 25 realistic comments via `callAI({tier:'standard'})`, splices in hardcoded offensive comments at the tail (~25%), runs everything through `tagComment()` with auto-actions enabled, spreads timestamps over the last 24h. Returns counts.
+**Auth:** logged-in user, must belong to an `is_admin_org` organization.
+**Body:** `{ candidate: string, context?: string, postText?: string, count?: number }` (`count` defaults to 25, capped at 50).
+**Action:** Auto-clears any prior `demo_%` / `test_comment_%` rows for the org, generates comments via `callAI({tier:'standard', maxTokens:4000})`, replaces the **last ~25%** with hardcoded offensive injections (so content guard fires visibly in the demo), runs each through `tagComment()` (no OpenAI moderation overlay — `moderation` arg omitted), creates or reuses a demo `social_connections` row with `account_id='demo_'+orgId`, spreads timestamps over the last 24h, inserts comments, then writes `social_moderation_log` entries for any auto-hidden / auto-deleted / review-flagged rows.
+**Response:** `{ generated, flagged, autoHidden, autoDeleted, flaggedForReview, sentiment: { positive, negative, neutral } }`.
 
-### `DELETE /api/social/demo`
+### `DELETE /api/social/demo` (admin only)
 
-Wipes comments where `comment_id LIKE 'demo_%'` OR `comment_id LIKE 'test_comment_%'`.
+Wipes comments where `comment_id LIKE 'demo_%'` OR `comment_id LIKE 'test_comment_%'`. Returns `{ deleted: number }`.
 
 ---
 
