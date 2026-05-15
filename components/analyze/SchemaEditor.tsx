@@ -759,7 +759,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
         </div>
       )}
 
-      {datasetId && <ExtractEntitiesPanel datasetId={datasetId} />}
+      {datasetId && <ExtractEntitiesPanel datasetId={datasetId} schemaDirty={isDirty} />}
     </div>
   )
 }

@@ -27,7 +27,8 @@ interface LastRefresh {
 }
 
 interface Props {
-  datasetId: string
+  datasetId:   string
+  schemaDirty?: boolean
 }
 
 const P = {
@@ -52,9 +53,10 @@ const CATEGORY_COLOR: Record<string, string> = {
   other:  '#8FA3AE',
 }
 
-export default function ExtractEntitiesPanel({ datasetId }: Props) {
+export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) {
   const [loading, setLoading]       = useState(true)
   const [discovering, setDiscovering] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
   const [error, setError]           = useState('')
   const [entities, setEntities]     = useState<EntityRow[]>([])
   const [totalDistinct, setTotalDistinct] = useState<number | null>(null)
@@ -91,11 +93,14 @@ export default function ExtractEntitiesPanel({ datasetId }: Props) {
   async function runDiscover() {
     setDiscovering(true)
     setError('')
+    setSavedFlash(false)
     try {
       const res = await fetch('/api/datasets/' + datasetId + '/discover-entities', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Discovery failed')
       await loadPreview()
+      setSavedFlash(true)
+      setTimeout(function() { setSavedFlash(false) }, 3000)
     } catch (err: any) {
       setError(err?.message || 'Discovery failed')
     } finally {
@@ -121,17 +126,28 @@ export default function ExtractEntitiesPanel({ datasetId }: Props) {
             </span>
           )}
         </div>
-        <button
-          onClick={runDiscover}
-          disabled={discovering}
-          style={{
-            fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
-            background: discovering ? P.bg : P.accentBg, color: P.accent,
-            border: '1px solid ' + P.accent + '40', cursor: discovering ? 'wait' : 'pointer',
-            fontFamily: 'inherit',
-          }}>
-          {discovering ? 'Discovering…' : (hasRun ? 'Re-discover' : 'Discover entities')}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {savedFlash && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#16a34a' }}>✓ Catalog saved</span>
+          )}
+          {schemaDirty && !discovering && (
+            <span style={{ fontSize: 11, color: P.textMute }}>Save schema first</span>
+          )}
+          <button
+            onClick={runDiscover}
+            disabled={discovering || !!schemaDirty}
+            title={schemaDirty ? 'Save your schema changes before re-running discovery — the field selection affects which text is scanned' : undefined}
+            style={{
+              fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
+              background: (discovering || schemaDirty) ? P.bg : P.accentBg,
+              color: (discovering || schemaDirty) ? P.textFaint : P.accent,
+              border: '1px solid ' + ((discovering || schemaDirty) ? P.border : P.accent + '40'),
+              cursor: (discovering || schemaDirty) ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+            }}>
+            {discovering ? 'Discovering…' : (hasRun ? 'Re-discover' : 'Discover entities')}
+          </button>
+        </div>
       </div>
 
       <div style={{ fontSize: 11, color: P.textMute, lineHeight: 1.5, marginBottom: 8 }}>
