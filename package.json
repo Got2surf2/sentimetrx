@@ -21,7 +21,8 @@
     "test:campaign-egress": "CAMPAIGN_EGRESS_TEST=1 vitest run campaign-routes-egress",
     "test:dataset-egress": "DATASET_EGRESS_TEST=1 vitest run dataset-routes-egress",
     "loadtest:k6": "k6 run tests/loadtest/townhall.k6.js",
-    "loadtest:browsers": "playwright test --config=tests/loadtest/playwright.config.ts"
+    "loadtest:browsers": "playwright test --config=tests/loadtest/playwright.config.ts",
+    "spec-drift": "tsx scripts/spec-drift.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
