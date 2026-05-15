@@ -13,7 +13,7 @@ Each section ends with a **How we verify** line stating the concrete
 check (test path, CI step, manual cadence) that audits it. If the
 verification is `<TBD>`, the standard is aspirational, not measurable.
 
-Last reviewed: 2026-05-12.
+Last reviewed: 2026-05-15.
 
 ---
 
@@ -37,10 +37,12 @@ Primary threats we defend against, in priority order:
    `lib/guardrails.ts` + scoped tool definitions + no cross-org
    data in any single prompt.
 4. **Secret leakage** — keys committed, leaked via logs, or pushed
-   to Sentry. Mitigated by `.gitignore` (covers `.env*`, `*.pem`,
-   `*.key`, `*.p12`, `*.pfx`) + Sentry `beforeSend` scrubbing.
-   **Current state:** Sentry scrub config is not yet audited
-   end-to-end — tracked as Open `<TBD>` item 1 below.
+   to Sentry. Mitigated by `.gitignore` (covers `.env`,
+   `.env.local`, `.env.*.local`, `*.pem`, `*.key`, `*.p12`,
+   `*.pfx`). **Sentry `beforeSend` scrubbing is NOT implemented
+   today** — `sentry.{server,client,edge}.config.ts` only set
+   `dsn`, `tracesSampleRate`, `environment`. Tracked as Open
+   `<TBD>` item 1 below.
 5. **Supply-chain compromise** — a malicious npm dependency.
    Mitigated today by manual lockfile review on every PR.
    **Gap:** no automated `npm audit` or Dependabot gate in CI —
@@ -111,8 +113,12 @@ shortlist for Claude; here is the longer policy:
     queries downstream of that gate are safe by construction —
     the gate is the single source of the audited policy.
   - Open `<TBD>` item 11 below tracks extracting a generalized
-    `gate*Access` helper once a second reusable pattern emerges
-    beyond the share-target case.
+    `gate*Access` helper to `lib/auth/`. The trigger has been
+    met — four separate gate definitions exist today
+    (`gateShareTarget` in `app/api/share/route.ts`, two
+    duplicated `gateBotAccess` functions under
+    `app/api/bots/[id]/...`, and gating in
+    `app/api/townhall/sessions/[id]/route.ts`).
 
 - **Internal-only routes (`/admin/*`, deck generators, strategy
   endpoints) wrap with `requireAdmin` (`lib/auth/requireAdmin.ts`)
@@ -126,9 +132,10 @@ shortlist for Claude; here is the longer policy:
 
 Reference: the May-2026 CRITICAL findings (six of them, same root
 cause — service-role lookup without `org_id`) are documented in
-`docs/AUDIT_2026_Q1.md` and the most recent independent pass in
-`docs/security-review-2026-05-09.md`. Read both before writing a
-service-role query.
+`docs/security-review-2026-05-09.md` (the CRITICAL table; all six
+marked ✅ patched). Read it before writing a service-role query.
+(Note: `docs/AUDIT_2026_Q1.md` is the *question-bank* audit and
+is unrelated to security findings.)
 
 **How we verify:** the four `npm run test:*` suites above are the
 gate. CI runs `npm test` (unit + integration with mocks); the
@@ -143,11 +150,25 @@ test project exists.
 - **Identity:** Supabase Auth (email + password and magic links).
   Session cookies are `HttpOnly`, `Secure`, `SameSite=Lax`.
 - **Authorization model:**
-  - Regular user: scoped to their `org_id` via RLS.
-  - Org admin (`role='admin'` in `org_members`): adds invite/billing
+  - Identity table: `users` (sql/001_schema.sql). Each user has
+    `users.org_id` (org membership) and a `users.role` enum
+    constrained to `'platform_admin' | 'owner' | 'member'`.
+  - Regular user (`role='member'`): scoped to their `org_id` via RLS.
+  - Org owner (`role='owner'`): same scope, adds invite/billing
     routes.
-  - Platform admin (`is_platform_admin=true` on `users`): adds
-    internal-only routes. Guarded by `requireAdmin`.
+  - Platform admin (`role='platform_admin'`): the SQL
+    helper `is_platform_admin()` (sql/001_schema.sql:170) reads
+    this and is OR'd into table policies to grant cross-org reads.
+  - Admin-org gate: `organizations.is_admin_org=true` marks an
+    internal-tenant org; `lib/auth/requireAdmin.ts` allows the
+    request when the caller's org has this flag set, and returns
+    404 (not 401) on miss so internal routes don't leak existence.
+    This is the gate used by all `/admin/*`, deck, strategy, and
+    internal-export routes today; it is distinct from the
+    `platform_admin` role, though in practice the admin-org's
+    members hold that role.
+  - There is no `org_members` table — membership is a column on
+    `users`, not a separate join table.
 - **MFA:** not enforced today. **Proposed default (pending owner
   ratification):** required for platform admins, optional for org
   admins, off for regular users until first paying customer.
@@ -161,9 +182,11 @@ test project exists.
   CSRF-token check on cookie-authed mutating routes. Webhooks /
   cron / embed widgets are explicitly bypassed (each documented
   inline in the middleware).
-- **API auth for embeddable widgets** (`/s/[guid]`, `/b/[guid]`,
-  `/th/[guid]`): GUID is opaque + 122-bit-entropy + checked for
-  org binding on every request. No cookie auth.
+- **API auth for embeddable widgets** — survey at `/s/[guid]`,
+  agent at `/b/[slug]`, PulseIQ at `/th/[sessionId]`. The route
+  param name varies but each one is an opaque, high-entropy
+  identifier (≥122-bit) checked for org binding on every
+  request. No cookie auth.
 
 **How we verify:** `npm run test:auth-flows` exercises real
 Supabase auth round-trips; CSRF bypasses are reviewed inline in
@@ -178,10 +201,14 @@ ratified, will need its own test.
   Preview / Development) are the source of truth.
 - **Local development:** `.env.local` (gitignored). Devs pull
   baseline values via `vercel env pull .env.local`.
-- **Never committed:** `.env*` files, `*.pem`, `*.key`, `*.p12`,
-  `*.pfx`. `.gitignore` enforces this. CI does not re-check —
-  Open `<TBD>` item 9 tracks adding `gitleaks` as a pre-push hook
-  + CI step.
+- **Never committed:** `.env`, `.env.local`, `.env.*.local`,
+  `*.pem`, `*.key`, `*.p12`, `*.pfx`. `.gitignore` enforces these
+  patterns. **Gap:** `.env.production` and other non-`.local`
+  variants are not currently covered; tighten to `.env*` when
+  convenient (low risk today because Vercel env is the source of
+  truth and `.env.production` is not used locally). CI does not
+  re-check — Open `<TBD>` item 9 tracks adding `gitleaks` as a
+  pre-push hook + CI step.
 - **Rotation cadence (ratified default, last reviewed
   2026-05-12):**
   - Supabase service-role key: **90 days**
@@ -230,8 +257,10 @@ Rules:
   if a field must be logged for debugging, redact (`mask(email)`).
 - **Sentry `beforeSend` scrub** must drop email, phone, password
   fields, and the contents of `req.body` for survey/response
-  endpoints. **Current state:** Sentry scrub config has not been
-  audited against this list end-to-end — Open `<TBD>` item 1.
+  endpoints. **Current state:** not implemented — none of the
+  three Sentry configs (`sentry.{server,client,edge}.config.ts`)
+  set a `beforeSend` handler today. Open `<TBD>` item 1 tracks
+  building it.
 - **Claude prompts** must never include rows from more than one
   `org_id`. Scoped tool definitions only.
 
@@ -246,12 +275,15 @@ enforced today; Open `<TBD>` item 7 tracks the unit-test rule.
 A buyer's CC6/CC7 question: "Show me logs of admin actions and
 cross-org access attempts."
 
-- **Application-level audit log:** `audit_events` table — Open
-  `<TBD>` item 4 tracks confirming the schema exists and matches
-  this contract: `(actor_user_id, actor_org_id, action,
-  target_table, target_id, target_org_id, ip, ua, at)`. If
-  absent, add via a new `sql/NNN_audit_events.sql` migration with
-  RLS enabled and a service-role-only insert policy.
+- **Application-level audit log:** `admin_action_log` table
+  (sql/048_admin_action_log.sql). Columns: `id, created_at,
+  action_type, resource_type, resource_id, resource_name,
+  target_org_id, target_org_name, initiated_by,
+  initiated_by_email, metadata`. RLS is enabled; SELECT is
+  restricted to `is_platform_admin()`; INSERT/UPDATE/DELETE have
+  no policy and are denied for the auth client, so only the
+  service role (`lib/orgTransfer.ts` and similar helpers) writes
+  — append-only at the database level.
 - **Admin actions that MUST log:**
   - Any `requireAdmin` route hit (success and denial)
   - Billing changes
@@ -260,10 +292,10 @@ cross-org access attempts."
   - Bulk deletes
 - **Retention:** **2 years** (ratified default, last reviewed
   2026-05-12 — aligns with SOC2 CC4 evidence retention).
-- **Tamper resistance:** the `audit_events` insert policy is
-  service-role-only; an RLS policy `using (false)` covers
-  `UPDATE` / `DELETE` to make rows append-only at the database
-  level.
+- **Tamper resistance:** `admin_action_log` has no INSERT /
+  UPDATE / DELETE policy, so the auth client cannot write or
+  modify rows; only the service role (which bypasses RLS) can
+  insert. Effectively append-only.
 - **Database-level audit:** Supabase Postgres logs are the
   fallback. Reviewed **quarterly** (ratified cadence).
 
@@ -332,9 +364,15 @@ quarterly):
   Open `<TBD>` item 7 tracks a `lib/ai.ts` wrapper that asserts
   the row set has a single `org_id` before dispatch, with a unit
   test.
-- **Model output sanitization:** Claude output is treated as
-  untrusted user input — sanitized via DOMPurify before any HTML
-  render; URLs are stripped from any surface that doesn't
+- **Model output sanitization:** the survey-engine path
+  (`components/survey/useSurveyEngine.ts`) sanitizes AI output
+  with `isomorphic-dompurify` before any HTML render.
+  **Gap:** `app/bots/[id]/conversations/ConversationsClient.tsx`,
+  `components/ui/ChatBot.tsx`, and
+  `app/campaigns/[id]/CampaignDetailClient.tsx` each call
+  `dangerouslySetInnerHTML` on AI-derived content without
+  routing through DOMPurify — tracked as Open `<TBD>` item 14
+  below. URLs are stripped from any surface that doesn't
   explicitly need them.
 
 **How we verify:** `lib/guardrails.ts` has unit coverage in
@@ -464,7 +502,7 @@ Map of common DD questions → where in this codebase the answer lives:
 - "How is tenant isolation enforced?" → Section 2 + `tests/rls-isolation` + `tests/cross-org-egress`
 - "Who has prod access?" → Section 4 access roster `<TBD>`
 - "What PII do you store?" → Section 5 classification table
-- "Show me your audit log." → Section 6 + `audit_events` table `<TBD>`
+- "Show me your audit log." → Section 6 + `admin_action_log` table (sql/048_admin_action_log.sql)
 - "What happens if a customer asks to be deleted?" → Section 7
 - "List your subprocessors." → Section 8 table
 - "How do you handle vulnerabilities in deps?" → Section 9
@@ -475,20 +513,22 @@ Map of common DD questions → where in this codebase the answer lives:
 
 ---
 
-## Open `<TBD>` items as of 2026-05-12
+## Open `<TBD>` items as of 2026-05-15
 
 Renumbered to match in-line references above. Each item is a
 concrete decision the human owner needs to ratify or a piece of
 plumbing that needs to ship.
 
-1. **Audit Sentry `beforeSend` scrub config** end-to-end against
-   §5 (email, phone, password, `req.body` on survey/response
-   endpoints). Owner: solo founder. Effort: 1 hour.
+1. **Implement Sentry `beforeSend` scrub** against §5 (email,
+   phone, password, `req.body` on survey/response endpoints).
+   None of the three Sentry configs sets `beforeSend` today —
+   this is a build, not an audit. Owner: solo founder.
+   Effort: 1-2 hours.
 2. **Enable Dependabot weekly + `npm audit --audit-level=high`
    + CodeQL** in `.github/workflows/ci.yml`. Effort: 1 PR.
 3. *(retired — rotation cadence ratified in §4)*
-4. **Confirm `audit_events` table exists** matching §6 contract;
-   add migration if missing. Effort: 1 migration + 1 RLS test.
+4. *(retired 2026-05-15 — `admin_action_log` already exists,
+   matches §6 contract; see sql/048_admin_action_log.sql)*
 5. **Add a delete-path test** to the egress suite, then confirm
    cascade-FK coverage by grep + dry-run delete in a scratch DB.
 6. **Add an explicit org-level "AI may analyze our responses"
@@ -512,9 +552,18 @@ plumbing that needs to ship.
     Initial attempt on 2026-05-12 set them to `error`
     immediately and broke production — sequence matters: fix
     first, then enforce.
-11. **Extract a `gate*Access` helper** in `lib/auth/` once a
-    second reusable pattern emerges (today there's only the
-    two-callsite case in `app/api/bots/[id]/...`).
+11. **Extract a generalized `gate*Access` helper** to
+    `lib/auth/gate.ts`. The trigger is met: four parallel
+    definitions exist today —
+    `gateShareTarget` in `app/api/share/route.ts`,
+    `gateBotAccess` in
+    `app/api/bots/[id]/conversations/[sessionId]/route.ts`,
+    a second `gateBotAccess` in
+    `app/api/bots/[id]/knowledge/[chunkId]/route.ts`, and
+    gating logic in `app/api/townhall/sessions/[id]/route.ts`.
+    Collapse to one helper that takes `(service, userId,
+    resourceType, resourceId)` and returns the verified
+    `{ targetOrgId }` or a typed denial.
 12. **Introduce a structured logger** (`lib/log.ts`, pino or
     similar) and migrate prod handlers off bare `console.*`.
     Until then, handlers must pass a structured object —
@@ -522,3 +571,14 @@ plumbing that needs to ship.
     never include PII fields.
 13. **Quarterly DR restore drill** + S3 versioning audit on
     every bucket holding customer data.
+14. **Wrap remaining `dangerouslySetInnerHTML` callsites with
+    DOMPurify.** Three surfaces render AI-derived content
+    without going through `isomorphic-dompurify`:
+    `app/bots/[id]/conversations/ConversationsClient.tsx:563`
+    (agent conversation turns via `linkify`),
+    `components/ui/ChatBot.tsx:454` (chat messages via
+    `formatHtml`), and
+    `app/campaigns/[id]/CampaignDetailClient.tsx` (campaign
+    body). Each should `DOMPurify.sanitize(...)` before
+    `dangerouslySetInnerHTML`, matching the survey-engine
+    pattern.
