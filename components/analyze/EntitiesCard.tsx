@@ -62,19 +62,20 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
   const [isOverflowing, setIsOverflowing] = useState(false)
   const pillsRef = useRef<HTMLDivElement>(null)
 
-  if (loading || error || entities.length === 0) return null
-
   const aboveThreshold = entities.filter(function(e) { return e.mentions >= MIN_MENTIONS })
   const lowCount       = entities.length - aboveThreshold.length
   const displayed      = showAll ? entities : aboveThreshold
 
   // Detect whether the 4-row cap is actually hiding anything (so we only show
-  // "More" when there's something to expand to).
+  // "More" when there's something to expand to). Must be declared before any
+  // conditional early return — React requires the hook call order to be stable.
   useEffect(function() {
     var el = pillsRef.current
     if (!el) return
     setIsOverflowing(el.scrollHeight > el.clientHeight + 2)
   }, [displayed.length, rowsExpanded])
+
+  if (loading || error || entities.length === 0) return null
 
   return (
     <div style={{ background: P.white, border: '1px solid ' + P.border, borderRadius: 10, padding: '16px 20px', marginBottom: 20 }}>
