@@ -152,7 +152,7 @@ const AI_RELEVANCE_THRESHOLD = 0.3    // keep candidates scored ≥ this
 
 #### Step 1 — Auth + ownership check
 
-Verify the calling user is in the dataset's org. 401 if no auth, 404 if dataset doesn't exist or belongs to another org.
+Resolve the caller via `getCallerOrgContext(supabase)` from `lib/auth/orgAccess.ts` — returns `{ userId, orgId, isAdmin }`. 401 if no `userId`/`orgId`. Load the dataset's `org_id, source`; 404 if it doesn't exist. **Admin bypass**: super-admins (`isAdmin === true`) can search any org's dataset; non-admins get 404 if `dataset.org_id !== orgId`. This matches the rest of the analyze module ("admin Phase E: super-admins cross-org").
 
 #### Step 2 — Resolve targets
 
@@ -182,7 +182,7 @@ const result = await callAI({
   timeoutMs: 5000,
   system: '...EXPANSION_PROMPT...',
   messages: [{ role: 'user', content: rawQuery }],
-  usage: { org_id: userData.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search' },
+  usage: { org_id: dataset.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search' },
 })
 ```
 
@@ -274,7 +274,7 @@ const rankResult = await callAI({
   timeoutMs: 20000,
   system: '...STRICT_SCORER_PROMPT...',
   messages: [{ role: 'user', content: 'Query: ' + rawQuery + '\n\nCandidates:\n' + numbered }],
-  usage: { org_id: userData.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search_rerank' },
+  usage: { org_id: dataset.org_id, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'search_rerank' },
 })
 ```
 
