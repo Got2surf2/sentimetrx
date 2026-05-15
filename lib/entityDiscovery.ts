@@ -187,20 +187,13 @@ async function gatherDiscoveryContext(
 const NER_SYSTEM =
   'You are a precise named-entity extractor. Output valid JSON only. When in doubt, leave it out — a false entity is worse than a missed one.'
 
-/** A "do not extract" preamble built from the scope's subject — the brand the
- *  reviews are about and the structured location / category labels already on
- *  the rows. Empty string when there's no context to pass. */
+/** A "do not extract" preamble built from the scope's subject brand.
+ *  We exclude only the brand itself (not categorical location values —
+ *  those were paring down legitimate place entities that reviewers mention). */
 function contextBlock(ctx: DiscoveryContext): string {
-  const lines: string[] = []
-  if (ctx.brandNames.length > 0) {
-    lines.push(`These texts are customer reviews ABOUT: ${ctx.brandNames.join(', ')}.`)
-  }
-  if (ctx.structuredValues.length > 0) {
-    lines.push(`Every row is already labelled with structured location / category metadata drawn from this set: ${ctx.structuredValues.join(', ')}.`)
-  }
-  if (lines.length === 0) return ''
-  return lines.join('\n') +
-    `\nDo NOT extract the subject brand(s) above, their formal or legal names, or any of those location / category names — they are what the data is ABOUT, not findings within it. A review mentioning the subject brand at one of its known locations should yield neither the brand nor that location. Extract only the specific things reviewers talk about: dishes, drinks, named staff, competitor brands.
+  if (ctx.brandNames.length === 0) return ''
+  return `These texts are customer reviews ABOUT: ${ctx.brandNames.join(', ')}.
+Do NOT extract the subject brand(s) above, their formal or legal names, or any parent/sibling brand names — they are the subject, not a finding. Extract the specific things reviewers mention: dishes, drinks, named staff, competitor brands, named places.
 
 `
 }
@@ -331,10 +324,12 @@ async function canonicaliseDiscovered(
   const mapping: Record<string, { canonical: string; category: string }> = {}
   let inputTokens = 0
   let outputTokens = 0
-  // Small batches: the JSON output is ~25-30 tokens per entity, so a large
-  // batch overruns maxTokens, truncates, and JSON.parse throws — silently
-  // dropping the whole batch. 50 keeps each response well within budget.
-  const BATCH = 50
+  // Send all entities in one call so near-duplicates in different batches
+  // (e.g. "Filet" in batch 0, "Filet Mignon" in batch 3) can be merged.
+  // 200 entities * ~30 output tokens = 6000 tokens, within the 8k budget.
+  // Above 200 we split so JSON never truncates — cross-split misses are rare
+  // once the first pass has already collapsed the most obvious duplicates.
+  const BATCH = 200
   const rawList = entries.map(e => e.canonical)
   for (let i = 0; i < rawList.length; i += BATCH) {
     const batch = rawList.slice(i, i + BATCH)
@@ -343,8 +338,8 @@ async function canonicaliseDiscovered(
         tier: 'fast',
         system: 'You are a precise data normaliser. Output valid JSON only.',
         messages: [{ role: 'user', content: canonicalisePrompt(batch) }],
-        maxTokens: 6000,
-        timeoutMs: 30_000,
+        maxTokens: 8000,
+        timeoutMs: 45_000,
         usage: orgId
           ? { org_id: orgId, resource_type: 'dataset', resource_id: datasetId, event_type: 'entity_discovery' }
           : undefined,

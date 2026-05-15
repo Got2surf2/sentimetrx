@@ -966,6 +966,32 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [hideFlagged, setHideFlagged] = useState(false)
   const [restoredFromSession, setRestoredFromSession] = useState(false)
 
+  // Entity catalog — fetched once on mount (hoisted here so it survives subTab switches).
+  const [entityCatalogRows, setEntityCatalogRows]         = useState<import('@/components/analyze/EntitiesCard').EntityRow[]>([])
+  const [entityCatalogTotal, setEntityCatalogTotal]       = useState<number | null>(null)
+  const [entityCatalogScopeType, setEntityCatalogScopeType] = useState<'dataset' | 'collection' | null>(null)
+  const [entityCatalogLoading, setEntityCatalogLoading]   = useState(true)
+  const [entityCatalogError, setEntityCatalogError]       = useState('')
+
+  const loadEntityCatalog = useCallback(async function() {
+    setEntityCatalogLoading(true)
+    setEntityCatalogError('')
+    try {
+      const res = await fetch('/api/datasets/' + datasetId + '/entities?limit=200')
+      if (!res.ok) { setEntityCatalogRows([]); setEntityCatalogTotal(null); return }
+      const data = await res.json()
+      setEntityCatalogRows(data.entities || [])
+      setEntityCatalogTotal(typeof data.total_distinct === 'number' ? data.total_distinct : null)
+      setEntityCatalogScopeType(data.scope_type || null)
+    } catch (err: any) {
+      setEntityCatalogError(err?.message || 'Failed to load entities')
+    } finally {
+      setEntityCatalogLoading(false)
+    }
+  }, [datasetId])
+
+  useEffect(function() { loadEntityCatalog() }, [loadEntityCatalog])
+
   // Entity drill mode — set when user clicks an entity pill in EntitiesCard.
   // Comments tab enters entity mode: shows API-fetched rows instead of client filteredRows.
   const [drillEntity, setDrillEntity] = useState<{ slug: string; canonical: string; category: string; aliases: string[] } | null>(null)
@@ -1896,7 +1922,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       </div>
 
                       {/* ── Entities — scope-wide, click an entity to read its comments ─── */}
-                      <EntitiesCard datasetId={datasetId} onDrillEntity={handleDrillEntity} />
+                      <EntitiesCard
+                        entities={entityCatalogRows}
+                        totalDistinct={entityCatalogTotal}
+                        scopeType={entityCatalogScopeType}
+                        loading={entityCatalogLoading}
+                        error={entityCatalogError}
+                        onDrillEntity={handleDrillEntity}
+                      />
 
                       {/* ── Distribution view ─── */}
                       {themesView === 'distribution' && (

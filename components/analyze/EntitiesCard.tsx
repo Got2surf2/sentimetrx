@@ -6,17 +6,12 @@
 // theme-specific (dishes co-occur with every theme), so they belong in one
 // browsable place.
 //
-// Layout: category tabs (sorted by size) keep the card compact; each tab
-// shows the top N pills with a "Show all" toggle. The whole card is hidden
-// when the scope has no entities. Clicking a pill calls onDrillEntity so
-// TextMineModule can navigate to the Comments tab in entity mode.
-//
-// Backend: GET /api/datasets/[id]/entities?limit=200
+// Entity data is fetched by the parent (TextMineModule) so it survives tab
+// switches without re-fetching. This component is purely display.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import LottieLoader from '@/components/ui/LottieLoader'
+import { useMemo, useState } from 'react'
 
-interface EntityRow {
+export interface EntityRow {
   slug:      string
   canonical: string
   category:  string
@@ -25,7 +20,11 @@ interface EntityRow {
 }
 
 interface Props {
-  datasetId:     string
+  entities:      EntityRow[]
+  totalDistinct: number | null
+  scopeType:     'dataset' | 'collection' | null
+  loading:       boolean
+  error:         string
   onDrillEntity: (entity: EntityRow) => void
 }
 
@@ -62,35 +61,10 @@ const CATEGORY_LABEL: Record<string, string> = {
 const CATEGORY_ORDER = ['food', 'drink', 'person', 'brand', 'place', 'other']
 const PILL_LIMIT = 30
 
-export default function EntitiesCard({ datasetId, onDrillEntity }: Props) {
-  const [loading, setLoading]             = useState(true)
-  const [error, setError]                 = useState('')
-  const [entities, setEntities]           = useState<EntityRow[]>([])
-  const [totalDistinct, setTotalDistinct] = useState<number | null>(null)
-  const [scopeType, setScopeType]         = useState<'dataset' | 'collection' | null>(null)
-
+export default function EntitiesCard({ entities, totalDistinct, scopeType, loading, error, onDrillEntity }: Props) {
   // Active category tab + per-tab "show all" toggle.
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [showAll, setShowAll]               = useState(false)
-
-  const loadEntities = useCallback(async function() {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await fetch('/api/datasets/' + datasetId + '/entities?limit=200')
-      if (!res.ok) { setEntities([]); setTotalDistinct(null); return }
-      const data = await res.json()
-      setEntities(data.entities || [])
-      setTotalDistinct(typeof data.total_distinct === 'number' ? data.total_distinct : null)
-      setScopeType(data.scope_type || null)
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load entities')
-    } finally {
-      setLoading(false)
-    }
-  }, [datasetId])
-
-  useEffect(function() { loadEntities() }, [loadEntities])
 
   // Group entities by category, then build the tab list (largest first).
   const categories = useMemo(function() {
@@ -150,7 +124,7 @@ export default function EntitiesCard({ datasetId, onDrillEntity }: Props) {
         The named things reviewers talk about {'—'} dishes, drinks, people, competitor brands. Click any entity to read the comments that mention it. Discover or re-run entities on the Schema tab.
       </div>
 
-      {/* Category tabs */}
+      {/* Category tabs — each shows its own color, active gets a heavier border */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
         {categories.map(function(c) {
           const isActive = c.key === effectiveKey
@@ -160,19 +134,20 @@ export default function EntitiesCard({ datasetId, onDrillEntity }: Props) {
                 fontSize: 11, fontWeight: isActive ? 700 : 600, padding: '4px 10px',
                 borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: isActive ? c.color + '14' : P.bg,
-                color: isActive ? c.color : P.textMute,
-                border: '1px solid ' + (isActive ? c.color + '55' : P.border),
+                background: isActive ? c.color + '18' : c.color + '0d',
+                color: c.color,
+                border: (isActive ? '2px' : '1px') + ' solid ' + (isActive ? c.color + '80' : c.color + '40'),
+                transition: 'border-width .1s, background .1s',
               }}>
               <span style={{ width: 7, height: 7, borderRadius: 4, background: c.color, flexShrink: 0 }} />
               {c.label}
-              <span style={{ color: isActive ? c.color : P.textFaint, fontWeight: 700 }}>{c.rows.length}</span>
+              <span style={{ fontWeight: 700 }}>{c.rows.length}</span>
             </button>
           )
         })}
       </div>
 
-      {/* Active category's pills */}
+      {/* Active category's pills — subtle category color accent */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {shownRows.map(function(e) {
           const aliasHint = e.aliases && e.aliases.length > 0
@@ -182,8 +157,12 @@ export default function EntitiesCard({ datasetId, onDrillEntity }: Props) {
             <button key={e.slug} onClick={function() { onDrillEntity(e) }}
               title={'See comments mentioning ' + e.canonical + aliasHint}
               style={{
-                fontSize: 11, padding: '3px 9px', background: P.bg, color: P.textMid,
-                borderRadius: 20, border: '1px solid ' + P.border, cursor: 'pointer',
+                fontSize: 11, padding: '3px 9px',
+                background: activeCat.color + '0a',
+                color: P.textMid,
+                borderRadius: 20,
+                border: '1px solid ' + activeCat.color + '30',
+                cursor: 'pointer',
                 display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit',
               }}>
               <span style={{ fontWeight: 600 }}>{e.canonical}</span>
