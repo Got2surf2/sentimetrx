@@ -88,6 +88,17 @@ const DECKS: Deck[] = [
     logKey: 'restaurant-expansion-deck:darden',
   },
   {
+    href: '/api/pulseiq-deck',
+    filename: 'PulseIQ-Community-Intelligence.pptx',
+    title: 'PulseIQ — Community Intelligence',
+    subtitle: 'Pitch for engineering consultants who run public engagement. Scenario-led: transmission siting, NEPA comment periods, industrial facility permitting.',
+    audience: 'Senior partners at engineering / environmental consulting firms',
+    slides: '9 slides',
+    accent: '#0F7173',
+    badge: 'PULSEIQ',
+    logKey: 'pulseiq-deck',
+  },
+  {
     href: '/api/restaurant-expansion-deck?client=bloomin',
     filename: "Datanautix-Restaurant-Expansion-BlominBrands.pptx",
     title: "Restaurant Expansion — Bloomin' Brands",
