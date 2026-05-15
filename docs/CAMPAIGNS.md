@@ -21,17 +21,24 @@ Email campaign manager for distributing surveys. Rich template builder, CSV reci
 
 ---
 
-## Email Providers
+## Channels & Providers
+
+Email is the default channel. SMS can run alongside (`channel: 'email' | 'sms' | 'both'`) when a Twilio config is set. Provider config is stored as JSONB on the campaign record (`email_config` / `sms_config`). Test send is available for email before bulk dispatch.
+
+**Email providers** (CHECK-constrained to one of these on `campaigns.email_provider`):
 
 | Provider | Config | Notes |
 |----------|--------|-------|
 | **Resend** | API key | Default, best webhook support |
 | **SendGrid** | API key (v3) | Popular alternative |
-| **AWS SES** | Access key + secret + region | Enterprise scale |
-| **SMTP** | Host, port, user, pass | Any SMTP server (Gmail, Outlook, custom) |
-| **Twilio SMS** | Account SID + auth token | Optional SMS channel |
+| **AWS SES** | Access key + secret + region (via AWS SDK) | Enterprise scale |
+| **SMTP** | Host, port, user, pass (via nodemailer) | Any SMTP server (Gmail, Outlook, custom) |
 
-Provider config stored as JSONB on the campaign record. Test send available before bulk dispatch.
+**SMS provider** (separate, optional):
+
+| Provider | Config | Notes |
+|----------|--------|-------|
+| **Twilio** | `accountSid` + `authToken` + `fromNumber` (or `TWILIO_*` env vars) | Sent only to respondents with a `phone` value when `channel ∈ {sms, both}` |
 
 ---
 
@@ -46,10 +53,10 @@ Provider config stored as JSONB on the campaign record. Test send available befo
 
 ### Features
 - Single recipient inline addition
-- Delete respondents (pending status only)
+- Delete respondents (pending status only — already-sent rows are preserved)
 - Export respondents as CSV
-- Batch inserts (500 at a time)
-- Unique `recipient_guid` per respondent for tracking
+- Server-side de-dup against existing emails before a single bulk `INSERT`. GET pagination page size is 500.
+- Unique `recipient_guid` per respondent for tracking (used by the click-fallback endpoint)
 - `unsubscribe_token` generated per respondent
 
 ---
@@ -103,13 +110,15 @@ Tags interpolated at send time via simple regex replacement. Missing variables d
 - Builds personalized survey URL with hidden fields + recipient GUID
 - Adds unsubscribe link
 - Logs each send to `campaign_send_log`
-- Auto-schedules reminder emails after initial send
+- Promotes campaign `status` from `draft|scheduled` → `active` on first successful send
+- Auto-schedules reminder emails (sequence > 0) **only when** the call sends the initial email (sequence 0) and at least one respondent was sent
 
 ### Scheduling Options
 - `send_delay_hours` — Hours after campaign launch (0 = immediate)
-- `send_time` — Time of day (24h format, e.g., "09:00")
+- `send_time` — Time of day (24h format, e.g., "09:00"). When set on a reminder, the scheduled-at time is snapped to that wall-clock time (rolling to next day if it has already passed)
 - `send_timezone` — IANA timezone (default "America/New_York")
-- `send_at` — Specific date/time (overrides delay)
+
+> **<TBD: send_at not wired>** A specific-datetime override (`send_at`) appears in `lib/types.ts` and the email-editor UI submits it, but there is no `campaign_emails.send_at` column and the `/api/campaigns/[id]/emails` PATCH allowlist drops it. Either add the column + persist it in `send/route.ts` scheduling, or remove `send_at` from the type and UI.
 
 ### Test Send (`POST /api/campaigns/[id]/test-send`)
 - Sends to current user's email
@@ -129,7 +138,15 @@ Tags interpolated at send time via simple regex replacement. Missing variables d
 | `email.bounced` | `bounced` |
 | `email.complained` | `bounced` |
 
+`email.sent` is acknowledged with no status change. Unknown event types are also no-ops.
+
 Status upgrades are one-way (never downgrades), except `bounced` which always applies. Never overwrites `completed`.
+
+**Security:** every webhook is verified against `RESEND_WEBHOOK_SECRET` using Svix-style HMAC (`v1`) over `<svix-id>.<svix-timestamp>.<rawBody>`. Requests outside a ±5-minute timestamp skew window are rejected to block replay.
+
+### Click Tracking Fallback (`POST /api/campaigns/click`)
+
+For Resend free-plan users (no hosted click tracking), the survey page fires this endpoint with `{ rid: <recipient_guid> }` on load. It upgrades respondents in `pending|sent` to `clicked`. Unauthenticated by design; the `rid` is a UUID and the only effect is a one-way status upgrade.
 
 ### Respondent Status Lifecycle
 ```
@@ -139,9 +156,10 @@ pending → sent → opened → clicked → completed
 ```
 
 ### Stats API (`GET /api/campaigns/[id]/stats`)
-- Aggregates counts by status
-- Calculates completion rate and target progress
-- Auto-completes campaign when all recipients reach terminal states
+- Aggregates respondent counts by status
+- Returns total/failed send-log counts
+- Calculates completion rate (% completed of total) and target progress (% of `target_responses`)
+- Auto-completes the campaign when status is `active|scheduled` and every respondent has reached a terminal state — defined as `completed + bounced + unsubscribed = total`
 
 ### Tracked Timestamps
 - `sent_at` — Email dispatched
@@ -162,12 +180,16 @@ pending → sent → opened → clicked → completed
 
 ### Detail Page (`/campaigns/[id]`)
 
-| Tab | Contents |
-|-----|----------|
-| Setup | Name, provider, target responses, thank-you/reminder toggles |
-| Respondents | CSV upload, single-add, respondent table with pagination |
-| Emails | Template builder/HTML editor, send history per sequence |
-| Send | Trigger send, test send, delivery stats |
+| Tab (URL key) | UI label | Contents |
+|---|---|---|
+| `setup` | Setup | Name, provider, target responses, thank-you/reminder toggles |
+| `respondents` | **Recipients** | CSV upload, single-add, respondent table with pagination |
+| `emails` | Emails | Template builder/HTML editor, send history per sequence |
+| `send` | Send | Trigger send, test send, delivery stats |
+
+(The internal table is `campaign_respondents`; the user-facing label is "Recipients".)
+
+A separate `/campaigns/[id]/edit` page provides a focused form for the same campaign-level fields surfaced in the Setup tab.
 
 ### Operations
 - **Clone** — Duplicate campaign with optional recipients
@@ -192,26 +214,29 @@ pending → sent → opened → clicked → completed
 
 **campaigns**
 - `id`, `org_id`, `study_id`, `name`, `status` (draft/scheduled/active/paused/completed)
-- `email_provider`, `email_config` (JSONB), `channel` (email/sms/both)
-- `target_responses`, `hidden_fields[]`
+- `email_provider` (CHECK: resend/sendgrid/ses/smtp), `email_config` (JSONB)
+- `channel` (email/sms/both) + `sms_config` (JSONB)
+- `study_url` (survey URL template with `{{field}}` placeholders), `hidden_fields[]`
+- `target_responses`
 - `send_thank_you`, `send_incomplete` (boolean toggles)
 
 **campaign_respondents**
-- `email` (unique per campaign), `fields` (JSONB from CSV)
+- `email` (unique per campaign), `fields` (JSONB from CSV), `phone` (optional, for SMS)
 - `status` (pending/sent/opened/clicked/completed/bounced/unsubscribed)
 - `recipient_guid`, `unsubscribe_token`
+- `response_id` FK to `responses` (set when the survey is submitted)
 - Timestamp fields: `sent_at`, `opened_at`, `clicked_at`, `completed_at`
 
 **campaign_emails**
 - `sequence` (0=initial, 1+=reminders), `subject`, `body_html`, `body_text`
-- `send_delay_hours`, `send_time`, `send_timezone`, `send_at`
+- `send_delay_hours`, `send_time`, `send_timezone`, `sms_body`, `is_thank_you`
 - `send_to` (all/non_responders/incompletes)
 
 **campaign_send_log**
-- Per-send record: `respondent_id`, `email_id`, `provider_msg_id`, `status`, `error_message`
+- Per-send record: `respondent_id`, `email_id`, `provider`, `provider_msg_id`, `status` (queued/sent/delivered/opened/clicked/bounced/failed), `error_message`, `schedule_id`
 
 **campaign_schedules**
-- `scheduled_at`, `executed_at`, `status` (pending/processing/completed/failed/cancelled)
+- `scheduled_at`, `executed_at`, `status` (pending/processing/completed/failed/cancelled). The send route writes pending rows for reminder sequences after a successful initial send; the Vercel cron at `/api/cron/campaign-scheduler` (every 15 min, max 10 schedules per run, 60s `maxDuration`) drains them. Schedules whose campaign is no longer `active` are marked `cancelled`.
 
 ---
 
@@ -225,12 +250,22 @@ Campaigns controlled via `org.features.campaigns` — must be enabled per organi
 
 | File | Purpose |
 |------|---------|
-| `app/campaigns/page.tsx` | Campaign list dashboard |
-| `app/campaigns/[id]/CampaignDetailClient.tsx` | Detail page (setup, respondents, emails, send) |
+| `app/campaigns/page.tsx` + `CampaignDashboardClient.tsx` | Campaign list dashboard |
+| `app/campaigns/[id]/CampaignDetailClient.tsx` | Detail page (setup, recipients, emails, send) |
+| `app/campaigns/[id]/edit/page.tsx` | Edit-only form view |
 | `app/studies/[id]/campaigns/new/NewCampaignClient.tsx` | Campaign creation |
-| `lib/email/provider.ts` | Multi-provider email sending |
+| `lib/email/provider.ts` | Multi-provider email + Twilio SMS sending, template interpolation, `buildSurveyUrl` |
 | `app/api/campaigns/` | All CRUD + send + tracking APIs |
-| `app/api/campaigns/webhooks/resend/route.ts` | Delivery event webhook |
+| `app/api/campaigns/[id]/send/route.ts` | Bulk send + auto-schedule reminders |
+| `app/api/campaigns/[id]/test-send/route.ts` | Test send to the current user |
+| `app/api/campaigns/[id]/stats/route.ts` | Stats + auto-complete |
+| `app/api/campaigns/[id]/clone/route.ts` | Duplicate campaign |
+| `app/api/campaigns/[id]/export/route.ts` | Respondent CSV export |
+| `app/api/campaigns/webhooks/resend/route.ts` | Svix-verified Resend delivery webhook |
+| `app/api/campaigns/click/route.ts` | Click-tracking fallback for free-tier Resend |
 | `app/api/campaigns/unsubscribe/[token]/route.ts` | Public unsubscribe |
-| `sql/008_campaigns.sql` | Base schema |
-| `sql/010_phase2_campaigns.sql` | Scheduling + enhanced fields |
+| `app/api/cron/campaign-scheduler/route.ts` | Drains pending `campaign_schedules` (every 15 min) |
+| `app/api/share/route.ts` | Creates / fetches / revokes shared campaign links |
+| `sql/008_campaigns.sql` | Base schema (5 tables + RLS) |
+| `sql/009_recipient_guid.sql` | Adds `recipient_guid` for click-tracking |
+| `sql/010_phase2_campaigns.sql` | `send_time`/`send_timezone`, SMS channel, `shared_links` |
