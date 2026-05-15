@@ -1,5 +1,9 @@
 # Town Hall Module
 
+**Last reviewed:** 2026-05-15 (spec audit pass 2 of 14 — see `[[project-spec-audit-queue]]`)
+
+> User-facing name is **PulseIQ**. Internal table/code names (`townhall_*`, `app/townhall/*`, `app/api/townhall/*`) are kept as-is for backwards compatibility. See `[[feedback-product-naming]]`.
+
 ## Overview
 
 Live group feedback sessions with AI moderation. Participants chat anonymously with a bot that rotates through discussion topics, probes for deeper insights, and detects emerging themes in real-time. Facilitators monitor via a live console with topic cards, sentiment tracking, and organic topic discovery.
@@ -76,46 +80,59 @@ community, employee, customer, student, member, other — drives AI tone and pee
 
 ---
 
-## Chat Engine (`app/api/townhall/chat/`)
+## Chat Engine (`app/api/townhall/chat/route.ts`)
 
 ### Processing Pipeline (per message)
 
-1. **Rate limit** — 20 req/min per IP
-2. **Session resolve** — UUID or slug lookup
-3. **Auto-end check** — Timed or inactivity mode
+1. **Rate limit (dual)** —
+   - Primary: **20 req/min per `participant_id`** (the normal cap for one human)
+   - Backstop: **600 req/min per IP** (sized for ~200 attendees on one NAT'd venue wifi — an IP-only cap would throttle the whole room after one volley)
+2. **Session resolve** — UUID or slug lookup against `townhall_sessions`
+3. **Auto-end check** — Timed (`duration_minutes`) or inactivity (`inactivity_timeout_minutes`) mode flips status → `ended`
 4. **Status check** — Return closing message if ended/paused
-5. **Debug toggle** — `#debug [sessionId]` enables verbose mode
-6. **Content safety** — Strike-based escalation (warn → firm warning → shutdown)
-7. **Language switch** — AI detection (>=95% confidence), bilingual confirmation, previous message translated
-8. **Translation** — Non-English input translated to English for analysis
-9. **Deflection** — Smart off-topic/sensitive topic detection (see below)
-10. **Topic matching** — Opening response matched to best available theme
-11. **Clarifier** — Short/vague responses get AI follow-up (frustration-aware)
-12. **Next topic** — Route to under-target topic with fewest responses
-13. **Wrap-up** — At turn cap, transition to post-session survey
+5. **Content safety** — Strike-based escalation (warn → firm warning → shutdown) via `lib/contentGuard.ts`
+6. **Language switch detection** — Hybrid: fast regex first, then AI classifier at >=95% confidence; bilingual confirmation + previous bot message translated
+7. **Translation** — Non-English input translated to English; stored in `user_message_en` for analysis
+8. **Sentiment scoring** — Every non-skipped user turn gets `sentiment` (label) and `sentiment_score` columns via `scoreSentimentFull()`
+9. **Response counter + auto theme detection** — Counter incremented; if `theme_detection_mode='auto'`, detection fires every N responses (fire-and-forget)
+10. **Deflection** — Smart off-topic/sensitive topic detection (see below)
+11. **Move-on signal** — Fast regex (`/^(stop|enough|next|move on|done|skip|pass)/i`) — zero AI cost; immediately skips clarifier
+12. **Subtle disengagement AI tone check** — When a clarifier would trigger on a borderline phrase (`ok`, `sure`, `whatever`, `idk`, `not really`, etc.), AI classifies `move_on` vs `clarify`; defaults to `move_on` on AI failure (don't annoy participants). Fast path: skip the AI call entirely if 2+ consecutive curt responses
+13. **Topic matching** — Opening response matched to best available theme via AI + keyword fallback
+14. **Clarifier** — Short/vague responses get AI follow-up (frustration-aware cap)
+15. **Smart probe** — Before the default "fewest responses" pick, scan the user's message for any keyword belonging to another available topic; if matched, jump to that topic instead
+16. **Next topic** — Route to under-target topic with fewest responses (with seed-budget rebalance — see below)
+17. **Global checkout / chill standby** — If recent 3 responses all curt or 2 of last 3 skipped, switch to `source='standby'` with a chill message instead of pushing more topics
+18. **All-topics-covered standby** — If every topic has been visited but organic detection is on and turns remain, return a standby message so the participant can be circled back when new topics emerge
+19. **Wrap-up** — At turn cap (or all topics + no organic mode), transition to post-session survey
+20. **AI refusal scrub** — `looksLikeAIRefusal()` (lib/guardrails.ts) drops "I can't help with that" style outputs so they never reach participants
 
 ### Deflection Engine
 - **Feedback signals regex** — 80+ words (opinions, emotions, topic-relevant terms)
-- **Logic**: Only deflect if message has NO feedback signals AND starts with a question, OR hits a sensitive topic
-- **AI decision**: Claude returns redirect message or "NONE" (no redirect)
-- **Sensitive topics**: Exact word match against `config.context.sensitive_topics[]`
-- **Override**: `config.deflection.message` can replace AI redirect
+- **Logic**: deflect when message hits a sensitive topic (regardless of feedback signals), OR when it has no feedback signals AND starts with a question word
+- **Sensitive-topic match**: `\b<term>\b` regex against each entry in `config.context.sensitive_topics[]`
+- **AI decision**: Claude returns redirect text or `"NONE"` (no redirect)
+- **Override**: `config.deflection.message` (if set) replaces the AI redirect
+- **CHECK-constraint retry**: stored as `source='deflect'`; on insert failure (legacy schema), retries as `source='clarifier'`
 
-### Curt Detection
+### Curt Detection & Frustration-Aware Clarifier
 - Word count <= 3 = curt response
 - Declining word counts across last 3 responses = disengaging
-- Reduces max clarifiers from 2 to 1 when disengaging
-- Dynamic per-topic turn cap: min 2, max 4
+- Reduces max clarifiers from 2 → 1 when disengaging or curt
+- Dynamic per-topic turn cap: min 2, max 4 (extends to 3 with one substantive response ≥8 words, to 4 with avg ≥10 words across 2+ turns)
 
 ### Topic Matching (Opening Response)
 - AI matches first message to best available theme from keywords + context
-- Keyword fallback when AI times out
-- Even-spread budget: 60% turns for seed topics, rest for organic
+- Keyword fallback (label match, then keyword match) when AI times out or returns invalid JSON
+- Even-spread budget: 60% turns for seed topics (`seedBudget = ceil(max_turns_per_participant * 0.6)`); past that threshold, organic topics are prioritized over remaining seed topics
+
+### Prompt Caching
+- `baseSystemPrompt` + topic list is sent as a `cache: true` block so the static system prompt is served as cache reads on calls 2+ within the session. Conversation history goes in the dynamic suffix and is not cached. Material cost/latency reduction for sessions with many participants.
 
 ### Response Counting
 - **Live from turns**: `COUNT(townhall_turns WHERE theme_id=X AND user_message IS NOT NULL AND NOT skipped)`
 - No cached counter — single source of truth
-- Auto-completion: when live count >= response_target, theme state → completed
+- Auto-completion: when live count >= response_target, theme state → completed (manual close also supported by facilitator)
 
 ---
 
@@ -138,12 +155,21 @@ Public presenter display (no auth, aggregate data only):
 
 ## Participant Chat (`app/th/[sessionId]/`)
 
-### Chat Phases
-1. **Join** — Auto-join (no landing page), get opening message
-2. **Chat** — Bot/participant exchange, skip/done buttons
-3. **Psychographics** — Random N from bank
-4. **Demographics** — Optional fields
-5. **Done** — Thank you message
+### Chat Phases (state machine in `TownHallChat.tsx`)
+
+The participant client tracks 9 phase states: `pre-psycho`, `pre-demo`, `pre-submitting`, `chat`, `transition`, `psycho`, `demo`, `submitting`, `done`.
+
+The order depends on the **`questionPosition`** config (`'before' | 'after'`):
+
+- **`questionPosition: 'after'` (default)** — Join → Chat → Transition → Psycho → Demo → Submitting → Done
+- **`questionPosition: 'before'`** — Join → Pre-psycho → Pre-demo → Pre-submitting → Chat → Done
+
+In both modes:
+1. **Join** — Auto-join via `GET /api/townhall/join/:id` (no landing page); receives opening message, slug resolution, demo fields, psycho bank
+2. **Chat** — Bot/participant exchange; skip/done buttons; multi-language label switching
+3. **Psychographics** — Random N from bank (`psychoCount`, default 3)
+4. **Demographics** — Optional configured fields
+5. **Done** — Thank-you message
 
 ### UX Features
 - iMessage-style bubbles (blue user, gray bot)
@@ -196,7 +222,8 @@ Public presenter display (no auth, aggregate data only):
 
 | Format | Endpoint | Contents |
 |--------|----------|----------|
-| CSV | `GET .../export?format=csv` | All turns: bot/user messages, theme_label, source, language, sentiment, demographics, psychographics |
+| CSV | `GET .../export?format=csv` | Responses only: bot/user messages, theme_label, source, language, sentiment, demographics, psychographics |
+| XLSX | `GET .../export?format=xlsx` | Single workbook with two sheets — responses + themes (built via `buildThemesSheet`) |
 | Themes CSV | `GET .../export?format=themes` | Per theme: label, source, state, sentiment, keywords, response_count, mention_count |
 | JSON | `GET .../export?format=json` | Grouped by participant: conversation threads + demographics + psychographics |
 | PPTX | `POST .../export/pptx` | Branded deck: title, stats, sentiment, per-theme cards with quotes |
@@ -208,7 +235,7 @@ Public presenter display (no auth, aggregate data only):
 ### AI-Driven Personas
 Responses generated from persona profiles + session topics (not scripted lines). Same persona adapts to any session.
 
-### 5 Persona Packs
+### Generic Packs (5)
 
 | Pack | Count | For |
 |------|-------|-----|
@@ -218,7 +245,22 @@ Responses generated from persona profiles + session topics (not scripted lines).
 | Restaurant | 14 | Dining, hospitality, food service |
 | Stakeholder | 13 | Board, donor, government, vendor |
 
-### Edge Cases (in every pack)
+### Florida Senate Campaign Packs (5)
+
+A grouped set of regional packs built for the Vindman campaign trial, grouped under `Florida Senate` in the simulator UI. Each pack is geographic and demographic.
+
+| Pack | Count | Coverage |
+|------|-------|----------|
+| South FL | 15 | Miami / Broward / Palm Beach — Cuban, Haitian, Jewish, Venezuelan, condo, insurance |
+| Central FL | 14 | Orlando / Tampa — Puerto Rican, theme-park workers, suburban moms, veterans |
+| North FL / Panhandle | 14 | Jacksonville / Tallahassee / Pensacola — military families, fishermen, rural healthcare |
+| Southwest FL | 14 | Naples / Fort Myers — Hurricane Ian survivors, snowbirds, golf-course managers |
+| College / Youth | 13 | UF / FIU / UCF / FAU students — first-time voters, debt, gun safety, climate |
+
+### Bad Actors Pool (10)
+Standalone persona pool that can be mixed into any session to stress-test content safety and disengagement handling: rage typer, spam bot, conspiracy flood, profanity escalator, political troll, racist dog-whistler, harassment creep, all-caps screamer, repeat submitter, subtle underminer.
+
+### Edge Cases (embedded in every pack)
 - Curt/disengaged responder (1-5 word answers)
 - Off-topic enthusiast (ignores questions, single pet issue)
 - Non-English speaker (switches language mid-conversation)
@@ -226,7 +268,8 @@ Responses generated from persona profiles + session topics (not scripted lines).
 - Sensitive topic prodder (politics or discrimination)
 
 ### Features
-- Pack auto-selects based on `session_type`
+- Generic pack auto-selects based on `session_type`
+- Florida Senate / Bad Actors packs are opt-in
 - Individual persona toggle checkboxes
 - Configurable participant count and turns per participant
 - Live log with turn-by-turn results
@@ -235,12 +278,16 @@ Responses generated from persona profiles + session topics (not scripted lines).
 
 ## Multi-Language Support
 
-- **15 languages**: en, es, fr, de, pt, it, zh, ja, ko, ar, hi, ru, vi, tl, ht
-- **Language switch detection**: AI-based (>=95% confidence)
-- **Bilingual confirmation**: "Sure — switching to Spanish! / Claro — cambiando a espanol!"
-- **Translation**: Non-English responses auto-translated to English for analysis
+- **15 languages supported by the chat engine** (`LANG_CODES` in `chat/route.ts`): en, es, fr, de, pt, it, zh, ja, ko, ar, hi, vi, tl, ru, pl
+- **Language switch detection** — hybrid:
+  - **Fast regex** first (`fastDetectLanguageSwitch`): matches bare language names ("español", "français"), action phrases ("switch to spanish"), polite forms ("can you speak french?"), and "no hablo/parle/falo english" negation patterns. Zero AI cost when it hits.
+  - **AI classifier** fallback for ambiguous short messages (<=60 chars) at >=95% confidence; long messages (>120 chars) skip detection entirely so they're treated as real answers, not switch requests.
+- **Bilingual confirmation**: e.g. `"Sure — switching to Spanish! / ¡Claro — cambiando a español!"`
+- **Translation**: Non-English responses auto-translated to English; stored in `user_message_en` for analysis
 - **Bot output**: Returned in participant's conversation language
-- **Skip/Done labels**: Translate on language switch
+- **Skip/Done labels**: Translate on language switch (table in `TH_LABELS`)
+
+> **Known gap (Open TBD):** the simulator's `Creole-speaking elder from Immokalee` persona targets `switch_language: 'ht'` (Haitian Creole), but `ht` is **not in `LANG_CODES`**, so the chat engine's AI classifier will reject the switch. Either add `ht` to `LANG_CODES` + `TH_LABELS` + `SWITCH_CONFIRM`, or drop `ht` from the simulator persona.
 
 ---
 
@@ -298,15 +345,24 @@ When editing an active/paused session:
 - `response_target`, `mention_count`, `sentiment`, `example_quote`
 
 **townhall_turns**
-- `bot_message`, `user_message`, `user_message_en`
-- `theme_id` (FK), `theme_label` (denormalized snapshot)
-- `source`: guide, clarifier, deflect, detected_theme, custom, language_switch, standby, system, revisit
-- `ai_thinking` (JSONB) — Debug reasoning in testing mode
+- `bot_message`, `user_message`, `user_message_en` (English translation when conv. language ≠ en)
+- `theme_id` (FK), `theme_label` (denormalized snapshot — survives renames)
+- `source` CHECK enum: `guide`, `clarifier`, `detected_theme`, `custom`, `deflect`, `standby`, `language_switch`, `system`, `revisit` (sql/017)
+- `sentiment`, `sentiment_score` (sql/029) — populated on every non-skipped user turn
+- `ai_thinking` (JSONB) — Debug reasoning when verbose/testing mode is active (sql/017)
 - `skipped`, `language`, `turn_number`
 
 **townhall_participant_responses**
 - `psychographics` (JSONB), `demographics` (JSONB)
 - Unique per (session_id, participant_id)
+
+---
+
+## Auth Model
+
+Route handlers in `app/api/townhall/sessions/[id]/*` use the inline helper `gateSessionAccess` (defined at the top of `sessions/[id]/route.ts`). It looks up the caller's `users.org_id` + `organizations.is_admin_org`, then verifies the session's `org_id` matches (or admin-org bypass). This is one of four parallel `gate*Access` helpers across the codebase queued for extraction to `lib/auth/gate.ts` — see `docs/SECURITY.md` Open TBD #11.
+
+The public participant routes (`/api/townhall/chat`, `/api/townhall/join`, `/api/townhall/live/[sessionId]`) intentionally have no auth — they return only aggregate or per-participant data validated against `session.status='active'`.
 
 ---
 
@@ -318,14 +374,33 @@ When editing an active/paused session:
 | `app/townhall/[sessionId]/SessionDetailClient.tsx` | Facilitator console |
 | `app/th/[sessionId]/TownHallChat.tsx` | Participant chat UI |
 | `app/th/[sessionId]/live/page.tsx` | Live presenter screen |
-| `app/api/townhall/chat/route.ts` | Chat engine (570+ lines) |
-| `app/api/townhall/sessions/[id]/route.ts` | Session CRUD + analytics |
+| `app/api/townhall/chat/route.ts` | Chat engine (~1100 lines) |
+| `app/api/townhall/sessions/[id]/route.ts` | Session CRUD + analytics + `gateSessionAccess` |
+| `app/api/townhall/sessions/[id]/export/route.ts` | CSV / XLSX / JSON / themes export |
+| `app/api/townhall/sessions/[id]/export/pptx/route.ts` | Branded PPTX export |
+| `app/api/townhall/live/[sessionId]/route.ts` | Public live-screen aggregate API (direct PostgREST) |
 | `app/api/townhall/simulate/route.ts` | AI persona response generation |
+| `app/api/townhall/join/route.ts` | Public participant join + session resolve |
+| `app/api/townhall/themes/[id]/route.ts` | Theme state transitions (approve / park / dismiss / restore) |
+| `app/api/townhall/themes/detect/route.ts` | Manual organic-theme detection trigger |
 | `lib/townhallThemeDetection.ts` | Organic theme discovery |
 | `lib/contentGuard.ts` | Strike-based content safety |
-| `lib/guardrails.ts` | Shared validation + cleanDeflectResponse() |
+| `lib/guardrails.ts` | Shared validation + `cleanDeflectResponse()` + `looksLikeAIRefusal()` |
+| `lib/trendingWords.ts` | `trendingTerms()` for the live-screen Trending Now strip |
 | `components/townhall/TownHallAnalyticsPanel.tsx` | Analytics tab |
 | `components/townhall/THCreatorNav.tsx` | 6-step pill navigation |
-| `app/admin/simulator/townhall/page.tsx` | AI-driven simulator (5 packs) |
-| `sql/011_townhall.sql` | Base schema |
-| `sql/017_townhall_ai_thinking.sql` | ai_thinking + theme_label columns |
+| `app/admin/simulator/townhall/TownhallSimulatorClient.tsx` | AI-driven simulator (10 packs + bad-actor pool) |
+
+### SQL migrations
+
+| File | Adds |
+|------|------|
+| `sql/011_townhall.sql` | Base schema: `townhall_sessions`, `townhall_themes`, `townhall_turns` + RLS policies |
+| `sql/012_townhall_language.sql` | `user_message_en`, `language` on turns; `slug` on sessions |
+| `sql/013_townhall_responses.sql` | `townhall_participant_responses` table for psycho/demo |
+| `sql/014_townhall_theme_detection.sql` | `keywords`, `sentiment` on themes; `last_theme_detection_at` on sessions |
+| `sql/015_shared_links_townhall.sql` | Extends `shared_links.type` to include `townhall` |
+| `sql/016_townhall_parked_state.sql` | Adds `parked` to `townhall_themes.state` CHECK |
+| `sql/017_townhall_ai_thinking.sql` | `ai_thinking` JSONB + `theme_label` snapshot on turns; expands `source` CHECK |
+| `sql/029_turn_sentiment.sql` | `sentiment` + `sentiment_score` on `townhall_turns` (and `bot_conversation_turns`) |
+| `sql/032_enable_rls_everywhere.sql` | Re-asserts org-scoped read policies on all 4 PulseIQ tables |

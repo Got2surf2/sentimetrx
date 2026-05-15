@@ -2,6 +2,22 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
+## 2026-05-15 (Thu, latest) — Spec audit pass 2: TOWNHALL.md (PulseIQ)
+
+- **Why:** doc 2 of 14 in the sequential spec audit ([[project-spec-audit-queue]]). PulseIQ was flagged for deep treatment because I missed its functionality twice in past sessions. Doc had drifted in several substantive ways since it was last touched.
+- **Edits applied (~120 inserts / 50 deletes):**
+  - **Rate limit** corrected from "20/min per IP" to dual cap: 20/min per `participant_id` (primary) + 600/min per IP (venue-NAT'd-wifi backstop). The reasoning is in code comments and was important to preserve.
+  - **Chat pipeline expanded** from 13 steps to 20, adding the move-on signal regex, the subtle-disengagement AI tone check, smart probe via cross-topic keyword jump, the global-checkout chill standby, the all-topics-covered standby mode, AI refusal scrub, sentiment scoring, and the prompt-cache split (base block vs dynamic suffix).
+  - **Simulator** went from "5 packs" to the real picture: 5 generic + 5 Florida Senate Campaign packs (grouped) + a 10-persona Bad Actors pool that mixes into any session.
+  - **Participant chat phases** went from 5 → 9 with an explicit note about the `questionPosition='before'` pre-session mode.
+  - **Languages** corrected: code supports `pl` not `ht`, and a TBD flagged because the simulator's Haitian-Creole persona targets `ht` which the chat engine doesn't yet accept.
+  - **Export formats** added XLSX (two-sheet workbook).
+  - **SQL migration table** added 012–016 + 029 (turn sentiment) + 032 (RLS re-assert). Doc had only ever mentioned 011 + 017.
+  - Added auth-model section noting `gateSessionAccess` is the fourth instance of the inline `gate*Access` pattern queued for extraction in SECURITY.md TBD #11.
+  - Added `Last reviewed:` header and the user-facing-name disclaimer per `[[feedback-product-naming]]`.
+- **Not in the doc but real:** the simulator persona's `switch_language: 'ht'` does not work because `LANG_CODES` doesn't include `ht`. Surfaced as an Open TBD in the doc rather than silently fixed — needs product call on whether to add Haitian Creole or drop the persona flag.
+- **Next session:** doc 3/14 = `docs/BOTS.md` (agents).
+
 ## 2026-05-15 (Thu, latest) — EntitiesCard polish: category tabs, truncation, modal highlight
 
 - **Why:** first render of the EntitiesCard was a wall of 209 pills in one scroll — user called it rough. Wanted it sorted out and capped.
