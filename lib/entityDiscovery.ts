@@ -22,7 +22,7 @@ import { resolveEntityScope, slugify, eligibleEntityFields } from '@/lib/entityF
 
 export type DiscoveryMode = 'initial' | 'incremental' | 'manual' | 'cron'
 
-const DEFAULT_SAMPLE_SIZE = 300  // rows sampled across the scope's datasets
+const DEFAULT_SAMPLE_SIZE = 500  // rows sampled across the scope's datasets
 const ROWS_PER_BATCH      = 25   // rows per Haiku NER call
 const NER_CONCURRENCY     = 4    // batches in flight at once
 const MAX_ENTITIES        = 400  // hard cap on discovered entities per run
