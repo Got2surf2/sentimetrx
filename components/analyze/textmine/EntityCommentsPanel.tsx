@@ -83,6 +83,12 @@ function EntityCard({ row, entity, openFields, schema }: {
     return f.sqt !== 'rating' && f.sqt !== 'nps' && f.sqt !== 'likert' && f.scoreField !== true
   })
   var allMeta = ratingEntries.concat(otherEntries)
+
+  // Left-border color: rating value if available, else entity category
+  var primaryRating = ratingEntries[0]
+  var borderColor = primaryRating
+    ? (fieldColorFor(row.data[primaryRating.field], primaryRating) || accentColor)
+    : accentColor
   var hasMoreMeta = allMeta.length > 3
 
   var [metaExpanded, setMetaExpanded] = useState(false)
@@ -108,7 +114,7 @@ function EntityCard({ row, entity, openFields, schema }: {
   return (
     <div style={{
       background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10,
-      padding: '12px 14px', borderLeft: '4px solid ' + accentColor,
+      padding: '12px 14px', borderLeft: '4px solid ' + borderColor,
       boxShadow: '0 1px 4px rgba(0,0,0,.04)',
       display: 'flex', flexDirection: 'column', height: '100%',
     }}>
