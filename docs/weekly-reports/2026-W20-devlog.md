@@ -2,7 +2,23 @@
 
 Editorial log of what got worked on this week and **why**. Companion to the weekly governance audit. Append-only — entries reflect intent at time of writing, not later edits.
 
-## 2026-05-15 (Thu, latest) — Spec audit pass 2: TOWNHALL.md (PulseIQ)
+## 2026-05-15 (Thu, latest) — Spec audit pass 13: FEATURES.md vs current code
+
+- **Why:** doc 13 of 14 in the sequential spec audit ([[project-spec-audit-queue]]). FEATURES.md is the top-level inventory and had drifted furthest of any spec — six entire modules (PulseIQ, Agents, Social, Search, Data Sources, Usage) were unmentioned, the doc still opened with "SentimetRx", and almost every count was off.
+- **Edits applied (~241 inserts / 30 deletes):**
+  - **Title casing:** `SentimetRx` → `Sentimetrx` per `[[feedback-product-naming]]`; added Last reviewed header and naming-rule callout.
+  - **Numeric corrections:** industries 18→**19** (rewrote the full label list — old list named industries that don't exist in code: "Manufacturing, Telecom, Government, Professional Services, SaaS/Technology…"); creator 9→**10** steps (added Closing); question types 15→**14**; languages 15→**16** (Haitian Creole `ht`).
+  - **Channels:** Campaigns now described as Email + SMS; added Twilio provider row.
+  - **Module feature flags:** 2→**9** (surveys, analyze, googleReviews, reddit, substack, townhall, campaigns, bots, social).
+  - **AI integration:** stopped describing as Claude-only — now reflects pluggable `lib/ai.ts::callAI` router (anthropic / openai / azure-openai) and `OrgFeatures.aiProvider`. Rewrote the AI feature table from 7 Claude rows to a per-module grouping spanning theme mining, entity discovery, search re-rank, persona/opinion mining, sentiment, deck gen, PulseIQ moderation, agent RAG, social moderation.
+  - **Five new module sections added** (§14–§18): PulseIQ (Town Hall), Agents (Branded Chatbots), Social Monitoring, Data Sources (Reddit / Google / Tripadvisor / Substack / Regulations), Usage Accounting & Cost Estimator.
+  - **Analyze (§6)** got two new subsections it had never had: Entity Discovery & Catalog, and Full-Text Search (TextMine SearchPanel).
+  - **Platform Summary** table refreshed: SMS providers (1), AI providers (3), Module feature flags (9), Creator steps (10), plus updated counts.
+- **Not in the doc but real:** none new. The PulseIQ-chat-language mismatch (16 vs 15) and the DATANAUTIX default branding label are already tracked in `[[project-townhall-audit-2026-05-15]]` and `[[project-surveys-audit-2026-05-15]]` respectively — cross-linked from the doc rather than re-raised.
+- **Audit record:** [[project-features-audit-2026-05-15]].
+- **Next session:** doc 14/14 = `SPEC.md` — the last pass. Top-level platform spec; most module-level findings already captured, so this pass mainly verifies cross-references resolve and cross-cutting invariants match.
+
+## 2026-05-15 (Thu) — Spec audit pass 2: TOWNHALL.md (PulseIQ)
 
 - **Why:** doc 2 of 14 in the sequential spec audit ([[project-spec-audit-queue]]). PulseIQ was flagged for deep treatment because I missed its functionality twice in past sessions. Doc had drifted in several substantive ways since it was last touched.
 - **Edits applied (~120 inserts / 50 deletes):**

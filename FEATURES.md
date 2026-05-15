@@ -1,15 +1,21 @@
-# SentimetRx Platform — Complete Feature Reference
+# Sentimetrx Platform — Complete Feature Reference
+
+**Last reviewed:** 2026-05-15 (spec audit pass 13 of 14 — see `[[project-spec-audit-queue]]`)
+
+> User-facing product names: **Sentimetrx** (not SentimetRx), **agents** (not bots), **PulseIQ** (not Town Hall). Internal table/code names (`bots`, `townhall_*`) stay as-is. See `[[feedback-product-naming]]`.
 
 ## 1. Survey Creation Wizard
 
 ### Smart Study Wizard (AI-Powered)
 - **7 study blueprints**: Satisfaction & Experience, NPS & Loyalty, Awareness & Perception, Motivation & Values, Churn & Risk, Engagement & Participation, Journey & Touchpoint
-- **18 industry presets**: Healthcare, Hospitality, Casual Dining, Fine Dining, Retail, SaaS/Technology, Finance/Banking, Education, Real Estate, Automotive, Travel, Entertainment, Nonprofit, Government, Professional Services, Manufacturing, Telecom, Other
+- **19 industries** (`lib/industryDefaults.ts`): Healthcare, Hospitality (Hotel / Lodging), Restaurants — Casual Dining, Restaurants — Fine Dining, Restaurants — Fast Food / Quick Service, Travel & Tourism, Politics & Advocacy, Entertainment — Media & Film, Entertainment — Performing Arts & Venues, SaaS / Software, Retail / E-commerce, Financial Services, Education (K-12), Higher Education, HR / Employee, Sports, Nonprofit, Automotive Repair, Other
 - AI-generated study configuration from industry + focus area + length selection
 - Focus areas: retention, communication, recognition, motivation, legacy giving, donor capacity, civic mindset, and more
 - Length tuning: quick (5Q), standard (10Q), comprehensive (15Q)
 
-### Step-by-Step Creator (9 Steps)
+### Step-by-Step Creator (10 Steps)
+
+Order from `components/creator/CreatorNav.tsx::CREATOR_STEP_LABELS`: Basics → Opening → Conversation → Clarifiers → Questions → Psycho → Demo → Contact → Closing → Review.
 
 **Step 1 — Basics**
 - Study name, bot name, bot emoji (industry-specific emoji sets)
@@ -17,12 +23,12 @@
 - Industry selection with auto-defaults
 - 7 color presets (Ocean, Forest, Sunset, Violet, Rose, Slate, Gold) + custom color picker
 - 6 theme colors: primary, header gradient, background, accent, bot avatar gradient
-- Branding label (default "DATANAUTIX", customizable up to 15 chars, show/hide toggle)
+- Branding label (current default `"DATANAUTIX"`, customizable up to 15 chars, show/hide toggle — see `[[project-surveys-audit-2026-05-15]]` for the open rename-to-Sentimetrx item)
 - Response limits: allow multiple responses or one per device
 - Response capture: instant capture (single tap) or tap-then-confirm mode
 - Survey font size (adjustable px)
 - Typing animation speed (0.25x minimal to 2x slow, default 0.5x)
-- Multi-language configuration (15 languages, auto-translate on add)
+- Multi-language configuration (16 languages, auto-translate on add)
 - Auto-translate responses toggle (translate non-English answers to English on submission)
 
 **Step 2 — Opening Flow**
@@ -49,7 +55,7 @@
 
 **Step 5 — Custom Questions**
 - Drag-and-drop question ordering
-- 15 question types:
+- 14 question types (`lib/types.ts::QuestionType`):
   - Open-ended (free text with AI clarification)
   - Radio (single select)
   - Checkbox (multi-select with "at least one" validation)
@@ -91,7 +97,12 @@
 - Transition message customization ("If you'd like us to follow up...")
 - Section ordering: drag-order for custom questions, psychographics, demographics, contact
 
-**Step 9 — Review & Publish**
+**Step 9 — Closing**
+- Custom thank-you message
+- Completion-card configuration (logo, message, optional CTA link/label)
+- Translated per enabled language
+
+**Step 10 — Review & Publish**
 - Full configuration summary
 - Validation checks across all steps (completion indicators)
 - Save as draft or publish to active
@@ -144,8 +155,10 @@
 
 ## 3. Multi-Language Support
 
-### 15 Supported Languages
-English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean, Arabic, Hindi, Vietnamese, Filipino, Russian, Polish
+### 16 Supported Languages (`lib/types.ts::SUPPORTED_LANGUAGES`)
+English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean, Arabic, Hindi, Vietnamese, Filipino, Russian, Polish, Haitian Creole
+
+> PulseIQ (Town Hall) chat currently mirrors a 15-language subset (no Haitian Creole) — see `[[project-townhall-audit-2026-05-15]]`.
 
 ### Translation Coverage
 - **Study content**: Greeting, all question prompts, rating/NPS prompts, closing messages
@@ -174,12 +187,14 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 
 ---
 
-## 4. Email Campaign Manager
+## 4. Campaign Manager (Email + SMS)
 
 ### Campaign Setup
 - Create campaigns linked to a study
 - Name, description, target response goal
+- Channel: email-only, SMS-only, or both (`campaigns.channel ∈ {email, sms, both}`)
 - Email provider selection: Resend (default), SendGrid, AWS SES, custom SMTP
+- SMS provider: Twilio (requires `accountSid` + `authToken` + `fromNumber`, or `TWILIO_*` env vars). SMS only sent to recipients with a `phone` value.
 
 ### Recipient Management
 - Bulk upload: CSV, TSV, JSON, Excel (.xlsx/.xls)
@@ -272,12 +287,27 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Collections group datasets for cross-dataset analysis; brand-collections (auto-curated by a dataset's brand tag) show as a distinct Brand card with drill-in to member datasets
 
 ### Text Mining (AI-Powered Theme Extraction)
-- Claude API-powered theme discovery from open-ended responses
+- AI-powered theme discovery from open-ended responses (provider via `lib/ai.ts::callAI`)
 - Industry theme library integration (Healthcare, Hospitality, SaaS, etc.)
 - Theme extraction with verbatim tagging
 - Manual theme editing: add, remove, rename themes post-mining
 - Theme recounting without re-mining
 - Statistical significance testing (chi-square) for theme distributions
+
+### Entity Discovery & Catalog
+- AI-extracts named entities (dishes, drinks, places, people, brands) from row text
+- Persisted to `entity_catalog` per scope (dataset or brand-collection)
+- Counted at read time via `count_entity_terms` RPC — surfaces "who/what was mentioned" alongside themes
+- Brand-collection scope auto-curated from a dataset's `brand_tag`; a brand's datasets share one catalog
+- Run history logged to `entity_catalog_refresh` (before/after counts, sample size, schema-field selection)
+- See `docs/ANALYTICS.md § Entity Discovery & Catalog`
+
+### Full-Text Search (TextMine SearchPanel)
+- Two modes: plain `tsvector` full-text or AI-augmented synonym expansion + Claude re-rank
+- GIN index on `dataset_rows_flat.tsv` (migration `031_dataset_search.sql`); `search_dataset_rows()` RPC
+- AI mode: query → expand to synonyms → 100 candidates per target via OR'd `websearch_to_tsquery` → strict scorer re-ranks 0.0–1.0 → threshold 0.3 → paginated
+- Works across collections (resolves to member datasets and unions per-target candidate pools)
+- See `docs/SEARCH.md`
 
 ### Visualizations
 - Theme prevalence bar charts
@@ -363,11 +393,20 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 ### Organization Management
 - Organization name, slug, logo
 - Plan management: trial → active → suspended
-- Feature flags per org:
-  - `analyze`: Advanced text mining and analytics
-  - `campaigns`: Email campaign manager
-  - `primaryIndustries`: Restrict available industries
-  - `defaultEmailProvider`: Set default email provider
+- Module feature flags (`lib/types.ts::ModuleFeatures`) — gate UI nav + API access per org and per user:
+  - `surveys` — conversational surveys (Sarina)
+  - `analyze` — TextMine, entity discovery, statistics, search, theme mining
+  - `googleReviews` — DataforSEO Google + Tripadvisor reviews
+  - `reddit` — Reddit thread + comments downloader
+  - `substack` — Substack post comments downloader
+  - `townhall` — PulseIQ live discussions
+  - `campaigns` — email + SMS campaigns
+  - `bots` — branded agents
+  - `social` — Meta (Facebook + Instagram) monitoring
+- Org config (`lib/types.ts::OrgFeatures`):
+  - `primaryIndustries` — restrict available industries
+  - `defaultEmailProvider` — default for new campaigns
+  - `aiProvider` — pluggable provider config (`anthropic` / `openai` / `azure-openai`, plus azure endpoint/version)
 
 ### Platform Admin Dashboard
 - List all organizations with stats (users, studies, responses)
@@ -452,17 +491,185 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 
 ---
 
-## 13. AI Integration (Claude API)
+## 13. AI Integration
 
-| Feature | Model | Purpose |
-|---------|-------|---------|
-| Smart Study Wizard | Claude | Generate complete study config from inputs |
-| Clarifiers | Claude | Generate contextual follow-up questions |
-| Smart Deflection | Claude | Detect off-topic questions, generate redirects |
-| Study Translation | Claude Haiku | Translate all study content to 15 languages |
-| Response Translation | Claude Haiku | Translate non-English responses to English |
-| Theme Mining | Claude | Extract themes from open-ended text |
-| Theme Recounting | Claude | Re-tag responses with updated theme model |
+All AI calls route through `lib/ai.ts::callAI`, which supports three providers (`anthropic`, `openai`, `azure-openai`) and three tiers (`fast`, `standard`, `advanced`). Defaults: `fast = claude-haiku-4-5`, `standard = claude-sonnet-4`, `advanced = claude-sonnet-4-6`. Per-org override via `OrgFeatures.aiProvider`. Token counts route through `lib/usageLog.ts` to `usage_logs` whenever the caller passes a `usage:` context.
+
+Major AI features by module:
+
+**Surveys**
+- Smart Study Wizard — generate complete study config from industry + focus + length
+- In-survey clarifiers — keyword + AI follow-ups
+- Smart deflection — off-topic detection and warm redirect
+- Study translation (16 langs) and per-response translation to English
+- Input guardrails (`lib/guardrails.ts`) — profanity / violence / slur / URL filtering
+
+**Analyze**
+- Theme mining + recounting (`lib/themeExtraction.ts`)
+- Entity discovery + variant merge (`lib/entityDiscovery.ts`)
+- Search query expansion + strict re-rank (`/api/datasets/[datasetId]/search`)
+- Persona / opinion mining (`lib/personaExtractor.ts`, `lib/opinionMining.ts`)
+- Sentiment scoring (`lib/scoreSentimentFull`)
+- AI deck generation (entity analysis, brand rollups, restaurant expansion)
+
+**PulseIQ (Town Hall)**
+- Discussion-guide generation (4–8 topics from event description)
+- Sensitive-topic suggestions with staged keyword expansion
+- Description grading (1–5)
+- Live chat moderation, topic rotation, theme detection (cron)
+
+**Agents (Bots)**
+- Hybrid RAG over knowledge chunks (semantic + lexical + fuzzy, blended in one RPC)
+- Session-persona extraction (turn 2–4)
+- Demographic inference from chat
+- Intent capture (keyword + AI)
+- Periodic conversation reviews (theme drift)
+- Insights deck export
+
+**Social**
+- Content guard (sentiment + flags), OpenAI moderation overlay
+- Topic + intent + emotion tagging
+- Response routing (silent moderate / human queue / templated / AI-custom reply)
+
+**Campaigns / Other**
+- Subject-line and body suggestions
+- Audit log natural-language summaries
+
+See `docs/USAGE_ACCOUNTING.md § Estimator` for the 23 forward-looking usage profiles that drive cost modeling.
+
+---
+
+## 14. PulseIQ (Town Hall)
+
+*Gated by `organizations.features.townhall`. UI label: **PulseIQ**. Internal name: `townhall`. See `docs/TOWNHALL.md`.*
+
+### Session Creation (6-step wizard at `app/townhall/new/`)
+1. **Basics** — session name, slug, industry, bot name/emoji, session type, expected attendees, org name, event description, opening/closing messages, tone
+2. **Seed Topics** — discussion guide cards (label, description, opening question, follow-up angles, keywords, response target)
+3. **Sensitive Topics** — banned terms (AI-suggested + manual) and priority areas
+4. **Conversation** — max turns, AI timeout, testing mode, session end mode, button labels, content safety toggles
+5. **Post-Session** — demographic + psychographic sample fields
+6. **Review & Publish**
+
+### Session Types
+`community`, `employee`, `customer`, `student`, `member`, `other` — drives AI tone and peer references.
+
+### Live Console (`app/townhall/[sessionId]/`)
+- Three tabs: Live Feed, Topic Cards, Themes
+- Real-time chat moderation, topic rotation, organic theme discovery
+- Per-participant ban / mute, content-guard flagging
+- Live sentiment + activity counts
+
+### Participant Widget (`/th/[guid]`)
+- Anonymous join (per-session participant_id)
+- Multi-language autodetect from first turn (15 langs in chat: `LANG_CODES` in `app/api/townhall/chat/route.ts`)
+- Pre-session demographic + psychographic intake
+- Rate limits: 20 req/min per participant + 600 req/min per IP
+
+### Post-Session
+- Theme detection cron (`/api/cron/townhall-theme-detection`)
+- Demographic + psychographic aggregations
+- Standby state for round-based mode (scoped, not built — see `[[project-pulseiq-round-based]]`)
+
+---
+
+## 15. Agents (Branded Chatbots)
+
+*Gated by `organizations.features.bots`. UI label: **Agents**. Internal name: `bots`. See `docs/BOTS.md`.*
+
+### Agent Builder (`app/bots/[id]/`)
+- Bot identity: name, emoji, personality, opening message
+- System prompt customization
+- Knowledge base: upload PDFs / docs → chunked + embedded (OpenAI embeddings) into `bot_knowledge_chunks`
+- Intent rules: keyword + AI detection of donate / volunteer / event / custom intents → URL or message trigger
+- Contrast positions: explicit "agent disagrees with X" stances
+- Content guardrails (banned topics, demographic toggle, persona inference toggle)
+
+### Public Chat Widget (`/b/[slug]`)
+- Anonymous, rate-limited (`/api/bots/[id]/chat`, 30 req/min/IP)
+- Hybrid RAG retrieval: pgvector cosine + Postgres `tsvector` + `pg_trgm` blended in one RPC
+- Session persona extracted at turn 2–4, merged across the session for context
+- Per-turn sentiment, language, content flags, intent matches stored
+- Embeddable as iframe
+
+### Conversation Analytics
+- Periodic AI reviews flag theme drift (`/api/cron/bot-conversation-review`)
+- Insights deck export: KPIs, common questions, drop-off points, sample quotes, recommendations
+
+### Storage
+`bots`, `bot_knowledge_chunks`, `bot_conversation_turns`, `bot_session_personas`, `bot_conversation_reviews` (migrations 020/022–025/028/029/038).
+
+---
+
+## 16. Social Monitoring
+
+*Gated by `organizations.features.social`. See `docs/SOCIAL.md`.*
+
+### Account Connection
+- Meta OAuth (Facebook Pages + Instagram Business accounts) — `social_connections`
+- Token refresh + scope validation
+
+### Ingestion
+- **Webhook** (primary): Meta → `/api/social/webhook` — sub-second latency
+- **Cron poll** (backstop): `/api/cron/social-sync` every 15 min for missed deliveries + backfill
+- All comments → `social_comments` with sentiment + content-guard flags
+- Cron path also runs `tagComment()` overlay (topic, intent, emotion + OpenAI moderation)
+
+### Operator Console (`/app/social`)
+- Filtered feed (status, sentiment, platform, account, tags)
+- Per-comment actions: hide, like, reply (templated or AI-custom), delete moderation
+- Bulk actions
+- Alert rules (keyword / sentiment / volume thresholds → email)
+- DM templates and send log
+- Export to TextMine dataset (`/api/social/export-dataset`)
+
+### Response Routing
+`routeResponse()` decides: silent moderate / human queue / templated reply / AI-custom reply.
+
+---
+
+## 17. Data Sources (External Ingest)
+
+*Each gated independently. All write into `dataset_rows_flat`. See `docs/DATA_SOURCES.md`.*
+
+| Source | Gate flag | Cadence | Driver |
+|--------|-----------|---------|--------|
+| **Reddit** | `reddit` | One-shot, user-initiated | UI → `/download-thread` per thread |
+| **Google Reviews** (DataforSEO) | `googleReviews` | Continuous cron | `/api/cron/review-sync` every 6h, two-phase submit→poll |
+| **Tripadvisor Reviews** (DataforSEO) | `googleReviews` | Continuous cron | Same review-sync cron |
+| **Substack** | `substack` | One-shot | UI → `/download-comments` per post |
+| **Regulations.gov** | `analyze` | One-shot, page-by-page | UI loops `/download-comments?page=N` (Vercel-timeout-friendly) |
+
+### Common behavior
+- Wizards at `/app/analyze/new/` for each source
+- Service-role writes with explicit `org_id` checks (RLS default-deny after migration 032)
+- Org-scoped `datasets` rows (`source = 'reddit' | 'google_reviews' | 'tripadvisor' | 'substack' | 'regulations'`)
+- One-row-per-item writes — no dual-write to legacy `dataset_rows` (PR #1, May 2026)
+
+### Real cost reference
+DataForSEO Google reviews ≈ **$0.37 per 1,000** — see `[[reference-dataforseo-cost]]`.
+
+---
+
+## 18. Usage Accounting & Cost Estimator
+
+*Admin-only — no per-org gate. See `docs/USAGE_ACCOUNTING.md`.*
+
+### Historical Dashboard (`/admin/usage`)
+- Every `callAI` with a `usage:` context auto-writes to `usage_logs` (input/output/cache-read/cache-creation tokens captured directly from provider response)
+- Total spend, breakdown by module / event / model / day
+- Top resources by cost (per-dataset / per-bot / per-session drill-in)
+- Date range and filter controls
+
+### Forward-Looking Estimator (`/admin/estimator`)
+- 23 usage profiles spanning surveys, analyze, PulseIQ, agents, social, ingest, theming
+- Inputs: scenario sliders (e.g. "X PulseIQs × Y participants × Z turns")
+- Outputs: projected monthly AI bill, per-feature breakdown, storage cost, margin
+- Multilingual factor applied per-profile
+- Single rate table source of truth: `lib/usageRates.ts` (`RATES`, `TIER_DEFAULT_MODEL`, `estimateCost`)
+
+### Cron Jobs Reporting Usage
+`townhall-theme-detection`, `bot-conversation-review`, `entity-discovery`, `review-sync`, `social-sync`, `campaign-scheduler` — each writes its own `usage_logs` row when it invokes `callAI`.
 
 ---
 
@@ -470,13 +677,17 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 
 | Dimension | Count |
 |-----------|-------|
-| Industries | 18 |
+| Industries | 19 |
 | Study blueprints | 7 |
-| Languages | 15 |
-| Question types | 15 |
+| Languages | 16 (PulseIQ chat: 15) |
+| Question types | 14 |
 | Email block types | 8 |
 | Export formats | 4 (CSV, PPTX, HTML, JSON) |
-| Email providers | 4 |
+| Email providers | 4 (Resend, SendGrid, SES, SMTP) |
+| SMS providers | 1 (Twilio) |
+| AI providers | 3 (Anthropic, OpenAI, Azure OpenAI) |
+| Module feature flags | 9 |
 | Theme colors | 6 customizable |
 | Color presets | 7 |
 | Rating types | 8 |
+| Creator steps | 10 |
