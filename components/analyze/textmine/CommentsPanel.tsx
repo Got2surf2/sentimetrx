@@ -363,7 +363,11 @@ export default function CommentsPanel({
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
-  const [colorField, setColorField] = useState('')
+  const [colorField, setColorField] = useState(function() {
+    return (schema || []).find(function(f) {
+      return f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
+    })?.field || ''
+  })
   // sessionStorage default = 2; restore from session post-mount to avoid
   // hydration mismatch (server has no sessionStorage). The restoredFromSession
   // gate keeps the writer-effect from clobbering the saved value with the
