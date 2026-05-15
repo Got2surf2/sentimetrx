@@ -84,8 +84,8 @@ function EntityCard({ row, entity, openFields, schema }: {
   })
   var allMeta = ratingEntries.concat(otherEntries)
 
-  // Left-border color: rating value if available, else entity category
-  var primaryRating = ratingEntries[0]
+  // Left-border color: scoreField (primary) first, then first rating field, else entity category
+  var primaryRating = ratingEntries.find(function(f) { return f.scoreField === true }) || ratingEntries[0]
   var borderColor = primaryRating
     ? (fieldColorFor(row.data[primaryRating.field], primaryRating) || accentColor)
     : accentColor

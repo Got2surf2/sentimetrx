@@ -364,8 +364,11 @@ export default function CommentsPanel({
   const [showNumericFields, setShowNumericFields] = useState(false)
   const [visibleCount, setVisibleCount] = useState(50)
   const [colorField, setColorField] = useState(function() {
-    return (schema || []).find(function(f) {
-      return f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert' || f.scoreField === true
+    const fields = schema || []
+    const primary = fields.find(function(f) { return f.scoreField === true })
+    if (primary) return primary.field
+    return fields.find(function(f) {
+      return f.sqt === 'rating' || f.sqt === 'nps' || f.sqt === 'likert'
     })?.field || ''
   })
   // sessionStorage default = 2; restore from session post-mount to avoid
