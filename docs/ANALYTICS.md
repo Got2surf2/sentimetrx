@@ -17,16 +17,18 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 - Dual color mode: sentiment gradient vs rating gradient
 - Sampling control with 95% confidence margin-of-error display
 - Breakdown by any categorical field (by group / by theme views)
+- Hosts the **Entities** card (catalog rendered scope-wide; see Entity Discovery below)
 
-**2. Word Cloud**
-- Frequency-based keyword visualization
-- Sized by mention count, colored by theme
+**2. Theme Clouds**
+- One word cloud per theme — the words that appear most often inside that theme's matched comments
+- Useful for spotting the exact language people use within a theme
 
-**3. Compare / Crosstab**
-- Cross-group analysis by categorical fields
-- Stacked bar distributions
+**3. Compare**
+- Cross-group analysis by a categorical breakdown field (region, channel, age bracket, etc.)
+- Stacked bar distributions, by-group / by-theme views
+- Two-proportion z-test flags groups whose theme mix differs meaningfully from the baseline
 - Welch t-test for rating significance across groups
-- Mention and rating comparison tables
+- (Crosstab is a chart type in the Charts module, not a TextMine sub-tab.)
 
 **4. Comments**
 - Paginated comment browser with keyword highlighting
@@ -37,11 +39,14 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 
 ## Theme Mining (AI-Powered)
 
-### API: `POST /api/datasets/[id]/mine-themes`
+### API: `POST /api/datasets/[datasetId]/mine-themes`
 - Uses Claude to extract 4-7 distinct themes with 8-15 keywords each
 - Keywords include: core terms, synonyms, informal variants, short phrases
-- Input: 10-100 text samples + field name + schema context
-- Uses user's own Claude API key (stored in browser localStorage only)
+- Input: caller-supplied `texts[]` + field name + schema context (no hard cap;
+  the calling page picks the sample)
+- API key: **defaults to the server's `ANTHROPIC_API_KEY`** so customer orgs piggyback
+  on the platform key; usage is logged per-org in `usage_log`. The body accepts an
+  optional `apiKey` override but it is not required — there is no localStorage-only mode.
 
 ### recountThemes() — Core Algorithm (`lib/themeUtils.ts`)
 1. Filter rows to non-empty text
@@ -50,11 +55,14 @@ Full-stack text analytics engine. AI-powered theme mining, lexicon-based sentime
 4. Compute: percentage, Wilson 95% CI, sentiment classification, avgRating, ratingDelta, per-keyword ratings
 5. Performance: O(rows x themes x keywords), single pass
 
-### Sentiment Scoring (Lexicon-Based)
-- POS_WORDS: good, great, excellent, amazing, friendly, clean, helpful, etc.
-- NEG_WORDS: bad, terrible, slow, rude, dirty, expensive, disappointing, etc.
-- Negation handling: "not good" flips polarity (checks up to 3 preceding words)
-- Classification: positive (>=70% pos), negative (<=30% pos), mixed, neutral (insufficient data)
+### Sentiment Scoring (Lexicon-Based, `lib/sentimentLexicon.ts`)
+- `POSITIVE_WORDS`: good, great, excellent, amazing, friendly, clean, helpful, etc.
+- `NEGATIVE_WORDS`: bad, terrible, slow, rude, dirty, expensive, disappointing, etc.
+- `NEGATORS`: negation flips polarity, checking up to 3 preceding words
+- `classifySentiment(pos, neg, minResponses=5)` returns one of:
+  `'positive'` (≥70% pos), `'negative'` (≤30% pos), `'mixed'` (between),
+  `'insufficient'` (total scored words < `minResponses`). `'neutral'` is only kept
+  as a fallback when a theme has zero matched rows.
 
 ---
 
@@ -82,11 +90,12 @@ the brand-collection and syncs membership via DB triggers (migrations 060–062)
 `lib/entityFilter.ts::resolveEntityScope` maps any dataset id to its scope + member list.
 
 ### Discovery (`lib/entityDiscovery.ts`)
-1. Resolve the dataset's scope; sample ~300 rows at random across its member datasets.
+1. Resolve the dataset's scope; sample ~500 rows at random across its member datasets
+   (`DEFAULT_SAMPLE_SIZE = 500`, clamped to `[25, 1000]` via `opts.sampleSize`).
 2. Concatenate **only the schema-selected entity-extraction fields** of each row; batch
-   through Claude Haiku NER (25 rows/call, 4 in flight). The prompt is **strict** — only
-   specific *named* things, never adjectives, sentiments, or generic nouns ("service",
-   "atmosphere", "the food").
+   through Claude Haiku NER (`ROWS_PER_BATCH = 25` rows/call, `NER_CONCURRENCY = 4`
+   batches in flight). The prompt is **strict** — only specific *named* things, never
+   adjectives, sentiments, or generic nouns ("service", "atmosphere", "the food").
 3. Aggregate by `slug` (JS mirror of the SQL `slugify()`); merge aliases.
 4. **Canonicalisation pass** (`canonicaliseDiscovered`) — per-batch NER produces
    cross-batch near-duplicates ("Filet" / "Filet Mignon" / "Mignon"; "Brussels Sprout" /
@@ -149,17 +158,17 @@ Discovery does paid Haiku NER, so each path is gated to run only when it adds va
   `entity_catalog_refresh.datasets_sampled`, so subsequent syncs/computes are free.
   Backgrounded via `waitUntil` — never adds latency to the compute response. Mode
   `incremental`, samples only the dataset that just landed.
-- **Weekly cron** (Phase 6) — `/api/cron/entity-discovery` (Sun 05:00 UTC) re-runs
-  discovery for **every brand-collection**, sampling across all of the brand's
-  member datasets. Mode `cron`. Brand scope only — plain datasets are not refreshed
-  on a schedule (bounds AI cost; brand-level analysis is the use case).
-- A run samples ≤1000 rows (default 300); ballpark a few cents per run.
+- **Weekly cron** (Phase 6) — `/api/cron/entity-discovery` (Sun 05:00 UTC, vercel.json
+  `"0 5 * * 0"`) re-runs discovery for **every brand-collection**, sampling across all
+  of the brand's member datasets. Mode `cron`. Brand scope only — plain datasets are
+  not refreshed on a schedule (bounds AI cost; brand-level analysis is the use case).
+- A run samples ≤1000 rows (default 500); ballpark a few cents per run.
 
 ### Read APIs (all scope-resolving)
-- `GET /api/datasets/[id]/entities` → catalog entities with live counts + category
+- `GET /api/datasets/[datasetId]/entities` → catalog entities with live counts + category
   rollup + `last_refresh`. `?theme=<themeId>` intersects counts with the theme's
   keywords; `?limit=<n>` default 50, max 200.
-- `GET /api/datasets/[id]/rows-by-entity?entity=<slug>` → the rows mentioning one
+- `GET /api/datasets/[datasetId]/rows-by-entity?entity=<slug>` → the rows mentioning one
   entity, across the scope's members (via the `get_rows_by_entity` RPC, same open-ended
   recheck as counting). `?limit` default 100 / max 500, `?offset`.
 
@@ -201,23 +210,26 @@ PPTX. Unaffected by the rebuild; kept for the "drop into a StoryTime deck" workf
 
 ---
 
-## Charts Module (13+ Types)
+## Charts Module (13 Types)
+
+Defined in `CHART_TYPE_DEFS` (`components/analyze/ChartsModule.tsx`). Slots are from
+`CHART_TYPE_SLOTS` in the same file.
 
 | Chart | Slots | Use Case |
 |-------|-------|----------|
-| Bar/Column | category (req), colorBy, value | Counts across categories |
-| Distribution | numeric (req) | Histogram or box plot |
-| Scatter | x-numeric, y-numeric | Two-variable relationship |
-| Crosstab | rows (req), cols (req) | Heatmap with chi-square test |
+| Bar/Column (`bar`) | category (req), colorBy, value | Counts across categories |
+| Distribution | field (req numeric), splitBy | Histogram or box plot |
+| Scatter | x (req numeric), y (req numeric), colorBy | Two-variable relationship |
+| Crosstab | rows (req cat), cols (req cat) | Heatmap of two categorical fields |
 | Time Series | date (req), metric, colorBy | Metric over time with breakdown |
 | Treemap | category (req), size | Hierarchical rectangles |
-| Packed Bubbles | category, size | Circles sized by measure |
-| Waterfall | category (req), value | Running total contribution |
-| Bullet/KPI | measure (req) | Gauge with performance bands |
-| Funnel | category (req), value | Ranked bars |
-| Gantt/Range | category, min, max | Min-max range bars |
-| Score Driver | themes, rating | Which themes drive scores |
-| Data Table | any fields | Sortable, filterable table |
+| Packed Bubbles (`bubbles`) | (numeric measures) | Circles sized by numeric measures |
+| Waterfall | category (req) | Running total contribution |
+| Bullet/KPI (`bullet`) | field (req numeric), splitBy | Gauge with performance bands |
+| Funnel | category (req) | Ranked bars in funnel shape |
+| Gantt/Range (`gantt`) | category (req), range (req numeric/date) | Min-max range bars |
+| Score Driver (`driver`) | themes, rating | Which themes drive higher/lower scores |
+| Data Table (`table`) | any fields | Sortable, filterable data table |
 
 ### Drag-to-Assign Interface
 - Drag fields from sidebar to chart slots
@@ -229,31 +241,39 @@ PPTX. Unaffected by the rebuild; kept for the "drop into a StoryTime deck" workf
 
 ## Statistics Module (Hypothesis Testing)
 
-### 5 Statistical Panels
+### 6 Analysis Panels
 
-**1. Univariate Descriptive**
+Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
+
+**1. Descriptives**
 - Mean, median, std dev, min, max, Q1/Q3, skewness, kurtosis
 - Shapiro-Wilk normality test
-- Bootstrap CI (2000 iterations) on mean, median, std
+- Bootstrap CI (Monte Carlo) on mean, median, std
 
-**2. Bivariate Relationships**
+**2. Correlations**
 - Pearson r (linear correlation) with p-value and 95% CI
 - Spearman rho (rank correlation, handles non-linear)
+- Correlation matrix with click-through detail
 
-**3. Group Comparisons**
+**3. Group Tests** — combines two-sample, k-sample, and contingency tests in one panel:
 - Welch's t-test (two groups, unequal variance) + Cohen's d
 - Mann-Whitney U (non-parametric rank test with tie correction)
 - One-Way ANOVA (k groups) + pairwise Tukey HSD post-hocs
+- Chi-square test of independence + Cramer's V (observed vs expected frequencies)
 
-**4. Contingency Tables**
-- Chi-square test of independence + Cramer's V
-- Observed vs expected frequencies
-
-**5. Linear Regression**
-- OLS with interaction terms
+**4. Regression**
+- OLS linear regression (one model per selected outcome)
 - Coefficient p-values, 95% CI per term
 - R-squared, adjusted R-squared, F-statistic
 - Residuals for diagnostics
+
+**5. ✦ Auto-Insights**
+- Auto-scans the dataset for significant correlations, group effects,
+  and distribution flags; surfaces them as ranked findings.
+
+**6. Outlier Analysis**
+- Flags groups that are statistically above or below the overall mean
+  for a chosen metric.
 
 ### Statistical Infrastructure (`lib/statsUtils.ts`)
 - Distribution functions: t, F, chi-square, normal CDF
@@ -283,38 +303,59 @@ PPTX. Unaffected by the rebuild; kept for the "drop into a StoryTime deck" workf
 
 ## Export Features
 
+The ExportModal offers exactly **two formats**: PPTX and HTML. There is no CSV
+analytics export — dataset-row CSV download is not part of this module.
+
 ### PPTX (Consulting-Quality Deck)
-- **API**: `POST /api/datasets/[id]/export/pptx`
-- **Audience levels**: Executive (short), Stakeholder (charts + fields), Full Team (everything)
-- **Slides**: Title, executive summary, NPS/rating distributions, theme deep-dives (keywords + quotes), sentiment breakdown, theme impact on scores, field breakdowns, demographic annotations, methodology appendix
-- **Branding**: Datanautix palette (navy, teal, gold), logo top-right, full dates
+- **API**: `POST /api/datasets/[datasetId]/export/pptx`
+- **Audience levels**: `executive` (short, exec-only), `stakeholder` (default — charts + fields),
+  `full` (full team — most detail, drives theme-impact slide inclusion)
+- **Slides**: Title, executive summary, NPS/rating distributions, theme deep-dives
+  (keywords + quotes), sentiment breakdown, theme impact on scores, field breakdowns,
+  demographic annotations, methodology appendix
+- **Branding**: Datanautix palette (navy, teal, gold), `datanautix.com` footer,
+  `pptx.author = pptx.company = 'Datanautix'`. **Note:** this is the legacy brand —
+  not yet rebranded to Sentimetrx in the exported deck.
 - **Quote selection**: `pickBestComments()` selects 2-3 representative quotes per theme
-- **Version numbering**: StoryTime v1.2.0 on About slide
+- **Version numbering**: `STORYTIME_VERSION = '1.2.0'` (`route.ts:25`), shown on the
+  About slide as `<audience> edition · v<version>`
 
 ### HTML (Shareable Dashboard)
-- **API**: `POST /api/datasets/[id]/export/html`
-- Interactive HTML with embedded Plotly charts
-- Responsive for mobile/desktop
-- Shareable via link with expiry
+- **API**: `POST /api/datasets/[datasetId]/export/html`
+- Generates a Reveal.js HTML presentation from dataset analytics
+- Interactive, responsive for mobile/desktop
+- Companion `POST /api/datasets/[datasetId]/export/html/share` uploads the HTML to AWS
+  for a shareable URL (used by the "Share" button in the success step of ExportModal)
 
-### CSV
-- Standard row export with filtering
-- Configurable columns and sections
+### Signals PPTX (Reddit / Substack)
+- **API**: `POST /api/datasets/[datasetId]/export/signals-pptx`
+- Separate deck format for Reddit/Substack datasets that have signal-tier ranking
+  — not exposed through ExportModal; called from the Signals view.
 
 ---
 
 ## Analytics Computation Pipeline
 
 ### Server-Side (`lib/analyticsCompute.ts`)
-- Batch processing: 500 records per DB trip
-- Running accumulators per field type
-- Reservoir sampling for numerics (50K max)
-- Output: `DatasetAnalytics` JSON with per-field summaries
+Two paths, both producing the same `DatasetAnalytics` JSON shape:
+
+- **`computeAnalyticsSQL`** (main path, used by `/compute` for single datasets):
+  pushes work into Postgres via RPCs (`count_field_values`, `numeric_field_stats`) so
+  no rows are pulled into Node. Top-value lists are capped at `p_limit: 500` per field;
+  open-ended summaries use a 20-row sample for shape stats and an exact `COUNT(*)` for
+  nonNull.
+- **`computeAnalyticsFromRows`** (collection-rollup path): runs JS accumulators over
+  rows already in memory (used when the rollup loads members for a virtual dataset).
+  Uses Knuth/Vitter reservoir sampling for numerics: `NUMERIC_RESERVOIR_SIZE = 50_000`.
+
+Output: `DatasetAnalytics` JSON with per-field summaries (categorical / numeric /
+open-ended / date / id / ignore).
 
 ### Computation Triggers
 - After upload batch completion
-- After Google Reviews sync
-- Manual re-compute from settings
+- After Google Reviews sync (and other source syncs)
+- Manual re-compute from the Schema tab
+- After brand-collection membership changes (rebuilds merged schema + recomputes)
 
 ---
 
@@ -344,21 +385,28 @@ PPTX. Unaffected by the rebuild; kept for the "drop into a StoryTime deck" workf
 
 | File | Purpose |
 |------|---------|
-| `components/analyze/TextMineModule.tsx` | Main shell, 4 sub-tabs (3000+ lines) |
-| `components/analyze/ChartsModule.tsx` | Chart builder (3500+ lines) |
-| `components/analyze/StatsModule.tsx` | Statistics (3000+ lines) |
-| `components/analyze/ExportModal.tsx` | Export workflow (1500+ lines) |
-| `components/analyze/FiltersModal.tsx` | Filter UI (1200+ lines) |
+| `components/analyze/TextMineModule.tsx` | Main shell, 4 sub-tabs (~2.4k lines) |
+| `components/analyze/ChartsModule.tsx` | Chart builder (~2.5k lines) |
+| `components/analyze/StatsModule.tsx` | Statistics (~2.2k lines) |
+| `components/analyze/ExportModal.tsx` | Export workflow (~1.2k lines) |
+| `components/analyze/FiltersModal.tsx` | Filter UI (~480 lines) |
+| `components/analyze/EntitiesCard.tsx` | Entities card rendered on the Themes sub-tab |
+| `components/analyze/textmine/WordCloud.tsx` | Theme Clouds sub-tab content |
 | `components/analyze/textmine/BreakdownDist.tsx` | Breakdown visualization |
 | `components/analyze/textmine/CommentsPanel.tsx` | Comment browser |
+| `components/analyze/textmine/EntityCommentsPanel.tsx` | Entity drill-down comments modal |
 | `components/analyze/textmine/ThemeEditor.tsx` | Theme CRUD |
-| `lib/themeUtils.ts` | recountThemes(), sentiment, keyword matching |
+| `lib/themeUtils.ts` | recountThemes(), Wilson CI, keyword matching |
+| `lib/sentimentLexicon.ts` | POSITIVE_WORDS / NEGATIVE_WORDS / NEGATORS sets |
 | `lib/filterUtils.ts` | Filter types & applyFilters() |
 | `lib/statsUtils.ts` | All statistical functions |
-| `lib/analyticsCompute.ts` | Server-side computation |
+| `lib/analyticsCompute.ts` | Server-side computation (SQL + JS paths) |
 | `lib/analyzeTypes.ts` | TypeScript interfaces |
-| `lib/timeBucket.ts` | Time series bucketing (hourly/daily/weekly/monthly/quarterly) |
+| `lib/timeBucket.ts` | Time series bucketing (hourly/daily/weekly/monthly/quarterly/yearly) |
 | `lib/aliasUtils.ts` | Value aliases & remapping |
+| `lib/entityDiscovery.ts` | Haiku NER discovery + canonicalisation |
+| `lib/entityFilter.ts` | Scope resolution, eligible-fields, count plumbing |
+| `lib/brandRules.ts` | Brand-collection schema rebuild + Phase 6 entity gating |
 | `components/analyze/ShareAnalyticsModal.tsx` | Share analytics link creator |
 | `app/api/share/analytics/route.ts` | Filtered vs benchmark analytics API |
-| `app/api/datasets/[id]/` | All dataset API routes |
+| `app/api/datasets/[datasetId]/` | All dataset API routes (note: param is `[datasetId]`, not `[id]`) |
