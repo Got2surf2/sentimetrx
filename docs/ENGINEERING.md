@@ -11,7 +11,7 @@ Each section ends with a **How we verify** line stating the concrete
 check (CI step, npm script, manual cadence) that audits it. If the
 verification is `<TBD>`, the standard is aspirational, not measurable.
 
-Last reviewed: 2026-05-12.
+Last reviewed: 2026-05-15.
 
 ---
 
@@ -93,11 +93,16 @@ already linked).
 
 Rules:
 
-- **Every migration runs in a transaction.** If your statement
-  needs to be outside a tx (e.g. `CREATE INDEX CONCURRENTLY`),
-  call it out at the top of the file and split into a separate
-  numbered migration so the tx-wrapper is preserved for everything
-  else.
+- **Migrations should run in a transaction where practical.**
+  Explicit `BEGIN; … COMMIT;` is the safest pattern; about a third
+  of `sql/NNN_*.sql` files do this today (`061_brand_backfill`,
+  `062_brand_tag_trigger`, `066_brand_rules_and_schema`, etc.) and
+  the rest rely on the per-statement implicit transaction the
+  Postgres driver gives each statement. If your statement needs
+  to be outside a tx (e.g. `CREATE INDEX CONCURRENTLY`), call it
+  out at the top of the file and split into a separate numbered
+  migration. Promoting "every file is explicitly wrapped" from
+  practice to enforced rule is Open `<TBD>` item 24.
 - **Backwards-compatible changes first.** A column rename = add
   new + backfill + ship code reading both + remove old in a later
   migration. Never a single-step rename in a deployment that's
@@ -127,20 +132,25 @@ its corresponding entry.
 ## 4. Logging & observability
 
 - **Structured payloads, even without a logger.** No `lib/log.ts`
-  module exists today (SECURITY.md Open `<TBD>` item 12). Until
-  it lands, prod handlers must call `console.warn` / `console.error`
-  with a **single object argument** — never an interpolated string
-  — so the Vercel log viewer can parse and grep on fields:
+  module exists today (SECURITY.md Open `<TBD>` item 12). The
+  *target* state is that prod handlers call `console.warn` /
+  `console.error` with a **single object argument** — never an
+  interpolated string — so the Vercel log viewer can parse and
+  grep on fields:
 
   ```ts
   console.warn({
     event: 'rate_limit_hit',
     request_id, org_id, user_id,
-    route: '/api/datasets/[id]/search',
+    route: '/api/datasets/[datasetId]/search',
   });
   ```
 
-  `console.log` is OK in tests and scripts, never in prod handlers.
+  Today's reality: nearly every prod handler still uses the
+  `console.error('[trim] error:', err)` interpolated-string form
+  (>95 occurrences in `app/api/**` at last audit). Migrating those
+  is Open `<TBD>` item 20. `console.log` is OK in tests and
+  scripts, never in prod handlers.
 - **Log levels:**
   - `error` — caught exception, request 5xx, integration timeout
   - `warn` — recoverable degradation, retry succeeded
@@ -152,12 +162,19 @@ its corresponding entry.
   (Section 5 of SECURITY.md). When the logger lands, redaction
   moves to the logger boundary.
 - **Sentry** (`sentry.client/edge/server.config.ts`) catches
-  uncaught exceptions. `beforeSend` scrubs PII fields — audit
-  config quarterly (SECURITY.md Open `<TBD>` item 1).
-- **Request IDs:** generated in `middleware.ts` (or upstream), added
-  to every response header (`x-request-id`), included in every log
-  payload `request_id` field for that request. A user-reported
-  bug → grep the log for the request id from their network tab.
+  uncaught exceptions. The three configs currently call
+  `Sentry.init({ dsn, tracesSampleRate: 0.1, environment })` and
+  nothing else — `beforeSend` is **not yet wired**, so PII
+  scrubbing relies entirely on caller discipline (Section 5 of
+  SECURITY.md). Adding `beforeSend` is SECURITY.md Open `<TBD>`
+  item 1; once it lands, audit config quarterly.
+- **Request IDs:** *target* state — generated in `middleware.ts`
+  (or upstream), added to every response header (`x-request-id`),
+  included in every log payload's `request_id` field for that
+  request. Today `middleware.ts` only enforces CSRF; no request
+  ID is generated or propagated. Vercel adds its own `x-vercel-id`
+  header upstream, which is the de facto correlation key until
+  Open `<TBD>` item 21 lands.
 - **Performance traces:** Sentry performance — **ratified default:
   10% prod sample, 100% on errors.** Revisit if cost > $X/month
   or if signal is too sparse.
@@ -216,8 +233,12 @@ prototypes can lag.
 - **Error messages** are programmatically associated with the
   invalid field via `aria-describedby`.
 - **Images** have `alt` (descriptive or `""` if decorative).
-- **The `LottieLoader` component is the ONLY loader.** It already
-  carries the right ARIA semantics; don't write a CSS spinner.
+- **The `LottieLoader` component is the ONLY loader** for
+  customer-facing surfaces — it already carries the right ARIA
+  semantics; don't write a CSS spinner. One legacy exception
+  remains (a `border-2 ... animate-spin` dot inside
+  `components/creator/CreatorNav.tsx:220`); replacing it is
+  Open `<TBD>` item 22.
 
 **How we verify (interim):**
 - Manual keyboard-only walkthrough of any customer-facing page
@@ -258,10 +279,16 @@ appear in `docs/feature-flags.md` with a non-expired kill-by date.
 Routes that get retried by external callers (webhooks, cron,
 client-initiated background jobs) must be safe to call twice.
 
-- **Webhooks** (Resend; Stripe and others when they land): require
-  an `idempotency_key` from the caller OR derive a deterministic
-  one from the payload. Persist a `webhook_events` row on first
-  receipt; on retry, look up and short-circuit.
+- **Webhooks** (Resend; Stripe and others when they land): the
+  *target* state is to require an `idempotency_key` from the caller
+  OR derive a deterministic one from the payload, then persist a
+  `webhook_events` row on first receipt and short-circuit on
+  retry. Today the Resend handler
+  (`app/api/campaigns/webhooks/resend/route.ts`) does **not**
+  dedupe — it relies on Resend not retrying successful deliveries
+  and on the downstream write being effectively idempotent.
+  Building the `webhook_events` table + dedupe wrapper is Open
+  `<TBD>` item 23.
 - **Cron jobs:** scoped to small batches; if interrupted, the next
   run picks up where the last left off. No "did this whole job
   finish?" required.
@@ -283,7 +310,10 @@ agent conversations, deck/strategy output. Rules:
 
 - **Scoped tool definitions only.** No "execute arbitrary SQL" tool;
   no "make any HTTP request" tool. Each tool is a narrow function
-  with a typed schema.
+  with a typed schema. (Current state: no Claude tool-use is wired
+  in production — every chat flow runs as plain text completions
+  through `lib/ai.ts`. This rule is the gate for when tool use is
+  introduced.)
 - **Single-org prompts.** Never include data from more than one
   `org_id` in a single prompt — protects against accidental
   cross-tenant leak via model context.
@@ -292,8 +322,11 @@ agent conversations, deck/strategy output. Rules:
   profanity, URL injection, role-prompt patterns.
 - **Output sanitize:** Claude output is treated as untrusted —
   DOMPurify for HTML, manual URL allowlist for any tappable link.
-- **Tool result auditing:** every tool call's input is persisted
-  in a structured table so we can replay / audit.
+- **Tool result auditing (target):** when tool use lands, every
+  tool call's input must be persisted in a structured table
+  (planned: the `audit_events` table from SECURITY.md §6) so we
+  can replay / audit. Today there is nothing to audit because no
+  tools are defined.
 - **No PII into prompts unless the org opted in.** Current opt-in
   is implicit-at-onboarding (orgs are walked through the AI
   flow); explicit org-level toggle is SECURITY.md Open `<TBD>`
@@ -304,8 +337,9 @@ agent conversations, deck/strategy output. Rules:
   column and a pre-call check in `lib/ai.ts`.
 
 **How we verify:** `lib/guardrails.ts` unit tests cover input
-checks; tool-call audit lives in the `extractions`-equivalent
-table (or `audit_events` once §6 of SECURITY.md ships).
+checks. Tool-call audit will live in `audit_events` (SECURITY.md
+§6) once the table ships AND the first tool-use flow lands —
+neither exists today.
 
 ---
 
@@ -384,7 +418,7 @@ item 19 lands.
 
 ---
 
-## Open `<TBD>` items as of 2026-05-12
+## Open `<TBD>` items as of 2026-05-15
 
 Renumbered to match in-line references in this doc and to extend
 SECURITY.md's numbering (so cross-references work). Items 1-13
@@ -407,3 +441,27 @@ are in `SECURITY.md`.
 19. **Risky-deploy manual gate:** wire a `deploy: manual` label
     that holds Vercel auto-deploy until owner approves on the
     preview URL. Land at first paying customer.
+20. **Structured-logging migration:** sweep
+    `app/api/**/*.ts` and replace the
+    `console.error('[label]', err)` interpolated pattern with the
+    single-object form (>95 occurrences). Pre-req for the eventual
+    `lib/log.ts` (item 12) so the migration target is consistent.
+21. **Request-ID middleware:** generate `crypto.randomUUID()` in
+    `middleware.ts`, set `x-request-id` on the response, and
+    expose it via async-local-storage so prod handlers can include
+    it in every structured log payload. Lands alongside item 20.
+22. **CSS spinner cleanup:** replace the
+    `border-2 ... animate-spin` dot in
+    `components/creator/CreatorNav.tsx:220` with a tiny
+    `LottieLoader` variant (or formally carve out a "navigation
+    inline-busy indicator" exception to the LottieLoader-only
+    rule and document it).
+23. **Resend webhook idempotency:** add a `webhook_events` table
+    (Resend `svix-id` headers as the unique key) and dedupe in
+    `app/api/campaigns/webhooks/resend/route.ts` before
+    short-circuit-replaying delivery state into `campaign_sends`.
+24. **Migration tx-wrap enforcement:** add a pre-commit / CI grep
+    that fails when a new `sql/NNN_*.sql` lacks an explicit
+    `BEGIN; … COMMIT;` (unless an opt-out comment is present for
+    `CONCURRENTLY`-style cases). Promotes the existing convention
+    from practice to enforced rule.
